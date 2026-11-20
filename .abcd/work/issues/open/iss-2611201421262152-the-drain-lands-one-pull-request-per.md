@@ -9,7 +9,7 @@ found_during: "person's question on 20 Nov 2026 during the autonomous run of 15 
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/drain.go"
-remedy: "Let the drain bundle eligible issues of one kind and one area into one lane, not only overlapping files: issues whose fix is a docs or brief sentence plus the test that pins it, in one chapter directory or one package, up to a cap (five issues, say). One branch, one review pair, one preflight, one pull request with a Resolves line per issue; an issue that fails its own fix round is handed back without failing the rest. Measure it against these figures: pull requests, preflights and CI minutes per resolved issue over the next forty."
+remedy: "Let the drain bundle eligible issues of one kind and one area into one lane, not only overlapping files: issues whose fix is a docs or brief sentence plus the test that pins it, in one brief chapter folder or one package, up to a cap set by drain.bundle_max with a default of five (dcn-2611201429107457). One branch, one review pair, one preflight, one pull request with a Resolves line per issue; an issue that fails its own fix round is handed back without failing the rest. Measure it against these figures: pull requests, preflights and CI minutes per resolved issue over the next forty."
 refines: [iss-2610161652341096]
 ---
 
