@@ -32,7 +32,7 @@ abcd's headline discipline is the audit loop: the dotted edge that compares deli
 
 This leaves two real gaps:
 
-1. **No way to drive a divergence to resolution.** At the *implementation* grain, abcd already has a fix-loop — the autonomous harness iterates on a `NEEDS_WORK` review until it ships. But that loop stops at the spec boundary; it has no equivalent at the *intent* grain. A facilitator who wants "keep working this intent until its acceptance criteria are met" has to drive it by hand.
+1. **No way to drive a divergence to resolution.** At the *implementation* grain, abcd already has a fix-loop — the autonomous harness iterates on a `FIX FIRST` review until it reads `SHIP`. But that loop stops at the spec boundary; it has no equivalent at the *intent* grain. A facilitator who wants "keep working this intent until its acceptance criteria are met" has to drive it by hand.
 2. **No terminal "we were wrong about this" state.** The verdict enum has `NOT_MET` (diverged — implicitly retry-able) and `INCONCLUSIVE` (couldn't determine), but nothing that says *"we tried, and the intent as specified cannot be achieved."* Without that state, a loop-toward-acceptance would have no safe exit — it would either grind forever or silently give up. The honest outcome when an intent can't be met is not a retry and not a shrug; it's a **replan**, and replanning an intent is a human act that needs both the product thinker (who owns the *why*) and the facilitator (who owns the *how*).
 
 There is also a sequencing waste today: manual verification, when it happens, isn't gated on machine-acceptance. A product thinker can be asked to test an intention whose machine-checkable criteria are already failing — spending human judgment on work the audit already knows is broken. Manual verification should be the *last* gate, opened only once the loop has reached `MET`.
@@ -41,11 +41,12 @@ This intent is **project-agnostic**: every abcd project ships intents whose deli
 
 ## What's In Scope
 
-### Three audit-loop modes, facilitator-elected per intent
+### The loop is `build`'s last stage, its fix rounds bounded by the pace
 
-- **`record-only`** (the current behaviour, and the default) — `NOT_MET` is written to `## Audit Notes`; no re-work is triggered.
-- **`loop-to-acceptance`** — a `NOT_MET` verdict re-opens the linked work and iterates against the same acceptance criteria until they read `MET`, bounded by a max-iteration budget. Mirrors the implementation-grain `SHIP`/`NEEDS_WORK` fix-loop, lifted to the intent grain. The facilitator sets this mode per intent (the intents that genuinely warrant the iteration cost).
-- The mode lives in the **policy / drainer layer** (riding on the review-queue drainer), never in the pure on-close lifecycle hook — loop purity (no subprocess, no oracle dispatch in the hook) is preserved.
+- **Every intent the run ships goes through it**: the loop is the last stage of `abcd build` (itd-2609201916151817), after the fidelity audit, not a mode the facilitator elects per intent (Decision 1, which supersedes the grill's `audit_mode` frontmatter and its `record-only` default).
+- **A not-met or undecided criterion starts a fix round**: a fresh implementer briefed on the criteria that did not pass, then a re-audit against the same acceptance criteria, until they read `MET` (Decisions 2 and 5). This mirrors the implementation-grain fix loop, whose validators return `SHIP` or `FIX FIRST` (and `APPROVE`, `BLOCK` or `NEEDS-INPUT`), lifted to the intent grain.
+- **The rounds are bounded by the pace rule's fix-round count**: `--fix-rounds <n>` on `abcd build`, `pace.fix_rounds` in the configuration layers, bundled 3 (Decision 6). Exhausting it with a criterion still not met, or a criterion judged unmeetable as written, ends the lane unachievable.
+- An audit that returns no verdict the loop can read starts no fix round and counts nothing against the budget.
 
 ### A terminal `UNACHIEVABLE` outcome + replan invitation
 
