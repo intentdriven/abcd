@@ -774,17 +774,6 @@ func causeOf(err error) string {
 	return err.Error()
 }
 
-// StepLocations is p's route as one list (Walk): the location of every link
-// it passes, then the file it ends at. ok is false when Walk refuses the
-// route, and a caller holding a program outside a tree then refuses it.
-func StepLocations(p string) ([]string, bool) {
-	route, err := Walk(p)
-	if err != nil {
-		return nil, false
-	}
-	return append(route.Links, route.Real), true
-}
-
 // GuardForms is the guard as given, cleaned, and its real location by Walk,
 // the reading every route held to it is in, so a guard under a linked
 // directory (macOS's /var and /tmp) is met in the form a route reaches it.

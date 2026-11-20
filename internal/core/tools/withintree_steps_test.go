@@ -66,7 +66,7 @@ func TestWithinTreeHoldsEachStepAtItsRealLocation(t *testing.T) {
 	})
 }
 
-// TestStepLocationsRefusesATargetTheSystemReadsOtherwise: /out/tool links to
+// TestWalkRefusesATargetTheSystemReadsOtherwise: /out/tool links to
 // d/../x and /out/d links to R/sub, so the system reads the target as R/sub/..
 // then x, which is R/x, a committed link to a program outside R. Read
 // lexically the target is /out/x, which does not exist, and a walk of that
@@ -74,7 +74,7 @@ func TestWithinTreeHoldsEachStepAtItsRealLocation(t *testing.T) {
 // own resolution ends, or the steps cannot be examined and the program counts
 // as inside. A ".." with no directory link before it is read the same way by
 // both and stays admitted.
-func TestStepLocationsRefusesATargetTheSystemReadsOtherwise(t *testing.T) {
+func TestWalkRefusesATargetTheSystemReadsOtherwise(t *testing.T) {
 	mkdir := func(p string) string {
 		t.Helper()
 		if err := os.MkdirAll(p, 0o755); err != nil {
@@ -105,8 +105,8 @@ func TestStepLocationsRefusesATargetTheSystemReadsOtherwise(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if steps, ok := StepLocations(p); ok {
-			t.Errorf("StepLocations(%q) = %q, true; the walk does not end where the system's resolution does", p, steps)
+		if route, err := Walk(p); err == nil {
+			t.Errorf("Walk(%q) = steps %q, nil; the walk does not end where the system's resolution does", p, append(route.Links, route.Real))
 		}
 		if !WithinTree(p, resolved, repo) {
 			t.Errorf("WithinTree(%q, %q, %q) = false; the system reaches it through R/x", p, resolved, repo)
@@ -124,8 +124,8 @@ func TestStepLocationsRefusesATargetTheSystemReadsOtherwise(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := StepLocations(p); !ok {
-			t.Errorf("StepLocations(%q) not ok; both readings end at the same program", p)
+		if _, err := Walk(p); err != nil {
+			t.Errorf("Walk(%q): %v; both readings end at the same program", p, err)
 		}
 		if WithinTree(p, resolved, repo) {
 			t.Errorf("WithinTree(%q, %q, %q) = true; nothing on the way lies inside the repository", p, resolved, repo)
