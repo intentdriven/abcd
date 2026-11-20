@@ -572,12 +572,19 @@ names the check, the reason and the remedy, and writes nothing. `abcd build next
 the intent instead of taking one named.
 
 In a checkout with a remote named origin, the run reserves its key there, as
-`abcd reserve` does, once the checks pass and before the run is created: a new run, and a
-resumed one, with the files the `- packages:` lines of the spec's steps still to build
-name, those with no `- landed:` line, or its `## Footprint` packages line when the steps
-cannot say: the spec lists no steps, its steps section cannot be read, a step still to
-build names no packages, or an entry on such a step's line names no path (an issue's
-found_at path for an issue id), so every other participant sees it is taken. A spec whose
+`abcd reserve` does, once the checks pass and before the run is created. An intent's run
+reserves only the step it opens next: a new run with the files the `- packages:` line of
+the first step still to build names (one with no `- landed:` line), and a resumed one with
+those of the steps its lanes are open on, or of the next step when none is, or its
+`## Footprint` packages line when the steps cannot say: the spec lists no steps, its
+steps section cannot be read, a step still to build names no packages, or an entry on
+such a step's line names no path (an issue's found_at path for an issue id), so every
+other participant sees it is taken. As each later step's lane opens, the run widens the
+reservation to that step's packages, judged for overlap like any reservation; a peer's
+hold on one of them holds back that step's lane alone, and the run's other lanes go on.
+As each step lands, the run narrows the reservation to what the steps still in flight
+need, so a run waiting on a peer never holds a landed step's packages, and a resume
+reserves no path only a landed step needed. A spec whose
 steps cannot say and whose footprint names no packages, or an issue with no found_at
 path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy
