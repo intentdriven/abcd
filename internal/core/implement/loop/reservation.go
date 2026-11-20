@@ -75,7 +75,9 @@ func claimOptions(now time.Time) claim.Options {
 // this copy and not released, half through its lease since its
 // Abcd-Claimed-At: it fetches and pushes a renewal that keeps the tip's own
 // term (claim.RenewalTerm), and logs reservation_renewed in the run record. Under
-// half its lease nothing is pushed. A renewal that fails is logged, once
+// half its lease nothing is pushed, except where an intent run's landed step
+// leaves its reservation holding what no step still in flight needs: that
+// renewal is due at once and narrows the hold (landedNarrowing). A renewal that fails is logged, once
 // until one succeeds, and its note returned for the step's answer; the stage
 // still runs, since the land fence is where a lost reservation stops the run.
 // A view that shows the reservation held by another person or copy is said
@@ -108,7 +110,14 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		logOnce(st, now, StageReservationLost, lost)
 		return lost
 	}
-	if !due {
+	// Once an intent run's step has landed, its reservation narrows to the
+	// steps still in flight at the next renewal, which is due at once rather
+	// than at half the lease (landedNarrowing, narrow.go).
+	var landed []string
+	if own != nil && (own.State == claim.StateLive || own.State == claim.StateExpired) {
+		landed, _ = landedNarrowing(repoRoot, *st, *own)
+	}
+	if !due && landed == nil {
 		return ""
 	}
 	req := claim.Request{Record: st.Key, Renew: true, Lease: claim.RenewalTerm(*own), Stage: renewalStage(*st)}
@@ -116,7 +125,11 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	// files its branch changed (narrow.go); a narrowing that was due and
 	// could not be made is said in the renewal's note.
 	var declined string
-	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	if landed != nil {
+		req.Narrow = landed
+	} else {
+		req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	}
 	lapsed := own.State == claim.StateExpired
 	if lapsed {
 		req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
@@ -126,8 +139,11 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		return renewFailed(st, now, err)
 	}
 	why := "half its lease having passed"
-	if lapsed {
+	switch {
+	case lapsed:
 		why = "its lease having lapsed"
+	case !due:
+		why = "a step of " + st.Spec + " having landed"
 	}
 	note := fmt.Sprintf("renewed the reservation on %s, %s, until %s", st.Key, why, stamp(res.ExpiresAt))
 	if len(res.OwnOverlap) > 0 {
@@ -138,12 +154,16 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		note += "; revived past your other copy's reservation of " + strings.Join(past, ", ") +
 			", which no commit of this run's lanes touched"
 	}
+	to := "the files its branch changed"
+	if landed != nil {
+		to = "what the steps still in flight need"
+	}
 	switch {
 	case res.Narrowed:
-		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
-			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+		note += fmt.Sprintf("; its footprint narrowed from %s to %s: %s",
+			strings.Join(own.Footprint, ", "), to, strings.Join(res.Footprint, ", "))
 	case len(req.Narrow) > 0:
-		declined = "the narrowing to the files its branch changed could not be written into the reservation"
+		declined = "the narrowing to " + to + " could not be written into the reservation"
 	}
 	if declined != "" {
 		note += "; reservation kept at its full footprint: " + declined

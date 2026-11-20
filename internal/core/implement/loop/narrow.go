@@ -12,9 +12,10 @@ package loop
 // the directory: lock de-escalation, which never widens a hold
 // (claim.Request.Narrow refuses to). A lane its landing's sync sends back to
 // a fresh round reserves its whole found_at again before it goes on
-// (reserveOnLeavingLand), since a fix round may follow. Only an issue run
-// narrows: an intent's run holds one reservation for every lane of its spec,
-// and a lane not yet opened has changed nothing.
+// (reserveOnLeavingLand), since a fix round may follow. An intent's run holds
+// one reservation for every lane of its spec, and a lane not yet opened has
+// changed nothing, so it narrows another way: once a step has landed, its
+// next renewal drops what only the landed steps held (landedNarrowing).
 
 import (
 	"bytes"
@@ -25,6 +26,7 @@ import (
 	"strconv"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -83,6 +85,112 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 		return nil, false, fmt.Sprintf("a narrowing to the %d files the lane changed would leave the reservation message no room for the records its landing adds, so the hold stays as it stands", len(fp))
 	}
 	return fp, true, ""
+}
+
+// landedNarrowing is the footprint the renewal of an intent run's
+// reservation own narrows to once one of its steps has landed
+// (dcn-2611012049050703, dcn-2611201503122480; iss-2611201418535169): the
+// run widens its hold to each step's packages as the step's lane opens
+// (holdOpeningStep), and narrows it to the steps still in flight as each
+// lands, so a run waiting at a step's opening never holds a landed step's
+// packages while it waits. Without the narrowing, two runs whose step orders
+// cross would each hold the package the other's next step needs and wait on
+// each other for ever.
+//
+// A lane in flight is one neither done nor discarded. What the lanes in
+// flight need is each one's step packages (stepPackages, the `## Footprint`
+// packages line where the step cannot say), the paths the run record says it
+// widened to, and the spec's own record, which each landing marks. A path of
+// own any of them covers is kept; one above some of them is narrowed to
+// those (lock de-escalation); one a landed lane's packages or widenings
+// cover, and nothing in flight needs, is dropped; and a path neither side
+// names is kept, since the run cannot say which lane needs it. The
+// narrowing is a renewal's (claim.Request.Narrow), so it is never judged for
+// overlap and never widens; renewReservation makes it whenever it is due,
+// not only at half the lease. ok is false
+// when there is nothing to narrow: an issue run (narrowedFootprint is its
+// narrowing), an auto-plan run, no lane landed yet, a lane whose step cannot
+// be read (its footprint is then unknown), nothing to drop, or nothing left
+// to hold, which claim's renewal cannot write (a reservation names at least
+// one path), nor a narrowing it would decline (a path no reservation may
+// carry, or more than its message fits), which would otherwise push a
+// renewal on every step.
+func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []string, ok bool) {
+	if st.Issue() != "" || st.Spec == "" || st.autoPlanLane() != nil {
+		return nil, false
+	}
+	var flight, landed []string
+	for _, l := range st.Lanes {
+		if l.Stage == StageDiscarded {
+			continue
+		}
+		if l.SpecStep <= 0 {
+			return nil, false
+		}
+		pk, err := stepPackages(repoRoot, st.Spec, l.SpecStep)
+		if err != nil || len(pk) == 0 {
+			return nil, false
+		}
+		pk = append(pk, laneWidenedPaths(st, l.ID)...)
+		if l.Stage == StageDone {
+			landed = append(landed, pk...)
+		} else {
+			flight = append(flight, pk...)
+		}
+	}
+	if len(landed) == 0 {
+		return nil, false
+	}
+	if store, err := spec.Load(repoRoot); err == nil {
+		if sp, ok := store.Lookup(st.Spec); ok && sp.Path != "" {
+			flight = append(flight, sp.Path)
+		}
+	}
+	need, done := newPathSet(flight), newPathSet(landed)
+	keep := pathSet{}
+	for _, p := range own.Footprint {
+		p = path.Clean(p)
+		if need.covers(p) || !done.covers(p) {
+			keep.add(p)
+			continue
+		}
+		above := newPathSet([]string{p})
+		for _, t := range flight {
+			if above.covers(t) {
+				keep.add(t)
+			}
+		}
+	}
+	for p := range keep {
+		if q := path.Dir(p); q != "." && keep.covers(q) {
+			delete(keep, p)
+		}
+	}
+	for p := range keep {
+		fp = append(fp, p)
+	}
+	slices.Sort(fp)
+	held := make([]string, 0, len(own.Footprint))
+	for _, p := range own.Footprint {
+		held = append(held, path.Clean(p))
+	}
+	slices.Sort(held)
+	held = slices.Compact(held)
+	if len(fp) == 0 || slices.Equal(fp, held) || !claim.FootprintFits(fp) || slices.ContainsFunc(fp, func(p string) bool { return !claim.ValidFootprintPath(p) }) {
+		return nil, false
+	}
+	return fp, true
+}
+
+// laneWidenedPaths is each path the run record says lane laneID widened to.
+func laneWidenedPaths(st State, laneID string) []string {
+	var out []string
+	for _, e := range st.Record {
+		if e.Stage == StageWidenedTo && e.Lane == laneID && !slices.Contains(out, e.Note) {
+			out = append(out, e.Note)
+		}
+	}
+	return out
 }
 
 // laneChangedFiles is the files lane l changed at head, as git names them:

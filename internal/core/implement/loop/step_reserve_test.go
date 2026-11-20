@@ -51,7 +51,9 @@ func TestAStartReservesOnlyTheStepItOpensNext(t *testing.T) {
 }
 
 // laneDone drives the current lane of runID through the fake stages to done.
-func laneDone(t *testing.T, root, runID string, steps Stages) {
+// Each path of marks is widened to at the lane's validators, as a real
+// landing's fence widens the hold to the spec record its step mark changes.
+func laneDone(t *testing.T, root, runID string, steps Stages, marks ...string) {
 	t.Helper()
 	for _, want := range []Stage{StageWorktree, StageBrief} {
 		if res, err := advance(root, runID, steps, Options{}); err != nil || res.PerformedStage != want {
@@ -62,11 +64,17 @@ func laneDone(t *testing.T, root, runID string, steps Stages) {
 	if err != nil || res.Awaiting == nil {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
+	lane := res.Lane
 	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Receipt(root, runID, res.Awaiting.Receipt, steps, Options{}); err != nil {
 		t.Fatal(err)
+	}
+	if len(marks) > 0 {
+		if _, err := Widen(root, runID, lane, marks, Options{}); err != nil {
+			t.Fatalf("widening to %q: %v", marks, err)
+		}
 	}
 	for _, want := range []Stage{StageValidate, StageLand} {
 		if res, err := advance(root, runID, steps, Options{}); err != nil || res.PerformedStage != want {
@@ -181,5 +189,184 @@ func TestBuildNextAndTheBoardJudgeTheStepTheStartReserves(t *testing.T) {
 				t.Fatalf("build next starts %s: %+v %v", want, res.Pick, err)
 			}
 		})
+	}
+}
+
+// crossedSpec is spc-<n> of itd-<n>, with step 1 on the package first and
+// step 2 on second.
+func crossedSpec(n, first, second string) string {
+	return "---\nid: spc-" + n + "\nslug: i" + n + "\nintent: itd-" + n + "\n---\n# i" + n + "\n\n## Summary\n\nA written design record.\n\n" +
+		"## Steps\n\n1. The first\n   - packages: " + first + "\n2. The second\n   - packages: " + second + "\n\n" +
+		"## Footprint\n\n- packages: " + first + ", " + second + "\n- tests: the steps\n"
+}
+
+// TestTwoRunsWhoseStepOrdersCrossDoNotWaitOnEachOther is the deadlock a
+// reservation taken one step at a time risks (dcn-2611012049050703): P's run
+// of itd-10 builds internal/core/needs and then internal/surface/cli, and Q's
+// run of itd-11, from another copy, the same two the other way round. Both
+// starts are reserved, since each reserves its first step alone, and both
+// first steps land. Once a step has landed, its run's next renewal narrows the
+// reservation to the steps still in flight (and the spec record each landing
+// marks), so P's opening of step 2 waits on Q's hold of internal/surface/cli
+// holding internal/core/needs no longer; Q's step 2 then opens, and dropping
+// its landed step's package lets P's step 2 open in turn.
+func TestTwoRunsWhoseStepOrdersCrossDoNotWaitOnEachOther(t *testing.T) {
+	const needs, cli = "internal/core/needs", "internal/surface/cli"
+	repo := pickRepo(t, map[string][2]string{
+		"10": {pickIntent("10", "", settledQuestions, gwt), crossedSpec("10", needs, cli)},
+		"11": {pickIntent("11", "", settledQuestions, gwt), crossedSpec("11", cli, needs)},
+	})
+	bare := onOrigin(t, repo)
+	q := otherCopy(t, bare, quinnEmail)
+	_, spec10 := pickRel("10")
+	_, spec11 := pickRel("11")
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+
+	x, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatalf("P's start: %v", err)
+	}
+	var y StartResult
+	asHomeOf(t, q, func() { y, err = Start(q, "itd-11", Options{}) })
+	if err != nil {
+		t.Fatalf("Q's start, on step 1's package alone, overlaps nothing of P's: %v", err)
+	}
+	laneDone(t, repo.Root(), x.RunID, steps, spec10)
+	asHomeOf(t, q, func() { laneDone(t, q, y.RunID, steps, spec11) })
+
+	_, err = advance(repo.Root(), x.RunID, steps, Options{})
+	if r := mustRefusal(t, err); !r.Contention || r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, cli) {
+		t.Fatalf("P's step 2 waits on Q's hold of %s: %+v", cli, r)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{spec10}; !slices.Equal(fp, want) {
+		t.Fatalf("P's run, with step 1 landed and step 2 waiting, holds %q, want %q alone", fp, want)
+	}
+	var res StepResult
+	asHomeOf(t, q, func() { res, err = advance(q, y.RunID, steps, Options{}) })
+	if err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("Q's step 2 opens on %s, which P's landed step no longer holds: %+v %v", needs, res, err)
+	}
+	if fp, want := footprintOf(t, bare, "itd-11"), []string{spec11, needs}; !slices.Equal(fp, want) {
+		t.Fatalf("Q's run holds %q, want %q", fp, want)
+	}
+	res, err = advance(repo.Root(), x.RunID, steps, Options{})
+	if err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("P's step 2 opens once Q's landed step drops %s: %+v %v", cli, res, err)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{spec10, cli}; !slices.Equal(fp, want) {
+		t.Fatalf("P's run holds %q, want %q", fp, want)
+	}
+}
+
+// threeStepSpec is spc-1 with step 1 on internal/core/needs, step 2 on
+// internal/surface/cli, needing step 1 unless needs2 says otherwise, and step
+// 3 on internal/other, needing none.
+func threeStepSpec(needs2 string) string {
+	return specWithSteps(
+		"1. The needs\n   - packages: internal/core/needs\n"+
+			"2. The surface\n   - packages: internal/surface/cli\n"+needs2+
+			"3. The other\n   - packages: internal/other\n   - needs: none\n") +
+		"\n## Footprint\n\n- packages: internal/core/needs, internal/surface/cli, internal/other\n- tests: the needs\n"
+}
+
+// TestARefusedOpeningLetsALaterStepsLaneOpen: with a slot free beside lane-1's
+// implementer, the step opens a lane for step 2, whose package Q holds. That
+// opening waits, and the step opens the lane for step 3 in its place rather
+// than ending the call on the wait: one step's wait holds back that step
+// alone.
+func TestARefusedOpeningLetsALaterStepsLaneOpen(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), threeStepSpec("   - needs: none\n"))
+	bare := onOrigin(t, repo)
+	quinnHolds(t, bare, heldIssue, claim.Options{}, "internal/surface/cli/root.go")
+	start, err := Start(repo.Root(), "itd-10", Options{SubAgents: strp("3")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+	for _, want := range []Stage{StageWorktree, StageBrief} {
+		if res, err := advance(repo.Root(), start.RunID, steps, Options{}); err != nil || res.PerformedStage != want {
+			t.Fatalf("performed %q, want %q: %v", res.PerformedStage, want, err)
+		}
+	}
+	if res, err := advance(repo.Root(), start.RunID, steps, Options{}); err != nil || res.Awaiting == nil {
+		t.Fatalf("lane-1's implementer is handed out: %+v %v", res, err)
+	}
+
+	res, err := advance(repo.Root(), start.RunID, steps, Options{})
+	if err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("step 2's opening waits, and the lane for step 3 opens: %+v %v", res, err)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Lanes) != 2 || st.Lanes[1].SpecStep != 3 {
+		t.Fatalf("the lane opened is step 3's, and none is open for step 2: %+v", st.Lanes)
+	}
+	if len(res.Blocked) != 1 || res.Blocked[0].Lane != stepKey(2) || !strings.Contains(res.Next, "internal/surface/cli") {
+		t.Fatalf("the answer names step 2's wait on Q's hold: %+v, next %q", res.Blocked, res.Next)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{"internal/core/needs", "internal/other"}; !slices.Equal(fp, want) {
+		t.Fatalf("the reservation widens to step 3's package alone: %q, want %q", fp, want)
+	}
+}
+
+// TestARefusedOpenLaneLetsTheOtherLanesMove: lane-2, for step 3, is at work
+// when lane-1 lands and the lane for step 2 opens, saved at its worktree
+// stage. Q holds step 2's package, so its worktree waits; the step goes on to
+// lane-2's validators rather than ending the call on the wait.
+func TestARefusedOpenLaneLetsTheOtherLanesMove(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), threeStepSpec(""))
+	bare := onOrigin(t, repo)
+	quinnHolds(t, bare, heldIssue, claim.Options{}, "internal/surface/cli/root.go")
+	start, err := Start(repo.Root(), "itd-10", Options{SubAgents: strp("2")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+	step := func(want Stage) StepResult {
+		t.Helper()
+		res, err := advance(repo.Root(), start.RunID, steps, Options{})
+		if err != nil || (want != "" && res.PerformedStage != want) || (want == "" && res.Awaiting == nil) {
+			t.Fatalf("performed %q, want %q (\"\" for an await): %+v %v", res.PerformedStage, want, res, err)
+		}
+		return res
+	}
+	hand := func(res StepResult) {
+		t.Helper()
+		if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Receipt(repo.Root(), start.RunID, res.Awaiting.Receipt, steps, Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	step(StageWorktree)
+	step(StageBrief)
+	one := step("")
+	step(StageWorktree)
+	step(StageBrief)
+	two := step("")
+	hand(one)
+	step(StageValidate)
+	step(StageLand)
+	hand(two)
+
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Lanes) != 3 || st.Lanes[1].SpecStep != 3 || st.Lanes[2].SpecStep != 2 || st.Lanes[2].Stage != StageWorktree {
+		t.Fatalf("lane-3 is open for step 2 at its worktree, beside lane-2 for step 3: %+v", st.Lanes)
+	}
+	res := step(StageValidate)
+	if res.Lane != "lane-2" {
+		t.Fatalf("lane-2's validators run while lane-3 waits: %+v", res)
+	}
+	if len(res.Blocked) != 1 || res.Blocked[0].Lane != "lane-3" || !strings.Contains(res.Next, "internal/surface/cli") {
+		t.Fatalf("the answer names lane-3's wait on Q's hold: %+v, next %q", res.Blocked, res.Next)
 	}
 }

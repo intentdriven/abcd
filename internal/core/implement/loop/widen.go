@@ -627,8 +627,8 @@ func holdOpeningStep(c Context, lane Lane) ([]Entry, error) {
 	w, err := widenHold(c.RepoRoot, st.Key, own, want, c.Now)
 	if err != nil {
 		return nil, holdRefusal(c, lane, StageWorktree, openingAct, err, peerHold(c.RepoRoot, st.Key, w.added, err, c.Now), func(reason string) string {
-			return fmt.Sprintf("%s opens for step %d of %s, whose packages %s its reservation on %s does not hold and could not be widened to: %s; so this lane does not %s",
-				lane.ID, lane.SpecStep, st.Spec, strings.Join(w.added, ", "), st.Key, reason, openingAct.not)
+			return fmt.Sprintf("the lane opening for step %d of %s needs %s, which the reservation on %s does not hold and could not be widened to: %s; so this lane does not %s",
+				lane.SpecStep, st.Spec, strings.Join(w.added, ", "), st.Key, reason, openingAct.not)
 		})
 	}
 	if len(w.added) == 0 {
