@@ -35,6 +35,11 @@ abcd's own record moves onto abcd's own GitHub Pages, built by the same workflow
 
 Step 4 is these three acts: after the first, it turns on step 3's two switches in `.abcd/site.json`, `record.elsewhere.forward` and then `record.elsewhere.narrow`, each in a committed change of its own, on the person's word, once the act before it is checked. A failure at any step leaves the record where it was.
 
+Turning `narrow` on breaks the screenshots audit's record sampling. `site-src/audit/overflow-audit.js` picks its record pages from the `record.json` the composed build serves, and its fixed route families include the `/record/` pages. A narrowed build serves neither, so the audit would throw on the missing `record.json`, and every site change after it would show a red audit. So the same change that turns `narrow` on must also change abcdev.app's audit:
+- It drops the `record.json` discovery and the `/record/*` route families from that audit.
+- It keeps `/contributors/` and `/references/` there, since both pages stay on abcdev.app.
+- The record's layout audit moves to a project-route build, which writes the same `record.json` and `/record/` pages: the audit builds abcd's project route as well and samples the record from it, so the record's pages are still checked for overflow rather than given up.
+
 **Records.** A new decision record amends adr-48: abcdev.app's deploy narrows to the documentation, and the record moves to the project route. adr-48's rule that a site deploys on release, from released bytes, stands for both.
 
 ## Footprint
