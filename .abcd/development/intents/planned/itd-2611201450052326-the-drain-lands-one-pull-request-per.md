@@ -5,7 +5,7 @@ spec_id: spc-2611201455051897
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-82]
+builds_on: []
 severity: minor
 related_issues: [iss-2611201421262152, iss-2610161652341096]
 origin: extracted-from-record
@@ -25,7 +25,7 @@ impact: additive
 
 ## Why This Matters
 
-Between 19 Nov 01:06Z and 20 Nov 14:04Z the drain opened 45 pull requests from build/run branches, one per issue, and 42 had merged by 14:21Z. Each took 0.9 to 1.9 hours from opening to merge, and 19 of the 42 took over 1.5 hours. Most were documentation fixes. 33 of the 45 changed exactly one brief or docs file, the issue's record and one Go test that pins the corrected sentence. 3 more paired a brief file and a test with other Go changes, and 7 changed docs only. The pinning test makes CI's fail-closed classifier treat the change as code and run the full check job (42 minutes on #1694), where a docs-only change runs it in 19 (#1698). Each issue also pays for its own local `make preflight` (about 40 minutes), its own review pair and its own merge-queue entry (iss-2611201421262152).
+Between 19 Nov 01:06Z and 20 Nov 14:04Z the drain (itd-82) opened 45 pull requests from build/run branches, one per issue, and 42 had merged by 14:21Z. Each took 0.9 to 1.9 hours from opening to merge, and 19 of the 42 took over 1.5 hours. Most were documentation fixes. 33 of the 45 changed exactly one brief or docs file, the issue's record and one Go test that pins the corrected sentence. 3 more paired a brief file and a test with other Go changes, and 7 changed docs only. The pinning test makes CI's fail-closed classifier treat the change as code and run the full check job (42 minutes on #1694), where a docs-only change runs it in 19 (#1698). Each issue also pays for its own local `make preflight` (about 40 minutes), its own review pair and its own merge-queue entry (iss-2611201421262152).
 
 iss-2610161652341096 asked the drain to bundle issues whose `found_at` paths overlap. Most of the issues above touch different files in one place, the brief's chapters, so that rule alone would bundle few of them. The person ruled on 20 Nov 2026 that the drain may bundle eligible issues of one category in one area, which is one brief chapter folder or one package, up to a setting whose default is five (dcn-2611201429107457).
 
@@ -74,6 +74,16 @@ Shown wrong if, over the first forty issues the drain resolves with bundling on,
 - Making CI's classifier treat a docs fix with a pinning test as docs-only. That is a separate change to `.github/workflows/ci.yml`.
 - Bundling intents, or building several spec steps of one intent in one pull request.
 - A flag for the cap. The setting is the only way to change it.
+
+## SOTA
+
+Surveyed on 20 Nov 2026 from the tools' published documentation as the technical facilitator knows it, not re-fetched for this record. The independent fit-challenge is still owed before step 4 is built.
+
+- **Grouped dependency updates.** Dependabot's `groups` setting and Renovate's `groupName` rules put the updates that match one pattern into one pull request, so one CI run and one review cover them. This is the shape the person ruled for the drain: one kind in one place, one pull request. Both tools group by a declared rule and not by inferred overlap, which supports grouping by category and directory over overlap of `found_at` (iss-2610161652341096).
+- **Batching merge queues.** Prow's Tide tests a batch of pull requests together and merges the batch when it passes, and falls back to one at a time when it fails. bors-ng bisects a failed batch. GitHub's merge queue removes a failing group's changes and retries the rest. Zuul's dependent pipelines test changes speculatively and eject the one that fails. Each keeps one failing change from failing the others, which is decision 7's split.
+- **What does not carry over.** Those queues batch finished changes, and the drain bundles issues before they are fixed, so one implementer writes every fix in the bundle. That is why a member can also be handed back alone in the receipt (decision 6), which the queues have no counterpart for.
+
+**Path 3, bespoke in the drain, with the grouping rule from grouped dependency updates and the failure split from batching merge queues.** There is nothing to adopt: the unit being grouped is an issue run inside abcd's own loop. No dependency.
 
 ## Acceptance Criteria
 
