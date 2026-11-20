@@ -8,7 +8,7 @@ package needs
 // is Admit with the checks a person's registration is held to besides
 // (adr-2611041815445203, rule 3): the path's own last part is the tool's
 // name, every link on the way and the file it ends at are held to the same
-// rule, every directory above any of them is one no one else can write (a
+// rule, each at its real location as well as as written, every directory above any of them is one no one else can write (a
 // sticky directory admitted over an entry this account or root owns), and
 // each of those directories and the file is owned by this account or root.
 //
@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"syscall"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -123,7 +124,10 @@ var ownerOf = func(_ string, fi os.FileInfo) (uint32, error) { return fsutil.Inf
 // reaches it through or the directory it resolves into is one group or other
 // can write (darwin's admin group aside, adminGroupWritableOnly), or when p,
 // the file or ReachedThrough lies within a guard, lexically or after symlink
-// resolution. Its checks and their order are the runner's, unchanged.
+// resolution. Its checks and their order are the runner's; it adds one
+// refusal after them: a step of p's links, or ReachedThrough, whose real
+// location (its directory with every link resolved, and its own name) lies
+// within a guard.
 func (r Rule) Admit(p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		return "", &Refusal{Kind: Relative, Path: p}
@@ -149,6 +153,25 @@ func (r Rule) Admit(p string) (string, error) {
 	if c := r.within(filepath.Clean(p), resolved, r.ReachedThrough); c != "" {
 		return "", &Refusal{Kind: Inside, Path: c}
 	}
+	// A step reached through a directory link lies where that link leads, so
+	// each step is held to the guards at its real location too: a link the
+	// repository holds is repository content wherever it points.
+	chain, err := linkChain(filepath.Clean(p))
+	if err != nil {
+		return "", err
+	}
+	reals, err := realSteps(chain)
+	if err != nil {
+		return "", err
+	}
+	if r.ReachedThrough != "" {
+		if dir, err := filepath.EvalSymlinks(filepath.Dir(r.ReachedThrough)); err == nil {
+			reals = append(reals, filepath.Join(dir, filepath.Base(r.ReachedThrough)))
+		}
+	}
+	if c := r.within(reals...); c != "" {
+		return "", &Refusal{Kind: Inside, Path: c}
+	}
 	return resolved, nil
 }
 
@@ -170,7 +193,7 @@ func (v Verdict) SameName() bool {
 
 // Judge is Admit with the checks a registration of name is held to: p's own
 // last part is name; every link on the way is followed and each step held to
-// the guards; every directory above p, above each step and above the
+// the guards, as written and at its real location; every directory above p, above each step and above the
 // directory each step resolves into is one no one else can write, a sticky
 // directory admitted over an entry this account or root owns; each of those
 // directories and the file is owned by this account or root; and the file is
@@ -191,16 +214,16 @@ func (r Rule) Judge(name, p string) (Verdict, error) {
 	if err != nil {
 		return Verdict{}, err
 	}
-	if c := r.within(chain...); c != "" {
+	reals, err := realSteps(chain)
+	if err != nil {
+		return Verdict{}, err
+	}
+	if c := r.within(append(slices.Clone(chain), reals...)...); c != "" {
 		return Verdict{}, &Refusal{Kind: Inside, Path: c}
 	}
 	seen := map[string]bool{}
-	for _, step := range chain {
-		real, err := filepath.EvalSymlinks(filepath.Dir(step))
-		if err != nil {
-			return Verdict{}, &Refusal{Kind: followed(err), Path: filepath.Dir(step)}
-		}
-		for _, q := range []string{step, filepath.Join(real, filepath.Base(step))} {
+	for i, step := range chain {
+		for _, q := range []string{step, reals[i]} {
 			if err := r.ancestors(q, seen); err != nil {
 				return Verdict{}, err
 			}
@@ -252,6 +275,21 @@ func linkChain(p string) ([]string, error) {
 		chain = append(chain, cur)
 	}
 	return nil, &Refusal{Kind: Unresolved, Path: p}
+}
+
+// realSteps is where each step of chain really lies: its directory with every
+// link resolved, joined with its own name. A step reached through a directory
+// link lies where that link leads, which its lexical form does not show.
+func realSteps(chain []string) ([]string, error) {
+	reals := make([]string, 0, len(chain))
+	for _, step := range chain {
+		dir, err := filepath.EvalSymlinks(filepath.Dir(step))
+		if err != nil {
+			return nil, &Refusal{Kind: followed(err), Path: filepath.Dir(step)}
+		}
+		reals = append(reals, filepath.Join(dir, filepath.Base(step)))
+	}
+	return reals, nil
 }
 
 // ancestors judges every directory above p, each over the entry beneath it.

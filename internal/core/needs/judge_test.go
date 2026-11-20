@@ -212,6 +212,51 @@ func TestTheJudgeHoldsALinkAndItsTargetAlike(t *testing.T) {
 	})
 }
 
+// TestTheJudgeHoldsEachStepAtItsRealLocation: a step reached through a
+// directory link lies where that link leads, so a link the repository holds
+// is repository content even when the path the person gives, and the file the
+// link points at, both lie outside it. Both rules refuse it, the first step
+// and a step in the middle of the chain alike.
+func TestTheJudgeHoldsEachStepAtItsRealLocation(t *testing.T) {
+	t.Run("the path's own step", func(t *testing.T) {
+		root := t.TempDir()
+		repo := tree(t, root, "repo")
+		safe := program(t, tree(t, root, "safe", "sdk", "bin"), "go")
+		link(t, safe, filepath.Join(tree(t, root, "repo", "bin"), "go"))
+		alias := link(t, filepath.Join(repo, "bin"), filepath.Join(tree(t, root, "home"), "alias"))
+		p := filepath.Join(alias, "go")
+		rule := Rule{Guards: []string{repo}}
+		_, err := rule.Judge("go", p)
+		refusedAs(t, err, Inside, filepath.Join(repo, "bin", "go"))
+		_, err = rule.Admit(p)
+		refusedAs(t, err, Inside, filepath.Join(repo, "bin", "go"))
+	})
+	t.Run("a step in the middle of the chain", func(t *testing.T) {
+		root := t.TempDir()
+		repo := tree(t, root, "repo")
+		safe := program(t, tree(t, root, "safe", "sdk", "bin"), "go")
+		link(t, safe, filepath.Join(tree(t, root, "repo", "bin"), "go"))
+		alias := link(t, filepath.Join(repo, "bin"), filepath.Join(tree(t, root, "home"), "alias"))
+		p := link(t, filepath.Join(alias, "go"), filepath.Join(tree(t, root, "bin"), "go"))
+		rule := Rule{Guards: []string{repo}}
+		_, err := rule.Judge("go", p)
+		refusedAs(t, err, Inside, filepath.Join(repo, "bin", "go"))
+		_, err = rule.Admit(p)
+		refusedAs(t, err, Inside, filepath.Join(repo, "bin", "go"))
+	})
+	t.Run("a directory link outside every guard", func(t *testing.T) {
+		root := t.TempDir()
+		repo := tree(t, root, "repo")
+		safe := program(t, tree(t, root, "safe", "sdk", "bin"), "go")
+		link(t, safe, filepath.Join(tree(t, root, "opt", "bin"), "go"))
+		alias := link(t, filepath.Join(root, "opt", "bin"), filepath.Join(tree(t, root, "home"), "alias"))
+		rule := Rule{Guards: []string{repo}}
+		if _, err := rule.Judge("go", filepath.Join(alias, "go")); err != nil {
+			t.Fatalf("a directory link that leads nowhere guarded: %v", err)
+		}
+	})
+}
+
 // TestTheJudgeHoldsEveryAncestor: whoever can write any directory above a
 // copy can replace the directory beneath it, so the judge walks every
 // ancestor of the path and of each step of its links, where the runner's rule
