@@ -290,3 +290,28 @@ func TestDropMovedRunTriesAgainOnlyTheIssueWhoseLetGoDidNotReachOrigin(t *testin
 		t.Fatalf("the reason says what came of the first member's release: %q", why)
 	}
 }
+
+// TestThePeerCheckAfterAWaitReadsEveryMember: the drive's check after a long
+// wait finds a member's hold gone to another copy while the lead's still
+// stands, and stops the lane with a refusal naming the member.
+func TestThePeerCheckAfterAWaitReadsEveryMember(t *testing.T) {
+	repo, bare := bundleRepo(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	runID := bundleRun(t, repo, now.Add(-30*time.Minute))
+	p2 := otherCopy(t, bare, patEmail)
+	if res, err := claim.Reserve(p2, claim.Request{Record: bundleThree, Footprint: []string{"docs/c.md"}, TakeOver: true}, clockAt(now.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {
+		t.Fatalf("P's other copy takes the third member over: %+v %v", res, err)
+	}
+	tm := newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: func() time.Time { return now }}})
+	tm.waited = 2 * time.Hour
+	if !tm.peerTook(runID) {
+		t.Fatal("a member's hold gone to another copy stops the lane")
+	}
+	run, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := run.current(); i < 0 || run.Lanes[i].Refused == nil || !strings.Contains(run.Lanes[i].Refused.Reason, bundleThree) {
+		t.Fatalf("the refusal names the member: %+v", run.Lanes)
+	}
+}

@@ -1721,9 +1721,17 @@ func (t *terminal) peerTook(runID string) bool {
 		return false
 	}
 	t.waited = 0
-	own, _, lost := renewalDue(run, snap, now)
-	if lost == "" && own != nil && own.State == claim.StateReleased {
-		lost = "the reservation on " + run.Key + " was released while this lane waited"
+	// A run with members reads every issue it holds, the lead's first; the
+	// first one gone stops the lane, its reason naming that issue.
+	lost := ""
+	for _, id := range run.reservedIssues() {
+		own, _, l := issueRenewalDue(id, snap, now)
+		if l == "" && own != nil && own.State == claim.StateReleased {
+			l = "the reservation on " + id + " was released while this lane waited"
+		}
+		if lost = l; lost != "" {
+			break
+		}
 	}
 	if lost == "" {
 		return false
