@@ -33,19 +33,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
-	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/core/needs"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
 )
@@ -98,82 +96,43 @@ type procResult struct {
 	silent time.Duration
 }
 
-// admit resolves name on PATH and refuses a result that is not absolute or
-// that lies inside any of repos (the directory the role runs in, and the
-// checkout it belongs to), lexically or after symlink resolution.
+// admit resolves name on PATH and holds what it finds to the one judge of a
+// program's copy (needs.Rule.Admit, extracted from here): refused when it is
+// not absolute, when group or other can write it or a directory it is reached
+// through (darwin's admin group aside), or when it lies inside any of repos
+// (the directory the role runs in, and the checkout it belongs to), lexically
+// or after symlink resolution.
 func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	p, err := l.lookPath(name)
 	if err != nil {
 		return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s is not on PATH", name)
 	}
-	if !filepath.IsAbs(p) {
+	resolved, err := needs.Rule{Guards: repos, ReachedThrough: l.reachedThrough, Group: fileGroup}.Admit(p)
+	if err == nil {
+		return resolved, nil
+	}
+	var refused *needs.Refusal
+	if !errors.As(err, &refused) {
+		return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
+	}
+	switch refused.Kind {
+	case needs.Relative:
 		return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves to a relative path, which is never run", name)
-	}
-	resolved, err := filepath.EvalSymlinks(p)
-	if err != nil {
+	case needs.Unresolved, needs.Unreachable:
 		return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s does not resolve to a file", name)
+	case needs.Writable:
+		return "", failAt(ErrRefused, runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
+			"so it is never run; chmod go-w it", name)
+	case needs.Inside:
+		return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
+			"a program there is repository content and is never run", name)
 	}
-	// Whoever can write the binary, the directory PATH reaches it through, or
-	// the directory it resolves into chooses what runs.
-	for _, c := range []string{resolved, filepath.Dir(resolved), filepath.Dir(filepath.Clean(p))} {
-		fi, err := os.Stat(c)
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", failAt(ErrNotOnPath, runner, ReasonAbsent, "%s does not resolve to a file", name)
-		}
-		if err != nil {
-			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
-		}
-		if fsutil.WritableByOthers(fi) && !adminGroupWritableOnly(fi) {
-			return "", failAt(ErrRefused, runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
-				"so it is never run; chmod go-w it", name)
-		}
-	}
-	var guards []string
-	for _, repo := range repos {
-		if repo == "" {
-			continue
-		}
-		guards = append(guards, filepath.Clean(repo))
-		if g, err := filepath.EvalSymlinks(repo); err == nil {
-			guards = append(guards, g)
-		}
-	}
-	fold := fsutil.CaseFoldingFS()
-	for _, g := range guards {
-		for _, c := range []string{filepath.Clean(p), resolved, l.reachedThrough} {
-			if c != "" && fsutil.PathWithin(c, g, fold) {
-				return "", failAt(ErrRefused, runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
-					"a program there is repository content and is never run", name)
-			}
-		}
-	}
-	return resolved, nil
+	return "", failAt(ErrRefused, runner, ReasonAbsent, "%s could not be examined before it is run", name)
 }
 
-// adminGroupWritableOnly reports whether fi's only write bit beyond its
-// owner's is the group's, and that group is darwin's admin group (gid 80),
-// on darwin only. Homebrew installs /opt/homebrew/bin as root- or
-// user-owned, group admin, mode 0775, so a harness installed through it is
-// reached through a group-writable directory. Members of darwin's admin
-// group can sudo by default, so that write grants them nothing they do not
-// hold, and the directory is admitted. gid 0 is never admitted: being in
-// Linux's root group, or darwin's wheel, does not by itself let a member act
-// as root. Other-writable is never admitted, whatever the group, and neither
-// is any other group, gid 80 off darwin, nor a group that cannot be read.
-func adminGroupWritableOnly(fi os.FileInfo) bool {
-	if fi.Mode().Perm()&0o002 != 0 {
-		return false
-	}
-	gid, ok := fileGroup(fi)
-	if !ok {
-		return false
-	}
-	return runtime.GOOS == "darwin" && gid == 80
-}
-
-// fileGroup reads the owning group of a stat result; ok is false when the
-// platform does not report one. A variable so a test can name a group it
-// cannot chown to.
+// fileGroup reads the owning group of a stat result for the judge's darwin
+// admin-group allowance; ok is false when the platform does not report one. A
+// variable so a test can name a group it cannot chown to.
 var fileGroup = func(fi os.FileInfo) (uint32, bool) {
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
