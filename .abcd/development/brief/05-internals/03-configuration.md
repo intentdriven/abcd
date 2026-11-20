@@ -153,7 +153,9 @@ hand-set: the binary reads them and never writes them.
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
                                         //   event-driven, on SessionStart and PreCompact, so this large
-                                        //   counter only re-injects always-relevant domains
+                                        //   counter is a backstop: on every Nth prompt it clears the dedup
+                                        //   ledgers, so any domain or memory note that prompt matches is
+                                        //   sent again; a domain the prompt does not match is not sent
   },
   "match": {                            // the filing-time match of capture and the intent create
                                         //   (itd-2609212137116617), a lexical heuristic
