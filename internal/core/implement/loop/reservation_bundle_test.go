@@ -472,3 +472,15 @@ func TestAWaitersRenewalReportsAFailureBesideAMembersSuccess(t *testing.T) {
 		t.Fatalf("the lead's failure is reported, naming it, beside the member's success: %+v", got[0])
 	}
 }
+
+// TestATakeUpThatHeldNothingTellsNothing: a take-up that held no issue again,
+// as one of a run with every issue handed back would, leaves the start's result
+// as it was rather than reading a first hold that is not there.
+func TestATakeUpThatHeldNothingTellsNothing(t *testing.T) {
+	st := State{Key: bundleLead, Bundle: []Member{{Issue: bundleTwo, Footprint: []string{bundleFiles[bundleTwo]}}}}
+	res := StartResult{Reservation: "as it was", ReservationWarnings: []string{"kept"}}
+	tellHeldAgain(&res, st, nil)
+	if res.Reservation != "as it was" || !slices.Equal(res.ReservationWarnings, []string{"kept"}) {
+		t.Fatalf("nothing held tells nothing: %+v", res)
+	}
+}

@@ -409,3 +409,41 @@ func TestARunsMembersAreMaskedWhenStored(t *testing.T) {
 		t.Fatalf("the masked hand-backs are read back: %+v %+v", st.Bundle[0].HandBack, st.LeadHandBack)
 	}
 }
+
+// TestARunWithEveryIssueHandedBackAndNoLaneHandedBackIsRefused: a run with
+// members whose lead and every member are handed back alone holds no issue, and
+// the loop hands its lane back as it hands back the last, so such a run with no
+// lane handed back is refused as members the loop never writes; one issue still
+// held is not.
+func TestARunWithEveryIssueHandedBackAndNoLaneHandedBackIsRefused(t *testing.T) {
+	repo, _ := bundleRepo(t)
+	runID := bundleRun(t, repo, time.Now().UTC().Truncate(time.Second))
+	good := stateBytes(t, repo.Root(), runID)
+	handBack := func() map[string]any { return map[string]any{"at": "2026-11-20T09:00:00Z", "kind": "decision"} }
+	for name, all := range map[string]bool{"every issue handed back": true, "one member still held": false} {
+		t.Run(name, func(t *testing.T) {
+			var doc map[string]any
+			if err := json.Unmarshal(good, &doc); err != nil {
+				t.Fatal(err)
+			}
+			doc["lead_hand_back"] = handBack()
+			members := doc["bundle"].([]any)
+			for i, m := range members {
+				if all || i < len(members)-1 {
+					m.(map[string]any)["hand_back"] = handBack()
+				}
+			}
+			out, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(runStatePath(repo.Root(), runID), out, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = ReadState(repo.Root(), runID)
+			if refused := err != nil && strings.Contains(err.Error(), "members the loop never writes"); refused != all {
+				t.Fatalf("refused %v, want %v: %v", refused, all, err)
+			}
+		})
+	}
+}

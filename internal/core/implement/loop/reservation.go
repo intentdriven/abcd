@@ -1101,6 +1101,18 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		}
 		return err
 	}
+	tellHeldAgain(res, st, made)
+	return nil
+}
+
+// tellHeldAgain gives res what a take-up held again (made): the first hold's
+// note and fork judgement, each member's note after it, and every hold's
+// warnings. A take-up that held nothing again, which a run the state reader
+// admits never is (bundleWritten), tells nothing.
+func tellHeldAgain(res *StartResult, st State, made []heldAgain) {
+	if len(made) == 0 {
+		return
+	}
 	lead := made[0].r
 	res.Reservation, res.ForkUnchecked, res.ForkAllowed = lead.note, lead.forkUnchecked, lead.forkAllowed
 	res.ReservationWarnings = nil
@@ -1110,7 +1122,6 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		}
 		res.ReservationWarnings = append(res.ReservationWarnings, h.r.warnings...)
 	}
-	return nil
 }
 
 // heldAgain is one issue a take-up held again, and the act that held it.

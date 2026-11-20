@@ -1214,13 +1214,18 @@ func (s State) bundled() string {
 // bundleWritten reports whether a run's members are ones the loop writes: an
 // issue run's, each a plain issue id other than the lead's and the others',
 // with a footprint of plain repository paths and a hand-back of plain text;
-// a lead's own hand-back only beside members; and a record line's issue only
-// in a run with members, naming the lead or a member.
+// a lead's own hand-back only beside members; every issue handed back alone
+// only beside a lane handed back, as the loop hands the lane back with the
+// last; and a record line's issue only in a run with members, naming the lead
+// or a member.
 func (s State) bundleWritten() bool {
 	if s.LeadHandBack != nil && !s.hasMembers() {
 		return false
 	}
 	if s.hasMembers() && s.Issue() == "" {
+		return false
+	}
+	if s.hasMembers() && len(s.Issues()) == 0 && !s.handedBack() {
 		return false
 	}
 	seen := map[string]bool{s.Key: true}
@@ -1952,7 +1957,7 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	if !st.bundleWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries members the loop never writes: a member on a run that is no issue's, an id that is no issue's or is the run's twice, "+
 			"a footprint that is no plain repository path, a hand-back with a control, bidi or zero-width character in its text, a lead's own hand-back with no members, "+
-			"or a record line naming an issue the run does not carry",
+			"every issue handed back with no lane handed back, or a record line naming an issue the run does not carry",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.receiptsWritten() {
