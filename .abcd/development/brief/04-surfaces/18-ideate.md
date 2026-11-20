@@ -11,7 +11,7 @@ a survivor arrives at `drafts/` already checked, and a casualty leaves a reason 
 later session can find before proposing the same thing again.
 
 It is **optional and never a gate**. No other verb requires it, nothing warns when
-it is skipped, and capture friction stays at one line. The routing help in the
+it is skipped, and ideate adds no friction to capture. The routing help in the
 `intent` and `capture` surfaces names it for big, unproven ideas; that is a
 pointer, not a precondition. Ideate mints no intent of its own — a survivor is
 promoted by hand.
