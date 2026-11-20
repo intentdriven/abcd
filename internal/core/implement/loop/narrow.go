@@ -104,12 +104,14 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 // and the spec's own record, which each landing marks. The changed files
 // count because a lane widens only to a path the hold does not already
 // cover, so an edit to a file under another step's packages leaves no
-// record. Nothing narrows while a lane in flight is mid-edit: neither still
-// at its worktree or brief, where no implementer has been handed out, nor
-// past editing (pastEditing), since an implementer's edits stay uncommitted
-// until its receipt and its branch does not show them; two automated lanes
-// must never edit one file. A path of
-// own any of them covers is kept; one above some of them is narrowed to
+// record. Narrowing waits only while a lane in flight is mid-edit: handed an
+// implementer or a fix round, and not yet at its landing with nothing
+// pending (pastEditing), since an implementer's edits stay uncommitted until
+// its receipt and its branch does not show them; two automated lanes must
+// never edit one file. A lane still at its worktree or brief has been handed
+// no implementer and edited nothing, so it does not hold narrowing back: what
+// it edits later outside the hold is widened to, judged for overlap, at its
+// receipt. A path of own any of them covers is kept; one above some of them is narrowed to
 // those (lock de-escalation); one a landed lane's packages or widenings
 // cover, and nothing in flight needs, is dropped; and a path neither side
 // names is kept, since the run cannot say which lane needs it. The
@@ -125,8 +127,18 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 // carry, or more than its message fits), which would otherwise push a
 // renewal on every step.
 func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []string, ok bool) {
+	fp, ok, _ = narrowToFlight(repoRoot, st, own.Footprint, false)
+	return fp, ok
+}
+
+// narrowToFlight is landedNarrowing over the footprint own. A lane mid-edit
+// declines it unless counted (counted), when its step packages and widenings
+// count as needed, as a lane's at its worktree or brief do, and midEdit says
+// one was: what it edits under a path the hold covers is then the caller's to
+// keep (inFlightFootprint).
+func narrowToFlight(repoRoot string, st State, own []string, counted bool) (fp []string, ok, midEdit bool) {
 	if st.Issue() != "" || st.Spec == "" || st.autoPlanLane() != nil {
-		return nil, false
+		return nil, false, false
 	}
 	var flight, landed []string
 	var changedBy []Lane
@@ -135,11 +147,11 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 			continue
 		}
 		if l.SpecStep <= 0 {
-			return nil, false
+			return nil, false, false
 		}
 		pk, err := stepPackages(repoRoot, st.Spec, l.SpecStep)
 		if err != nil || len(pk) == 0 {
-			return nil, false
+			return nil, false, false
 		}
 		pk = append(pk, laneWidenedPaths(st, l.ID)...)
 		switch {
@@ -159,11 +171,15 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 			// A lane mid-edit may hold edits its branch does not show yet,
 			// to a file the hold already covered, so none was recorded as
 			// widened to: nothing narrows until it is past editing.
-			return nil, false
+			if !counted {
+				return nil, false, true
+			}
+			midEdit = true
+			flight = append(flight, pk...)
 		}
 	}
 	if len(landed) == 0 {
-		return nil, false
+		return nil, false, midEdit
 	}
 	// A lane past editing may have changed a file under a landed step's
 	// packages, which the hold already covered, so it widened to nothing:
@@ -171,11 +187,11 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 	for _, l := range changedBy {
 		head, err := branchTip(Context{RepoRoot: repoRoot}, l)
 		if err != nil {
-			return nil, false
+			return nil, false, midEdit
 		}
 		changed, declined := laneChangedFiles(repoRoot, l, head)
 		if declined != "" {
-			return nil, false
+			return nil, false, midEdit
 		}
 		for _, p := range changed {
 			flight = append(flight, path.Clean(p))
@@ -188,7 +204,7 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 	}
 	need, done := newPathSet(flight), newPathSet(landed)
 	keep := pathSet{}
-	for _, p := range own.Footprint {
+	for _, p := range own {
 		p = path.Clean(p)
 		if need.covers(p) || !done.covers(p) {
 			keep.add(p)
@@ -210,29 +226,58 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 		fp = append(fp, p)
 	}
 	slices.Sort(fp)
-	held := make([]string, 0, len(own.Footprint))
-	for _, p := range own.Footprint {
+	held := make([]string, 0, len(own))
+	for _, p := range own {
 		held = append(held, path.Clean(p))
 	}
 	slices.Sort(held)
 	held = slices.Compact(held)
 	if len(fp) == 0 || slices.Equal(fp, held) || !claim.FootprintFits(fp) || slices.ContainsFunc(fp, func(p string) bool { return !claim.ValidFootprintPath(p) }) {
-		return nil, false
+		return nil, false, midEdit
 	}
-	return fp, true
+	return fp, true, midEdit
 }
 
 // inFlightFootprint is fp less what only an intent run's landed steps
 // needed, by the rule a landing's renewal narrows by (landedNarrowing): what a
-// resume reserves, from the record and from this copy's tip alike, so a
-// resume never takes back a path the narrowing gave up, and is never refused
-// over a hold a peer took on it since. fp is returned as it stands wherever
-// landedNarrowing has nothing to narrow.
-func inFlightFootprint(repoRoot string, st State, fp []string) []string {
-	if in, ok := landedNarrowing(repoRoot, st, claim.Reservation{Footprint: fp}); ok {
-		return in
+// resume reserves, from the record (hold nil) and from this copy's tip (hold
+// the tip) alike, so a resume never takes back a path the narrowing gave up,
+// and is never refused over a hold a peer took on it since. A lane mid-edit
+// stops a renewal narrowing at all, since its edits under a path the hold
+// covers leave no record; here it keeps only what of fp the hold still covers
+// (the tip, live, lapsed or released by a tombstone), and a path only landed
+// lanes need that the tip no longer names is left out, since the hold gave it
+// up before the lane's implementer or fix round was handed out. fp is
+// returned as it stands wherever there is nothing to narrow.
+func inFlightFootprint(repoRoot string, st State, fp, hold []string) []string {
+	in, ok, midEdit := narrowToFlight(repoRoot, st, fp, true)
+	if !ok {
+		return fp
 	}
-	return fp
+	if midEdit {
+		in = heldWith(in, withinHold(fp, hold))
+	}
+	return in
+}
+
+// withinHold is what of fp the footprint hold covers: each path of fp hold
+// covers, and each path of hold below a path of fp.
+func withinHold(fp, hold []string) []string {
+	held := newPathSet(hold)
+	var out []string
+	for _, p := range fp {
+		if held.covers(p) {
+			out = append(out, p)
+			continue
+		}
+		above := newPathSet([]string{p})
+		for _, h := range hold {
+			if above.covers(h) {
+				out = append(out, h)
+			}
+		}
+	}
+	return out
 }
 
 // laneWidenedPaths is each path the run record says lane laneID widened to.
@@ -329,6 +374,9 @@ func revivalChangedFiles(repoRoot string, st State) []string {
 // state not named here (held, validate, an unset stage, one at or before its
 // implement stage) counts as editing. A lane is past editing when it is done,
 // discarded or handed back, or at its landing with no sync conflict pending.
+// A lane at its worktree or brief counts as editing here, since it may be
+// handed an implementer next; landedNarrowing alone sets it apart, as a lane
+// that has edited nothing yet.
 // A lane at validate is not, even awaiting its reviewers alone: one verdict
 // from them hands a fix implementer any file of the footprint
 // (dcn-2610300422481486). A lane its landing sends back to a fresh round

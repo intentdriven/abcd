@@ -72,11 +72,13 @@ the reservation to what the steps still in flight need (their packages, the
 paths their lanes widened to, the files their lanes' branches changed, and the
 spec, which each landing marks), so a package only a landed step names holds
 no one off, and a run waiting for a later step's package never holds the one a
-peer's next step waits for. While a lane in flight is mid-edit (its
-implementer or a fix round at work, or one it may be handed next), nothing
-narrows: its branch shows its edits only once its receipt commits them. A
-resume after every step has landed reserves the packages of the steps the run
-built.
+peer's next step waits for. Narrowing waits only while a lane has been
+handed an implementer or a fix round and has not reached its landing with
+nothing pending: its branch shows its edits only once its receipt commits
+them. A lane still at its worktree or brief holds nothing back. A resume never
+takes back a path the narrowing gave up; while a lane is mid-edit it keeps
+what the reservation still names. A resume after every step has landed
+reserves the packages of the steps the run built.
 A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the

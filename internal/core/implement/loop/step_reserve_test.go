@@ -414,6 +414,50 @@ func TestAResumeReservesNoPathOnlyALandedStepWidenedTo(t *testing.T) {
 	}
 }
 
+// TestAResumeWithALaneMidEditReservesNoPathTheHoldGaveUp is
+// TestAResumeReservesNoPathOnlyALandedStepWidenedTo with lane-2 one stage
+// further: its implementer is out when Q reserves a file under the path only
+// the landed step widened to and the run resumes. Nothing narrows while a lane
+// is mid-edit, but the hold gave the path up before the implementer was handed
+// out, so the resume neither takes it back nor is refused over Q's hold.
+func TestAResumeWithALaneMidEditReservesNoPathTheHoldGaveUp(t *testing.T) {
+	const extra = "internal/extra"
+	repo := loopRepo(t, readyIntent("", settledQuestions), twoStepSpec)
+	bare := onOrigin(t, repo)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+	laneDone(t, repo.Root(), start.RunID, steps, specRel, extra)
+	for _, stage := range []Stage{StageWorktree, StageBrief} {
+		if res, err := advance(repo.Root(), start.RunID, steps, Options{}); err != nil || res.PerformedStage != stage {
+			t.Fatalf("step 2's lane performs %q: %+v %v", stage, res, err)
+		}
+	}
+	if res, err := advance(repo.Root(), start.RunID, steps, Options{}); err != nil || res.Awaiting == nil || res.Lane != "lane-2" {
+		t.Fatalf("lane-2 is handed its implementer: %+v %v", res, err)
+	}
+	want := []string{"internal/surface/cli", specRel}
+	slices.Sort(want)
+	fp := footprintOf(t, bare, "itd-10")
+	slices.Sort(fp)
+	if !slices.Equal(fp, want) {
+		t.Fatalf("with lane-2's implementer out, the hold is %q, want %q", fp, want)
+	}
+	quinnHolds(t, bare, heldIssue, claim.Options{}, extra+"/x.go")
+
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatalf("the resume is refused over %s, which the hold gave up before lane-2's implementer was handed out: %v", extra, err)
+	}
+	fp = footprintOf(t, bare, "itd-10")
+	slices.Sort(fp)
+	if !slices.Equal(fp, want) {
+		t.Fatalf("the resumed hold is %q, want %q", fp, want)
+	}
+}
+
 // TestAResumeOverALapsedTipReservesNoPathOnlyALandedStepNeeded: lane-1
 // widened its hold to internal/extra and landed, and the run stopped there,
 // before the renewal that narrows the hold, which then lapsed still naming the
@@ -574,7 +618,7 @@ func TestAFileALaneAlongsideChangedSurvivesALandingsNarrowing(t *testing.T) {
 // so its branch cannot say which files it changed, and nothing narrows: the
 // hold keeps step 1's package.
 func TestNothingNarrowsWhileALaneAlongsideIsMidEdit(t *testing.T) {
-	_, bare, step, hand := alongsideRun(t, nil)
+	repo, bare, step, hand := alongsideRun(t, nil)
 	step(StageWorktree)
 	step(StageBrief)
 	one := step("")
@@ -593,5 +637,12 @@ func TestNothingNarrowsWhileALaneAlongsideIsMidEdit(t *testing.T) {
 	step("")
 	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, want) {
 		t.Fatalf("with lane-2 mid-edit the hold is %q, want %q: nothing narrows", fp, want)
+	}
+	// A resume keeps what the hold still covers while lane-2 is mid-edit.
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, want) {
+		t.Fatalf("the resumed hold with lane-2 mid-edit is %q, want %q", fp, want)
 	}
 }

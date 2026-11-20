@@ -584,8 +584,10 @@ reservation to that step's packages, judged for overlap like any reservation; a 
 hold on one of them holds back that step's lane alone, and the run's other lanes go on.
 As each step lands, the run narrows the reservation to what the steps still in flight
 need, the files their lanes' branches changed included, so a run waiting on a peer never
-holds a landed step's packages, and a resume reserves no path only a landed step needed;
-while a lane in flight is mid-edit, its edits not yet committed, nothing narrows. A spec whose
+holds a landed step's packages, and a resume never takes back a path the narrowing gave
+up. Narrowing waits only while a lane has been handed an implementer or a fix round and
+has not reached its landing with nothing pending, its edits not yet committed; a resume
+then keeps what the reservation still names. A spec whose
 steps cannot say and whose footprint names no packages, or an issue with no found_at
 path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy

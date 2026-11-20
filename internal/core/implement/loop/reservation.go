@@ -880,8 +880,9 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		// not yet mark landed names, or a path a landed lane widened to, is
 		// left out by the rule each landing's renewal narrows by
 		// (inFlightFootprint), so a resume is never refused over a hold a peer
-		// took on it once the step landed.
-		fp = inFlightFootprint(repoRoot, st, heldWith(fp, widenedPaths(st)))
+		// took on it once the step landed. While a lane is mid-edit, only
+		// what this copy's tip still names of it is reserved again, below.
+		fp = inFlightFootprint(repoRoot, st, heldWith(fp, widenedPaths(st)), nil)
 	}
 	// A reservation the run could not record is released again, and peers would see the
 	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
@@ -901,7 +902,7 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
 	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now, func(tip []string) []string {
-		return inFlightFootprint(repoRoot, st, tip)
+		return inFlightFootprint(repoRoot, st, tip, tip)
 	})
 	if err != nil {
 		return err
@@ -965,8 +966,10 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // widened to (widenedPaths). The tip's paths are first passed through
 // inFlight, when it is set, so a tip still naming what only a landed step of
 // an intent run needed (a landing the run stopped after, before the renewal
-// that narrows it) gives those paths back rather than reserving them again
-// (inFlightFootprint). A drain's act (drain) carries
+// that narrows it) gives those paths back rather than reserving them again,
+// unless a lane is mid-edit, whose edits may lie under them: the tip, live,
+// lapsed or released by a tombstone alike, is then kept as it names them, and
+// a path it no longer names is never taken back (inFlightFootprint). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
 // issue backs it off; a renewal of this copy's own live tip carries none, since
 // that tip is no hand-back. A person's resume goes over a hand-back and says so.
