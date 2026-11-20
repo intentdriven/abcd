@@ -2,7 +2,7 @@
 term: release
 bounded_context: distribution
 definition: A published, version-tagged snapshot of abcd — the act and the artefact of cutting a curated release from the single repo, carrying a version and a changelog entry.
-aliases: ["published snapshot", "plugin release", "snapshot"]
+aliases: ["published snapshot", "plugin release"]
 forbidden_synonyms: []
 status: stable
 introduced_in: itd-67
