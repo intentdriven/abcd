@@ -70,3 +70,37 @@ func TestConfigurationChapterNamesThisRepositorysBlocks(t *testing.T) {
 		}
 	}
 }
+
+// TestInternalsIndexDoesNotPromiseSeamOrRegistryConfig (iss-2610262038210994):
+// the internals index row for the configuration chapter once said the `meta`
+// setup block holds "seam-backend + adapter-registry config". The chapter
+// itself lists the seam backend selectors as staged keys nothing reads and
+// says there is no `adapters` registry block, so the row may promise neither.
+func TestInternalsIndexDoesNotPromiseSeamOrRegistryConfig(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, ".abcd", "development", "brief", "05-internals", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "| 3 | [`03-configuration.md`]") {
+			row = line
+			break
+		}
+	}
+	if row == "" {
+		t.Fatal("the internals index has no row for 03-configuration.md")
+	}
+	if !strings.Contains(row, "`meta` setup block") {
+		t.Errorf("the configuration row no longer names the `meta` setup block: %s", row)
+	}
+	for _, wrong := range []string{"seam-backend", "adapter-registry"} {
+		if strings.Contains(row, wrong) {
+			t.Errorf("the configuration row still says %q: the backend selectors are staged keys nothing reads and no adapters registry block exists", wrong)
+		}
+	}
+}
