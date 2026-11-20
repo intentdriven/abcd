@@ -101,8 +101,9 @@ type procResult struct {
 // not absolute, when group or other can write it or a directory it is reached
 // through (darwin's admin group aside), or when it lies inside any of repos
 // (the directory the role runs in, and the checkout it belongs to), lexically,
-// after symlink resolution, or at the real location of a link on its way, as
-// a link the repository holds reached through a directory link is.
+// after symlink resolution, or where any link on its route really lies, as a
+// link the repository holds does, reached through a directory link or sitting
+// in the middle of a folder path.
 func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	p, err := l.lookPath(name)
 	if err != nil {

@@ -245,10 +245,13 @@ var caseFoldingFS = fsutil.CaseFoldingFS
 // committed symlink under the checkout targeting a real binary elsewhere
 // resolves outside but IS repository content (the link is the attacker's), and a
 // path outside the checkout whose target resolves into it is repository content
-// by another route. A third route is a committed link reached through a
-// directory link outside the checkout (PATH holding ~/alias -> <repo>/scripts),
-// whose written path and target both lie outside, so each step of the
-// candidate's links is also judged at its real location (tools.StepLocations).
+// by another route. A third route is a link the checkout holds that lies on
+// the way without being either end: a committed link reached through a
+// directory link outside the checkout (PATH holding ~/alias -> <repo>/scripts,
+// with <repo>/scripts/gitleaks a link), or a committed directory link in the
+// middle of the folder path (<repo>/scripts itself a link to /opt/tools/bin).
+// Its written path and target both lie outside, so the location of every link
+// on the candidate's route is judged too (tools.Walk).
 // Containment is judged twice more, for the same reason: the
 // lexical compare routes through fsutil.PathWithin, the canonical one, so on a
 // case-folding filesystem a respelt root ("…/REPO/…", or the NFD form of a
@@ -296,16 +299,17 @@ func admitBinary(repoRoot, candidate, origin string) (string, error) {
 	}
 	const inside = "lies inside the repository; move the binary outside the repository " +
 		"(a repository rooted at $HOME contains ~/.local/bin and ~/go/bin), or unset path to use PATH"
-	// Each step of the candidate's links is held to the root at its real
-	// location too: a link the repository holds, reached through a directory
-	// link outside it, is repository content wherever it points.
-	steps, ok := tools.StepLocations(candLexical)
-	if !ok {
+	// The location of every link on the candidate's route is held to the root
+	// too, as is the file it ends at: a link the repository holds, a step of
+	// the chain or a directory link in the middle of a folder path, is
+	// repository content wherever it points and however it is reached.
+	route, err := tools.Walk(candLexical)
+	if err != nil || route.Missing {
 		return refuse("cannot be judged: a link on its way cannot be examined")
 	}
 	fold := caseFoldingFS()
 	for _, root := range []string{rootLexical, rootResolved} {
-		for _, cand := range append([]string{candLexical, candResolved}, steps...) {
+		for _, cand := range append([]string{candLexical, candResolved, route.Real}, route.Links...) {
 			if fsutil.PathWithin(cand, root, fold) {
 				return refuse(inside)
 			}

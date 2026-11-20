@@ -561,7 +561,7 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 		r.Why = "the bin folder cannot be judged without an absolute directory to hold it outside"
 		return r
 	}
-	// A destination whose steps cannot be examined is refused as WithinTree
+	// A destination whose route cannot be examined is refused as WithinTree
 	// refuses it, but with what stopped the examination: such a folder is not
 	// known to lie inside the repository, and saying so would send the person
 	// looking for the wrong cause.
@@ -727,8 +727,9 @@ func (in *Installer) admit(name string) (string, error) {
 
 // WithinTree reports whether the program at p, which resolves to resolved
 // after symlinks, lies inside the tree at guard, judged lexically and after
-// symlink resolution on both sides, and with each step of p's links held to the
-// tree at its real location (StepLocations). It is the one in-checkout
+// symlink resolution on both sides, and with the location of every link on
+// p's route held to the tree (Walk): a step of its link chain and a directory
+// link in the middle of a folder path alike. It is the one in-checkout
 // judgement for a program: the installer refuses to run what it holds, and
 // ahoy's presence check does not count it as installed. Both p and guard are
 // absolute; the caller has already resolved p. A step that cannot be examined
@@ -741,21 +742,19 @@ func WithinTree(p, resolved, guard string) bool {
 }
 
 // treeContains is WithinTree with "cannot be examined" kept apart from
-// "inside": err is why p's steps cannot be examined, and inside is false with
-// it. A caller that refuses on either and names the cause uses it; every
-// other caller uses WithinTree.
+// "inside": err is why p's route cannot be examined, and inside is false with
+// it. A p that does not exist yet (a bin folder abcd has still to make) is
+// judged by the part of its route that exists and the rest as written. A
+// caller that refuses on either and names the cause uses it; every other
+// caller uses WithinTree.
 func treeContains(p, resolved, guard string) (inside bool, err error) {
-	guards := []string{filepath.Clean(guard)}
-	if g, err := filepath.EvalSymlinks(guard); err == nil {
-		guards = append(guards, g)
-	}
-	steps, err := stepLocations(p)
+	route, err := Walk(p)
 	if err != nil {
 		return false, err
 	}
 	fold := fsutil.CaseFoldingFS()
-	for _, g := range guards {
-		for _, c := range append([]string{filepath.Clean(p), resolved}, steps...) {
+	for _, g := range GuardForms(guard) {
+		for _, c := range append([]string{filepath.Clean(p), resolved, route.Real}, route.Links...) {
 			if fsutil.PathWithin(c, g, fold) {
 				return true, nil
 			}
@@ -775,89 +774,31 @@ func causeOf(err error) string {
 	return err.Error()
 }
 
-// maxStepLinks bounds the links StepLocations follows, as the system's own
-// limit does.
-const maxStepLinks = 40
-
-// StepLocations is where each step of p's links really lies: p, then each path
-// its links lead to in turn, each as its directory with every link resolved
-// (fsutil.RealExistingPath) joined with its own name. A step reached through a
-// directory link lies where that link leads, which neither its written form
-// nor the final target shows, so a link a repository holds is caught wherever
-// it is reached from. A relative link target is joined to the real directory
-// of its link and cleaned lexically, which is how the system reads it unless a
-// ".." follows a directory link inside the target: the system takes that ".."
-// from where the directory link leads, and the lexical reading can name a
-// different path and never reach the links the system follows. So the walk
-// must end where the system's own resolution of p ends (filepath.EvalSymlinks),
-// or, when it ends at a step that does not exist, the system must find nothing
-// at p either; otherwise the steps are not the ones the system takes. ok is
-// false when they are not, when a step cannot be examined, or when the links
-// do not end, and a caller holding a program outside a tree then refuses it.
+// StepLocations is p's route as one list (Walk): the location of every link
+// it passes, then the file it ends at. ok is false when Walk refuses the
+// route, and a caller holding a program outside a tree then refuses it.
 func StepLocations(p string) ([]string, bool) {
-	steps, err := stepLocations(p)
-	return steps, err == nil
+	route, err := Walk(p)
+	if err != nil {
+		return nil, false
+	}
+	return append(route.Links, route.Real), true
 }
 
-// errStepsMisread is stepLocations' answer when its walk does not end where
-// the system's resolution does.
-var errStepsMisread = errors.New("a link on its way is read otherwise by the system")
-
-// stepLocations is StepLocations with the reason a walk cannot be examined.
-func stepLocations(p string) ([]string, error) {
-	cur := filepath.Clean(p)
-	var steps []string
-	for range maxStepLinks {
-		dir := fsutil.RealExistingPath(filepath.Dir(cur))
-		steps = append(steps, filepath.Join(dir, filepath.Base(cur)))
-		fi, err := os.Lstat(cur)
-		if errors.Is(err, os.ErrNotExist) {
-			return steps, endsWhereSystemEnds(p, "")
-		}
-		if err != nil {
-			return nil, err
-		}
-		if fi.Mode()&os.ModeSymlink == 0 {
-			return steps, endsWhereSystemEnds(p, steps[len(steps)-1])
-		}
-		target, err := os.Readlink(cur)
-		if err != nil {
-			return nil, err
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(dir, target)
-		}
-		cur = filepath.Clean(target)
+// GuardForms is the guard as given, cleaned, and its real location by Walk,
+// the reading every route held to it is in, so a guard under a linked
+// directory (macOS's /var and /tmp) is met in the form a route reaches it.
+// A guard Walk refuses keeps the system's own resolution instead, and one
+// that does not resolve keeps its written form alone.
+func GuardForms(guard string) []string {
+	forms := []string{filepath.Clean(guard)}
+	if route, err := Walk(guard); err == nil && !route.Missing {
+		return append(forms, route.Real)
 	}
-	return nil, fmt.Errorf("its links do not end within %d steps", maxStepLinks)
-}
-
-// endsWhereSystemEnds is the walk's end check: last, the step the walk ended
-// at, resolves to the file the system's own resolution of p reaches, and an
-// empty last (a step that does not exist) matches only a p the system cannot
-// find either.
-func endsWhereSystemEnds(p, last string) error {
-	sys, err := filepath.EvalSymlinks(p)
-	if last == "" {
-		switch {
-		case err == nil:
-			return errStepsMisread
-		case errors.Is(err, os.ErrNotExist):
-			return nil
-		}
-		return err
+	if g, err := filepath.EvalSymlinks(guard); err == nil {
+		forms = append(forms, g)
 	}
-	if err != nil {
-		return err
-	}
-	end, err := filepath.EvalSymlinks(last)
-	if err != nil {
-		return err
-	}
-	if end != sys {
-		return errStepsMisread
-	}
-	return nil
+	return forms
 }
 
 // pipeGrace is how long runArgv keeps reading a step's output once the step

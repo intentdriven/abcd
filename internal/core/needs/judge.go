@@ -8,9 +8,11 @@ package needs
 // is Admit with the checks a person's registration is held to besides
 // (adr-2611041815445203, rule 3): the path's own last part is the tool's
 // name, every link on the way and the file it ends at are held to the same
-// rule, each at its real location as well as as written, every directory above any of them is one no one else can write (a
-// sticky directory admitted over an entry this account or root owns), and
-// each of those directories and the file is owned by this account or root.
+// rule, as written and where each link on the route really lies (a directory
+// link in the middle of a folder path among them), every directory above any
+// of them is one no one else can write (a sticky directory admitted over an
+// entry this account or root owns), and each of those directories and the
+// file is owned by this account or root.
 //
 // Like the rest of the package it is a filter against mistakes (adr-42): it
 // reads the file system's metadata at the moment it is asked, runs nothing,
@@ -26,6 +28,7 @@ import (
 	"slices"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -125,10 +128,13 @@ var ownerOf = func(_ string, fi os.FileInfo) (uint32, error) { return fsutil.Inf
 // can write (darwin's admin group aside, adminGroupWritableOnly), or when p,
 // the file or ReachedThrough lies within a guard, lexically or after symlink
 // resolution. Its checks and their order are the runner's; it adds two
-// refusals after them: a chain of p's links that does not end at the file the
-// system resolves p to (Unexaminable), and a step of p's links, or
-// ReachedThrough, whose real location (its directory with every link
-// resolved, and its own name) lies within a guard.
+// refusals after them. A route the system does not take as its text shows,
+// or that ends elsewhere than the system's resolution of p, cannot be
+// examined (Unexaminable; tools.Walk says when). And the location of any link
+// on p's route lies within a guard (Inside): a step of p's chain or a
+// directory link in the middle of a folder path, the file the route ends at,
+// ReachedThrough's own location (its directory resolved, and its name), and
+// the links on ReachedThrough's route while all of it exists.
 func (r Rule) Admit(p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		return "", &Refusal{Kind: Relative, Path: p}
@@ -154,31 +160,30 @@ func (r Rule) Admit(p string) (string, error) {
 	if c := r.within(filepath.Clean(p), resolved, r.ReachedThrough); c != "" {
 		return "", &Refusal{Kind: Inside, Path: c}
 	}
-	// A step reached through a directory link lies where that link leads, so
-	// each step is held to the guards at its real location too: a link the
-	// repository holds is repository content wherever it points.
-	chain, err := linkChain(filepath.Clean(p))
+	// The route is walked as the system walks it (tools.Walk), and the
+	// location of every link on it is held to the guards, as is the file it
+	// ends at: a link the repository holds is repository content wherever it
+	// points, whether it is a step of p's chain or a directory link in the
+	// middle of a folder path, and however it is reached.
+	route, err := walk(filepath.Clean(p))
 	if err != nil {
 		return "", err
 	}
-	// The chain is followed as the system follows it, or not at all: a
-	// relative target such as d/../x, where d is a directory link, is read
-	// lexically here and by the system through d, and the steps held to the
-	// guards would not be the route that runs.
-	if last, err := filepath.EvalSymlinks(chain[len(chain)-1]); err != nil || last != resolved {
+	if route.Real != resolved {
 		return "", &Refusal{Kind: Unexaminable, Path: filepath.Clean(p)}
 	}
-	reals, err := realSteps(chain)
-	if err != nil {
-		return "", err
-	}
+	onRoute := append([]string{route.Real}, route.Links...)
 	if r.ReachedThrough != "" {
 		// Skipped when its directory no longer resolves: refusing would break a pinned launch after a PATH directory is removed, and no wrong admit follows.
 		if dir, err := filepath.EvalSymlinks(filepath.Dir(r.ReachedThrough)); err == nil {
-			reals = append(reals, filepath.Join(dir, filepath.Base(r.ReachedThrough)))
+			onRoute = append(onRoute, filepath.Join(dir, filepath.Base(r.ReachedThrough)))
+		}
+		// Its own route is held as well when the whole of it still exists.
+		if rt, err := tools.Walk(r.ReachedThrough); err == nil && !rt.Missing {
+			onRoute = append(append(onRoute, rt.Real), rt.Links...)
 		}
 	}
-	if c := r.within(reals...); c != "" {
+	if c := r.within(onRoute...); c != "" {
 		return "", &Refusal{Kind: Inside, Path: c}
 	}
 	return resolved, nil
@@ -204,12 +209,13 @@ func (v Verdict) SameName() bool {
 }
 
 // Judge is Admit with the checks a registration of name is held to: p's own
-// last part is name; every link on the way is followed and each step held to
-// the guards, as written and at its real location; every directory above p, above each step and above the
-// directory each step resolves into is one no one else can write, a sticky
-// directory admitted over an entry this account or root owns; each of those
-// directories and the file is owned by this account or root; and the file is
-// a regular one.
+// last part is name; each step of p's link chain is held to the guards as
+// written, and every link on its route (tools.Walk) where it lies; every
+// directory above each step as written, above each link on the route, above
+// the file it ends at and above each real directory the route passes through
+// is one no one else can write, a sticky directory admitted over an entry
+// this account or root owns; each of those directories and the file is owned
+// by this account or root; and the file is a regular one.
 func (r Rule) Judge(name, p string) (Verdict, error) {
 	if !filepath.IsAbs(p) {
 		return Verdict{}, &Refusal{Kind: Relative, Path: p}
@@ -226,19 +232,22 @@ func (r Rule) Judge(name, p string) (Verdict, error) {
 	if err != nil {
 		return Verdict{}, err
 	}
-	reals, err := realSteps(chain)
+	route, err := walk(clean)
 	if err != nil {
 		return Verdict{}, err
 	}
-	if c := r.within(append(slices.Clone(chain), reals...)...); c != "" {
+	if c := r.within(append(append(slices.Clone(chain), route.Real), route.Links...)...); c != "" {
 		return Verdict{}, &Refusal{Kind: Inside, Path: c}
 	}
+	// Whoever can write a directory a name on the route is looked up in
+	// chooses what that name is, so every directory above each step as
+	// written, above each link the route passes, above the file it ends at and
+	// above each real directory it passes through is judged, each over the
+	// entry beneath it.
 	seen := map[string]bool{}
-	for i, step := range chain {
-		for _, q := range []string{step, reals[i]} {
-			if err := r.ancestors(q, seen); err != nil {
-				return Verdict{}, err
-			}
+	for _, q := range slices.Concat(chain, route.Links, []string{route.Real}, route.Dirs) {
+		if err := r.ancestors(q, seen); err != nil {
+			return Verdict{}, err
 		}
 	}
 	// The chain is followed as the system follows it, or not at all.
@@ -259,8 +268,11 @@ func (r Rule) Judge(name, p string) (Verdict, error) {
 }
 
 // linkChain is p and each path its links lead to, in order, the last being no
-// link. A relative target is read against the directory its link really lies
-// in, as the system reads it.
+// link: the chain as its link texts write it, which is what a Verdict names. A
+// relative target is joined to the resolved directory of its link and cleaned
+// as text, so a ".." after a directory link inside a target is not read as
+// the system reads it; the route the system takes is walk's, and Judge holds
+// both.
 func linkChain(p string) ([]string, error) {
 	chain := []string{p}
 	cur := p
@@ -289,19 +301,28 @@ func linkChain(p string) ([]string, error) {
 	return nil, &Refusal{Kind: Unresolved, Path: p}
 }
 
-// realSteps is where each step of chain really lies: its directory with every
-// link resolved, joined with its own name. A step reached through a directory
-// link lies where that link leads, which its lexical form does not show.
-func realSteps(chain []string) ([]string, error) {
-	reals := make([]string, 0, len(chain))
-	for _, step := range chain {
-		dir, err := filepath.EvalSymlinks(filepath.Dir(step))
-		if err != nil {
-			return nil, &Refusal{Kind: followed(err), Path: filepath.Dir(step)}
-		}
-		reals = append(reals, filepath.Join(dir, filepath.Base(step)))
+// walk is p's route as the system walks it (tools.Walk), with its refusals
+// in the judge's kinds: a route read otherwise than its text shows, or ending
+// elsewhere than the system's own resolution, cannot be examined; one whose
+// links do not end, or that stops at a part that does not exist, does not
+// resolve; and a part that cannot be followed is Unreachable or Unresolved as
+// a link chain's is.
+func walk(p string) (tools.Route, error) {
+	route, err := tools.Walk(p)
+	var pe *fs.PathError
+	switch {
+	case err == nil && route.Missing:
+		return tools.Route{}, &Refusal{Kind: Unresolved, Path: p}
+	case err == nil:
+		return route, nil
+	case errors.Is(err, tools.ErrReadOtherwise):
+		return tools.Route{}, &Refusal{Kind: Unexaminable, Path: p}
+	case errors.Is(err, tools.ErrLinksDoNotEnd):
+		return tools.Route{}, &Refusal{Kind: Unresolved, Path: p}
+	case errors.As(err, &pe):
+		return tools.Route{}, &Refusal{Kind: followed(err), Path: pe.Path}
 	}
-	return reals, nil
+	return tools.Route{}, &Refusal{Kind: Unexaminable, Path: p}
 }
 
 // ancestors judges every directory above p, each over the entry beneath it.
@@ -355,18 +376,16 @@ func held(p string, fi os.FileInfo) bool {
 	return err == nil && (uid == uint32(os.Getuid()) || uid == 0)
 }
 
-// within is the first of paths that lies within a guard, lexically or after
-// symlink resolution of the guard, "" for none.
+// within is the first of paths that lies within a guard, as written or at the
+// guard's real location (tools.GuardForms, the reading a route is in), ""
+// for none.
 func (r Rule) within(paths ...string) string {
 	var guards []string
 	for _, g := range r.Guards {
 		if g == "" {
 			continue
 		}
-		guards = append(guards, filepath.Clean(g))
-		if e, err := filepath.EvalSymlinks(g); err == nil {
-			guards = append(guards, e)
-		}
+		guards = append(guards, tools.GuardForms(g)...)
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
