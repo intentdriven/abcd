@@ -73,6 +73,14 @@ func queueStateArgs(n string) []string {
 // GETs, as the merge gate's reads are.
 const mergeGroupRunsPath = "repos/{owner}/{repo}/actions/runs?event=merge_group&per_page=100"
 
+// mergeGroupRunsFilter is the --jq filter the runs listing is read through:
+// it keeps the listing's own shape, cut to the five fields of each run that
+// groupRun decodes. A hundred whole workflow runs outgrow the forge client's
+// output bound (landing.MaxOutput), so every dropped lane read "could not be
+// read" and its failed check went unnamed (iss-2611201352116252); the five
+// fields keep the listing far under it. gh prints an object result as JSON.
+const mergeGroupRunsFilter = `{workflow_runs: [.workflow_runs[] | {name, head_branch, head_sha, conclusion, created_at}]}`
+
 func checkRunsPath(sha string) string {
 	return "repos/{owner}/{repo}/commits/" + sha + "/check-runs?per_page=100"
 }
@@ -540,7 +548,7 @@ var failedConclusions = map[string]bool{"failure": true, "timed_out": true, "act
 // failed workflow runs named instead when they cannot be. It always returns
 // a clause, saying what it could not read.
 func failedGroupChecks(c Context, lane Lane, def string) string {
-	out, err := landing.GH(c.RepoRoot, "api", mergeGroupRunsPath)
+	out, err := landing.GH(c.RepoRoot, "api", mergeGroupRunsPath, "--jq", mergeGroupRunsFilter)
 	if err != nil {
 		return "the merge group's checks could not be read (" + forgeWhy(err) + ")"
 	}
