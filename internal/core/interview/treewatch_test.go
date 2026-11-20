@@ -651,7 +651,7 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(budget(t)):
 		t.Fatal("the reading did not end on a link cycle under .git/hooks")
 	}
 	if _, ok := st[".git/hooks/a"]; !ok {
@@ -672,36 +672,26 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 // worktree's entry) cannot slow a turn for minutes before the guard refuses.
 func TestAFollowedLinkIsBounded(t *testing.T) {
 	// within runs read and fails the test when it does not end within the
-	// time bound: reading the large trees below whole takes minutes.
+	// test's budget, a guard against a hang only: that a file past the byte
+	// budget is refused before it is read is held by the file itself, which
+	// cannot be opened (unreadable).
 	within := func(t *testing.T, read func() error) error {
 		t.Helper()
+		wait := budget(t)
 		done := make(chan error, 1)
 		go func() { done <- read() }()
 		select {
 		case err := <-done:
 			return err
-		case <-time.After(20 * time.Second):
-			t.Fatal("the reading did not end within 20s: a followed link was read past its budget")
+		case <-time.After(wait):
+			t.Fatalf("the reading did not end within %s: a followed link was read past its budget", wait.Round(time.Second))
 			return nil
 		}
 	}
 	// huge is a directory holding name, a sparse file far past the byte
-	// budget: making it costs nothing, hashing it whole takes minutes.
-	huge := func(t *testing.T, name string) string {
-		t.Helper()
-		dir := filepath.Join(t.TempDir(), "huge")
-		if err := os.Mkdir(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
-			t.Fatal(err)
-		}
-		return dir
-	}
+	// budget that cannot be opened: making it costs nothing, and a reading
+	// that opened it before refusing fails with the open's error.
+	huge := bigSparseDir
 	// many is a directory holding n empty files.
 	many := func(t *testing.T, n int) string {
 		t.Helper()
@@ -954,37 +944,61 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 }
 
 // readWithin runs read and fails the test when it does not end within the
-// time bound: reading the large trees the budget tests plant whole takes
-// minutes.
+// test's budget, a guard against a hang only: that a reading past a budget
+// refuses before reading the large file it planted is held by what the
+// refusal says or, where two refusals say the same, by the file itself,
+// which cannot be opened (bigSparseDir).
 func readWithin(t *testing.T, read func() error) error {
 	t.Helper()
+	wait := budget(t)
 	done := make(chan error, 1)
 	go func() { done <- read() }()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(20 * time.Second):
-		t.Fatal("the reading did not end within 20s: a place outside the tree was read past its budget")
+	case <-time.After(wait):
+		t.Fatalf("the reading did not end within %s: a place outside the tree was read past its budget", wait.Round(time.Second))
 		return nil
 	}
 }
 
-// bigSparseDir is a directory holding name, a sparse file far past the byte
-// budget: making it costs nothing, hashing it whole takes minutes.
+// bigSparseDir is a directory holding name, a sparse file far past the
+// followed-link byte budget that cannot be opened: making it costs nothing,
+// and a reading that opened it before refusing (hashing it, then charging it)
+// fails with the open's error, which the tests' refused rejects, rather than
+// hashing it whole inside the hang guard. The charge before the read and the
+// hash's own bound past it refuse in the same words, so the refusal alone
+// cannot say which came first.
 func bigSparseDir(t *testing.T, name string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "huge")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Create(filepath.Join(dir, name))
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 		t.Fatal(err)
 	}
+	unreadable(t, p)
 	return dir
+}
+
+// unreadable takes every permission off p, so opening it fails. A user the
+// mode does not stop (root) still opens it: the test then says that only the
+// hang guard stands between a reading that reads before refusing and a pass.
+func unreadable(t *testing.T, p string) {
+	t.Helper()
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(p); err == nil {
+		_ = f.Close()
+		t.Logf("%s opens with no permission (run as root?): that it is refused before it is read rests on the hang guard alone", p)
+	}
 }
 
 // dirOfEmpties is a directory holding n empty files.
@@ -1011,7 +1025,10 @@ func dirOfEmpties(t *testing.T, n int) string {
 // promptly, the file named, without git or the guard reading where it leads.
 func TestARedirectedGitDirectoryIsNamedNotRead(t *testing.T) {
 	// elsewhere is a common directory git accepts, whose packed refs are a
-	// sparse file far past what git reads quickly.
+	// sparse file far past what git reads quickly that cannot be opened
+	// (unreadable): git run where the redirect leads before the refusal dies
+	// on the open, which is not the refusal the test wants, rather than
+	// reading it inside the hang guard.
 	elsewhere := func(t *testing.T, r *writtenRun) string {
 		t.Helper()
 		dir := filepath.Join(t.TempDir(), "elsewhere")
@@ -1029,13 +1046,15 @@ func TestARedirectedGitDirectoryIsNamedNotRead(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		f, err := os.Create(filepath.Join(dir, "packed-refs"))
+		refs := filepath.Join(dir, "packed-refs")
+		f, err := os.Create(refs)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		unreadable(t, refs)
 		return dir
 	}
 	// lane makes a linked worktree of r and runs the interview there.
@@ -1138,6 +1157,9 @@ func TestTheBytesOneReadingHashesAreBounded(t *testing.T) {
 			t.Fatalf("err = %v, want the reading refused past the byte bound, naming %s", err, named)
 		}
 	}
+	// sparse plants a sparse file of size at p that cannot be opened
+	// (unreadable): a reading that hashed it before refusing fails on the
+	// open, not on the hang guard.
 	sparse := func(t *testing.T, p string, size int64) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -1150,6 +1172,7 @@ func TestTheBytesOneReadingHashesAreBounded(t *testing.T) {
 		if err := errors.Join(f.Truncate(size), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		unreadable(t, p)
 	}
 
 	t.Run("an untracked file past the bound, before the first dispatch", func(t *testing.T) {
@@ -1234,7 +1257,12 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming %s", err, named)
 		}
 	}
-	grow := func(t *testing.T, p string) {
+	// grow makes p a sparse file far past the bound; shut also takes every
+	// permission off it (unreadable), so git run before the sizing dies on the
+	// open rather than reading it inside the hang guard. info/exclude is left
+	// open: git only warns on one it cannot open and runs on, so there a shut
+	// file would hide git reading first, and only the hang guard holds it.
+	grow := func(t *testing.T, p string, shut bool) {
 		t.Helper()
 		f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o644)
 		if err != nil {
@@ -1242,6 +1270,9 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
+		}
+		if shut {
+			unreadable(t, p)
 		}
 	}
 	for _, c := range []struct {
@@ -1252,15 +1283,15 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 		grow func(t *testing.T, r *writtenRun) string
 	}{
 		{name: "the packed refs", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "packed-refs"))
+			grow(t, filepath.Join(r.repo, ".git", "packed-refs"), true)
 			return ".git/packed-refs"
 		}},
 		{name: "HEAD", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "HEAD"))
+			grow(t, filepath.Join(r.repo, ".git", "HEAD"), true)
 			return ".git/HEAD"
 		}},
 		{name: "info/exclude", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "info", "exclude"))
+			grow(t, filepath.Join(r.repo, ".git", "info", "exclude"), false)
 			return ".git/info/exclude"
 		}},
 		{name: "a linked worktree's own HEAD", at: func(t *testing.T, r *writtenRun) string {
@@ -1269,7 +1300,7 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 			r.git.Git("worktree", "add", "-q", "-b", "lane", lane)
 			return lane
 		}, grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "worktrees", "lane", "HEAD"))
+			grow(t, filepath.Join(r.repo, ".git", "worktrees", "lane", "HEAD"), true)
 			return "/.git/worktrees/lane/HEAD"
 		}},
 	} {
@@ -1338,15 +1369,19 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 		if _, err := readTreePinned(r.repo, "", pin); err != nil {
 			t.Fatal(err)
 		}
-		f, err := os.OpenFile(filepath.Join(r.repo, ".git", "modules", "sub", "packed-refs"), os.O_RDWR|os.O_CREATE, 0o644)
+		p := filepath.Join(r.repo, ".git", "modules", "sub", "packed-refs")
+		f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		// Unopenable, so a reading that hashed it before refusing fails on
+		// the open rather than reading it inside the hang guard.
+		unreadable(t, p)
 		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
-		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
+		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/modules/sub/packed-refs", err)
 		}
 	})
@@ -1640,6 +1675,9 @@ func TestALaterReadingSizesWhatGitReadsBeforeAskingGitWhereItsDirectoriesAre(t *
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		// Unopenable, so git run before the sizing dies on it rather than
+		// reading it inside the hang guard.
+		unreadable(t, p)
 		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
 		if err == nil || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/config") {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/config", err)
