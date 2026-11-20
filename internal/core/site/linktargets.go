@@ -5,7 +5,8 @@ package site
 // Two things on the site name a page the site build does not write. A
 // composed page links into `/docs/`, in the URL shape siteHref assumes the
 // docs generator serves (a directory URL per page), and the redirect map,
-// copied verbatim from site-src/redirects to `_redirects`, sends every old
+// copied verbatim from site-src/redirects to `_redirects` (with the record's
+// forwards around it where record.elsewhere.forward asks), sends every old
 // docs URL to a `/docs/` route written by hand. `/docs/` is the docs
 // generator's own tree, written into the output after this build, so no gate
 // that reads only what this build wrote can see whether either still lands: a

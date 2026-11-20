@@ -18,7 +18,8 @@ abcd's own record moves onto abcd's own GitHub Pages, built by the same workflow
 
 **What changes in abcd's repository:**
 - **abcdev.app's deploy narrows to the documentation.** The existing deploy (adr-48: on release, from released bytes) keeps building the docs and their landing page. It stops building the record explorer: `/record/`, every page below it and `/record.json` leave abcdev.app. The contributors page (`/contributors/`) and the references page (`/references/`) stay, as pages of the documentation site, because the project route builds neither (dcn-2611201438402486).
-  - Each of the record's addresses (`/record`, `/record/` and every page below it, and `/record.json`) forwards with a 301 to the same path on abcd's GitHub Pages site, query kept. The forwarding goes in the docs host's redirect file (`site-src/redirects`), so no rule is kept outside the repository.
+  - Each of the record's addresses (`/record`, `/record/` and every page below it, and `/record.json`) forwards with a 301 to the same path on abcd's GitHub Pages site, query kept. The build adds the forwarding to the docs host's redirect file (`site-src/redirects`, served as `_redirects`), derived from the Pages address the composition names, so no rule is kept outside the repository.
+  - Step 3 lands both behind switches that are off: `.abcd/site.json` names the Pages address in `record.elsewhere`, with `forward` and `narrow` both false, and with both off the composed build writes exactly what it wrote before. So merging step 3, and the release after it, change nothing public. Step 4 turns each switch on, one committed change apiece, in the cut-over's order below, on the person's word.
   - The docs' own 301s for the paths moved under /docs/ stay.
   - Links in the README and docs to abcd's record point at the Pages address.
 - **abcd's repository switches its record on to the project route.** The switch is set in abcd's settings and the generated workflow is added. Its about page comes from abcd's identity block, the brief, the newest shipped intents' press releases and the changelog, exactly as for any project.
@@ -29,10 +30,10 @@ abcd's own record moves onto abcd's own GitHub Pages, built by the same workflow
 
 **The cut-over is ordered, and each outward step is confirmed by the person first:**
 1. The first Pages release is published and checked at the Pages address.
-2. The forwarding of the record's addresses is switched on, and a sample of old record links is checked.
-3. Only then does the documentation deploy stop building the record.
+2. The forwarding of the record's addresses is switched on (`record.elsewhere.forward` in `.abcd/site.json`), and a sample of old record links is checked.
+3. Only then does the documentation deploy stop building the record (`record.elsewhere.narrow`).
 
-A failure at any step leaves the record where it was.
+Step 4 is these three acts: after the first, it turns on step 3's two switches in `.abcd/site.json`, `record.elsewhere.forward` and then `record.elsewhere.narrow`, each in a committed change of its own, on the person's word, once the act before it is checked. A failure at any step leaves the record where it was.
 
 **Records.** A new decision record amends adr-48: abcdev.app's deploy narrows to the documentation, and the record moves to the project route. adr-48's rule that a site deploys on release, from released bytes, stands for both.
 

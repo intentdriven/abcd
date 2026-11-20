@@ -1,7 +1,7 @@
 ---
 id: adr-2610142147242544
 slug: abcd-s-site-is-built-onto-its-own-github
-status: proposed
+status: accepted
 date: 2026-10-14
 supersedes: null
 superseded_by: null
@@ -24,7 +24,7 @@ The move is planned in itd-2610142145236613 and built later.
 
 ## Decision
 
-Proposed with the plan. It is accepted in the change that lands spc-2610142146250176's third step, when the code that enforces it lands.
+Proposed with the plan, and accepted in the change that lands spc-2610142146250176's third step, with the code that enforces it. That code lands switched off: `.abcd/site.json` names the Pages address in `record.elsewhere`, and its two switches, `forward` (point 3) and `narrow` (point 2), stay off until the cut-over (the spec's step 4) turns each on, in that order, on the person's word. With both off, abcdev.app serves what it served before.
 
 1. **abcd's about page and record are built and deployed by the workflow `site setup --provider github-pages` writes for any project,** from what abcd writes and nothing else. abcd's own needs are met inside that route, not beside it.
 2. **abcdev.app is abcd's documentation site until a community site replaces it.** Its deploy (adr-48: on release, from released bytes, with the preview of `main`) narrows to the documentation and its landing page. The record explorer leaves it, except its contributors page (`/contributors/`) and its references page (`/references/`), which stay as pages of the documentation site (dcn-2611201438402486).
