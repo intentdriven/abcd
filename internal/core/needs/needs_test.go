@@ -13,7 +13,7 @@ import (
 // grammar does not name is refused, so no path, checksum or version of the
 // list's own can ride in on an extra field.
 func TestTheListIsReadByItsGrammar(t *testing.T) {
-	l, err := ParseList([]byte(`{"schema_version": 1, "tools": [
+	l, err := parseList([]byte(`{"schema_version": 1, "tools": [
 		{"name": "go", "reason": "builds and tests the binary", "version_file": "go.mod"},
 		{"name": "make", "reason": "runs the preflight gates"},
 		{"name": "golangci-lint", "reason": "lints the code (the linter CI runs, too)"}
@@ -25,7 +25,7 @@ func TestTheListIsReadByItsGrammar(t *testing.T) {
 		l.Tools[1].Name != "make" || l.Tools[2].Name != "golangci-lint" {
 		t.Fatalf("list = %+v", l)
 	}
-	if empty, err := ParseList([]byte(`{"schema_version": 1, "tools": []}`)); err != nil || len(empty.Tools) != 0 {
+	if empty, err := parseList([]byte(`{"schema_version": 1, "tools": []}`)); err != nil || len(empty.Tools) != 0 {
 		t.Fatalf("an empty list = %+v, %v; it lists nothing and refuses nothing", empty, err)
 	}
 	if ListPath != ".abcd/needs.json" {
@@ -57,12 +57,12 @@ func TestTheListIsReadByItsGrammar(t *testing.T) {
 	}
 	for name, doc := range refused {
 		t.Run(name, func(t *testing.T) {
-			if l, err := ParseList([]byte(doc)); err == nil {
+			if l, err := parseList([]byte(doc)); err == nil {
 				t.Fatalf("read as %+v; want it refused", l)
 			}
 		})
 	}
-	if _, err := ParseList([]byte(`{"schema_version": 1, "schema_version": 1, "tools": []}`)); !errors.As(err, new(*jsonstrict.DuplicateKeyError)) {
+	if _, err := parseList([]byte(`{"schema_version": 1, "schema_version": 1, "tools": []}`)); !errors.As(err, new(*jsonstrict.DuplicateKeyError)) {
 		t.Fatalf("a repeated key: %v, want the strict decode's refusal", err)
 	}
 }
@@ -79,7 +79,7 @@ func TestARefusedListNeverRepeatsItsText(t *testing.T) {
 		"a bad value":      `{"schema_version": 1, "tools": [{"name": "make", "reason": "builds"}], "` + planted + `"`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := ParseList([]byte(doc))
+			_, err := parseList([]byte(doc))
 			if err == nil {
 				t.Fatal("accepted, want it refused")
 			}
@@ -95,7 +95,7 @@ func TestARefusedListNeverRepeatsItsText(t *testing.T) {
 			}
 		})
 	}
-	_, err := ParseList([]byte(`{"schema_version": 1, "tools": [{"name": "make", "reason": "builds", "` + planted + `": 1, "` + planted + `": 1}]}`))
+	_, err := parseList([]byte(`{"schema_version": 1, "tools": [{"name": "make", "reason": "builds", "` + planted + `": 1, "` + planted + `": 1}]}`))
 	var dup *jsonstrict.DuplicateKeyError
 	if !errors.As(err, &dup) {
 		t.Fatalf("a repeated key: %v, want errors.As to reach the strict decode's refusal", err)
@@ -106,7 +106,7 @@ func TestARefusedListNeverRepeatsItsText(t *testing.T) {
 // never a path, an option, a hidden file or a word with a space in it.
 func TestANameFollowsTheStrictGrammar(t *testing.T) {
 	for _, ok := range []string{"go", "make", "golangci-lint", "python3", "g++", "protoc-gen-go", "clang-format", "x", "yq_4", "a.b"} {
-		if err := CheckName(ok); err != nil {
+		if err := checkName(ok); err != nil {
 			t.Errorf("%q: %v, want it accepted", ok, err)
 		}
 	}
@@ -115,11 +115,11 @@ func TestANameFollowsTheStrictGrammar(t *testing.T) {
 		"go\n", "go\x00", "gö", "a;b", "a*", "`x`", "'x'", "\"x\"", strings.Repeat("a", 65),
 	}
 	for _, name := range bad {
-		if err := CheckName(name); err == nil {
+		if err := checkName(name); err == nil {
 			t.Errorf("%q accepted, want it refused", name)
 		}
 	}
-	if err := CheckName(strings.Repeat("a", 64)); err != nil {
+	if err := checkName(strings.Repeat("a", 64)); err != nil {
 		t.Errorf("a 64-character name: %v, want it accepted", err)
 	}
 }
@@ -131,20 +131,20 @@ func TestANameFollowsTheStrictGrammar(t *testing.T) {
 func TestReservedNamesAreRefusedAndGoAndMakeAreNot(t *testing.T) {
 	for _, name := range []string{"sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "pwsh", "busybox", "toybox", "osh", "ysh",
 		"git", "abcd", "node", "claude", "opencode"} {
-		if !Reserved(name) {
+		if !isReserved(name) {
 			t.Errorf("%s is not reserved", name)
 		}
-		if err := CheckName(name); err == nil {
-			t.Errorf("%s passes CheckName, want it refused as reserved", name)
+		if err := checkName(name); err == nil {
+			t.Errorf("%s passes checkName, want it refused as reserved", name)
 		} else if !strings.Contains(err.Error(), "reserved") {
 			t.Errorf("%s: %v, want the refusal to say it is reserved", name, err)
 		}
 	}
 	for _, name := range []string{"go", "make", "gofmt", "git-lfs", "nodejs-tool"} {
-		if Reserved(name) {
+		if isReserved(name) {
 			t.Errorf("%s is reserved, want it listable", name)
 		}
-		if err := CheckName(name); err != nil {
+		if err := checkName(name); err != nil {
 			t.Errorf("%s: %v, want it accepted", name, err)
 		}
 	}
@@ -154,32 +154,32 @@ func TestReservedNamesAreRefusedAndGoAndMakeAreNot(t *testing.T) {
 // go.work at the repository's root and nowhere else, and a tool abcd checks no
 // version for names no file at all.
 func TestEachToolHasAClosedSetOfVersionFiles(t *testing.T) {
-	if got := VersionFiles("go"); len(got) != 2 || got[0] != "go.mod" || got[1] != "go.work" {
-		t.Fatalf("VersionFiles(go) = %q, want [go.mod go.work]", got)
+	if got := versionFiles("go"); len(got) != 2 || got[0] != "go.mod" || got[1] != "go.work" {
+		t.Fatalf("versionFiles(go) = %q, want [go.mod go.work]", got)
 	}
-	got := VersionFiles("go")
+	got := versionFiles("go")
 	got[0] = "changed"
-	if VersionFiles("go")[0] != "go.mod" {
-		t.Fatal("VersionFiles hands out the closed set itself; a caller changed it")
+	if versionFiles("go")[0] != "go.mod" {
+		t.Fatal("versionFiles hands out the closed set itself; a caller changed it")
 	}
 	for _, f := range []string{"go.mod", "go.work"} {
-		if err := CheckVersionFile("go", f); err != nil {
+		if err := checkVersionFile("go", f); err != nil {
 			t.Errorf("go %s: %v", f, err)
 		}
 	}
 	for _, f := range []string{"", ".tool-versions", ".go-version", "mise.toml", "tools/go.mod", "./go.mod", "/go.mod", "go.sum", "GO.MOD"} {
-		if err := CheckVersionFile("go", f); err == nil {
+		if err := checkVersionFile("go", f); err == nil {
 			t.Errorf("go %q accepted, want it refused", f)
 		}
 	}
-	if len(VersionFiles("make")) != 0 {
-		t.Fatalf("VersionFiles(make) = %q, want none", VersionFiles("make"))
+	if len(versionFiles("make")) != 0 {
+		t.Fatalf("versionFiles(make) = %q, want none", versionFiles("make"))
 	}
-	if err := CheckVersionFile("make", ""); err != nil {
+	if err := checkVersionFile("make", ""); err != nil {
 		t.Errorf("make with no version file: %v", err)
 	}
 	for _, f := range []string{"go.mod", "Makefile", ".tool-versions"} {
-		if err := CheckVersionFile("make", f); err == nil {
+		if err := checkVersionFile("make", f); err == nil {
 			t.Errorf("make %q accepted, want it refused: abcd checks no version of make", f)
 		}
 	}
@@ -199,7 +199,7 @@ func TestAReasonHasALimitAndAnAllowlist(t *testing.T) {
 		strings.Repeat("a", MaxReasonRunes),
 		strings.Repeat("é", MaxReasonRunes),
 	} {
-		if err := CheckReason(ok); err != nil {
+		if err := checkReason(ok); err != nil {
 			t.Errorf("%q: %v, want it accepted", ok, err)
 		}
 	}
@@ -232,7 +232,7 @@ func TestAReasonHasALimitAndAnAllowlist(t *testing.T) {
 		"long stroke a\u0336 overlay",
 		"combining long vertical a\u20d2 overlay",
 	} {
-		if err := CheckReason(bad); err == nil {
+		if err := checkReason(bad); err == nil {
 			t.Errorf("%q accepted, want it refused", bad)
 		}
 	}

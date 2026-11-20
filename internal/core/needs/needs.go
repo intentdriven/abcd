@@ -65,7 +65,7 @@ type Tool struct {
 	VersionFile string `json:"version_file,omitempty"`
 }
 
-// ListError is ParseList's refusal of a document the strict decode would not
+// ListError is parseList's refusal of a document the strict decode would not
 // read: one that is not one JSON document, holds a repeated key or a field the
 // grammar does not name, or a value of the wrong type. Its text is fixed,
 // because the decoder's names the key the repository wrote; Unwrap hands the
@@ -83,10 +83,10 @@ func (e *ListError) Error() string {
 // Unwrap is the decoder's own error, whose text may repeat the repository's.
 func (e *ListError) Unwrap() error { return e.err }
 
-// ParseList reads a tool list from its bytes, refusing anything outside the
+// parseList reads a tool list from its bytes, refusing anything outside the
 // grammar. The error names where the list is wrong and never repeats a value
 // it refused, since that value is a repository's text.
-func ParseList(data []byte) (List, error) {
+func parseList(data []byte) (List, error) {
 	var l List
 	if len(data) > MaxListBytes {
 		return List{}, fmt.Errorf("%s is %d bytes, over the %d a tool list may hold", ListPath, len(data), MaxListBytes)
@@ -101,17 +101,17 @@ func ParseList(data []byte) (List, error) {
 	seen := map[string]bool{}
 	for i, tool := range l.Tools {
 		at := fmt.Sprintf("%s: tools[%d]", ListPath, i)
-		if err := CheckName(tool.Name); err != nil {
+		if err := checkName(tool.Name); err != nil {
 			return List{}, fmt.Errorf("%s: %w", at, err)
 		}
 		if seen[tool.Name] {
 			return List{}, fmt.Errorf("%s: %s is listed twice", at, tool.Name)
 		}
 		seen[tool.Name] = true
-		if err := CheckReason(tool.Reason); err != nil {
+		if err := checkReason(tool.Reason); err != nil {
 			return List{}, fmt.Errorf("%s (%s): %w", at, tool.Name, err)
 		}
-		if err := CheckVersionFile(tool.Name, tool.VersionFile); err != nil {
+		if err := checkVersionFile(tool.Name, tool.VersionFile); err != nil {
 			return List{}, fmt.Errorf("%s (%s): %w", at, tool.Name, err)
 		}
 	}
@@ -123,7 +123,7 @@ func ParseList(data []byte) (List, error) {
 // path separator, space, quote or shell character.
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]*$`)
 
-// reserved are the names no list may hold: the shells (busybox and toybox
+// reservedNames are the names no list may hold: the shells (busybox and toybox
 // among them, since each runs as sh), git, abcd, node (the
 // program a harness runs on) and the command each runner starts. Listing one
 // would move a registered copy ahead on PATH of the one a harness or abcd
@@ -133,7 +133,7 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]*$`)
 // reserved name exists to stop a copy moving ahead of a shell, or of what abcd
 // and a harness run on, on PATH. The runner package holds its own commands to
 // this set in a test, since this package cannot import it.
-var reserved = []string{
+var reservedNames = []string{
 	// shells
 	"ash", "bash", "busybox", "csh", "dash", "elvish", "fish", "ksh", "mksh", "nu", "oksh", "osh",
 	"pdksh", "powershell", "pwsh", "rc", "sh", "tcsh", "toybox", "xonsh", "yash", "ysh", "zsh",
@@ -143,17 +143,22 @@ var reserved = []string{
 	"node", "claude", "opencode",
 }
 
-// Reserved reports whether name is one no tool list may hold.
-func Reserved(name string) bool {
-	return slices.Contains(reserved, name)
+// isReserved reports whether name is one no tool list may hold.
+func isReserved(name string) bool {
+	return slices.Contains(reservedNames, name)
 }
 
-// ErrReserved is CheckName's answer for a name in the reserved set.
+// ReservedForTest is isReserved, the seam the runner package's test holds
+// each runner's command to: this package cannot import runner, and runner's
+// production code never asks which names are reserved.
+func ReservedForTest(name string) bool { return isReserved(name) }
+
+// ErrReserved is checkName's answer for a name in the reserved set.
 var ErrReserved = errors.New("reserved")
 
-// CheckName refuses a name outside the grammar or in the reserved set. The
+// checkName refuses a name outside the grammar or in the reserved set. The
 // error repeats the name only once it has passed the grammar.
-func CheckName(name string) error {
+func checkName(name string) error {
 	switch {
 	case name == "":
 		return errors.New("a tool needs a name")
@@ -161,30 +166,30 @@ func CheckName(name string) error {
 		return fmt.Errorf("a tool's name is at most %d characters", maxNameBytes)
 	case !nameRe.MatchString(name):
 		return errors.New("a tool's name is a lowercase program name of letters, digits and . _ + -, starting with a letter or digit")
-	case Reserved(name):
+	case isReserved(name):
 		return fmt.Errorf("%s is %w: a shell, git, abcd, node and the command each runner starts are never listed", name, ErrReserved)
 	}
 	return nil
 }
 
-// versionFiles is each tool's closed set of version files, at the
+// versionFileSets is each tool's closed set of version files, at the
 // repository's root. A tool absent here has no version check, so its entry
 // names no file.
-var versionFiles = map[string][]string{
+var versionFileSets = map[string][]string{
 	"go": {"go.mod", "go.work"},
 }
 
-// VersionFiles is the closed set of files that may declare name's version, a
+// versionFiles is the closed set of files that may declare name's version, a
 // copy the caller may change; nil for a tool abcd checks no version of.
-func VersionFiles(name string) []string {
-	return slices.Clone(versionFiles[name])
+func versionFiles(name string) []string {
+	return slices.Clone(versionFileSets[name])
 }
 
-// CheckVersionFile refuses a version file outside name's closed set. A tool
+// checkVersionFile refuses a version file outside name's closed set. A tool
 // with a set must name one, since its version is what abcd checks it by; a
 // tool without one must name none.
-func CheckVersionFile(name, file string) error {
-	set := versionFiles[name]
+func checkVersionFile(name, file string) error {
+	set := versionFileSets[name]
 	switch {
 	case len(set) == 0 && file == "":
 		return nil
@@ -201,14 +206,14 @@ func CheckVersionFile(name, file string) error {
 // backtick or quote.
 const reasonPunct = ".,;:!?()[]-_+=%&#@*"
 
-// CheckReason refuses a reason that is empty, over MaxReasonRunes, or holds a
+// checkReason refuses a reason that is empty, over MaxReasonRunes, or holds a
 // character outside its allowlist: letters (unicode.IsLetter), decimal digits,
 // the space and reasonPunct, with no combining marks, so a decomposed accent
 // and a script written with vowel signs, as Devanagari is, are refused, and so
 // is a combining overlay that would draw a slash over a letter. So a reason
 // can describe a place in words but never carry a path to type, and it is
 // shown as data. The error never repeats it.
-func CheckReason(reason string) error {
+func checkReason(reason string) error {
 	if reason == "" {
 		return errors.New("a tool needs a reason: why the repository needs it")
 	}

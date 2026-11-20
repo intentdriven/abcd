@@ -13,7 +13,7 @@ import (
 // where a runner added later is held to the reservation.
 func TestEveryRunnersCommandIsReservedFromTheToolList(t *testing.T) {
 	for _, name := range runnerNames {
-		if !needs.Reserved(name) {
+		if !needs.ReservedForTest(name) {
 			t.Errorf("the runner %s starts %q, which the tool list does not reserve", name, name)
 		}
 	}
