@@ -17,6 +17,42 @@ import (
 	"github.com/intentdriven/abcd/internal/localtier"
 )
 
+// ParkedArtefactLimit is the one ceiling a parked session's assembled input is
+// written and read under: the reading assembler's bundle, which a dispatch
+// reads back through ReadParked, and the scribe assembler's context, which the
+// scribe's ingest reads back. Each assembler measures what it is about to park
+// against this limit and refuses before anything is written, naming the size
+// and the limit, so no session is handed an input its own dispatch or ingest
+// cannot read (iss-2611040555379758, iss-2611040555430199). The limit sits
+// well above what this repository assembles to (a scribe context of about
+// 9.5 MB over a ledger of nearly 4,800 records, a detection bundle of about
+// 7.5 MB) and bounds what one read holds in memory.
+//
+// A manifest is not held to it. A run's manifest is promoted into the committed
+// run directory and read back there under issueschema.RunArtefactReadLimit, so
+// an assembler holds its manifest to that limit, MaxFileBytes, instead.
+const ParkedArtefactLimit = 64 << 20
+
+// parkedLimit and manifestLimit are the two ceilings this package's assembler
+// parks under and ReadParked reads under, behind a seam so a test can hold a
+// run to a limit it can reach without assembling 64 MiB.
+var (
+	parkedLimit   int64 = ParkedArtefactLimit
+	manifestLimit int64 = MaxFileBytes
+)
+
+// RefuseOverLimit is the refusal an assembler returns when an artefact it is
+// about to park would pass the limit its reader reads it under: the artefact,
+// its size and the limit, named before anything is written. It returns nil for
+// an artefact at or under the limit.
+func RefuseOverLimit(name string, size int, limit int64) error {
+	if int64(size) <= limit {
+		return nil
+	}
+	return fmt.Errorf("the %s this assembly would park is %d bytes, over the %d-byte limit it is read "+
+		"back under, so the assembly refuses and nothing is written", name, size, limit)
+}
+
 // Parked is one staged run as a dispatch reads it: the run, its position, the
 // manifest's content hash an output must cite, and the bundle bytes as the
 // assembly wrote them.
@@ -48,7 +84,7 @@ func ReadParked(repoRoot, runID string) (Parked, error) {
 	}
 	defer root.Close()
 	dir := DefaultRunDir + "/" + runID + "/"
-	raw, err := localtier.ReadInRoot(root, dir+ManifestFileName, MaxFileBytes)
+	raw, err := localtier.ReadInRoot(root, dir+ManifestFileName, manifestLimit)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Parked{}, fmt.Errorf("reading: run %s is not parked at %s; assemble the run first", runID, dir)
@@ -65,7 +101,7 @@ func ReadParked(repoRoot, runID string) (Parked, error) {
 	if _, err := ParsePosition(string(m.Position)); err != nil {
 		return Parked{}, fmt.Errorf("reading: the manifest of run %s: %w", runID, err)
 	}
-	bundle, err := localtier.ReadInRoot(root, dir+BundleFileName, MaxFileBytes)
+	bundle, err := localtier.ReadInRoot(root, dir+BundleFileName, parkedLimit)
 	if err != nil {
 		return Parked{}, fmt.Errorf("reading: the bundle of run %s: %w", runID, err)
 	}
