@@ -27,11 +27,29 @@ func TestARawHeadingOpenerInACodeSpanIsNoHeading(t *testing.T) {
 		"a span holding a backtick":  "# Changelog\n\n- The page renders `` `<h3>` `` as text." + codeSpanTail,
 		"a span with no bound after": "# A page\n\nThe `<h2>` tag renders as text",
 		"a span opening a role":      "# A page\n\nThe `<div role=\"heading\">` element." + codeSpanTail,
-		"a span after a closed tag":  "# Changelog\n\n- Press <kbd title=\"a>b\">x</kbd>; `<h1>` renders as text." + codeSpanTail,
 	}
 	for what, doc := range rows {
 		if err := refuses(t, "CHANGELOG.md", doc, nil, refusalHeadings); err != nil {
 			t.Errorf("%s was read as a raw heading: %.300v", what, err)
+		}
+	}
+}
+
+// TestACodeSpanBesideMarkupIsReadWhole pins the floor's accepted cost: a span
+// is trusted only in a plain paragraph, so an opener written as code in a
+// paragraph that also holds a tag or a link is read as a raw heading, as it was
+// before the floor skipped code at all. Trusting it needs a real Markdown
+// parser (iss-2608220750025153).
+func TestACodeSpanBesideMarkupIsReadWhole(t *testing.T) {
+	rows := map[string]string{
+		"a span after a closed tag": "# Changelog\n\n- Press <kbd title=\"a>b\">x</kbd>; `<h1>` renders as text." + codeSpanTail,
+		"a span after a link":       "# Changelog\n\n- See [the page](https://x.test/); `<h1>` renders as text." + codeSpanTail,
+		"a span a line below a tag": "# Changelog\n\n- Press <kbd>x</kbd>;\n  `<h1>` renders as text." + codeSpanTail,
+	}
+	for what, doc := range rows {
+		if err := refuses(t, "CHANGELOG.md", doc, nil, refusalHeadings); err == nil ||
+			!strings.Contains(err.Error(), "as raw HTML") {
+			t.Errorf("%s was not read whole: %.300v", what, err)
 		}
 	}
 }
@@ -76,6 +94,16 @@ func TestARawHeadingBesideCodeIsStillFound(t *testing.T) {
 		"a processing instruction":     "# A page\n\nSee <? a > ` ?> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
 		"a CDATA section":              "# A page\n\nSee <![CDATA[ a > ` ]]> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
 		"a table row splitting a span": "# A page\n\n| a | b | c |\n| - | - | - |\n| `a | <h2>Audit Notes</h2> | b` |\n\n" + sentinelAuditNotes + "\n",
+		// A link's destination and title, an email autolink and a GFM bare
+		// autolink each hold a backtick as text, read before a code span.
+		"a tick in a link destination":   "# A page\n\nSee [x](https://x.test/a`b) then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick in a link title":         "# A page\n\nSee [x](/u \"a`b\") then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a digit-led email autolink":     "# A page\n\nMail <1`x@b.test> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick-led email autolink":      "# A page\n\nMail <`x@b.test> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick in a bare https URL":     "# A page\n\nSee https://x.test/a`b then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick in a short destination":  "# A page\n\nSee [x](u`a) <h2>Audit Notes</h2> and ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick in a short title":        "# A page\n\nSee [x](u \"t`a\") <h2>Audit Notes</h2> and ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a link title over a line break": "# A page\n\nSee [x](/u \"a\nb`c\") then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, doc := range rows {
 		err := refuses(t, "spc-x.md", doc, nil, refusalHeadings)

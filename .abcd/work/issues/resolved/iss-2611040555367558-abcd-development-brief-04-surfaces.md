@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/reading/project.go"
 remedy: "Skip code spans when finding raw-HTML headings, and bound the title quoted in the refusal."
-resolution: "The raw heading scans skip an opener inside a code span the page is sure of, outside an HTML block, as they skip one on a fenced line, and the refusal quotes the title by its opening words."
+resolution: "The raw heading scans skip an opener inside a code span the page is sure of, in a plain paragraph outside an HTML block (one holding no tag, link, table cell, escape, entity or URL outside its spans), as they skip one on a fenced line, and the refusal quotes the title by its opening words."
 impact: fix
 ---
 

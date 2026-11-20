@@ -2098,29 +2098,33 @@ func (c codeSpans) holds(line, offset int) bool {
 // backtick run the page might pair over the line break, nor from the line where
 // the page can be read more than one way.
 //
-// That pairer reads no inline markup, and a renderer reads a tag, an autolink,
-// a comment, a processing instruction, a declaration and a CDATA section before
-// a code span, so a backtick inside one opens no span while the pairer pairs it
-// with a later backtick. A line's spans are therefore trusted only up to the
-// first whose opening backtick sits inside such markup as markupScan reads it:
-// opened by a `<` followed by a letter, `/`, `!` or `?`, and not yet ended by
-// its closer (`>` outside a quoted attribute value, `-->`, `?>` or `]]>`),
-// read from the paragraph's first line, since a tag may run over a line break.
-// That span and every later one on the line are not trusted. GFM splits a
-// table row at its `|` before it reads spans, so no span is trusted on a line
-// holding a `|`.
+// That pairer reads no inline markup, while a renderer reads a tag, an
+// autolink, a link's destination and title, an escape, an entity, a table
+// row's cells and a GFM bare autolink before a code span, so a backtick inside
+// one opens no span to it while the pairer pairs it with a later backtick.
+// Each round of naming those constructs found another, so the floor names
+// instead what a paragraph must be for its spans to be trusted. It is an
+// allow-list: the spans of a paragraph, its lines up to the next blank line,
+// are trusted only when the paragraph is plain, and no span is trusted in any
+// other. A paragraph is plain when every byte of its lines outside the page's
+// spans, after each line's leading indentation and list and blockquote
+// markers, is none of `<`, `>`, `[`, `]`, `|`, `\` and `&`, and the bytes
+// outside the spans hold neither `://` nor `www.`, in any case. The scope is the paragraph,
+// not the line, because a link title may run over a line break.
 //
 // A renderer parses no code span inside an HTML block, where the backticks are
-// literal and a tag between them is markup, so no span is reported on a line
-// that opens an HTML block or sits inside one. The block is htmlBlockInterior's,
-// asked twice: as the lines stand, and with each line's list and blockquote
-// markers removed, because a block also opens after a marker and the interior
-// walk reads none. A line either reading calls HTML is HTML, so the second
-// reading can only take spans away.
+// literal and a tag between them is markup, so a paragraph holding a line that
+// opens an HTML block or sits inside one is not plain either. The block is
+// htmlBlockInterior's, asked twice: as the lines stand, and with each line's
+// list and blockquote markers removed, because a block also opens after a
+// marker and the interior walk reads none.
 //
-// A span not trusted leaves its line read whole, which can only over-refuse:
-// the spans trusted are exactly those the page pairs on a line holding no `|`
-// whose opening backtick no inline markup or HTML block holds.
+// A span not trusted leaves its paragraph read whole, which can only
+// over-refuse, and it does: a backticked opener such as `<h1>` in a paragraph
+// that also holds a link, a tag, a table cell, an entity, an escape or a URL is
+// refused as a raw heading, as it was before the floor skipped code at all. A
+// full reading, which would trust such a span, needs a real Markdown parser,
+// and adding one is a dependency the person signs off (iss-2608220750025153).
 func floorCodeSpans(lines []string, start int) codeSpans {
 	c := codeSpans{spans: make([][][2]int, len(lines)), starts: make([]int, len(lines))}
 	at := 0
@@ -2138,100 +2142,47 @@ func floorCodeSpans(lines []string, start int) codeSpans {
 	}
 	inside, bareInside := htmlBlockInterior(body), htmlBlockInterior(bare)
 	page := mdrecord.ReadPage(body)
-	var markup markupScan
-	for i, ln := range body {
-		if strings.TrimSpace(ln) == "" {
-			// Inline markup never runs over a blank line.
-			markup = markupScan{}
+	blank := func(i int) bool { return strings.TrimSpace(body[i]) == "" }
+	for i := 0; i < len(body); {
+		if blank(i) {
+			i++
 			continue
 		}
-		// A line's block markers are never markup, and a `>` among them closes
-		// nothing a line above left open.
-		at := len(ln) - len(bare[i])
-		if inside[i] >= 0 || bareInside[i] >= 0 || htmlBlockStartRe.MatchString(bare[i]) ||
-			strings.Contains(ln, "|") {
-			markup.advance(ln, at, len(ln))
-			continue
-		}
-		trusted := 0
-		for _, sp := range page.Spans[i] {
-			markup.advance(ln, at, sp[0])
-			at = sp[0]
-			if markup.open() {
-				break
+		end, plain := i, true
+		for ; end < len(body) && !blank(end); end++ {
+			if inside[end] >= 0 || bareInside[end] >= 0 || htmlBlockStartRe.MatchString(bare[end]) ||
+				!plainOutside(body[end], len(body[end])-len(bare[end]), page.Spans[end]) {
+				plain = false
 			}
-			// A trusted span is code: its bytes open and close no markup.
-			trusted++
-			at = sp[1]
 		}
-		markup.advance(ln, at, len(ln))
-		if trusted > 0 {
-			c.spans[start+i] = page.Spans[i][:trusted]
+		for ; plain && i < end; i++ {
+			if len(page.Spans[i]) > 0 {
+				c.spans[start+i] = page.Spans[i]
+			}
 		}
+		i = end
 	}
 	return c
 }
 
-// markupScan is where a left-to-right read of a paragraph's text stands
-// against the inline markup a renderer reads before a code span: outside it,
-// or inside a tag, an autolink, a comment, a processing instruction, a
-// declaration or a CDATA section it has not seen the end of.
-//
-// It errs towards open, which only takes spans away: any `<` followed by a
-// letter or `/` opens a tag or autolink whether or not the rest is well
-// formed, any `<!` a declaration, and a quote after a tag's `=` holds the tag
-// open, `>` included, until the same quote closes it.
-type markupScan struct {
-	// end is the text that ends the markup the scan is inside; "" outside.
-	end string
-	// tag is whether that markup is a tag or an autolink, where quotes count.
-	tag bool
-	// eq is whether a tag's last byte other than space was an `=`, so a quote
-	// next opens an attribute value.
-	eq bool
-	// quote is the quote of the attribute value the scan is inside, or 0.
-	quote byte
-}
-
-func (m *markupScan) open() bool { return m.end != "" }
-
-// advance reads line[from:to].
-func (m *markupScan) advance(line string, from, to int) {
-	for j := from; j < to; j++ {
-		c := line[j]
-		switch {
-		case m.end == "":
-			if c != '<' || j+1 >= len(line) {
-				continue
-			}
-			rest, n := line[j:], line[j+1]
-			switch {
-			case strings.HasPrefix(rest, "<!--"):
-				m.end, j = "-->", j+3
-			case strings.HasPrefix(rest, "<![CDATA["):
-				m.end, j = "]]>", j+8
-			case n == '?':
-				m.end, j = "?>", j+1
-			case n == '!':
-				m.end, j = ">", j+1
-			case n == '/' || ('a' <= n && n <= 'z') || ('A' <= n && n <= 'Z'):
-				m.end, m.tag, m.eq, j = ">", true, false, j+1
-			}
-		case m.quote != 0:
-			if c == m.quote {
-				m.quote = 0
-			}
-		case m.tag && m.eq && (c == '"' || c == '\''):
-			m.quote, m.eq = c, false
-		case m.tag && c == '=':
-			m.eq = true
-		case strings.HasPrefix(line[j:], m.end):
-			j += len(m.end) - 1
-			*m = markupScan{}
-		case m.tag && c != ' ' && c != '\t':
-			m.eq = false
+// plainOutside reports whether line[from:], outside the spans, is plain text
+// to floorCodeSpans: none of the bytes and sequences that open inline markup a
+// renderer reads before a code span. The bytes outside the spans are read
+// joined, so a sequence split by a span is still found, which can only refuse.
+func plainOutside(line string, from int, spans [][2]int) bool {
+	var out strings.Builder
+	for _, sp := range spans {
+		if sp[0] > from {
+			out.WriteString(line[from:sp[0]])
 		}
+		from = max(from, sp[1])
 	}
+	if from < len(line) {
+		out.WriteString(line[from:])
+	}
+	text := out.String()
+	return !strings.ContainsAny(text, "<>[]|\\&") &&
+		!strings.Contains(text, "://") && !strings.Contains(strings.ToLower(text), "www.")
 }
 
 // displacedFrontmatter reports a delimited block that does not open at line 0
