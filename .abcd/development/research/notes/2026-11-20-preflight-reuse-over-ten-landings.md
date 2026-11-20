@@ -5,9 +5,13 @@ itd-2611011325421304 asks for, written as step 3 of spc-2611012047503720. The
 note of 2026-11-19 (`2026-11-19-preflight-reuse-over-ten-landings.md`) read
 ten landings from 2026-11-09 to 2026-11-15 and could not state a check time,
 because no report printed one. Since then the preflight prints its time, so
-this note reads the ten most recent landings and sets both reuse and time
-against the 2026-11-01 baseline. Every figure below is one a preflight
-printed, or a share of two printed counts. Nothing is estimated.
+this note reads the ten most recent landings whose preflight this checkout kept
+a log of, and sets both reuse and time against the 2026-11-01 baseline. Two
+accounts land on main and each keeps its own logs, so the set is not ten
+consecutive landings on main. The span runs from #1657 to #1710, and the merged
+pull requests inside it with no log here are #1663 to #1671, #1673 to #1701,
+and #1703, #1704 and #1708. Every figure below is one a preflight printed, or a
+share of two printed counts. Nothing is estimated.
 
 ## The baseline
 
@@ -45,11 +49,11 @@ reference and not as a baseline.
 ## The ten reports
 
 The unit column sums the preflight's two unit lines, the `./cmd/...`
-packages and the five or six tests named to run without the race detector, as
+packages and the six packages named to run without the race detector, as
 the receipt line does. The race stage held 132 packages in every report. Times
 are as printed; the merge time is UTC.
 
-| PR | Merged | Head | Unit reused | Race reused | Race stage time | Checked in | Waited |
+| PR | Merged | Head | Unit reused | Race reused | Race stage time | Checked in | Waited (load gate, race gate, check lock) |
 |---|---|---|---|---|---|---|---|
 | #1657 | 2026-11-19 05:45 | d37c28ce | 8 of 16 | 110 of 132 | not printed | not printed | not printed |
 | #1659 | 2026-11-19 05:56 | f7c6414c | records-only | records-only | records-only | not printed | not printed |
@@ -76,9 +80,9 @@ merged after #1707 although its check finished first.
 Against the baseline, where 0 of 133 packages were reused, the race stage of
 every one of the eight checks reused at least 65 of 132 packages. Taking the
 two stages together, 902 of 1184 package runs (76.2%) were reused. The unit
-stage's second line reused 0 of 6 packages in every report here, as it did in
-the earlier ten, so its share is bounded: 6 of the 16 packages in that stage
-always run.
+stage's second line reused 0 of its 6 packages in every report here, as it did
+in the earlier ten (0 of 5 there), so its share is bounded: 6 of the 16
+packages in that stage always run.
 
 For scale, the earlier ten landings (read on 2026-11-19) pooled to 73.1% in
 the race stage and 51.4% in the unit stage. The race share here, 80.5%, is
@@ -88,13 +92,13 @@ no trend from the pair.
 
 ## The time the reports show
 
-Six landings printed a time. Their medians and ranges:
+Six test-running landings printed a time. Their medians and ranges:
 
 | Over the six timed landings | Median | Range |
 |---|---|---|
 | Race stage | 39m19s | 11m20s (#1707) to 43m16s (#1705) |
 | Checked in, whole preflight | 44m45s | 16m49s (#1707) to 48m52s (#1705) |
-| Waited (load gate, race gate) | 37m59s | 1m37s (#1672) to 52m15s (#1707) |
+| Waited (load gate, race gate, check lock) | 37m59s | 1m37s (#1672) to 52m15s (#1707) |
 
 The records-only landing #1702 checked in 4m09s after waiting 7m54s.
 
@@ -120,9 +124,11 @@ The records-only landing #1702 checked in 4m09s after waiting 7m54s.
   own, a cold run of 1811s against a fresh-worktree run of 800s on the same
   commit, which is one pair and not one of these ten.
 - **The waits.** Waiting at the load gate and the race gate ranged from 1m37s
-  to 52m15s and exceeded the check itself in #1706 and #1707. It
-  reflects how many other checks and runs were on the machine, and it is not
-  a property of the reuse. It is kept out of any claim above.
+  to 52m15s and exceeded the check itself in #1706 and #1707. The
+  column also counts the lock on the check directory, which the reuse
+  mechanism adds: 4m01s of #1707's wait and 2m44s of #1709's. The rest
+  reflects how many other checks and runs were on the machine. The wait is
+  kept out of any claim above.
 - **Consecutive landings on the default branch.** The ten are consecutive among
   the logs this checkout keeps, not among everything that merged. Pull requests
   merged between them whose preflight this checkout did not run have no log
@@ -138,3 +144,11 @@ The records-only landing #1702 checked in 4m09s after waiting 7m54s.
 - **Criterion 6 as a whole.** The reuse half is measured over two sets of
   ten landings. The time half has six timed landings and no timed baseline,
   so the criterion's comparison of check time is not met by this note.
+
+## What this does not settle
+
+Criterion 6 of itd-2611011325421304 is not met as written. The set is not ten
+consecutive landings on main, and the race stage's time does not fall with its
+reuse share. So the intent stays planned. The decision that records this is
+dcn-2611202032152249, and the issue that holds the open question of the race
+stage's time is iss-2611202032159749.
