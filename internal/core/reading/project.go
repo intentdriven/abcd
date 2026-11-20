@@ -2044,7 +2044,7 @@ func htmlBlockInterior(body []string) []int {
 		}
 		switch {
 		case open && terminator == "":
-			open = strings.TrimSpace(ln) != ""
+			open = !mdrecord.BlankLine(ln)
 		case open:
 			hay := ln
 			if raw {
@@ -2142,7 +2142,7 @@ func floorCodeSpans(lines []string, start int) codeSpans {
 	}
 	inside, bareInside := htmlBlockInterior(body), htmlBlockInterior(bare)
 	page := mdrecord.ReadPage(body)
-	blank := func(i int) bool { return strings.TrimSpace(body[i]) == "" }
+	blank := func(i int) bool { return mdrecord.BlankLine(body[i]) }
 	for i := 0; i < len(body); {
 		if blank(i) {
 			i++

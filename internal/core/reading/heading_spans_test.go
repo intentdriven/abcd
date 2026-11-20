@@ -104,6 +104,13 @@ func TestARawHeadingBesideCodeIsStillFound(t *testing.T) {
 		"a tick in a short destination":  "# A page\n\nSee [x](u`a) <h2>Audit Notes</h2> and ` here.\n\n" + sentinelAuditNotes + "\n",
 		"a tick in a short title":        "# A page\n\nSee [x](u \"t`a\") <h2>Audit Notes</h2> and ` here.\n\n" + sentinelAuditNotes + "\n",
 		"a link title over a line break": "# A page\n\nSee [x](/u \"a\nb`c\") then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		// CommonMark's blank line holds only spaces and tabs. A line of a
+		// no-break space or a form feed is text, so the paragraph, the link
+		// title, the tag and the HTML block all run on through it.
+		"a link title over a no-break space":  "# A page\n\nSee [x](/u \"a\n \nb`c\") then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a link title over a form feed":       "# A page\n\nSee [x](/u \"a\n\f\nb`c\") then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tag over a no-break space":         "# A page\n\nSee <kbd title=\"a\n \nb`c\">x</kbd> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"an HTML block over a no-break space": "# A page\n\n<div>\n \n```\n<h2>Audit Notes</h2>\n```\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, doc := range rows {
 		err := refuses(t, "spc-x.md", doc, nil, refusalHeadings)
