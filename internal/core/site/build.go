@@ -38,7 +38,9 @@ const DefaultOutDir = "site"
 
 // The committed sources the build copies into the output tree verbatim, and the
 // names they take there. Cloudflare reads the destinations; the sources are
-// reviewable files with comments, which the destinations keep.
+// reviewable files with comments, which the destinations keep. The one
+// addition is the record's forwards around the redirect map, where the
+// composition asks for them (withRecordForwards).
 var copiedSources = []struct{ src, dst string }{
 	{"site-src/redirects", "_redirects"},
 	{"site-src/headers", "_headers"},
@@ -620,7 +622,7 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if ex.pages.status {
+	if ex.pages.status && manifest.recordElsewhere() == "" {
 		block, err := statusblock.Read(repoRoot, req.Lanes, nil)
 		if err != nil {
 			return Result{}, err
@@ -696,8 +698,12 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	if err := write("index.html", []byte(html)); err != nil {
 		return Result{}, err
 	}
-	if err := write("record.json", recordJSON); err != nil {
-		return Result{}, err
+	// The record export is the record's, and a site narrowed to its
+	// documentation publishes none of the record (RecordElsewhere.Narrow).
+	if manifest.recordElsewhere() == "" {
+		if err := write("record.json", recordJSON); err != nil {
+			return Result{}, err
+		}
 	}
 	// Written in a fixed order, so two builds of one tree write the same files
 	// in the same sequence and the reported list is a function of the record.
@@ -723,12 +729,20 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 	}
 	for _, cp := range statics {
+		forwards := cp.dst == redirectsOutRel && manifest.recordForwardTo() != ""
 		data, err := readStatic(cp.src)
 		if err != nil {
-			if os.IsNotExist(err) {
+			// A repository with no redirect map of its own still serves the
+			// record's forwards when it asks for them.
+			if os.IsNotExist(err) && !forwards {
 				continue
 			}
-			return Result{}, err
+			if !os.IsNotExist(err) {
+				return Result{}, err
+			}
+		}
+		if forwards {
+			data = withRecordForwards(data, manifest.recordForwardTo())
 		}
 		if err := write(cp.dst, data); err != nil {
 			return Result{}, err
@@ -758,6 +772,41 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	}
 	sort.Strings(res.Files)
 	return res, nil
+}
+
+// withRecordForwards is the redirect map with the record's forwards to addr
+// (RecordElsewhere.Forward), or the map unchanged when addr is empty: each of
+// the record's addresses answers with a 301 to the same path there, and the
+// host carries the query string over by itself.
+//
+// The host applies a static rule only ahead of every rule with a splat, so
+// the two static forwards go before the committed map and the one splat after
+// it. A committed rule for one of the same paths is below a static forward
+// and never fires, which is the forward's point.
+func withRecordForwards(committed []byte, addr string) []byte {
+	if addr == "" {
+		return committed
+	}
+	var b strings.Builder
+	b.WriteString(recordForwardsHead(addr))
+	b.Write(committed)
+	if len(committed) > 0 && committed[len(committed)-1] != '\n' {
+		b.WriteString("\n")
+	}
+	b.WriteString("\n# The record's pages, after every static rule.\n")
+	b.WriteString("/record/* " + addr + "record/:splat 301\n")
+	return []byte(b.String())
+}
+
+// recordForwardsHead is what withRecordForwards writes above the committed
+// map for addr. The link-target gate strips its lines back off a rule's line
+// in the built map, so a finding names the line the rule has in the committed
+// file it tells the reader to fix.
+func recordForwardsHead(addr string) string {
+	return "# The record is built at " + addr + " (record.elsewhere in " + ManifestRelPath + "),\n" +
+		"# so `abcd site build` forwards its addresses there.\n" +
+		"/record " + addr + "record 301\n" +
+		"/record.json " + addr + "record.json 301\n\n"
 }
 
 // isPreOne reports whether a version's major component is 0 — the rule the Beta

@@ -104,7 +104,10 @@ intents:
   publication opt-in only. This repository opts in through
   `.abcd/site.json`'s `record.issue_ledger` and `record.decisions`; the
   second publishes the decision records as the decision log page, kept off
-  the relationship chart and the development page.
+  the relationship chart and the development page. Its `record.elsewhere`
+  names the Pages address the project route builds the record onto, with the
+  forwarding and narrowing switches the cut-over turns on
+  (spc-2610142146250176); both off, the composed build is unchanged.
 - **The README migration** — README's product narrative lives in
   `docs/explanation/{rationale,roles,artefacts,process}.md` and
   `docs/how-to/install.md`, and README is a contributor page keeping the

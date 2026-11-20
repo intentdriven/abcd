@@ -186,6 +186,24 @@ inferred. abcd's own composed site is not a project site: it renders its
 documentation and stays as it is, and its record's project site is kept beside
 it.
 
+**A record built elsewhere.** A composition can name the address its record is
+built at instead, in `"record": {"elsewhere": {...}}`: an https directory URL,
+the project route's Pages address for abcd's own. The declaration carries two
+switches, each off until it is turned on, and each one committed change
+(spc-2610142146250176). With both off, the site builds exactly what it built
+before. Forwarding on, the build adds to the redirect map a 301 from each of the
+record's addresses (`/record`, `/record/` and every page below it, and
+`/record.json`) to the same path at that address; the host keeps the query
+string. Narrowing on, the build writes none of the record's pages and no
+`record.json`, every link it draws into the record names that address, and the
+gate measures no reference ratchet, which the record's own site measures. The
+contributors and references pages stay, as pages of the documentation site,
+because the project route builds neither (dcn-2611201438402486). The record's
+other keys stay as they are while narrowing is on, so turning it off restores
+the record unchanged. A project site's settings name no such address. abcd's
+own composition names its Pages address with both switches off; the cut-over
+turns each on, in its order, on the person's word.
+
 ## The page set
 
 Every repository gets pages from the same closed set. Seven of them carry a

@@ -60,7 +60,12 @@
   },
   "record": {
     "issue_ledger": true,
-    "decisions": true
+    "decisions": true,
+    "elsewhere": {
+      "address": "https://intentdriven.github.io/abcd/",
+      "forward": false,
+      "narrow": false
+    }
   },
   "docs": {
     "index": "docs/README.md",
