@@ -203,6 +203,15 @@ func blankLine(ln string) bool {
 	return true
 }
 
+// BlankLine reports whether a line is blank as CommonMark reads it: empty or
+// nothing but spaces and tabs, before an optional trailing `\r`. Every test of
+// where a paragraph or block ends goes through it, so a line holding only a
+// no-break space, another Unicode space, a vertical tab or a form feed, which
+// strings.TrimSpace would empty but the page reads as text, never ends one.
+func BlankLine(ln string) bool {
+	return blankLine(strings.TrimSuffix(ln, "\r"))
+}
+
 // SureCodeSpans is CodeSpanRanges for each line of a body read top to bottom,
 // for a reader that blanks code spans where it is sure of them and reads the
 // rest whole: the docs lint's prose checks, which keep their own fence mask
