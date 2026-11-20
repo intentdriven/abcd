@@ -245,7 +245,11 @@ var caseFoldingFS = fsutil.CaseFoldingFS
 // committed symlink under the checkout targeting a real binary elsewhere
 // resolves outside but IS repository content (the link is the attacker's), and a
 // path outside the checkout whose target resolves into it is repository content
-// by another route. Containment is judged twice more, for the same reason: the
+// by another route. A third route is a committed link reached through a
+// directory link outside the checkout (PATH holding ~/alias -> <repo>/scripts),
+// whose written path and target both lie outside, so each step of the
+// candidate's links is also judged at its real location (tools.StepLocations).
+// Containment is judged twice more, for the same reason: the
 // lexical compare routes through fsutil.PathWithin, the canonical one, so on a
 // case-folding filesystem a respelt root ("…/REPO/…", or the NFD form of a
 // non-ASCII name) that addresses the SAME directory is still "inside"; and an
@@ -292,9 +296,16 @@ func admitBinary(repoRoot, candidate, origin string) (string, error) {
 	}
 	const inside = "lies inside the repository; move the binary outside the repository " +
 		"(a repository rooted at $HOME contains ~/.local/bin and ~/go/bin), or unset path to use PATH"
+	// Each step of the candidate's links is held to the root at its real
+	// location too: a link the repository holds, reached through a directory
+	// link outside it, is repository content wherever it points.
+	steps, ok := tools.StepLocations(candLexical)
+	if !ok {
+		return refuse("cannot be judged: a link on its way cannot be examined")
+	}
 	fold := caseFoldingFS()
 	for _, root := range []string{rootLexical, rootResolved} {
-		for _, cand := range []string{candLexical, candResolved} {
+		for _, cand := range append([]string{candLexical, candResolved}, steps...) {
 			if fsutil.PathWithin(cand, root, fold) {
 				return refuse(inside)
 			}

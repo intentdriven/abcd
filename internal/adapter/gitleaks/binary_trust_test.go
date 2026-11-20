@@ -333,3 +333,25 @@ func TestCaseSensitiveKeepsExactMatch(t *testing.T) {
 		t.Fatalf("case-distinct sibling refused on a case-sensitive host: %v", err)
 	}
 }
+
+// TestRefusesRepositoryLinkReachedThroughOutsideDirectoryLink pins
+// iss-2611202034242491: PATH holds ~/alias -> R/scripts, and R/scripts/gitleaks
+// is a committed link to a real executable outside the repository. The
+// lookup's written path and its final target both lie outside R, but the link
+// it is reached through really lies inside, so the repository chose what runs.
+func TestRefusesRepositoryLinkReachedThroughOutsideDirectoryLink(t *testing.T) {
+	repo := t.TempDir()
+	outside := writeExecutable(t, filepath.Join(t.TempDir(), "bin", "gitleaks"))
+	scripts := filepath.Join(repo, "scripts")
+	if err := os.MkdirAll(scripts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(scripts, "gitleaks")); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(scripts, alias); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused(t, newTrustProbe(filepath.Join(alias, "gitleaks")), repo, Config{Enabled: true})
+}

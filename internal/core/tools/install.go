@@ -709,24 +709,71 @@ func (in *Installer) admit(name string) (string, error) {
 
 // WithinTree reports whether the program at p, which resolves to resolved
 // after symlinks, lies inside the tree at guard, judged lexically and after
-// symlink resolution on both sides. It is the one in-checkout judgement for a
-// program: the installer refuses to run what it holds, and ahoy's presence
-// check does not count it as installed. Both p and guard are absolute; the
-// caller has already resolved p.
+// symlink resolution on both sides, and with each step of p's links held to the
+// tree at its real location (StepLocations). It is the one in-checkout
+// judgement for a program: the installer refuses to run what it holds, and
+// ahoy's presence check does not count it as installed. Both p and guard are
+// absolute; the caller has already resolved p. A step that cannot be examined
+// counts as inside, the closed direction.
 func WithinTree(p, resolved, guard string) bool {
 	guards := []string{filepath.Clean(guard)}
 	if g, err := filepath.EvalSymlinks(guard); err == nil {
 		guards = append(guards, g)
 	}
+	steps, ok := StepLocations(p)
+	if !ok {
+		return true
+	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
-		for _, c := range []string{filepath.Clean(p), resolved} {
+		for _, c := range append([]string{filepath.Clean(p), resolved}, steps...) {
 			if fsutil.PathWithin(c, g, fold) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// maxStepLinks bounds the links StepLocations follows, as the system's own
+// limit does.
+const maxStepLinks = 40
+
+// StepLocations is where each step of p's links really lies: p, then each path
+// its links lead to in turn, each as its directory with every link resolved
+// (fsutil.RealExistingPath) joined with its own name. A step reached through a
+// directory link lies where that link leads, which neither its written form
+// nor the final target shows, so a link a repository holds is caught wherever
+// it is reached from. A relative link target is read against the real
+// directory of its link, as the system reads it. A step that does not exist
+// ends the walk; ok is false when a step cannot be examined or the links do
+// not end, and a caller holding a program outside a tree then refuses it.
+func StepLocations(p string) ([]string, bool) {
+	cur := filepath.Clean(p)
+	var steps []string
+	for range maxStepLinks {
+		dir := fsutil.RealExistingPath(filepath.Dir(cur))
+		steps = append(steps, filepath.Join(dir, filepath.Base(cur)))
+		fi, err := os.Lstat(cur)
+		if errors.Is(err, os.ErrNotExist) {
+			return steps, true
+		}
+		if err != nil {
+			return nil, false
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			return steps, true
+		}
+		target, err := os.Readlink(cur)
+		if err != nil {
+			return nil, false
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(dir, target)
+		}
+		cur = filepath.Clean(target)
+	}
+	return nil, false
 }
 
 // pipeGrace is how long runArgv keeps reading a step's output once the step
