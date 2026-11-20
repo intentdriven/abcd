@@ -31,6 +31,12 @@ package loop
 // path held before its edit; it is the same widening (widenHold). The run
 // record keeps each path widened to (StageWidenedTo), so a reservation made
 // again names it whatever became of the reservation branch.
+//
+// An intent run's hold widens a second way, ahead of any edit: a start
+// reserves only the spec step it opens next (stepEntries), and as the lane for
+// each later step opens, before its worktree is made, the loop reserves that
+// step's packages beside the hold through the same widening
+// (holdOpeningStep, iss-2611201418535169).
 
 import (
 	"fmt"
@@ -533,32 +539,103 @@ func holdLaneChanges(c Context, lane Lane, stage Stage, act fenceAct) (note stri
 	if h.err == nil {
 		return h.note, h.lines, nil
 	}
-	reason := fsutil.RedactHome(h.err.Error())
-	rf, ok := AsRefusal(h.err)
+	return "", nil, holdRefusal(c, lane, stage, act, h.err, h.peer, func(reason string) string {
+		return fmt.Sprintf("the lane's branch changes %s beyond its reservation on %s, which could not be reserved: %s; so this lane does not %s",
+			h.shown(), c.State.Key, reason, act.not)
+	})
+}
+
+// holdRefusal is the refusal of a step whose widening of lane's hold, made
+// at stage, failed with err: what says what was not reserved, given the
+// refusal's reason. Another holder's live hold on a path (peer) is a wait by
+// design until that hold ends (Refusal.pathHeld); an origin it cannot reach
+// is a wait, as at the fence's other reads (fenceUnread); any other
+// contention backs off; anything else refuses for a person.
+func holdRefusal(c Context, lane Lane, stage Stage, act fenceAct, err error, peer bool, what func(reason string) string) *Refusal {
+	reason := fsutil.RedactHome(err.Error())
+	rf, ok := AsRefusal(err)
 	if ok {
 		reason = rf.Reason
 	}
-	what := fmt.Sprintf("the lane's branch changes %s beyond its reservation on %s, which could not be reserved: %s; so this lane does not %s",
-		h.shown(), c.State.Key, reason, act.not)
+	said := what(reason)
 	switch {
 	case ok && rf.originUnread:
-		r := fenceUnread(lane, what, reason, "git push the reservation on "+c.State.Key)
+		r := fenceUnread(lane, said, reason, "git push the reservation on "+c.State.Key)
 		r.Stage = string(stage)
-		return "", nil, r
-	case h.peer:
-		r := contend(string(stage), CheckReservation, lane.ID, what,
+		return r
+	case peer:
+		r := contend(string(stage), CheckReservation, lane.ID, said,
 			act.stays+"; the lane waits for the hold it names to end, and goes on once it has: settle it with its holder to go on sooner, or run `abcd implement step` again once it ends")
 		r.pathHeld = true
-		return "", nil, r
+		return r
 	case ok && rf.Contention:
-		return "", nil, contend(string(stage), "", lane.ID, what,
+		return contend(string(stage), "", lane.ID, said,
 			act.stays+"; wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again")
 	}
-	out := refuse(string(stage), "", lane.ID, what, "settle what it names, then run `abcd implement step` again; "+act.stays)
+	out := refuse(string(stage), "", lane.ID, said, "settle what it names, then run `abcd implement step` again; "+act.stays)
 	if ok {
 		out.capped = rf.capped
 	}
-	return "", nil, out
+	return out
+}
+
+// openingAct is what a refusal of the hold as a step's lane opens
+// (holdOpeningStep) says the lane does not do.
+var openingAct = fenceAct{not: "make its worktree", none: "no worktree is made", stays: "no worktree is made, and the run is unchanged"}
+
+// holdOpeningStep is the loop's widening of an intent run's hold as the lane
+// for a spec step opens (iss-2611201418535169): before the lane's worktree
+// stage makes anything, the reservation is reserved again with the packages
+// that step names (stepPackages, the `## Footprint` packages line where the
+// step cannot say) beside what it holds, through the one widening
+// (widenHold), keeping the tip's term and judged for overlap like any
+// reservation. A start reserves only the step it opens next (stepEntries), so
+// the lane it opens finds its step held and pushes nothing; each later step's
+// lane widens the hold here. Another holder's live hold on one of the step's
+// packages backs the step off as contention (exit 3), a wait by design until
+// that hold ends, with no worktree made and the run unchanged. An issue run
+// reserves its found_at at its start and widens nothing here, nor does an
+// auto-plan lane or a run that holds no reservation; a reservation the view
+// does not show this copy holding is the land fence's to settle. A spec that
+// no longer names the step's packages, nor a Footprint line to stand for
+// them, widens nothing: the start reserved what the record named then, and
+// the widenings that follow the lane's branch (widenLaneChanges) still reserve
+// whatever it changes. lines are the run record's lines for a widening made.
+func holdOpeningStep(c Context, lane Lane) ([]Entry, error) {
+	st := c.State
+	if st.ReservedAt == nil || st.Issue() != "" || st.Spec == "" || lane.AutoPlan != nil || lane.SpecStep <= 0 {
+		return nil, nil
+	}
+	fp, err := stepPackages(c.RepoRoot, st.Spec, lane.SpecStep)
+	if err != nil || len(fp) == 0 {
+		return nil, nil
+	}
+	snap, err := claim.View(c.RepoRoot, c.Now)
+	if err != nil {
+		return nil, refuse(string(StageWorktree), "", lane.ID,
+			"the reservation on "+st.Key+" cannot be read to widen it to step "+fmt.Sprint(lane.SpecStep)+"'s packages: "+fsutil.RedactHome(err.Error())+"; "+openingAct.stays,
+			"settle what it names, then run `abcd implement step` again")
+	}
+	own, ok := snap.Lookup(st.Key)
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+		return nil, nil
+	}
+	want, err := widenPaths(lane.ID, fp)
+	if err != nil {
+		return nil, err
+	}
+	w, err := widenHold(c.RepoRoot, st.Key, own, want, c.Now)
+	if err != nil {
+		return nil, holdRefusal(c, lane, StageWorktree, openingAct, err, peerHold(c.RepoRoot, st.Key, w.added, err, c.Now), func(reason string) string {
+			return fmt.Sprintf("the lane opening for step %d of %s needs %s, which the reservation on %s does not hold and could not be widened to: %s; so this lane does not %s",
+				lane.SpecStep, st.Spec, strings.Join(w.added, ", "), st.Key, reason, openingAct.not)
+		})
+	}
+	if len(w.added) == 0 {
+		return nil, nil
+	}
+	note := w.r.note + fmt.Sprintf(", widened to %s as %s opens for step %d", strings.Join(w.added, ", "), lane.ID, lane.SpecStep)
+	return widenedLines(lane.ID, w.added, note, c.Now), nil
 }
 
 // heldWith is fp with every path of held that fp does not cover appended.

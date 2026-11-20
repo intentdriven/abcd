@@ -127,12 +127,22 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"names the check, the reason and the remedy, and writes nothing. `abcd build next` picks\n" +
 			"the intent instead of taking one named.\n\n" +
 			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
-			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
-			"resumed one, with the files the `- packages:` lines of the spec's steps still to build\n" +
-			"name, those with no `- landed:` line, or its `## Footprint` packages line when the steps\n" +
-			"cannot say: the spec lists no steps, its steps section cannot be read, a step still to\n" +
-			"build names no packages, or an entry on such a step's line names no path (an issue's\n" +
-			"found_at path for an issue id), so every other participant sees it is taken. A spec whose\n" +
+			"`abcd reserve` does, once the checks pass and before the run is created. An intent's run\n" +
+			"reserves only the step it opens next: a new run with the files the `- packages:` line of\n" +
+			"the first step still to build names (one with no `- landed:` line), and a resumed one with\n" +
+			"those of the steps its lanes are open on, or of the next step when none is, or its\n" +
+			"`## Footprint` packages line when the steps cannot say: the spec lists no steps, its\n" +
+			"steps section cannot be read, a step still to build names no packages, or an entry on\n" +
+			"such a step's line names no path (an issue's found_at path for an issue id), so every\n" +
+			"other participant sees it is taken. As each later step's lane opens, the run widens the\n" +
+			"reservation to that step's packages, judged for overlap like any reservation; a peer's\n" +
+			"hold on one of them holds back that step's lane alone, and the run's other lanes go on.\n" +
+			"As each step lands, the run narrows the reservation to what the steps still in flight\n" +
+			"need, the files their lanes' branches changed included, so a run waiting on a peer never\n" +
+			"holds a landed step's packages, and a resume never takes back a path the narrowing gave\n" +
+			"up. Narrowing waits only while a lane has been handed an implementer or a fix round and\n" +
+			"has not reached its landing with nothing pending, its edits not yet committed; a resume\n" +
+			"then keeps what the reservation still names. A spec whose\n" +
 			"steps cannot say and whose footprint names no packages, or an issue with no found_at\n" +
 			"path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +

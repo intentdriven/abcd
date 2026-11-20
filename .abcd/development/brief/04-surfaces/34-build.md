@@ -204,20 +204,38 @@ reservation keeps people, and one person's computers, apart. In a checkout
 with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: for an intent, with the
-packages of the steps its spec still has to build, the `- packages:` lines of
-the steps with no `- landed:` line taken together, so a package only a landed
-step touched holds no one off (iss-2611181755106054), and with the spec's
-`## Footprint` `- packages:` line when the steps cannot say: the spec lists no
-steps, its steps section cannot be read, a step still to build names no
-packages, or an entry on such a step's line names no path; each entry read as written when that names
+packages of the step it opens next alone, the `- packages:` line of the first
+step with no `- landed:` line (iss-2611201418535169), or, for a resume, of the
+steps still to build its lanes are open on, so a package only a landed step
+touched (iss-2611181755106054), or only a later step touches, holds no one
+off, and with the spec's `## Footprint` `- packages:` line when the steps
+cannot say: the spec lists no steps, its steps section cannot be read, that
+step names no packages, or an entry on its line names no path; each entry read as written when that names
 something in the tree and otherwise as its path alone (a trailing
 parenthetical note set off by a space dropped, a comma inside one not
 splitting the entry), and cleaned of a trailing slash; for an issue, with the
 path its `found_at` names. The reservation names exactly
 those paths, so a file named there is reserved as
-that file, and one reservation holds them for every step the run builds; a
-resumed run whose every step has since landed reserves the packages of the
-steps it built, never wider than its start. A path naming a directory git tracks is
+that file, and one reservation holds them for every step the run builds. The
+reservation widens as each later step's lane opens: before the lane's
+worktree is made, the loop reserves that step's own packages (the
+`## Footprint` line when the step cannot say) beside what the reservation
+holds, keeping its term, judged for overlap and against the cap like any
+reservation, and another's live hold on one of them holds that step back
+alone, a wait until that hold ends, with no worktree made for it: the step
+moves the run's other lanes, or opens a later step's lane in its place, and
+is contention only when nothing else moved. Once a step lands, the run's next
+renewal narrows the reservation to what the steps still in flight need, their
+packages, the paths their lanes widened to, the files their lanes' branches
+changed and the spec each landing marks (dcn-2611201503122480), so a package
+only a landed step touched holds no one off and two runs whose step orders
+cross never each hold what the other waits for. Narrowing waits only while a
+lane has been handed an implementer or a fix round and has not reached its
+landing with nothing pending, since its branch shows its edits only once its
+receipt commits them; a lane still at its worktree or brief holds nothing
+back. A resume never takes back a path the narrowing gave up, and while a lane
+is mid-edit it keeps what the reservation still names. A resumed run whose every step has since landed reserves the
+packages of the steps it built, never wider than its start. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning
 on stderr in the text form; iss-2610230016544142). A spec whose
@@ -266,8 +284,8 @@ to reserve it with, or names one by prose (the check `footprint`), and less
 one whose footprint shares a path with another copy's live reservation of
 another record as this checkout last fetched them (the check `overlap`,
 iss-2611182334466021), since its start would be refused
-at the reservation. The footprint is the one the start reserves with, those
-of the steps still to build or the packages line, and the overlap is the
+at the reservation. The footprint is the one the start reserves with, that
+of the step it opens next or the packages line, and the overlap is the
 reservation act's own rule (`claim.Snapshot.Contention`), so an expired or
 released hold, and this copy's own, exclude nothing. This copy's own is one
 it made under a holder the reader owns, the test the act's own judgement

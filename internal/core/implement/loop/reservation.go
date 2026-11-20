@@ -75,7 +75,9 @@ func claimOptions(now time.Time) claim.Options {
 // this copy and not released, half through its lease since its
 // Abcd-Claimed-At: it fetches and pushes a renewal that keeps the tip's own
 // term (claim.RenewalTerm), and logs reservation_renewed in the run record. Under
-// half its lease nothing is pushed. A renewal that fails is logged, once
+// half its lease nothing is pushed, except where an intent run's landed step
+// leaves its reservation holding what no step still in flight needs: that
+// renewal is due at once and narrows the hold (landedNarrowing). A renewal that fails is logged, once
 // until one succeeds, and its note returned for the step's answer; the stage
 // still runs, since the land fence is where a lost reservation stops the run.
 // A view that shows the reservation held by another person or copy is said
@@ -108,7 +110,14 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		logOnce(st, now, StageReservationLost, lost)
 		return lost
 	}
-	if !due {
+	// Once an intent run's step has landed, its reservation narrows to the
+	// steps still in flight at the next renewal, which is due at once rather
+	// than at half the lease (landedNarrowing, narrow.go).
+	var landed []string
+	if own != nil && (own.State == claim.StateLive || own.State == claim.StateExpired) {
+		landed, _ = landedNarrowing(repoRoot, *st, *own)
+	}
+	if !due && landed == nil {
 		return ""
 	}
 	req := claim.Request{Record: st.Key, Renew: true, Lease: claim.RenewalTerm(*own), Stage: renewalStage(*st)}
@@ -116,7 +125,11 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	// files its branch changed (narrow.go); a narrowing that was due and
 	// could not be made is said in the renewal's note.
 	var declined string
-	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	if landed != nil {
+		req.Narrow = landed
+	} else {
+		req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	}
 	lapsed := own.State == claim.StateExpired
 	if lapsed {
 		req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
@@ -126,8 +139,11 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		return renewFailed(st, now, err)
 	}
 	why := "half its lease having passed"
-	if lapsed {
+	switch {
+	case lapsed:
 		why = "its lease having lapsed"
+	case !due:
+		why = "a step of " + st.Spec + " having landed"
 	}
 	note := fmt.Sprintf("renewed the reservation on %s, %s, until %s", st.Key, why, stamp(res.ExpiresAt))
 	if len(res.OwnOverlap) > 0 {
@@ -138,12 +154,16 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		note += "; revived past your other copy's reservation of " + strings.Join(past, ", ") +
 			", which no commit of this run's lanes touched"
 	}
+	to := "the files its branch changed"
+	if landed != nil {
+		to = "what the steps still in flight need"
+	}
 	switch {
 	case res.Narrowed:
-		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
-			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+		note += fmt.Sprintf("; its footprint narrowed from %s to %s: %s",
+			strings.Join(own.Footprint, ", "), to, strings.Join(res.Footprint, ", "))
 	case len(req.Narrow) > 0:
-		declined = "the narrowing to the files its branch changed could not be written into the reservation"
+		declined = "the narrowing to " + to + " could not be written into the reservation"
 	}
 	if declined != "" {
 		note += "; reservation kept at its full footprint: " + declined
@@ -856,7 +876,13 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), res.RunID+" is unchanged"); err != nil {
 		return err
 	} else {
-		fp = heldWith(fp, widenedPaths(st))
+		// A path only a landed step needed, the packages a step the spec does
+		// not yet mark landed names, or a path a landed lane widened to, is
+		// left out by the rule each landing's renewal narrows by
+		// (inFlightFootprint), so a resume is never refused over a hold a peer
+		// took on it once the step landed. While a lane is mid-edit, only
+		// what this copy's tip still names of it is reserved again, below.
+		fp = inFlightFootprint(repoRoot, st, heldWith(fp, widenedPaths(st)), nil)
 	}
 	// A reservation the run could not record is released again, and peers would see the
 	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
@@ -875,7 +901,9 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now)
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now, func(tip []string) []string {
+		return inFlightFootprint(repoRoot, st, tip, tip)
+	})
 	if err != nil {
 		return err
 	}
@@ -935,11 +963,17 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // widened to (widen.go) is never dropped by a widening, a revival or a
 // fallback (iss-2611101316537446); a tip since deleted loses
 // nothing, since the caller's fp already names what the run record says the lane
-// widened to (widenedPaths). A drain's act (drain) carries
+// widened to (widenedPaths). The tip's paths are first passed through
+// inFlight, when it is set, so a tip still naming what only a landed step of
+// an intent run needed (a landing the run stopped after, before the renewal
+// that narrows it) gives those paths back rather than reserving them again,
+// unless a lane is mid-edit, whose edits may lie under them: the tip, live,
+// lapsed or released by a tombstone alike, is then kept as it names them, and
+// a path it no longer names is never taken back (inFlightFootprint). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
 // issue backs it off; a renewal of this copy's own live tip carries none, since
 // that tip is no hand-back. A person's resume goes over a hand-back and says so.
-func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time) (reserved, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time, inFlight func(tip []string) []string) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -953,7 +987,11 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	// keeps them beside the record's footprint rather than dropping them.
 	if ok && r.Copy == claim.CopyThis &&
 		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
-		fp = heldWith(fp, r.Footprint)
+		tip := r.Footprint
+		if inFlight != nil {
+			tip = inFlight(tip)
+		}
+		fp = heldWith(fp, tip)
 		plain.Footprint = fp
 	}
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
@@ -1117,14 +1155,14 @@ func covers(held, fp []string) bool {
 }
 
 // runFootprint is the footprint a run's record names to reserve its key
-// with: an intent's spec's packages (specPackages: those of the steps still
-// to build, or the `## Footprint` packages line), each cleaned, and an
-// issue's found_at path, read from whichever status folder holds the issue:
-// a resume is not re-judged, and the run's own lane resolves its issue, so an
-// issue that has left open/ mid-run still names its footprint. built is the
-// spec steps the run has opened lanes for, nil for a start. A record that
-// names none is refused at the reservation, its reason ending with outcome
-// (what was not done).
+// with: an intent's spec's packages (specPackages: those of the step the run
+// opens next and the steps it has opened lanes for, or the `## Footprint`
+// packages line), each cleaned, and an issue's found_at path, read from
+// whichever status folder holds the issue: a resume is not re-judged, and the
+// run's own lane resolves its issue, so an issue that has left open/ mid-run
+// still names its footprint. built is the spec steps the run has opened
+// lanes for, nil for a start. A record that names none is refused at the
+// reservation, its reason ending with outcome (what was not done).
 func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]string, error) {
 	if validIssueKey(key) {
 		lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateAll})
@@ -1168,7 +1206,7 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID names for a build to reserve: those
-// of its steps still to build (stepEntries), or, when the steps cannot say,
+// of the steps stepEntries picks from built, or, when the steps cannot say,
 // its `## Footprint` packages line (footprintLine). Each entry is read as
 // written when that names something in the tree and otherwise as its leading
 // path alone, a trailing parenthetical note dropped, and cleaned (a trailing
@@ -1179,12 +1217,33 @@ const maxSpecBytes = 1 << 20
 // *footprintEntryError rather than a path that shares nothing with the
 // package it means (iss-2610241549334990).
 func specPackages(repoRoot, specID string, built []int) ([]string, error) {
+	return packagesOf(repoRoot, specID, func(content string) []string { return stepEntries(content, built) })
+}
+
+// stepPackages is the packages spec step n of specID names, read as
+// specPackages reads them, or, when that step cannot say (it names none, an
+// entry is still prose, or the steps cannot be read), the `## Footprint`
+// packages line: what the loop widens a run's reservation to as the lane for
+// step n opens (holdOpeningStep, widen.go).
+func stepPackages(repoRoot, specID string, n int) ([]string, error) {
+	return packagesOf(repoRoot, specID, func(content string) []string {
+		steps, err := spec.ParseSteps(content)
+		if err != nil {
+			return nil
+		}
+		return stepsEntries(slices.DeleteFunc(steps, func(s spec.Step) bool { return s.Number != n }))
+	})
+}
+
+// packagesOf is specPackages over the step entries entries reads from
+// specID's content.
+func packagesOf(repoRoot, specID string, entries func(content string) []string) ([]string, error) {
 	content, err := specContent(repoRoot, specID)
 	if err != nil {
 		return nil, err
 	}
-	if entries := stepEntries(content, built); len(entries) > 0 {
-		if out, prose := packagePaths(repoRoot, entries); prose == "" && len(out) > 0 {
+	if e := entries(content); len(e) > 0 {
+		if out, prose := packagePaths(repoRoot, e); prose == "" && len(out) > 0 {
 			return out, nil
 		}
 	}
@@ -1239,29 +1298,52 @@ func packagePaths(repoRoot string, entries []string) ([]string, string) {
 }
 
 // stepEntries is the packages entries of a spec's content its steps say a
-// build reserves, as written (iss-2611181755106054): the union, in step
-// order, of the `- packages:` lines of the steps still to build, those with
-// no `- landed:` line, so a package only a landed step touched holds no one
-// off. With every step landed, which a start refuses at the steps check and
-// so only a resumed run meets, it is the steps the run built (built), so a
-// resume reserves no wider than the run's start did and is never refused over
-// a package only a step landed before the run touched. Nil when the steps
-// cannot say, and the `## Footprint` packages line stands: a spec listing no
-// steps or a steps section that cannot be read (the steps check is that
-// refusal's place), a step to build that names no packages, since its
-// footprint is then unknown, or every step landed with none built by the run.
-// specPackages adds a fourth: an entry that names no path.
+// build reserves, as written, in step order: those of the step the run opens
+// next alone (iss-2611201418535169), since the build opens one step's lane at
+// a time and the loop widens the reservation to each later step's packages as
+// its lane opens (holdOpeningStep, widen.go). Of the steps still to build,
+// those with no `- landed:` line (iss-2611181755106054), it is the ones the
+// run has opened lanes for (built), so a resume reserves the lanes it has
+// open and nothing ahead of them, or, where the run has opened none of them
+// (a start, or a resume whose lanes are all on landed steps), the first, the
+// step its next lane opens for. A package only a landed step touched, or only
+// a step after the next touches, holds no one off. With every step landed,
+// which a start refuses at the steps check and so only a resumed run meets,
+// it is the steps the run built, so a resume reserves no wider than the run's
+// start did and is never refused over a package only a step landed before the
+// run touched. Nil when the steps cannot say, and the `## Footprint` packages
+// line stands: a spec listing no steps or a steps section that cannot be read
+// (the steps check is that refusal's place), a step it picks that names no
+// packages, since its footprint is then unknown, or every step landed with
+// none built by the run. specPackages adds a fourth: an entry that names no
+// path.
 func stepEntries(content string, built []int) []string {
 	steps, err := spec.ParseSteps(content)
 	if err != nil || len(steps) == 0 {
 		return nil
 	}
+	return stepsEntries(reservedSteps(steps, built))
+}
+
+// reservedSteps is the steps of a spec stepEntries reserves, given the steps
+// the run has opened lanes for (built).
+func reservedSteps(steps []spec.Step, built []int) []spec.Step {
+	in := func(s spec.Step) bool { return slices.Contains(built, s.Number) }
 	rest := spec.Unlanded(steps)
 	if len(rest) == 0 {
-		rest = slices.DeleteFunc(steps, func(s spec.Step) bool { return !slices.Contains(built, s.Number) })
+		return slices.DeleteFunc(steps, func(s spec.Step) bool { return !in(s) })
 	}
+	if open := slices.DeleteFunc(slices.Clone(rest), func(s spec.Step) bool { return !in(s) }); len(open) > 0 {
+		return open
+	}
+	return rest[:1]
+}
+
+// stepsEntries is the union, in step order, of the `- packages:` entries of
+// steps; nil when steps is empty or one of them names none.
+func stepsEntries(steps []spec.Step) []string {
 	var out []string
-	for _, s := range rest {
+	for _, s := range steps {
 		entries := s.PackageEntries()
 		if len(entries) == 0 {
 			return nil
@@ -1273,9 +1355,10 @@ func stepEntries(content string, built []int) []string {
 
 // declaredPaths is the paths a walled stage of st is declared to change
 // (runner.Request.Declared): an intent's spec's `## Footprint` packages line
-// together with what the run reserves, its steps still to build, so the
-// declaration is never narrower than the Footprint line it was before the
-// reservation narrowed to the steps (iss-2611181755106054); an issue's
+// together with what the run reserves, the steps its lanes are open on, so
+// the declaration is never narrower than the Footprint line it was before the
+// reservation narrowed to the steps (iss-2611181755106054,
+// iss-2611201418535169); an issue's
 // found_at alone. Nil when the record names none.
 func declaredPaths(repoRoot string, st State, outcome string) []string {
 	fp, _ := runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), outcome)
@@ -1490,7 +1573,8 @@ func (s State) autoPlanLane() *AutoPlan {
 }
 
 // builtSteps is the spec steps s has opened a lane for, in lane order: what
-// a resumed run whose every step has landed reserves (stepEntries).
+// a resumed run reserves of the steps still to build, and what one whose
+// every step has landed reserves (stepEntries).
 func (s State) builtSteps() []int {
 	var out []int
 	for _, l := range s.Lanes {
