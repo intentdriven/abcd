@@ -111,7 +111,8 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			}
 			view = &snap
 		}
-		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" {
+		// A run with members is due when any issue it holds is (renewalDueAny).
+		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" && !(st.hasMembers() && renewalDueAny(st, *view, now)) {
 			continue
 		}
 		// A renewal due under a stop settles the run first: what a stop lets go

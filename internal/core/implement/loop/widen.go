@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -114,20 +115,23 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 			res.Note = runID + " holds no reservation, so there is nothing to widen"
 			return false, nil
 		}
+		// A run with members widens the hold of the first issue it still holds.
+		key := widenKey(*st)
+		res.Record = key
 		snap, err := claim.View(repoRoot, now)
 		if err != nil {
-			return false, refuse(StageReservation, "", laneID, "the reservation on "+st.Key+" cannot be read to widen it: "+fsutil.RedactHome(err.Error()),
+			return false, refuse(StageReservation, "", laneID, "the reservation on "+key+" cannot be read to widen it: "+fsutil.RedactHome(err.Error()),
 				"settle what it names, then run `abcd implement widen` again")
 		}
-		own, ok := snap.Lookup(st.Key)
+		own, ok := snap.Lookup(key)
 		if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
-			return false, refuse(StageReservation, "", laneID, "this copy holds no reservation on "+st.Key+" to widen",
+			return false, refuse(StageReservation, "", laneID, "this copy holds no reservation on "+key+" to widen",
 				"run `abcd implement step`, whose land fence settles a lost reservation, before editing further")
 		}
 		res.Footprint = slices.Clone(own.Footprint)
-		w, err := widenHold(repoRoot, st.Key, own, want, now)
+		w, err := widenHold(repoRoot, key, own, want, now)
 		if len(w.added) == 0 && err == nil {
-			res.Note = "the reservation on " + st.Key + " already holds " + strings.Join(want, ", ")
+			res.Note = "the reservation on " + key + " already holds " + strings.Join(want, ", ")
 			return false, nil
 		}
 		res.Added = w.added
@@ -137,8 +141,8 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 				return false, err
 			}
 			note := fmt.Sprintf("the widening of %s's hold to %s backed off: %s; nothing was pushed, and the lane edits none of them",
-				st.Key, strings.Join(res.Added, ", "), rf.Reason)
-			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageReservation, Note: note})
+				key, strings.Join(res.Added, ", "), rf.Reason)
+			st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: StageReservation, Note: note, Issue: st.issueOn(key)})
 			st.UpdatedAt = now
 			backedOff = contend(StageReservation, CheckReservation, laneID, note,
 				"edit none of them; stop without a receipt, and the lane is handed to an implementer again on a later step")
@@ -146,7 +150,7 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 		}
 		res.Footprint = w.footprint
 		res.Note = w.r.note + ", widened to " + strings.Join(res.Added, ", ") + " before the lane's implementer edits it"
-		st.Record = append(st.Record, widenedLines(laneID, res.Added, res.Note, now)...)
+		st.Record = append(st.Record, issuedLines(*st, key, widenedLines(laneID, res.Added, res.Note, now))...)
 		st.UpdatedAt = now
 		return true, nil
 	})
@@ -273,11 +277,45 @@ func widenedLines(laneID string, added []string, note string, now time.Time) []E
 	return append(out, Entry{At: now, Lane: laneID, Stage: StageReservation, Note: note})
 }
 
+// issuedLines is lines, each naming id as the issue it is for in a run with
+// members (State.issueOn), and as they are in a run without.
+func issuedLines(st State, id string, lines []Entry) []Entry {
+	for i := range lines {
+		lines[i].Issue = st.issueOn(id)
+	}
+	return lines
+}
+
+// widenKey is the issue whose hold a run's widening widens: the first of
+// Issues(), the lead while it is held, and the run's key in a run without
+// members.
+func widenKey(st State) string {
+	if is := st.Issues(); len(is) > 0 {
+		return is[0]
+	}
+	return st.Key
+}
+
 // widenedPaths is each path the run record says the run's lanes widened to.
 func widenedPaths(st State) []string {
 	var out []string
 	for _, e := range st.Record {
 		if e.Stage == StageWidenedTo && !slices.Contains(out, e.Note) {
+			out = append(out, e.Note)
+		}
+	}
+	return out
+}
+
+// widenedPathsFor is widenedPaths onto the hold of id: in a run with members,
+// the paths whose lines name id (lineIssue), and every path in a run without.
+func widenedPathsFor(st State, id string) []string {
+	if !st.hasMembers() {
+		return widenedPaths(st)
+	}
+	var out []string
+	for _, e := range st.Record {
+		if e.Stage == StageWidenedTo && recordid.SameID(st.lineIssue(e), id) && !slices.Contains(out, e.Note) {
 			out = append(out, e.Note)
 		}
 	}
@@ -335,6 +373,8 @@ func peerHold(repoRoot, key string, paths []string, err error, now time.Time) bo
 // laneHold is what the loop's own widening of a lane's hold came to
 // (widenLaneChanges).
 type laneHold struct {
+	// key is the record whose hold is widened (widenKey).
+	key string
 	// own is the reservation this copy held on the record before the widening.
 	own claim.Reservation
 	// paths is each path the lane's branch changes that own did not cover.
@@ -376,14 +416,18 @@ func (h laneHold) shown() string {
 // (widenPaths) and reserved through the one widening (widenHold). A
 // reservation the view does not show this copy holding widens nothing; the
 // caller decides what a run that recorded no reservation does.
+//
+// In a run with members the branch is judged against the members' holds
+// together, and a path none of them covers widens the hold of the first issue
+// the run still holds (widenKey), its lines naming that issue.
 func widenLaneChanges(c Context, lane Lane) laneHold {
-	var h laneHold
+	h := laneHold{key: widenKey(c.State)}
 	h.own, h.paths, h.gap = unheldPaths(c, lane, c.Now)
 	if h.gap != "" || len(h.paths) == 0 {
 		return h
 	}
 	if len(h.paths) > maxWidenPaths {
-		h.err = overCapRefusal(c.State.Key, len(h.own.Footprint)+maxWidenPaths, true)
+		h.err = overCapRefusal(h.key, len(h.own.Footprint)+maxWidenPaths, true)
 		return h
 	}
 	want, err := widenPaths(lane.ID, h.paths)
@@ -391,16 +435,16 @@ func widenLaneChanges(c Context, lane Lane) laneHold {
 		h.err = err
 		return h
 	}
-	w, err := widenHold(c.RepoRoot, c.State.Key, h.own, want, c.Now)
+	w, err := widenHold(c.RepoRoot, h.key, h.own, want, c.Now)
 	if err != nil {
-		h.err, h.peer = err, peerHold(c.RepoRoot, c.State.Key, w.added, err, c.Now)
+		h.err, h.peer = err, peerHold(c.RepoRoot, h.key, w.added, err, c.Now)
 		return h
 	}
 	if len(w.added) == 0 {
 		return h
 	}
 	h.note = w.r.note + ", widened to " + strings.Join(w.added, ", ") + ", which the lane's branch changes beyond it"
-	h.lines = widenedLines(lane.ID, w.added, h.note, c.Now)
+	h.lines = issuedLines(c.State, h.key, widenedLines(lane.ID, w.added, h.note, c.Now))
 	return h
 }
 
@@ -440,20 +484,20 @@ func receiptHoldGaps(c Context, lane Lane) []string {
 	}
 	if ok && rf.overCap {
 		return []string{fmt.Sprintf("a hold on %s, which the lane's branch changes beyond its reservation on %s (%s): %s",
-			h.shown(), st.Key, strings.Join(h.own.Footprint, ", "), reason)}
+			h.shown(), h.key, strings.Join(h.own.Footprint, ", "), reason)}
 	}
 	if ok && (rf.Contention || rf.originUnread || len(rf.capped) > 0) {
 		then := "the receipt is taken, and the widening is made again before the lane's validators, which wait for it"
 		if h.peer {
 			then = "the receipt is taken, and the lane's validators wait for that hold to end"
 		}
-		record(Entry{At: c.Now, Lane: lane.ID, Stage: StageReservation,
+		record(Entry{At: c.Now, Lane: lane.ID, Stage: StageReservation, Issue: st.issueOn(h.key),
 			Note: fmt.Sprintf("the loop's widening of %s's hold to %s, which the lane's branch changes beyond it, could not be made yet: %s; %s",
-				st.Key, h.shown(), reason, then)})
+				h.key, h.shown(), reason, then)})
 		return nil
 	}
 	return []string{fmt.Sprintf("a hold on %s, which the lane's branch changes beyond its reservation on %s (%s) and the loop could not reserve (%s): take the change out of the branch",
-		h.shown(), st.Key, strings.Join(h.own.Footprint, ", "), reason)}
+		h.shown(), h.key, strings.Join(h.own.Footprint, ", "), reason)}
 }
 
 // validatorsAct is what a refusal of the hold before a lane's validators
@@ -484,13 +528,17 @@ func holdBeforeValidators(c Context, lane Lane) ([]Entry, error) {
 // the records the lane's landing moves among them. gap, set when one of them
 // cannot be read, says what is missing in a receipt's words. A reservation
 // the view does not show this copy holding gives none.
+//
+// In a run with members own is the hold of the first issue the run still
+// holds (widenKey), and a path is unheld when no hold of the run's issues this
+// copy holds covers it: the members' footprints are judged together.
 func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, unheld []string, gap string) {
 	st := c.State
 	snap, err := claim.View(c.RepoRoot, now)
 	if err != nil {
 		return own, nil, "a reservation that can be read to check the files the lane changed (" + fsutil.RedactHome(err.Error()) + ")"
 	}
-	own, ok := snap.Lookup(st.Key)
+	own, ok := snap.Lookup(widenKey(st))
 	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
 		return own, nil, ""
 	}
@@ -503,12 +551,56 @@ func unheldPaths(c Context, lane Lane, now time.Time) (own claim.Reservation, un
 		return own, nil, "the files the lane changed, to check them against its reservation (" + declined + ")"
 	}
 	held := newPathSet(own.Footprint)
+	for _, id := range st.Issues() {
+		if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+			for _, p := range r.Footprint {
+				held.add(p)
+			}
+		}
+	}
 	for _, p := range changed {
 		if !held.covers(p) {
 			unheld = append(unheld, p)
 		}
 	}
 	return own, unheld, ""
+}
+
+// widenOnto moves the paths the run widened onto the hold of from to the hold
+// of to (spc-2611201455051897 step 1, for step 2's hand-back of the issue
+// holding them): to's hold is widened with them, through the one widening
+// (widenHold), before anything releases from's, and the run record's lines
+// for it name to. It pushes nothing when from's hold widened to nothing, or
+// to's already covers every path, and never touches from's hold. lines are the
+// run record's lines for a widening made.
+func widenOnto(c Context, lane Lane, from, to string) ([]Entry, error) {
+	paths := widenedPathsFor(c.State, from)
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	snap, err := claim.View(c.RepoRoot, c.Now)
+	if err != nil {
+		return nil, refuse(StageReservation, "", lane.ID, "the reservation on "+to+" cannot be read to move the widened paths onto it: "+fsutil.RedactHome(err.Error()),
+			"settle what it names, then run `abcd implement step` again")
+	}
+	own, ok := snap.Lookup(to)
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
+		return nil, refuse(StageReservation, "", lane.ID, "this copy holds no reservation on "+to+" to move the widened paths onto",
+			"run `abcd implement step`, whose land fence settles a lost reservation")
+	}
+	want, err := widenPaths(lane.ID, paths)
+	if err != nil {
+		return nil, err
+	}
+	w, err := widenHold(c.RepoRoot, to, own, want, c.Now)
+	if err != nil {
+		return nil, err
+	}
+	if len(w.added) == 0 {
+		return nil, nil
+	}
+	note := w.r.note + ", widened to " + strings.Join(w.added, ", ") + ", moved from the hold of " + from
+	return issuedLines(c.State, to, widenedLines(lane.ID, w.added, note, c.Now)), nil
 }
 
 // holdLaneChanges is the loop's own widening of a lane's hold as a step
@@ -541,7 +633,7 @@ func holdLaneChanges(c Context, lane Lane, stage Stage, act fenceAct) (note stri
 	}
 	return "", nil, holdRefusal(c, lane, stage, act, h.err, h.peer, func(reason string) string {
 		return fmt.Sprintf("the lane's branch changes %s beyond its reservation on %s, which could not be reserved: %s; so this lane does not %s",
-			h.shown(), c.State.Key, reason, act.not)
+			h.shown(), h.key, reason, act.not)
 	})
 }
 

@@ -73,6 +73,7 @@ func (st State) masked() State {
 		})
 		return f
 	})
+	st = st.maskedBundle()
 	return st
 }
 

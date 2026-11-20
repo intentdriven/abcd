@@ -59,6 +59,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -364,10 +365,27 @@ const lockFileName = ".lock"
 // Releases that write version 28 refuse a version-29 file as a newer abcd's
 // before any strict decode.
 //
+// Version 30 let a run carry members (itd-2611201450052326,
+// spc-2611201455051897 step 1): an issue run's `bundle`, each member issue
+// beside the lead with its footprint, its `reserved_at`, its `hand_back` once
+// it is handed back alone and `split` once the drain has split the run; the
+// run's `lead_hand_back`, the lead's own hand-back while its members go on;
+// and a record line's `issue`, the issue a reservation line is for, written
+// only in a run with members. A run with no members writes none of them, so
+// its file differs from version 29's only in its version. Version 29 is its
+// strict subset, read as a run with no members and written back at version
+// 30; a file of version 29 or lower carrying any of them is not one its
+// version wrote, and is refused naming it. Releases that write version 29
+// refuse a version-30 file as a newer abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 29
+const SchemaVersion = 30
+
+// schemaVersionUnbundled is the last version before a run carried members:
+// read, never written.
+const schemaVersionUnbundled = 29
 
 // schemaVersionUnreasoned is the last version before a round's judge kept
 // each location it struck and its reason: read, never written.
@@ -621,6 +639,15 @@ type State struct {
 	// (itd-2609091034175565): the reservation `implement step` renews, fences
 	// and tombstones. Nil for a run that holds none.
 	ReservedAt *time.Time `json:"reserved_at,omitempty"`
+	// Bundle is the member issues an issue run carries beside its lead, the
+	// run's Key (itd-2611201450052326): one lane, one branch and one pull
+	// request for them all, each member keeping its own reservation. Empty for
+	// a run with no members, which writes no `bundle` key.
+	Bundle []Member `json:"bundle,omitempty"`
+	// LeadHandBack is the lead's own hand-back in a run with members, set when
+	// the lead alone is handed back while its members go on: the lead is then
+	// no issue of the run's (Issues). Nil on every other run.
+	LeadHandBack *HandBack `json:"lead_hand_back,omitempty"`
 	// Trial is set on a run started in the loop's trial mode (trial.go): a
 	// model-matrix copy, which holds no reservation and lands nothing.
 	Trial bool `json:"trial,omitempty"`
@@ -1056,6 +1083,205 @@ type Entry struct {
 	// later lane opened for its spec step) or "receipt".
 	Stage string `json:"stage"`
 	Note  string `json:"note,omitempty"`
+	// Issue is the issue a reservation line is for, written only in a run with
+	// members (itd-2611201450052326), so one issue's line is never read as
+	// another's; a run with members reads a reservation line naming none as
+	// the lead's (lineIssue).
+	Issue string `json:"issue,omitempty"`
+}
+
+// Member is one issue a run carries beside its lead (itd-2611201450052326,
+// spc-2611201455051897 step 1): its id, the footprint it is reserved with,
+// when the run reserved it on the shared remote, its hand-back once it is
+// handed back alone, and whether the drain has split the run.
+type Member struct {
+	Issue      string     `json:"issue"`
+	Footprint  []string   `json:"footprint"`
+	ReservedAt *time.Time `json:"reserved_at,omitempty"`
+	HandBack   *HandBack  `json:"hand_back,omitempty"`
+	Split      bool       `json:"split,omitempty"`
+}
+
+// hasMembers reports whether the run carries members.
+func (s State) hasMembers() bool { return len(s.Bundle) > 0 }
+
+// Issues is every issue of the run, in order: the lead, then each member,
+// leaving out each handed back alone, the lead included. A run with no
+// members is its key alone, which every reservation act iterates as it reads
+// the one key today.
+func (s State) Issues() []string {
+	var out []string
+	if s.LeadHandBack == nil {
+		out = append(out, s.Key)
+	}
+	for _, m := range s.Bundle {
+		if m.HandBack == nil {
+			out = append(out, m.Issue)
+		}
+	}
+	return out
+}
+
+// split reports whether the drain has split the run.
+func (s State) split() bool {
+	return slices.ContainsFunc(s.Bundle, func(m Member) bool { return m.Split })
+}
+
+// covers reports whether the run still carries id: an issue of Issues(), and
+// no issue at all once the drain has split the run (spc-2611201455051897
+// step 5). So a run no longer holding an issue is never found as its run.
+func (s State) covers(id string) bool {
+	if s.split() {
+		return false
+	}
+	return slices.ContainsFunc(s.Issues(), func(i string) bool { return recordid.SameID(i, id) })
+}
+
+// member is the index of the member id names, -1 for the lead or an id the
+// run does not carry.
+func (s State) member(id string) int {
+	return slices.IndexFunc(s.Bundle, func(m Member) bool { return recordid.SameID(m.Issue, id) })
+}
+
+// reservedAt is when the run reserved id: the run's own for the lead, a
+// member's for a member; nil for one it holds no reservation on.
+func (s State) reservedAt(id string) *time.Time {
+	if i := s.member(id); i >= 0 {
+		return s.Bundle[i].ReservedAt
+	}
+	if recordid.SameID(id, s.Key) {
+		return s.ReservedAt
+	}
+	return nil
+}
+
+// reservedIssues is each issue of Issues() whose reservation the run
+// records: what the renewal, the fences and the releases iterate. A run with
+// no members is its key while it records a reservation, and nothing else.
+func (s State) reservedIssues() []string {
+	var out []string
+	for _, id := range s.Issues() {
+		if s.reservedAt(id) != nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// forIssue is s read as the run of id alone, for an act on one issue's
+// reservation that reads the run's key (lapseTail, recordMovedOn).
+func (s State) forIssue(id string) State {
+	s.Key = id
+	return s
+}
+
+// lineIssue is the issue a reservation line is for: its own, or the lead's
+// for a line naming none.
+func (s State) lineIssue(e Entry) string {
+	if e.Issue != "" {
+		return e.Issue
+	}
+	return s.Key
+}
+
+// issueOn is the `issue` a reservation line for id carries: id in a run with
+// members, and none in a run without.
+func (s State) issueOn(id string) string {
+	if s.hasMembers() {
+		return id
+	}
+	return ""
+}
+
+// bundled reports the first thing, in a state, that only version 30 and later
+// write: a run's members, the lead's own hand-back or the issue a record line
+// names; "" when there is none.
+func (s State) bundled() string {
+	switch {
+	case len(s.Bundle) > 0:
+		return "`bundle`"
+	case s.LeadHandBack != nil:
+		return "`lead_hand_back`"
+	}
+	for i, e := range s.Record {
+		if e.Issue != "" {
+			return fmt.Sprintf("`issue` on record line %d", i+1)
+		}
+	}
+	return ""
+}
+
+// bundleWritten reports whether a run's members are ones the loop writes: an
+// issue run's, each a plain issue id other than the lead's and the others',
+// with a footprint of plain repository paths and a hand-back of plain text;
+// a lead's own hand-back only beside members; and a record line's issue only
+// in a run with members, naming the lead or a member.
+func (s State) bundleWritten() bool {
+	if s.LeadHandBack != nil && !s.hasMembers() {
+		return false
+	}
+	if s.hasMembers() && s.Issue() == "" {
+		return false
+	}
+	seen := map[string]bool{s.Key: true}
+	for _, m := range s.Bundle {
+		if !validIssueKey(m.Issue) || seen[m.Issue] || len(m.Footprint) == 0 {
+			return false
+		}
+		seen[m.Issue] = true
+		for _, p := range m.Footprint {
+			if !fsutil.ValidRelPath(p) || !plainStored(p) {
+				return false
+			}
+		}
+	}
+	probe := s
+	probe.Lanes = nil
+	for _, hb := range s.bundleHandBacks() {
+		probe.Lanes = append(probe.Lanes, Lane{HandBack: hb})
+	}
+	if !probe.handBacksWritten() {
+		return false
+	}
+	for _, e := range s.Record {
+		if e.Issue != "" && !seen[e.Issue] {
+			return false
+		}
+	}
+	return true
+}
+
+// bundleHandBacks is the lead's own hand-back and each member's, those set.
+func (s State) bundleHandBacks() []*HandBack {
+	var out []*HandBack
+	if s.LeadHandBack != nil {
+		out = append(out, s.LeadHandBack)
+	}
+	for _, m := range s.Bundle {
+		if m.HandBack != nil {
+			out = append(out, m.HandBack)
+		}
+	}
+	return out
+}
+
+// maskedBundle is st with every string version 30 added masked as State.masked
+// masks the rest: each member's issue, footprint and hand-back, the lead's own
+// hand-back, and the issue a record line names, each copied, so st is never
+// changed underneath its caller.
+func (st State) maskedBundle() State {
+	st.LeadHandBack = maskPtr(st.LeadHandBack, HandBack.masked)
+	st.Bundle = maskEach(st.Bundle, func(m Member) Member {
+		m.Issue = line(m.Issue)
+		m.Footprint = maskEach(m.Footprint, line)
+		m.HandBack = maskPtr(m.HandBack, HandBack.masked)
+		return m
+	})
+	st.Record = maskEach(st.Record, func(e Entry) Entry {
+		e.Issue = line(e.Issue)
+		return e
+	})
+	return st
 }
 
 // Complete reports whether the run has nothing left: every lane is done (or,
@@ -1425,6 +1651,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnmodelled, carries: State.modelled},
 	{highest: schemaVersionUnjudged, carries: State.judged},
 	{highest: schemaVersionUnreasoned, carries: State.strikesKept},
+	{highest: schemaVersionUnbundled, carries: State.bundled},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1637,6 +1864,10 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 		// it, and this read writes nothing.
 		st.keepStrikes()
 		st.SchemaVersion = SchemaVersion
+	case st.SchemaVersion == schemaVersionUnbundled:
+		// Read as the current version, a run with no members. The next write
+		// carries it, and this read writes nothing.
+		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
@@ -1716,6 +1947,12 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 	}
 	if !st.autoPlansWritten() {
 		return State{}, 0, refuse("state", "", "", rel+" carries an auto-plan record the loop never writes: a draft, digest, spec, lens, path or verdict outside what the loop stores",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	if !st.bundleWritten() {
+		return State{}, 0, refuse("state", "", "", rel+" carries members the loop never writes: a member on a run that is no issue's, an id that is no issue's or is the run's twice, "+
+			"a footprint that is no plain repository path, a hand-back with a control, bidi or zero-width character in its text, a lead's own hand-back with no members, "+
+			"or a record line naming an issue the run does not carry",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.receiptsWritten() {

@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
@@ -2002,8 +2003,14 @@ func (t *terminal) retellLimit(runID string) {
 // origin, the tip it left. A record it cannot read leaves no note, and with no note
 // reserving again compares nothing.
 func noteRecordReleased(repoRoot string, st *State, failed bool, now time.Time) {
-	if blob, _, _ := claim.RecordOnDefault(repoRoot, st.Key); blob != "" {
-		st.Record = append(st.Record, Entry{At: now, Stage: StageReleasedOver, Note: blob})
+	noteRecordReleasedFor(repoRoot, st, st.Key, failed, now)
+}
+
+// noteRecordReleasedFor is noteRecordReleased for the issue id of a run, the lead or, in
+// a run with members, a member: its lines name id.
+func noteRecordReleasedFor(repoRoot string, st *State, id string, failed bool, now time.Time) {
+	if blob, _, _ := claim.RecordOnDefault(repoRoot, id); blob != "" {
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReleasedOver, Note: blob, Issue: st.issueOn(id)})
 	}
 	if !failed {
 		return
@@ -2012,15 +2019,24 @@ func noteRecordReleased(repoRoot string, st *State, failed bool, now time.Time) 
 	if err != nil {
 		return
 	}
-	if r, ok := snap.Lookup(st.Key); ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
-		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleaseFailed, Note: r.Commit})
+	if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleaseFailed, Note: r.Commit, Issue: st.issueOn(id)})
 	}
 }
 
 // failedReleaseTip is the tip the run's latest release left when it did not reach origin,
 // "" when that release did, a later one reached origin, or the run has reserved since.
 func failedReleaseTip(run State) string {
+	return failedReleaseTipFor(run, run.Key)
+}
+
+// failedReleaseTipFor is failedReleaseTip for the issue id: in a run with members, read
+// from the lines for id alone (lineIssue).
+func failedReleaseTipFor(run State, id string) string {
 	for i := len(run.Record) - 1; i >= 0; i-- {
+		if run.hasMembers() && !recordid.SameID(run.lineIssue(run.Record[i]), id) {
+			continue
+		}
 		switch run.Record[i].Stage {
 		case StageDriveReleaseFailed:
 			return run.Record[i].Note
@@ -2036,7 +2052,16 @@ func failedReleaseTip(run State) string {
 // releasedOverBlob is the blob the run's latest release noted, "" when it noted none or
 // the run has reserved since.
 func releasedOverBlob(run State) string {
+	return releasedOverBlobFor(run, run.Key)
+}
+
+// releasedOverBlobFor is releasedOverBlob for the issue id: in a run with members, read
+// from the lines for id alone (lineIssue).
+func releasedOverBlobFor(run State, id string) string {
 	for i := len(run.Record) - 1; i >= 0; i-- {
+		if run.hasMembers() && !recordid.SameID(run.lineIssue(run.Record[i]), id) {
+			continue
+		}
 		switch run.Record[i].Stage {
 		case StageReleasedOver:
 			return run.Record[i].Note
@@ -2055,63 +2080,144 @@ const recordMovedOnWith = "whoever changed its record"
 
 // recordSince is what comparing the issue's record with the run's note came to: moved says
 // how it changed, unread why it could not be compared, and neither means it stands as noted.
-type recordSince struct{ moved, unread string }
+// In a run with members, issue names the issue moved or unread is about, the first whose
+// record moved or, failing that, the first that could not be compared, and byIssue holds
+// what each issue's comparison came to.
+type recordSince struct {
+	moved, unread string
+	issue         string
+	byIssue       map[string]recordSince
+}
+
+// of is what the comparison of id's record came to, in a run with members.
+func (r recordSince) of(id string) (moved, unread string) {
+	x := r.byIssue[id]
+	return x.moved, x.unread
+}
 
 // recordMovedOn compares the issue's record on origin's default branch, freshly fetched, with
 // what the run noted as it let the issue go. The note proves the record stood then, so a
 // branch that can be read and holds no file for it is a change. A finished record is the
 // reservation's to refuse, which says so.
+//
+// A run with members compares every issue of Issues() the same way, origin fetched once,
+// before anything is pushed.
 func recordMovedOn(repoRoot string, run State, now time.Time) recordSince {
-	noted := releasedOverBlob(run)
-	if noted == "" {
-		return recordSince{}
+	if !run.hasMembers() {
+		noted := releasedOverBlob(run)
+		if noted == "" {
+			return recordSince{}
+		}
+		if _, err := recordFetch(repoRoot, claimOptions(now)); err != nil {
+			return recordSince{unread: notComparedWhy(run.Key, claim.Remote+" could not be fetched")}
+		}
+		return recordComparedOn(repoRoot, run.Key, noted)
 	}
-	notCompared := func(why string) recordSince {
-		return recordSince{unread: fmt.Sprintf("%s's record could not be compared with what stood when the issue was let go: %s", run.Key, why)}
+	out := recordSince{byIssue: map[string]recordSince{}}
+	fetched, unfetched := false, false
+	for _, id := range run.Issues() {
+		noted := releasedOverBlobFor(run, id)
+		if noted == "" {
+			continue
+		}
+		if !fetched && !unfetched {
+			if _, err := recordFetch(repoRoot, claimOptions(now)); err != nil {
+				unfetched = true
+			} else {
+				fetched = true
+			}
+		}
+		r := recordSince{unread: notComparedWhy(id, claim.Remote+" could not be fetched")}
+		if fetched {
+			r = recordComparedOn(repoRoot, id, noted)
+		}
+		out.byIssue[id] = r
 	}
-	if _, err := recordFetch(repoRoot, claimOptions(now)); err != nil {
-		return notCompared(claim.Remote + " could not be fetched")
+	for _, id := range run.Issues() {
+		if r := out.byIssue[id]; r.moved != "" && out.moved == "" {
+			out.moved, out.issue = r.moved, id
+		}
 	}
-	blob, files, readable := claim.RecordOnDefault(repoRoot, run.Key)
+	for _, id := range run.Issues() {
+		if r := out.byIssue[id]; r.unread != "" && out.moved == "" && out.unread == "" {
+			out.unread, out.issue = r.unread, id
+		}
+	}
+	return out
+}
+
+// notComparedWhy is the unread clause for the record of id that could not be compared.
+func notComparedWhy(id, why string) string {
+	return fmt.Sprintf("%s's record could not be compared with what stood when the issue was let go: %s", id, why)
+}
+
+// recordComparedOn compares id's record on origin's default branch, just fetched, with the
+// blob noted when the issue was let go.
+func recordComparedOn(repoRoot, id, noted string) recordSince {
+	blob, files, readable := claim.RecordOnDefault(repoRoot, id)
 	switch {
 	case !readable:
-		return notCompared(claim.Remote + "'s default branch cannot be read")
-	case claim.Finished(repoRoot, run.Key):
+		return recordSince{unread: notComparedWhy(id, claim.Remote+"'s default branch cannot be read")}
+	case claim.Finished(repoRoot, id):
 		return recordSince{}
 	case files == 0:
-		return recordSince{moved: fmt.Sprintf("%s's record is gone from %s's default branch, where it stood when the issue was let go", run.Key, claim.Remote)}
+		return recordSince{moved: fmt.Sprintf("%s's record is gone from %s's default branch, where it stood when the issue was let go", id, claim.Remote)}
 	case files > 1:
-		return notCompared(claim.Remote + "'s default branch holds it in more than one file")
+		return recordSince{unread: notComparedWhy(id, claim.Remote+"'s default branch holds it in more than one file")}
 	case blob == noted:
 		return recordSince{}
 	}
-	return recordSince{moved: fmt.Sprintf("%s's record on %s's default branch changed while the issue was let go", run.Key, claim.Remote)}
+	return recordSince{moved: fmt.Sprintf("%s's record on %s's default branch changed while the issue was let go", id, claim.Remote)}
 }
 
 // dropMovedRun ends the lane of a run whose record changed while it was let go, and returns
 // the reason it goes back for. Only a release of the run's own that did not reach origin is
 // tried again, and only over the tip it left, so a reservation anyone made since stands,
 // and the reason says which.
+//
+// In a run with members each issue's own let-go release that did not reach origin is
+// tried again, read by the issue on its lines, and only that issue's: one whose release
+// reached origin is left as it stands.
 func dropMovedRun(repoRoot string, run State, why string, now time.Time, o Options) (string, error) {
-	if tip := failedReleaseTip(run); tip != "" {
-		clause, failed := releaseReservationAt(repoRoot, run.Key, tip, "", now)
+	issues := []string{run.Key}
+	if run.hasMembers() {
+		issues = run.Issues()
+	}
+	for _, id := range issues {
+		var err error
+		if why, err = retryLetGoRelease(repoRoot, run, id, why, now); err != nil {
+			return why, err
+		}
+	}
+	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now, o)
+}
+
+// retryLetGoRelease is dropMovedRun's retry of id's own let-go release, its reason why
+// with what came of it.
+func retryLetGoRelease(repoRoot string, run State, id, why string, now time.Time) (string, error) {
+	if tip := failedReleaseTipFor(run, id); tip != "" {
+		clause, failed := releaseReservationAt(repoRoot, id, tip, "", now)
 		why += "; " + clause
 		if failed {
-			tail, _, _ := lapseTail(repoRoot, run, now)
+			tail, _, _ := lapseTail(repoRoot, run.forIssue(id), now)
 			why += tail
 		} else if err := mutateReservation(repoRoot, run.RunID, func(st *State) (bool, error) {
-			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause, Issue: st.issueOn(id)})
 			st.UpdatedAt = now
 			return true, nil
 		}); err != nil {
 			return why, err
 		}
 	} else if snap, err := claim.View(repoRoot, now); err == nil {
-		if r, ok := snap.Lookup(run.Key); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-			why += "; the reservation made on it from this copy since it was let go stands"
+		if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+			if run.hasMembers() {
+				why += "; the reservation made on " + id + " from this copy since it was let go stands"
+			} else {
+				why += "; the reservation made on it from this copy since it was let go stands"
+			}
 		}
 	}
-	return why, dropRun(repoRoot, run.RunID, why, recordMovedOnWith, now, o)
+	return why, nil
 }
 
 // passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
@@ -2342,10 +2448,14 @@ func (t *terminal) letGoForLimit(runID string) {
 			return true, nil
 		}
 		// Noted after the release's fetch, so a change the lane never fetched is no change
-		// while it was let go.
-		clause, failed = releaseReservation(t.repoRoot, st.Key, "", now)
-		noteRecordReleased(t.repoRoot, st, failed, now)
-		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
+		// while it was let go. A run with members lets every issue it holds go, each
+		// plainly, each line naming its issue.
+		for _, id := range st.reservedIssues() {
+			c, f := releaseReservation(t.repoRoot, id, "", now)
+			noteRecordReleasedFor(t.repoRoot, st, id, f, now)
+			st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: c, Issue: st.issueOn(id)})
+			clause, failed = joinNext(clause, c), failed || f
+		}
 		st.UpdatedAt = now
 		return true, nil
 	})
@@ -2491,12 +2601,23 @@ func (t *terminal) letGo() {
 			if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
 				continue
 			}
-			clause, failed := releaseReservation(t.repoRoot, run.Key, "", now)
-			t.say("%s: %s", run.Key, clause)
+			// A run with members lets every issue it holds go, each plainly.
+			type letGone struct {
+				id, clause string
+				failed     bool
+			}
+			var gone []letGone
+			for _, id := range run.reservedIssues() {
+				clause, failed := releaseReservation(t.repoRoot, id, "", now)
+				t.say("%s: %s", id, clause)
+				gone = append(gone, letGone{id: id, clause: clause, failed: failed})
+			}
 			// Lines in the run's record alone: its file keeps the version it states.
 			_ = mutateReservation(t.repoRoot, l.RunID, func(st *State) (bool, error) {
-				noteRecordReleased(t.repoRoot, st, failed, now)
-				st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
+				for _, g := range gone {
+					noteRecordReleasedFor(t.repoRoot, st, g.id, g.failed, now)
+					st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: g.clause, Issue: st.issueOn(g.id)})
+				}
 				st.UpdatedAt = now
 				return true, nil
 			})
@@ -2549,7 +2670,9 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {
 			continue
 		}
-		ids = append(ids, left{id: run.Key, run: true})
+		for _, id := range run.reservedIssues() {
+			ids = append(ids, left{id: id, run: true})
+		}
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
 		ids = append(ids, left{id: j.Issue})
