@@ -1211,12 +1211,19 @@ func (s State) bundled() string {
 	return ""
 }
 
+// laneHandedBack reports whether l carries a hand-back at handed-back or at
+// discarded, the stage a discard moves a handed-back lane on to: the lane test
+// issueHandedBack reads.
+func laneHandedBack(l Lane) bool {
+	return l.HandBack != nil && (l.Stage == StageHandedBack || l.Stage == StageDiscarded)
+}
+
 // bundleWritten reports whether a run's members are ones the loop writes: an
 // issue run's, each a plain issue id other than the lead's and the others',
 // with a footprint of plain repository paths and a hand-back of plain text;
 // a lead's own hand-back only beside members; every issue handed back alone
-// only beside a lane handed back, as the loop hands the lane back with the
-// last; and a record line's issue only in a run with members, naming the lead
+// only beside a lane carrying its hand-back at handed-back or discarded, as
+// the loop hands the lane back with the last and a discard moves it on; and a record line's issue only in a run with members, naming the lead
 // or a member.
 func (s State) bundleWritten() bool {
 	if s.LeadHandBack != nil && !s.hasMembers() {
@@ -1225,7 +1232,7 @@ func (s State) bundleWritten() bool {
 	if s.hasMembers() && s.Issue() == "" {
 		return false
 	}
-	if s.hasMembers() && len(s.Issues()) == 0 && !s.handedBack() {
+	if s.hasMembers() && len(s.Issues()) == 0 && !slices.ContainsFunc(s.Lanes, laneHandedBack) {
 		return false
 	}
 	seen := map[string]bool{s.Key: true}

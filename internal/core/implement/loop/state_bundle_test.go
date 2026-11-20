@@ -414,13 +414,24 @@ func TestARunsMembersAreMaskedWhenStored(t *testing.T) {
 // members whose lead and every member are handed back alone holds no issue, and
 // the loop hands its lane back as it hands back the last, so such a run with no
 // lane handed back is refused as members the loop never writes; one issue still
-// held is not.
+// held is not, and nor is every issue handed back beside a lane carrying its
+// hand-back at handed-back or at discarded, the stage a discard moves such a
+// lane on to.
 func TestARunWithEveryIssueHandedBackAndNoLaneHandedBackIsRefused(t *testing.T) {
 	repo, _ := bundleRepo(t)
 	runID := bundleRun(t, repo, time.Now().UTC().Truncate(time.Second))
 	good := stateBytes(t, repo.Root(), runID)
 	handBack := func() map[string]any { return map[string]any{"at": "2026-11-20T09:00:00Z", "kind": "decision"} }
-	for name, all := range map[string]bool{"every issue handed back": true, "one member still held": false} {
+	for name, c := range map[string]struct {
+		all     bool
+		lane    Stage
+		refused bool
+	}{
+		"every issue handed back":                       {all: true, refused: true},
+		"one member still held":                         {all: false},
+		"every issue handed back, lane handed back":     {all: true, lane: StageHandedBack},
+		"every issue handed back, lane discarded after": {all: true, lane: StageDiscarded},
+	} {
 		t.Run(name, func(t *testing.T) {
 			var doc map[string]any
 			if err := json.Unmarshal(good, &doc); err != nil {
@@ -429,9 +440,14 @@ func TestARunWithEveryIssueHandedBackAndNoLaneHandedBackIsRefused(t *testing.T) 
 			doc["lead_hand_back"] = handBack()
 			members := doc["bundle"].([]any)
 			for i, m := range members {
-				if all || i < len(members)-1 {
+				if c.all || i < len(members)-1 {
 					m.(map[string]any)["hand_back"] = handBack()
 				}
+			}
+			if c.lane != "" {
+				lane := doc["lanes"].([]any)[0].(map[string]any)
+				lane["stage"] = string(c.lane)
+				lane["hand_back"] = handBack()
 			}
 			out, err := json.Marshal(doc)
 			if err != nil {
@@ -441,8 +457,8 @@ func TestARunWithEveryIssueHandedBackAndNoLaneHandedBackIsRefused(t *testing.T) 
 				t.Fatal(err)
 			}
 			_, err = ReadState(repo.Root(), runID)
-			if refused := err != nil && strings.Contains(err.Error(), "members the loop never writes"); refused != all {
-				t.Fatalf("refused %v, want %v: %v", refused, all, err)
+			if refused := err != nil && strings.Contains(err.Error(), "members the loop never writes"); refused != c.refused || (!c.refused && err != nil) {
+				t.Fatalf("refused %v, want %v: %v", refused, c.refused, err)
 			}
 		})
 	}
