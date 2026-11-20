@@ -1381,7 +1381,7 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 		// the open rather than reading it inside the hang guard.
 		unreadable(t, p)
 		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
-		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
+		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/modules/sub/packed-refs", err)
 		}
 	})
