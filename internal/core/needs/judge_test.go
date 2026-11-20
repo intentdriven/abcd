@@ -257,6 +257,26 @@ func TestTheJudgeHoldsEachStepAtItsRealLocation(t *testing.T) {
 	})
 }
 
+// TestTheRunnersRuleRefusesAChainItCannotFollow: a relative target such as
+// d/../x, where d is a directory link, is read by the system as d's target's
+// parent joined with x, while the judge's chain joins it lexically and reaches
+// another file. The steps it held to the guards are then not the route the
+// system takes, so the runner's rule refuses as the judge does rather than
+// admit a route it did not examine.
+func TestTheRunnersRuleRefusesAChainItCannotFollow(t *testing.T) {
+	root := t.TempDir()
+	program(t, tree(t, root, "other"), "x")
+	tree(t, root, "other", "sub")
+	bin := tree(t, root, "bin")
+	link(t, filepath.Join(root, "other", "sub"), filepath.Join(bin, "d"))
+	program(t, bin, "x")
+	p := link(t, "d/../x", filepath.Join(bin, "go"))
+	_, err := (Rule{}).Admit(p)
+	refusedAs(t, err, Unexaminable, p)
+	_, err = (Rule{}).Judge("go", p)
+	refusedAs(t, err, Unexaminable, p)
+}
+
 // TestTheJudgeHoldsEveryAncestor: whoever can write any directory above a
 // copy can replace the directory beneath it, so the judge walks every
 // ancestor of the path and of each step of its links, where the runner's rule

@@ -124,10 +124,11 @@ var ownerOf = func(_ string, fi os.FileInfo) (uint32, error) { return fsutil.Inf
 // reaches it through or the directory it resolves into is one group or other
 // can write (darwin's admin group aside, adminGroupWritableOnly), or when p,
 // the file or ReachedThrough lies within a guard, lexically or after symlink
-// resolution. Its checks and their order are the runner's; it adds one
-// refusal after them: a step of p's links, or ReachedThrough, whose real
-// location (its directory with every link resolved, and its own name) lies
-// within a guard.
+// resolution. Its checks and their order are the runner's; it adds two
+// refusals after them: a chain of p's links that does not end at the file the
+// system resolves p to (Unexaminable), and a step of p's links, or
+// ReachedThrough, whose real location (its directory with every link
+// resolved, and its own name) lies within a guard.
 func (r Rule) Admit(p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		return "", &Refusal{Kind: Relative, Path: p}
@@ -159,6 +160,13 @@ func (r Rule) Admit(p string) (string, error) {
 	chain, err := linkChain(filepath.Clean(p))
 	if err != nil {
 		return "", err
+	}
+	// The chain is followed as the system follows it, or not at all: a
+	// relative target such as d/../x, where d is a directory link, is read
+	// lexically here and by the system through d, and the steps held to the
+	// guards would not be the route that runs.
+	if last, err := filepath.EvalSymlinks(chain[len(chain)-1]); err != nil || last != resolved {
+		return "", &Refusal{Kind: Unexaminable, Path: filepath.Clean(p)}
 	}
 	reals, err := realSteps(chain)
 	if err != nil {
