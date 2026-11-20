@@ -128,8 +128,11 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._+-]*$`)
 // program a harness runs on) and the command each runner starts. Listing one
 // would move a registered copy ahead on PATH of the one a harness or abcd
 // itself runs on. go and make are absent on purpose: abcd runs them, but a
-// repository may need them. The runner package holds its own commands to this
-// set in a test, since this package cannot import it.
+// repository may need them. Interpreters (python, perl, ruby and similar) may
+// be listed: the judge checks only the path the person registers, and a
+// reserved name exists to stop a copy moving ahead of a shell, or of what abcd
+// and a harness run on, on PATH. The runner package holds its own commands to
+// this set in a test, since this package cannot import it.
 var reserved = []string{
 	// shells
 	"ash", "bash", "busybox", "csh", "dash", "elvish", "fish", "ksh", "mksh", "nu", "oksh", "osh",

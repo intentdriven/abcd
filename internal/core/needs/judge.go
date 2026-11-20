@@ -173,6 +173,7 @@ func (r Rule) Admit(p string) (string, error) {
 		return "", err
 	}
 	if r.ReachedThrough != "" {
+		// Skipped when its directory no longer resolves: refusing would break a pinned launch after a PATH directory is removed, and no wrong admit follows.
 		if dir, err := filepath.EvalSymlinks(filepath.Dir(r.ReachedThrough)); err == nil {
 			reals = append(reals, filepath.Join(dir, filepath.Base(r.ReachedThrough)))
 		}
@@ -185,7 +186,10 @@ func (r Rule) Admit(p string) (string, error) {
 
 // Verdict is what Judge admitted: the path as given, cleaned; the file it
 // resolves to; and each step its links pass through after the path, the last
-// being the file itself, empty when the path is no link.
+// being the file itself, empty when the path is no link. Callers use
+// Verdict.Path and never the raw input: Clean is lexical, so a raw a/link/../b
+// names what the system reaches through link, while Path names the file the
+// judge examined.
 type Verdict struct {
 	Path   string
 	Target string
