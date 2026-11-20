@@ -109,7 +109,7 @@ A split run covers no issue (step 1's `covers`), so `liveRun` never resumes it f
 
 ### The drain's figures (step 6; decisions 10, 12 and 14)
 
-Each drain's summary gives that drain's own figures, read from its own state, and nothing across drains (dcn-2611201553101150). `DrainCounts` keeps the pull requests the lanes opened and gains:
+Each drain's summary gives that drain's own figures, read from its own state, and nothing across drains (dcn-2611201605030535). `DrainCounts` keeps the pull requests the lanes opened and gains:
 
 - `issues_resolved`, the resolutions on lanes that merged;
 - `issues_handed_back`, counted per issue: a member handed back alone counts once, a split lane's issues count once, in the single lanes they are taken up in, since a split routes nothing for its bundle (step 5), and a pull request closed unmerged counts each issue it handed back;
@@ -120,7 +120,7 @@ Each drain's summary gives that drain's own figures, read from its own state, an
 
 `DrainPRHandBacks` (`hand_backs_by_pr`) gains the issues each pull request resolved. When `finishMerged` reads a merged pull request, it reads the pull request's check runs from the forge: the `statusCheckRollup` contexts, with `startedAt` added to the query in `internal/core/landing` and to `internal/ghcontract/graphql-fields.txt`. It stores the sum of `completedAt - startedAt` on the drain lane as `ci_minutes`. A check that never started or never completed adds nothing, and the summary says how many were left out. The merge queue's own runs are not counted, since they run on another ref.
 
-`abcd drain` prints these figures in its summary, and `--json` carries them in `counts`. A new drain replaces the drain's state, so its figures start afresh, and nothing beyond that state and the forge's checks is read for them. The intent's forty-issue comparison is not this step's: it is counted once by hand from the forge, as the intent's Mechanism says, and recorded in its Audit Notes (dcn-2611201553101150). This step also raises the bundled default of `drain.bundle_max` from 1 to 5, as the last step to land (decision 12).
+`abcd drain` prints these figures in its summary, and `--json` carries them in `counts`. A new drain replaces the drain's state, so its figures start afresh, and nothing beyond that state and the forge's checks is read for them. The intent's forty-issue comparison is not this step's: it is counted once by hand from the forge, as the intent's Mechanism says, and recorded in its Audit Notes (dcn-2611201605030535). This step also raises the bundled default of `drain.bundle_max` from 1 to 5, as the last step to land (decision 12).
 
 ### Coordination with other work in the loop package
 
