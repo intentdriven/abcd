@@ -314,8 +314,9 @@ rendering one, and bare `abcd statusline` renders abcd's row only in a managed
 repository, where it needs none of the payload the harness hands it on stdin,
 and prints nothing of its own anywhere else. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
-paragraph is the one enumeration of the exceptions; the chapters point here
-rather than restating it. Each exception is also recorded with its reason in
+paragraph is the one complete enumeration of the exceptions; a chapter may
+state its own verb's bare behaviour in a line, and the exception-table test
+below keeps this paragraph complete. Each exception is also recorded with its reason in
 the front door's exception table, and a test runs bare every other top-level
 verb not hidden from the help, bar the framework's own `help` and
 `completion`, and fails when one renders no state, so a verb added later is
