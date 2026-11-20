@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -434,5 +435,40 @@ func TestAParkedRunWhoseMemberAloneIsDueIsRenewed(t *testing.T) {
 				t.Fatalf("the member's renewal is logged naming it: %+v", linesAt(st, StageReservationRenewed))
 			}
 		})
+	}
+}
+
+// TestAWaitersRenewalReportsAFailureBesideAMembersSuccess: a waiter's renewal
+// of a run with members whose lead's renewal fails and whose member's succeeds
+// in one pass reports the failure, naming the lead, and is not read as a
+// renewal of the run.
+func TestAWaitersRenewalReportsAFailureBesideAMembersSuccess(t *testing.T) {
+	repo, bare := bundleRepo(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	runID := bundleRun(t, repo, now.Add(-61*time.Minute))
+	// The third member was renewed a minute ago; the lead and the second are due.
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: bundleThree, Renew: true}, clockAt(now.Add(-time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	was := reserveRenewal
+	reserveRenewal = func(root string, r claim.Request, co claim.Options) (claim.Result, error) {
+		if r.Record == bundleLead {
+			return claim.Result{}, errors.New("origin refused the push")
+		}
+		return was(root, r, co)
+	}
+	t.Cleanup(func() { reserveRenewal = was })
+	before := tipOf(t, bare, bundleTwo)
+
+	got := RenewRunsIn(repo.Root(), runID, now)
+
+	if tip := tipOf(t, bare, bundleTwo); tip.parent != before.commit {
+		t.Fatalf("premise: the second member is renewed: %+v", tip)
+	}
+	if len(got) != 1 {
+		t.Fatalf("one report for the run: %+v", got)
+	}
+	if got[0].Renewed || !strings.Contains(got[0].Note, "could not renew the reservation on "+bundleLead) {
+		t.Fatalf("the lead's failure is reported, naming it, beside the member's success: %+v", got[0])
 	}
 }
