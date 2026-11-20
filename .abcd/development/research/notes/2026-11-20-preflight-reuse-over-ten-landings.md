@@ -9,8 +9,8 @@ this note reads the ten most recent landings whose preflight this checkout kept
 a log of, and sets both reuse and time against the 2026-11-01 baseline. Two
 accounts land on main and each keeps its own logs, so the set is not ten
 consecutive landings on main. The span runs from #1657 to #1710, and the merged
-pull requests inside it with no log here are #1663 to #1671, #1673 to #1701,
-and #1703, #1704 and #1708. Every figure below is one a preflight printed, or a
+pull requests inside it with no log here are #1660, #1661, #1663 to #1671,
+#1673 to #1701, and #1703, #1704 and #1708, 43 in all. Every figure below is one a preflight printed, or a
 share of two printed counts. Nothing is estimated.
 
 ## The baseline
@@ -42,9 +42,9 @@ reference and not as a baseline.
   record files, so the preflight skipped the unit and race stages and printed
   no reuse counts. They count as landings and appear in the table, and they
   are left out of the reuse shares, which therefore cover eight landings.
-- **Before 2026-11-19 16:18, the logs print no check time.** The reports for
-  #1657, #1659 and #1662 print reuse counts but no total and no stage time, so
-  their time cells read "not printed".
+- **The three oldest reports print no check time.** The reports for #1657
+  and #1662 print reuse counts but no total and no stage time. #1659's is
+  records-only and prints neither. Their time cells read "not printed".
 
 ## The ten reports
 
@@ -102,6 +102,40 @@ Six test-running landings printed a time. Their medians and ranges:
 
 The records-only landing #1702 checked in 4m09s after waiting 7m54s.
 
+## Where the race stage's time goes
+
+The reports print each package's elapsed time, and check-tests runs
+`internal/core/implement/loop` twice in the race stage. The cacheable run, in
+the check directory, skips the package's always-rerun tests
+(`internal/testreuse/run.go:504`) and can be replayed from Go's test cache.
+The always-rerun run, in the worktree, runs only those tests with `-count=1`
+(`internal/testreuse/run.go:537`). The first line the log prints for the
+package is the cacheable run, the second the always-rerun run.
+
+| PR | Cacheable run | Always-rerun run | Race stage time |
+|---|---|---|---|
+| #1657 | 1806.038s | 260.126s | not printed |
+| #1662 | 1802.820s | 252.322s | not printed |
+| #1672 | 1735.326s | 251.534s | 38m41s |
+| #1705 | 1962.647s | 255.908s | 43m16s |
+| #1706 | 1813.441s | 251.280s | 40m46s |
+| #1707 | (cached) | 253.027s | 11m20s |
+| #1709 | 1794.410s | 245.846s | 39m35s |
+| #1710 | 1715.099s | 252.865s | 39m04s |
+
+The cacheable run missed the test cache in five of the six timed landings,
+taking 1715s to 1962s, and those five race stages took 38m41s to 43m16s. In
+#1707 it was `(cached)`, and that race stage took 11m20s. The always-rerun run
+took about 250s (245s to 256s) in all six, the fast one included, so it does
+not account for the difference. The two untimed landings, #1657 and #1662,
+missed the cache in the same way. Why that run misses the cache when the plan
+reuses it is the open question iss-2611202032159749 holds.
+
+The reports also hide the miss. check-tests' reason line for
+`implement/loop` gives the same always-rerun reason in every report
+(for example "42 always-rerun tests, as TestACommandPathIsOneAShellTakes
+undeclared", in both #1707 and #1709), whether or not the cacheable part reran.
+
 ## What the numbers support
 
 - **A reuse saving in packages run.** Over the eight landings that ran test
@@ -117,10 +151,10 @@ The records-only landing #1702 checked in 4m09s after waiting 7m54s.
 - **A saving in time.** The race stage's time does not follow its reuse share
   in these six. #1707 reused 120 of 132 and took 11m20s. #1709 reused 119 of
   132 and took 39m35s. #1672 and #1710 each reused 115 of 132 and took 38m41s
-  and 39m04s. Time depends on which packages ran, on whether the always-rerun
-  tests ran, and on how busy the machine
-  was. The reports do not separate these, so a faster check cannot be credited
-  to reuse from these six alone. The one pair that isolates reuse is step 2's
+  and 39m04s. The per-package times above separate the cause: the race
+  stage's time follows whether `implement/loop`'s cacheable run hit Go's test
+  cache, not the count of packages reused. So a faster check cannot be credited
+  to reuse as a whole from these six alone. The one pair that isolates reuse is step 2's
   own, a cold run of 1811s against a fresh-worktree run of 800s on the same
   commit, which is one pair and not one of these ten.
 - **The waits.** Waiting at the load gate and the race gate ranged from 1m37s
@@ -148,7 +182,8 @@ The records-only landing #1702 checked in 4m09s after waiting 7m54s.
 ## What this does not settle
 
 Criterion 6 of itd-2611011325421304 is not met as written. The set is not ten
-consecutive landings on main, and the race stage's time does not fall with its
-reuse share. So the intent stays planned. The decision that records this is
+consecutive landings on main, there is no timed no-reuse baseline to compare
+check time against, and the race stage's time follows one package's cache miss
+rather than its reuse share. So the intent stays planned. The decision that records this is
 dcn-2611202032152249, and the issue that holds the open question of the race
 stage's time is iss-2611202032159749.
