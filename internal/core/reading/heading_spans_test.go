@@ -27,6 +27,7 @@ func TestARawHeadingOpenerInACodeSpanIsNoHeading(t *testing.T) {
 		"a span holding a backtick":  "# Changelog\n\n- The page renders `` `<h3>` `` as text." + codeSpanTail,
 		"a span with no bound after": "# A page\n\nThe `<h2>` tag renders as text",
 		"a span opening a role":      "# A page\n\nThe `<div role=\"heading\">` element." + codeSpanTail,
+		"a span after a closed tag":  "# Changelog\n\n- Press <kbd title=\"a>b\">x</kbd>; `<h1>` renders as text." + codeSpanTail,
 	}
 	for what, doc := range rows {
 		if err := refuses(t, "CHANGELOG.md", doc, nil, refusalHeadings); err != nil {
@@ -63,6 +64,18 @@ func TestARawHeadingBesideCodeIsStillFound(t *testing.T) {
 		"a span in a list item's block":  "# A page\n\n- <div>\n  `<h2>Audit Notes</h2>`\n  </div>\n\n" + sentinelAuditNotes + "\n",
 		"a span on a list item's block":  "# A page\n\n- <div>`<h2>Audit Notes</h2>`</div>\n\n" + sentinelAuditNotes + "\n",
 		"a run left open above":          "# A page\n\nA run ` opens here\n<h2>Audit Notes</h2> and ` closes\n\n" + sentinelAuditNotes + "\n",
+		// A renderer reads a tag, an autolink or other inline markup before a
+		// code span, so a backtick inside one opens nothing, while the pairer
+		// pairs it with a later backtick on the line.
+		"a tick in an autolink":        "# A page\n\nSee <https://x.test/a`b> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tick in a tag's value":      "# A page\n\nSee <span title=\"a`b\">x</span> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a value that is one tick":     "# A page\n\nSee <a title=\"`\">x</a> <h2>Audit Notes</h2> and `end`.\n\n" + sentinelAuditNotes + "\n",
+		"a value holding a >":          "# A page\n\nSee <span title=\"a>`b\">x</span> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a tag over a line break":      "# A page\n\nSee <span\ntitle=\"`\">x</span> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a quoted tag over a break":    "# A page\n\n> See <span\n> title=\"`\">x</span> <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a processing instruction":     "# A page\n\nSee <? a > ` ?> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a CDATA section":              "# A page\n\nSee <![CDATA[ a > ` ]]> then <h2>Audit Notes</h2>, a lone ` here.\n\n" + sentinelAuditNotes + "\n",
+		"a table row splitting a span": "# A page\n\n| a | b | c |\n| - | - | - |\n| `a | <h2>Audit Notes</h2> | b` |\n\n" + sentinelAuditNotes + "\n",
 	}
 	for what, doc := range rows {
 		err := refuses(t, "spc-x.md", doc, nil, refusalHeadings)
