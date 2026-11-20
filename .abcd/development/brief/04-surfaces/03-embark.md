@@ -327,7 +327,7 @@ file.
   "manifest_sha256": "abc123...",
   "source_name": "abcd-cli",
   "source_root_sha": "def456...",
-  "dest": "../abcd-lifeboat",
+  "dest": "/srv/lifeboats/abcd-lifeboat",
   "files": 214,
   "bytes": 1048576
 }
@@ -336,7 +336,9 @@ file.
 > **The entry is deliberately minimal** (adr-35): it carries the manifest
 > identity, the source name and root SHA, the destination, and the file and byte
 > counts. Not a verdict, a label, or a recipient list. An empty field is a lie in
-> a schema; add any of these when something actually populates it.
+> a schema; add any of these when something actually populates it. `dest` holds
+> the destination resolved to an absolute path: a disembark given a relative
+> destination records where it resolved, never the spelling it was given.
 
 Manifests are small (a file list and hashes, not contents), so the log answers
 "what did this repo's lifeboat look like at point T?" without keeping stale
