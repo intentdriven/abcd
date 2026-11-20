@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
@@ -368,5 +369,75 @@ func TestARefusedOpenLaneLetsTheOtherLanesMove(t *testing.T) {
 	}
 	if len(res.Blocked) != 1 || res.Blocked[0].Lane != "lane-3" || !strings.Contains(res.Next, "internal/surface/cli") {
 		t.Fatalf("the answer names lane-3's wait on Q's hold: %+v, next %q", res.Blocked, res.Next)
+	}
+}
+
+// TestAResumeReservesNoPathOnlyALandedStepWidenedTo: lane-1 widened its hold
+// to internal/extra beside step 1's package and the spec record, and landed;
+// the next step narrowed the hold to what step 2's lane needs and opened it.
+// Q then reserves a file under internal/extra, which only the landed step
+// needed. A resume reserves what the lanes in flight need (landedNarrowing's
+// rule), so Q's hold refuses nothing, and the hold stays without the path.
+func TestAResumeReservesNoPathOnlyALandedStepWidenedTo(t *testing.T) {
+	const extra = "internal/extra"
+	repo := loopRepo(t, readyIntent("", settledQuestions), twoStepSpec)
+	bare := onOrigin(t, repo)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+	laneDone(t, repo.Root(), start.RunID, steps, specRel, extra)
+	if res, err := advance(repo.Root(), start.RunID, steps, Options{}); err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("step 2's lane opens: %+v %v", res, err)
+	}
+	want := []string{"internal/surface/cli", specRel}
+	slices.Sort(want)
+	fp := footprintOf(t, bare, "itd-10")
+	slices.Sort(fp)
+	if !slices.Equal(fp, want) {
+		t.Fatalf("with step 1 landed and step 2 open, the hold is %q, want %q", fp, want)
+	}
+	quinnHolds(t, bare, heldIssue, claim.Options{}, extra+"/x.go")
+
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatalf("the resume is refused over %s, which only the landed step widened to: %v", extra, err)
+	}
+	fp = footprintOf(t, bare, "itd-10")
+	slices.Sort(fp)
+	if slices.ContainsFunc(fp, func(p string) bool { return strings.HasPrefix(p, extra) }) || !slices.Equal(fp, want) {
+		t.Fatalf("the resumed hold is %q, want %q", fp, want)
+	}
+}
+
+// TestAResumeOverALapsedTipReservesNoPathOnlyALandedStepNeeded: lane-1
+// widened its hold to internal/extra and landed, and the run stopped there,
+// before the renewal that narrows the hold, which then lapsed still naming the
+// path. Q reserves a file under it. The resume revives the tip with what the
+// lanes in flight need (inFlightFootprint) rather than the tip as it stood, so
+// Q's hold refuses nothing.
+func TestAResumeOverALapsedTipReservesNoPathOnlyALandedStepNeeded(t *testing.T) {
+	const extra = "internal/extra"
+	repo := loopRepo(t, readyIntent("", settledQuestions), twoStepSpec)
+	bare := onOrigin(t, repo)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	laneDone(t, repo.Root(), start.RunID, f.steps(), specRel, extra)
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Contains(fp, extra) {
+		t.Fatalf("the landed lane's hold still names %s: %q", extra, fp)
+	}
+	later := time.Now().Add(6 * time.Hour)
+	clock := func() time.Time { return later }
+	quinnHolds(t, bare, heldIssue, claim.Options{Now: clock}, extra+"/x.go")
+
+	if _, err := Start(repo.Root(), "itd-10", Options{Now: clock}); err != nil {
+		t.Fatalf("the resume is refused over %s, which only the landed step needed: %v", extra, err)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); slices.ContainsFunc(fp, func(p string) bool { return strings.HasPrefix(p, extra) }) {
+		t.Fatalf("the revived hold names %s again: %q", extra, fp)
 	}
 }

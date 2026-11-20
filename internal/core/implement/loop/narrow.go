@@ -182,6 +182,19 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 	return fp, true
 }
 
+// inFlightFootprint is fp less what only an intent run's landed steps
+// needed, by the rule a landing's renewal narrows by (landedNarrowing): what a
+// resume reserves, from the record and from this copy's tip alike, so a
+// resume never takes back a path the narrowing gave up, and is never refused
+// over a hold a peer took on it since. fp is returned as it stands wherever
+// landedNarrowing has nothing to narrow.
+func inFlightFootprint(repoRoot string, st State, fp []string) []string {
+	if in, ok := landedNarrowing(repoRoot, st, claim.Reservation{Footprint: fp}); ok {
+		return in
+	}
+	return fp
+}
+
 // laneWidenedPaths is each path the run record says lane laneID widened to.
 func laneWidenedPaths(st State, laneID string) []string {
 	var out []string

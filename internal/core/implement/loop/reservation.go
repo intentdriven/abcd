@@ -876,7 +876,12 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), res.RunID+" is unchanged"); err != nil {
 		return err
 	} else {
-		fp = heldWith(fp, widenedPaths(st))
+		// A path only a landed step needed, the packages a step the spec does
+		// not yet mark landed names, or a path a landed lane widened to, is
+		// left out by the rule each landing's renewal narrows by
+		// (inFlightFootprint), so a resume is never refused over a hold a peer
+		// took on it once the step landed.
+		fp = inFlightFootprint(repoRoot, st, heldWith(fp, widenedPaths(st)))
 	}
 	// A reservation the run could not record is released again, and peers would see the
 	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
@@ -895,7 +900,9 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now)
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now, func(tip []string) []string {
+		return inFlightFootprint(repoRoot, st, tip)
+	})
 	if err != nil {
 		return err
 	}
@@ -955,11 +962,15 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // widened to (widen.go) is never dropped by a widening, a revival or a
 // fallback (iss-2611101316537446); a tip since deleted loses
 // nothing, since the caller's fp already names what the run record says the lane
-// widened to (widenedPaths). A drain's act (drain) carries
+// widened to (widenedPaths). The tip's paths are first passed through
+// inFlight, when it is set, so a tip still naming what only a landed step of
+// an intent run needed (a landing the run stopped after, before the renewal
+// that narrows it) gives those paths back rather than reserving them again
+// (inFlightFootprint). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
 // issue backs it off; a renewal of this copy's own live tip carries none, since
 // that tip is no hand-back. A person's resume goes over a hand-back and says so.
-func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time) (reserved, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time, inFlight func(tip []string) []string) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -973,7 +984,11 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	// keeps them beside the record's footprint rather than dropping them.
 	if ok && r.Copy == claim.CopyThis &&
 		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
-		fp = heldWith(fp, r.Footprint)
+		tip := r.Footprint
+		if inFlight != nil {
+			tip = inFlight(tip)
+		}
+		fp = heldWith(fp, tip)
 		plain.Footprint = fp
 	}
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
