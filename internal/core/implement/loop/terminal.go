@@ -1998,16 +1998,11 @@ func (t *terminal) retellLimit(runID string) {
 	}
 }
 
-// noteRecordReleased records, as a drive or a stop lets the issue go, the blob of its record
+// noteRecordReleasedFor records, as a drive or a stop lets the issue id of a run go (the
+// lead or, in a run with members, a member, its lines naming id), the blob of its record
 // on origin's default branch as last fetched, and, for a release that did not reach
 // origin, the tip it left. A record it cannot read leaves no note, and with no note
 // reserving again compares nothing.
-func noteRecordReleased(repoRoot string, st *State, failed bool, now time.Time) {
-	noteRecordReleasedFor(repoRoot, st, st.Key, failed, now)
-}
-
-// noteRecordReleasedFor is noteRecordReleased for the issue id of a run, the lead or, in
-// a run with members, a member: its lines name id.
 func noteRecordReleasedFor(repoRoot string, st *State, id string, failed bool, now time.Time) {
 	if blob, _, _ := claim.RecordOnDefault(repoRoot, id); blob != "" {
 		st.Record = append(st.Record, Entry{At: now, Stage: StageReleasedOver, Note: blob, Issue: st.issueOn(id)})

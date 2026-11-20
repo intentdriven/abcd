@@ -289,29 +289,20 @@ func renewalDue(st State, snap claim.Snapshot, now time.Time) (own *claim.Reserv
 	return own, claim.HalfThrough(*own, now), ""
 }
 
-// renewFailed logs a failed renewal in the run record, once until a renewal
-// succeeds, and returns its note.
-func renewFailed(st *State, now time.Time, err error) string {
-	return renewFailedFor(st, st.Key, now, err)
-}
-
-// renewFailedFor is renewFailed for the reservation on id.
+// renewFailedFor logs a failed renewal of the reservation on id in the run
+// record, once until a renewal succeeds, and returns its note.
 func renewFailedFor(st *State, id string, now time.Time, err error) string {
 	note := "could not renew the reservation on " + id + ": " + err.Error()
 	logOnceFor(st, id, now, StageReservationRenewFailed, note)
 	return note
 }
 
-// logOnce appends a reservation entry at stage unless the run record's last
-// reservation entry is already one at stage, so a condition that holds across
-// many steps (origin unreachable, the reservation another's) is logged once
-// until something else about the reservation is.
-func logOnce(st *State, now time.Time, stage, note string) {
-	logOnceFor(st, st.Key, now, stage, note)
-}
-
-// logOnceFor is logOnce for the reservation on id: in a run with members, the
-// last entry about that issue's reservation decides, and the entry names it.
+// logOnceFor appends an entry at stage about the reservation on id unless the
+// run record's last entry about that reservation is already one at stage, so a
+// condition that holds across many steps (origin unreachable, the reservation
+// another's) is logged once until something else about the reservation is. In
+// a run with members, the last entry about that issue's reservation decides,
+// and the entry names it.
 func logOnceFor(st *State, id string, now time.Time, stage, note string) {
 	if last := lastReservationEntryFor(*st, id); last != nil && last.Stage == stage {
 		return
