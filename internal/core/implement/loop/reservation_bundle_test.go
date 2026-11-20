@@ -383,3 +383,56 @@ func TestTheChecksReadEveryMember(t *testing.T) {
 		t.Fatalf("a run with no members takes the lead's checks alone: %+v %v", plain.Checks, err)
 	}
 }
+
+// TestAParkedRunWhoseMemberAloneIsDueIsRenewed: a drain's move and a drive's
+// wait each renew a run parked at land whose member alone is half through its
+// lease, the lead's own renewal not yet due, and leave the lead's as it is.
+func TestAParkedRunWhoseMemberAloneIsDueIsRenewed(t *testing.T) {
+	for name, renew := range map[string]func(t *testing.T, f *landFixture, at time.Time){
+		"a drain's move": func(t *testing.T, f *landFixture, at time.Time) {
+			if _, err := Drain(f.repo.Root(), Options{Now: func() time.Time { return at }}, DrainOptions{}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a drive's wait": func(t *testing.T, f *landFixture, at time.Time) {
+			if notes := renewParkedDue(f.repo.Root(), at, nil); len(notes) != 0 {
+				t.Fatalf("the renewal says %q", notes)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, l := parkDrainLane(t)
+			f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "MERGEABLE", MergeStateStatus: "BLOCKED"})
+			lead := originReservation(t, f.bare, claim.RefPrefix+secondIssue)
+			held := lead.claimed
+			if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: bundleTwo, Footprint: []string{"docs/member.md"}, Lease: 2 * time.Hour}, clockAt(held)); err != nil {
+				t.Fatal(err)
+			}
+			if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+				st.Bundle = append(st.Bundle, Member{Issue: bundleTwo, Footprint: []string{"docs/member.md"}, ReservedAt: &held})
+				st.Record = append(st.Record, Entry{At: held, Stage: StageReservation, Note: "reserved " + bundleTwo, Issue: bundleTwo})
+				return true, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			member := tipOf(t, f.bare, bundleTwo)
+			at := held.Add(61 * time.Minute)
+
+			renew(t, f, at)
+
+			if tip := tipOf(t, f.bare, bundleTwo); tip.parent != member.commit || tip.released || !tip.claimed.Equal(at) {
+				t.Fatalf("the member half through its lease is renewed: before %+v, now %+v", member, tip)
+			}
+			if tip := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tip.commit != lead.commit {
+				t.Fatalf("the lead, under half its lease, is not renewed: before %+v, now %+v", lead, tip)
+			}
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := issuesOf(linesAt(st, StageReservationRenewed)); !slices.Contains(got, bundleTwo) {
+				t.Fatalf("the member's renewal is logged naming it: %+v", linesAt(st, StageReservationRenewed))
+			}
+		})
+	}
+}
