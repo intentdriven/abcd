@@ -64,10 +64,16 @@ worktree is made, `abcd implement step` reserves the step's own `- packages:`
 line (the `## Footprint` line when it cannot say) beside what the reservation
 holds, judged for overlap like any reservation, so a package only a later step
 names holds no one off until that step's lane opens. Another's live hold on
-one of them backs that step off as contention (exit 3), with no worktree made
-and the run unchanged, and the step goes on once the hold ends. A package only
-a landed step names is not reserved, and a resume after every step has landed
-reserves the packages of the steps the run built.
+one of them holds that step back alone, with no worktree made for it: the
+step moves the run's other lanes, or opens a later step's lane in its place,
+and names the wait; it exits 3 only when nothing else moved. The step goes on
+once the hold ends. Once a step lands, the next `abcd implement step` narrows
+the reservation to what the steps still in flight need (their packages, the
+paths their lanes widened to, and the spec, which each landing marks), so a
+package only a landed step names holds no one off, and a run waiting for a
+later step's package never holds the one a peer's next step waits for. A
+resume after every step has landed reserves the packages of the steps the run
+built.
 A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the

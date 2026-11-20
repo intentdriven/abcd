@@ -221,9 +221,15 @@ reservation widens as each later step's lane opens: before the lane's
 worktree is made, the loop reserves that step's own packages (the
 `## Footprint` line when the step cannot say) beside what the reservation
 holds, keeping its term, judged for overlap and against the cap like any
-reservation, and another's live hold on one of them backs the step off as
-contention, a wait until that hold ends, with no worktree made and the run
-unchanged. A resumed run whose every step has since landed reserves the
+reservation, and another's live hold on one of them holds that step back
+alone, a wait until that hold ends, with no worktree made for it: the step
+moves the run's other lanes, or opens a later step's lane in its place, and
+is contention only when nothing else moved. Once a step lands, the run's next
+renewal narrows the reservation to what the steps still in flight need, their
+packages, the paths their lanes widened to and the spec each landing marks
+(dcn-2611201503122480), so a package only a landed step touched holds no one
+off and two runs whose step orders cross never each hold what the other
+waits for. A resumed run whose every step has since landed reserves the
 packages of the steps it built, never wider than its start. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning
