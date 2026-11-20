@@ -128,8 +128,17 @@ taking 1715s to 1962s, and those five race stages took 38m41s to 43m16s. In
 #1707 it was `(cached)`, and that race stage took 11m20s. The always-rerun run
 took about 250s (245s to 256s) in all six, the fast one included, so it does
 not account for the difference. The two untimed landings, #1657 and #1662,
-missed the cache in the same way. Why that run misses the cache when the plan
-reuses it is the open question iss-2611202032159749 holds.
+missed the cache in the same way. Each miss follows a change, since the
+previous log that ran tests, to what loop's test binary is built from: loop's
+own files in #1662, #1672, #1705, #1709 and #1710, and in #1706 the non-test
+files of `internal/core/site`, which loop imports. #1657's log is the oldest
+here and has none before it to compare with. Between #1706's head and
+#1707's nothing loop's test binary is built from changed, so #1707 replayed the
+run #1706 had cached. The misses are the test cache working, and the cost is
+loop's ~30-minute cacheable run under `-race` in a package that changes in
+most landings. Which of loop's tests hold that time, and whether shortening or
+moving them shortens the race stage, is the question iss-2611202032159749
+holds.
 
 The reports also hide the miss. check-tests' reason line for
 `implement/loop` gives the same always-rerun reason in every report
