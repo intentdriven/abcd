@@ -146,3 +146,60 @@ func TestTheProductThinkerQuotesNameTheRegisteredPersona(t *testing.T) {
 		}
 	}
 }
+
+// TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint holds the
+// product-thinker glossary entry to the registry (iss-2610262041032173):
+// personas.json gives Iris "product thinker" among its role hints, so the
+// entry's "When NOT to use" no longer calls a persona's role hint an outside
+// job title. It says a persona such as Iris may carry the hint, while the
+// persona stays a modelled archetype and not the role abcd addresses.
+func TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var holder string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "product thinker" {
+				holder = p.Name
+			}
+		}
+	}
+	if holder == "" {
+		t.Fatal("personas.json gives no persona the \"product thinker\" role hint")
+	}
+
+	body := readRepoFile(t, root, ".abcd/development/brief/glossary/core/product-thinker.md")
+	section := body
+	if i := strings.Index(section, "## When NOT to use"); i >= 0 {
+		section = section[i:]
+	} else {
+		t.Fatalf("product-thinker.md has no \"When NOT to use\" section")
+	}
+	if i := strings.Index(section, "## Examples"); i >= 0 {
+		section = section[:i]
+	}
+	flat := strings.Join(strings.Fields(section), " ")
+	if strings.Contains(flat, "outside job title") {
+		t.Errorf("product-thinker.md's \"When NOT to use\" still calls a persona's role hint an outside job title, but personas.json gives %s the \"product thinker\" hint:\n%s", holder, section)
+	}
+	for _, want := range []string{
+		"such as " + holder,
+		"\"product thinker\" among its role hints",
+		"personas.json",
+		"modelled archetype",
+		"not the role abcd addresses",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("product-thinker.md's \"When NOT to use\" does not say %q:\n%s", want, section)
+		}
+	}
+}
