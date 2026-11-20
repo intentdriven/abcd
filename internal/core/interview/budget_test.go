@@ -27,10 +27,9 @@ func budget(t *testing.T) time.Duration {
 // loaded runner, and a bound on a hang all the same.
 const noDeadlineBudget = 10 * time.Minute
 
-// TestEveryWaitEndsBeforeTheTestDeadline: no wait a test of this package sets
-// runs past the deadline the test binary was given, so a wait that does run
-// out fails the test with its own message rather than the binary's timeout
-// panic.
+// TestEveryWaitEndsBeforeTheTestDeadline: no wait waits names runs past the
+// deadline the test binary was given, so a wait that does run out fails the
+// test with its own message rather than the binary's timeout panic.
 func TestEveryWaitEndsBeforeTheTestDeadline(t *testing.T) {
 	dl, ok := t.Deadline()
 	if !ok {
@@ -43,10 +42,10 @@ func TestEveryWaitEndsBeforeTheTestDeadline(t *testing.T) {
 	}
 }
 
-// TestEveryWaitGrowsWithTheTestDeadline: every wait a test of this package
-// sets is at least half the time the test binary has left, so a loaded
-// runner, given the longer deadline a slow run is given, slows the tests
-// without failing them (iss-2610102020447522).
+// TestEveryWaitGrowsWithTheTestDeadline: every wait waits names is at least
+// half the time the test binary has left, so a loaded runner, given the
+// longer deadline a slow run is given, slows the tests without failing them
+// (iss-2610102020447522).
 func TestEveryWaitGrowsWithTheTestDeadline(t *testing.T) {
 	dl, ok := t.Deadline()
 	if !ok {
@@ -59,14 +58,19 @@ func TestEveryWaitGrowsWithTheTestDeadline(t *testing.T) {
 	}
 }
 
-// waits is every wait the package's tests set, by what it bounds.
+// waits is the waits the package's tests set, by what it bounds: the dispatch
+// timeout and the stub's sleep as they are built, and budget itself, which
+// the three watchdogs on guarded readings (the link-cycle test's, within and
+// readWithin) call where they wait. These tests do not reach the watchdogs:
+// one put back to a fixed wait leaves them green, and only reading the code
+// shows each calls budget.
 func waits(t *testing.T) map[string]time.Duration {
 	t.Helper()
 	script := stubOnPath(t)
 	stubSleep(t, script, 1)
 	return map[string]time.Duration{
 		"a stubbed turn's dispatch timeout": newWrittenRun(t, "").w.Timeout,
-		"a guarded reading's wait":          budget(t),
+		"the budget the watchdogs call":     budget(t),
 		"a stubbed turn's sleep":            stubSleepFor(script, "turn-1"),
 	}
 }

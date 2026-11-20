@@ -672,8 +672,9 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 // worktree's entry) cannot slow a turn for minutes before the guard refuses.
 func TestAFollowedLinkIsBounded(t *testing.T) {
 	// within runs read and fails the test when it does not end within the
-	// test's budget: reading the large trees below whole takes minutes, and
-	// what a reading past the followed-link budget returns, refused names.
+	// test's budget, a guard against a hang only: that a file past the byte
+	// budget is refused before it is read is held by the file itself, which
+	// cannot be opened (unreadable).
 	within := func(t *testing.T, read func() error) error {
 		t.Helper()
 		wait := budget(t)
@@ -688,22 +689,9 @@ func TestAFollowedLinkIsBounded(t *testing.T) {
 		}
 	}
 	// huge is a directory holding name, a sparse file far past the byte
-	// budget: making it costs nothing, hashing it whole takes minutes.
-	huge := func(t *testing.T, name string) string {
-		t.Helper()
-		dir := filepath.Join(t.TempDir(), "huge")
-		if err := os.Mkdir(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
-			t.Fatal(err)
-		}
-		return dir
-	}
+	// budget that cannot be opened: making it costs nothing, and a reading
+	// that opened it before refusing fails with the open's error.
+	huge := bigSparseDir
 	// many is a directory holding n empty files.
 	many := func(t *testing.T, n int) string {
 		t.Helper()
@@ -956,9 +944,10 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 }
 
 // readWithin runs read and fails the test when it does not end within the
-// test's budget: reading the large trees the budget tests plant whole takes
-// minutes, and what a reading past its budget returns, the tests' refused
-// names.
+// test's budget, a guard against a hang only: that a reading past a budget
+// refuses before reading the large file it planted is held by what the
+// refusal says or, where two refusals say the same, by the file itself,
+// which cannot be opened (bigSparseDir).
 func readWithin(t *testing.T, read func() error) error {
 	t.Helper()
 	wait := budget(t)
@@ -973,22 +962,43 @@ func readWithin(t *testing.T, read func() error) error {
 	}
 }
 
-// bigSparseDir is a directory holding name, a sparse file far past the byte
-// budget: making it costs nothing, hashing it whole takes minutes.
+// bigSparseDir is a directory holding name, a sparse file far past the
+// followed-link byte budget that cannot be opened: making it costs nothing,
+// and a reading that opened it before refusing (hashing it, then charging it)
+// fails with the open's error, which the tests' refused rejects, rather than
+// hashing it whole inside the hang guard. The charge before the read and the
+// hash's own bound past it refuse in the same words, so the refusal alone
+// cannot say which came first.
 func bigSparseDir(t *testing.T, name string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "huge")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Create(filepath.Join(dir, name))
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 		t.Fatal(err)
 	}
+	unreadable(t, p)
 	return dir
+}
+
+// unreadable takes every permission off p, so opening it fails. A user the
+// mode does not stop (root) still opens it: the test then says that only the
+// hang guard stands between a reading that reads before refusing and a pass.
+func unreadable(t *testing.T, p string) {
+	t.Helper()
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(p); err == nil {
+		_ = f.Close()
+		t.Logf("%s opens with no permission (run as root?): that it is refused before it is read rests on the hang guard alone", p)
+	}
 }
 
 // dirOfEmpties is a directory holding n empty files.
