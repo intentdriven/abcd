@@ -64,6 +64,16 @@ A member handed back, in the first round or a later fix round, is recorded on th
 
 The landing already writes one `Resolves:` per resolution. In a run with members the records commit's body says it is the landing of a bundle and names the lead and every member, whether resolved or handed back, in prose and never as a trailer. A run without members writes today's body. `prTitle` names the area and the count, for example `fix(.abcd/development/brief/04-surfaces): 4 issues, iss-A and 3 more`. The body lists each member with its resolution, and gives a `Refs:` line for each member handed back, so every record id the text names carries a trailer.
 
+Step 1 left some gates reading only the lead's reservation, because no run in step 1 can have its lead handed back alone while its members stay held. Each must be rechecked here, once the lead can be:
+
+- `renewReservation` in `reservation.go` returns at once when the lead's `reserved_at` is cleared, so it must be rechecked here to keep renewing the members still held.
+- `settleStop` in `stop.go` releases only when the lead's `reserved_at` is set, so it must be rechecked here to release the members still held.
+- `tidyReservation` in `reservation.go` releases on landing only when the lead's `reserved_at` is set, so it must be rechecked here to tombstone the members still held.
+- `releaseOnHandBack` in `reservation.go` releases only when the lead's `reserved_at` is set, so it must be rechecked here to release the members still held.
+- `peerTook` in `terminal.go` reads every issue's hold since step 1 but is gated on the lead's `reserved_at`, so it must be rechecked here.
+- The parked-at-land renewals in `drain_finish.go` and `drain_lease.go` read every issue's due state since step 1 but skip a run whose lead's `reserved_at` is cleared, so they must be rechecked here.
+- `reserveOnLeavingLand` in `reservation.go` judges and widens again only the lead's hold, which is the one that narrows, so it must be rechecked here for the member that holds the widened paths after `widenOnto`.
+
 ### The cap and who joins (step 3; decisions 2, 3, 4, 9 and 12)
 
 `drain.bundle_max` is a new key under a `drain` namespace. It is resolved through `layered` as the pace keys are (`pace.go`): the repository's `.abcd/config.json` over the machine's `config.json` over the bundled default, from 1 to 10. The bundled default is 1 in this step and stays 1 until step 6 raises it to 5 (decision 12), so a drain bundles only where a person sets the key until the split and the figures exist. The namespace is claimed, so a misspelt key is refused naming the file. The cap is read once when a drain starts and kept on its state as `bundle_max`, with its layer and origin, as `Pace` is kept. A running drain keeps its cap.
