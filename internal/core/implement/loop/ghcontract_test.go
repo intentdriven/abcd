@@ -44,11 +44,28 @@ func TestTheStubForgeClientAnswersOnlyAGet(t *testing.T) {
 	for _, args := range [][]string{
 		{"api", "-X", "POST", "repos/{owner}/{repo}/pulls/7/reviews?per_page=100"},
 		{"api", "repos/{owner}/{repo}/pulls/7/reviews?per_page=100", "-f", "event=APPROVE"},
+		// The runs listing goes through its projection alone
+		// (iss-2611201352116252): unprojected, with a method or a field
+		// beside the filter, or with the filter before the path, it is
+		// refused.
+		{"api", mergeGroupRunsPath},
+		{"api", mergeGroupRunsPath, "--jq", mergeGroupRunsFilter, "-X", "POST"},
+		{"api", mergeGroupRunsPath, "-X", "POST"},
+		{"api", "--jq", mergeGroupRunsFilter, mergeGroupRunsPath},
+		{"api", "repos/{owner}/{repo}/pulls/7/reviews?per_page=100", "--jq", mergeGroupRunsFilter},
 	} {
 		cmd := exec.Command(gh, args...)
 		cmd.Dir = filepath.Dir(gh)
 		if out, err := cmd.CombinedOutput(); err == nil {
 			t.Fatalf("stub %v answered a non-GET: %s", args, out)
 		}
+	}
+	cmd := exec.Command(gh, "api", mergeGroupRunsPath, "--jq", mergeGroupRunsFilter)
+	cmd.Dir = filepath.Dir(gh)
+	if out, err := cmd.CombinedOutput(); err != nil || string(out) != "{\"workflow_runs\":[]}\n" {
+		t.Fatalf("stub answers the projected runs listing: %q, %v", out, err)
+	}
+	if sent, err := os.ReadFile(filepath.Join(filepath.Dir(gh), "runs.jq")); err != nil || string(sent) != mergeGroupRunsFilter {
+		t.Fatalf("stub records the filter it was sent: %q, %v", sent, err)
 	}
 }
