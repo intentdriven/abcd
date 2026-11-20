@@ -45,8 +45,10 @@ func TestHistoryFormsThatSkipTheSeamCreateNothing(t *testing.T) {
 	}
 	prose := strings.Join(strings.Fields(string(chapter)), " ")
 	for _, want := range []string{
-		"`abcd history staged --all-repos` and `abcd history discard --pending` skip the seam",
-		"create nothing",
+		// Named in words: the chapter's prose states no command shape
+		// (TestSurfaceChapterProseStatesNoShape); the appendix carries it.
+		"Two forms name no repository and skip the seam: the all-repositories form of the staged listing, and the discard of a transcript still in the machine-level pending directory.",
+		"Both create nothing",
 	} {
 		if !strings.Contains(prose, want) {
 			t.Errorf("the history chapter does not state %q: it still says every history verb reaches the store through the seam", want)

@@ -191,10 +191,11 @@ reaches the store through one resolve seam, and that seam creates the store
 chain when it is absent and moves a corpus left at the legacy location into it.
 So a listing on a fresh machine leaves the whole default chain behind it, and a
 staged listing on a machine carrying a legacy corpus leaves that corpus moved
-and a tombstone at the old path. Two forms name no repository:
-`abcd history staged --all-repos` and `abcd history discard --pending` skip the
-seam, and so create nothing and move nothing: on a fresh machine each leaves the
-home directory as it found it.
+and a tombstone at the old path. Two forms name no repository and skip the
+seam: the all-repositories form of the staged listing, and the discard of a
+transcript still in the machine-level pending directory. Both create nothing
+and move nothing: on a fresh machine each leaves the home directory as it found
+it.
 
 ## Why capture is split across two hooks
 
