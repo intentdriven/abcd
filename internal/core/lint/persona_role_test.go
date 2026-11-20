@@ -1,6 +1,7 @@
 package lint_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,6 +90,59 @@ func TestPersonaGlossaryScopesItsRuleToAModelledUser(t *testing.T) {
 	for _, want := range []string{"modelled user", "product thinker", "by role, unnamed"} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("persona.md's \"When to use\" does not say %q: the rule is scoped to a modelled user's voice, and a real role abcd addresses may be quoted by role, unnamed:\n%s", want, section)
+		}
+	}
+}
+
+// TestTheProductThinkerQuotesNameTheRegisteredPersona holds the press release
+// and itd-106 to one name for the product-thinker role (iss-2610262031403463):
+// the registry picks the name from the role, so each quote attributed to "a
+// product thinker" names the persona personas.json gives that role, and the
+// two quotes agree.
+func TestTheProductThinkerQuotesNameTheRegisteredPersona(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var want string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "product thinker" {
+				want = p.Name
+			}
+		}
+	}
+	if want == "" {
+		t.Fatal("personas.json gives no persona the \"product thinker\" role hint")
+	}
+
+	for _, rel := range []string{
+		".abcd/development/brief/01-product/01-press-release.md",
+		".abcd/development/intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and.md",
+	} {
+		found := false
+		for i, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+			if !strings.Contains(line, ", a product thinker") {
+				continue
+			}
+			name, ok := lint.PersonaAttribution(line)
+			if !ok {
+				continue
+			}
+			found = true
+			if name != want {
+				t.Errorf("%s:%d attributes the product thinker's quote to %s; personas.json gives the role to %s", rel, i+1, name, want)
+			}
+		}
+		if !found {
+			t.Errorf("%s holds no quote attributed to a named product thinker", rel)
 		}
 	}
 }
