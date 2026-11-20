@@ -69,9 +69,12 @@ step moves the run's other lanes, or opens a later step's lane in its place,
 and names the wait; it exits 3 only when nothing else moved. The step goes on
 once the hold ends. Once a step lands, the next `abcd implement step` narrows
 the reservation to what the steps still in flight need (their packages, the
-paths their lanes widened to, and the spec, which each landing marks), so a
-package only a landed step names holds no one off, and a run waiting for a
-later step's package never holds the one a peer's next step waits for. A
+paths their lanes widened to, the files their lanes' branches changed, and the
+spec, which each landing marks), so a package only a landed step names holds
+no one off, and a run waiting for a later step's package never holds the one a
+peer's next step waits for. While a lane in flight is mid-edit (its
+implementer or a fix round at work, or one it may be handed next), nothing
+narrows: its branch shows its edits only once its receipt commits them. A
 resume after every step has landed reserves the packages of the steps the run
 built.
 A path naming a directory git tracks is reserved as it stands, and the

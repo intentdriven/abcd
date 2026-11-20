@@ -100,7 +100,15 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 // A lane in flight is one neither done nor discarded. What the lanes in
 // flight need is each one's step packages (stepPackages, the `## Footprint`
 // packages line where the step cannot say), the paths the run record says it
-// widened to, and the spec's own record, which each landing marks. A path of
+// widened to, the files its branch changed (laneChangedFiles, at its tip),
+// and the spec's own record, which each landing marks. The changed files
+// count because a lane widens only to a path the hold does not already
+// cover, so an edit to a file under another step's packages leaves no
+// record. Nothing narrows while a lane in flight is mid-edit: neither still
+// at its worktree or brief, where no implementer has been handed out, nor
+// past editing (pastEditing), since an implementer's edits stay uncommitted
+// until its receipt and its branch does not show them; two automated lanes
+// must never edit one file. A path of
 // own any of them covers is kept; one above some of them is narrowed to
 // those (lock de-escalation); one a landed lane's packages or widenings
 // cover, and nothing in flight needs, is dropped; and a path neither side
@@ -109,8 +117,9 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 // overlap and never widens; renewReservation makes it whenever it is due,
 // not only at half the lease. ok is false
 // when there is nothing to narrow: an issue run (narrowedFootprint is its
-// narrowing), an auto-plan run, no lane landed yet, a lane whose step cannot
-// be read (its footprint is then unknown), nothing to drop, or nothing left
+// narrowing), an auto-plan run, no lane landed yet, a lane mid-edit, a lane
+// whose step cannot be read (its footprint is then unknown), a lane past
+// editing whose branch or changed files git cannot read, nothing to drop, or nothing left
 // to hold, which claim's renewal cannot write (a reservation names at least
 // one path), nor a narrowing it would decline (a path no reservation may
 // carry, or more than its message fits), which would otherwise push a
@@ -120,7 +129,8 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 		return nil, false
 	}
 	var flight, landed []string
-	for _, l := range st.Lanes {
+	var changedBy []Lane
+	for i, l := range st.Lanes {
 		if l.Stage == StageDiscarded {
 			continue
 		}
@@ -132,14 +142,44 @@ func landedNarrowing(repoRoot string, st State, own claim.Reservation) (fp []str
 			return nil, false
 		}
 		pk = append(pk, laneWidenedPaths(st, l.ID)...)
-		if l.Stage == StageDone {
+		switch {
+		case l.Stage == StageDone:
 			landed = append(landed, pk...)
-		} else {
+		case l.Stage == StageWorktree || l.Stage == StageBrief:
+			// No implementer has been handed out: the lane has edited
+			// nothing, and what it edits later outside the hold is widened
+			// to, judged for overlap, at its receipt.
 			flight = append(flight, pk...)
+		case pastEditing(st, i):
+			flight = append(flight, pk...)
+			if l.Branch != "" {
+				changedBy = append(changedBy, l)
+			}
+		default:
+			// A lane mid-edit may hold edits its branch does not show yet,
+			// to a file the hold already covered, so none was recorded as
+			// widened to: nothing narrows until it is past editing.
+			return nil, false
 		}
 	}
 	if len(landed) == 0 {
 		return nil, false
+	}
+	// A lane past editing may have changed a file under a landed step's
+	// packages, which the hold already covered, so it widened to nothing:
+	// the files its branch changed are what it needs too.
+	for _, l := range changedBy {
+		head, err := branchTip(Context{RepoRoot: repoRoot}, l)
+		if err != nil {
+			return nil, false
+		}
+		changed, declined := laneChangedFiles(repoRoot, l, head)
+		if declined != "" {
+			return nil, false
+		}
+		for _, p := range changed {
+			flight = append(flight, path.Clean(p))
+		}
 	}
 	if store, err := spec.Load(repoRoot); err == nil {
 		if sp, ok := store.Lookup(st.Spec); ok && sp.Path != "" {

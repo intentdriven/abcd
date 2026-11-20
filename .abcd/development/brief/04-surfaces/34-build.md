@@ -226,10 +226,13 @@ alone, a wait until that hold ends, with no worktree made for it: the step
 moves the run's other lanes, or opens a later step's lane in its place, and
 is contention only when nothing else moved. Once a step lands, the run's next
 renewal narrows the reservation to what the steps still in flight need, their
-packages, the paths their lanes widened to and the spec each landing marks
-(dcn-2611201503122480), so a package only a landed step touched holds no one
-off and two runs whose step orders cross never each hold what the other
-waits for. A resumed run whose every step has since landed reserves the
+packages, the paths their lanes widened to, the files their lanes' branches
+changed and the spec each landing marks (dcn-2611201503122480), so a package
+only a landed step touched holds no one off and two runs whose step orders
+cross never each hold what the other waits for. While a lane in flight is
+mid-edit, its implementer or a fix round at work or one it may be handed
+next, nothing narrows, since its branch shows its edits only once its receipt
+commits them. A resumed run whose every step has since landed reserves the
 packages of the steps it built, never wider than its start. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning

@@ -3,6 +3,8 @@ package loop
 import (
 	"bytes"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // A build reserves only the step it opens next (iss-2611201418535169): a
@@ -439,5 +442,156 @@ func TestAResumeOverALapsedTipReservesNoPathOnlyALandedStepNeeded(t *testing.T) 
 	}
 	if fp := footprintOf(t, bare, "itd-10"); slices.ContainsFunc(fp, func(p string) bool { return strings.HasPrefix(p, extra) }) {
 		t.Fatalf("the revived hold names %s again: %q", extra, fp)
+	}
+}
+
+// alongsideSpec is spc-1 with step 1 on internal/core/needs and step 2 on
+// internal/surface/cli, needing none, so their lanes run side by side, and
+// step 3 on internal/other, waiting on step 2.
+var alongsideSpec = specWithSteps(
+	"1. The needs\n   - packages: internal/core/needs\n"+
+		"2. The surface\n   - packages: internal/surface/cli\n   - needs: none\n"+
+		"3. The other\n   - packages: internal/other\n   - needs: 2\n") +
+	"\n## Footprint\n\n- packages: internal/core/needs, internal/surface/cli, internal/other\n- tests: the needs\n"
+
+// alongsideRun starts itd-10 on alongsideSpec with two agents at once, and
+// returns a step that performs the next move (want, or an await for "") and
+// a hand that hands an await's receipt back. A lane landingHeld names, while
+// it does, has its landing wait on the forge, as a merge not yet made does.
+func alongsideRun(t *testing.T, landingHeld func(laneID string) bool) (repo *gittest.Repo, bare string, step func(Stage) StepResult, hand func(StepResult)) {
+	t.Helper()
+	repo = loopRepo(t, readyIntent("", settledQuestions), alongsideSpec)
+	bare = onOrigin(t, repo)
+	start, err := Start(repo.Root(), "itd-10", Options{SubAgents: strp("2")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[Stage]int{}}
+	steps := f.steps()
+	for i := range steps {
+		if land := steps[i].Run; steps[i].Name == StageLand && landingHeld != nil {
+			steps[i].Run = func(c Context, l *Lane) (Outcome, error) {
+				if landingHeld(l.ID) {
+					return Outcome{}, contend(string(StageLand), "", l.ID, "the forge has not merged the lane's pull request yet", "run `abcd implement step` again")
+				}
+				return land(c, l)
+			}
+		}
+	}
+	step = func(want Stage) StepResult {
+		t.Helper()
+		res, err := advance(repo.Root(), start.RunID, steps, Options{})
+		if err != nil || (want != "" && res.PerformedStage != want) || (want == "" && res.Awaiting == nil) {
+			t.Fatalf("performed %q, want %q (\"\" for an await): %+v %v", res.PerformedStage, want, res, err)
+		}
+		return res
+	}
+	hand = func(res StepResult) {
+		t.Helper()
+		if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Receipt(repo.Root(), start.RunID, res.Awaiting.Receipt, steps, Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return repo, bare, step, hand
+}
+
+// branchChanging makes branch in root one commit on origin's main that adds
+// file, as a lane's implementer commits its work at its receipt.
+func branchChanging(t *testing.T, root, branch, file string) {
+	t.Helper()
+	index := filepath.Join(t.TempDir(), "index")
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=Lane", "-c", "user.email=lane@example.com"}, args...)...)
+		cmd.Env = append(gittest.Env(t), "GIT_INDEX_FILE="+index)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	src := filepath.Join(t.TempDir(), "x.go")
+	if err := os.WriteFile(src, []byte("package needs\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("read-tree", "refs/remotes/origin/main")
+	blob := git("hash-object", "-w", src)
+	git("update-index", "--add", "--cacheinfo", "100644,"+blob+","+file)
+	tree := git("write-tree")
+	commit := git("commit-tree", tree, "-p", "refs/remotes/origin/main", "-m", "the lane's work")
+	git("update-ref", "refs/heads/"+branch, commit)
+}
+
+// TestAFileALaneAlongsideChangedSurvivesALandingsNarrowing: lane-2, for step
+// 2, runs beside lane-1 and its implementer changes internal/core/needs/x.go,
+// under step 1's package, which the hold already covered, so no widening is
+// recorded for it. Lane-2 is at its landing, past editing, its merge not yet
+// made, when lane-1 lands.
+// The landing's renewal keeps the file lane-2's branch changed, so no peer can
+// take it while the run still holds it in its branch.
+func TestAFileALaneAlongsideChangedSurvivesALandingsNarrowing(t *testing.T) {
+	const changed = "internal/core/needs/x.go"
+	held := true
+	repo, bare, step, hand := alongsideRun(t, func(id string) bool { return held && id == "lane-2" })
+	step(StageWorktree)
+	step(StageBrief)
+	one := step("")
+	step(StageWorktree)
+	step(StageBrief)
+	two := step("")
+	if two.Lane != "lane-2" {
+		t.Fatalf("lane-2 is handed its implementer: %+v", two)
+	}
+	branchChanging(t, repo.Root(), "build/lane-2", changed)
+	hand(two)
+	if res := step(StageValidate); res.Lane != "lane-2" {
+		t.Fatalf("lane-2's validators run first: %+v", res)
+	}
+	hand(one)
+	if res := step(StageValidate); res.Lane != "lane-1" || len(res.Blocked) != 1 || res.Blocked[0].Lane != "lane-2" {
+		t.Fatalf("lane-1's validators run while lane-2's landing waits: %+v", res)
+	}
+	if res := step(StageLand); res.Lane != "lane-1" {
+		t.Fatalf("lane-1 lands while lane-2 waits at its landing: %+v", res)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{"internal/core/needs", "internal/surface/cli"}; !slices.Equal(fp, want) {
+		t.Fatalf("before the landing's renewal the hold is %q, want %q", fp, want)
+	}
+	held = false
+	if res := step(StageLand); res.Lane != "lane-2" {
+		t.Fatalf("lane-2 lands once its merge is made: %+v", res)
+	}
+	if fp, want := footprintOf(t, bare, "itd-10"), []string{changed, "internal/surface/cli"}; !slices.Equal(fp, want) {
+		t.Fatalf("the landing's renewal holds %q, want %q: the file lane-2's branch changed survives", fp, want)
+	}
+}
+
+// TestNothingNarrowsWhileALaneAlongsideIsMidEdit: lane-1 lands while lane-2's
+// implementer is still at work. Its edits are not committed until its receipt,
+// so its branch cannot say which files it changed, and nothing narrows: the
+// hold keeps step 1's package.
+func TestNothingNarrowsWhileALaneAlongsideIsMidEdit(t *testing.T) {
+	_, bare, step, hand := alongsideRun(t, nil)
+	step(StageWorktree)
+	step(StageBrief)
+	one := step("")
+	step(StageWorktree)
+	step(StageBrief)
+	step("")
+	hand(one)
+	step(StageValidate)
+	if res := step(StageLand); res.Lane != "lane-1" {
+		t.Fatalf("lane-1 lands: %+v", res)
+	}
+	want := []string{"internal/core/needs", "internal/surface/cli"}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, want) {
+		t.Fatalf("before the next renewal the hold is %q, want %q", fp, want)
+	}
+	step("")
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, want) {
+		t.Fatalf("with lane-2 mid-edit the hold is %q, want %q: nothing narrows", fp, want)
 	}
 }

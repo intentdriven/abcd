@@ -138,8 +138,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"reservation to that step's packages, judged for overlap like any reservation; a peer's\n" +
 			"hold on one of them holds back that step's lane alone, and the run's other lanes go on.\n" +
 			"As each step lands, the run narrows the reservation to what the steps still in flight\n" +
-			"need, so a run waiting on a peer never holds a landed step's packages, and a resume\n" +
-			"reserves no path only a landed step needed. A spec whose\n" +
+			"need, the files their lanes' branches changed included, so a run waiting on a peer never\n" +
+			"holds a landed step's packages, and a resume reserves no path only a landed step needed;\n" +
+			"while a lane in flight is mid-edit, its edits not yet committed, nothing narrows. A spec whose\n" +
 			"steps cannot say and whose footprint names no packages, or an issue with no found_at\n" +
 			"path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
