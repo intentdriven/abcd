@@ -4,7 +4,7 @@ package site
 //
 // Every repository abcd renders gets the same pages abcd's own site has: the
 // landing page, the record explorer, one page per record, the relationship
-// graph, the timeline, the glossary and the status page. The composition
+// graph, the timeline, the glossary and the record health page. The composition
 // manifest's `pages` block switches pages OFF; it cannot switch anything on,
 // because the set is closed, and a key outside it is refused at load by the
 // manifest's unknown-field rule like any other typo.
@@ -18,7 +18,7 @@ package site
 //     off beneath it.
 //
 // Switching the explorer off takes every explorer page with it (the record
-// pages, the graph, the timeline, the glossary and the status page), and the
+// pages, the graph, the timeline, the glossary and the record health page), and the
 // header's link to it. Each other switch removes its page, its navigation entry
 // and every link the renderer would have drawn to it.
 //
