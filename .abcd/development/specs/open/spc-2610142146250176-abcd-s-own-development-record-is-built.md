@@ -17,8 +17,8 @@ abcd's own record moves onto abcd's own GitHub Pages, built by the same workflow
 - **abcdesign.app.** It is the static brief-session page, published from a repository of its own (spc-2610141709430146).
 
 **What changes in abcd's repository:**
-- **abcdev.app's deploy narrows to the documentation.** The existing deploy (adr-48: on release, from released bytes) keeps building the docs and their landing page. It stops building the record explorer: `/record/`, `/contributors/` and `/references/` leave abcdev.app.
-  - Each of those addresses forwards with a 301 to the same path on abcd's GitHub Pages site, query kept. The forwarding goes in the docs host's redirect file (`site-src/redirects`), so no rule is kept outside the repository.
+- **abcdev.app's deploy narrows to the documentation.** The existing deploy (adr-48: on release, from released bytes) keeps building the docs and their landing page. It stops building the record explorer: `/record/`, every page below it and `/record.json` leave abcdev.app. The contributors page (`/contributors/`) and the references page (`/references/`) stay, as pages of the documentation site, because the project route builds neither (dcn-2611201438402486).
+  - Each of the record's addresses (`/record`, `/record/` and every page below it, and `/record.json`) forwards with a 301 to the same path on abcd's GitHub Pages site, query kept. The forwarding goes in the docs host's redirect file (`site-src/redirects`), so no rule is kept outside the repository.
   - The docs' own 301s for the paths moved under /docs/ stay.
   - Links in the README and docs to abcd's record point at the Pages address.
 - **abcd's repository switches its record on to the project route.** The switch is set in abcd's settings and the generated workflow is added. Its about page comes from abcd's identity block, the brief, the newest shipped intents' press releases and the changelog, exactly as for any project.
