@@ -65,3 +65,70 @@ func TestWithinTreeHoldsEachStepAtItsRealLocation(t *testing.T) {
 		}
 	})
 }
+
+// TestStepLocationsRefusesATargetTheSystemReadsOtherwise: /out/tool links to
+// d/../x and /out/d links to R/sub, so the system reads the target as R/sub/..
+// then x, which is R/x, a committed link to a program outside R. Read
+// lexically the target is /out/x, which does not exist, and a walk of that
+// reading never reaches R/x. The walk's last step must be where the system's
+// own resolution ends, or the steps cannot be examined and the program counts
+// as inside. A ".." with no directory link before it is read the same way by
+// both and stays admitted.
+func TestStepLocationsRefusesATargetTheSystemReadsOtherwise(t *testing.T) {
+	mkdir := func(p string) string {
+		t.Helper()
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	link := func(target, at string) {
+		t.Helper()
+		if err := os.Symlink(target, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real := filepath.Join(mkdir(filepath.Join(t.TempDir(), "usr", "bin")), "real")
+	if err := os.WriteFile(real, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("a dot-dot after an outside directory link into the repository", func(t *testing.T) {
+		repo := t.TempDir()
+		mkdir(filepath.Join(repo, "sub"))
+		link(real, filepath.Join(repo, "x"))
+		out := t.TempDir()
+		link(filepath.Join(repo, "sub"), filepath.Join(out, "d"))
+		p := filepath.Join(out, "tool")
+		link("d/../x", p)
+		resolved, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if steps, ok := StepLocations(p); ok {
+			t.Errorf("StepLocations(%q) = %q, true; the walk does not end where the system's resolution does", p, steps)
+		}
+		if !WithinTree(p, resolved, repo) {
+			t.Errorf("WithinTree(%q, %q, %q) = false; the system reaches it through R/x", p, resolved, repo)
+		}
+	})
+
+	t.Run("a dot-dot through a real directory is admitted", func(t *testing.T) {
+		repo := t.TempDir()
+		out := t.TempDir()
+		mkdir(filepath.Join(out, "d"))
+		link(real, filepath.Join(out, "x"))
+		p := filepath.Join(out, "tool")
+		link("d/../x", p)
+		resolved, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := StepLocations(p); !ok {
+			t.Errorf("StepLocations(%q) not ok; both readings end at the same program", p)
+		}
+		if WithinTree(p, resolved, repo) {
+			t.Errorf("WithinTree(%q, %q, %q) = true; nothing on the way lies inside the repository", p, resolved, repo)
+		}
+	})
+}

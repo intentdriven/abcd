@@ -355,3 +355,31 @@ func TestRefusesRepositoryLinkReachedThroughOutsideDirectoryLink(t *testing.T) {
 	}
 	assertRefused(t, newTrustProbe(filepath.Join(alias, "gitleaks")), repo, Config{Enabled: true})
 }
+
+// TestRefusesADotDotTargetReadAcrossADirectoryLink: /out/gitleaks links to
+// d/../x and /out/d links to R/sub, so the system resolves the candidate
+// through R/x, a committed link to an executable outside R. Read lexically
+// the target is /out/x, which does not exist, so the steps never show R/x;
+// the walk ending somewhere other than the system's resolution is refused.
+func TestRefusesADotDotTargetReadAcrossADirectoryLink(t *testing.T) {
+	repo := t.TempDir()
+	outside := writeExecutable(t, filepath.Join(t.TempDir(), "usr", "bin", "real"))
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "x")); err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	if err := os.Symlink(filepath.Join(repo, "sub"), filepath.Join(out, "d")); err != nil {
+		t.Fatal(err)
+	}
+	cand := filepath.Join(out, "gitleaks")
+	if err := os.Symlink("d/../x", cand); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := filepath.EvalSymlinks(cand); err != nil {
+		t.Fatalf("the layout does not resolve: %v", err)
+	}
+	assertRefused(t, newTrustProbe(cand), repo, Config{Enabled: true})
+}

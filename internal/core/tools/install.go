@@ -744,11 +744,27 @@ const maxStepLinks = 40
 // (fsutil.RealExistingPath) joined with its own name. A step reached through a
 // directory link lies where that link leads, which neither its written form
 // nor the final target shows, so a link a repository holds is caught wherever
-// it is reached from. A relative link target is read against the real
-// directory of its link, as the system reads it. A step that does not exist
-// ends the walk; ok is false when a step cannot be examined or the links do
-// not end, and a caller holding a program outside a tree then refuses it.
+// it is reached from. A relative link target is joined to the real directory
+// of its link and cleaned lexically, which is how the system reads it unless a
+// ".." follows a directory link inside the target: the system takes that ".."
+// from where the directory link leads, and the lexical reading can name a
+// different path and never reach the links the system follows. So the walk
+// must end where the system's own resolution of p ends (filepath.EvalSymlinks),
+// or, when it ends at a step that does not exist, the system must find nothing
+// at p either; otherwise the steps are not the ones the system takes. ok is
+// false when they are not, when a step cannot be examined, or when the links
+// do not end, and a caller holding a program outside a tree then refuses it.
 func StepLocations(p string) ([]string, bool) {
+	steps, err := stepLocations(p)
+	return steps, err == nil
+}
+
+// errStepsMisread is stepLocations' answer when its walk does not end where
+// the system's resolution does.
+var errStepsMisread = errors.New("a link on its way is read otherwise by the system")
+
+// stepLocations is StepLocations with the reason a walk cannot be examined.
+func stepLocations(p string) ([]string, error) {
 	cur := filepath.Clean(p)
 	var steps []string
 	for range maxStepLinks {
@@ -756,24 +772,52 @@ func StepLocations(p string) ([]string, bool) {
 		steps = append(steps, filepath.Join(dir, filepath.Base(cur)))
 		fi, err := os.Lstat(cur)
 		if errors.Is(err, os.ErrNotExist) {
-			return steps, true
+			return steps, endsWhereSystemEnds(p, "")
 		}
 		if err != nil {
-			return nil, false
+			return nil, err
 		}
 		if fi.Mode()&os.ModeSymlink == 0 {
-			return steps, true
+			return steps, endsWhereSystemEnds(p, steps[len(steps)-1])
 		}
 		target, err := os.Readlink(cur)
 		if err != nil {
-			return nil, false
+			return nil, err
 		}
 		if !filepath.IsAbs(target) {
 			target = filepath.Join(dir, target)
 		}
 		cur = filepath.Clean(target)
 	}
-	return nil, false
+	return nil, fmt.Errorf("its links do not end within %d steps", maxStepLinks)
+}
+
+// endsWhereSystemEnds is the walk's end check: last, the step the walk ended
+// at, resolves to the file the system's own resolution of p reaches, and an
+// empty last (a step that does not exist) matches only a p the system cannot
+// find either.
+func endsWhereSystemEnds(p, last string) error {
+	sys, err := filepath.EvalSymlinks(p)
+	if last == "" {
+		switch {
+		case err == nil:
+			return errStepsMisread
+		case errors.Is(err, os.ErrNotExist):
+			return nil
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	end, err := filepath.EvalSymlinks(last)
+	if err != nil {
+		return err
+	}
+	if end != sys {
+		return errStepsMisread
+	}
+	return nil
 }
 
 // pipeGrace is how long runArgv keeps reading a step's output once the step
