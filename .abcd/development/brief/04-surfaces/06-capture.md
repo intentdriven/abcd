@@ -529,13 +529,11 @@ reference link and every image is refused.
 
 ## 4. Legacy scratch migration
 
-**Not built yet.** The migration rides the `dev-sync work` surface
-([`08-abcd.md`](08-abcd.md)), which is itself a design target; the shipped
-ledger engine reserves a migrator-only `ForceID` seam for it. The design: on
-first run after install, the command parses a free-form scratch buffer under
-`.abcd/.work.local/` entry by entry and promotes each to its own `iss-N`
-record, idempotently, leaving the scratch buffer in place as a staging surface
-for ad-hoc scribbles.
+**Moot.** Capture writes the issue ledger directly, so there is
+nothing left to migrate ([`03-configuration.md`](../05-internals/03-configuration.md)): the
+scratch buffer this migration was drawn for is gone and the ledger already holds
+its entries, and dcn-2607170000000002 recorded the migration as satisfied by
+history, with no migration code built. No migrator is owed.
 
 ## 5. Acceptance
 
