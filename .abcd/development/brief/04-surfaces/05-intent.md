@@ -154,7 +154,8 @@ role of intent-auditor populates findings here.>
 disciplines follow. The ten written since (itd-190 onwards) head the rule
 `## The rule` and carry `## The gate`, `## Fit` and `## Staging` in place of the
 scope, acceptance and reference sections: a shorter shape that says what the rule
-is, what holds it, where it fits and how far it is armed. Nothing arbitrates
+is, what holds it, where it fits and how far it is armed. Nine of the ten carry
+all three; itd-190 has no `## Fit`, only `## The gate` and `## Staging`. Nothing arbitrates
 between them, because no gate reads a discipline's body at all. Settling on one
 is open work.
 
