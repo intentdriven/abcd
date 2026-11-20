@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -560,10 +561,22 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 		r.Why = "the bin folder cannot be judged without an absolute directory to hold it outside"
 		return r
 	}
-	if WithinTree(dl.dest, resolvedOrSelf(dl.dest), in.Guard) || WithinTree(filepath.Dir(dl.dest), resolvedOrSelf(filepath.Dir(dl.dest)), in.Guard) {
-		r.Why = "the bin folder " + filepath.Dir(dl.Dest) + " lies inside the repository this verb ran from, so a program written there " +
-			"would be repository content; set XDG_BIN_HOME to a folder of yours outside it"
-		return r
+	// A destination whose steps cannot be examined is refused as WithinTree
+	// refuses it, but with what stopped the examination: such a folder is not
+	// known to lie inside the repository, and saying so would send the person
+	// looking for the wrong cause.
+	for _, d := range []string{dl.dest, filepath.Dir(dl.dest)} {
+		inside, err := treeContains(d, resolvedOrSelf(d), in.Guard)
+		if err != nil {
+			r.Why = "the bin folder " + filepath.Dir(dl.Dest) + " cannot be judged against the repository this verb ran from (" +
+				causeOf(err) + "); abcd installs only into a folder you own, so set XDG_BIN_HOME to one"
+			return r
+		}
+		if inside {
+			r.Why = "the bin folder " + filepath.Dir(dl.Dest) + " lies inside the repository this verb ran from, so a program written there " +
+				"would be repository content; set XDG_BIN_HOME to a folder of yours outside it"
+			return r
+		}
 	}
 	rel, _ := in.release(name)
 	asset, _ := rel.assetFor(in.GOOS, in.GOARCH)
@@ -700,7 +713,12 @@ func (in *Installer) admit(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s resolves to %q, which does not resolve; nothing was run", name, p)
 	}
-	if WithinTree(p, resolved, in.Guard) {
+	inside, err := treeContains(p, resolved, in.Guard)
+	if err != nil {
+		return "", fmt.Errorf("%s resolves to %q, whose links cannot be judged against the repository this verb ran from (%s); "+
+			"nothing was run", name, p, causeOf(err))
+	}
+	if inside {
 		return "", fmt.Errorf("%s resolves to %q, inside the repository this verb ran from; "+
 			"a program there is repository content and is never run as an install step", name, p)
 	}
@@ -714,25 +732,47 @@ func (in *Installer) admit(name string) (string, error) {
 // judgement for a program: the installer refuses to run what it holds, and
 // ahoy's presence check does not count it as installed. Both p and guard are
 // absolute; the caller has already resolved p. A step that cannot be examined
-// counts as inside, the closed direction.
+// counts as inside, the closed direction; the installer's own checks judge
+// through treeContains instead, which keeps the two apart, so their refusals
+// say which one stopped them.
 func WithinTree(p, resolved, guard string) bool {
+	inside, err := treeContains(p, resolved, guard)
+	return inside || err != nil
+}
+
+// treeContains is WithinTree with "cannot be examined" kept apart from
+// "inside": err is why p's steps cannot be examined, and inside is false with
+// it. A caller that refuses on either and names the cause uses it; every
+// other caller uses WithinTree.
+func treeContains(p, resolved, guard string) (inside bool, err error) {
 	guards := []string{filepath.Clean(guard)}
 	if g, err := filepath.EvalSymlinks(guard); err == nil {
 		guards = append(guards, g)
 	}
-	steps, ok := StepLocations(p)
-	if !ok {
-		return true
+	steps, err := stepLocations(p)
+	if err != nil {
+		return false, err
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
 		for _, c := range append([]string{filepath.Clean(p), resolved}, steps...) {
 			if fsutil.PathWithin(c, g, fold) {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
+}
+
+// causeOf is err's cause without the path a filesystem error carries, which
+// may be a repository or home path the message must not print: "not a
+// directory", "permission denied".
+func causeOf(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // maxStepLinks bounds the links StepLocations follows, as the system's own
