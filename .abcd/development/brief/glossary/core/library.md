@@ -3,7 +3,7 @@ term: library
 bounded_context: core
 definition: The person's collection of outside material (papers, links and the cited notes drawn from them), each item marked confidential or public when it is added, and consulted on request with every answer citing the item it came from.
 aliases: []
-forbidden_synonyms: ["corpus", "knowledge base"]
+forbidden_synonyms: ["knowledge base"]
 status: draft
 introduced_in: itd-2610090831227812
 starts_when: null
@@ -16,6 +16,8 @@ versions: null
 # library
 
 The **library** is evidence you consult. You add a paper or a link with `/abcd:library add`, and abcd asks whether it is confidential or public when you did not say. Later you ask it a question, "what do my sources say about pacing?", and every answer cites the item it came from. A confidential item can inform a decision but is never named in anything public.
+
+The **sources corpus** is the store beneath the library: the folder tree at `~/.abcd.noindex/sources/` (another with `--corpus`) where each item sits under `confidential/` or `public/`, and whose sources ledger records which item shaped which decision. "Corpus" is not a second word for the library; it names that on-disk store, as [`04-surfaces/07-library.md`](../../04-surfaces/07-library.md) and [`commands/library.md`](../../../../../commands/library.md) use it (dcn-2610271112330536).
 
 ## When to use
 
