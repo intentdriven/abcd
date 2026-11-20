@@ -710,11 +710,18 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		// each step at its validators (widen.go): a path a receipt's widening
 		// could not reserve yet, or a fix round changed since, is held before a
 		// validator judges it, and another holder's live hold on one waits.
+		// An intent lane's hold is widened to its spec step's packages as the
+		// lane opens, before its worktree is made: a start reserves only the
+		// step it opens next (widen.go, holdOpeningStep).
 		var widened []Entry
-		if lane.Stage == StageValidate {
-			if widened, err = holdBeforeValidators(c, lane); err != nil {
-				return StepResult{}, err
-			}
+		switch lane.Stage {
+		case StageValidate:
+			widened, err = holdBeforeValidators(c, lane)
+		case StageWorktree:
+			widened, err = holdOpeningStep(c, lane)
+		}
+		if err != nil {
+			return StepResult{}, err
 		}
 		out, err = def.Run(c, &lane)
 		if err == nil {

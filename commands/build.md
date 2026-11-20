@@ -46,12 +46,12 @@ the reservation keeps people apart. In a checkout with a remote named
 checks below pass and before the run is created: the branch
 `abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
 `~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
-the files the spec's steps still to build name on their `- packages:` lines,
-those steps with no `- landed:` line, or the spec's `## Footprint`
-`- packages:` line when the steps cannot say: the spec lists no steps, its
-steps section cannot be read, a step still to build names no packages, or an
-entry on such a step's line names no path (an issue's `found_at` path for
-`build <iss-N>`). Every other participant, a second person, a second
+the files the step it opens next names on its `- packages:` line, the first
+step with no `- landed:` line (for a resume, the steps still to build its
+lanes are open on), or the spec's `## Footprint` `- packages:` line when the
+steps cannot say: the spec lists no steps, its steps section cannot be read,
+that step names no packages, or an entry on its line names no path (an
+issue's `found_at` path for `build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The
 payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
@@ -59,8 +59,15 @@ reserves nothing and carries none.
 
 The reservation names exactly the paths those lines name, so a file named there
 is reserved as that file, and one reservation holds them for every step the
-run builds; a package only a landed step names is not reserved, and a resume
-after every step has landed reserves the packages of the steps the run built.
+run builds. It widens as each later step's lane opens: before that lane's
+worktree is made, `abcd implement step` reserves the step's own `- packages:`
+line (the `## Footprint` line when it cannot say) beside what the reservation
+holds, judged for overlap like any reservation, so a package only a later step
+names holds no one off until that step's lane opens. Another's live hold on
+one of them backs that step off as contention (exit 3), with no worktree made
+and the run unchanged, and the step goes on once the hold ends. A package only
+a landed step names is not reserved, and a resume after every step has landed
+reserves the packages of the steps the run built.
 A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the
@@ -474,7 +481,7 @@ In a checkout with `origin`, an intent whose spec's `## Footprint` names no
 packages, or names one by prose rather than by its path, is excluded too, at
 the check `footprint`, since its start would be refused at the reservation;
 the pick moves to the next candidate. So is an intent whose footprint (the
-one its start reserves with: the packages of the steps still to build, or
+one its start reserves with: the packages of the step it opens next, or
 the `## Footprint` packages line) shares a path with another copy's live
 reservation of another record, as this checkout last fetched them, at the
 check `overlap`: its reason names the path the hold shares (or the intent
