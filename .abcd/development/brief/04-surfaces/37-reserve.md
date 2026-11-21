@@ -671,7 +671,10 @@ withdrawing nothing, and an admission or a release is refused.
   push, the newest reservation its holder pushed, or the first record of a
   withdrawal beneath it) reads on, a page of 64 at a time, up to 512 commits,
   and the record of pushes is placed again over the longer line from the
-  forge's one answer. The record must
+  forge's one answer. That answer is read a page of 100 activities at a
+  time, each page asked by the cursor the one before it names in its Link
+  header, until the record ends or 600 activities (six pages) are read; a
+  record with more than that is read short. The record must
   place every push it holds on that line, run unbroken down to the push that
   made the branch, and end at the tip read (the activity record passes over an
   entry without a pusher or a commit name, and a record with a push missing
@@ -703,8 +706,9 @@ withdrawing nothing, and an admission or a release is refused.
   re-arm, no withdrawal, no admission, no comment. It says so, once for each
   tip on an act and on every `abcd peers` (`unplaced`), and a later act asks
   again; a renewal, an admission or a release over it is refused with nothing
-  pushed. Past the 512 commits the refusal stays, and its reason names the
-  one step left to the person: once the release is tagged, re-arm each pull
+  pushed. Past the 512 commits, or past the 600 activities of the record of
+  pushes, the refusal stays, and its reason names the one step left to the
+  person: once the release is tagged, re-arm each pull
   request withdrawn for it by hand (`gh pr merge <number> --auto`). A copy that pushes through an app therefore has no newest push of
   its own, and abcd acts on none of its withdrawals: its person re-arms them
   by hand. A renewal or a release over a later commit is judged from the
@@ -855,7 +859,8 @@ withdrawing nothing, and an admission or a release is refused.
   record `abcd status` holds announcements to as well), placed on the commits
   each push carried. Nothing on this path falls back to a commit's author or
   committer fields, which any writer can set. Where that record cannot say (a
-  page read short, a record not caught up with the tip, a push missing from it,
+  record read short, past its 600 activities or by a page that names no page
+  past it, a record not caught up with the tip, a push missing from it,
   an app's push, which names no person, a commit several accounts' pushes are
   placed on, or a push past the 512 commits read), nothing is read as anyone's
   push and nothing is acted on for that person. What a listing reads of the

@@ -303,14 +303,18 @@ over them works from your own newest push, so your admissions are kept and
 nothing is withdrawn or commented on twice. abcd reads the branch down from
 its tip 64 commits at a time: when the commits above your newest push fill
 the first 64, it reads on, a page of 64 at a time, until it finds your push,
-up to 512 commits. When your newest push cannot be found or placed (an app
+up to 512 commits. It reads the forge's record of pushes to the branch a
+page of 100 activities at a time, up to 600 activities (six pages), until
+the record ends. When your newest push cannot be found or placed (an app
 pushed a commit above it, which says nothing of which person sent it; the
-record has not caught up with the tip, does not answer, or has a push
-missing; or your push lies past the 512 commits read), abcd does nothing for
+record has not caught up with the tip, does not answer, has a push missing,
+or holds more than the 600 activities read; or your push lies past the 512
+commits read), abcd does nothing for
 you on that release: nothing is re-armed, withdrawn, admitted or commented
 on, the reason is named (`unplaced`, once for each tip on an act, and on
 every `/abcd:peers`), and a later act asks again. A renewal, an `--admit` or
-a `--release` is refused then, with nothing pushed. Past the 512 commits,
+a `--release` is refused then, with nothing pushed. Past the 512 commits, or
+past the 600 activities of the record,
 the refusal names the one step left to you: once the release is tagged,
 re-arm each pull request withdrawn for it by hand (`gh pr merge <number>
 --auto`). A copy that

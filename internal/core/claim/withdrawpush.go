@@ -33,25 +33,39 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// reservationPushers is the forge's record of pushes to one reservation
-// branch, asked by its full ref (refs/heads/abcd-reserved/<id>): the same
-// activity record `abcd status` asks for the status branches (github.Pushers),
-// answered with ErrPartialRecord beside the pushes when its page came back
-// full.
-func reservationPushers(ctx context.Context, root, ref string) ([]Push, error) {
-	pushes, partial, err := github.Pushers(ctx, root, ref)
+// pushPageLookup asks the forge for one page of its record of pushes to a
+// reservation branch, asked by its full ref, from the cursor after ("" for
+// the newest page): the pushes, newest first, and the cursor of the page past
+// it ("" when the record ends there). ErrPartialRecord beside the pushes is a
+// page that says older activities lie past it but names no cursor to read
+// them by.
+type pushPageLookup func(ctx context.Context, root, ref, after string) (pushes []Push, next string, err error)
+
+// reservationPushPage is one page of the forge's record of pushes to one
+// reservation branch, asked by its full ref (refs/heads/abcd-reserved/<id>):
+// the same activity record `abcd status` asks for the status branches
+// (github.PushersPage), answered with ErrPartialRecord beside the pushes when
+// the page came back full and names no page past it.
+func reservationPushPage(ctx context.Context, root, ref, after string) ([]Push, string, error) {
+	page, err := github.PushersPage(ctx, root, ref, after)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	out := make([]Push, 0, len(pushes))
-	for _, p := range pushes {
+	out := make([]Push, 0, len(page.Pushes))
+	for _, p := range page.Pushes {
 		out = append(out, Push{Before: p.Before, After: p.After, Pusher: p.Login, App: p.App})
 	}
-	if partial {
-		return out, ErrPartialRecord
+	if page.More() && page.Next == "" {
+		return out, "", ErrPartialRecord
 	}
-	return out, nil
+	return out, page.Next, nil
 }
+
+// maxPushPages bounds how many pages of the forge's record of pushes to a
+// release branch one ask reads: as many of its pages as the commits the walk
+// reads on to (maxChainRead) could take with one push to each, so a record
+// the walk could need is read to its end.
+const maxPushPages = (maxChainRead + github.ActivityPage - 1) / github.ActivityPage
 
 // declaredTipNote is what the other-copy back-off adds when j's holder is
 // an id the person only declares: whether the declaration pairs it with a
@@ -111,7 +125,7 @@ func tipPusher(root, id, tip string) (login, why string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
-	pushes, err := releaseForge.pushers(ctx, root, refName(id))
+	pushes, _, err := releaseForge.pushers(ctx, root, refName(id), "")
 	switch {
 	case err != nil && !errors.Is(err, ErrPartialRecord):
 		return "", "the forge's record of pushes could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"
@@ -140,27 +154,40 @@ func readPushRecord(root, id string, links []chainLink, tips ...string) pushReco
 }
 
 // pushAnswer is the forge's answer to who pushed to one release branch, as
-// asked once: the pushes, whether the page came back full, and why it could
-// not be asked or read at all.
+// asked once: the pushes, whether the record was read short (partial), and
+// whether that was because it holds more than the maxPushPages pages read
+// (pastBound), and why it could not be asked or read at all.
 type pushAnswer struct {
-	pushes  []Push
-	partial bool
-	why     string
+	pushes    []Push
+	partial   bool
+	pastBound bool
+	why       string
 }
 
-// askPushes asks the forge's record of pushes to id's release branch.
+// askPushes asks the forge's record of pushes to id's release branch, page by
+// page, each asked by the cursor the one before it names, until the record
+// ends or maxPushPages pages are read.
 func askPushes(root, id string) pushAnswer {
 	if releaseForge.pushers == nil {
 		return pushAnswer{why: "no record of who pushed each reservation commit is read on this path"}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
-	pushes, err := releaseForge.pushers(ctx, root, refName(id))
-	partial := errors.Is(err, ErrPartialRecord)
-	if err != nil && !partial {
-		return pushAnswer{why: "the forge's record of who pushed to " + id + "'s branch could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"}
+	var all []Push
+	after := ""
+	for range maxPushPages {
+		pushes, next, err := releaseForge.pushers(ctx, root, refName(id), after)
+		partial := errors.Is(err, ErrPartialRecord)
+		if err != nil && !partial {
+			return pushAnswer{why: "the forge's record of who pushed to " + id + "'s branch could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"}
+		}
+		all = append(all, pushes...)
+		if partial || next == "" {
+			return pushAnswer{pushes: all, partial: partial}
+		}
+		after = next
 	}
-	return pushAnswer{pushes: pushes, partial: partial}
+	return pushAnswer{pushes: all, partial: true, pastBound: true}
 }
 
 // place puts each push of the answer on the commits it carried: the
@@ -188,6 +215,9 @@ func (a pushAnswer) place(root, id string, links []chainLink, tips ...string) pu
 	pushes := a.pushes
 	rec := pushRecord{by: map[string][]Push{}}
 	switch {
+	case a.pastBound:
+		rec.why = "the forge's record of who pushed to " + id + "'s branch was not read in full (" + fmt.Sprint(maxPushPages*github.ActivityPage) +
+			" activities is as far back as abcd reads it, a page of " + fmt.Sprint(github.ActivityPage) + " at a time); " + handRearmStep(id)
 	case a.partial:
 		rec.why = "the forge's record of who pushed to " + id + "'s branch was not read in full"
 	case len(pushes) == 0 || !slices.Contains(tips, pushes[0].After):
@@ -639,7 +669,13 @@ func pastReadTail(id string, n int) string {
 		return ""
 	}
 	return " (" + fmt.Sprint(maxChainRead) + " is as far down as abcd reads a release branch, a page of " + fmt.Sprint(maxChain) +
-		" at a time); once " + releaseTag(id) + " is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)"
+		" at a time); " + handRearmStep(id)
+}
+
+// handRearmStep is the one step left to a person whose record on id's
+// release branch no act of abcd's can read: re-arming by hand after the cut.
+func handRearmStep(id string) string {
+	return "once " + releaseTag(id) + " is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)"
 }
 
 // ended is whether the release has ended by its holder's own tombstone: the
