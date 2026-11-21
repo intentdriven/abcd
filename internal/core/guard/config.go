@@ -110,37 +110,40 @@ func committedRegistry(repoRoot string) Registry { return registryAt(repoRoot, "
 func RegistryAt(repoRoot, commit string) Registry { return registryAt(repoRoot, commit) }
 
 // FileAtCommit reads the repository file rel as commit holds it, within limit; ok
-// is false when commit holds no such file.
+// is false when commit holds no such file. The tree and the file are read as
+// stored (gitutil.RunCappedAsStored); a file past limit is an error, never a
+// truncated one.
 func FileAtCommit(repoRoot, commit, rel string, limit int64) (data []byte, ok bool, err error) {
-	listed, err := gitutil.Run(repoRoot, storedObjects, "ls-tree", "-z", "--name-only", commit, "--", rel)
+	listed, err := gitutil.RunCappedAsStored(repoRoot, maxTreeEntryBytes, "ls-tree", "-z", "--name-only", commit, "--", rel)
 	if err != nil {
 		return nil, false, err
 	}
 	if strings.Trim(listed, "\x00") == "" {
 		return nil, false, nil
 	}
-	blob, err := gitutil.RunLimited(repoRoot, int(limit), storedObjects, "cat-file", "blob", commit+":./"+rel)
+	blob, err := gitutil.RunCappedAsStored(repoRoot, int(limit), "cat-file", "blob", commit+":./"+rel)
 	if err != nil {
 		return nil, false, err
 	}
 	return []byte(blob), true, nil
 }
 
-// storedObjects is the git global option the registry is read under:
-// objects as git stores them, never through a refs/replace/* ref, which
-// would stand another blob in for the committed file, or another commit in
-// for the one named, and so change the registry a run is judged against.
-const storedObjects = "--no-replace-objects"
+// maxTreeEntryBytes bounds the listing of one path's tree entry.
+const maxTreeEntryBytes = 64 << 10
 
 // registryAt is committedRegistry read at commit instead of HEAD, a revision
 // git can read as one (HEAD, or a commit's full object name), with its
-// objects read as stored (storedObjects).
+// objects read as stored (gitutil.RunCappedAsStored): never through a
+// refs/replace/* ref, which would stand another blob in for the committed
+// file or another commit in for the one named, nor through a commit-graph,
+// which could claim another tree for the commit, and so change the registry a
+// run is judged against.
 func registryAt(repoRoot, commit string) Registry {
-	listed, err := gitutil.Run(repoRoot, storedObjects, "ls-tree", "-z", "--name-only", commit, "--", RepoRelPath)
+	listed, err := gitutil.RunCappedAsStored(repoRoot, maxTreeEntryBytes, "ls-tree", "-z", "--name-only", commit, "--", RepoRelPath)
 	if err != nil || strings.Trim(listed, "\x00") == "" {
 		return Defaults()
 	}
-	blob, err := gitutil.RunLimited(repoRoot, maxGuardFileBytes, storedObjects, "cat-file", "blob", commit+":./"+RepoRelPath)
+	blob, err := gitutil.RunCappedAsStored(repoRoot, maxGuardFileBytes, "cat-file", "blob", commit+":./"+RepoRelPath)
 	if err != nil {
 		return Defaults()
 	}

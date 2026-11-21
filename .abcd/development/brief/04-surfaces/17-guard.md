@@ -613,8 +613,9 @@ somebody reviews, and the diff must be *committed* before it counts. An edit
 that weakens the registry — switching it off, or changing a blocker's tier or
 pattern — is refused until `HEAD` carries it: the committed registry stays in
 force, the hook announces the refused edit on every command, and the check
-refuses to answer. Where git cannot say what `HEAD` carries, the edit is refused
-too. An edit that only adds or tightens a hazard needs no commit. Once a
+refuses to answer. What `HEAD` carries is read as git stores it, with no
+replace ref, graft file or commit-graph in force. Where git cannot say what
+`HEAD` carries, the edit is refused too. An edit that only adds or tightens a hazard needs no commit. Once a
 switch-off is committed, every command it lets through carries an `UNGUARDED`
 warning naming the file, and `abcd ahoy` reads `OFF`.
 

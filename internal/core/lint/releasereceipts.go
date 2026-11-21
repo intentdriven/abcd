@@ -45,6 +45,10 @@ const recordLintConfigPath = ".abcd/record-lint.json"
 // file; a larger one is refused rather than streamed.
 const maxWorkflowBytes = 1 << 20
 
+// maxReceiptStatusBytes bounds the status read of the verdict's inputs: an
+// error past it, never a partial list read as committed.
+const maxReceiptStatusBytes = 64 << 20
+
 // requireGateRe captures one `--require-gate <name>` operand from a run script.
 var requireGateRe = regexp.MustCompile(`--require-gate[ \t]+("[^"]*"|'[^']*'|[^\s\\]+)`)
 
@@ -241,7 +245,9 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	issuesDir := filepath.ToSlash(issuesDirOf(rc))
 	args := append(filters, "-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty",
 		"--", reviewsSubdir, recordLintConfigPath, releaseGateManifestPath, "CHANGELOG.md", ReleaseWorkflowPath, issuesDir)
-	status, err := gitutil.Run(root, args...)
+	// HEAD is read as stored, so no refs/replace entry or commit-graph stands
+	// a commit carrying an uncommitted input in for it and hides the input.
+	status, err := gitutil.RunCappedAsStored(root, maxReceiptStatusBytes, args...)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
