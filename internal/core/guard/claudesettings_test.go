@@ -164,12 +164,16 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		{`cd "$D" && claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`cat bad/bypass.json > "$(echo plain.json)"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`echo '{}' > "$F"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`git -C ../other checkout plain.json; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`echo '{}' >& "$F"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 
 		{`claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings one/s*.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings one/s?.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings missing.json`, VerdictAllow, "", ""},
 		{`echo '{}' > other.json; claude -p x --settings plain.json`, VerdictAllow, "", ""},
+		{`git -C ../other status; claude -p x --settings plain.json`, VerdictAllow, "", ""},
+		{`cat <&"$fd"; claude -p x --settings plain.json`, VerdictAllow, "", ""},
 	})
 }
 

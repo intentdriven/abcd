@@ -927,11 +927,14 @@ type writeTarget struct {
 	// relative to a working directory the line leaves unknown; name is that
 	// path as a name in the directory (cwdName) and gen the directory
 	// (shellState.dirGen). base is the last component of a path the guard
-	// does not place, where the line fixes it, else "".
-	rel  bool
-	name string
-	gen  [2]int
-	base string
+	// does not place, where the line fixes it, else "". wrote marks a
+	// target as a write at all, so the zero writeTarget is none
+	// (unplacedWrite, writeAt).
+	rel   bool
+	name  string
+	gen   [2]int
+	base  string
+	wrote bool
 }
 
 // scriptSeg is the reading's record of one segment: every state it can run
@@ -1412,7 +1415,7 @@ func settingsWritten(p string, before []writeTarget) bool {
 		return true
 	}
 	for _, w := range before {
-		if !w.ok && (w.rel || w.base == "" || sameName(w.base, filepath.Base(p))) {
+		if w.wrote && !w.ok && (w.rel || w.base == "" || sameName(w.base, filepath.Base(p))) {
 			return true
 		}
 	}
@@ -3205,7 +3208,7 @@ func writtenBefore(p string, before []writeTarget) (written, unplaced bool) {
 	cp := fsutil.RealExistingPath(p)
 	for _, w := range before {
 		if !w.ok {
-			unplaced = true
+			unplaced = unplaced || w.wrote
 			continue
 		}
 		if fsutil.PathWithin(cp, fsutil.RealExistingPath(w.path), fold) {
