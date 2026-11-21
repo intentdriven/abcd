@@ -21,6 +21,11 @@ package matrix
 // as values. So nothing the copy wrote into its git directory (a hook, a
 // filter, a configuration) runs, and no link it made reaches outside the
 // clone.
+//
+// The whole check runs under one overall deadline (complianceDeadline): every
+// git call, the scan of the clone and the transcript scan together, past which
+// the rules that read the copy are unexamined and the copy is reported apart,
+// so one hung check never stalls the run.
 
 import (
 	"bytes"
@@ -145,6 +150,8 @@ type complianceInputs struct {
 	// sits beside every other record of the run. A copy whose transcript names
 	// a path in it read what would un-blind it.
 	State string
+	// Within is the whole check's deadline; zero means complianceDeadline.
+	Within time.Duration
 }
 
 // labStore is where the repository with root commit rootSHA keeps its labs,
@@ -177,8 +184,7 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 	if in.State != "" && !filepath.IsAbs(in.State) {
 		return Compliance{}, errors.New("the compliance check reads the run's state by absolute path")
 	}
-	tree, treeErr := readFrozenTree(context.Background(), in.RepoRoot, in.Frozen)
-	scan, scanErr := scanClone(cloneDir(in.Store, in.Run, in.Alias))
+	read := complianceRead(in)
 	isolation := ComplianceCheck{Rule: RuleIsolation, State: StateKept,
 		Detail: "abcd launches the copy's runner in the copy's own clone"}
 	if in.Source == SourceHost {
@@ -186,12 +192,53 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 			Detail: "the copy ran in the host's harness, which abcd neither launches in the clone nor confines to it, so its isolation is asserted, not proven"}
 	}
 	return Compliance{Checks: []ComplianceCheck{
-		testsKept(in, tree, treeErr),
-		ownCopyOnly(in, tree, treeErr, scan, scanErr),
+		read[0],
+		read[1],
 		{Rule: RuleNetworkPolicy, State: StateAsserted,
 			Detail: "no runner reports what a copy reached on the network, so the run's network policy is asserted, not examined"},
 		isolation,
 	}}, nil
+}
+
+// complianceDeadline is the whole compliance check's deadline for one copy:
+// every git call it makes and the transcript scan together, so one check that
+// hangs cannot stall the run. Each git call keeps its own bound
+// (checkGitBound, reviewGitTimeout) inside it.
+const complianceDeadline = 10 * time.Minute
+
+// complianceRead runs the two rules that read the copy, tests_kept and
+// own_copy_only, under the check's one overall deadline (in.Within, or
+// complianceDeadline): reading the frozen tree, scanning the clone, every git
+// call and the transcript scan. Past the deadline each git is killed, and
+// both rules are unexamined, naming the deadline, even where the reading
+// finished as it passed, since a reading cut short can answer wrongly; the
+// copy is then reported apart, never ranked.
+func complianceRead(in complianceInputs) [2]ComplianceCheck {
+	within := in.Within
+	if within <= 0 {
+		within = complianceDeadline
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), within)
+	defer cancel()
+	done := make(chan [2]ComplianceCheck, 1)
+	go func() {
+		tree, treeErr := readFrozenTree(ctx, in.RepoRoot, in.Frozen)
+		scan, scanErr := scanClone(ctx, cloneDir(in.Store, in.Run, in.Alias))
+		done <- [2]ComplianceCheck{testsKept(ctx, in, tree, treeErr), ownCopyOnly(ctx, in, tree, treeErr, scan, scanErr)}
+	}()
+	var got [2]ComplianceCheck
+	select {
+	case got = <-done:
+	case <-ctx.Done():
+	}
+	if ctx.Err() == nil {
+		return got
+	}
+	late := func(rule ComplianceRule, what string) ComplianceCheck {
+		return ComplianceCheck{Rule: rule, State: StateUnexamined,
+			Detail: fmt.Sprintf("the compliance check did not finish within %s, so %s was not examined", within, what)}
+	}
+	return [2]ComplianceCheck{late(RuleTestsKept, "whether the copy edited its tests"), late(RuleOwnCopyOnly, "what the copy read")}
 }
 
 // validate holds a result to every rule once, in order, each in a known
@@ -338,7 +385,7 @@ type frozenTree struct {
 // bytes differ is asked of git (gitChanged), so a checkout that rewrote its
 // line endings (an eol attribute, core.autocrlf) is no edit. A copy that also
 // changed the attribute files git reads the tests by is held to the bytes.
-func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCheck {
+func testsKept(ctx context.Context, in complianceInputs, tree frozenTree, treeErr error) ComplianceCheck {
 	unexamined := func(why string) ComplianceCheck {
 		return ComplianceCheck{Rule: RuleTestsKept, State: StateUnexamined, Detail: why}
 	}
@@ -370,10 +417,10 @@ func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCh
 	var viewErr error
 	if len(differ) > 0 {
 		var viewed bool
-		viewed, viewErr = attributesKept(root, clone, tree)
+		viewed, viewErr = attributesKept(ctx, root, clone, tree)
 		var changed map[string]bool
 		if viewed && viewErr == nil {
-			changed, viewErr = gitChanged(in.RepoRoot, root, clone, in.Frozen, differ)
+			changed, viewErr = gitChanged(ctx, in.RepoRoot, root, clone, in.Frozen, differ)
 		}
 		for _, ft := range differ {
 			switch {
@@ -524,7 +571,7 @@ func (ft frozenTest) compare(root *os.Root, newHash func() hash.Hash) (string, e
 // read as a regular file within twice its frozen size (fsutil.ReadGuardedInRoot),
 // and the walk reads at most maxScanEntries entries: a clone past that is an
 // error, so its tests go unexamined.
-func attributesKept(root *os.Root, clone string, tree frozenTree) (bool, error) {
+func attributesKept(ctx context.Context, root *os.Root, clone string, tree frozenTree) (bool, error) {
 	frozen := map[string]bool{}
 	for _, a := range tree.attrs {
 		frozen[a.path] = true
@@ -541,6 +588,9 @@ func attributesKept(root *os.Root, clone string, tree frozenTree) (bool, error) 
 		}
 		if n++; n > maxScanEntries {
 			return errScanBound
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if d.IsDir() && d.Name() == ".git" && filepath.Dir(p) == clone {
 			return filepath.SkipDir
@@ -569,9 +619,9 @@ const maxPathspecs = 256
 // unexamined, never answered.
 const checkGitBound = 2 * time.Minute
 
-// checkGit is git bounded by checkGitBound, its output trimmed.
-func checkGit(args ...string) (string, error) {
-	out, err := gitRawWithin(checkGitBound, args...)
+// checkGit is git bounded by checkGitBound and by ctx, its output trimmed.
+func checkGit(ctx context.Context, args ...string) (string, error) {
+	out, err := gitRawCtx(ctx, checkGitBound, args...)
 	return strings.TrimSpace(string(out)), err
 }
 
@@ -585,8 +635,8 @@ func checkGit(args ...string) (string, error) {
 // (isolated from the person's), with the clone's own line-ending settings
 // (core.autocrlf, core.eol) read as values from a copy of its configuration
 // (lineEndings). Every git command is bounded by checkGitBound.
-func gitChanged(repoRoot string, root *os.Root, clone, frozen string, tests []frozenTest) (map[string]bool, error) {
-	common, err := checkGit("-C", repoRoot, "rev-parse", "--git-common-dir")
+func gitChanged(ctx context.Context, repoRoot string, root *os.Root, clone, frozen string, tests []frozenTest) (map[string]bool, error) {
+	common, err := checkGit(ctx, "-C", repoRoot, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
@@ -598,12 +648,12 @@ func gitChanged(repoRoot string, root *os.Root, clone, frozen string, tests []fr
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
-	endings, err := lineEndings(root, tmp)
+	endings, err := lineEndings(ctx, root, tmp)
 	if err != nil {
 		return nil, err
 	}
 	view := filepath.Join(tmp, "view")
-	if _, err := checkGit("init", "-q", "--template=", view); err != nil {
+	if _, err := checkGit(ctx, "init", "-q", "--template=", view); err != nil {
 		return nil, err
 	}
 	gitDir := filepath.Join(view, ".git")
@@ -615,7 +665,7 @@ func gitChanged(repoRoot string, root *os.Root, clone, frozen string, tests []fr
 		return nil, err
 	}
 	base := append(endings, "--literal-pathspecs", "--git-dir="+gitDir, "--work-tree="+clone)
-	if _, err := checkGit(append(slices.Clone(base), "read-tree", frozen)...); err != nil {
+	if _, err := checkGit(ctx, append(slices.Clone(base), "read-tree", frozen)...); err != nil {
 		return nil, err
 	}
 	changed := map[string]bool{}
@@ -624,7 +674,7 @@ func gitChanged(repoRoot string, root *os.Root, clone, frozen string, tests []fr
 		for _, ft := range chunk {
 			args = append(args, ft.path)
 		}
-		out, err := gitRawWithin(checkGitBound, args...)
+		out, err := gitRawCtx(ctx, checkGitBound, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -653,7 +703,7 @@ var errConfigUnread = errors.New("the copy's git configuration is not a regular 
 // tmp, the check's own scratch directory. A clone with no git directory or no
 // configuration has no settings; one whose configuration the check would not
 // read is errConfigUnread.
-func lineEndings(root *os.Root, tmp string) ([]string, error) {
+func lineEndings(ctx context.Context, root *os.Root, tmp string) ([]string, error) {
 	fi, err := root.Lstat(".git")
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -681,7 +731,7 @@ func lineEndings(root *os.Root, tmp string) ([]string, error) {
 			"false": "false", "no": "false", "off": "false", "0": "false", "input": "input"}},
 		{"core.eol", map[string]string{"lf": "lf", "crlf": "crlf", "native": "native"}},
 	} {
-		v, err := checkGit("config", "--file", config, "--get", setting.key)
+		v, err := checkGit(ctx, "config", "--file", config, "--get", setting.key)
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
 			// Not set, or a configuration git cannot parse: no setting.
@@ -761,7 +811,7 @@ func isTestPath(p string) bool {
 // What it does not see, the report lists among the run's limitations: a read
 // through a relative path with no climb after a cd out of the clone, a path a
 // program built at run time, and any read the transcript does not record.
-func ownCopyOnly(in complianceInputs, tree frozenTree, treeErr error, scan cloneScan, scanErr error) ComplianceCheck {
+func ownCopyOnly(ctx context.Context, in complianceInputs, tree frozenTree, treeErr error, scan cloneScan, scanErr error) ComplianceCheck {
 	unexamined := func(why string) ComplianceCheck {
 		return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateUnexamined, Detail: why}
 	}
@@ -783,7 +833,7 @@ func ownCopyOnly(in complianceInputs, tree frozenTree, treeErr error, scan clone
 	case len(in.Transcript) > maxTranscriptBytes:
 		return unexamined(fmt.Sprintf("the copy's transcript is past %d bytes, so what it read was not examined", maxTranscriptBytes))
 	}
-	sc := &transcriptScan{forms: forms, clone: filepath.ToSlash(filepath.Clean(clone)), scan: scan,
+	sc := &transcriptScan{ctx: ctx, forms: forms, clone: filepath.ToSlash(filepath.Clean(clone)), scan: scan,
 		scanned: scanErr == nil, homes: homeForms(), climbs: map[string]string{}}
 	if seen, ok := sc.find(in.Transcript); ok {
 		return broken(seen)
@@ -898,7 +948,7 @@ type cloneScan struct {
 var errScanBound = errors.New("the clone holds more entries than the check reads")
 
 // scanClone reads the clone's folders, entries and links.
-func scanClone(clone string) (cloneScan, error) {
+func scanClone(ctx context.Context, clone string) (cloneScan, error) {
 	s := cloneScan{heights: map[string]int{"": 0}, parents: map[string][]string{}}
 	if fi, err := os.Lstat(clone); err != nil || !fi.IsDir() {
 		return cloneScan{}, fmt.Errorf("the copy's clone is not a directory")
@@ -910,6 +960,9 @@ func scanClone(clone string) (cloneScan, error) {
 		}
 		if n++; n > maxScanEntries {
 			return errScanBound
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		rel, err := filepath.Rel(clone, p)
 		if err != nil {
@@ -999,6 +1052,8 @@ func linkOut(clone string, forms []storeForm, scan cloneScan, tree frozenTree, t
 
 // transcriptScan reads a transcript's paths against the store.
 type transcriptScan struct {
+	// ctx is the check's deadline: the scan stops reading once it ends.
+	ctx context.Context
 	forms []storeForm
 	// clone is the copy's clone as given, slash-separated and clean.
 	clone   string
@@ -1027,6 +1082,9 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 		return sc.token(t)
 	}
 	for i := 0; i < len(b); i++ {
+		if i&0xffff == 0 && sc.ctx != nil && sc.ctx.Err() != nil {
+			return "", false
+		}
 		c := b[i]
 		switch {
 		case (c == '"' || c == '\'') && homeGoesOn(tok, b[i+1:]):

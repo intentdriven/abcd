@@ -293,13 +293,22 @@ func gitRaw(args ...string) ([]byte, error) { return gitRawWithin(gitBound, args
 // read to its end before the wait (procgroup.RunToEOF), and the call refused,
 // naming the bound, never answered with what git wrote before it stopped.
 func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	return gitRawCtx(context.Background(), limit, args...)
+}
+
+// gitRawCtx is gitRawWithin under parent too: git is killed when parent ends
+// or past limit, whichever comes first, and the refusal names which.
+func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitutil.IsolatedEnv()
 	cmd.WaitDelay = time.Second
 	var stdout, stderr bytes.Buffer
 	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
+	if parent.Err() != nil {
+		return nil, fmt.Errorf("git %s was stopped at the deadline of the work it was part of", args[0])
+	}
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("git %s did not finish within %s, so it was stopped", args[0], limit)
 	}
