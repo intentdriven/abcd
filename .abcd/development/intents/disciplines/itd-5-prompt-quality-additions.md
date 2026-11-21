@@ -22,7 +22,7 @@ Every `agents/*.md` prompt that abcd ships carries four things, enforced at agen
 3. **At least one injection-canary fixture** in `agents/<name>/fixtures/` for every agent that reads untrusted input (transcripts, lifeboats, GitHub issues, commit messages, model-emitted reviews). The fixture's input contains a prompt-injection payload; the expected output demonstrates the injection was ignored. Failing the canary blocks the agent's spec from closing.
 4. **`capability_scope` frontmatter field** (added 2026-05-08 per idea-4 jagged-frontier review). Object: `{ task_classes: [<token>, ...], designed_for: "<free-text 1-line>" }`, with `task_classes` authored as a YAML inline list. `task_classes` is a closed-enum list of tokens the agent is designed to handle; `lint_prompts` validates set-membership against the `task_classes` enum in `internal/core/lint`. **Static declaration only**; dynamic `known_failure_modes` events + plan-time semantic check + capability-aware pre-cascade selector are deferred to the Frontier Awareness intent.
 
-The discipline applies to every agent spec — Pass A spine, Pass B chat-distiller, Pass C principle / artefact / brief / press-release agents, the audit agents, the embark / launch agents. abcd ships all 14 (now 15) agents under this rule.
+The discipline applies to every agent spec — Pass A spine, Pass B chat-distiller, Pass C principle / artefact / brief / press-release agents, the audit agents, the embark / launch agents. abcd ships every agent prompt in `agents/` under this rule.
 
 ## Why
 
