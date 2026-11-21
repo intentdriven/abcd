@@ -481,7 +481,8 @@ const (
 )
 
 // ShapeSettingsUnchecked is a claude settings value that turns its permission
-// checks off, grants permission rules or declares hooks, or that the guard
+// checks off, grants permission rules or directories, declares hooks or
+// another command claude runs, turns hooks off, or that the guard
 // cannot read (settingsUnchecked). The value is the JSON text `--settings`
 // takes inline, or the text of the file it names (settingsFileReadings).
 const ShapeSettingsUnchecked = "claude-settings-unchecked"
@@ -529,9 +530,12 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 // escapes decoded and a repeated key taking its last value, and is refused
 // where it turns the permission checks off, with `permissions.defaultMode`
 // set to `bypassPermissions` (compared ignoring case, as the flag's value
-// is); where it grants permission rules, a `permissions.allow` holding any
-// rule; and where it declares hooks, a non-empty `hooks`, since a hook can
-// answer the permission prompts for every call. Every other mode is the
+// is); where it grants permission rules or directories, a `permissions.allow`
+// holding any rule or a non-empty `permissions.additionalDirectories`; where
+// it declares hooks, a non-empty `hooks`, since a hook can answer the
+// permission prompts for every call; where it holds any other command claude
+// runs (settingsCommandKeys); and where it turns hooks off, a
+// `disableAllHooks` that is neither false nor null. Every other mode is the
 // permission-mode flag's to judge, and that entry refuses only the bypass.
 // Text that starts as an object and does not parse is refused, since
 // claude's reader may take what Go's refuses, and so is an object holding a
@@ -559,7 +563,12 @@ func settingsUnchecked(got string) bool {
 	if json.Unmarshal([]byte(text), &root) != nil {
 		return true
 	}
-	if !emptyJSON(root["hooks"]) {
+	for _, key := range settingsCommandKeys {
+		if !emptyJSON(root[key]) {
+			return true
+		}
+	}
+	if off, ok := root["disableAllHooks"]; ok && off != nil && off != false {
 		return true
 	}
 	perms, _ := root["permissions"].(map[string]any)
@@ -567,7 +576,16 @@ func settingsUnchecked(got string) bool {
 		return true
 	}
 	allow, _ := perms["allow"].([]any)
-	return len(allow) > 0
+	return len(allow) > 0 || !emptyJSON(perms["additionalDirectories"])
+}
+
+// settingsCommandKeys are the claude settings keys whose value is a command
+// claude runs, or holds one: hooks, the credential and header helpers, the
+// status line, the file suggestion command, the process wrapper and the SSH
+// host commands. settingsUnchecked refuses any of them that holds a value.
+var settingsCommandKeys = []string{
+	"hooks", "apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "gcpAuthRefresh",
+	"otelHeadersHelper", "statusLine", "fileSuggestion", "processWrapper", "sshHostCommands",
 }
 
 // trimSettings is a settings text with leading and trailing space removed as

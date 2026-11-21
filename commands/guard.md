@@ -1098,7 +1098,11 @@ qualifiers from the expanded text, so the code they run is not on the line. A
 positional or special parameter there (`*($1)`, `x($0)`) is a block only where
 the line can set it: a `set` with operands, a function, or a string a shell is
 handed with its arguments. A `$` inside single quotes or escaped is text, so
-`ls *(e:'[[ -d $REPLY ]]':)` stays allowed.
+`ls *(e:'[[ -d $REPLY ]]':)` stays allowed. A `(` inside a `[[ … ]]` test
+groups a pattern or a regular expression, and a `|` there is an alternation,
+not a pipe, in every part of the test that `&&`, `||` or a group divides, so
+`[[ -n "$a" && "$b" =~ ^(foo|$c)$ ]]` is allowed; after the test's `]]` both
+are read as anywhere else.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
@@ -1212,8 +1216,18 @@ none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
 (`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
 `permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
-rules or declares `hooks`, which can answer the permission prompts, written on
-the line or in the file it names (`agent-launch-claude-unchecked-settings`),
+rules or `permissions.additionalDirectories`, declares `hooks`, which can
+answer the permission prompts, or another key whose value is a command claude
+runs (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`,
+`gcpAuthRefresh`, `otelHeadersHelper`, `statusLine`, `fileSuggestion`,
+`processWrapper`, `sshHostCommands`), or sets `disableAllHooks` to anything but
+`false` or `null`, which starts a claude without the hooks that send its
+commands here, written on the line or in the file it names
+(`agent-launch-claude-unchecked-settings`), `claude --allowedTools` or
+`--allowed-tools` on the line, the flag form of an allow list
+(`agent-launch-claude-allowed-tools`), `claude --permission-prompt-tool` with
+`--mcp-config`, a tool from a server the line configures that answers the
+permission prompts as a hook can (`agent-launch-claude-prompt-tool`),
 `codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
@@ -1227,8 +1241,11 @@ not parse, JSON holding a part the line does not fix (a value spliced into the
 text can add any key), a value or file name the line does not wholly fix
 (`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
 glob that does not match exactly one file, and a file the line writes before
-the launch, one that is not a regular file, one over 256 KiB, or one that does
-not hold a JSON object. A settings file that does not exist is not refused,
+the launch or may write there by a name it does not fix (`> "$F"`), one that
+is not a regular file, one over 256 KiB, or one that does not hold a JSON
+object. A write the guard does not read as one (an interpreter's payload, a
+program that rewrites the file in place by its own reading, such as `perl -pi`
+or `sponge`, or `git stash pop`) leaves the file read as it stands now. A settings file that does not exist is not refused,
 since claude does not start on it, and other permission modes are left to the
 permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`
@@ -1238,7 +1255,8 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x`, `typeset -x` or `local -x` earlier in the line, an export through
+`declare -x`, `typeset -x`, `local -x` or zsh's `integer -x` or `float -x`
+earlier in the line, an export through
 a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
 after the program's name while bash's `set -k` holds, an export inside an
 `eval` that stands before it, or an export in a file the line sources before
@@ -1249,13 +1267,23 @@ may be too where a program reads the word after the shell expands it: an
 operand of `env` or `sudo` before the command, or of `export` or a declaration
 builtin, whose name a substitution prints (`env "$(true)"NAME=…`, `env
 "$N"=…`, `env "$PAIR"`, `export "$N"`) is read as naming every variable an
-entry names. A script the line runs is judged with the environment the line
+entry names. The value of one of env's own options that take one (`env -u
+"$V"`, `env -C "$D"`, `-P`, `-a` and their long forms) is that option's value,
+not an assignment, while the string `env -S` splits is read as env's operands.
+A script the line runs is judged with the environment the line
 hands it, so an export before `bash run.sh`, or an assignment before it,
 reaches the harness the script starts, and a file the line sources runs under
 the exports and options in force where the source stands. While allexport
 holds, every assignment exports: a bare one, a declaration builtin's, a name
-`read`, `printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or
-`select` loop's variable, and a `${NAME:=…}` expansion anywhere on the line.
+`read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
+`compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
+`sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
+line, a `${NAME:=…}` or zsh's `${NAME::=…}` expansion, behind zsh's flags too
+(`${(q)NAME:=…}`, `${=NAME:=…}`), an arithmetic assignment (`((NAME=1))`,
+`$((NAME+=1))`, `$[NAME=1]`, `((NAME++))`, a `for (( … ))` header's, and one
+whose target a variable names, `(($N=1))`, read as any name), and a
+redirection that names its descriptor (`exec {NAME}<file`). A comparison in an
+arithmetic expression (`==`, `<=`) assigns nothing.
 allexport is turned on by `set -a` and `set -o allexport`, a `set` whose
 option words the line does not fix (`set "$X"`, `set -o "$X"`), and a command
 whose name a substitution prints with an option word that can be `-a` or

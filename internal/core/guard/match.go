@@ -387,11 +387,19 @@ func precededByCD(before []segment, chain int) bool {
 // stand before (`env "$(true)"NAME=…`, `env "$N"=…`), or, with no `=`
 // written, where it stands among env's or sudo's operands, which a
 // substitution can print whole (`env "$PAIR" opencode`); a word that is an
-// option's value (`sudo -u "$U"`) is no assignment.
+// option's value (`sudo -u "$U"`, `env -C "$D"`, envOptionValueNext) is no
+// assignment.
 func envSetBefore(s segment, site int, names []string) bool {
-	operands := "" // the envAssigns wrapper whose operands the words since it are
+	operands := ""       // the envAssigns wrapper whose operands the words since it are
+	optionValue := false // the word is the value of the env option before it
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		tok := s.tokens[i]
+		if optionValue {
+			optionValue = false
+			if operands == "env" {
+				continue
+			}
+		}
 		if setsName(tok, names) || couldSetName(tok, names) && (strings.IndexByte(tok, '=') >= 0 || operands != "") {
 			return true
 		}
@@ -399,9 +407,38 @@ func envSetBefore(s segment, site int, names []string) bool {
 		case !isUnknown(tok) && envAssigns[w]:
 			operands = w
 		case operands == "env" && strings.HasPrefix(tok, "-"):
+			optionValue = envOptionValueNext(tok)
 		case operands != "" && (isUnknown(tok) || isWrapperAssignment(tok)):
 		default:
 			operands = ""
+		}
+	}
+	return false
+}
+
+// envOptionValueNext reports whether the env option tok takes the next word
+// as its value: `-u`, `-C`, `-P` and `-a` standing last in a cluster of
+// short options (`-iu`), and `--unset`, `--chdir` and `--argv0` without an
+// `=`, abbreviated as getopt allows. `-S` is not among them: env reads the
+// string it splits as its own operands, assignments included.
+func envOptionValueNext(tok string) bool {
+	if long, ok := strings.CutPrefix(tok, "--"); ok {
+		if long == "" || strings.ContainsRune(long, '=') {
+			return false
+		}
+		for _, name := range []string{"unset", "chdir", "argv0"} {
+			if strings.HasPrefix(name, long) {
+				return true
+			}
+		}
+		return false
+	}
+	for k := 1; k < len(tok); k++ {
+		switch c := tok[k]; {
+		case strings.IndexByte("uCPa", c) >= 0:
+			return k == len(tok)-1
+		case c == 'S' || !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'):
+			return false
 		}
 	}
 	return false
@@ -616,10 +653,11 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 // is the state before the first. A string an eval runs is placed where the
 // eval stands, so an export in it holds for the commands after the eval.
 //
-// A `${NAME:=…}` or `${NAME=…}` assigns where the expansion stands, which
-// the text records only for the whole text (segment.assignsInText), so while
-// allexport holds such an assignment of one of the names counts as an
-// export from the first command allexport holds at.
+// A `${NAME:=…}` or `${NAME=…}` assigns where the expansion stands, and so
+// does an arithmetic assignment or a redirection that names its descriptor,
+// which the text records only for the whole text (segment.assignsInText,
+// segment.numbersInText), so while allexport holds such an assignment of one
+// of the names counts as an export from the first command allexport holds at.
 func exportsBefore(segs []segment, st exportState) (before []bool, exported bool, end exportState) {
 	before, _, exported, end = exportWalk(segs, st)
 	return before, exported, end
@@ -631,6 +669,9 @@ func exportWalk(segs []segment, st exportState) (before []bool, states []exportS
 	for _, s := range segs {
 		for _, n := range s.assignsInText {
 			expands = expands || containsString(st.names, n)
+		}
+		for _, n := range s.numbersInText {
+			expands = expands || n == anyNameAssigned || containsString(st.names, n)
 		}
 	}
 	before = make([]bool, len(segs))
@@ -663,9 +704,12 @@ func assignsAfterCommand(s segment, names []string) bool {
 
 // operandSetters are the builtins, besides export and the declaration
 // builtins, that assign a variable their operands name: `read NAME`,
-// `printf -v NAME`, `getopts OPTS NAME`, `mapfile NAME`, `let NAME=…`, and
-// zsh's `vared`, `zparseopts` and `print -v`.
-var operandSetters = []string{"read", "mapfile", "readarray", "getopts", "printf", "print", "let", "vared", "zparseopts"}
+// `printf -v NAME`, `getopts OPTS NAME`, `mapfile NAME`, `let NAME=…`,
+// bash's `wait -p NAME` and `compgen -V NAME`, and zsh's `vared`,
+// `zparseopts`, `print -v`, `strftime -s NAME`, `zstyle -s … NAME`,
+// `zformat -f NAME`, `getln NAME` and `sysread NAME`.
+var operandSetters = []string{"read", "mapfile", "readarray", "getopts", "printf", "print", "let", "vared", "zparseopts",
+	"wait", "compgen", "strftime", "zstyle", "zformat", "getln", "sysread"}
 
 // assignsOperand reports whether the command at site is one of
 // operandSetters handed one of names to assign: as a word of its own, as
@@ -1057,17 +1101,18 @@ func zshOption(w string) string {
 }
 
 // declarationBuiltins set the variables their operands name and take
-// typeset's options.
-var declarationBuiltins = []string{"declare", "typeset", "local", "readonly"}
+// typeset's options: zsh's `integer` and `float` among them, which are
+// typeset with a number's type.
+var declarationBuiltins = []string{"declare", "typeset", "local", "readonly", "integer", "float"}
 
 // exportOperands reads the command at site as one that sets the variables
 // its operands name: the index of its first operand, whether it exports them
 // (explicit), whether it takes the export away (unexports), and ok where the
 // command is export or a declaration builtin at all. export always exports.
-// declare, typeset, local and readonly do when an option among the words
-// before their first operand carries x (`-x`, `-gx`, `-rx`), as bash and zsh
-// read it, and take the export away when the last such option is `+x`; `--`
-// ends the options. A word a substitution prints can be an option, -x among
+// declare, typeset, local, readonly, integer and float do when an option
+// among the words before their first operand carries x (`-x`, `-gx`, `-rx`),
+// as bash and zsh read it, and take the export away when the last such
+// option is `+x`; `--` ends the options. A word a substitution prints can be an option, -x among
 // them.
 func exportOperands(tokens []string, site int) (first int, explicit, unexports, ok bool) {
 	tok := tokens[site]
