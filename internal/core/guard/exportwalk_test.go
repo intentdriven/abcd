@@ -385,3 +385,45 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport: zsh turns
+// allexport on by an assignment to its options array, by the option's name in
+// any of zsh's spellings with the value on or 1, and the whole array assigned
+// is read as turning it on; under allexport, a name a declaration builtin
+// declares without a value is exported, so the scalar `typeset -T` ties to an
+// array is exported when the array is assigned.
+func TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport(t *testing.T) {
+	const id = "agent-launch-opencode-config-env"
+	r := Defaults()
+	for _, line := range []string{
+		`options[allexport]=on; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[ALL_EXPORT]=ON; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[all_export]=1; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[noallexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[$o]=on; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[allexport]=$v; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options=(allexport on); OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`set -a; typeset -T OPENCODE_CONFIG oc; oc=(/tmp/o.json); opencode run x`,
+		`setopt allexport; typeset OPENCODE_CONFIG; opencode run x`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, line := range []string{
+		`options[allexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[allexport]=0; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`options[errexit]=on; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`setopt allexport; options[allexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; oc=(/tmp/o.json); opencode run x`,
+		`typeset OPENCODE_CONFIG; opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}

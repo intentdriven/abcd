@@ -1287,6 +1287,9 @@ hands it, so an export before `bash run.sh`, or an assignment before it,
 reaches the harness the script starts, and a file the line sources runs under
 the exports and options in force where the source stands. While allexport
 holds, every assignment exports: a bare one, a declaration builtin's, a name
+a declaration builtin declares without a value (among them the scalar that
+zsh's `typeset -T` ties to an array, which an assignment to the array sets), a
+name
 `read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
 `compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
 `sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
@@ -1301,7 +1304,10 @@ option words the line does not fix (`set "$X"`, `set -o "$X"`), and a command
 whose name a substitution prints with an option word that can be `-a` or
 `-o`; zsh's `setopt allexport` in any spelling, `setopt -a` and `unsetopt
 +a`, a `setopt -m` pattern (read as turning it on, since the guard does not
-match patterns), `emulate MODE -o allexport`, bash's `shopt -so allexport`,
+match patterns), an assignment to zsh's `options` array
+(`options[allexport]=on`, the option in any spelling, read as turning it on
+unless the value is `off` or `0`, and the whole array assigned),
+`emulate MODE -o allexport`, bash's `shopt -so allexport`,
 and a shell started with `-a`, `-o allexport` or zsh's `--allexport`, or with
 a `SHELLOPTS` that names it or that the line does not fix, whether assigned
 before the shell or exported earlier in the line (`export

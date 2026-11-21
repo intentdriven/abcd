@@ -564,7 +564,8 @@ type shellOption struct {
 // `local -x` and the same operands (exportOperands). Where allexport holds,
 // a bare assignment (`NAME=…` with no command after it), an assignment a
 // declaration builtin makes, and a name a builtin assigns by its operands
-// (assignsOperand) or a `for` or `select` loop takes (loopNames) export too.
+// (assignsOperand) or a `for` or `select` loop takes (loopNames) export too,
+// as does a name a declaration builtin declares without a value.
 // A file s sources runs in the same shell, so a variable it exports counts.
 // A name a substitution prints can be any of them (nameCouldBe). The same
 // reading follows SHELLOPTS: assigned, and exported (exportState.shellopts).
@@ -603,8 +604,11 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 			if setsName(tok, names) || fixed && couldSetName(tok, names) {
 				exports = true
 			}
+			// A name declared with no value is exported under allexport as
+			// with -x: the scalar `typeset -T` ties to an array among them,
+			// which an assignment to the array then sets.
 			for _, n := range names {
-				if explicit && named(tok, n) {
+				if named(tok, n) {
 					exports = true
 				}
 			}
@@ -835,17 +839,21 @@ func runSequence(segs []segment) []int {
 // after `-o` (setOption); zsh's `setopt` and `unsetopt`, by letter, by name
 // in any of its spellings, or by a `-m` pattern, which is read as setting
 // it (setoptOption); zsh's `emulate`, with set's options after the mode
-// (emulateOption); bash's `shopt -s -o` and `shopt -u -o` (shoptOption); and
-// a shell started with the option (shellStartsWith). A shell's string runs
+// (emulateOption); bash's `shopt -s -o` and `shopt -u -o` (shoptOption); an
+// assignment to zsh's options array (optionsArrayOption); and a shell started
+// with the option (shellStartsWith). A shell's string runs
 // where the shell stands (runOrder), so an option the shell starts with
 // holds for the commands after it on the line too, a reading that counts
 // more exports, never fewer. A word a substitution prints can be an option
 // that sets it. shellopts is the SHELLOPTS the shell hands the shells it
 // starts (exportState.shellopts).
 func optionAfter(s segment, on bool, opt shellOption, shellopts string) bool {
+	if s.arrayOf == zshOptionsArray {
+		return true
+	}
 	sites := commandSites(s)
 	if len(sites) == 0 {
-		return on
+		return optionsArrayOption(s.tokens, on, opt)
 	}
 	// Each place the command can sit, and each builtin a name the line does
 	// not fix can be, is one way the command runs: opt holds after it where
@@ -881,6 +889,43 @@ func optionAfter(s segment, on bool, opt shellOption, shellopts string) bool {
 		}
 	}
 	return after
+}
+
+// zshOptionsArray is zsh's associative array of its options, whose elements
+// set them: `options[allexport]=on` turns allexport on.
+const zshOptionsArray = "options"
+
+// optionsArrayOption is opt after the assignments toks, a command of
+// assignments alone, make to zsh's options array (zshOptionsArray), given on
+// before them: an element named for opt in any of zsh's spellings
+// (zshOption) set to off or 0, in any case, turns it off and set to anything
+// else turns it on, its `no` form the other way round; an element whose name
+// or value the line does not fix, and the whole array assigned, can turn it
+// on.
+func optionsArrayOption(toks []string, on bool, opt shellOption) bool {
+	for _, tok := range toks {
+		name, eq, _, subscript, ok := splitAssignment(tok)
+		if !ok || name != zshOptionsArray {
+			continue
+		}
+		if !subscript {
+			on = true
+			continue
+		}
+		key, value := tok[len(name)+1:strings.IndexByte(tok, ']')], tok[eq+1:]
+		if isUnknown(key) || strings.ContainsRune(key, varMark) || isUnknown(value) || strings.ContainsRune(value, varMark) {
+			on = true
+			continue
+		}
+		off := strings.EqualFold(value, "off") || value == "0"
+		switch zshOption(key) {
+		case opt.name:
+			on = !off
+		case "no" + opt.name:
+			on = off
+		}
+	}
+	return on
 }
 
 // setOption is opt after set's arguments args, given on before them: `-X`
