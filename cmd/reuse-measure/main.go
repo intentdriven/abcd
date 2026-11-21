@@ -15,8 +15,9 @@
 // One log can hold several runs, so each is judged alone: its figures are the
 // lines its own mint printed straight after its receipt, the reuse counts of both
 // stages and the times, and a run whose mint was refused reports nothing, though
-// it prints its times too. A log over 64 MiB, or a line over 64 KiB, is not read;
-// a full run whose counts do not read is named and counted nowhere.
+// it prints its times too. A log over 64 MiB, one that grows past that as it is
+// read included, or a line over 64 KiB, is not read; a full run whose counts do
+// not read is named and counted nowhere.
 //
 // The baseline is the count iss-2611011343052330 recorded on 2026-11-01, 0 of
 // 133 packages reused, which has no time. -baseline names the log of a timed run
@@ -101,6 +102,10 @@ var (
 // test can lower them.
 var maxLog, maxLine int64 = 64 << 20, 64 << 10
 
+// afterStat runs between a log's size check and its read; a test sets it to
+// grow the log in that window.
+var afterStat = func(*os.File) {}
+
 // errUnreadable marks a log that is no regular file or is over maxLog: refused
 // when named outright, and named as not read when found in a directory.
 var errUnreadable = errors.New("not read")
@@ -119,7 +124,8 @@ func main() {
 // its own mint printed, never a later run's. A run whose mint was refused, or
 // that failed before its mint, reports nothing. The log is opened once, refused
 // unless it is a regular file within maxLog (a symlink or a FIFO is refused,
-// never followed or waited on), and a line over maxLine closes any open report
+// never followed or waited on; one that grows past maxLog as it is read is
+// refused, never read cut short), and a line over maxLine closes any open report
 // and is read as nothing else.
 func readRuns(path string) ([]report, error) {
 	f, fi, err := fsutil.OpenRegular(path)
@@ -133,6 +139,7 @@ func readRuns(path string) ([]report, error) {
 	if fi.Size() > maxLog {
 		return nil, fmt.Errorf("%s: %w: it holds %d bytes, over the %d a log may hold", path, errUnreadable, fi.Size(), maxLog)
 	}
+	afterStat(f)
 	var (
 		runs   []report
 		open   *report
@@ -144,7 +151,10 @@ func readRuns(path string) ([]report, error) {
 		}
 		open = nil
 	}
-	br := bufio.NewReader(io.LimitReader(f, maxLog))
+	// One byte past the cap is let through, so a log that grew past it after the
+	// size check is refused rather than read cut short.
+	lr := &io.LimitedReader{R: f, N: maxLog + 1}
+	br := bufio.NewReader(lr)
 	for {
 		line, long, readErr := readLine(br, maxLine)
 		switch {
@@ -170,6 +180,9 @@ func readRuns(path string) ([]report, error) {
 			}
 		}
 		if readErr == io.EOF {
+			if lr.N == 0 {
+				return nil, fmt.Errorf("%s: %w: it grew past the %d bytes a log may hold as it was read", path, errUnreadable, maxLog)
+			}
 			end()
 			return runs, nil
 		}
@@ -270,8 +283,8 @@ func readLandings(root, ref string, n int) ([]landing, error) {
 // readReports reads every report in the paths named, keyed by head. A path
 // named outright is a directory, whose .log files directly inside it are read,
 // or a regular file; anything else, or a named file that cannot be read, is
-// refused. A log in a directory that cannot be read is named in unread and the
-// rest are read. Every run that minted a receipt reports, and a head with more
+// refused. A log in a directory that cannot be read, or a .log entry there that
+// is no regular file (never followed), is named in unread and the rest are read. Every run that minted a receipt reports, and a head with more
 // than one report takes the one that prints its time, then the later: the later
 // name, or the later run in one log.
 func readReports(paths []string) (reports map[string]report, unread []string, err error) {
@@ -297,8 +310,14 @@ func readReports(paths []string) (reports map[string]report, unread []string, er
 			return nil, nil, err
 		}
 		for _, e := range entries {
-			if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".log") {
+			switch {
+			case !strings.HasSuffix(e.Name(), ".log"):
+			case e.Type().IsRegular():
 				files = append(files, logFile{filepath.Join(p, e.Name()), false})
+			default:
+				// A .log entry that is a symlink or anything else is never followed,
+				// and is named so the reader knows it was passed over.
+				unread = append(unread, e.Name()+" (not a regular file)")
 			}
 		}
 	}
@@ -320,6 +339,7 @@ func readReports(paths []string) (reports map[string]report, unread []string, er
 			reports[r.head] = r
 		}
 	}
+	slices.Sort(unread)
 	return reports, unread, nil
 }
 
@@ -419,7 +439,7 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 			gaps = append(gaps, l.pr+" has no report here")
 			continue
 		}
-		name := filepath.Base(r.path)
+		name := cell(filepath.Base(r.path))
 		checked, waited := "not printed", "not printed"
 		if r.timed {
 			checked, waited = clock(r.checked), clock(r.waited)
@@ -451,7 +471,7 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 	}
 	fmt.Fprintln(w)
 	if len(unread) > 0 {
-		fmt.Fprintf(w, "Not read: %s.\n", strings.Join(unread, "; "))
+		fmt.Fprintf(w, "Not read: %s.\n", cell(strings.Join(unread, "; ")))
 	}
 	if unitT+raceT > 0 {
 		fmt.Fprintf(w, "Reused, pooled over the landings that ran test stages: unit %s, race %s, both %s.\n",
@@ -466,7 +486,7 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 		gaps = append(gaps, "no timed run that reused nothing was given (-baseline, the log of make preflight PREFLIGHT_FRESH=1)")
 	} else {
 		fmt.Fprintf(w, "Timed run that reused nothing: %s, head %s, reused 0 of %d packages: race stage %s, checked in %s.\n",
-			filepath.Base(base.path), base.head, base.unitTotal+base.raceTotal, clock(base.race), clock(base.checked))
+			cell(filepath.Base(base.path)), base.head, base.unitTotal+base.raceTotal, clock(base.race), clock(base.checked))
 	}
 	if len(checks) == 0 {
 		gaps = append(gaps, "no landing here ran test stages with a printed time")
@@ -481,6 +501,13 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 		len(checks), clock(c), clock(base.checked), less(base.checked, c), clock(r), clock(base.race), less(base.race, r))
 	return true
 }
+
+// cellText escapes what a file name may hold that would break the Markdown
+// output: a | ends a table cell, and a line break ends the row or the line.
+var cellText = strings.NewReplacer(`\`, `\\`, "|", `\|`, "\n", `\n`, "\r", `\r`)
+
+// cell is s made safe to print in a table cell or a line of the output.
+func cell(s string) string { return cellText.Replace(s) }
 
 // less says how much shorter got is than want, or longer.
 func less(want, got time.Duration) string {

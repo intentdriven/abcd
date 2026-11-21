@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -540,6 +541,41 @@ func TestReadsAreBounded(t *testing.T) {
 			t.Errorf("in a directory: run exited %d, want %d with #61 read and the big log named as not read; stderr: %s\n%s", code, exitIncomplete, stderr, out)
 		}
 	})
+	t.Run("a log that grows past the size cap as it is read", func(t *testing.T) {
+		path := writeLog(t, t.TempDir(), "preflight-grows.log", fullTail, short)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldMax, oldHook := maxLog, afterStat
+		maxLog = info.Size() + 16
+		t.Cleanup(func() { maxLog, afterStat = oldMax, oldHook })
+		// The log passes the size check, then grows past the cap before it is read.
+		afterStat = func(*os.File) {
+			w, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if _, err := w.WriteString(strings.Repeat("x\n", 64)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if runs, err := readRuns(path); !errors.Is(err, errUnreadable) {
+			t.Errorf("readRuns = %+v, %v; want the log refused as grown past the cap, not read cut short", runs, err)
+		}
+	})
+	t.Run("a symlink in a directory", func(t *testing.T) {
+		dir := t.TempDir()
+		writeLog(t, dir, "preflight-61.log", fullTail, short)
+		if err := os.Symlink(good, filepath.Join(dir, "link.log")); err != nil {
+			t.Fatal(err)
+		}
+		code, out, stderr := runWithin(t, repo.Root(), "-ref", "main", "-n", "1", dir)
+		if code != exitIncomplete || !strings.Contains(out, "| #61 | "+short+" | preflight-61.log | 5 of 16 |") || !strings.Contains(out, "Not read: link.log (not a regular file)") {
+			t.Errorf("run exited %d, want %d with #61 read and the link named as not read; stderr: %s\n%s", code, exitIncomplete, stderr, out)
+		}
+	})
 	t.Run("a line over the line cap", func(t *testing.T) {
 		old := maxLine
 		maxLine = 256
@@ -556,6 +592,20 @@ func TestReadsAreBounded(t *testing.T) {
 			t.Errorf("readRuns of a log within the caps = %+v, %v", runs, err)
 		}
 	})
+}
+
+// TestALogNameCannotBreakTheTable: a log's name is printed in a table cell, so
+// a | in it is escaped and a line break written out, and the row keeps its cells.
+func TestALogNameCannotBreakTheTable(t *testing.T) {
+	repo, heads := fixture(t, "81")
+	short := heads["81"][:12]
+	logs := t.TempDir()
+	writeLog(t, logs, "preflight|81\n.log", fullTail, short)
+	var out, errb bytes.Buffer
+	run([]string{"-ref", "main", "-n", "1", logs}, repo.Root(), &out, &errb)
+	if want := "| #81 | " + short + ` | preflight\|81\n.log | 5 of 16 | 91 of 133 |`; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s%s", want, out.String(), errb.String())
+	}
 }
 
 // TestMedianOfAnEvenCountIsTheMeanOfTheMiddleTwo: the median of the timed
