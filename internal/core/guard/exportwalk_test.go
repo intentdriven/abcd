@@ -282,3 +282,69 @@ func TestGuardReadsANamerefExportAndKeywordAssignments(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardReadsTheOtherAssignmentsAllexportExports: while allexport holds,
+// zsh's `${NAME::=word}` and a `${…:=…}` behind zsh's flags, an arithmetic
+// assignment (`((NAME=1))`, `$((NAME=1))`, `$[NAME=1]`, a `for ((…))`
+// loop's, a compound one such as `+=`, and `++` or `--`), zsh's `integer`
+// and `float`, zsh's `strftime -s NAME` and `zstyle -s … NAME`, and a
+// redirection that names its descriptor (`exec {NAME}<file`) each export
+// the name, so a line that sets an entry's variable that way before the
+// opencode it starts is refused. `integer -x` and `float -x` export without
+// it. A comparison inside an arithmetic expression, an assignment to
+// another name, and each form without allexport are not refused.
+func TestGuardReadsTheOtherAssignmentsAllexportExports(t *testing.T) {
+	const id = "agent-launch-opencode-config-env"
+	r := Defaults()
+	for _, line := range []string{
+		`set -a; : ${OPENCODE_CONFIG::=/tmp/o.json}; opencode run x`,
+		`set -a; : ${(q)OPENCODE_CONFIG:=/tmp/o.json}; opencode run x`,
+		`set -a; : ${=OPENCODE_CONFIG:=/tmp/o.json}; opencode run x`,
+		`set -a; : ${^~OPENCODE_CONFIG::=/tmp/o.json}; opencode run x`,
+		`set -a; ((OPENCODE_CONFIG=1)); opencode run x`,
+		`set -a; (( OPENCODE_CONFIG = 1 )); opencode run x`,
+		`set -a; : $((OPENCODE_CONFIG=1)); opencode run x`,
+		`set -a; : $[OPENCODE_CONFIG=1]; opencode run x`,
+		`set -a; for ((OPENCODE_CONFIG=1;0;)); do :; done; opencode run x`,
+		`set -a; ((OPENCODE_CONFIG+=1)); opencode run x`,
+		`set -a; ((OPENCODE_CONFIG<<=1)); opencode run x`,
+		`set -a; ((OPENCODE_CONFIG++)); opencode run x`,
+		`set -a; ((--OPENCODE_CONFIG)); opencode run x`,
+		`set -a; ((n = OPENCODE_CONFIG = 2)); opencode run x`,
+		`set -a; ((OPENCODE_CONFIG[0]=1)); opencode run x`,
+		`integer -x OPENCODE_CONFIG=1; opencode run x`,
+		`float -x OPENCODE_CONFIG=1; opencode run x`,
+		`set -a; integer OPENCODE_CONFIG=1; opencode run x`,
+		`set -a; strftime -s OPENCODE_CONFIG %s 0; opencode run x`,
+		`set -a; zstyle -s ctx style OPENCODE_CONFIG; opencode run x`,
+		`set -a; exec {OPENCODE_CONFIG}<file; opencode run x`,
+		`set -a; : {OPENCODE_CONFIG}>/dev/null; opencode run x`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, line := range []string{
+		`((OPENCODE_CONFIG=1)); opencode run x`,
+		`: $((OPENCODE_CONFIG=1)); opencode run x`,
+		`: ${OPENCODE_CONFIG::=/tmp/o.json}; opencode run x`,
+		`integer OPENCODE_CONFIG=1; opencode run x`,
+		`exec {OPENCODE_CONFIG}<file; opencode run x`,
+		`set -a; ((n=1)); opencode run x`,
+		`set -a; ((OPENCODE_CONFIG==1)); opencode run x`,
+		`set -a; ((OPENCODE_CONFIG!=1 && OPENCODE_CONFIG<=2 && OPENCODE_CONFIG>=0)); opencode run x`,
+		`set -a; : $((OPENCODE_CONFIG + 1)); opencode run x`,
+		`set -a; : ${OPENCODE_CONFIG:-x}; opencode run x`,
+		`set -a; echo {OPENCODE_CONFIG}; opencode run x`,
+		`set -a; zstyle ':completion:*' menu select; opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}
+

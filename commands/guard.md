@@ -1251,7 +1251,8 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x`, `typeset -x` or `local -x` earlier in the line, an export through
+`declare -x`, `typeset -x`, `local -x` or zsh's `integer -x` or `float -x`
+earlier in the line, an export through
 a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
 after the program's name while bash's `set -k` holds, an export inside an
 `eval` that stands before it, or an export in a file the line sources before
@@ -1267,8 +1268,15 @@ hands it, so an export before `bash run.sh`, or an assignment before it,
 reaches the harness the script starts, and a file the line sources runs under
 the exports and options in force where the source stands. While allexport
 holds, every assignment exports: a bare one, a declaration builtin's, a name
-`read`, `printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or
-`select` loop's variable, and a `${NAME:=…}` expansion anywhere on the line.
+`read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
+`compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
+`sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
+line, a `${NAME:=…}` or zsh's `${NAME::=…}` expansion, behind zsh's flags too
+(`${(q)NAME:=…}`, `${=NAME:=…}`), an arithmetic assignment (`((NAME=1))`,
+`$((NAME+=1))`, `$[NAME=1]`, `((NAME++))`, a `for (( … ))` header's, and one
+whose target a variable names, `(($N=1))`, read as any name), and a
+redirection that names its descriptor (`exec {NAME}<file`). A comparison in an
+arithmetic expression (`==`, `<=`) assigns nothing.
 allexport is turned on by `set -a` and `set -o allexport`, a `set` whose
 option words the line does not fix (`set "$X"`, `set -o "$X"`), and a command
 whose name a substitution prints with an option word that can be `-a` or

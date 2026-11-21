@@ -109,6 +109,11 @@ type segment struct {
 	// an empty segment of its own as namesIFSInText does; namesAssigned
 	// reads it.
 	assignsInText []string
+	// numbersInText is the names an arithmetic expression or a redirection
+	// naming its descriptor anywhere in the text a tokenize call read can
+	// assign a number to (numberAssigns), riding on the same segment as
+	// assignsInText. Only the export walk reads it (exportWalk).
+	numbersInText []string
 	// ifsSplit records, per token index, a spelled word whose fields rest on
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
@@ -2114,37 +2119,158 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		segs = append(segs, segment{chain: chain, namesIFSInText: true})
 	}
 	if depth == 0 {
-		if names := expansionAssigns(line); len(names) > 0 {
-			segs = append(segs, segment{chain: chain, assignsInText: names})
+		if names, numbers := expansionAssigns(line), numberAssigns(line); len(names) > 0 || len(numbers) > 0 {
+			segs = append(segs, segment{chain: chain, assignsInText: names, numbersInText: numbers})
 		}
 	}
 	return segs, nil
 }
 
-// expansionAssigns is every name a `${NAME:=w}` or `${NAME=w}` in text
-// assigns, wherever it stands, a quoted one included: reaching past what
-// the shell assigns only keeps a word read as any file the line wrote.
+// expansionAssigns is every name a `${NAME:=w}`, `${NAME=w}` or zsh's
+// `${NAME::=w}` in text assigns, wherever it stands, a quoted one included,
+// and behind zsh's flags before the name (`${(q)NAME:=w}`, `${=NAME:=w}`,
+// `${^~NAME:=w}`): reaching past what the shell assigns only keeps a word
+// read as any file the line wrote.
 func expansionAssigns(text string) []string {
 	var out []string
 	for i := 0; i+2 < len(text); i++ {
 		if text[i] != '$' || text[i+1] != '{' {
 			continue
 		}
-		j := i + 2
-		for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
-			j > i+2 && text[j] >= '0' && text[j] <= '9') {
-			j++
+		from := i + 2
+		if from < len(text) && text[from] == '(' {
+			if end := strings.IndexByte(text[from:], ')'); end >= 0 {
+				from += end + 1
+			}
 		}
-		if j == i+2 || j >= len(text) {
+		for from < len(text) && strings.IndexByte("^=~", text[from]) >= 0 {
+			from++
+		}
+		j := nameEnd(text, from)
+		if j == from || j >= len(text) {
 			continue
 		}
-		if text[j] == '=' || text[j] == ':' && j+1 < len(text) && text[j+1] == '=' {
-			if name := text[i+2 : j]; !containsString(out, name) {
+		rest := text[j:]
+		if strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, ":=") || strings.HasPrefix(rest, "::=") {
+			if name := text[from:j]; !containsString(out, name) {
 				out = append(out, name)
 			}
 		}
 	}
 	return out
+}
+
+// nameEnd is the index just past the shell name that starts at text[from]: a
+// letter or underscore, then letters, digits and underscores. It is from
+// where no name starts there.
+func nameEnd(text string, from int) int {
+	j := from
+	for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
+		j > from && text[j] >= '0' && text[j] <= '9') {
+		j++
+	}
+	return j
+}
+
+// anyNameAssigned stands, among the names numberAssigns reports, for an
+// arithmetic assignment whose target a variable's value names (`(($X=1))`),
+// which can be any name.
+const anyNameAssigned = "*"
+
+// numberAssigns is every name text can assign a number to, wherever it
+// stands, a quoted one included: an arithmetic expression's assignment,
+// inside `(( … ))`, `$(( … ))` (a `for (( … ))` loop's among them) or
+// `$[ … ]`, by `=`, a compound operator such as `+=` or `<<=`, or `++` or
+// `--` on either side of the name; and a redirection that names its
+// descriptor (`{NAME}<file`, `exec {NAME}>&-`), which assigns the descriptor's
+// number. A comparison (`==`, `!=`, `<=`, `>=`) assigns nothing. An
+// arithmetic target written as a variable (`$X=1`) is anyNameAssigned.
+func numberAssigns(text string) []string {
+	var out []string
+	add := func(name string) {
+		if !containsString(out, name) {
+			out = append(out, name)
+		}
+	}
+	for i := 0; i+1 < len(text); i++ {
+		switch {
+		case text[i] == '(' && text[i+1] == '(':
+			arithmeticTargets(text[i+2:bracketClose(text, i, '(', ')')], add)
+		case text[i] == '$' && text[i+1] == '[':
+			arithmeticTargets(text[i+2:bracketClose(text, i+1, '[', ']')], add)
+		case text[i] == '{':
+			if j := nameEnd(text, i+1); j > i+1 && j+1 < len(text) && text[j] == '}' && (text[j+1] == '<' || text[j+1] == '>') {
+				add(text[i+1 : j])
+			}
+		}
+	}
+	return out
+}
+
+// bracketClose is the index of the byte that closes the bracket opening at
+// text[at], counting nested pairs, or len(text) where it never closes.
+func bracketClose(text string, at int, open, close byte) int {
+	depth := 0
+	for k := at; k < len(text); k++ {
+		switch text[k] {
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return k
+			}
+		}
+	}
+	return len(text)
+}
+
+// arithmeticTargets hands add every name an arithmetic expression assigns
+// (numberAssigns).
+func arithmeticTargets(expr string, add func(string)) {
+	for k := 0; k < len(expr); {
+		end := nameEnd(expr, k)
+		if end == k || k > 0 && (expr[k-1] >= '0' && expr[k-1] <= '9' || expr[k-1] == '#') {
+			k = max(end, k+1)
+			continue
+		}
+		name := expr[k:end]
+		if k > 0 && expr[k-1] == '$' {
+			name = anyNameAssigned
+		}
+		before := strings.TrimRight(expr[:k], " \t\n$")
+		after := end
+		if after < len(expr) && expr[after] == '[' {
+			after = bracketClose(expr, after, '[', ']') + 1
+		}
+		for after < len(expr) && (expr[after] == ' ' || expr[after] == '\t' || expr[after] == '\n') {
+			after++
+		}
+		if strings.HasSuffix(before, "++") || strings.HasSuffix(before, "--") || arithmeticAssignsAt(expr[min(after, len(expr)):]) {
+			add(name)
+		}
+		k = end
+	}
+}
+
+// arithmeticAssignsAt reports whether an arithmetic operator that assigns to
+// the name before it starts op: `=` but not `==`, a compound assignment
+// (`+=`, `<<=`, zsh's `**=` and `&&=`), or `++` or `--`.
+func arithmeticAssignsAt(op string) bool {
+	switch {
+	case strings.HasPrefix(op, "++"), strings.HasPrefix(op, "--"):
+		return true
+	case strings.HasPrefix(op, "=="):
+		return false
+	case strings.HasPrefix(op, "="):
+		return true
+	}
+	for _, two := range []string{"<<", ">>", "**", "&&", "||", "^^"} {
+		if strings.HasPrefix(op, two+"=") {
+			return true
+		}
+	}
+	return len(op) >= 2 && strings.IndexByte("+-*/%&|^", op[0]) >= 0 && op[1] == '='
 }
 
 // unwordedIFS reports whether line holds the name IFS more times than the
