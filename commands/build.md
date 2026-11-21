@@ -1061,7 +1061,12 @@ A lane's stages run in order:
    landing writes; any other is refused until the branch is restored to that head. Inside
    a store the landing still carries an edit to a record, which the reader judges, and
    a record keeps the mode its writes give it: an ordinary file's, or the executable bit
-   the judged head already had. The landing reads what it judges as the objects store it.
+   the judged head already had. An issue record the lane does not resolve is the
+   exception: the landing commits a change to it only when the change is exactly what
+   the repoint of the landing's own moves writes over the head's record, and it commits
+   such a record added, removed or moved only when it is resolved from `open/` to
+   `resolved/` and an intent the close ships names it in `related_issues` at the judged
+   head, as the close's check on what it ships lets a person settle it. The landing reads what it judges as the objects store it.
    It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait

@@ -1351,7 +1351,7 @@ func storeRecord(path string) (store closeStore, bucket, name string, ok bool) {
 }
 
 // strayRule is what the landing commits, in the record stores' modes and outside them.
-const strayRule = "the landing commits a record a store reads only with the mode its writes give it, and outside the record stores only the links its own moves repointed"
+const strayRule = "the landing commits a record a store reads only with the mode its writes give it, an issue record it does not resolve only as the repoint of its own moves rewrites it or as resolved from open/ when an intent it ships names it in related_issues, and outside the record stores only the links its own moves repointed"
 
 // strayRefusal names a change the landing does not commit, and how to take it out.
 func strayRefusal(lane Lane, why string) error {
@@ -1426,17 +1426,23 @@ func parseRawDiff(raw string) ([]rawEntry, error) {
 }
 
 // landingDiff reads what the landing would commit: the moves of the landing's own records
-// the list holds, each entry outside what a store reads, and a record whose mode no write
-// of the landing's gives it, "" when none is.
-func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, string, error) {
+// the list holds, each entry to be held to the repoint's rewrite (one outside what a store
+// reads, or a change to an issue record the landing does not resolve), and the first entry
+// the landing does not write, "" when none is. That is a record whose mode no write of the
+// landing's gives it, or an issue record the landing does not resolve that is added,
+// removed or moved, unless it moves from open/ to resolved/ and named lists it: the issues
+// an intent the close ships names in related_issues at the judged head, which the close's
+// check on what it ships lets the lane's worktree resolve for the landing to commit.
+func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move, []rawEntry, string, error) {
 	entries, err := parseRawDiff(raw)
 	if err != nil {
 		return nil, nil, "", err
 	}
 	from, to, left := map[string]string{}, map[string]string{}, map[string]string{}
+	resolvedFrom, resolvedTo := map[string]string{}, map[string]string{}
 	var outside []rawEntry
 	for _, e := range entries {
-		store, _, name, ok := storeRecord(e.path)
+		store, bucket, name, ok := storeRecord(e.path)
 		if !ok {
 			outside = append(outside, e)
 			continue
@@ -1446,6 +1452,19 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 			left[key] = e.oldMode
 		}
 		if !ownMovedRecord(st, lane, store, name) {
+			if store.rel != issueStore.rel {
+				continue
+			}
+			switch {
+			case e.status == "M":
+				outside = append(outside, e)
+			case e.status == "D" && bucket == string(capture.StateOpen) && namesIssueRecord(named, name):
+				resolvedFrom[key] = e.path
+			case e.status == "A" && bucket == string(capture.StateResolved) && namesIssueRecord(named, name):
+				resolvedTo[key] = e.path
+			default:
+				return nil, nil, e.path, nil
+			}
 			continue
 		}
 		switch e.status {
@@ -1454,6 +1473,25 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 		case "A":
 			to[key] = e.path
 		}
+	}
+	// A resolution the lane's worktree made is one move: its record leaves open/ and
+	// stands in resolved/, so either half alone is no resolution. The list's order picks
+	// which path a refusal names.
+	for _, e := range entries {
+		store, _, name, ok := storeRecord(e.path)
+		if !ok || store.rel != issueStore.rel {
+			continue
+		}
+		key := store.rel + "/" + name
+		was, gone := resolvedFrom[key]
+		reached, came := resolvedTo[key]
+		switch {
+		case !gone && !came:
+			continue
+		case !gone || !came:
+			return nil, nil, e.path, nil
+		}
+		from[key], to[key] = was, reached
 	}
 	for _, e := range entries {
 		store, _, name, ok := storeRecord(e.path)
@@ -1559,7 +1597,11 @@ type rawEntry struct {
 // in the list and the object store, so a call after a refusal or a kill reads the same
 // answer.
 func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, error) {
-	moves, outside, odd, err := landingDiff(st, lane, raw)
+	named, err := shippedIssues(repo, st, lane)
+	if err != nil {
+		return "", err
+	}
+	moves, outside, odd, err := landingDiff(st, lane, raw, named)
 	if err != nil {
 		return "", err
 	}
@@ -1790,6 +1832,54 @@ func ownMovedRecord(st State, lane Lane, store closeStore, name string) bool {
 			return strings.HasPrefix(name, r.Issue+"-") || name == r.Issue+".md"
 		})
 	}
+}
+
+// namesIssueRecord reports whether an issue store's file name is the record of one of
+// ids, read by the id its name carries.
+func namesIssueRecord(ids []string, name string) bool {
+	id, _, ok := recordid.SplitRecordFilename("iss", name)
+	return ok && slices.ContainsFunc(ids, func(n string) bool { return recordid.SameID(n, id) })
+}
+
+// shippedIssues are the issues the intents a closing lane's close ships name in
+// related_issues, as the judged head holds them: the close's own spec record's members,
+// or the run's intent where the head holds no record of the spec. A lane that does not
+// close ships none.
+func shippedIssues(repo string, st State, lane Lane) ([]string, error) {
+	if lane.Landing == nil || !lane.Landing.Closes {
+		return nil, nil
+	}
+	at := baseTree{root: repo, sha: lane.HeadSHA}
+	specs, err := treeRecords(at, specCloseStore)
+	if err != nil {
+		return nil, err
+	}
+	intents, err := treeRecords(at, intentCloseStore)
+	if err != nil {
+		return nil, err
+	}
+	var members []closeRecord
+	ownSpec := false
+	for _, r := range specs {
+		if isSpecRecordOf(r.rel, st.Spec) {
+			ownSpec = true
+			members = append(members, r.closeMembers(intents)...)
+		}
+	}
+	if !ownSpec {
+		for _, r := range intents {
+			if recordid.SameID(r.field("id"), st.Intent) {
+				members = append(members, r)
+			}
+		}
+	}
+	var named []string
+	for _, m := range members {
+		if v := m.field(intent.RelatedIssuesKey); !frontmatter.IsNull(v) {
+			named = append(named, frontmatter.StringList(v)...)
+		}
+	}
+	return named, nil
 }
 
 // recordsRoundWanted reports whether the lane's head is a records commit no round has
