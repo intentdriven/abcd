@@ -64,9 +64,11 @@ frozen tree and the copy's clone read as data under an opaque label, whose
 answers are scored before they are recorded. A writing task's judging packet is
 drawn from its made copies with every mention of where a copy ran, its alias,
 every task, cell, route and model and every maker withheld, however it is
-spelt (split by invisible characters, in look-alike letters, or with its
-version after it), and a judging
-session's verdict file is recorded against it.
+spelt (split by invisible characters or by separators between its letters, in
+look-alike letters, or with its version after it), and a judging session's
+verdict file is recorded against it. A check copy's quote of the frozen
+material is located in the material as written and shown with every model and
+maker withheld.
 
 A recorded run's report is read from its records in the lab and writes nothing
 (spc-2610161949559050 step 8). A code task gives each builder's pass rate on
