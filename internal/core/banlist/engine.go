@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // patternFault classifies a PRIVATE pattern against the engine that actually
@@ -94,6 +96,13 @@ var (
 	grepBin     string
 )
 
+// lookGrep finds the engine once, through the PATH lookup every program abcd
+// runs by name goes through (tools.LookPath): a grep inside the working tree
+// abcd runs from is no engine.
+func lookGrep() {
+	grepBinOnce.Do(func() { grepBin, _ = tools.LookPath("grep", "") })
+}
+
 // grepAccepts asks the enforcement engine itself whether pattern is a usable
 // expression, by matching it against an empty input. The pattern travels on
 // STDIN via `-f -`, never in argv: an argument is world-readable in /proc/<pid>/cmdline
@@ -104,7 +113,7 @@ var (
 // means refused. Both streams are discarded: grep's diagnostic quotes the
 // expression.
 func grepAccepts(pattern string) (accepted, available bool) {
-	grepBinOnce.Do(func() { grepBin, _ = exec.LookPath("grep") })
+	lookGrep()
 	if grepBin == "" {
 		return false, false
 	}

@@ -222,6 +222,9 @@ func (a *Adapter) resolveBinary(repoRoot string, cfg Config) (string, error) {
 		return admitBinary(repoRoot, p, "configured path")
 	}
 	bin, err := a.LookPath(binaryName)
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return "", fmt.Errorf("%w: PATH lookup %s", ErrConfiguredPathRefused, tools.ErrInsideWorkingTree)
+	}
 	if err != nil {
 		return "", fmt.Errorf("%w: not on PATH and no path configured", ErrConfiguredNotFound)
 	}

@@ -101,6 +101,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"github.com/intentdriven/abcd/internal/core/spotcheck"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -531,7 +532,11 @@ func makePreflight(out io.Writer) func(dir string) error {
 			return refuse("the repository has no preflight gate that mints a receipt (its make file declares no preflight target), so land pushes nothing",
 				"add a preflight target that mints "+ReceiptsRelDir+"/<commit> on a clean tree, or push the branch yourself")
 		}
-		bin, err := exec.LookPath("make")
+		bin, err := tools.LookPath("make", dir)
+		if errors.Is(err, tools.ErrInsideWorkingTree) {
+			return refuse("the make PATH finds is never run: "+tools.ErrInsideWorkingTree.Error(),
+				"put a make outside the checkout first on PATH, then run abcd land again; nothing was pushed")
+		}
 		if err != nil {
 			return refuse("make is not installed, and the preflight runs through it", "install make, then run abcd land again; nothing was pushed")
 		}
