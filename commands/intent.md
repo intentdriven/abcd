@@ -600,23 +600,24 @@ each answer in the answers record in the local tier, and the verb ends by
 reporting the readiness gate. The role may change the intent's record and
 nothing else: any other path that changes while a turn runs stops the
 interview, exit 1, naming each, whether git tracks it, ignores it (the local
-tier's push receipts and handover included) or keeps it in its own directory (a
-hook, the git configuration, HEAD and the refs, a submodule's hooks,
-configuration, HEAD and refs, each
-worktree's entry: its HEAD, common directory, working-tree path, own
-configuration and lock), or it is a push receipt in any worktree git lists, and
-whatever wrote it, since abcd cannot tell the role's writes from another
-program's: a second interview run in the same checkout stops this one, and so
-does work in another worktree of the repository while a turn runs (a commit or
-checkout there moves its HEAD; a preflight there mints a push receipt). Only
-the run's own turn directory is the role's to write, and two paths that execute
-nothing are not watched: a file named `.DS_Store`, and
-`.claude/scheduled_tasks.lock` (every other path under `.claude/` is). A link
-where git follows one (a hook, the hooks directory, a worktree's entry, a
-push-receipts directory) is read where it leads, and a hooks directory
-`core.hooksPath` names outside the tree and each worktree's push receipts are
-read where they stand, within 1,024 entries and 64 MiB for all of it in one
-reading (1,024 entries for each worktree's push receipts); a reading past that
+tier's handover and push receipts included) or keeps it in its own directory (a
+hook, the git configuration, HEAD and the branch it names, a submodule's
+hooks, configuration, HEAD and refs, this checkout's own worktree entry: its
+HEAD, common directory, working-tree path, own configuration and lock; and,
+of another worktree's entry, its common directory, working-tree path and own
+configuration), and whatever wrote it, since abcd cannot tell the role's
+writes from another program's: a second interview run in the same checkout
+stops this one. Work in another worktree of the repository is that
+worktree's own and does not stop the interview: a commit, a branch switch or
+a rebase there, a worktree added or removed beside it, and a push receipt its
+preflight mints in its own local tier. Only the run's own turn directory is
+the role's to write, and two paths that execute nothing are not watched: a
+file named `.DS_Store`, and `.claude/scheduled_tasks.lock` (every other path
+under `.claude/` is). A link where git follows one (a hook, the hooks
+directory, a worktree's entry, this checkout's push-receipts directory) is
+read where it leads, and a hooks directory `core.hooksPath` names outside the
+tree and this checkout's push receipts are read where they stand, within
+1,024 entries and 64 MiB for all of it in one reading; a reading past that
 stops the interview, exit 1, naming the link, the `core.hooksPath` value or
 the receipts directory. git's own directory and common directory are the ones
 the interview's first reading found: a linked worktree's `.git` file or a
