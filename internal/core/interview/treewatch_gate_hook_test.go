@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestAWorktreePathHoldingANewlineStopsTheInterview: the pre-push gate reads
@@ -98,7 +100,7 @@ func TestTheGateCountsAReceiptExactlyWhenTheHookDoes(t *testing.T) {
 	laneGit := func(t *testing.T, r *writtenRun, lane string, args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", lane, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "-c", "commit.gpgsign=false"}, args...)...)
-		cmd.Env = r.git.Env()
+		cmd.Env = gittest.Env(t)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
