@@ -100,7 +100,7 @@ ids their page edits under, which the roster carries for credit.
 
 Twenty wrong codes from one address within ten minutes shut that address out
 of joining until the window passes; an IPv6 visitor is counted by its /48 (a tailnet address by itself, since a tailnet's devices share one /48), and
-the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.
+the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer. On a relay bound to loopback, a client that connects to the listener directly, with no address Serve forwards, is counted by its own connection, so one local client's wrong codes hold up no other; a process on that computer can write the header Serve writes, so the forwarded address does not tell it from a tailnet visitor. A verified team member's wrong codes and rejoin tokens are counted against its login instead of its address, so wrong codes from others at its address do not keep it out of a session.
 
 ## What it holds, and for how long
 

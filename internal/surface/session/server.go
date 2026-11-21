@@ -447,6 +447,28 @@ func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
 	return host
 }
 
+// connectionAddress is the address a session connection is counted by, for
+// the connection caps and the failed-join limit: the client's address
+// (clientAddress), except on a relay bound to loopback alone for a client
+// that connects to the listener directly, with no address Tailscale Serve
+// forwards. Every such client's socket host is the same loopback address, so
+// it is counted by its own socket address, host and port, which no request
+// header changes, and one direct client's wrong codes hold up no other. A
+// process on the same computer can still write the header Serve writes, so
+// the address Serve forwards is not proof of a tailnet visitor.
+func connectionAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
+	if !behindProxy && loopbackOnly {
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			if peer, err := netip.ParseAddr(host); err == nil && peer.Unmap().IsLoopback() {
+				if _, forwarded := tailnetForwarded(r); !forwarded {
+					return r.RemoteAddr
+				}
+			}
+		}
+	}
+	return clientAddress(r, behindProxy, loopbackOnly)
+}
+
 // tailnetForwarded reads the visitor's address as Tailscale Serve forwards
 // it. Serve's reverse proxy sets X-Forwarded-For to the tailnet address of the
 // device that connected, replacing whatever the device sent, alongside
@@ -485,7 +507,7 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	p := newPeer(cancel, preRoomQueue, s.relay.Limits().MaxQueuedBytes)
 	p.grace, p.replayWithin = s.cfg.CloseGrace, s.cfg.ReplayWithin
-	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
+	conn, err := s.relay.Connect(p, connectionAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	if err != nil {
 		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
 		return

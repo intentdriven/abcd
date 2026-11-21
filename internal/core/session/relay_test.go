@@ -1842,3 +1842,58 @@ func TestAVerifyWithoutPushReplacesAnEarlierGrant(t *testing.T) {
 		t.Fatalf("joining after cy's verify: %v, want a guest", p.texts(t))
 	}
 }
+
+// TestWrongCodesFromAnAddressDoNotShutOutAMember: a verified team member's
+// wrong codes and rejoin tokens are counted against its login, not its
+// address, so others' wrong codes from the address it shares do not keep it
+// out of a session, and its own wrong codes do not keep out the others at
+// that address.
+func TestWrongCodesFromAnAddressDoNotShutOutAMember(t *testing.T) {
+	h := newHarness(t, func(l *Limits) { l.MaxFailedJoins = 3 })
+	_, _, code := h.host(t, "tok-ada")
+	const shared = "203.0.113.5"
+	for i := 0; i < 3; i++ {
+		h.join(t, "ZZZZZZ", "Mal", shared)
+	}
+	if _, p := h.join(t, code, "Gus", shared); p.last(t, "error")["code"] != "too-many-tries" {
+		t.Fatalf("a guest at the address past its limit: %v, want too-many-tries", p.texts(t))
+	}
+
+	mp := &fakePeer{}
+	m := h.connect(t, mp, shared)
+	send(t, m, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
+	send(t, m, msg{"type": "join", "code": code})
+	if j := mp.last(t, "joined"); j == nil || j["role"] != "member" {
+		t.Fatalf("a verified member at the address past its limit: %v, want joined as a member", mp.texts(t))
+	}
+	tok := rejoinToken(t, mp, "joined")
+	rp := &fakePeer{}
+	r := h.connect(t, rp, shared)
+	send(t, r, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
+	send(t, r, msg{"type": "rejoin", "token": tok})
+	if rp.last(t, "joined") == nil {
+		t.Fatalf("a verified member rejoining from the address past its limit: %v", rp.texts(t))
+	}
+
+	// The member's own wrong codes count against its login, wherever it
+	// connects from, and leave the address it used open to guests.
+	for i := 0; i < 3; i++ {
+		bp := &fakePeer{}
+		b := h.connect(t, bp, "198.51.100."+strconv.Itoa(60+i))
+		send(t, b, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
+		send(t, b, msg{"type": "join", "code": "ZZZZZZ"})
+		if e := bp.last(t, "error"); e == nil || e["code"] != "bad-code" {
+			t.Fatalf("bea's wrong code %d: %v, want bad-code", i, bp.texts(t))
+		}
+	}
+	bp := &fakePeer{}
+	b := h.connect(t, bp, "198.51.100.70")
+	send(t, b, msg{"type": "verify", "token": "tok-bea", "repo": "acme/brief"})
+	send(t, b, msg{"type": "join", "code": code})
+	if e := bp.last(t, "error"); e == nil || e["code"] != "too-many-tries" {
+		t.Fatalf("bea past her own limit: %v, want too-many-tries", bp.texts(t))
+	}
+	if _, p := h.join(t, code, "Gus", "198.51.100.60"); p.last(t, "joined") == nil {
+		t.Fatalf("a guest at the address bea used: %v, want joined", p.texts(t))
+	}
+}

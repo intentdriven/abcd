@@ -573,6 +573,39 @@ func TestClientAddressOnTheTailnetRoute(t *testing.T) {
 	}
 }
 
+// TestConnectionAddressKeysADirectLoopbackClientByItsSocket: on a relay
+// bound to loopback, a client with no address Serve forwards is counted by
+// its socket address, port included; a forwarded tailnet address, a relay
+// behind a proxy and a relay beyond loopback count as clientAddress does.
+func TestConnectionAddressKeysADirectLoopbackClientByItsSocket(t *testing.T) {
+	at := func(remote string, xff ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/session", nil)
+		r.RemoteAddr = remote
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name                  string
+		r                     *http.Request
+		behindProxy, loopback bool
+		want                  string
+	}{
+		{"a direct IPv4 client", at("127.0.0.1:5555"), false, true, "127.0.0.1:5555"},
+		{"a direct IPv6 client", at("[::1]:5556"), false, true, "[::1]:5556"},
+		{"a header Serve never sends", at("127.0.0.1:5557", "203.0.113.9"), false, true, "127.0.0.1:5557"},
+		{"a tailnet visitor through Serve", at("127.0.0.1:5558", "100.101.102.103"), false, true, "100.101.102.103"}, // abcd-lint:allow: a tailnet address, the shape under test
+		{"a relay beyond loopback", at("127.0.0.1:5559"), false, false, "127.0.0.1"},
+		{"a relay behind a proxy", at("127.0.0.1:5560", "198.51.100.4"), true, true, "198.51.100.4"},
+		{"a peer that is not loopback", at("192.0.2.7:5561"), false, true, "192.0.2.7"},
+	} {
+		if got := connectionAddress(c.r, c.behindProxy, c.loopback); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestTailnetVisitorsAreLimitedSeparately: one tailnet visitor's wrong codes
 // shut out that visitor alone, not everyone Serve proxies.
 func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
@@ -605,6 +638,50 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 		if j, _ := other.until("joined"); j["role"] != "guest" {
 			t.Fatalf("%s was held up by %s's wrong codes: %v", pair[1], pair[0], j)
 		}
+	}
+}
+
+// TestDirectLoopbackClientsAreLimitedSeparately: on a relay bound to
+// loopback, a client that connects straight to the listener, with no address
+// Tailscale Serve forwards, is counted by its own connection. One direct
+// client's wrong codes close that connection and hold up no other direct
+// client, a tailnet visitor or the sign-in exchange, which keeps its own
+// count per address.
+func TestDirectLoopbackClientsAreLimitedSeparately(t *testing.T) {
+	f := newFixture(t, func(c *Config) {
+		c.LoopbackOnly = true
+		c.Limits.MaxFailedJoins = 2
+	})
+	_, code := f.hostSession(t)
+	mal := f.dial(t, origin)
+	for i := 0; i < 2; i++ {
+		mal.sendJSON(map[string]string{"type": "join", "code": "ZZZZZZ", "name": "Mal"})
+		if e, _ := mal.until("error"); e["code"] != "bad-code" {
+			t.Fatalf("try %d: %v, want bad-code", i, e)
+		}
+	}
+	if _, _, err := mal.next(); websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+		t.Fatalf("after its limit the connection read %v, want a policy close", err)
+	}
+	other := f.dial(t, origin)
+	other.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
+	if j, _ := other.until("joined"); j["role"] != "guest" {
+		t.Fatalf("a second direct client was held up: %v", j)
+	}
+	visitor := f.dialFrom(t, origin, "100.101.102.103") // abcd-lint:allow: a tailnet address, the shape under test
+	visitor.sendJSON(map[string]string{"type": "join", "code": code, "name": "Vi"})
+	if j, _ := visitor.until("joined"); j["role"] != "guest" {
+		t.Fatalf("a tailnet visitor was held up: %v", j)
+	}
+	url := f.http.URL + "/auth/token"
+	body := `{"code":"good-code","code_verifier":"` + verifier + `","redirect_uri":"` + f.http.URL + `/auth/callback"}`
+	for i := 0; i < 10; i++ {
+		if resp, got := post(t, url, origin, body); resp.StatusCode != http.StatusOK {
+			t.Fatalf("exchange %d: %d %s", i+1, resp.StatusCode, got)
+		}
+	}
+	if resp, _ := post(t, url, origin, body); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("the eleventh exchange from loopback: %d, want 429", resp.StatusCode)
 	}
 }
 
