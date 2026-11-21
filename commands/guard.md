@@ -1219,11 +1219,20 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x`, `typeset -x` or `local -x` earlier in the line, a bare assignment
-while `set -a`, `set -o allexport` or zsh's `setopt allexport` holds, an export
-inside an `eval` that stands before it, or an export in a file the line sources
-before it — is a **block** too (`agent-launch-opencode-permission-env`), and
-one that starts opencode without setting it is not. So is a line that sets
+`declare -x`, `typeset -x` or `local -x` earlier in the line, an export through
+a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
+after the program's name while bash's `set -k` holds, an export inside an
+`eval` that stands before it, or an export in a file the line sources before
+it — is a **block** too (`agent-launch-opencode-permission-env`), and one that
+starts opencode without setting it is not. While allexport holds, every
+assignment exports: a bare one, a declaration builtin's, a name `read`,
+`printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or `select` loop's
+variable, and a `${NAME:=…}` expansion anywhere on the line. allexport is
+turned on by `set -a` and `set -o allexport`, zsh's `setopt allexport` in any
+spelling, `setopt -a` and `unsetopt +a`, a `setopt -m` pattern (read as turning
+it on, since the guard does not match patterns), `emulate MODE -o allexport`,
+bash's `shopt -so allexport`, and a shell started with `-a`, `-o allexport` or
+zsh's `--allexport`, or with a `SHELLOPTS` that names it. So is a line that sets
 `OPENCODE_CONFIG`, a configuration file opencode loads,
 `OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
@@ -1314,7 +1323,11 @@ unquoted, is not), an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (a sourced file, a nameref set before the line, or an operator the line does
 not write, such as a command's output an arithmetic context evaluates; every
-line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+line is read from the default IFS), an export the walk does not place before
+the command it reaches, because the walk follows commands in the order they
+stand on the line and does not follow control flow (an export in a loop body
+that the loop's next pass reaches, or an export after a function or a `trap`
+action is defined and before it runs), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

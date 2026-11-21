@@ -779,7 +779,7 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		// the order the commands run (exportsBefore).
 		var exported []bool
 		if len(p.Env) > 0 {
-			exported, _, _ = exportsBefore(segs, p.Env, false)
+			exported, _, _ = exportsBefore(segs, exportState{names: p.Env})
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
