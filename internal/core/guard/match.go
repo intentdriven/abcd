@@ -387,11 +387,19 @@ func precededByCD(before []segment, chain int) bool {
 // stand before (`env "$(true)"NAME=…`, `env "$N"=…`), or, with no `=`
 // written, where it stands among env's or sudo's operands, which a
 // substitution can print whole (`env "$PAIR" opencode`); a word that is an
-// option's value (`sudo -u "$U"`) is no assignment.
+// option's value (`sudo -u "$U"`, `env -C "$D"`, envOptionValueNext) is no
+// assignment.
 func envSetBefore(s segment, site int, names []string) bool {
-	operands := "" // the envAssigns wrapper whose operands the words since it are
+	operands := ""       // the envAssigns wrapper whose operands the words since it are
+	optionValue := false // the word is the value of the env option before it
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		tok := s.tokens[i]
+		if optionValue {
+			optionValue = false
+			if operands == "env" {
+				continue
+			}
+		}
 		if setsName(tok, names) || couldSetName(tok, names) && (strings.IndexByte(tok, '=') >= 0 || operands != "") {
 			return true
 		}
@@ -399,9 +407,38 @@ func envSetBefore(s segment, site int, names []string) bool {
 		case !isUnknown(tok) && envAssigns[w]:
 			operands = w
 		case operands == "env" && strings.HasPrefix(tok, "-"):
+			optionValue = envOptionValueNext(tok)
 		case operands != "" && (isUnknown(tok) || isWrapperAssignment(tok)):
 		default:
 			operands = ""
+		}
+	}
+	return false
+}
+
+// envOptionValueNext reports whether the env option tok takes the next word
+// as its value: `-u`, `-C`, `-P` and `-a` standing last in a cluster of
+// short options (`-iu`), and `--unset`, `--chdir` and `--argv0` without an
+// `=`, abbreviated as getopt allows. `-S` is not among them: env reads the
+// string it splits as its own operands, assignments included.
+func envOptionValueNext(tok string) bool {
+	if long, ok := strings.CutPrefix(tok, "--"); ok {
+		if long == "" || strings.ContainsRune(long, '=') {
+			return false
+		}
+		for _, name := range []string{"unset", "chdir", "argv0"} {
+			if strings.HasPrefix(name, long) {
+				return true
+			}
+		}
+		return false
+	}
+	for k := 1; k < len(tok); k++ {
+		switch c := tok[k]; {
+		case strings.IndexByte("uCPa", c) >= 0:
+			return k == len(tok)-1
+		case c == 'S' || !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'):
+			return false
 		}
 	}
 	return false

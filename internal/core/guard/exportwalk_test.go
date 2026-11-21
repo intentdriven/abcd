@@ -348,3 +348,40 @@ func TestGuardReadsTheOtherAssignmentsAllexportExports(t *testing.T) {
 	}
 }
 
+// TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment: a word the line does
+// not fix that is the value of one of env's options that take one (`-u`,
+// `-C`, `-P`, `-a`, `--unset`, `--chdir`, `--argv0`) is that option's value,
+// not an assignment, so it sets none of an entry's variables. A bare word
+// the line does not fix among env's operands still can, and so can the
+// string `-S` splits, which env reads as its operands.
+func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
+	r := Defaults()
+	for _, line := range []string{
+		`env -C "$wt" claude -p x`,
+		`env --chdir "$wt" claude -p x`,
+		`env -u "$v" opencode run x`,
+		`env -iu "$v" opencode run x`,
+		`env --unset "$v" opencode run x`,
+		`env -P "$p" opencode run x`,
+		`env -C "$wt" -u "$v" opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+	for line, id := range map[string]string{
+		`env "$PAIR" opencode run x`:                    "agent-launch-opencode-config-env",
+		`env -C "$wt" "$PAIR" opencode run x`:           "agent-launch-opencode-config-env",
+		`env -u "$v" "$PAIR" claude -p x`:               "agent-launch-claude-config-env",
+		`env -S "$s" opencode run x`:                    "agent-launch-opencode-config-env",
+		`env -C "$wt" OPENCODE_CONFIG=x opencode run x`: "agent-launch-opencode-config-env",
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+}

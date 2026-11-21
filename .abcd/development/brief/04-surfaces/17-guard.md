@@ -822,17 +822,22 @@ launchers the registry steps, so a harness started under another name, a copied
 or linked binary run by that name, is not recognisable at this layer
 (iss-2610162027075062). An agent-launch entry that names a harness's
 environment reads every way the line exports a variable to it, allexport and
-the assignments it turns into exports included, with an assignment whose name
-or value the line does not fix read as setting the variable, a `set` whose
-option words it does not fix and a `SHELLOPTS` exported before a shell read as
-turning allexport on, and a script the line runs judged with the environment
-and the allexport state its shell starts with, and the `claude --settings`
-entry reads the settings JSON on the line and in the file it names, refusing
-settings that turn the permission checks off, grant permission rules or
-declare hooks, and settings it cannot read now (text that does not parse, a
-value, name or directory the line does not fix, a glob that does not match one
-file, a file the line writes first, or one it cannot open or that is too
-large). The list of agent launches is a mistake filter: it
+the assignments it turns into exports included (an arithmetic assignment, a
+descriptor a redirection names and zsh's `${NAME::=…}` among them), with an
+assignment whose name or value the line does not fix read as setting the
+variable and the value of one of env's own options read as no assignment, a
+`set` whose option words it does not fix and a `SHELLOPTS` exported before a
+shell read as turning allexport on, and a script the line runs judged with the
+environment and the allexport state its shell starts with, and the `claude
+--settings` entry reads the settings JSON on the line and in the file it names,
+refusing settings that turn the permission checks off, grant permission rules
+or directories, declare hooks or another command claude runs, or turn hooks
+off, and settings it cannot read now (text that does not parse, a value, name
+or directory the line does not fix, a glob that does not match one file, a file
+the line writes first or may write by a name it does not fix, or one it cannot
+open or that is too large). The flag forms of an allow list (`--allowedTools`)
+and of a prompt answerer (`--permission-prompt-tool` with `--mcp-config`) are
+refused by entries of their own. The list of agent launches is a mistake filter: it
 steers an agent that starts another harness by an ordinary route, a harness
 started by any route outside it (another name, a copied binary, a
 configuration file it reads) is bounded by the OS sandbox and not by the list,
