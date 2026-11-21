@@ -1295,7 +1295,7 @@ mode is `auto`, back at `validate`, and a sync.
    refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
    (iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
-   is an ancestor of it; only then does it remove the lane's worktree (never
+   is an ancestor of it, read by the parents the commits store; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
    and the lane is done. The wait names the forge's verdict, and `UNKNOWN`, a
    verdict the forge computes lazily and has not computed yet, keeps it

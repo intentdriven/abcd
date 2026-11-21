@@ -1109,7 +1109,8 @@ A lane's stages run in order:
    names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
-   pushed head is an ancestor of the default branch on `origin`; stop driving
+   pushed head is an ancestor of the default branch on `origin`, by the parents
+   the commits store; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the
    next lane. In a repository abcd manages, that step then sweeps on its own
