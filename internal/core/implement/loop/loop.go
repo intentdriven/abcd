@@ -785,18 +785,26 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		shared = run
 	}
+	// A person's build of an issue judges it from origin's default branch
+	// after a fetch, as the drain's move does (readIssueLedger). The fetch is
+	// made before the peers are read, so the listing, the claims and the
+	// reservations judged are never older than it, as a drain's lane reads
+	// them after its move's fetch.
+	var ledger *peerSnapshot
+	if o.plan == nil && validIssueKey(key) {
+		ledger = &peerSnapshot{now: o.now()}
+		if err := readIssueLedger(repoRoot, ledger); err != nil {
+			return StartResult{}, err
+		}
+	}
 	snap, err := readPeers(repoRoot, o.now())
 	if err != nil {
 		return StartResult{}, err
 	}
 	snap.takeOver = o.TakeOver
 	snap.plan = o.plan
-	if o.plan == nil && validIssueKey(key) {
-		// A person's build of an issue judges it from origin's default
-		// branch after a fetch, as the drain's move does (readIssueLedger).
-		if err := readIssueLedger(repoRoot, snap); err != nil {
-			return StartResult{}, err
-		}
+	if ledger != nil {
+		snap.plan, snap.aside, snap.origin, snap.originUnread = ledger.plan, ledger.aside, ledger.origin, ledger.originUnread
 	}
 	planning, err := autoPlans(repoRoot, key, o)
 	if err != nil {
