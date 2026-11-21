@@ -560,6 +560,12 @@ declaring its kind as `binary` or `application`, `launch scaffold`, `launch ship
 writing the dated CHANGELOG heading, and the auto-release workflow. Relay that;
 it is not a misconfiguration.
 
+The include set and the pinned scripts closure
+(`.abcd/config/scripts-closure.json`) are read only as regular files inside the
+repository: a symlink, a FIFO or device, a file reached through a directory that
+links out of the repository, or an include set over 64 KiB is refused as
+unreadable before anything is read from it.
+
 ## Ship — the release cut
 
 A release cut is **three steps over two Go entry points**, with a host-run agent in
@@ -1325,6 +1331,12 @@ A repository with its own `.github/workflows/release.yml` (or `.yaml`) keeps it
 to add to it so it calls the gate before its build step (`call_stanza` in
 `--json`). Relay that stanza verbatim; the scaffold never edits the repository's
 own workflow.
+
+Every file the scaffold reads or writes resolves inside the repository. Where a
+directory on the way to a planned file is a symlink leading out of the
+repository (a committed `.github` that links elsewhere), the run stops with an
+error and writes nothing there, with or without `--confirm`, and the workflows
+behind that link supply no check name.
 
 ### Dependency-bump re-authoring (opt-in)
 

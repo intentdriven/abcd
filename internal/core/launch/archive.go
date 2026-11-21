@@ -266,11 +266,10 @@ func PrecheckPluginArchive(repoRoot string) error {
 // there names an asset nothing publishes. An absent contract or key is false;
 // a key that is not a boolean is refused rather than read as either answer.
 func DeclaresPluginArchive(repoRoot string) (bool, error) {
-	path := filepath.Join(repoRoot, filepath.FromSlash(versionLocationRelPath))
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+	doc, err := loadRepoJSON(repoRoot, versionLocationRelPath)
+	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
-	doc, err := loadJSON(path)
 	if err != nil {
 		return false, fmt.Errorf("version-location.json not readable: %w", err)
 	}
@@ -344,7 +343,7 @@ func archiveIdentity(repoRoot string) (name, repo string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	doc, err := loadJSON(filepath.Join(repoRoot, filepath.FromSlash(pluginManifestFile)))
+	doc, err := loadRepoJSON(repoRoot, pluginManifestFile)
 	if err != nil {
 		return "", "", fmt.Errorf("%s not readable: %w", pluginManifestFile, err)
 	}
@@ -395,7 +394,12 @@ func WriteArchivePin(repoRoot string, pin ArchivePin) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomicPreserveMode(filepath.Join(repoRoot, filepath.FromSlash(marketplaceFile)), append(data, '\n'))
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return fsutil.WriteFileAtomicPreserveModeInRoot(root, marketplaceFile, append(data, '\n'))
 }
 
 // validatePin refuses a pin the harness would refuse or a reader could misread.
@@ -418,7 +422,7 @@ func loadCatalogEntry(repoRoot string) (any, map[string]any, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	doc, err := loadJSON(filepath.Join(repoRoot, filepath.FromSlash(marketplaceFile)))
+	doc, err := loadRepoJSON(repoRoot, marketplaceFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s not readable: %w", marketplaceFile, err)
 	}
@@ -437,7 +441,7 @@ func loadCatalogEntry(repoRoot string) (any, map[string]any, error) {
 
 // pluginName reads the plugin name from the working tree's plugin manifest.
 func pluginName(repoRoot string) (string, error) {
-	doc, err := loadJSON(filepath.Join(repoRoot, filepath.FromSlash(pluginManifestFile)))
+	doc, err := loadRepoJSON(repoRoot, pluginManifestFile)
 	if err != nil {
 		return "", fmt.Errorf("%s not readable: %w", pluginManifestFile, err)
 	}

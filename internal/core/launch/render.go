@@ -300,7 +300,7 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 	}
 
 	pre.VersionLocationPath = filepath.Join(pre.Root, versionLocationRelPath)
-	decision, err := loadJSON(pre.VersionLocationPath)
+	decision, err := loadRepoJSON(pre.Root, versionLocationRelPath)
 	if err != nil {
 		return pre, fmt.Errorf("version-location.json not readable: %w", err)
 	}
@@ -446,7 +446,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	if err != nil {
 		return res, err
 	}
-	dest, vlPath := pre.Dest, pre.VersionLocationPath
+	dest := pre.Dest
 	primaryPath, primaryPtr := pre.PrimaryPath, pre.PrimaryPointer
 	bundle := pre.Bundle
 	res.Dest = dest
@@ -472,7 +472,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	}
 	res.Manifests = []string{primaryPath, marketplaceFile}
 
-	res.Lockstep = payloadLockstep(TreePublic, dest, vlPath)
+	res.Lockstep = payloadLockstep(TreePublic, dest, pre.Root)
 	if !res.Lockstep.OK {
 		return res, fmt.Errorf("%w: %s", ErrPayloadDrift, strings.Join(lockstepDetail(res.Lockstep), "; "))
 	}

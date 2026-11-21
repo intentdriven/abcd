@@ -112,7 +112,9 @@ scanner (a token, a key, the caller's own home or identity) refuses the cut,
 named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
 release digest, then the changelog heading; a failure rolls the earlier writes
-back. A fixes-only cut writes no page.
+back. Each write and each rollback resolves inside the repository, so a
+directory that links out of it fails the step rather than receiving the file.
+A fixes-only cut writes no page.
 
 **A repository that declares a digest gets the cut appended to it.** The
 repository's own `.abcd/config.json` (the repository layer alone) may declare
@@ -224,7 +226,7 @@ existing changelog is never opened), and `auto-release.yml` calling the gate
 unless a release workflow of its own is in charge. That workflow is left
 byte-for-byte; the report names it as left alone and prints the job to add to it
 so it calls the gate before its build step, with `publish: false` so the gate
-verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. A
+verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. Every file is read and written inside the repository: where a directory on the way to a planned file is a symlink leading out of it, the run stops with an error and writes nothing there, whether or not the person confirmed overwriting a hand-edited file. A
 managed repository's workflow carries gate plumbing and a **named empty build
 job**: abcd does not guess how a repository builds (iss-2608270559310755), so the
 job holds one step to fill and names `dist/` as its output, and the publish job
@@ -512,7 +514,11 @@ only writes are to a private temporary tree it removes.
 The payload is an **include list**, pinned in
 `.abcd/config/launch-payload.json`, over one tree. Everything not named is
 excluded, along with anything `.gitignore` matches. The list is the only
-mechanism that can put a path *into* the release artefact.
+mechanism that can put a path *into* the release artefact. It is read only as a
+regular file of at most 64 KiB inside the repository: a symlink, a FIFO or
+device, or a file reached through a directory that links out of the repository
+is refused as unreadable, and the pinned scripts closure beside it is read on
+the same terms.
 
 The `.abcd/` exclusion is not an entry on a deny list: it is **structural**
 (`internal/core/launch/bundle.go`, per

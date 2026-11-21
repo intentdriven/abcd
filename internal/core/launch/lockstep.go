@@ -77,10 +77,14 @@ const (
 // every pinned secondary must AGREE. DEV: those keys must all be ABSENT.
 // present-null is distinguished from absent via an explicit sentinel. A
 // blocked:true contract, or any unreadable pinned input, yields exit 2.
-func CheckLockstep(tree LockstepTree, repoRoot, versionLocationPath string) LockstepResult {
+//
+// contractRoot is the tree whose committed version-location contract is read
+// (the source tree, when repoRoot is a rendered payload); the contract is read
+// inside it, as every manifest is read inside repoRoot.
+func CheckLockstep(tree LockstepTree, repoRoot, contractRoot string) LockstepResult {
 	res := LockstepResult{Tree: tree}
 
-	decision, err := loadJSON(versionLocationPath)
+	decision, err := loadRepoJSON(contractRoot, versionLocationRelPath)
 	if err != nil {
 		return unreadable(res, "version-location.json not readable: "+err.Error())
 	}
@@ -121,6 +125,9 @@ func unreadable(res LockstepResult, detail string) LockstepResult {
 	return res
 }
 
+// loadJSON reads a JSON document by its path. It is for a file the caller
+// wrote itself (a rendered payload's manifest); a document committed to a
+// repository is read with loadRepoJSON.
 func loadJSON(path string) (any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -354,11 +361,11 @@ func checkDev(primaryPath, primaryPtr string, primaryDoc, marketplace any) []str
 // A kind that declares no lockstep list and carries no version-location contract
 // holds nothing in lockstep, and the result is an OK that says so. A declared
 // list with no contract to read the primary from is unreadable: there is nothing
-// for the list to agree with.
-func CheckDeclaredLockstep(tree LockstepTree, repoRoot, versionLocationPath string, files []LockstepFile) LockstepResult {
+// for the list to agree with. contractRoot is CheckLockstep's.
+func CheckDeclaredLockstep(tree LockstepTree, repoRoot, contractRoot string, files []LockstepFile) LockstepResult {
 	res := LockstepResult{Tree: tree}
 
-	decision, err := loadJSON(versionLocationPath)
+	decision, err := loadRepoJSON(contractRoot, versionLocationRelPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) && len(files) == 0 {
 			res.OK = true

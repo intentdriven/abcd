@@ -2,7 +2,7 @@ package scaffold
 
 import (
 	"fmt"
-	"path/filepath"
+	"os"
 	"regexp"
 	"strings"
 
@@ -116,15 +116,23 @@ var usesLineRe = regexp.MustCompile(`^(\s*(?:-\s+)?uses:\s+)([^@\s]+)@(\S+.*)$`)
 // decide whether a dependabot bump needs a follow-up commit, and the mode a
 // contributor's test run uses to fail loudly rather than silently rewriting a
 // tracked file underneath them.
+//
+// Every read and write resolves inside an os.Root on repoRoot, so a directory
+// on the way to a workflow or a template that is a symlink out of the tree is
+// an error, not a file read or rewritten elsewhere.
 func SyncRepoPins(repoRoot string, write bool) ([]string, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var changed []string
 	for _, pair := range syncTargets() {
-		workflow, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(pair.workflow)), maxWorkflowBytes)
+		workflow, err := fsutil.ReadGuardedInRoot(root, pair.workflow, maxWorkflowBytes)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", pair.workflow, err)
 		}
-		tmplPath := filepath.Join(repoRoot, filepath.FromSlash(pair.template))
-		tmpl, err := fsutil.ReadGuarded(tmplPath, maxTemplateBytes)
+		tmpl, err := fsutil.ReadGuardedInRoot(root, pair.template, maxTemplateBytes)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", pair.template, err)
 		}
@@ -141,7 +149,7 @@ func SyncRepoPins(repoRoot string, write bool) ([]string, error) {
 		}
 		// Preserve the file's existing mode rather than imposing one: the template is
 		// a tracked source file and this tool is not the authority on its permissions.
-		if err := fsutil.WriteFileAtomicPreserveMode(tmplPath, synced); err != nil {
+		if err := fsutil.WriteFileAtomicPreserveModeInRoot(root, pair.template, synced); err != nil {
 			return nil, fmt.Errorf("write %s: %w", pair.template, err)
 		}
 	}

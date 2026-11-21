@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // includeConfigRelPath is the committed include-source config.
@@ -91,16 +93,36 @@ func LoadIncludes(repoRoot string) ([]string, error) {
 	return patterns, nil
 }
 
+// maxIncludeConfigBytes caps the include config's read, as maxArtefactBytes
+// caps the artefact declaration beside it: the config is a few lines.
+const maxIncludeConfigBytes = maxArtefactBytes
+
+// maxScriptsClosureBytes caps the pinned closure list's read: one path a line.
+const maxScriptsClosureBytes = 1 << 20
+
+// readRepoConfig reads the repo-relative file rel inside an os.Root opened on
+// repoRoot, through fsutil.ReadGuardedInRoot: a directory on the way that
+// links out of the repository, a symlinked leaf, a FIFO or device, and a file
+// over limit bytes are each refused before any byte is buffered. An absent
+// file is an os.IsNotExist error.
+func readRepoConfig(repoRoot, rel string, limit int64) ([]byte, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return fsutil.ReadGuardedInRoot(root, rel, limit)
+}
+
 // readIncludeConfig reads the launch-payload config as a JSON object, the one
 // reader both the include list and the gate policy go through.
 func readIncludeConfig(repoRoot string) (map[string]json.RawMessage, error) {
-	path := filepath.Join(repoRoot, includeConfigRelPath)
-	data, err := os.ReadFile(path)
+	data, err := readRepoConfig(repoRoot, includeConfigRelPath, maxIncludeConfigBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, &PreflightError{msg: "include config not found: " + includeConfigRelPath, err: ErrNoLaunchPayload}
 		}
-		return nil, preflight("include config unreadable: %s: %v", includeConfigRelPath, err)
+		return nil, preflight("include config unreadable: %s: %v", includeConfigRelPath, pathFreeError(err))
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -200,12 +222,12 @@ const scriptsClosureRelPath = ".abcd/config/scripts-closure.json"
 // absent it returns a nil map (no scoping) so a repo without a settled payload
 // layout is not spuriously blocked.
 func defaultClosureFn(repoRoot string) (map[string]struct{}, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, scriptsClosureRelPath))
+	data, err := readRepoConfig(repoRoot, scriptsClosureRelPath, maxScriptsClosureBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("%s unreadable: %w", scriptsClosureRelPath, pathFreeError(err))
 	}
 	var cfg struct {
 		Closure []string `json:"closure"`
