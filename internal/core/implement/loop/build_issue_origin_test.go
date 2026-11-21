@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // `abcd build <iss-N>` judges the issue from origin's default branch after a
@@ -58,6 +59,28 @@ func TestABuildOfAnIssueOnOriginAloneIsJudgedFromOrigin(t *testing.T) {
 	}
 	if matches, _ := filepath.Glob(filepath.Join(repo.Root(), ".abcd", "work", "issues", "*", originIssue+"-*.md")); len(matches) != 0 {
 		t.Fatalf("the checkout gained a record of %s: %v", originIssue, matches)
+	}
+
+	// Pat's build again, a killed session's or the land fence's "reserve it
+	// again with abcd build", resumes the run and renews its reservation with
+	// origin's found_at, which this checkout's ledger still does not hold.
+	held := originReservation(t, bare, claim.RefPrefix+originIssue)
+	again, err := Start(repo.Root(), originIssue, Options{})
+	if err != nil || !again.Resumed || again.RunID != start.RunID {
+		t.Fatalf("a second build of the issue only origin holds resumes its run: %+v %v", again, err)
+	}
+	if tip := originReservation(t, bare, claim.RefPrefix+originIssue); tip.parent != held.commit || tip.released {
+		t.Fatalf("the resume renews the issue's reservation: before %+v, after %+v", held, tip)
+	}
+	if fp := footprintOf(t, bare, originIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
+		t.Fatalf("the resumed reservation's footprint is origin's found_at: %v", fp)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := declaredPaths(repo.Root(), st, "nothing"); !slices.Equal(got, []string{"commands/drain.md"}) {
+		t.Fatalf("a walled stage of the run declares origin's found_at: %v", got)
 	}
 }
 
