@@ -11,11 +11,16 @@ package matrix
 // and a host copy's isolation) is recorded as asserted, not proven, so the
 // report can say so.
 //
-// The check reads the copy as data and never runs anything in it: the tests
-// the copy was given are read from the frozen commit in the run's own
-// checkout, and the copy's clone is read as plain files through an os.Root,
-// so nothing the copy wrote into its git directory (a hook, a filter, a
-// configuration) runs, and no link it made reaches outside the clone.
+// The check reads the copy as data and never runs anything the copy chose:
+// the tests the copy was given are read from the frozen commit in the run's
+// own checkout, and the copy's clone is read as plain files through an
+// os.Root. Where a test file's bytes differ from the frozen commit's, git is
+// asked whether it changed from a scratch repository of the check's own,
+// which borrows the run's checkout's objects and takes the clone only as its
+// work tree; the clone's line-ending settings are read from its configuration
+// as values. So nothing the copy wrote into its git directory (a hook, a
+// filter, a configuration) runs, and no link it made reaches outside the
+// clone.
 
 import (
 	"bytes"
@@ -48,7 +53,10 @@ const (
 	RuleTestsKept ComplianceRule = "tests_kept"
 	// RuleOwnCopyOnly: the copy read nothing in the run's clone store outside
 	// its own clone, so no other copy and none of the hidden tests, as its
-	// transcript shows.
+	// transcript and the links its clone holds show. The hidden tests and
+	// the other clones sit beside the copy under one account, so their modes
+	// do not bar it from them: the rule is a heuristic scan for the reads a
+	// transcript records, not a barrier (ownCopyOnly).
 	RuleOwnCopyOnly ComplianceRule = "own_copy_only"
 	// RuleNetworkPolicy: the copy kept the run's network policy. No runner
 	// reports what a copy reached on the network, so this is asserted for
@@ -147,6 +155,8 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 	if !in.Source.valid() {
 		return Compliance{}, fmt.Errorf("%q is not a cell's source", clip(string(in.Source)))
 	}
+	tree, treeErr := readFrozenTree(in.RepoRoot, in.Frozen)
+	scan, scanErr := scanClone(cloneDir(in.Store, in.Run, in.Key))
 	isolation := ComplianceCheck{Rule: RuleIsolation, State: StateKept,
 		Detail: "abcd launches the copy's runner in the copy's own clone"}
 	if in.Source == SourceHost {
@@ -154,8 +164,8 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 			Detail: "the copy ran in the host's harness, which abcd neither launches in the clone nor confines to it, so its isolation is asserted, not proven"}
 	}
 	return Compliance{Checks: []ComplianceCheck{
-		testsKept(in),
-		ownCopyOnly(in),
+		testsKept(in, tree, treeErr),
+		ownCopyOnly(in, tree, treeErr, scan, scanErr),
 		{Rule: RuleNetworkPolicy, State: StateAsserted,
 			Detail: "no runner reports what a copy reached on the network, so the run's network policy is asserted, not examined"},
 		isolation,
@@ -219,7 +229,10 @@ func (c Compliance) asserted(rule ComplianceRule) bool {
 // broke a rule is excluded and one the check could not examine is
 // unexamined, each with a reason naming the rules; a compliant copy keeps the
 // status its judging gave. A copy that never started has nothing to check and
-// is returned as it is; one a fallback excluded stays its cell's failure.
+// is returned as it is; one a fallback excluded stays its cell's failure, and
+// so does a failed copy the check could not examine (a runner that crashed
+// leaves no transcript): a failure is never set apart from the score for
+// want of an examination, and only a broken rule excludes it.
 func (c Compliance) apply(t TrialRecord) TrialRecord {
 	if t.Status == StatusNotStarted {
 		return t
@@ -233,7 +246,9 @@ func (c Compliance) apply(t TrialRecord) TrialRecord {
 	case StatusExcluded:
 		t.Status, t.Reason = StatusExcluded, c.reason("the compliance check excluded the copy", StateBroken)
 	case StatusUnexamined:
-		t.Status, t.Reason = StatusUnexamined, c.reason("the compliance check could not examine the copy", StateUnexamined)
+		if t.Status != StatusFailed {
+			t.Status, t.Reason = StatusUnexamined, c.reason("the compliance check could not examine the copy", StateUnexamined)
+		}
 	}
 	return t
 }
@@ -251,7 +266,7 @@ func (c Compliance) reason(lead string, state ComplianceState) string {
 
 // compliance holds t's status to its compliance result (validate): a ranked copy
 // carries one, and a copy is excluded or unexamined by the check only as the
-// result says.
+// result says; a failed copy the result could not examine stays failed.
 func (t TrialRecord) compliance() error {
 	fellBack := t.Status == StatusExcluded && len(t.Fallbacks) > 0
 	c := t.Compliance
@@ -270,27 +285,39 @@ func (t TrialRecord) compliance() error {
 	}
 	switch v := c.verdict(); {
 	case v == StatusExcluded && t.Status != StatusExcluded,
-		v == StatusUnexamined && t.Status != StatusUnexamined && !fellBack,
+		v == StatusUnexamined && t.Status != StatusUnexamined && t.Status != StatusFailed && !fellBack,
 		v == "" && (t.Status == StatusUnexamined || t.Status == StatusExcluded && !fellBack):
 		return fmt.Errorf("the trial %s is %s, which its compliance result does not make it", t.Key, t.Status)
 	}
 	return nil
 }
 
-// frozenTest is one test file the frozen commit holds, as its tree names it.
+// frozenTest is one file the frozen commit holds, as its tree names it.
 type frozenTest struct {
 	mode, oid, path string
 	size            int64
 }
 
+// frozenTree is what the check reads of the frozen commit's tree: its test
+// files, its attribute files (.gitattributes), the links it holds by their
+// blob ids, and the hash the checkout names its objects with.
+type frozenTree struct {
+	tests, attrs []frozenTest
+	links        map[string]string
+	newHash      func() hash.Hash
+}
+
 // testsKept examines whether the copy left every test file the frozen commit
-// holds as that commit holds it.
-func testsKept(in complianceInputs) ComplianceCheck {
+// holds as that commit holds it, as git reads the clone: a file whose bytes
+// match the frozen blob is kept, a missing one is deleted, and one whose
+// bytes differ is asked of git (gitChanged), so a checkout that rewrote its
+// line endings (an eol attribute, core.autocrlf) is no edit. A copy that also
+// changed the attribute files git reads the tests by is held to the bytes.
+func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCheck {
 	unexamined := func(why string) ComplianceCheck {
 		return ComplianceCheck{Rule: RuleTestsKept, State: StateUnexamined, Detail: why}
 	}
-	tests, newHash, err := frozenTests(in.RepoRoot, in.Frozen)
-	if err != nil {
+	if treeErr != nil {
 		return unexamined("the frozen commit's tests could not be read from the run's checkout, so the copy's edits to them cannot be examined")
 	}
 	clone := cloneDir(in.Store, in.Run, in.Key)
@@ -303,69 +330,99 @@ func testsKept(in complianceInputs) ComplianceCheck {
 	}
 	defer root.Close()
 	var edited, unread []string
-	for _, ft := range tests {
-		how, err := ft.compare(root, newHash)
+	var differ []frozenTest
+	for _, ft := range tree.tests {
+		how, err := ft.compare(root, tree.newHash)
 		switch {
 		case err != nil:
 			unread = append(unread, ft.path)
-		case how != "":
+		case how == "deleted":
 			edited = append(edited, ft.path+" ("+how+")")
+		case how != "":
+			differ = append(differ, ft)
+		}
+	}
+	if len(differ) > 0 {
+		viewed := attributesKept(root, clone, tree)
+		var changed map[string]bool
+		var viewErr error
+		if viewed {
+			changed, viewErr = gitChanged(in.RepoRoot, clone, in.Frozen, differ)
+		}
+		for _, ft := range differ {
+			switch {
+			case !viewed:
+				edited = append(edited, ft.path+" (changed)")
+			case viewErr != nil:
+				unread = append(unread, ft.path)
+			case changed[ft.path]:
+				edited = append(edited, ft.path+" (changed)")
+			}
 		}
 	}
 	if len(edited) > 0 {
+		slices.Sort(edited)
 		return ComplianceCheck{Rule: RuleTestsKept, State: StateBroken,
 			Detail: clipTo(fmt.Sprintf("edited %d test file(s) the frozen commit holds: %s", len(edited), safeList(edited)), maxDetailBytes)}
 	}
 	if len(unread) > 0 {
+		slices.Sort(unread)
 		return unexamined(clipTo(fmt.Sprintf("%d test file(s) of the copy could not be read: %s", len(unread), safeList(unread)), maxDetailBytes))
 	}
 	return ComplianceCheck{Rule: RuleTestsKept, State: StateKept,
-		Detail: fmt.Sprintf("edited none of the %d test file(s) the frozen commit holds", len(tests))}
+		Detail: fmt.Sprintf("edited none of the %d test file(s) the frozen commit holds", len(tree.tests))}
 }
 
 // safeList is names as one line of plain text.
 func safeList(names []string) string { return termsafe.Sanitize(strings.Join(names, ", ")) }
 
-// frozenTests lists the test files the frozen commit's tree holds, read from
-// the run's own checkout, and the hash the checkout names its objects with.
-func frozenTests(repoRoot, frozen string) ([]frozenTest, func() hash.Hash, error) {
+// readFrozenTree reads the frozen commit's tree from the run's own checkout.
+func readFrozenTree(repoRoot, frozen string) (frozenTree, error) {
 	format, err := git("-C", repoRoot, "rev-parse", "--show-object-format")
 	if err != nil {
-		return nil, nil, err
+		return frozenTree{}, err
 	}
-	var newHash func() hash.Hash
+	tree := frozenTree{links: map[string]string{}}
 	switch format {
 	case "sha1":
-		newHash = sha1.New
+		tree.newHash = sha1.New
 	case "sha256":
-		newHash = sha256.New
+		tree.newHash = sha256.New
 	default:
-		return nil, nil, fmt.Errorf("the checkout names its objects by %q", clip(format))
+		return frozenTree{}, fmt.Errorf("the checkout names its objects by %q", clip(format))
 	}
-	out, err := git("-C", repoRoot, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
+	out, err := gitRaw("-C", repoRoot, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
 	if err != nil {
-		return nil, nil, err
+		return frozenTree{}, err
 	}
-	var tests []frozenTest
-	for _, entry := range strings.Split(out, "\x00") {
+	for _, entry := range strings.Split(string(out), "\x00") {
 		if entry == "" {
 			continue
 		}
 		meta, p, ok := strings.Cut(entry, "\t")
 		f := strings.Fields(meta)
 		if !ok || len(f) != 4 {
-			return nil, nil, fmt.Errorf("the frozen tree lists an entry git does not write")
+			return frozenTree{}, fmt.Errorf("the frozen tree lists an entry git does not write")
 		}
-		if f[1] != "blob" || !isTestPath(p) {
+		if f[1] != "blob" {
 			continue
 		}
 		size, err := strconv.ParseInt(f[3], 10, 64)
 		if err != nil || size < 0 {
-			return nil, nil, fmt.Errorf("the frozen tree lists a blob with no size")
+			return frozenTree{}, fmt.Errorf("the frozen tree lists a blob with no size")
 		}
-		tests = append(tests, frozenTest{mode: f[0], oid: f[2], path: p, size: size})
+		ft := frozenTest{mode: f[0], oid: f[2], path: p, size: size}
+		if ft.mode == "120000" {
+			tree.links[p] = ft.oid
+		}
+		if path.Base(p) == ".gitattributes" {
+			tree.attrs = append(tree.attrs, ft)
+		}
+		if isTestPath(p) {
+			tree.tests = append(tree.tests, ft)
+		}
 	}
-	return tests, newHash, nil
+	return tree, nil
 }
 
 // compare says how the copy's file at ft's path differs from the frozen
@@ -413,6 +470,135 @@ func (ft frozenTest) compare(root *os.Root, newHash func() hash.Hash) (string, e
 	return "", nil
 }
 
+// attributesKept reports whether the clone's attribute files are the frozen
+// commit's, line endings aside (an eol attribute rewrites a .gitattributes
+// file's own), and the clone holds no attribute file the frozen commit lacks,
+// at any path outside its git directory, in any letter case: only then does
+// git read the clone's tests by the frozen commit's attributes.
+func attributesKept(root *os.Root, clone string, tree frozenTree) bool {
+	frozen := map[string]bool{}
+	for _, a := range tree.attrs {
+		frozen[a.path] = true
+		fi, err := root.Lstat(filepath.FromSlash(a.path))
+		if err != nil || !fi.Mode().IsRegular() || fi.Size() > 2*a.size+1 {
+			return false
+		}
+		f, err := root.Open(filepath.FromSlash(a.path))
+		if err != nil {
+			return false
+		}
+		data, err := io.ReadAll(io.LimitReader(f, 2*a.size+2))
+		_ = f.Close()
+		if err != nil || blobID(tree.newHash, data) != a.oid &&
+			blobID(tree.newHash, bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))) != a.oid {
+			return false
+		}
+	}
+	kept := true
+	err := filepath.WalkDir(clone, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" && filepath.Dir(p) == clone {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && strings.EqualFold(d.Name(), ".gitattributes") {
+			rel, err := filepath.Rel(clone, p)
+			if err != nil || !frozen[filepath.ToSlash(rel)] {
+				kept = false
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	return err == nil && kept
+}
+
+// maxPathspecs bounds the paths one git command is handed.
+const maxPathspecs = 256
+
+// gitChanged asks git which of tests changed in the clone from the frozen
+// commit. git runs from a scratch repository of the check's own, removed
+// after, whose objects are borrowed from the run's checkout and whose work
+// tree is the clone: the clone's git directory, which the copy could have
+// written, is never git's, so no hook, filter or configuration of the copy's
+// runs, and nothing of the run's checkout is written. The scratch repository
+// has a fresh configuration, as the clone had when makeClone checked it out
+// (isolated from the person's), with the clone's own line-ending settings
+// (core.autocrlf, core.eol) read from its configuration as values.
+func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]bool, error) {
+	common, err := git("-C", repoRoot, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(repoRoot, common)
+	}
+	tmp, err := os.MkdirTemp("", "abcd-matrix-view-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	view := filepath.Join(tmp, "view")
+	if _, err := git("init", "-q", "--template=", view); err != nil {
+		return nil, err
+	}
+	gitDir := filepath.Join(view, ".git")
+	info := filepath.Join(gitDir, "objects", "info")
+	if err := os.MkdirAll(info, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(filepath.Join(common, "objects")+"\n"), 0o600); err != nil {
+		return nil, err
+	}
+	base := append(lineEndings(clone), "--literal-pathspecs", "--git-dir="+gitDir, "--work-tree="+clone)
+	if _, err := git(append(slices.Clone(base), "read-tree", frozen)...); err != nil {
+		return nil, err
+	}
+	changed := map[string]bool{}
+	for chunk := range slices.Chunk(tests, maxPathspecs) {
+		args := append(slices.Clone(base), "diff", "--name-only", "-z", "--no-renames", "--")
+		for _, ft := range chunk {
+			args = append(args, ft.path)
+		}
+		out, err := gitRaw(args...)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range strings.Split(string(out), "\x00") {
+			if name != "" {
+				changed[name] = true
+			}
+		}
+	}
+	return changed, nil
+}
+
+// lineEndings is the clone's own line-ending settings as git options, each
+// read from its configuration file as a value and passed only when it is one
+// git knows.
+func lineEndings(clone string) []string {
+	var opts []string
+	config := filepath.Join(clone, ".git", "config")
+	for _, setting := range []struct {
+		key    string
+		values map[string]string
+	}{
+		{"core.autocrlf", map[string]string{"true": "true", "yes": "true", "on": "true", "1": "true",
+			"false": "false", "no": "false", "off": "false", "0": "false", "input": "input"}},
+		{"core.eol", map[string]string{"lf": "lf", "crlf": "crlf", "native": "native"}},
+	} {
+		v, err := git("config", "--file", config, "--get", setting.key)
+		if err != nil {
+			continue
+		}
+		if norm, ok := setting.values[strings.ToLower(v)]; ok {
+			opts = append(opts, "-c", setting.key+"="+norm)
+		}
+	}
+	return opts
+}
+
 // blobID is git's object id of a blob holding data.
 func blobID(newHash func() hash.Hash, data []byte) string {
 	h := newHash()
@@ -451,16 +637,43 @@ func isTestPath(p string) bool {
 	return false
 }
 
-// ownCopyOnly examines the copy's transcript for any path in the run's clone
+// ownCopyOnly examines whether the copy read anything in the run's clone
 // store outside its own clone: another copy's clone, the hidden tests, or the
-// store itself. The store is looked for as given and as its links resolve,
-// with its slashes as written and as JSON may escape them, and a path inside
-// the copy's own clone that climbs out of it (a ".." segment) is a read
-// outside it. A read through a relative path that names no part of the store
-// is not seen; the report lists that among the run's limitations.
-func ownCopyOnly(in complianceInputs) ComplianceCheck {
+// store itself. It is a heuristic and not a barrier: the hidden tests and the
+// other clones sit beside the copy under the same account, so their modes do
+// not keep the copy from them, and the check sees only the reads its
+// transcript records and the links its clone holds.
+//
+// It reads:
+//   - every link the clone holds, its git directory included, that leads out
+//     of it into the store or above it (one the frozen commit holds as it is
+//     is the commit's, not the copy's);
+//   - every absolute path the transcript names, spelled as given, through a
+//     ~, $HOME or ${HOME}, with slashes plain or JSON-escaped, and cleaned of
+//     doubled slashes, "." segments and ".." climbs, matched in any letter
+//     case, against the store as given and as its links resolve;
+//   - every relative path with a ".." climb, from $PWD or bare, resolved
+//     against the copy's working folder: from its clone's root and from each
+//     folder depth inside it, a climb that reaches an existing path in the
+//     store outside the clone, and that no folder of the clone would keep
+//     inside it, is a read outside.
+//
+// What it does not see, the report lists among the run's limitations: a read
+// through a relative path with no climb after a cd out of the clone, a path a
+// program built at run time, and any read the transcript does not record.
+func ownCopyOnly(in complianceInputs, tree frozenTree, treeErr error, scan cloneScan, scanErr error) ComplianceCheck {
 	unexamined := func(why string) ComplianceCheck {
 		return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateUnexamined, Detail: why}
+	}
+	broken := func(why string) ComplianceCheck {
+		return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateBroken, Detail: clipTo(why, maxDetailBytes)}
+	}
+	clone := cloneDir(in.Store, in.Run, in.Key)
+	forms := storeForms(in)
+	if scanErr == nil {
+		if link, ok := linkOut(clone, forms, scan, tree, treeErr); ok {
+			return broken("the copy's clone holds a link leading out of it into the run's clone store: " + termsafe.Sanitize(link))
+		}
 	}
 	switch {
 	case in.Transcript == nil:
@@ -470,65 +683,389 @@ func ownCopyOnly(in complianceInputs) ComplianceCheck {
 	case len(in.Transcript) > maxTranscriptBytes:
 		return unexamined(fmt.Sprintf("the copy's transcript is past %d bytes, so what it read was not examined", maxTranscriptBytes))
 	}
-	roots := []string{filepath.Clean(in.Store)}
-	if real, err := filepath.EvalSymlinks(in.Store); err == nil && real != roots[0] {
-		roots = append(roots, real)
+	sc := &transcriptScan{forms: forms, clone: filepath.ToSlash(filepath.Clean(clone)), scan: scan,
+		scanned: scanErr == nil, homes: homeForms(), climbs: map[string]string{}}
+	if seen, ok := sc.find(in.Transcript); ok {
+		return broken(seen)
 	}
-	own := []string{in.Run, in.Key.Task, in.Key.Cell, strconv.Itoa(in.Key.Repeat)}
-	for _, root := range roots {
-		for _, sep := range []string{"/", `\/`} {
-			needle := strings.ReplaceAll(filepath.ToSlash(root), "/", sep)
-			if seen, ok := outsideOwn(in.Transcript, needle, sep, sep+strings.Join(own, sep)); ok {
-				return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateBroken,
-					Detail: clipTo("the copy's transcript names the run's clone store outside its own clone: <clone store>"+
-						termsafe.Sanitize(seen), maxDetailBytes)}
+	if scanErr != nil {
+		return unexamined("the copy's clone could not be read, so a climb or a link out of it cannot be examined")
+	}
+	return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateKept,
+		Detail: "the copy's transcript names nothing in the run's clone store outside its own clone, and its clone holds no link out into it; a heuristic scan, not a barrier"}
+}
+
+// storeForm is one spelling of the store and of the copy's clone within it:
+// slash-separated, clean and lower-cased (lowerASCII).
+type storeForm struct{ store, clone string }
+
+// storeForms is the store as given and as its links resolve.
+func storeForms(in complianceInputs) []storeForm {
+	own := lowerASCII(path.Join(in.Run, in.Key.Task, in.Key.Cell, strconv.Itoa(in.Key.Repeat)))
+	var forms []storeForm
+	add := func(dir string) {
+		s := lowerASCII(path.Clean(filepath.ToSlash(dir)))
+		for _, f := range forms {
+			if f.store == s {
+				return
+			}
+		}
+		forms = append(forms, storeForm{store: s, clone: path.Join(s, own)})
+	}
+	add(in.Store)
+	if real, err := filepath.EvalSymlinks(in.Store); err == nil {
+		add(real)
+	}
+	return forms
+}
+
+// homeForms is the home directory as given and as its links resolve, for a
+// path a transcript names through ~ or $HOME.
+func homeForms() []string {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return nil
+	}
+	homes := []string{filepath.ToSlash(filepath.Clean(home))}
+	if real, err := filepath.EvalSymlinks(home); err == nil && filepath.ToSlash(real) != homes[0] {
+		homes = append(homes, filepath.ToSlash(real))
+	}
+	return homes
+}
+
+// lowerASCII is s with its ASCII letters lower-cased, so it keeps its length
+// and an index into it is an index into s.
+func lowerASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
+// under reports whether the clean slash-separated path p is base or beneath
+// it.
+func under(p, base string) bool {
+	if !strings.HasPrefix(p, base) {
+		return false
+	}
+	return len(p) == len(base) || strings.HasSuffix(base, "/") || p[len(base)] == '/'
+}
+
+// maxScanEntries bounds the entries the check reads of a clone; a larger
+// clone is not scanned, and the rule it bears on is unexamined.
+const maxScanEntries = 1 << 20
+
+// cloneScan is what the check reads of the copy's clone as plain files, links
+// not followed.
+type cloneScan struct {
+	// heights is every folder outside the clone's git directory, by its
+	// slash-separated path in the clone ("" its root), and how many folders
+	// deep below it the clone goes.
+	heights map[string]int
+	// parents is every entry's name, lower-cased, and the folders holding one.
+	parents map[string][]string
+	// links is every link the clone holds, its git directory included.
+	links []string
+}
+
+var errScanBound = errors.New("the clone holds more entries than the check reads")
+
+// scanClone reads the clone's folders, entries and links.
+func scanClone(clone string) (cloneScan, error) {
+	s := cloneScan{heights: map[string]int{"": 0}, parents: map[string][]string{}}
+	if fi, err := os.Lstat(clone); err != nil || !fi.IsDir() {
+		return cloneScan{}, fmt.Errorf("the copy's clone is not a directory")
+	}
+	n := 0
+	err := filepath.WalkDir(clone, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if n++; n > maxScanEntries {
+			return errScanBound
+		}
+		rel, err := filepath.Rel(clone, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			s.links = append(s.links, rel)
+		}
+		if rel == ".git" || strings.HasPrefix(rel, ".git/") {
+			return nil
+		}
+		dir, name := path.Split(rel)
+		dir = strings.TrimSuffix(dir, "/")
+		s.parents[lowerASCII(name)] = append(s.parents[lowerASCII(name)], dir)
+		if d.IsDir() {
+			s.heights[rel] = 0
+			depth := strings.Count(rel, "/") + 1
+			for a := dir; ; a = parentOf(a) {
+				if h := depth - folderDepth(a); h > s.heights[a] {
+					s.heights[a] = h
+				}
+				if a == "" {
+					break
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return cloneScan{}, err
+	}
+	return s, nil
+}
+
+// folderDepth is how many folders deep the clone-relative folder rel is.
+func folderDepth(rel string) int {
+	if rel == "" {
+		return 0
+	}
+	return strings.Count(rel, "/") + 1
+}
+
+// parentOf is the clone-relative folder holding rel.
+func parentOf(rel string) string {
+	if i := strings.LastIndexByte(rel, '/'); i >= 0 {
+		return rel[:i]
+	}
+	return ""
+}
+
+// linkOut finds a link the clone holds that leads out of it into the store,
+// or to the store or above it, and returns its path in the clone. A link the
+// frozen commit holds with the same target is the commit's, not the copy's.
+func linkOut(clone string, forms []storeForm, scan cloneScan, tree frozenTree, treeErr error) (string, bool) {
+	for _, rel := range scan.links {
+		full := filepath.Join(clone, filepath.FromSlash(rel))
+		target, err := os.Readlink(full)
+		if err != nil {
+			continue
+		}
+		if oid, ok := tree.links[rel]; treeErr == nil && ok && blobID(tree.newHash, []byte(target)) == oid {
+			continue
+		}
+		t := filepath.ToSlash(target)
+		if !path.IsAbs(t) {
+			t = path.Join(filepath.ToSlash(filepath.Dir(full)), t)
+		}
+		cands := []string{path.Clean(t)}
+		if real, err := filepath.EvalSymlinks(full); err == nil {
+			cands = append(cands, filepath.ToSlash(real))
+		}
+		for _, c := range cands {
+			lc := lowerASCII(c)
+			for _, f := range forms {
+				if under(lc, f.store) && !under(lc, f.clone) || under(f.store, lc) {
+					return rel, true
+				}
 			}
 		}
 	}
-	return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateKept,
-		Detail: "the copy's transcript names nothing in the run's clone store outside its own clone"}
+	return "", false
 }
 
-// outsideOwn finds the first place transcript names the store (needle)
-// anywhere but inside own, the copy's clone below it, and returns what
-// followed the store there.
-func outsideOwn(transcript []byte, needle, sep, own string) (string, bool) {
-	at := 0
-	for {
-		i := bytes.Index(transcript[at:], []byte(needle))
-		if i < 0 {
+// transcriptScan reads a transcript's paths against the store.
+type transcriptScan struct {
+	forms []storeForm
+	// clone is the copy's clone as given, slash-separated and clean.
+	clone   string
+	scan    cloneScan
+	scanned bool
+	homes   []string
+	// climbs is each relative climb already judged, cleaned, and what it
+	// was found to read ("" for nothing outside).
+	climbs map[string]string
+}
+
+// pathEnds are the bytes a shell, JSON or a tool's option ends a path at.
+const pathEnds = "\"'`,;|&<>()[]{}=:"
+
+// find reads every path the transcript names and returns the first that
+// reads the store outside the copy's clone, as that rule's detail. A JSON
+// escape ends a path, except an escaped slash, which is a slash.
+func (sc *transcriptScan) find(b []byte) (string, bool) {
+	var tok []byte
+	flush := func() (string, bool) {
+		if len(tok) == 0 {
 			return "", false
 		}
-		at += i + len(needle)
-		after := transcript[at:]
-		if len(after) > 0 && nameByte(after[0]) {
-			// A longer name that begins like the store's: not the store.
-			continue
-		}
-		tok := pathToken(after)
-		if strings.HasPrefix(tok, own) && (len(tok) == len(own) || !nameByte(tok[len(own)])) &&
-			!slices.Contains(strings.Split(tok[len(own):], sep), "..") {
-			continue
-		}
-		return tok, true
+		t := string(tok)
+		tok = tok[:0]
+		return sc.token(t)
 	}
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		switch {
+		case c == '\\' && i+1 < len(b) && b[i+1] == '/':
+			tok = append(tok, '/')
+			i++
+		case c == '\\':
+			if seen, ok := flush(); ok {
+				return seen, true
+			}
+			if i+1 < len(b) && b[i+1] == 'u' {
+				i += 5
+			} else {
+				i++
+			}
+		case c == '$' && i+1 < len(b) && b[i+1] == '{':
+			// ${NAME} is one word of the path, braces and all.
+			end := bytes.IndexByte(b[i:min(len(b), i+64)], '}')
+			if end < 0 {
+				tok = append(tok, c)
+				continue
+			}
+			tok = append(tok, b[i:i+end+1]...)
+			i += end
+		case c <= ' ' || c == 0x7f || strings.IndexByte(pathEnds, c) >= 0:
+			if seen, ok := flush(); ok {
+				return seen, true
+			}
+		default:
+			tok = append(tok, c)
+		}
+	}
+	return flush()
 }
 
-// nameByte reports whether b continues a file name.
-func nameByte(b byte) bool {
-	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '.' || b == '_' || b == '-'
+// token judges one path-like token of the transcript.
+func (sc *transcriptScan) token(t string) (string, bool) {
+	// A sentence's full stop is not part of the path it ends.
+	if last := t[strings.LastIndexByte(t, '/')+1:]; strings.HasSuffix(last, ".") && strings.Trim(last, ".") != "" {
+		t = strings.TrimRight(t, ".")
+	}
+	if t == "~" || strings.HasPrefix(t, "~/") {
+		return sc.home(t[1:])
+	}
+	if rest, ok := variable(t, "HOME"); ok {
+		return sc.home(rest)
+	}
+	if rest, ok := variable(t, "PWD"); ok {
+		return sc.climb("." + rest)
+	}
+	if strings.HasPrefix(t, "/") {
+		return sc.absolute(t)
+	}
+	if seen, ok := sc.climb(t); ok {
+		return seen, true
+	}
+	if i := strings.IndexByte(t, '/'); i > 0 {
+		// A path after an option's or a scheme's prefix (-I/x, @/x).
+		return sc.absolute(t[i:])
+	}
+	return "", false
 }
 
-// pathToken is the path at the start of b: up to a space, a quote or any
-// other byte a shell or JSON would end a path at, and at most 160 bytes.
-func pathToken(b []byte) string {
-	n := 0
-	for n < len(b) && n < 160 {
-		c := b[n]
-		if c <= ' ' || c == 0x7f || strings.IndexByte("\"'`,;|&<>()[]{}", c) >= 0 {
-			break
+// variable is the rest of t after a leading $name or ${name}, when that rest
+// is empty or a path below it.
+func variable(t, name string) (string, bool) {
+	for _, v := range []string{"$" + name, "${" + name + "}"} {
+		if rest, ok := strings.CutPrefix(t, v); ok && (rest == "" || rest[0] == '/') {
+			return rest, true
 		}
-		n++
 	}
-	return string(b[:n])
+	return "", false
+}
+
+// home judges a path below the home directory.
+func (sc *transcriptScan) home(rest string) (string, bool) {
+	for _, h := range sc.homes {
+		if seen, ok := sc.absolute(h + "/" + rest); ok {
+			return seen, true
+		}
+	}
+	return "", false
+}
+
+// absolute judges an absolute path: in the store, outside the copy's clone,
+// in any letter case.
+func (sc *transcriptScan) absolute(p string) (string, bool) {
+	p = path.Clean(p)
+	lp := lowerASCII(p)
+	for _, f := range sc.forms {
+		if under(lp, f.store) && !under(lp, f.clone) {
+			return "the copy's transcript names the run's clone store outside its own clone: <clone store>" +
+				termsafe.Sanitize(p[len(f.store):]), true
+		}
+	}
+	return "", false
+}
+
+// climb judges a relative path that climbs with "..": a read outside when,
+// from the clone's root or a folder inside it as deep as the climb needs, it
+// reaches an existing path in the store outside the clone, and from no folder
+// of the clone does it reach an existing path inside it (a copy that cd'd
+// into widget/ and read ../README.md stayed in its clone).
+func (sc *transcriptScan) climb(t string) (string, bool) {
+	if !sc.scanned || !strings.Contains(t, "..") {
+		return "", false
+	}
+	c := path.Clean(t)
+	if c != ".." && !strings.HasPrefix(c, "../") {
+		return "", false
+	}
+	if seen, ok := sc.climbs[c]; ok {
+		return seen, seen != ""
+	}
+	k, rest := 0, c
+	for rest == ".." || strings.HasPrefix(rest, "../") {
+		k++
+		rest = strings.TrimPrefix(strings.TrimPrefix(rest, ".."), "/")
+	}
+	seen := ""
+	if sc.outside(k, rest) && !sc.inside(k, rest) {
+		seen = "the copy's transcript climbs out of its own clone into the run's clone store: " + termsafe.Sanitize(t)
+	}
+	sc.climbs[c] = seen
+	return seen, seen != ""
+}
+
+// outside reports whether k climbs then rest, from the clone's root or a
+// folder of it fewer than k deep, reach an existing path in the store
+// outside the clone.
+func (sc *transcriptScan) outside(k int, rest string) bool {
+	base := sc.clone
+	for j := 1; j <= k; j++ {
+		base = path.Dir(base)
+		if k-j > sc.scan.heights[""] {
+			continue
+		}
+		p := path.Join(base, rest)
+		lp := lowerASCII(p)
+		for _, f := range sc.forms {
+			if under(lp, f.store) && !under(lp, f.clone) {
+				if _, err := os.Lstat(filepath.FromSlash(p)); err == nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// inside reports whether k climbs then rest, from some folder of the clone at
+// least k deep, reach an existing path inside the clone.
+func (sc *transcriptScan) inside(k int, rest string) bool {
+	if rest == "" {
+		return sc.scan.heights[""] >= k
+	}
+	first, _, _ := strings.Cut(rest, "/")
+	for _, a := range sc.scan.parents[lowerASCII(first)] {
+		if sc.scan.heights[a] < k {
+			continue
+		}
+		if _, err := os.Lstat(filepath.FromSlash(path.Join(sc.clone, a, rest))); err == nil {
+			return true
+		}
+	}
+	return false
 }

@@ -27,13 +27,16 @@ type complianceCase struct {
 	in    complianceInputs
 }
 
-func newComplianceCase(t *testing.T) complianceCase {
+func newComplianceCase(t *testing.T, more ...func(r *gittest.Repo)) complianceCase {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	r.Write("widget/widget.go", "package widget\n")
 	r.Write("widget/widget_test.go", "package widget\n\nfunc TestWidget(t *testing.T) {}\n")
 	r.Write("widget/testdata/case.txt", "a case\n")
 	r.Write("README.md", "frozen\n")
+	for _, f := range more {
+		f(r)
+	}
 	r.Commit("frozen")
 	frozen := r.Git("rev-parse", "HEAD")
 	store := filepath.Join(t.TempDir(), "matrix-store")
@@ -360,5 +363,196 @@ func TestATrialCarriesTheComplianceItsStatusRestsOn(t *testing.T) {
 	bad.Checks[0].State = "fine"
 	if bad.validate() == nil {
 		t.Error("an unknown state is admitted")
+	}
+}
+
+// The own_copy_only scan is a heuristic, not a barrier: it reads the store in
+// every spelling a transcript commonly writes a path in, not only the one the
+// check was given. A home-relative path, a doubled slash, a "." segment, another
+// letter case, a ".." climb written relative to the copy's working folder (from
+// its clone's root or from a folder inside it) and a link the clone holds that
+// leads out of it into the store are each a read outside the copy's own clone.
+func TestOwnCopyOnlyReadsTheStoreInEverySpelling(t *testing.T) {
+	sibling := func(c complianceCase) string { return cloneDir(c.store, cloneRun, TrialKey{"widget", "dear", 1}) }
+	home := func(t *testing.T, c complianceCase) string {
+		t.Helper()
+		t.Setenv("HOME", filepath.Dir(c.store))
+		return strings.TrimPrefix(sibling(c), filepath.Dir(c.store)+"/")
+	}
+	for name, tc := range map[string]func(t *testing.T, c complianceCase) string{
+		"a tilde": func(t *testing.T, c complianceCase) string { return "cat ~/" + home(t, c) + "/README.md" },
+		"$HOME":   func(t *testing.T, c complianceCase) string { return "cat $HOME/" + home(t, c) + "/README.md" },
+		"${HOME}": func(t *testing.T, c complianceCase) string {
+			return `{"command":"cat ${HOME}\/` + home(t, c) + `/README.md"}`
+		},
+		"a doubled slash": func(t *testing.T, c complianceCase) string {
+			return "cat " + c.store + "//" + cloneRun + "/widget/dear/1/README.md"
+		},
+		"a dot segment": func(t *testing.T, c complianceCase) string {
+			return "cat " + c.store + "/./" + cloneRun + "/widget/dear/1/README.md"
+		},
+		"another case": func(t *testing.T, c complianceCase) string {
+			return "cat " + strings.ToUpper(sibling(c)) + "/README.md"
+		},
+		"a climb from the clone's root": func(t *testing.T, c complianceCase) string {
+			return "cat ../../dear/1/widget/widget.go"
+		},
+		"a climb from a folder inside it": func(t *testing.T, c complianceCase) string {
+			return "cd widget && cat ../../../dear/1/README.md"
+		},
+		"an escaped climb": func(t *testing.T, c complianceCase) string {
+			return `{"command":"cat ..\/..\/dear\/1\/README.md"}`
+		},
+		"a climb from $PWD": func(t *testing.T, c complianceCase) string { return "cat $PWD/../../dear/1/README.md" },
+		"a climb to the hidden tests": func(t *testing.T, c complianceCase) string {
+			return "cat ../../../../hidden/" + cloneRun + "/widget/widget/hidden_test.go"
+		},
+		"a link out of the clone": func(t *testing.T, c complianceCase) string {
+			if err := os.Symlink(sibling(c), filepath.Join(c.clone, "peek")); err != nil {
+				t.Fatal(err)
+			}
+			return "cat peek/widget/widget.go"
+		},
+		"a relative link out of the clone": func(t *testing.T, c complianceCase) string {
+			if err := os.Symlink("../../../dear/1", filepath.Join(c.clone, "widget", "peek")); err != nil {
+				t.Fatal(err)
+			}
+			return "cat widget/peek/README.md"
+		},
+		"a link above the store": func(t *testing.T, c complianceCase) string {
+			if err := os.Symlink(filepath.Dir(c.store), filepath.Join(c.clone, "up")); err != nil {
+				t.Fatal(err)
+			}
+			return "ls up"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newComplianceCase(t)
+			c.in.Transcript = append(c.in.Transcript, []byte(tc(t, c)+"\n")...)
+			got := c.check(t)
+			ch := ruleOf(t, got, RuleOwnCopyOnly)
+			if ch.State != StateBroken {
+				t.Fatalf("own_copy_only: %s (%s); want broken", ch.State, ch.Detail)
+			}
+			if strings.Contains(strings.ToLower(ch.Detail), strings.ToLower(c.store)) {
+				t.Errorf("the detail names where the store sits: %q", ch.Detail)
+			}
+		})
+	}
+}
+
+// An honest copy is not excluded for how it names its own clone: a trailing
+// "." ending a sentence, a ".." that stays inside the clone, a relative climb
+// from a folder inside the clone back into it, a pattern the shell or a tool
+// expands, and links that stay inside the clone or lead outside the store.
+// The kept detail says the scan is a heuristic.
+func TestOwnCopyOnlyKeepsACopyThatStayedInItsClone(t *testing.T) {
+	c := newComplianceCase(t)
+	if err := os.Symlink("widget/widget.go", filepath.Join(c.clone, "alias.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/usr/bin/env", filepath.Join(c.clone, "env")); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{
+		"The tests pass in " + c.clone + ".",
+		"cat " + c.clone + "/.",
+		"cat " + c.clone + "/widget/../README.md",
+		"ls " + c.clone + "/widget/..",
+		"cd widget && cat ../README.md",
+		"cd widget/testdata && cat ../../README.md",
+		"cd widget && go test ../...",
+		"ls ..",
+		"cat ~/.profile $HOME/notes.txt",
+	} {
+		c.in.Transcript = append(c.in.Transcript, []byte(line+"\n")...)
+	}
+	ch := ruleOf(t, c.check(t), RuleOwnCopyOnly)
+	if ch.State != StateKept {
+		t.Fatalf("own_copy_only: %s (%s); want kept", ch.State, ch.Detail)
+	}
+	if !strings.Contains(ch.Detail, "heuristic") {
+		t.Errorf("the kept detail does not say the scan is a heuristic: %q", ch.Detail)
+	}
+}
+
+// tests_kept asks git whether a test file changed, as git reads the clone's
+// files, rather than comparing the bytes checked out with the blob: a
+// repository whose checkout rewrites line endings (an eol=crlf attribute, or
+// core.autocrlf) leaves an honest copy's tests kept, and a real edit there is
+// still an edit. A copy that also changed the attributes git reads them by is
+// held to the bytes.
+func TestTestsKeptReadsTheTestsAsGitDoes(t *testing.T) {
+	crlf := func(r *gittest.Repo) { r.Write(".gitattributes", "*.go text eol=crlf\n*.txt text eol=crlf\n") }
+	c := newComplianceCase(t, crlf)
+	if data, _ := os.ReadFile(filepath.Join(c.clone, "widget", "widget_test.go")); !strings.Contains(string(data), "\r\n") {
+		t.Fatalf("the checkout did not rewrite line endings: %q", data)
+	}
+	if ch := ruleOf(t, c.check(t), RuleTestsKept); ch.State != StateKept {
+		t.Fatalf("an honest copy under eol=crlf: %s (%s); want kept", ch.State, ch.Detail)
+	}
+	if err := os.WriteFile(filepath.Join(c.clone, "widget", "testdata", "case.txt"), []byte("a CASE\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ch := ruleOf(t, c.check(t), RuleTestsKept); ch.State != StateBroken || !strings.Contains(ch.Detail, "case.txt") {
+		t.Fatalf("an edit under eol=crlf: %s (%s); want broken, naming it", ch.State, ch.Detail)
+	}
+
+	// A copy that rewrote the attributes is held to the bytes.
+	c = newComplianceCase(t, crlf)
+	if err := os.WriteFile(filepath.Join(c.clone, ".gitattributes"), []byte("*.go text eol=crlf\n*.txt -text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ch := ruleOf(t, c.check(t), RuleTestsKept); ch.State != StateBroken {
+		t.Fatalf("a copy that rewrote the attributes: %s (%s); want broken", ch.State, ch.Detail)
+	}
+
+	// core.autocrlf in the clone's own configuration, its tests checked out
+	// with CRLF line endings as that setting writes them.
+	c = newComplianceCase(t)
+	if _, err := git("-C", c.clone, "config", "core.autocrlf", "true"); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(c.clone, "widget", "widget_test.go")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(strings.ReplaceAll(string(data), "\n", "\r\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ch := ruleOf(t, c.check(t), RuleTestsKept); ch.State != StateKept {
+		t.Fatalf("an honest copy under core.autocrlf: %s (%s); want kept", ch.State, ch.Detail)
+	}
+}
+
+// A copy that failed stays its cell's failure when the check could not
+// examine it (a runner that crashed left no transcript): the failure is never
+// set apart as unexamined, so it still counts against the model. A broken
+// rule still excludes it.
+func TestAFailedCopyTheCheckCouldNotExamineStaysAFailure(t *testing.T) {
+	c := newComplianceCase(t)
+	c.in.Transcript = nil
+	unexamined := c.check(t)
+	if unexamined.verdict() != StatusUnexamined {
+		t.Fatalf("verdict %q; want unexamined", unexamined.verdict())
+	}
+	tr := fullTrial()
+	tr.Status, tr.Score, tr.Reason = StatusFailed, nil, "the runner crashed"
+	tr = unexamined.apply(tr)
+	if err := tr.validate(); err != nil {
+		t.Fatal(err)
+	}
+	if tr.Status != StatusFailed || !tr.Failed() || tr.Apart() || tr.Compliance == nil || tr.Reason != "the runner crashed" {
+		t.Fatalf("a failed copy the check could not examine: status %s, reason %q, compliance %v; want failed, its reason kept, the result recorded",
+			tr.Status, tr.Reason, tr.Compliance)
+	}
+	if err := os.WriteFile(filepath.Join(c.clone, "widget", "widget_test.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tr = fullTrial()
+	tr.Status, tr.Score, tr.Reason = StatusFailed, nil, "the runner crashed"
+	if tr = c.check(t).apply(tr); tr.Status != StatusExcluded || tr.validate() != nil {
+		t.Fatalf("a failed copy that broke a rule: %s, %v; want excluded", tr.Status, tr.validate())
 	}
 }

@@ -161,15 +161,22 @@ func outsideWorkingTrees(dir string) error {
 // git runs git isolated from the person's configuration and from any
 // repository-selecting variable, returning its trimmed output.
 func git(args ...string) (string, error) {
+	out, err := gitRaw(args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// gitRaw is git returning its output as git wrote it, for a NUL-separated
+// listing whose names trimming would change.
+func gitRaw(args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Env = gitutil.IsolatedEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return "", fmt.Errorf("git %s: %w: %s", args[0], err, clip(strings.TrimSpace(string(ee.Stderr))))
+			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, clip(strings.TrimSpace(string(ee.Stderr))))
 		}
-		return "", fmt.Errorf("git %s: %w", args[0], err)
+		return nil, fmt.Errorf("git %s: %w", args[0], err)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return out, nil
 }
