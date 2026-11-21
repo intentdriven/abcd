@@ -40,7 +40,9 @@ const DefaultOutDir = "site"
 // names they take there. Cloudflare reads the destinations; the sources are
 // reviewable files with comments, which the destinations keep. The one
 // addition is the record's forwards around the redirect map, where the
-// composition asks for them (withRecordForwards).
+// composition asks for them (withRecordForwards). A site narrowed to its
+// documentation copies no record.js, and its header map loses the record's
+// blocks (withoutRecordHeaders).
 var copiedSources = []struct{ src, dst string }{
 	{"site-src/redirects", "_redirects"},
 	{"site-src/headers", "_headers"},
@@ -728,7 +730,15 @@ func build(req Request, written *labelsAdded) (Result, error) {
 			return setupSources.ReadFile("setupsrc/" + src)
 		}
 	}
+	// A composed site narrowed to its documentation ships none of the
+	// record's surface: not the chart's script, which only a record page
+	// loads, and not a header block for a record path it serves nothing at.
+	// The project route's copies are its own and keep the script.
+	narrowed := manifest.recordElsewhere() != "" && !manifest.Project()
 	for _, cp := range statics {
+		if narrowed && cp.dst == recordScriptOutRel {
+			continue
+		}
 		forwards := cp.dst == redirectsOutRel && manifest.recordForwardTo() != ""
 		data, err := readStatic(cp.src)
 		if err != nil {
@@ -743,6 +753,9 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 		if forwards {
 			data = withRecordForwards(data, manifest.recordForwardTo())
+		}
+		if narrowed && cp.dst == headersOutRel {
+			data = withoutRecordHeaders(data)
 		}
 		if err := write(cp.dst, data); err != nil {
 			return Result{}, err
@@ -807,6 +820,68 @@ func recordForwardsHead(addr string) string {
 		"# so `abcd site build` forwards its addresses there.\n" +
 		"/record " + addr + "record 301\n" +
 		"/record.json " + addr + "record.json 301\n\n"
+}
+
+// The copied files a narrowed composed site treats as the record's: the
+// header map it filters, and the chart's script it does not copy.
+const (
+	headersOutRel      = "_headers"
+	recordScriptOutRel = "record.js"
+)
+
+// withoutRecordHeaders is the header map less every block for a record path
+// (/record, anything under /record/, /record.json and /record.js), for a site
+// narrowed to its documentation (RecordElsewhere.Narrow). The map is read in
+// paragraphs, blank-line separated, so a block's own comment goes with it: a
+// paragraph that held a record block and is left with no path at all is
+// dropped whole. Every other paragraph is kept byte for byte, the file's
+// opening comment included. As the host reads the map, an indented line
+// belongs to the path above it whatever comes between, so a record block
+// runs to the next path line, across blank lines and column-0 comments, and
+// every indented line in it goes, an indented comment included; a paragraph
+// left holding only such lines is dropped whole, as one holding the block's
+// path is. A CRLF map is read as LF, and the map keeps its final newline when
+// its last paragraph was a record block's.
+func withoutRecordHeaders(committed []byte) []byte {
+	text := strings.ReplaceAll(string(committed), "\r\n", "\n")
+	var kept []string
+	inRecord := false
+	for _, para := range strings.Split(text, "\n\n") {
+		var lines []string
+		paths, dropped := 0, 0
+		for _, line := range strings.Split(para, "\n") {
+			trimmed := strings.TrimSpace(line)
+			indented := trimmed != "" && (line[0] == ' ' || line[0] == '\t')
+			switch {
+			case trimmed == "" || (!indented && strings.HasPrefix(trimmed, "#")):
+			case !indented:
+				inRecord = isRecordPath(trimmed)
+				if inRecord {
+					dropped++
+					continue
+				}
+				paths++
+			case inRecord:
+				dropped++
+				continue
+			}
+			lines = append(lines, line)
+		}
+		if dropped > 0 && paths == 0 {
+			continue
+		}
+		kept = append(kept, strings.Join(lines, "\n"))
+	}
+	out := strings.Join(kept, "\n\n")
+	if strings.HasSuffix(text, "\n") && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return []byte(out)
+}
+
+// isRecordPath reports whether a header block's path is one of the record's.
+func isRecordPath(p string) bool {
+	return p == "/record" || strings.HasPrefix(p, "/record/") || p == "/record.json" || p == "/record.js"
 }
 
 // isPreOne reports whether a version's major component is 0 — the rule the Beta
