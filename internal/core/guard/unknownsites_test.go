@@ -226,6 +226,7 @@ var wordReaders = map[string]string{
 	"spellParameterAt": "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
 	"validatePattern":  "exempt: reads registry patterns, not command words",
 	"validEntryID":     "exempt: reads a registry id, not a command word",
+	"zshQualifierCode": "exempt: reads the raw text of a glob qualifier list the tokenizer stands at, before any word or substitution output exists",
 
 	// approve.go: the approver refuses a word holding an unknown mark at every
 	// place it reads one, so an unknown word never reads as a clearance.

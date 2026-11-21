@@ -1069,7 +1069,12 @@ carries `=` before the command as an assignment, and so does the guard; the body
 of a function they export (`BASH_FUNC_<name>%%=() { …; }`) is judged. A `trap`
 action, and the callback of `mapfile -C` or `readarray -C`, is read the way an
 `eval` string is: the reset and list forms (`trap - EXIT`, `trap -p`) carry no
-command, and text the guard cannot read keeps the verdict `eval` gives it.
+command, and text the guard cannot read keeps the verdict `eval` gives it. So is
+the code a zsh glob qualifier runs for each file its pattern matches: an `e`
+qualifier's string, with any delimiter (`ls *(e:'…':)`, `echo *(e{…})`), and a
+`+name` qualifier's name, as a command, behind `(#q…)` too. A modifier list
+(`x(:e)`) and the qualifiers whose argument is not code (`*(u:eve:)`,
+`*(f+644)`) run nothing, and stay allowed.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
