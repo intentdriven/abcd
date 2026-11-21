@@ -2,9 +2,13 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -65,18 +69,18 @@ func writeLog(t *testing.T, dir, name, tail, head string) string {
 // times, so a landing's figures are the printed ones and nothing else.
 func TestALandingLogGivesItsCountsAndTimes(t *testing.T) {
 	path := writeLog(t, t.TempDir(), "preflight-a.log", fullTail, "a91bcdac3472")
-	r, ok, err := readReport(path)
-	if err != nil || !ok {
-		t.Fatalf("readReport = ok %v, err %v", ok, err)
+	runs, err := readRuns(path)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("readRuns = %+v, err %v", runs, err)
 	}
 	want := report{
 		path: path, head: "a91bcdac3472", scope: "full", mode: "reuse",
 		unitReused: 5, unitTotal: 16, raceReused: 91, raceTotal: 133,
 		race: 41*time.Minute + 59*time.Second, checked: 47*time.Minute + 5*time.Second, waited: 68 * time.Second,
-		timed: true,
+		counted: true, timed: true,
 	}
-	if r != want {
-		t.Errorf("readReport =\n %+v\nwant\n %+v", r, want)
+	if runs[0] != want {
+		t.Errorf("readRuns =\n %+v\nwant\n %+v", runs[0], want)
 	}
 }
 
@@ -84,12 +88,12 @@ func TestALandingLogGivesItsCountsAndTimes(t *testing.T) {
 // stage, so it reports a time and no reuse counts.
 func TestARecordsOnlyLogHasATimeAndNoCounts(t *testing.T) {
 	path := writeLog(t, t.TempDir(), "preflight-r.log", recordsTail, "81739e558641")
-	r, ok, err := readReport(path)
-	if err != nil || !ok {
-		t.Fatalf("readReport = ok %v, err %v", ok, err)
+	runs, err := readRuns(path)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("readRuns = %+v, err %v", runs, err)
 	}
-	if r.scope != "records-only" || r.head != "81739e558641" || r.checked != 4*time.Minute+9*time.Second || !r.timed || r.unitTotal != 0 {
-		t.Errorf("readReport = %+v", r)
+	if r := runs[0]; r.scope != "records-only" || r.head != "81739e558641" || r.checked != 4*time.Minute+9*time.Second || !r.timed || r.unitTotal != 0 {
+		t.Errorf("readRuns = %+v", r)
 	}
 }
 
@@ -101,26 +105,30 @@ func TestALogWithNoReceiptIsNoLandingReport(t *testing.T) {
 	if err := os.WriteFile(path, []byte("--- FAIL: TestX (0.01s)\nFAIL\nmake: *** [preflight] Error 1\nexit 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := readReport(path); ok || err != nil {
-		t.Errorf("readReport = ok %v, err %v; want no report and no error", ok, err)
+	if runs, err := readRuns(path); len(runs) != 0 || err != nil {
+		t.Errorf("readRuns = %+v, err %v; want no report and no error", runs, err)
 	}
 }
 
-// TestTheLastRunInALogIsItsReport: a log that holds a run and then a rerun
-// reports the rerun's figures, not a mix of the two.
-func TestTheLastRunInALogIsItsReport(t *testing.T) {
+// TestEachRunInALogIsItsOwnReport: a log that holds a run and then a rerun
+// reports each run's own figures, never a mix of the two; the first run's
+// times stay with the first.
+func TestEachRunInALogIsItsOwnReport(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "preflight-twice.log")
 	body := strings.Replace(fullTail, "%s", "aaaaaaaaaaaa", 1) + strings.Replace(untimedTail, "%s", "bbbbbbbbbbbb", 1)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r, ok, err := readReport(path)
-	if err != nil || !ok {
-		t.Fatalf("readReport = ok %v, err %v", ok, err)
+	runs, err := readRuns(path)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("readRuns = %+v, err %v; want two runs", runs, err)
 	}
-	if r.head != "bbbbbbbbbbbb" || r.timed || r.raceReused != 110 {
-		t.Errorf("readReport = %+v, want the second run's untimed report", r)
+	if r := runs[0]; r.head != "aaaaaaaaaaaa" || !r.timed || r.raceReused != 91 || r.race != 41*time.Minute+59*time.Second {
+		t.Errorf("the first run = %+v, want its own timed report", r)
+	}
+	if r := runs[1]; r.head != "bbbbbbbbbbbb" || r.timed || r.raceReused != 110 || r.race != 0 {
+		t.Errorf("the second run = %+v, want its own untimed report", r)
 	}
 }
 
@@ -239,6 +247,315 @@ func TestABaselineThatReusedIsRefused(t *testing.T) {
 			t.Errorf("%s: a refused baseline printed a measure:\n%s", name, out.String())
 		}
 	}
+}
+
+// receiptScript runs this repository's scripts/preflight-receipt.sh in repo with
+// the clock named, and returns what it prints, which is what make preflight's log
+// holds at the run's end.
+func receiptScript(t *testing.T, repo *gittest.Repo, clock string, args ...string) string {
+	t.Helper()
+	script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", append([]string{script}, args...)...)
+	cmd.Dir, cmd.Env = repo.Root(), append(repo.Env(), "ABCD_PREFLIGHT_CLOCK="+clock)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("preflight-receipt.sh %v: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+// keepLocalTier has git ignore repo's local tier without a tracked .gitignore,
+// so the stage reports, the receipt and the clock leave the tree clean.
+func keepLocalTier(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	exclude := filepath.Join(repo.Root(), repo.Git("rev-parse", "--git-path", "info/exclude"))
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte(".abcd/.work.local/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// mintRun ends a run at repo's HEAD the way make preflight does: the real script
+// mints (or refuses, when the run began with the tree "dirty"), and then prints
+// the run's time from a clock that began ago seconds since, holding notes. A full
+// run writes both test stages' passing reports first, reusing unit[0] of unit[1]
+// packages and race[0] of race[1].
+func mintRun(t *testing.T, repo *gittest.Repo, began string, ago int64, notes, scope string, unit, race [2]int) string {
+	t.Helper()
+	head := repo.Git("rev-parse", "HEAD")
+	local := filepath.Join(repo.Root(), ".abcd", ".work.local")
+	if scope == "full" {
+		tree := repo.Git("rev-parse", "HEAD^{tree}")
+		for stage, c := range map[string][2]int{"unit": unit, "race": race} {
+			body := fmt.Sprintf("commit %s\ntree %s\nstage %s\nmode reuse\nreused %d\npackages %d\nresult pass\n", head, tree, stage, c[0], c[1])
+			path := filepath.Join(local, "preflight-reuse", head, stage+"-aaaaaaaaaaaa")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	clock := filepath.Join(local, "preflight-clock", strconv.FormatInt(time.Now().Unix()-ago, 10)+"-"+strconv.FormatInt(ago, 10))
+	if err := os.MkdirAll(filepath.Dir(clock), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(clock, []byte(notes), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"mint", head + " " + began}
+	if scope == "records-only" {
+		args = append(args, "records-only")
+	}
+	return receiptScript(t, repo, clock, args...)
+}
+
+// near reports whether got is want a second either way: the script's clock reads
+// the run's start from its name, to the second.
+func near(got, want time.Duration) bool {
+	return got >= want-time.Second && got <= want+time.Second
+}
+
+// TestARefusedRunAfterAGoodOneLeavesTheGoodRunsReport: one log can hold several
+// runs, and a run whose mint is refused still prints its stage and checked-in
+// lines. Each run is judged alone, and only one that mints a receipt reports, so
+// a good run for a landing's head followed by a refused one reports the good
+// run's counts and times, never the refused run's times over the good run's
+// counts. The log is the real script's output for both runs.
+func TestARefusedRunAfterAGoodOneLeavesTheGoodRunsReport(t *testing.T) {
+	repo, heads := fixture(t, "51", "52")
+	keepLocalTier(t, repo)
+	repo.Git("checkout", "-q", "--detach", heads["52"])
+	good := mintRun(t, repo, "clean", 3600, "wait load 600\nstage unit 120\nstage race 1500\n", "full", [2]int{3, 7}, [2]int{5, 11})
+	refused := mintRun(t, repo, "dirty", 7200, "wait load 60\nstage unit 300\nstage race 2400\n", "full", [2]int{3, 7}, [2]int{5, 11})
+	repo.Git("checkout", "-q", "main")
+	if !strings.Contains(refused, "no push receipt minted") || !strings.Contains(refused, "preflight: stage race: 40m00s") {
+		t.Fatalf("the refused run does not print its refusal and its time:\n%s", refused)
+	}
+	logs := t.TempDir()
+	path := filepath.Join(logs, "preflight-52.log")
+	body := "preflight: load check\n" + good + "exit 0\npreflight: load check\n" + refused + "exit 0\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := readRuns(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("readRuns = %+v, want the good run alone", runs)
+	}
+	r := runs[0]
+	if r.head != heads["52"][:12] || r.unitReused != 3 || r.unitTotal != 7 || r.raceReused != 5 || r.raceTotal != 11 ||
+		r.race != 25*time.Minute || !r.timed || !near(r.checked, 50*time.Minute) || r.waited != 10*time.Minute {
+		t.Errorf("readRuns = %+v, want the good run's counts, race stage 25m00s and checked in 50m00s", r)
+	}
+
+	var out, errb bytes.Buffer
+	run([]string{"-ref", "main", "-n", "1", logs}, repo.Root(), &out, &errb)
+	if !strings.Contains(out.String(), "| #52 | "+heads["52"][:12]+" | preflight-52.log | 3 of 7 | 5 of 11 | 25m00s |") || strings.Contains(out.String(), "40m00s") {
+		t.Errorf("the measure does not give #52 the good run's figures alone:\n%s%s", out.String(), errb.String())
+	}
+}
+
+// TestTheScriptsOwnLinesAreTheOnesRead ties the patterns to the wording: the
+// receipt, counts, refusal and time lines come from running the real
+// scripts/preflight-receipt.sh, for a full run, a records-only run and a
+// refused run, so a change to what the script prints fails here rather than
+// leaving the measure reading no report.
+func TestTheScriptsOwnLinesAreTheOnesRead(t *testing.T) {
+	dir := t.TempDir()
+	logOf := func(name, out string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	repo := gittest.NewRepo(t)
+	keepLocalTier(t, repo)
+	repo.Write("a.txt", "one\n")
+	repo.Commit("one")
+	head := repo.Git("rev-parse", "HEAD")[:12]
+	full := mintRun(t, repo, "clean", 3600, "wait load 600\nstage unit 120\nstage race 1500\n", "full", [2]int{3, 7}, [2]int{5, 11})
+	runs, err := readRuns(logOf("full.log", full))
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("the script's full run reads as %+v, %v:\n%s", runs, err, full)
+	}
+	r := runs[0]
+	if r.head != head || r.scope != "full" || r.mode != "reuse" || r.unitReused != 3 || r.unitTotal != 7 || r.raceReused != 5 || r.raceTotal != 11 ||
+		r.race != 25*time.Minute || !r.timed || !near(r.checked, 50*time.Minute) || r.waited != 10*time.Minute {
+		t.Errorf("the script's full run reads as %+v:\n%s", r, full)
+	}
+
+	refused := mintRun(t, repo, "dirty", 3600, "wait load 600\nstage unit 120\nstage race 1500\n", "full", [2]int{3, 7}, [2]int{5, 11})
+	if first, _, _ := strings.Cut(refused, "\n"); !refusedLine.MatchString(first) {
+		t.Errorf("the script's refusal %q does not read as one", first)
+	}
+	if runs, err := readRuns(logOf("refused.log", refused)); err != nil || len(runs) != 0 {
+		t.Errorf("the script's refused run reads as %+v, %v:\n%s", runs, err, refused)
+	}
+
+	rec := gittest.NewRepo(t)
+	keepLocalTier(t, rec)
+	classifier, err := os.ReadFile(filepath.Join("..", "..", "scripts", "records-only.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Write("scripts/records-only.sh", string(classifier))
+	if err := os.Chmod(filepath.Join(rec.Root(), "scripts", "records-only.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rec.Commit("base")
+	rec.Git("update-ref", "refs/remotes/origin/main", "HEAD")
+	rec.Write(".abcd/work/decisions/dcn-2611210000000000-a-record.md", "a record\n")
+	rec.Commit("a record")
+	records := mintRun(t, rec, "clean", 600, "wait load 30\n", "records-only", [2]int{}, [2]int{})
+	runs, err = readRuns(logOf("records.log", records))
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("the script's records-only run reads as %+v, %v:\n%s", runs, err, records)
+	}
+	if r := runs[0]; r.head != rec.Git("rev-parse", "HEAD")[:12] || r.scope != "records-only" || !r.timed || !near(r.checked, 570*time.Second) || r.waited != 30*time.Second {
+		t.Errorf("the script's records-only run reads as %+v:\n%s", r, records)
+	}
+}
+
+// TestAFullReportWithNoCountsIsNamedAndNotCounted: a full run's report whose
+// counts line is missing or reworded has no reuse figures to give, so it is
+// named as unreadable, kept out of the shares and the medians, and no saving is
+// stated over it; it never reads as 0 of 0.
+func TestAFullReportWithNoCountsIsNamedAndNotCounted(t *testing.T) {
+	repo, heads := fixture(t, "71", "72")
+	logs := t.TempDir()
+	writeLog(t, logs, "preflight-71.log", fullTail, heads["71"][:12])
+	noCounts := strings.Replace(fullTail, "           the unit stage reused 5 of 16 packages and the race stage 91 of 133 (reuse).\n", "", 1)
+	writeLog(t, logs, "preflight-72.log", noCounts, heads["72"][:12])
+	cold := writeLog(t, t.TempDir(), "preflight-cold.log", coldTail, "cccccccccccc")
+	var out, errb bytes.Buffer
+	code := run([]string{"-ref", "main", "-n", "2", "-baseline", cold, logs}, repo.Root(), &out, &errb)
+	got := out.String()
+	if code != exitIncomplete {
+		t.Errorf("run exited %d, want %d; stderr: %s\n%s", code, exitIncomplete, errb.String(), got)
+	}
+	for _, w := range []string{
+		"| #72 | " + heads["72"][:12] + " | preflight-72.log | not printed | not printed |",
+		"#72's report prints no reuse counts",
+		"unit 5 of 16 (31.2%), race 91 of 133 (68.4%)",
+		"Check time of the 1 timed landings",
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("output lacks %q:\n%s", w, got)
+		}
+	}
+	if strings.Contains(got, "0 of 0") || strings.Contains(got, "Saving:") {
+		t.Errorf("a report with no counts was counted:\n%s", got)
+	}
+}
+
+// runWithin runs the command and fails rather than wait past ten seconds: a read
+// that opens a FIFO with no writer would block for ever.
+func runWithin(t *testing.T, root string, args ...string) (int, string, string) {
+	t.Helper()
+	type result struct {
+		code     int
+		out, err string
+	}
+	done := make(chan result, 1)
+	go func() {
+		var out, errb bytes.Buffer
+		code := run(args, root, &out, &errb)
+		done <- result{code, out.String(), errb.String()}
+	}()
+	select {
+	case r := <-done:
+		return r.code, r.out, r.err
+	case <-time.After(10 * time.Second):
+		t.Fatalf("run %v blocked", args)
+	}
+	return 0, "", ""
+}
+
+// TestReadsAreBounded: a path named outright must be a directory or a regular
+// file, not a symlink or a FIFO; a log over the size cap is refused when named
+// and named as not read when found in a directory; a line over the line cap is
+// read as no line of a report.
+func TestReadsAreBounded(t *testing.T) {
+	repo, heads := fixture(t, "61")
+	short := heads["61"][:12]
+	logs := t.TempDir()
+	good := writeLog(t, logs, "preflight-61.log", fullTail, short)
+
+	t.Run("a symlink named outright", func(t *testing.T) {
+		link, coldLink := filepath.Join(t.TempDir(), "link.log"), filepath.Join(t.TempDir(), "cold-link.log")
+		if err := os.Symlink(good, link); err != nil {
+			t.Fatal(err)
+		}
+		// A cold run's log, which a regular file named outright would pass as the baseline.
+		if err := os.Symlink(writeLog(t, t.TempDir(), "cold.log", coldTail, "cccccccccccc"), coldLink); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{link}, {"-baseline", coldLink, logs}} {
+			link := args[len(args)-1]
+			if len(args) > 1 {
+				link = coldLink
+			}
+			code, _, stderr := runWithin(t, repo.Root(), append([]string{"-ref", "main", "-n", "1"}, args...)...)
+			if code != exitUsage || !strings.Contains(stderr, link) {
+				t.Errorf("%v: run exited %d, want %d naming the link; stderr: %s", args, code, exitUsage, stderr)
+			}
+		}
+	})
+	t.Run("a FIFO named outright", func(t *testing.T) {
+		fifo := filepath.Join(t.TempDir(), "fifo.log")
+		if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+			t.Skip("no FIFO here:", err)
+		}
+		for _, args := range [][]string{{fifo}, {"-baseline", fifo, logs}} {
+			code, _, stderr := runWithin(t, repo.Root(), append([]string{"-ref", "main", "-n", "1"}, args...)...)
+			if code != exitUsage || !strings.Contains(stderr, fifo) {
+				t.Errorf("%v: run exited %d, want %d naming the FIFO; stderr: %s", args, code, exitUsage, stderr)
+			}
+		}
+	})
+	t.Run("a log over the size cap", func(t *testing.T) {
+		old := maxLog
+		maxLog = 4096
+		t.Cleanup(func() { maxLog = old })
+		dir := t.TempDir()
+		writeLog(t, dir, "preflight-61.log", fullTail, short)
+		big := writeLog(t, dir, "preflight-big.log", strings.Repeat("x\n", 4096)+fullTail, "bbbbbbbbbbbb")
+		code, _, stderr := runWithin(t, repo.Root(), "-ref", "main", "-n", "1", big)
+		if code != exitUsage || !strings.Contains(stderr, big) {
+			t.Errorf("named outright: run exited %d, want %d naming it; stderr: %s", code, exitUsage, stderr)
+		}
+		code, out, stderr := runWithin(t, repo.Root(), "-ref", "main", "-n", "1", dir)
+		if code != exitIncomplete || !strings.Contains(out, "| #61 | "+short+" | preflight-61.log | 5 of 16 |") || !strings.Contains(out, "Not read: preflight-big.log") {
+			t.Errorf("in a directory: run exited %d, want %d with #61 read and the big log named as not read; stderr: %s\n%s", code, exitIncomplete, stderr, out)
+		}
+	})
+	t.Run("a line over the line cap", func(t *testing.T) {
+		old := maxLine
+		maxLine = 256
+		t.Cleanup(func() { maxLine = old })
+		path := filepath.Join(t.TempDir(), "long.log")
+		body := "preflight: push receipt minted for bbbbbbbbbbbb " + strings.Repeat("x", 1000) + "\npreflight: checked in 4m09s (waited 0s)\n"
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if runs, err := readRuns(path); err != nil || len(runs) != 0 {
+			t.Errorf("readRuns = %+v, %v; want a line over the cap read as no receipt", runs, err)
+		}
+		if runs, err := readRuns(good); err != nil || len(runs) != 1 {
+			t.Errorf("readRuns of a log within the caps = %+v, %v", runs, err)
+		}
+	})
 }
 
 // TestMedianOfAnEvenCountIsTheMeanOfTheMiddleTwo: the median of the timed

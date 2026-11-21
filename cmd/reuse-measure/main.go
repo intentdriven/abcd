@@ -9,11 +9,14 @@
 //
 // A landing is a merge on the first-parent line of -ref (the default branch
 // when it is not given), newest first, and its head is the merge's last parent,
-// the commit the preflight checked. A landing's report is a preflight log, a file
-// named outright or a .log file directly inside a directory named, that holds a
-// push receipt for that head: only a passing run mints one. The figures are the
-// ones the log prints after its receipt, the reuse counts of both stages and the
-// times, and a log holding more than one run reports its last.
+// the commit the preflight checked. A landing's report is a run in a preflight
+// log, a regular file named outright or a .log file directly inside a directory
+// named, that minted a push receipt for that head: only a passing run mints one.
+// One log can hold several runs, so each is judged alone: its figures are the
+// lines its own mint printed straight after its receipt, the reuse counts of both
+// stages and the times, and a run whose mint was refused reports nothing, though
+// it prints its times too. A log over 64 MiB, or a line over 64 KiB, is not read;
+// a full run whose counts do not read is named and counted nowhere.
 //
 // The baseline is the count iss-2611011343052330 recorded on 2026-11-01, 0 of
 // 133 packages reused, which has no time. -baseline names the log of a timed run
@@ -44,8 +47,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -66,21 +71,39 @@ type report struct {
 	path, head, scope, mode                      string
 	unitReused, unitTotal, raceReused, raceTotal int
 	race, checked, waited                        time.Duration
-	// timed is whether the log prints the check's time; race is set only
-	// for a full run that prints it too.
-	timed bool
+	// counted is whether a full run's log prints its reuse counts; timed is
+	// whether it prints the check's time; race is set only for a full run that
+	// prints the race stage's time too.
+	counted, timed bool
 }
 
 // landing is one merge on the default branch and the head it landed.
 type landing struct{ pr, head string }
 
+// The lines a run's end prints, as scripts/preflight-receipt.sh's mint and
+// clock_report word them (TestTheScriptsOwnLinesAreTheOnesRead runs the script
+// and reads what it prints). A run's report opens at its mint's first line, the
+// receipt or a refusal, and holds only the lines the script prints straight after
+// it: the counts, each stage's time and the checked-in line, which closes it.
 var (
 	receiptLine = regexp.MustCompile(`^preflight: push receipt minted for ([0-9a-f]{12})(, records-only)?`)
+	refusedLine = regexp.MustCompile(`^preflight: no push receipt minted`)
 	countsLine  = regexp.MustCompile(`^\s+the unit stage reused (\d+) of (\d+) packages and the race stage (\d+) of (\d+) \(([a-z]+)\)`)
+	stageLine   = regexp.MustCompile(`^preflight: stage [a-z]+: `)
 	raceLine    = regexp.MustCompile(`^preflight: stage race: (\S+)$`)
 	checkedLine = regexp.MustCompile(`^preflight: checked in (\S+) \(waited ([0-9hms]+)`)
 	prNumber    = regexp.MustCompile(`#[0-9]+`)
 )
+
+// The caps on what is read: a log over maxLog bytes is not read, and a line
+// over maxLine is read as no line of a report. The largest preflight log kept
+// on 2026-11-21 was 1.2 MiB and its longest line under 2 KiB. Variables so a
+// test can lower them.
+var maxLog, maxLine int64 = 64 << 20, 64 << 10
+
+// errUnreadable marks a log that is no regular file or is over maxLog: refused
+// when named outright, and named as not read when found in a directory.
+var errUnreadable = errors.New("not read")
 
 func main() {
 	wd, err := os.Getwd()
@@ -91,71 +114,134 @@ func main() {
 	os.Exit(run(os.Args[1:], wd, os.Stdout, os.Stderr))
 }
 
-// readReport reads the last passing run's report in the log at path; ok is
-// false when the log holds no push receipt.
-func readReport(path string) (r report, ok bool, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return report{}, false, err
+// readRuns reads every run in the log at path that minted a push receipt, in
+// the order the log holds them, each judged alone: its figures are the lines
+// its own mint printed, never a later run's. A run whose mint was refused, or
+// that failed before its mint, reports nothing. The log is opened once, refused
+// unless it is a regular file within maxLog (a symlink or a FIFO is refused,
+// never followed or waited on), and a line over maxLine closes any open report
+// and is read as nothing else.
+func readRuns(path string) ([]report, error) {
+	f, fi, err := fsutil.OpenRegular(path)
+	switch {
+	case errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, syscall.ELOOP):
+		return nil, fmt.Errorf("%s: %w: it is not a regular file", path, errUnreadable)
+	case err != nil:
+		return nil, err
 	}
 	defer f.Close()
-	br := bufio.NewReader(f)
+	if fi.Size() > maxLog {
+		return nil, fmt.Errorf("%s: %w: it holds %d bytes, over the %d a log may hold", path, errUnreadable, fi.Size(), maxLog)
+	}
+	var (
+		runs   []report
+		open   *report
+		minted bool
+	)
+	end := func() {
+		if open != nil && minted {
+			runs = append(runs, *open)
+		}
+		open = nil
+	}
+	br := bufio.NewReader(io.LimitReader(f, maxLog))
 	for {
-		line, readErr := br.ReadString('\n')
-		line = strings.TrimRight(line, "\r\n")
-		if m := receiptLine.FindStringSubmatch(line); m != nil {
-			r, ok = report{path: path, head: m[1], scope: "full"}, true
+		line, long, readErr := readLine(br, maxLine)
+		switch {
+		case long:
+			end()
+		case receiptLine.MatchString(line):
+			end()
+			m := receiptLine.FindStringSubmatch(line)
+			open, minted = &report{path: path, head: m[1], scope: "full"}, true
 			if m[2] != "" {
-				r.scope = "records-only"
+				open.scope = "records-only"
 			}
-		} else if ok {
-			if err := r.take(line); err != nil {
-				return report{}, false, fmt.Errorf("%s: %w", path, err)
+		case refusedLine.MatchString(line):
+			end()
+			open, minted = &report{path: path}, false
+		case open != nil:
+			closes, err := open.take(line)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", path, err)
+			}
+			if closes {
+				end()
 			}
 		}
 		if readErr == io.EOF {
-			return r, ok, nil
+			end()
+			return runs, nil
 		}
 		if readErr != nil {
-			return report{}, false, readErr
+			return nil, readErr
 		}
 	}
 }
 
-// take fills r from one line printed after its receipt.
-func (r *report) take(line string) error {
+// readLine reads one line without its line ending; long is true, and line
+// empty, when it is over limit bytes, which are read past and never held.
+func readLine(br *bufio.Reader, limit int64) (line string, long bool, err error) {
+	var buf []byte
+	for {
+		frag, err := br.ReadSlice('\n')
+		if !long {
+			if int64(len(buf)+len(frag)) > limit+2 {
+				long, buf = true, nil
+			} else {
+				buf = append(buf, frag...)
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		return strings.TrimRight(string(buf), "\r\n"), long, err
+	}
+}
+
+// take fills r from one line printed after its mint's first line, and reports
+// whether the line closes the run's report: the checked-in line, the line saying
+// no time is reported, or any line the mint and its clock do not print.
+func (r *report) take(line string) (closes bool, err error) {
 	if m := countsLine.FindStringSubmatch(line); m != nil {
 		n := make([]int, 4)
 		for i := range n {
 			v, err := strconv.Atoi(m[i+1])
 			if err != nil {
-				return err
+				return true, err
 			}
 			n[i] = v
 		}
 		r.unitReused, r.unitTotal, r.raceReused, r.raceTotal, r.mode = n[0], n[1], n[2], n[3], m[5]
-		return nil
+		r.counted = true
+		return false, nil
 	}
 	if m := raceLine.FindStringSubmatch(line); m != nil {
 		d, err := time.ParseDuration(m[1])
 		if err != nil {
-			return fmt.Errorf("race stage time %q: %w", m[1], err)
+			return true, fmt.Errorf("race stage time %q: %w", m[1], err)
 		}
 		r.race = d
-		return nil
+		return false, nil
 	}
 	if m := checkedLine.FindStringSubmatch(line); m != nil {
 		c, err := time.ParseDuration(m[1])
 		if err != nil {
-			return fmt.Errorf("check time %q: %w", m[1], err)
+			return true, fmt.Errorf("check time %q: %w", m[1], err)
 		}
 		w, err := time.ParseDuration(m[2])
 		if err != nil {
-			return fmt.Errorf("wait %q: %w", m[2], err)
+			return true, fmt.Errorf("wait %q: %w", m[2], err)
 		}
 		r.checked, r.waited, r.timed = c, w, true
+		return true, nil
 	}
-	return nil
+	// The mint's continuation lines are indented; each stage's time keeps the
+	// report open for the checked-in line after it.
+	if stageLine.MatchString(line) || strings.HasPrefix(line, " ") {
+		return false, nil
+	}
+	return true, nil
 }
 
 // readLandings lists the last n merges on ref's first-parent line, newest first.
@@ -181,56 +267,86 @@ func readLandings(root, ref string, n int) ([]landing, error) {
 	return ls, nil
 }
 
-// readReports reads every report in the paths named, keyed by head. A head with
-// more than one log takes the one that prints its time, then the later name.
-func readReports(paths []string) (map[string]report, error) {
-	var files []string
+// readReports reads every report in the paths named, keyed by head. A path
+// named outright is a directory, whose .log files directly inside it are read,
+// or a regular file; anything else, or a named file that cannot be read, is
+// refused. A log in a directory that cannot be read is named in unread and the
+// rest are read. Every run that minted a receipt reports, and a head with more
+// than one report takes the one that prints its time, then the later: the later
+// name, or the later run in one log.
+func readReports(paths []string) (reports map[string]report, unread []string, err error) {
+	type logFile struct {
+		path  string
+		named bool
+	}
+	var files []logFile
 	for _, p := range paths {
-		info, err := os.Stat(p)
+		info, err := os.Lstat(p)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if !info.IsDir() {
-			files = append(files, p)
+		switch {
+		case info.Mode().IsRegular():
+			files = append(files, logFile{p, true})
 			continue
+		case !info.IsDir():
+			return nil, nil, fmt.Errorf("%s is neither a directory nor a regular file", p)
 		}
 		entries, err := os.ReadDir(p)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, e := range entries {
 			if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".log") {
-				files = append(files, filepath.Join(p, e.Name()))
+				files = append(files, logFile{filepath.Join(p, e.Name()), false})
 			}
 		}
 	}
-	slices.Sort(files)
-	reports := map[string]report{}
+	slices.SortFunc(files, func(a, b logFile) int { return strings.Compare(a.path, b.path) })
+	reports = map[string]report{}
 	for _, f := range files {
-		r, ok, err := readReport(f)
+		runs, err := readRuns(f.path)
 		if err != nil {
-			return nil, err
-		}
-		if !ok {
+			if f.named {
+				return nil, nil, err
+			}
+			unread = append(unread, fmt.Sprintf("%s (%s)", filepath.Base(f.path), strings.TrimPrefix(err.Error(), f.path+": ")))
 			continue
 		}
-		if have, seen := reports[r.head]; seen && have.timed && !r.timed {
-			continue
+		for _, r := range runs {
+			if have, seen := reports[r.head]; seen && have.timed && !r.timed {
+				continue
+			}
+			reports[r.head] = r
 		}
-		reports[r.head] = r
 	}
-	return reports, nil
+	return reports, unread, nil
 }
 
-// readBaseline reads the timed run that reused nothing, refusing any other.
+// readBaseline reads the timed run that reused nothing, refusing any other. A
+// log holding more than one passing run gives its last.
 func readBaseline(path string) (report, error) {
-	r, ok, err := readReport(path)
-	switch {
-	case err != nil:
+	info, err := os.Lstat(path)
+	if err != nil {
 		return report{}, err
-	case !ok:
+	}
+	if !info.Mode().IsRegular() {
+		return report{}, fmt.Errorf("%s is not a regular file", path)
+	}
+	runs, err := readRuns(path)
+	if err != nil {
+		return report{}, err
+	}
+	if len(runs) == 0 {
 		return report{}, fmt.Errorf("%s holds no push receipt, so it is no passing run", path)
-	case r.scope != "full" || r.unitTotal+r.raceTotal == 0:
+	}
+	r := runs[len(runs)-1]
+	switch {
+	case r.scope != "full":
+		return report{}, fmt.Errorf("%s ran no test stage, so it is no baseline", path)
+	case !r.counted:
+		return report{}, fmt.Errorf("%s prints no reuse counts, so it cannot show it reused nothing", path)
+	case r.unitTotal+r.raceTotal == 0:
 		return report{}, fmt.Errorf("%s ran no test stage, so it is no baseline", path)
 	case r.unitReused+r.raceReused != 0:
 		return report{}, fmt.Errorf("%s reused %d packages; the baseline is a run that reused nothing (make preflight PREFLIGHT_FRESH=1)", path, r.unitReused+r.raceReused)
@@ -274,18 +390,18 @@ func run(args []string, wd string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(fmt.Errorf("reading the landings on %s: %w", *ref, err))
 	}
-	reports, err := readReports(fs.Args())
+	reports, unread, err := readReports(fs.Args())
 	if err != nil {
 		return fail(err)
 	}
-	if write(stdout, *ref, *n, ls, reports, base) {
+	if write(stdout, *ref, *n, ls, reports, unread, base) {
 		return 0
 	}
 	return exitIncomplete
 }
 
 // write prints the measure and reports whether it states a saving.
-func write(w io.Writer, ref string, n int, ls []landing, reports map[string]report, base *report) bool {
+func write(w io.Writer, ref string, n int, ls []landing, reports map[string]report, unread []string, base *report) bool {
 	fmt.Fprintf(w, "# Reuse over the last %d landings on %s\n\n", n, ref)
 	fmt.Fprintln(w, "| PR | Head | Report | Unit reused | Race reused | Race stage | Checked in | Waited |")
 	fmt.Fprintln(w, "|---|---|---|---|---|---|---|---|")
@@ -318,6 +434,13 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 		if r.race > 0 {
 			race = clock(r.race)
 		}
+		if !r.counted {
+			// Counts that do not read are no reuse at all: the report stays out of
+			// the shares and the medians, and is named.
+			fmt.Fprintf(w, "| %s | %s | %s | not printed | not printed | %s | %s | %s |\n", l.pr, short, name, race, checked, waited)
+			gaps = append(gaps, l.pr+"'s report prints no reuse counts")
+			continue
+		}
 		fmt.Fprintf(w, "| %s | %s | %s | %d of %d | %d of %d | %s | %s | %s |\n", l.pr, short, name, r.unitReused, r.unitTotal, r.raceReused, r.raceTotal, race, checked, waited)
 		unitR, unitT, raceR, raceT = unitR+r.unitReused, unitT+r.unitTotal, raceR+r.raceReused, raceT+r.raceTotal
 		if r.timed && r.race > 0 {
@@ -327,6 +450,9 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 		}
 	}
 	fmt.Fprintln(w)
+	if len(unread) > 0 {
+		fmt.Fprintf(w, "Not read: %s.\n", strings.Join(unread, "; "))
+	}
 	if unitT+raceT > 0 {
 		fmt.Fprintf(w, "Reused, pooled over the landings that ran test stages: unit %s, race %s, both %s.\n",
 			share(unitR, unitT), share(raceR, raceT), share(unitR+raceR, unitT+raceT))
