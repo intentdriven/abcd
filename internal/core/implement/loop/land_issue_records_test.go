@@ -161,3 +161,54 @@ func TestAnIssueTheShippedIntentNamesIsCommittedOnlyAsResolved(t *testing.T) {
 	}
 	f.wantsIssueRecordRefused(t, l.HeadSHA, "iss-77-another.md")
 }
+
+// An issue an intent the close ships names lands resolved only as a resolve writes it:
+// the record the lane's worktree moved from open/ to resolved/ is the open record with
+// the fields a resolve sets and, with grounds, its one entry appended. One whose text or
+// whose other fields were changed besides is refused, and nothing is committed.
+func TestAResolutionOfANamedIssueLandsOnlyAsAResolveWritesIt(t *testing.T) {
+	const resolvedRel = ".abcd/work/issues/resolved/iss-77-another.md"
+	for name, c := range map[string]struct {
+		grounds string
+		edit    func(string) string
+	}{
+		"as the resolve wrote it":                   {"", nil},
+		"as the resolve wrote it, with its grounds": {"pursued: the landing settles the link the intent names; shown wrong if the issue recurs", nil},
+		"its text rewritten": {"", func(s string) string {
+			return strings.Replace(s, "Another observation.", "A different observation.", 1)
+		}},
+		"its text rewritten above its grounds": {"pursued: the landing settles the link the intent names; shown wrong if the issue recurs", func(s string) string {
+			return strings.Replace(s, "Another observation.", "A different observation.", 1)
+		}},
+		"a field a resolve does not set changed": {"", func(s string) string {
+			return strings.Replace(s, `severity: "minor"`, `severity: "major"`, 1)
+		}},
+		"a field a resolve does not set added": {"", func(s string) string {
+			return strings.Replace(s, "\nslug:", "\nrelated_specs: [spc-10]\nslug:", 1)
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			l := f.validatedOnce(t)
+			f.fileAnotherIssue(t, l)
+			f.laneNamesIssue(t, l, "iss-77")
+			f.step(t)
+			l = currentLane(t, f.repo, f.runID)
+			if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: l.Worktree, ID: "iss-77", Resolution: "settled for this landing", Impact: "fix",
+				ByCommit: l.HeadSHA, Grounds: c.grounds}); err != nil {
+				t.Fatalf("resolving the named issue: %v", err)
+			}
+			if c.edit == nil {
+				f.wantsRecordsCommit(t)
+				return
+			}
+			was := landRead(t, l.Worktree, resolvedRel)
+			if changed := c.edit(was); changed == was {
+				t.Fatalf("premise: the edit changes the record:\n%s", was)
+			} else {
+				landWrite(t, l.Worktree, resolvedRel, changed)
+			}
+			f.wantsIssueRecordRefused(t, l.HeadSHA, "iss-77-another.md")
+		})
+	}
+}

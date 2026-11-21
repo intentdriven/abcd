@@ -1069,7 +1069,11 @@ A lane's stages run in order:
    the repoint of the landing's own moves writes over the head's record, and it commits
    such a record added, removed or moved only when it is resolved from `open/` to
    `resolved/` and an intent the close ships names it in `related_issues` at the judged
-   head, as the close's check on what it ships lets a person settle it. The landing reads what it judges as the objects store it.
+   head, as the close's check on what it ships lets a person settle it. Such a resolved
+   record must be what a resolve writes over the record it took out of `open/`: the same
+   frontmatter but for the fields a resolve sets (`resolution`, `impact`, `shipped_in`,
+   `resolved_by`, `production_mode`), and the same body after the repoint, with at most
+   the one grounds entry a resolve appends; any other text is refused. The landing reads what it judges as the objects store it.
    It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
