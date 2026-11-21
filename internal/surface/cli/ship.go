@@ -182,10 +182,16 @@ func pinReleaseArchive(repoRoot, dest, zipDir string, cut release.Cut, at time.T
 }
 
 // refreshSurfaceSnapshot rewrites the committed surface snapshot from the live
-// tree, when the repository keeps one.
+// tree, when the repository keeps one. The snapshot is found and written inside
+// an os.Root on repoRoot, so a directory on the way that links out of the
+// repository is an error, not a file rewritten elsewhere.
 func refreshSurfaceSnapshot(repoRoot string) error {
-	path := filepath.Join(repoRoot, filepath.FromSlash(SurfaceSnapshotPath))
-	if _, err := os.Stat(path); err != nil {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if _, err := root.Lstat(SurfaceSnapshotPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
@@ -195,7 +201,7 @@ func refreshSurfaceSnapshot(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomicPreserveMode(path, data)
+	return fsutil.WriteFileAtomicPreserveModeInRoot(root, SurfaceSnapshotPath, data)
 }
 
 // archiveUnpinnedReason is what a written ship reports when it leaves the
@@ -271,9 +277,23 @@ type savedFile struct {
 	present bool
 }
 
-// saveFile reads rel's current bytes.
+// maxSavedFileBytes caps what saveFile holds of one file: the catalog and
+// the surface snapshot are each well under it.
+const maxSavedFileBytes = 4 << 20
+
+// readSavedFile reads rel as a regular file inside an os.Root on repoRoot.
+func readSavedFile(repoRoot, rel string) ([]byte, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return fsutil.ReadGuardedInRoot(root, rel, maxSavedFileBytes)
+}
+
+// saveFile reads rel's current bytes, inside the repository.
 func saveFile(repoRoot, rel string) (savedFile, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+	data, err := readSavedFile(repoRoot, rel)
 	if os.IsNotExist(err) {
 		return savedFile{rel: rel}, nil
 	}
@@ -283,9 +303,15 @@ func saveFile(repoRoot, rel string) (savedFile, error) {
 	return savedFile{rel: rel, data: data, present: true}, nil
 }
 
+// restore puts the saved bytes back, reading, removing and writing inside an
+// os.Root on repoRoot.
 func (f savedFile) restore(repoRoot string) error {
-	path := filepath.Join(repoRoot, filepath.FromSlash(f.rel))
-	cur, err := os.ReadFile(path)
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	cur, err := fsutil.ReadGuardedInRoot(root, f.rel, maxSavedFileBytes)
 	switch {
 	case os.IsNotExist(err):
 		if !f.present {
@@ -296,12 +322,12 @@ func (f savedFile) restore(repoRoot string) error {
 	case f.present && bytes.Equal(cur, f.data):
 		return nil
 	case !f.present:
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := root.Remove(f.rel); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 		return nil
 	}
-	return fsutil.WriteFileAtomicPreserveMode(path, f.data)
+	return fsutil.WriteFileAtomicPreserveModeInRoot(root, f.rel, f.data)
 }
 
 // bumpReason is the human sentence adr-20's changelog entry records: the impact
