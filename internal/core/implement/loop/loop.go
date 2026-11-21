@@ -831,7 +831,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if snap.origin != nil && o.reserve == nil {
 		// The issue was judged from origin's record, so it is reserved with
 		// that record's found_at, which this checkout's ledger may not hold.
-		if iss, ok := snap.plan.OpenIssue(chk.Key); ok {
+		// The record is looked up by the id the plan judged it under, as the
+		// drain's lane looks it up, not by the key as it was typed.
+		id := chk.Key
+		if i := slices.IndexFunc(snap.plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, chk.Key) }); i >= 0 {
+			id = snap.plan.Dispositions[i].ID
+		}
+		if iss, ok := snap.plan.OpenIssue(id); ok {
 			fp, ok := issueFootprint(repoRoot, iss)
 			if !ok && !o.noReserve && !o.Trial && o.held == nil {
 				return StartResult{}, noFoundAtRefusal(chk.Key, "nothing was started")
