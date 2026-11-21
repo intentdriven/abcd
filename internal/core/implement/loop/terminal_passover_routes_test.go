@@ -235,7 +235,7 @@ func reservedAgainAfterThePass(t *testing.T) (root, bare, runID, key string, c *
 	now := c.now()
 	clause, failed := releaseReservation(root, key, "", now)
 	if err := mutateReservation(root, runID, func(st *State) (bool, error) {
-		noteRecordReleased(root, st, failed, now)
+		noteRecordReleasedFor(root, st, st.Key, failed, now)
 		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 		st.UpdatedAt = now
 		return true, nil

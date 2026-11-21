@@ -964,6 +964,11 @@ func runFingerprint(repoRoot, runID string) ([sha256.Size]byte, error) {
 		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, fsutil.RedactHome(err.Error()))
 	}
 	st.Record, st.UpdatedAt, st.ReservedAt = nil, time.Time{}, nil
+	// A member's reservation is renewed as the run's is, so a renewal is no change.
+	st.Bundle = slices.Clone(st.Bundle)
+	for i := range st.Bundle {
+		st.Bundle[i].ReservedAt = nil
+	}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return [sha256.Size]byte{}, fmt.Errorf("%w: %s", errRunStateUnread, err.Error())
