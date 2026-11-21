@@ -1224,10 +1224,12 @@ runs (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`,
 `processWrapper`, `sshHostCommands`), or sets `disableAllHooks` to anything but
 `false` or `null`, which starts a claude without the hooks that send its
 commands here, or whose `env` block sets `CLAUDE_CODE_SHELL_PREFIX`, a command
-every shell command claude runs is run behind, `CLAUDE_CONFIG_DIR`, any
-`OPENCODE_` variable or another variable an agent-launch entry watches, or is
-not an object (other `env` variables are allowed), written on the line or in
-the file it names
+every shell command claude runs is run behind, `CLAUDE_CODE_SHELL`, the shell
+that runs them, `BASH_ENV` or `ENV`, a file that shell sources as it starts,
+`CLAUDE_CONFIG_DIR`, any `OPENCODE_` variable or another variable a bundled
+agent-launch entry watches (a repository's own entries are not read here), or
+is not an object (other `env` variables are allowed), written on the line or
+in the file it names
 (`agent-launch-claude-unchecked-settings`), `claude --allowedTools` or
 `--allowed-tools` on the line, the flag form of an allow list
 (`agent-launch-claude-allowed-tools`), `claude --add-dir`, the flag form of

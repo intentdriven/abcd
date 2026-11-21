@@ -275,10 +275,12 @@ func TestGuardRefusesClaudeFlagsThatGrantToolsOrAnswerPrompts(t *testing.T) {
 // TestGuardRefusesClaudeSettingsWhoseEnvironmentChangesWhatItRuns: a settings
 // `env` block hands its variables to claude and the commands it runs, so one
 // that sets CLAUDE_CODE_SHELL_PREFIX (a command every shell command runs
-// behind), CLAUDE_CONFIG_DIR, any OPENCODE_ variable, or a variable an
-// agent-launch entry watches is refused, inline or in the file the flag
-// names, and so is an `env` that is not an object, whose names the guard
-// cannot read. Any other variable, and an empty block, are allowed.
+// behind), CLAUDE_CODE_SHELL (the shell they run in), BASH_ENV or ENV (a
+// file a shell sources as it starts), CLAUDE_CONFIG_DIR, any OPENCODE_
+// variable, or a variable an agent-launch entry watches is refused, inline or
+// in the file the flag names, and so is an `env` that is not an object, whose
+// names the guard cannot read. Any other variable, one whose name only starts
+// like one of these among them, and an empty block, are allowed.
 func TestGuardRefusesClaudeSettingsWhoseEnvironmentChangesWhatItRuns(t *testing.T) {
 	const id = "agent-launch-claude-unchecked-settings"
 	const bs = "\x5c"
@@ -286,6 +288,9 @@ func TestGuardRefusesClaudeSettingsWhoseEnvironmentChangesWhatItRuns(t *testing.
 	for _, line := range []string{
 		`claude -p x --settings '{"env":{"CLAUDE_CODE_SHELL_PREFIX":"/tmp/wrap"}}'`,
 		`claude -p x --settings '{"env":{"CLAUDE_CONFIG_DIR":"/tmp/c"}}'`,
+		`claude -p x --settings '{"env":{"BASH_ENV":"/tmp/rc"}}'`,
+		`claude -p x --settings '{"env":{"ENV":"/tmp/rc"}}'`,
+		`claude -p x --settings '{"env":{"CLAUDE_CODE_SHELL":"/tmp/sh"}}'`,
 		`claude -p x --settings '{"env":{"OPENCODE_PERMISSION":"{}"}}'`,
 		`claude -p x --settings '{"env":{"OPENCODE_ANYTHING":"x"}}'`,
 		`claude -p x --settings '{"env":{"DEBUG":"1","OPENCODE_CONFIG":"/tmp/o.json"}}'`,
@@ -305,6 +310,7 @@ func TestGuardRefusesClaudeSettingsWhoseEnvironmentChangesWhatItRuns(t *testing.
 		`claude -p x --settings '{"env":{"DEBUG":"1"}}'`,
 		`claude -p x --settings '{"env":{"ANTHROPIC_MODEL":"sonnet","NODE_OPTIONS":"--max-old-space-size=4096"}}'`,
 		`claude -p x --settings '{"env":{}}'`,
+		`claude -p x --settings '{"env":{"ENVIRONMENT":"dev","CLAUDE_CODE_SHELL_TIMEOUT":"5"}}'`,
 		`claude -p x --settings '{"env":null}'`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {

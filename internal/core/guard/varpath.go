@@ -603,15 +603,22 @@ var settingsCommandKeys = []string{
 }
 
 // settingsEnvRefused reports whether a variable a settings `env` block sets
-// is one settingsUnchecked refuses: CLAUDE_CODE_SHELL_PREFIX, a command every
-// shell command claude runs is run behind; any OPENCODE_ variable, opencode's
+// is one settingsUnchecked refuses: one of settingsShellEnv, which change
+// what claude's shell commands run; any OPENCODE_ variable, opencode's
 // configuration; and every variable a bundled entry watches in the
 // environment of a harness it starts (Pattern.Env), CLAUDE_CONFIG_DIR among
-// them. Names are compared as written, as the environment compares them.
+// them. A repository's own entries are not read here. Names are compared as
+// written, as the environment compares them.
 func settingsEnvRefused(name string) bool {
-	return name == "CLAUDE_CODE_SHELL_PREFIX" || strings.HasPrefix(name, "OPENCODE_") ||
+	return slices.Contains(settingsShellEnv, name) || strings.HasPrefix(name, "OPENCODE_") ||
 		slices.Contains(watchedEnv(), name)
 }
+
+// settingsShellEnv are the variables that change what a shell command claude
+// runs does beyond its own text: CLAUDE_CODE_SHELL_PREFIX, a command every
+// one runs behind; CLAUDE_CODE_SHELL, the shell that runs it; and BASH_ENV
+// and ENV, a file that shell sources as it starts.
+var settingsShellEnv = []string{"CLAUDE_CODE_SHELL_PREFIX", "CLAUDE_CODE_SHELL", "BASH_ENV", "ENV"}
 
 // watchedEnv is every variable a bundled entry names (Pattern.Env), read once.
 var watchedEnv = sync.OnceValue(func() []string { return defaultRegistry.envNames() })
