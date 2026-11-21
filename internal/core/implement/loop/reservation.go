@@ -75,7 +75,9 @@ func claimOptions(now time.Time) claim.Options {
 // this copy and not released, half through its lease since its
 // Abcd-Claimed-At: it fetches and pushes a renewal that keeps the tip's own
 // term (claim.RenewalTerm), and logs reservation_renewed in the run record. Under
-// half its lease nothing is pushed. A renewal that fails is logged, once
+// half its lease nothing is pushed, except where an intent run's landed step
+// leaves its reservation holding what no step still in flight needs: that
+// renewal is due at once and narrows the hold (landedNarrowing). A renewal that fails is logged, once
 // until one succeeds, and its note returned for the step's answer; the stage
 // still runs, since the land fence is where a lost reservation stops the run.
 // A view that shows the reservation held by another person or copy is said
@@ -92,6 +94,11 @@ func claimOptions(now time.Time) claim.Options {
 // does (narrowedFootprint), so such a file lies outside it; only an intent
 // run's keeps its whole footprint (dcn-2610300615451659). While any lane may yet hold uncommitted work, or where those files
 // cannot be read, the whole footprint is judged, as before.
+//
+// A run with members renews each member's reservation the same way, at half
+// its lease or lapsed, keeping its term, each line naming its issue
+// (renewMembers); the lead's alone narrows, and a lead handed back alone is
+// renewed no more. A run with no members is renewed exactly as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil || stopEndsRenewal(repoRoot, *st, now) {
 		return ""
@@ -99,16 +106,36 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if snap == nil {
 		s, err := claim.View(repoRoot, now)
 		if err != nil {
-			return renewFailed(st, now, err)
+			note := ""
+			for _, id := range st.reservedIssues() {
+				note = joinNext(note, renewFailedFor(st, id, now, err))
+			}
+			return note
 		}
 		snap = &s
 	}
-	own, due, lost := renewalDue(*st, *snap, now)
+	note := ""
+	if st.LeadHandBack == nil {
+		note = renewLead(repoRoot, st, now, *snap)
+	}
+	return joinNext(note, renewMembers(repoRoot, st, now, *snap))
+}
+
+// renewLead is renewReservation of the lead's reservation, the run's key.
+func renewLead(repoRoot string, st *State, now time.Time, snap claim.Snapshot) string {
+	own, due, lost := renewalDue(*st, snap, now)
 	if lost != "" {
-		logOnce(st, now, StageReservationLost, lost)
+		logOnceFor(st, st.Key, now, StageReservationLost, lost)
 		return lost
 	}
-	if !due {
+	// Once an intent run's step has landed, its reservation narrows to the
+	// steps still in flight at the next renewal, which is due at once rather
+	// than at half the lease (landedNarrowing, narrow.go).
+	var landed []string
+	if own != nil && (own.State == claim.StateLive || own.State == claim.StateExpired) {
+		landed, _ = landedNarrowing(repoRoot, *st, *own)
+	}
+	if !due && landed == nil {
 		return ""
 	}
 	req := claim.Request{Record: st.Key, Renew: true, Lease: claim.RenewalTerm(*own), Stage: renewalStage(*st)}
@@ -116,18 +143,25 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	// files its branch changed (narrow.go); a narrowing that was due and
 	// could not be made is said in the renewal's note.
 	var declined string
-	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	if landed != nil {
+		req.Narrow = landed
+	} else {
+		req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	}
 	lapsed := own.State == claim.StateExpired
 	if lapsed {
 		req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
 	}
 	res, err := reserveRenewal(repoRoot, req, claimOptions(now))
 	if err != nil {
-		return renewFailed(st, now, err)
+		return renewFailedFor(st, st.Key, now, err)
 	}
 	why := "half its lease having passed"
-	if lapsed {
+	switch {
+	case lapsed:
 		why = "its lease having lapsed"
+	case !due:
+		why = "a step of " + st.Spec + " having landed"
 	}
 	note := fmt.Sprintf("renewed the reservation on %s, %s, until %s", st.Key, why, stamp(res.ExpiresAt))
 	if len(res.OwnOverlap) > 0 {
@@ -138,19 +172,82 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 		note += "; revived past your other copy's reservation of " + strings.Join(past, ", ") +
 			", which no commit of this run's lanes touched"
 	}
+	to := "the files its branch changed"
+	if landed != nil {
+		to = "what the steps still in flight need"
+	}
 	switch {
 	case res.Narrowed:
-		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
-			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+		note += fmt.Sprintf("; its footprint narrowed from %s to %s: %s",
+			strings.Join(own.Footprint, ", "), to, strings.Join(res.Footprint, ", "))
 	case len(req.Narrow) > 0:
-		declined = "the narrowing to the files its branch changed could not be written into the reservation"
+		declined = "the narrowing to " + to + " could not be written into the reservation"
 	}
 	if declined != "" {
 		note += "; reservation kept at its full footprint: " + declined
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note})
+	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note, Issue: st.issueOn(st.Key)})
 	st.UpdatedAt = now
 	return ""
+}
+
+// renewMembers renews each member's reservation of a run with members, as
+// renewLead renews the lead's: due at half its lease, or lapsed, keeping the
+// tip's own term, a lapsed one judged against the same person's other copy as
+// the lead's revival is, and one held by another person or copy said and
+// logged once. Each line names its member. It returns the notes of the
+// renewals that failed or were lost, "" when there is none.
+func renewMembers(repoRoot string, st *State, now time.Time, snap claim.Snapshot) string {
+	note := ""
+	for _, m := range st.Bundle {
+		if m.HandBack != nil || m.ReservedAt == nil {
+			continue
+		}
+		own, due, lost := issueRenewalDue(m.Issue, snap, now)
+		if lost != "" {
+			logOnceFor(st, m.Issue, now, StageReservationLost, lost)
+			note = joinNext(note, lost)
+			continue
+		}
+		if !due {
+			continue
+		}
+		req := claim.Request{Record: m.Issue, Renew: true, Lease: claim.RenewalTerm(*own), Stage: renewalStage(*st)}
+		lapsed := own.State == claim.StateExpired
+		if lapsed {
+			req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
+		}
+		res, err := reserveRenewal(repoRoot, req, claimOptions(now))
+		if err != nil {
+			note = joinNext(note, renewFailedFor(st, m.Issue, now, err))
+			continue
+		}
+		why := "half its lease having passed"
+		if lapsed {
+			why = "its lease having lapsed"
+		}
+		line := fmt.Sprintf("renewed the reservation on %s, %s, until %s", m.Issue, why, stamp(res.ExpiresAt))
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: line, Issue: m.Issue})
+		st.UpdatedAt = now
+	}
+	return note
+}
+
+// issueRenewalDue is renewalDue for the reservation on id.
+func issueRenewalDue(id string, snap claim.Snapshot, now time.Time) (own *claim.Reservation, due bool, lost string) {
+	return renewalDue(State{Key: id}, snap, now)
+}
+
+// renewalDueAny reports whether any reservation the run records is due for
+// a renewal, or held by another person or copy, as renewalDue reads one: the
+// lead's, then each member's.
+func renewalDueAny(st State, snap claim.Snapshot, now time.Time) bool {
+	for _, id := range st.reservedIssues() {
+		if _, due, lost := issueRenewalDue(id, snap, now); due || lost != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // reserveRenewal is claim.Reserve for a renewal of a run's reservation, a
@@ -192,30 +289,41 @@ func renewalDue(st State, snap claim.Snapshot, now time.Time) (own *claim.Reserv
 	return own, claim.HalfThrough(*own, now), ""
 }
 
-// renewFailed logs a failed renewal in the run record, once until a renewal
-// succeeds, and returns its note.
-func renewFailed(st *State, now time.Time, err error) string {
-	note := "could not renew the reservation on " + st.Key + ": " + err.Error()
-	logOnce(st, now, StageReservationRenewFailed, note)
+// renewFailedFor logs a failed renewal of the reservation on id in the run
+// record, once until a renewal succeeds, and returns its note.
+func renewFailedFor(st *State, id string, now time.Time, err error) string {
+	note := "could not renew the reservation on " + id + ": " + err.Error()
+	logOnceFor(st, id, now, StageReservationRenewFailed, note)
 	return note
 }
 
-// logOnce appends a reservation entry at stage unless the run record's last
-// reservation entry is already one at stage, so a condition that holds across
-// many steps (origin unreachable, the reservation another's) is logged once
-// until something else about the reservation is.
-func logOnce(st *State, now time.Time, stage, note string) {
-	if last := lastReservationEntry(*st); last != nil && last.Stage == stage {
+// logOnceFor appends an entry at stage about the reservation on id unless the
+// run record's last entry about that reservation is already one at stage, so a
+// condition that holds across many steps (origin unreachable, the reservation
+// another's) is logged once until something else about the reservation is. In
+// a run with members, the last entry about that issue's reservation decides,
+// and the entry names it.
+func logOnceFor(st *State, id string, now time.Time, stage, note string) {
+	if last := lastReservationEntryFor(*st, id); last != nil && last.Stage == stage {
 		return
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: note})
+	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: note, Issue: st.issueOn(id)})
 	st.UpdatedAt = now
 }
 
 // lastReservationEntry is the run record's last entry about its reservation,
 // nil when there is none.
 func lastReservationEntry(st State) *Entry {
+	return lastReservationEntryFor(st, st.Key)
+}
+
+// lastReservationEntryFor is lastReservationEntry for the reservation on id:
+// in a run with members, only the lines for id (lineIssue).
+func lastReservationEntryFor(st State, id string) *Entry {
 	for k := len(st.Record) - 1; k >= 0; k-- {
+		if st.hasMembers() && !recordid.SameID(st.lineIssue(st.Record[k]), id) {
+			continue
+		}
 		switch st.Record[k].Stage {
 		case StageReservationRenewed, StageReservationRenewFailed, StageReservationLost, StageReservation:
 			return &st.Record[k]
@@ -277,22 +385,32 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, err
 // (claim.RenewalTerm), so the push never cuts a lease; a hold that is now another
 // person's, or released as finished on origin's default branch, cannot
 // change, and a drain hands the lane back at once (stuck.go).
+//
+// In a run with members each member's hold is renewed with its own tip's
+// term, read the same way.
 func pushFence(c Context, lane Lane) (time.Time, string, error) {
-	term := lease.Default
+	terms := map[string]time.Duration{}
 	if c.State.ReservedAt != nil {
 		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
-			if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
-				term = claim.RenewalTerm(r)
+			for _, id := range c.State.reservedIssues() {
+				if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis {
+					terms[id] = claim.RenewalTerm(r)
+				}
 			}
 		}
 	}
-	return fence(c, lane, term, fencePush)
+	return fenceWith(c, lane, func(id string) time.Duration {
+		if term, ok := terms[id]; ok {
+			return term
+		}
+		return lease.Default
+	}, fencePush)
 }
 
 // fence is the land fence for act. It fetches the reservations from origin,
 // then refuses, doing nothing of act, unless the run's own reservation is
 // this person's from this copy and live (renewing it with term,
-// renewAtFence), and while a release another session is cutting holds every
+// renewIssueAtFence), and while a release another session is cutting holds every
 // merge (releaseHold, C7). A run that holds no reservation fetches them all
 // the same, for the hold (claim.FetchMergeHold, the judgement `abcd land`
 // makes too). A fetch that fails is a wait by design either way
@@ -301,8 +419,20 @@ func pushFence(c Context, lane Lane) (time.Time, string, error) {
 // dated ahead that the hold did not count, "" when there is none. A hold that
 // stands then answers for what the lane's branch changes (holdLaneChanges), so
 // each path a landing carries is judged; the notice names a reservation that made.
+//
+// In a run with members, every issue the run still holds is fenced so, the
+// lead's then each member's in Issues() order, and the first that does not
+// hold refuses act naming it; the renewed expiry returned is the earliest.
 func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
-	if c.State.ReservedAt == nil {
+	return fenceWith(c, lane, func(string) time.Duration { return term }, act)
+}
+
+// fenceWith is fence renewing the reservation on each issue id with term(id).
+func fenceWith(c Context, lane Lane, term func(id string) time.Duration, act fenceAct) (time.Time, string, error) {
+	// A run holding no issue it carries is judged as a run with no members
+	// whose reservation is not recorded: by its stop's mark, then by whether
+	// it ever reserved.
+	if len(c.State.reservedIssues()) == 0 {
 		// A stop's mark is what a take-over answers by reserving again.
 		mark, err := runControl(c.RepoRoot, c.State.RunID)
 		if err != nil {
@@ -339,9 +469,17 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, s
 			return laneChangesHeld(c, lane, act, time.Time{}, notice)
 		}
 	}
-	holds, err := renewAtFence(c, lane, term, act)
-	if err != nil {
-		return time.Time{}, "", err
+	// Every issue the run carries is renewed, recorded as held or not: one let
+	// go is refused by its renewal, as a run of its key alone is.
+	var holds time.Time
+	for _, id := range c.State.Issues() {
+		until, err := renewIssueAtFence(c, lane, id, term(id), act)
+		if err != nil {
+			return time.Time{}, "", err
+		}
+		if holds.IsZero() || until.Before(holds) {
+			holds = until
+		}
 	}
 	notice, err := releaseHold(c, lane, act)
 	if err != nil {
@@ -419,12 +557,14 @@ func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
 	return r
 }
 
-// renewAtFence renews the run's own reservation at the fence for act: it
+// renewIssueAtFence renews the run's own reservation at the fence for act: it
 // fetches the reservations and refuses, doing nothing of act, unless the tip
 // is this person's from this copy and live; when it holds, it renews it with
 // term.
-func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
-	id := c.State.Key
+//
+// It renews the reservation on id, the run's key or, in a run with members,
+// any issue it holds, and a refusal names id.
+func renewIssueAtFence(c Context, lane Lane, id string, term time.Duration, act fenceAct) (time.Time, error) {
 	res, err := reserveRenewal(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term, Stage: renewalStage(c.State)},
 		claimOptions(c.Now))
 	if err == nil {
@@ -513,16 +653,21 @@ func completesRun(st State, laneID string) bool {
 // person's or another copy's is left as it stands and named. It returns the
 // landing note's clause, "" for a run that holds no reservation or a lane that
 // does not complete the run; a failure is named there and never undoes the
-// landing.
+// landing. A run with members tombstones every issue it still holds, the
+// lead's then each member's, and joins their clauses.
 func tidyReservation(c Context, lane Lane) string {
 	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
 		return ""
 	}
-	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, "", c.Now)
-	if failed {
-		clause += "; the landing stands, and the reservation counts as released while " + c.State.Key + " is finished on the default branch"
+	out := ""
+	for _, id := range c.State.reservedIssues() {
+		clause, failed := releaseReservation(c.RepoRoot, id, "", c.Now)
+		if failed {
+			clause += "; the landing stands, and the reservation counts as released while " + id + " is finished on the default branch"
+		}
+		out = joinNext(out, clause)
 	}
-	return clause
+	return out
 }
 
 // releaseReservation pushes a tombstone over the run's reservation on id
@@ -776,7 +921,7 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error)
 	}
 	fp := o.reserve
 	if fp == nil {
-		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, "nothing was started"); err != nil {
+		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, nil, "nothing was started"); err != nil {
 			return reserved{}, err
 		}
 	}
@@ -817,6 +962,17 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 
 // reserveTaken is reserveResumed; a take-over passes retell false, since it restarts what
 // the marks say has no agent, and a role told again would read as one that may have.
+//
+// A run with members holds each issue of Issues() again, in that order, each with its
+// own footprint and the paths widened onto its hold, and compares every issue's record
+// on origin's default branch before anything is pushed, so a drain's take-up whose
+// member's record moved is refused as the lead's is, having pushed nothing. A take-up
+// that has held some issues again and then meets a refusal on the next, another
+// holder's back-off or any other, first releases plainly every reservation it made
+// fresh in this call, then returns the refusal naming the issue it stopped at: the
+// run is left holding nothing it took here and its state unchanged, as a refusal
+// leaves a run with no members. A fresh hold whose release did not reach origin is
+// named in the refusal with when its lease lapses.
 func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) error {
 	if o.noReserve || o.Trial {
 		return nil
@@ -853,10 +1009,16 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 		// An auto-plan run has no spec yet: it reserves the draft's two
 		// paths, as its start did (autoplan.go).
 		fp = autoPlanFootprint(*ap)
-	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged"); err != nil {
+	} else if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), res.RunID+" is unchanged"); err != nil {
 		return err
 	} else {
-		fp = heldWith(fp, widenedPaths(st))
+		// A path only a landed step needed, the packages a step the spec does
+		// not yet mark landed names, or a path a landed lane widened to, is
+		// left out by the rule each landing's renewal narrows by
+		// (inFlightFootprint), so a resume is never refused over a hold a peer
+		// took on it once the step landed. While a lane is mid-edit, only
+		// what this copy's tip still names of it is reserved again, below.
+		fp = inFlightFootprint(repoRoot, st, heldWith(fp, widenedPathsFor(st, st.Key)), nil)
 	}
 	// A reservation the run could not record is released again, and peers would see the
 	// issue flap on each retry, so the lock is looked at before anything is pushed, and so
@@ -875,37 +1037,122 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 	}
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, o.drain, landing, renewalStage(st), now)
-	if err != nil {
-		return err
+	var made []heldAgain
+	for _, id := range st.Issues() {
+		ifp := fp
+		if m := st.member(id); m >= 0 {
+			ifp = heldWith(st.Bundle[m].Footprint, widenedPathsFor(st, id))
+		}
+		r, err := reserveAgain(repoRoot, id, ifp, o.TakeOver, o.drain, landing, renewalStage(st), now, func(tip []string) []string {
+			return inFlightFootprint(repoRoot, st, tip, tip)
+		})
+		if err != nil {
+			if !st.hasMembers() {
+				return err
+			}
+			return stoppedTakeUp(repoRoot, st, id, err, made, now)
+		}
+		made = append(made, heldAgain{id: id, r: r})
 	}
 	// A person's own, as one over a hand-back is (claim's HandBack.Note).
 	const own = "; this reservation is a person's own, so it was made"
-	if since.moved != "" {
-		r.note += "; " + since.moved + ", and the lane's brief reads it as it stood at the lane's base" + own
-	}
-	if since.unread != "" {
-		r.note += "; " + since.unread + own
+	for k := range made {
+		moved, unread := since.moved, since.unread
+		if st.hasMembers() {
+			moved, unread = since.of(made[k].id)
+		}
+		if moved != "" {
+			made[k].r.note += "; " + moved + ", and the lane's brief reads it as it stood at the lane's base" + own
+		}
+		if unread != "" {
+			made[k].r.note += "; " + unread + own
+		}
 	}
 	if err := saveRun(repoRoot, res.RunID, o, func(_ *os.Root, st *State) (bool, error) {
-		if st.ReservedAt == nil {
-			st.ReservedAt = r.at
+		for _, h := range made {
+			if m := st.member(h.id); m >= 0 {
+				if st.Bundle[m].ReservedAt == nil {
+					st.Bundle[m].ReservedAt = h.r.at
+				}
+			} else if st.ReservedAt == nil {
+				st.ReservedAt = h.r.at
+			}
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: h.r.note, Issue: st.issueOn(h.id)})
 		}
-		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: r.note})
 		if retell {
 			retellKept(st, limitKept, now)
 		}
 		st.UpdatedAt = now
 		return true, nil
 	}); err != nil {
-		if r.fresh {
-			releaseKey(repoRoot, st.Key, now)
+		for _, h := range made {
+			if h.r.fresh {
+				releaseKey(repoRoot, h.id, now)
+			}
 		}
 		return err
 	}
-	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
-	res.ReservationWarnings = r.warnings
+	tellHeldAgain(res, st, made)
 	return nil
+}
+
+// tellHeldAgain gives res what a take-up held again (made): the first hold's
+// note and fork judgement, each member's note after it, and every hold's
+// warnings. A take-up that held nothing again, which a run the state reader
+// admits never is (bundleWritten), tells nothing.
+func tellHeldAgain(res *StartResult, st State, made []heldAgain) {
+	if len(made) == 0 {
+		return
+	}
+	lead := made[0].r
+	res.Reservation, res.ForkUnchecked, res.ForkAllowed = lead.note, lead.forkUnchecked, lead.forkAllowed
+	res.ReservationWarnings = nil
+	for _, h := range made {
+		if st.hasMembers() && h.id != made[0].id {
+			res.Reservation += "; " + h.r.note
+		}
+		res.ReservationWarnings = append(res.ReservationWarnings, h.r.warnings...)
+	}
+}
+
+// heldAgain is one issue a take-up held again, and the act that held it.
+type heldAgain struct {
+	id string
+	r  reserved
+}
+
+// stoppedTakeUp is a take-up of a run with members that met err holding id again:
+// every reservation made fresh in the call (made) is released plainly first, and the
+// refusal is then returned naming id, with every flag a caller routes it by kept. A
+// fresh hold whose release did not reach origin is named with when its lease lapses.
+func stoppedTakeUp(repoRoot string, st State, id string, err error, made []heldAgain, now time.Time) error {
+	var released, left []string
+	for _, h := range made {
+		if !h.r.fresh {
+			continue
+		}
+		clause, failed := releaseReservation(repoRoot, h.id, "", now)
+		if failed {
+			tail, _, _ := lapseTail(repoRoot, st.forIssue(h.id), now)
+			left = append(left, clause+tail)
+			continue
+		}
+		released = append(released, h.id)
+	}
+	rf, ok := AsRefusal(err)
+	if !ok {
+		rf = refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+	}
+	out := *rf
+	what := "having held nothing again before it"
+	if len(released) > 0 {
+		what = "having released plainly what it had held again (" + strings.Join(released, ", ") + ")"
+	}
+	out.Reason = fmt.Sprintf("the take-up of %s's run stopped at %s, %s: %s", st.Key, id, what, rf.Reason)
+	for _, l := range left {
+		out.Reason += "; " + l
+	}
+	return &out
 }
 
 // reserveAgain is a resumed run's reservation act. Over this copy's own live
@@ -935,11 +1182,17 @@ func reserveTaken(repoRoot string, res *StartResult, o Options, retell bool) err
 // widened to (widen.go) is never dropped by a widening, a revival or a
 // fallback (iss-2611101316537446); a tip since deleted loses
 // nothing, since the caller's fp already names what the run record says the lane
-// widened to (widenedPaths). A drain's act (drain) carries
+// widened to (widenedPaths). The tip's paths are first passed through
+// inFlight, when it is set, so a tip still naming what only a landed step of
+// an intent run needed (a landing the run stopped after, before the renewal
+// that narrows it) gives those paths back rather than reserving them again,
+// unless a lane is mid-edit, whose edits may lie under them: the tip, live,
+// lapsed or released by a tombstone alike, is then kept as it names them, and
+// a path it no longer names is never taken back (inFlightFootprint). A drain's act (drain) carries
 // the drain's mark on every reservation it pushes, so a hand-back standing on the
 // issue backs it off; a renewal of this copy's own live tip carries none, since
 // that tip is no hand-back. A person's resume goes over a hand-back and says so.
-func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time) (reserved, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bool, stage string, now time.Time, inFlight func(tip []string) []string) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver, Drain: drain}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -953,7 +1206,11 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, drain, landing bo
 	// keeps them beside the record's footprint rather than dropping them.
 	if ok && r.Copy == claim.CopyThis &&
 		(r.State == claim.StateLive || r.State == claim.StateExpired || r.ReleasedBy == claim.ReleasedByTombstone) {
-		fp = heldWith(fp, r.Footprint)
+		tip := r.Footprint
+		if inFlight != nil {
+			tip = inFlight(tip)
+		}
+		fp = heldWith(fp, tip)
 		plain.Footprint = fp
 	}
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
@@ -1021,7 +1278,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 	issue := st.Issue() != ""
 	var fp []string
 	if issue {
-		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed"); err != nil {
+		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), "the lane stays at its landing and nothing is pushed"); err != nil {
 			return "", err
 		}
 	}
@@ -1117,13 +1374,15 @@ func covers(held, fp []string) bool {
 }
 
 // runFootprint is the footprint a run's record names to reserve its key
-// with: an intent's spec's `## Footprint` packages line, each cleaned, and an
-// issue's found_at path, read from whichever status folder holds the issue:
-// a resume is not re-judged, and the run's own lane resolves its issue, so an
-// issue that has left open/ mid-run still names its footprint. A record that
-// names none is refused at the reservation, its reason ending with outcome
-// (what was not done).
-func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
+// with: an intent's spec's packages (specPackages: those of the step the run
+// opens next and the steps it has opened lanes for, or the `## Footprint`
+// packages line), each cleaned, and an issue's found_at path, read from
+// whichever status folder holds the issue: a resume is not re-judged, and the
+// run's own lane resolves its issue, so an issue that has left open/ mid-run
+// still names its footprint. built is the spec steps the run has opened
+// lanes for, nil for a start. A record that names none is refused at the
+// reservation, its reason ending with outcome (what was not done).
+func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]string, error) {
 	if validIssueKey(key) {
 		lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateAll})
 		if err != nil {
@@ -1134,13 +1393,13 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 			return nil, refuse(StageReservation, "", "", key+" is in no status folder of this checkout's ledger, so it names no found_at path to reserve it with; "+outcome,
 				"restore the issue's record, or remove the run's directory if the issue is gone for good")
 		}
-		if fp, ok := issueFootprint(lr.Issues[i]); ok {
+		if fp, ok := issueFootprint(repoRoot, lr.Issues[i]); ok {
 			return fp, nil
 		}
 		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
-	fp, err := specPackages(repoRoot, specID)
+	fp, err := specPackages(repoRoot, specID, built)
 	var entry *footprintEntryError
 	if errors.As(err, &entry) {
 		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
@@ -1165,41 +1424,175 @@ func noFootprint(specID, key string) string {
 // maxSpecBytes caps a spec read the loop makes for its footprint.
 const maxSpecBytes = 1 << 20
 
-// specPackages is the packages specID's `## Footprint` section names, each
-// read as written when that names something in the tree and otherwise as its
-// leading path alone, a trailing parenthetical note dropped, and cleaned (a
-// trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none. An entry that is still prose,
-// holding whitespace and naming nothing in the tree, is a
+// specPackages is the packages specID names for a build to reserve: those
+// of the steps stepEntries picks from built, or, when the steps cannot say,
+// its `## Footprint` packages line (footprintLine). Each entry is read as
+// written when that names something in the tree and otherwise as its leading
+// path alone, a trailing parenthetical note dropped, and cleaned (a trailing
+// slash dropped), in the order written, each once; empty when the spec names
+// none. A step entry that is still prose, holding whitespace and naming
+// nothing in the tree, means the steps cannot say, so the Footprint line
+// stands (iss-2611181755106054); a Footprint entry that is still prose is a
 // *footprintEntryError rather than a path that shares nothing with the
 // package it means (iss-2610241549334990).
-func specPackages(repoRoot, specID string) ([]string, error) {
-	store, err := spec.Load(repoRoot)
+func specPackages(repoRoot, specID string, built []int) ([]string, error) {
+	return packagesOf(repoRoot, specID, func(content string) []string { return stepEntries(content, built) })
+}
+
+// stepPackages is the packages spec step n of specID names, read as
+// specPackages reads them, or, when that step cannot say (it names none, an
+// entry is still prose, or the steps cannot be read), the `## Footprint`
+// packages line: what the loop widens a run's reservation to as the lane for
+// step n opens (holdOpeningStep, widen.go).
+func stepPackages(repoRoot, specID string, n int) ([]string, error) {
+	return packagesOf(repoRoot, specID, func(content string) []string {
+		steps, err := spec.ParseSteps(content)
+		if err != nil {
+			return nil
+		}
+		return stepsEntries(slices.DeleteFunc(steps, func(s spec.Step) bool { return s.Number != n }))
+	})
+}
+
+// packagesOf is specPackages over the step entries entries reads from
+// specID's content.
+func packagesOf(repoRoot, specID string, entries func(content string) []string) ([]string, error) {
+	content, err := specContent(repoRoot, specID)
 	if err != nil {
 		return nil, err
+	}
+	if e := entries(content); len(e) > 0 {
+		if out, prose := packagePaths(repoRoot, e); prose == "" && len(out) > 0 {
+			return out, nil
+		}
+	}
+	return footprintLine(repoRoot, specID, content)
+}
+
+// footprintLine is the packages content's `## Footprint` packages line
+// names, read as specPackages reads an entry; an entry that is still prose
+// is a *footprintEntryError naming specID.
+func footprintLine(repoRoot, specID, content string) ([]string, error) {
+	out, prose := packagePaths(repoRoot, spec.ReadFootprint(content).Packages)
+	if prose != "" {
+		return nil, &footprintEntryError{Spec: specID, Entry: prose}
+	}
+	return out, nil
+}
+
+// specContent is specID's text, read from the spec store under maxSpecBytes.
+func specContent(repoRoot, specID string) (string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return "", err
 	}
 	sp, ok := store.Lookup(specID)
 	if !ok {
-		return nil, fmt.Errorf("%s is not in the spec store", specID)
+		return "", fmt.Errorf("%s is not in the spec store", specID)
 	}
 	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), maxSpecBytes)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
+	return string(data), nil
+}
+
+// packagePaths is entries read as paths (specPackages says how), each once,
+// or the first entry that is still prose, as written, with nothing else.
+func packagePaths(repoRoot string, entries []string) ([]string, string) {
 	var out []string
-	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+	for _, entry := range entries {
 		p := strings.TrimSpace(entry)
 		if !inTree(repoRoot, p) {
 			p = leadingPath(p)
 		}
 		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
-			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+			return nil, entry
 		}
 		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
-	return out, nil
+	return out, ""
+}
+
+// stepEntries is the packages entries of a spec's content its steps say a
+// build reserves, as written, in step order: those of the step the run opens
+// next alone (iss-2611201418535169), since the build opens one step's lane at
+// a time and the loop widens the reservation to each later step's packages as
+// its lane opens (holdOpeningStep, widen.go). Of the steps still to build,
+// those with no `- landed:` line (iss-2611181755106054), it is the ones the
+// run has opened lanes for (built), so a resume reserves the lanes it has
+// open and nothing ahead of them, or, where the run has opened none of them
+// (a start, or a resume whose lanes are all on landed steps), the first, the
+// step its next lane opens for. A package only a landed step touched, or only
+// a step after the next touches, holds no one off. With every step landed,
+// which a start refuses at the steps check and so only a resumed run meets,
+// it is the steps the run built, so a resume reserves no wider than the run's
+// start did and is never refused over a package only a step landed before the
+// run touched. Nil when the steps cannot say, and the `## Footprint` packages
+// line stands: a spec listing no steps or a steps section that cannot be read
+// (the steps check is that refusal's place), a step it picks that names no
+// packages, since its footprint is then unknown, or every step landed with
+// none built by the run. specPackages adds a fourth: an entry that names no
+// path.
+func stepEntries(content string, built []int) []string {
+	steps, err := spec.ParseSteps(content)
+	if err != nil || len(steps) == 0 {
+		return nil
+	}
+	return stepsEntries(reservedSteps(steps, built))
+}
+
+// reservedSteps is the steps of a spec stepEntries reserves, given the steps
+// the run has opened lanes for (built).
+func reservedSteps(steps []spec.Step, built []int) []spec.Step {
+	in := func(s spec.Step) bool { return slices.Contains(built, s.Number) }
+	rest := spec.Unlanded(steps)
+	if len(rest) == 0 {
+		return slices.DeleteFunc(steps, func(s spec.Step) bool { return !in(s) })
+	}
+	if open := slices.DeleteFunc(slices.Clone(rest), func(s spec.Step) bool { return !in(s) }); len(open) > 0 {
+		return open
+	}
+	return rest[:1]
+}
+
+// stepsEntries is the union, in step order, of the `- packages:` entries of
+// steps; nil when steps is empty or one of them names none.
+func stepsEntries(steps []spec.Step) []string {
+	var out []string
+	for _, s := range steps {
+		entries := s.PackageEntries()
+		if len(entries) == 0 {
+			return nil
+		}
+		out = append(out, entries...)
+	}
+	return out
+}
+
+// declaredPaths is the paths a walled stage of st is declared to change
+// (runner.Request.Declared): an intent's spec's `## Footprint` packages line
+// together with what the run reserves, the steps its lanes are open on, so
+// the declaration is never narrower than the Footprint line it was before the
+// reservation narrowed to the steps (iss-2611181755106054,
+// iss-2611201418535169); an issue's
+// found_at alone. Nil when the record names none.
+func declaredPaths(repoRoot string, st State, outcome string) []string {
+	fp, _ := runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), outcome)
+	if validIssueKey(st.Key) || st.Spec == "" {
+		return fp
+	}
+	content, err := specContent(repoRoot, st.Spec)
+	if err != nil {
+		return fp
+	}
+	line, err := footprintLine(repoRoot, st.Spec, content)
+	if err != nil {
+		return fp
+	}
+	return heldWith(line, fp)
 }
 
 // leadingPath is a packages entry less a trailing parenthetical note, one
@@ -1284,31 +1677,50 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // copy's. It returns that lease's end and whether it has passed, "" and false
 // where the release was made or that view does not show the reservation as
 // this copy's.
+//
+// A run with members releases every issue it still holds so, the lead's then
+// each member's, each with the hand-back's kind, each line naming its issue;
+// it returns the first lease end a failed release left, and whether it has
+// passed.
 func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return "", false
 	}
-	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
+	first := true
+	for _, id := range st.reservedIssues() {
+		u, e := releaseIssueOnHandBack(repoRoot, st, id, tombstoneKind(hb), now)
+		if u != "" && first {
+			until, ended, first = u, e, false
+		}
+	}
+	return until, ended
+}
+
+// releaseIssueOnHandBack is releaseOnHandBack's release of the reservation on
+// id with kind.
+func releaseIssueOnHandBack(repoRoot string, st *State, id, kind string, now time.Time) (until string, ended bool) {
+	clause, failed := releaseReservation(repoRoot, id, kind, now)
 	stage := StageReservationReleased
 	if failed {
 		var tail string
-		tail, until, ended = lapseTail(repoRoot, *st, now)
+		tail, until, ended = lapseTail(repoRoot, st.forIssue(id), now)
 		clause += tail
 		if !ended {
 			clause += " or a drain routing the hand-back releases it"
 		}
 		stage = StageReservationReleaseFailed
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
+	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause, Issue: st.issueOn(id)})
 	st.UpdatedAt = now
 	return until, ended
 }
 
-// issueFootprint is the footprint a drain reserves an issue with: the
-// repository-relative path its found_at names, a locator suffix dropped; ok
-// is false when found_at names none.
-func issueFootprint(iss capture.Issue) ([]string, bool) {
-	p, ok := capture.FoundAtPath(iss.FoundAt)
+// issueFootprint is the footprint a drain or a build reserves an issue with:
+// the repository-relative path its found_at names in the checkout at
+// repoRoot, a locator suffix dropped and a lone root file such as Makefile
+// included (capture.FoundAtPathIn); ok is false when found_at names none.
+func issueFootprint(repoRoot string, iss capture.Issue) ([]string, bool) {
+	p, ok := capture.FoundAtPathIn(repoRoot, iss.FoundAt)
 	if !ok {
 		return nil, false
 	}
@@ -1395,4 +1807,17 @@ func (s State) autoPlanLane() *AutoPlan {
 		}
 	}
 	return nil
+}
+
+// builtSteps is the spec steps s has opened a lane for, in lane order: what
+// a resumed run reserves of the steps still to build, and what one whose
+// every step has landed reserves (stepEntries).
+func (s State) builtSteps() []int {
+	var out []int
+	for _, l := range s.Lanes {
+		if l.AutoPlan == nil && l.SpecStep > 0 && !slices.Contains(out, l.SpecStep) {
+			out = append(out, l.SpecStep)
+		}
+	}
+	return out
 }

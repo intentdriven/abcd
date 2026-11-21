@@ -96,17 +96,22 @@ argument, scoping to a different time-axis or granularity, or performing an
 action distinct from rendering.
 
 That is what gives abcd its discoverability — type the verb, see where you stand.
-A sub-verb that just renames "show me the state" obscures it instead, so
-`<verb> show`, `<verb> stats`, `<verb> view` and a plain unfiltered `<verb> list`
-are **forbidden** at design time rather than argued about in review. Lint code
+A sub-verb that just renames "show me the state" obscures it instead, so a
+`<verb> show`, `<verb> stats` or `<verb> view` that takes no operand, and a plain
+unfiltered `<verb> list`, are **forbidden** at design time rather than argued
+about in review. The ban is on the operand-less render, not on the name: a
+`show <id>` that renders the one record its operand names takes a positional
+argument, so it earns its place by the test above, and `inbox show`,
+`history show` and `checklist show` conform (dcn-2610271112330536). Lint code
 `SD001` is reserved for the check; no implementation exists, so the discipline is
-held by review.
+held by review, save that a test in `internal/surface/cli` fails when a
+registered `show`, `stats` or `view` sub-verb accepts a bare invocation.
 
 **Conformance is partial, and the gap is the shipped surface's rather than the
 discipline's.** Several parents print usage with no state, several verbs
 refuse or act instead of rendering, and `history`
 breaks the rule from both ends at once: bare `abcd history` renders nothing
-while `history list` and `history show` exist, which is exactly the shape the
+while a plain `history list` exists, which is exactly the shape the
 rule forbids. The one enumeration of where the
 convention holds and where it does not lives in
 [`../04-surfaces/README.md`](../04-surfaces/README.md#bare-invocation); the
@@ -158,7 +163,7 @@ The Role 2 cross-document audit verifies registration on every plan-review.
 
 Two things to read the table with:
 
-- **A row is a reserved name, not a delivery claim.** Where the machinery a row describes is a design target rather than shipped behaviour, the row says **(staged)** in its Type column, per the truth rule in [`../00-meta.md`](../00-meta.md#the-truth-rule). Current delivery state lives in the roadmap dashboard, never here.
+- **A row is a reserved name, not a delivery claim.** Where the machinery a row describes is a design target rather than shipped behaviour, the row says **(staged)** in its Type column, per the truth rule in [`../00-meta.md`](../00-meta.md#the-truth-rule). Current delivery state lives in the status board's Now / Next / Later block (on the bare `abcd` board and the site's Status page), never here.
 - **A row the shipped design has superseded says so.** Some names entered this register from the retired predecessor implementation and describe machinery abcd neither ships nor plans; they stay registered so the name is not re-minted on a different meaning, marked **(predecessor vocabulary; superseded)** with a pointer to what replaced it.
 - **Source ids carry their namespace.** A `spc-N` in the Source column that names the retired predecessor store is written *(predecessor store)*, per the two-namespace rule in [`../../specs/README.md`](../../specs/README.md#two-spc-n-namespaces--always-qualify-a-predecessor-id). The two id spaces overlap below the live ceiling, so an unqualified `spc-2` or `spc-3` resolves in the live store to a spec about something else entirely.
 
@@ -178,7 +183,7 @@ Two things to read the table with:
 | `body cap` | **(predecessor vocabulary; superseded by the review charter at [`../../../work/reviews/README.md`](../../../work/reviews/README.md))** The `body_max_bytes` field: maximum byte length of `body_markdown` in the JSON sidecar before truncation applies. Active cap value stored in `review.json` at generation time. Replaces the legacy `summary cap` term. | spc-2 (predecessor store) + `spc-2-move-repoprompt-review-artifacts-into.1` |
 | `render cap` | **(predecessor vocabulary; superseded by the review charter at [`../../../work/reviews/README.md`](../../../work/reviews/README.md))** The `render_max_bytes` field: maximum byte length of the rendered `review.md`. May be smaller than `body cap` since MD adds structure overhead. Active cap value stored in `review.json` at generation time. Replaces the legacy `summary cap` term. | spc-2 (predecessor store) + `spc-2-move-repoprompt-review-artifacts-into.1` |
 | `staging directory` | **(predecessor vocabulary; superseded by the review charter at [`../../../work/reviews/README.md`](../../../work/reviews/README.md))** A `.staging-<NNNN>/` sibling directory used during atomic per-review directory writes. The writer creates the staging directory, populates it, then renames it to the final `<NNNN>-<slug>-<ref>/` name — POSIX rename is atomic within a single filesystem. Staging directories are gitignored. | spc-2 (predecessor store) + `spc-2-move-repoprompt-review-artifacts-into.1` |
-| `bucket` ∈ `{lint, review, audit, gate}` | Assessment-surface classifier, separated by *what is compared to what*: `lint` compares an artefact against a rule about its form; `review` compares a change against judgement (family-1 verdicts); `audit` compares reality against a recorded commitment (family-2 verdicts); `gate` consumes findings and decides one action. `—` in a sub-verb table marks a non-assessment verb. Recorded per sub-verb in each `04-surfaces/` file's `## Sub-verbs` table and machine-checked by `surface_coverage`'s sub-verb pass. Closed list, PR-to-extend — an autonomous run given a criterion interprets it; a table lookup either matches or fails. | adr-40 + spc-27 (itd-122) |
+| `bucket` ∈ `{lint, review, audit, gate}` | Assessment-surface classifier, separated by *what is compared to what*: `lint` compares an artefact against a rule about its form; `review` compares a change against judgement (family-1 verdicts); `audit` compares reality against a recorded commitment (family-2 verdicts), or one recorded commitment against another (the consistency pass); `gate` consumes findings and decides one action. `—` in a sub-verb table marks a non-assessment verb. Recorded per sub-verb in each `04-surfaces/` file's `## Sub-verbs` table and machine-checked by `surface_coverage`'s sub-verb pass. Closed list, PR-to-extend — an autonomous run given a criterion interprets it; a table lookup either matches or fails. | adr-40 + spc-27 (itd-122) |
 | `decision class` ∈ `{intent, RFC, ADR}` | Roadmap-record classifier — three decision-record surfaces with distinct lifecycles (forward-user-facing / forward-contested / retrospective-settled) | adr-1, adr-5; see [`../../decisions/README.md`](../../decisions/README.md) |
 | `kind` ∈ `{standalone, bundle-member, discipline}` | Persisted intent kind classifier — stays three-valued; `decision` is NEVER a persisted `kind` (it has no lifecycle directory under thin adoption) | itd-34 |
 | `capture verdict` ∈ `{standalone, bundle-member, discipline, decision}` | **(staged)** Capture-TIME classifier verdict, produced by the capture-kind classifier the intent surface is designed to gain; no classifier sub-verb is registered today. The first three mirror the persisted `kind`; `decision` is capture-only: it routes a confirmed standing infrastructure choice to the existing ADR store (`adr-N`), never to a persisted `kind` or the intent lifecycle. Admitted by `suggested_kind` (advisory hint) but REFUSED by `plan_single`/`reclassify`. | itd-44 (spc-56, predecessor store) |
@@ -204,7 +209,7 @@ Two things to read the table with:
 | `domain` | Uppercase grouping key in rules.json (e.g. `COMMITTING`, `DOCUMENTATION`). Domains carry state (`active` / `dormant`), recall keywords, and rules. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.1` |
 | `dormant` | rules.json domain state value (opposite of `active`). Recall-match injection is skipped for dormant domains; star-command `*<DOMAIN>` still activates them. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.1` |
 | `active` | rules.json domain state value (default). Recall-match injection fires when prompt matches recall keywords. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.1` |
-| `*<DOMAIN>` | Leading-anchored uppercase prompt prefix that explicitly activates a domain regardless of recall match. Regex `(?:^|\s)\*([A-Z][A-Z0-9_]*)(?=$|\s)`. Hyphen/period/slash following the domain name fails the boundary (no activation). Several star commands activate every named domain, injected in name-sorted order, whatever order the prompt wrote them in. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.5` |
+| `*<DOMAIN>` | Uppercase star command that explicitly activates a domain regardless of recall match. It must start the prompt or follow whitespace, so one later in the prompt activates too. Regex `(?:^|\s)\*([A-Z][A-Z0-9_]*)(?=$|\s)`. Hyphen/period/slash following the domain name fails the boundary (no activation). Several star commands activate every named domain, injected in name-sorted order, whatever order the prompt wrote them in. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.5` |
 | `force_refresh_every_n` | `.abcd/config.json` field under the `rules.` namespace. Integer; default 15 (`rules.DefaultRefreshBackstop`), which a missing key or a non-positive value falls back to. Every N prompts, the prompt-router hook forces a full re-inject regardless of dedup signature match (compaction recovery). | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.4` |
 | `.abcd/config.json` | Repo-scope config file. Named in the in-repo carve-out in `05-internals/03-configuration.md` § The two `.abcd/` scopes, which places it in the repo scope alongside the rules overrides. Reads include `rules.force_refresh_every_n` and `docs.target`. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.8` |
 | `rules.json` | Repo-scope rule overrides file at `<repo>/.abcd/rules.json`. Named in the in-repo carve-out in `05-internals/03-configuration.md` § The two `.abcd/` scopes. Validated by the Go binary rather than against a published schema document. The loader checks the structural invariants (`schema_version` is 1, every domain name is uppercase-anchored, every state is `active` or `dormant`, and no domain is left with nothing to say) and names what it refuses. | spc-14 (predecessor store) + `spc-14-modular-rules-loader-prompt-router-hook.1` |

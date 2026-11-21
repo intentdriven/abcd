@@ -57,7 +57,10 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // queue.json (else the pull request armed and in the queue), the enqueue
 // call by leaving enqueued beside it (refuse-enqueue present, the forge
 // refuses it), the merge queue's runs from runs.json and a commit's check
-// runs from checkruns.json (else none of either).
+// runs from checkruns.json (else none of either). The runs are listed only
+// through a --jq filter after the path (iss-2611201352116252), which it
+// records in runs.jq and does not apply: runs.json holds the listing as the
+// filter leaves it. A plain GET of the runs is an unexpected call.
 var stubGH = "#!/bin/sh\n" + ghcontract.Shell() + stubGHBody
 
 // stubGHBody is stubGH after the field check's definition.
@@ -114,6 +117,11 @@ case "$1 $2" in
       *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
     esac ;;
   "api "*)
+    if [ $# -eq 4 ] && [ "$2" = "repos/{owner}/{repo}/actions/runs?event=merge_group&per_page=100" ] && [ "$3" = "--jq" ]; then
+      printf '%s' "$4" > "$d/runs.jq"
+      if [ -f "$d/runs.json" ]; then cat "$d/runs.json"; else echo '{"workflow_runs":[]}'; fi
+      exit 0
+    fi
     if [ $# -ne 2 ]; then echo "stub gh: the merge gate reads with a plain GET" >&2; exit 1; fi
     case "$2" in
       "repos/{owner}/{repo}/pulls/7")
@@ -132,8 +140,6 @@ case "$1 $2" in
           maintainer-*) echo '{"permission":"write","role_name":"maintain"}' ;;
           *) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
         esac; fi ;;
-      "repos/{owner}/{repo}/actions/runs?event=merge_group&per_page=100")
-        if [ -f "$d/runs.json" ]; then cat "$d/runs.json"; else echo '{"workflow_runs":[]}'; fi ;;
       "repos/{owner}/{repo}/commits/"*"/check-runs?per_page=100")
         if [ -f "$d/checkruns.json" ]; then cat "$d/checkruns.json"; else echo '{"check_runs":[]}'; fi ;;
       *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;

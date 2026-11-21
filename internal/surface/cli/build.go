@@ -127,11 +127,24 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"names the check, the reason and the remedy, and writes nothing. `abcd build next` picks\n" +
 			"the intent instead of taking one named.\n\n" +
 			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
-			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
-			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
-			"found_at path for an issue id), so every other participant sees it is taken. A spec with\n" +
-			"no footprint, or an issue with no found_at path, is refused at the reservation and nothing\n" +
-			"is started. Another person's reservation, or your own from another copy, refuses\n" +
+			"`abcd reserve` does, once the checks pass and before the run is created. An intent's run\n" +
+			"reserves only the step it opens next: a new run with the files the `- packages:` line of\n" +
+			"the first step still to build names (one with no `- landed:` line), and a resumed one with\n" +
+			"those of the steps its lanes are open on, or of the next step when none is, or its\n" +
+			"`## Footprint` packages line when the steps cannot say: the spec lists no steps, its\n" +
+			"steps section cannot be read, a step still to build names no packages, or an entry on\n" +
+			"such a step's line names no path (an issue's found_at path for an issue id), so every\n" +
+			"other participant sees it is taken. As each later step's lane opens, the run widens the\n" +
+			"reservation to that step's packages, judged for overlap like any reservation; a peer's\n" +
+			"hold on one of them holds back that step's lane alone, and the run's other lanes go on.\n" +
+			"As each step lands, the run narrows the reservation to what the steps still in flight\n" +
+			"need, the files their lanes' branches changed included, so a run waiting on a peer never\n" +
+			"holds a landed step's packages, and a resume never takes back a path the narrowing gave\n" +
+			"up. Narrowing waits only while a lane has been handed an implementer or a fix round and\n" +
+			"has not reached its landing with nothing pending, its edits not yet committed; a resume\n" +
+			"then keeps what the reservation still names. A spec whose\n" +
+			"steps cannot say and whose footprint names no packages, or an issue with no found_at\n" +
+			"path, is refused at the reservation and nothing is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
 			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
@@ -1581,6 +1594,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			fmt.Fprintf(w, "    round %d at %s: %s %s%s%s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(role), termsafe.Sanitize(v.Verdict), located, models, routeSuffix(v.Route))
 			renderFindings(w, v.Findings)
 		}
+		renderJudges(w, l.Judges)
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
 		}
@@ -1631,6 +1645,32 @@ func renderFindings(w io.Writer, fs []loop.Finding) {
 			line += "  cited by " + strings.Join(by, ", ")
 		}
 		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+}
+
+// renderJudges renders each round's judge on a line of its own: its class,
+// the roles it was handed and what it did, and beneath it each location it
+// struck with its reason, which the judge keeps once the round's findings are
+// dropped (iss-2611182238519860).
+func renderJudges(w io.Writer, js []loop.RecordJudge) {
+	for _, j := range js {
+		did := "out, its return awaited"
+		switch {
+		case j.Unlaunched != "":
+			did = "not launched: " + j.Unlaunched
+		case j.Ruled && j.Struck == 0:
+			did = "ruled, struck no finding"
+		case j.Ruled:
+			did = fmt.Sprintf("ruled, struck %d located finding(s)", j.Struck)
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("    round %d judge, %s, on %s: %s", j.Round, j.ClassPhrase(), strings.Join(j.Roles, " and "), did)))
+		for _, s := range j.Strikes {
+			fmt.Fprintln(w, termsafe.Sanitize(fmt.Sprintf("      %s:%d  struck: %s", s.File, s.Line, s.Reason)))
+		}
+		if j.Ruled && j.Struck > 0 && len(j.Strikes) == 0 {
+			fmt.Fprintln(w, "      the locations and reasons of its strikes were not kept: an abcd before state version 29 recorded the judge, "+
+				"or the state was trimmed to its bound; the run record's judge line names the locations")
+		}
 	}
 }
 

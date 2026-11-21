@@ -91,3 +91,30 @@ func TestTheBriefEnumeratesEveryBareRenderException(t *testing.T) {
 		}
 	}
 }
+
+// The brief's enumeration claims completeness, not exclusivity: a chapter may
+// state its own verb's bare behaviour in a line (38-announce does), so the
+// paragraph must not forbid what the chapters do (iss-2610262036589915).
+func TestTheBriefsBareEnumerationClaimsCompletenessNotExclusivity(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRootFromTest(t), ".abcd", "development", "brief", "04-surfaces", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, ok := strings.Cut(string(data), "## Bare invocation\n")
+	if !ok {
+		t.Fatal("04-surfaces/README.md has no Bare invocation section")
+	}
+	section, _, _ = strings.Cut(section, "\n## ")
+	flat := strings.Join(strings.Fields(section), " ")
+	if strings.Contains(flat, "rather than restating it") {
+		t.Error("the Bare invocation section still says the chapters point to it rather than restating it, which 38-announce contradicts")
+	}
+	for _, want := range []string{
+		"the one complete enumeration of the exceptions",
+		"a chapter may state its own verb's bare behaviour in a line",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("the Bare invocation section does not say %q", want)
+		}
+	}
+}

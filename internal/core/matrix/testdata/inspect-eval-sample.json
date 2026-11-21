@@ -35,6 +35,30 @@
         "total": 9,
         "detail": "two edge cases"
       },
+      "compliance": {
+        "checks": [
+          {
+            "rule": "tests_kept",
+            "state": "kept",
+            "detail": "edited none of the 3 test file(s) the frozen commit holds"
+          },
+          {
+            "rule": "own_copy_only",
+            "state": "kept",
+            "detail": "the copy's transcript names nothing in the run's clone store outside its own clone"
+          },
+          {
+            "rule": "network_policy",
+            "state": "asserted",
+            "detail": "no runner reports what a copy reached on the network"
+          },
+          {
+            "rule": "isolation",
+            "state": "kept",
+            "detail": "abcd launches the copy's runner in the copy's own clone"
+          }
+        ]
+      },
       "roles": [
         {
           "role": "builder",

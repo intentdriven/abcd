@@ -145,9 +145,9 @@ func applySkips(st *DrainState, d DrainOptions, now time.Time) (string, error) {
 
 // skipOf is the skip-list entry that holds iss back: one naming its id, or a
 // path its found_at path lies in or contains. False when none does.
-func skipOf(st DrainState, iss capture.Issue) (DrainSkip, bool) {
+func skipOf(repoRoot string, st DrainState, iss capture.Issue) (DrainSkip, bool) {
 	var fp []string
-	if p, ok := issueFootprint(iss); ok {
+	if p, ok := issueFootprint(repoRoot, iss); ok {
 		fp = p
 	}
 	for _, s := range st.Skips {

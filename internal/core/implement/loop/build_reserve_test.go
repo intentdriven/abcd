@@ -43,11 +43,13 @@ func fetchedBy(t *testing.T, root string) {
 // TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge is C38: an
 // intent another person reserved, in the view as last fetched, is not a
 // candidate; `build next` lists it under excluded at the peers check, naming
-// the holder, the expiry and the view's age, and picks among the rest.
+// the holder, the expiry and the view's age, and picks among the rest. itd-11
+// reserves a package of its own: one sharing Q's would be passed over at the
+// overlap check (next_overlap_test.go).
 func TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge(t *testing.T) {
 	repo := pickRepo(t, map[string][2]string{
 		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)},
-		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", fpSmall)},
+		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", "- packages: internal/other\n- tests: the other\n")},
 	})
 	bare := onOrigin(t, repo)
 	q := otherCopy(t, bare, quinnEmail)
@@ -388,6 +390,32 @@ func TestBuildReservesAnIssueWithItsFoundAt(t *testing.T) {
 	r := mustRefusal(t, err)
 	if r.Stage != StageReservation || !strings.Contains(r.Reason, secondIssue+" has no found_at path to reserve it with") {
 		t.Fatalf("an issue with no found_at is refused at the reservation: %+v", r)
+	}
+	runTierAbsent(t, repo.Root())
+	if fp := footprintOf(t, bare, secondIssue); fp != nil {
+		t.Fatalf("nothing is reserved: %v", fp)
+	}
+}
+
+// TestBuildReservesAnIssueFoundAtAnExtensionlessRootFile is
+// iss-2611190625535337: `build <iss-N>` of an issue whose found_at is
+// Makefile, a file at the checkout's root with no extension, reserves the
+// issue with that path; where no such file is there the name stays a place in
+// words, and the build is refused at the reservation, starting nothing.
+func TestBuildReservesAnIssueFoundAtAnExtensionlessRootFile(t *testing.T) {
+	repo, bare := reservingDrainRepoWith(t, "Makefile", "Makefile")
+	if _, err := Start(repo.Root(), secondIssue, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"Makefile"}) {
+		t.Fatalf("the issue is reserved with Makefile: %v", fp)
+	}
+
+	repo, bare = reservingDrainRepo(t, "Makefile")
+	_, err := Start(repo.Root(), secondIssue, Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageReservation || !strings.Contains(r.Reason, secondIssue+" has no found_at path to reserve it with") {
+		t.Fatalf("a Makefile that is not there names no path: %+v", r)
 	}
 	runTierAbsent(t, repo.Root())
 	if fp := footprintOf(t, bare, secondIssue); fp != nil {

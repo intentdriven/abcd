@@ -1,7 +1,7 @@
 ---
 id: adr-2610142147242544
 slug: abcd-s-site-is-built-onto-its-own-github
-status: proposed
+status: accepted
 date: 2026-10-14
 supersedes: null
 superseded_by: null
@@ -24,11 +24,11 @@ The move is planned in itd-2610142145236613 and built later.
 
 ## Decision
 
-Proposed with the plan. It is accepted in the change that lands spc-2610142146250176's third step, when the code that enforces it lands.
+Proposed with the plan, and accepted in the change that lands spc-2610142146250176's third step, with the code that enforces it. That code lands switched off: `.abcd/site.json` names the Pages address in `record.elsewhere`, and its two switches, `forward` (point 3) and `narrow` (point 2), stay off until the cut-over (the spec's step 4) turns each on, in that order, on the person's word. With both off, abcdev.app serves what it served before.
 
 1. **abcd's about page and record are built and deployed by the workflow `site setup --provider github-pages` writes for any project,** from what abcd writes and nothing else. abcd's own needs are met inside that route, not beside it.
-2. **abcdev.app is abcd's documentation site until a community site replaces it.** Its deploy (adr-48: on release, from released bytes, with the preview of `main`) narrows to the documentation and its landing page. The record explorer leaves it.
-3. **The record's old addresses on abcdev.app (`/record/`, `/contributors/`, `/references/`) forward with a 301 to the same path on abcd's GitHub Pages address.** The forwarding is declared in the docs host's redirect file in the repository. abcd's own links point at the Pages address directly.
+2. **abcdev.app is abcd's documentation site until a community site replaces it.** Its deploy (adr-48: on release, from released bytes, with the preview of `main`) narrows to the documentation and its landing page. The record explorer leaves it, except its contributors page (`/contributors/`) and its references page (`/references/`), which stay as pages of the documentation site (dcn-2611201438402486).
+3. **The record's old addresses on abcdev.app (`/record`, `/record/` and every page below it, and `/record.json`) forward with a 301 to the same path on abcd's GitHub Pages address.** The forwarding is not declared in the docs host's redirect file. `abcd site build` generates it at build time from `record.elsewhere` in `.abcd/site.json`, and writes it into the built redirect file, `_redirects`, around the committed rules of `site-src/redirects`. abcd's own links point at the Pages address directly. `/contributors/` and `/references/` do not forward: the project route builds neither page, so a forwarded link to either would land on nothing (dcn-2611201438402486).
 4. **What GitHub Pages cannot carry is named, not hidden.** On the project route, the document content policy moves into each page as an element. Framing refusal (`frame-ancestors`) and `X-Content-Type-Options: nosniff` are lost there. The record loads nothing from outside itself and holds nothing a framing page could act on, so the loss is accepted for a read-only record. abcdev.app keeps its response headers on its own host.
 5. **The static abcdesign.app page is published from a repository of its own,** because a repository has one Pages site and abcd's is the record.
 
@@ -43,6 +43,6 @@ Proposed with the plan. It is accepted in the change that lands spc-261014214625
 
 - abcd's record depends on GitHub Pages' availability and limits (1 GB per site). The docs stay on their current host.
 - Every project on the github-pages provider gains the page-carried content policy that abcd's record needs.
-- abcdev.app's build drops the record explorer, and its redirect file gains the record's forwards. Cloudflare keeps serving the docs only.
+- abcdev.app's build drops the record explorer but its contributors and references pages, and its redirect file gains the record's forwards. Cloudflare keeps serving the docs and those two pages only.
 - abcdesign.app's publishing repository is a new outward act at that intent's cut.
 - When a community site replaces abcdev.app, the docs move with it, by a later decision.

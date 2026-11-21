@@ -43,8 +43,10 @@ to adopt, or to sign off: a question put to them, a stop that waits on them, a r
 
 Not for how the work is carried out — running the agents, the gates, merges, CI and hooks are
 the [technical facilitator](technical-facilitator.md)'s. Not for a [persona](persona.md): a
-persona is a modelled archetype in a press release, and its role hint is an outside job title.
-Where a sentence genuinely means either person, it says "the person" or names both.
+persona such as Iris may carry "product thinker" among its role hints (as
+`.abcd/development/personas.json` does), so a press release may quote "Iris, a product
+thinker", but the persona stays a modelled archetype in a press release and not the role abcd
+addresses. Where a sentence genuinely means either person, it says "the person" or names both.
 
 ## Examples
 

@@ -279,7 +279,16 @@ before that point and leave no refusal record at all. That is deliberate: a refu
 record is a record about a run, and a payload that has not yet shown which run it
 belongs to has nothing to be recorded against.
 
-One refusal after that point is deliberately unrecorded. An item whose pattern or
+Two refusals after that point are deliberately unrecorded.
+
+The first is the rerun. A payload naming a run that already has an outcome — a
+commit marker or a refusal record in its run directory — is refused as soon as
+its identity is proven, before anything else is checked, and writes nothing: a
+rerun is a new run with a new id, and recording a refusal there would overwrite
+the outcome the run already has, or leave one directory asserting both that the
+run committed and that it was refused.
+
+The second is the prose citation. An item whose pattern or
 body field cites a record id that names no record — wherever the repository's
 record-lint gates prose citations in the reading-record store, which reads every
 record the ingest would write — refuses the whole run, naming the item, the field
@@ -380,6 +389,14 @@ grammar, a run no assembly parked, and a dispatch that also names an output each
 exit 2 with nothing ingested. An output the host produced while the position is
 routed to a provider is refused at exit 2; an override to `host-decides` keeps
 one run on the harness.
+
+**A parked run is one its dispatch can read.** The dispatch reads the parked
+bundle under 64 MiB, the one limit every parked assembled input is written and
+read under, and the manifest under 4 MiB, the limit a run's manifest is read
+under wherever it is read. The assembly measures both before it writes
+anything, a dry run included, and when either would pass its limit it refuses
+at exit 2 with nothing parked, naming the artefact, its size and the limit. A
+run that parks is therefore never one its dispatch then refuses for its size.
 
 ## References
 

@@ -393,9 +393,15 @@ func laneWant(st State, i int) want {
 		}
 		for _, v := range cur.Validators {
 			if !v.Pass {
-				if l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur) {
+				switch {
+				case l.fixRoundsTaken() >= st.FixRoundCap() || l.readsRecords(cur):
 					w.kind = wantBinary
-				} else {
+				case judgeStep(st, l, cur) == judgeOut:
+				case judgeStep(st, l, cur) == judgeLaunch:
+					// The judge may not launch after all (its gate is asked
+					// again at the launch), and the fix round then takes its slot.
+					w.kind, w.role = wantAgent, RoleJudge
+				default:
 					w.kind, w.role = wantAgent, RoleImplementer
 				}
 				return w
@@ -480,15 +486,18 @@ func agentWants(st State) []want {
 // it waits on the shared probe as a landing waits on its merge, and a stage
 // that met a network failure waits the same way, its report collected for the
 // call to record (outage.go).
-func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
+func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string)) (StepResult, bool, error) {
 	// A landing waiting on the forge's merge or on its full check (a
 	// contention refusal, ruling DR6d-2) holds only its own lane: the call
 	// moves the next lane and names the wait beside what it did; when nothing
 	// else moves, the first wait is the call's answer. The time a lane began
 	// waiting for its full check is written once, so the call that finds it
-	// writes the state even when the wait is its answer. Any other refusal of a
-	// stage the binary performs is the call's answer, and no other lane moves:
-	// a disarm the forge refuses stops the step.
+	// writes the state even when the wait is its answer. A lane's opening
+	// that waits on another holder's hold on its step's packages
+	// (holdOpeningStep, Refusal.pathHeld) holds only its own lane too, as does
+	// the opening of a lane moveAgent skips for that wait. Any other refusal
+	// of a stage the binary performs is the call's answer, and no other lane
+	// moves: a disarm the forge refuses stops the step.
 	var blocked []Refusal
 	var waitErr error
 	began := false
@@ -504,11 +513,11 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 		if g.holdsMove(*st, w) {
 			err = g.networkWait(string(st.Lanes[i].Stage), st.Lanes[i].ID, st.Lanes[i].ID+"'s landing")
 		} else {
-			res, err = performMove(repoRoot, st, steps, w, now, rt, guard, remote)
+			res, err = performMove(repoRoot, st, steps, w, now, rt, guard, remote, judge)
 		}
 		if err != nil {
 			r, ok := AsRefusal(err)
-			if !ok || !r.Contention || !mayWait(*st, w) {
+			if !ok || !r.Contention || !(mayWait(*st, w) || openingWait(*st, w, r)) {
 				return StepResult{}, began, err
 			}
 			g.take(r)
@@ -531,9 +540,14 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 	// stage body succeeds replaces a slice or appends past its length, so the
 	// shallow copy is the state as it was.
 	before := *st
-	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard, remote)
+	res, did, err := moveAgent(repoRoot, st, steps, now, g, rt, guard, remote, judge, &blocked)
 	if err != nil {
 		*st = before
+		if r, ok := AsRefusal(err); ok && waitErr != nil && r.pathHeld && r.Stage == string(StageWorktree) {
+			// Only openings moveAgent passed over waited there: the binary
+			// moves' first wait is the call's answer.
+			return StepResult{}, began, waitErr
+		}
 		return StepResult{}, began, err
 	}
 	if did {
@@ -567,11 +581,22 @@ func binaryMoves(st State) []want {
 // mayWait reports whether binary move w may end waiting on someone else's
 // hold, the forge or the network, so that the call moves the next lane: only
 // a landing (or the hold a hand-back makes at it) and the withdrawal of a
-// handed-back lane's arming do. move treats a wait from any other move as the
-// call's answer, so checkRoutes, which reads a move mayWait denies as one that
-// runs, cannot be wrong about it.
+// handed-back lane's arming do. move treats a wait from any other move, but
+// a lane's opening that waits on a held path (openingWait), as the call's
+// answer, so checkRoutes, which reads a move mayWait denies as one that runs,
+// is wrong about it only there.
 func mayWait(st State, w want) bool {
 	return st.Lanes[w.lane].Stage == StageLand || w.withdraw
+}
+
+// openingWait reports whether r, the refusal of binary move w, is a lane's
+// opening waiting on another holder's live hold on its step's packages
+// (holdOpeningStep): a wait for that lane alone, so the call moves the next
+// lane, as a landing's wait lets it. Unlike mayWait it reads the refusal,
+// which the state cannot foretell, so checkRoutes reads such a move as one
+// that runs, which it does unless a peer holds its step's packages.
+func openingWait(st State, w want, r *Refusal) bool {
+	return r.pathHeld && st.Lanes[w.lane].Stage == StageWorktree && r.Stage == string(StageWorktree)
 }
 
 // agentPick is the kind of move agentChoice makes.
@@ -602,7 +627,14 @@ type agentChoice struct {
 // chooseAgent is moveAgent's choice, with no side effect, so that moveAgent
 // and checkRoutes (route_use.go) make it once, the same way.
 func chooseAgent(st State, g *outageGate) agentChoice {
-	wants := agentWants(st)
+	return chooseAgentPast(st, g, nil)
+}
+
+// chooseAgentPast is chooseAgent with the openings of the spec steps in
+// waited passed over: moveAgent's choice after an opening that waits on a
+// held path (openingWait).
+func chooseAgentPast(st State, g *outageGate, waited []int) agentChoice {
+	wants := slices.DeleteFunc(agentWants(st), func(w want) bool { return w.open >= 0 && slices.Contains(waited, w.step) })
 	if len(wants) == 0 {
 		return agentChoice{pick: pickNone}
 	}
@@ -634,52 +666,82 @@ func withBlocked(next string, blocked []Refusal) string {
 
 // moveAgent hands the first waiting work an agent when a slot is free, or
 // records the work the ceiling, or the want of a free helper, holds back; it
-// reports whether it moved or wrote.
-func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, bool, error) {
-	c := chooseAgent(*st, g)
-	switch c.pick {
-	case pickNone:
-		return idleResult(*st), false, nil
-	case pickCeiling:
-		changed := holdWaiting(st, c.wants, now)
-		res := idleResult(*st)
-		res.CeilingReached = true
-		res.Next = ceilingMove(*st)
-		return res, changed, nil
-	case pickOutage:
-		return idleResult(*st), false, g.agentWait(*st, c.wants[0])
-	case pickNoHelper:
-		// When every piece of waiting work is a step no helper is free for
-		// (the slots left are promised to lanes opened, or the step worktrees
-		// on disk are at the ceiling), each waits under `waiting` as `step
-		// <n>`, as work the ceiling holds back does.
-		changed := holdWaiting(st, c.wants, now)
-		return idleResult(*st), changed, nil
+// reports whether it moved or wrote. A lane it opens whose opening waits on
+// another holder's hold on its step's packages (openingWait) is not opened:
+// the state is put back as it was, the wait is added to blocked, named by its
+// step, and the next work is tried in its place, so one step's wait holds
+// back that step alone. When nothing else moves, the first such wait is its
+// answer.
+func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string), blocked *[]Refusal) (StepResult, bool, error) {
+	var waited []int
+	var waitErr error
+	for {
+		c := chooseAgentPast(*st, g, waited)
+		if waitErr != nil && c.pick != pickWant {
+			return StepResult{}, false, waitErr
+		}
+		switch c.pick {
+		case pickNone:
+			return idleResult(*st), false, nil
+		case pickCeiling:
+			changed := holdWaiting(st, c.wants, now)
+			res := idleResult(*st)
+			res.CeilingReached = true
+			res.Next = ceilingMove(*st)
+			return res, changed, nil
+		case pickOutage:
+			return idleResult(*st), false, g.agentWait(*st, c.wants[0])
+		case pickNoHelper:
+			// When every piece of waiting work is a step no helper is free for
+			// (the slots left are promised to lanes opened, or the step worktrees
+			// on disk are at the ceiling), each waits under `waiting` as `step
+			// <n>`, as work the ceiling holds back does.
+			changed := holdWaiting(st, c.wants, now)
+			return idleResult(*st), changed, nil
+		}
+		w := c.want
+		opened := w.open >= 0
+		prior := *st
+		if opened {
+			// A new lane opens, state-only, and its first stage (the worktree,
+			// which the binary performs) is this call's move, just before its
+			// implementer takes the slot left for it.
+			w = want{lane: openLaneRecorded(st, w.open, now), kind: wantBinary, open: -1}
+		}
+		res, err := performMove(repoRoot, st, steps, w, now, rt, guard, remote, judge)
+		if err != nil {
+			r, ok := AsRefusal(err)
+			if !opened || !ok || !r.Contention || !openingWait(*st, w, r) {
+				return StepResult{}, false, err
+			}
+			// Every change before the stage body succeeds replaces a slice
+			// or appends past its length, so the shallow copy is the state
+			// as it was (move's own refusal relies on the same).
+			*st = prior
+			if waitErr == nil {
+				waitErr = err
+			}
+			shown := *r
+			shown.Lane = stepKey(c.want.step)
+			*blocked = append(*blocked, shown)
+			waited = append(waited, c.want.step)
+			continue
+		}
+		if !opened {
+			tookSlot(st, st.Lanes[w.lane].ID, w.role, now)
+		}
+		return res, true, nil
 	}
-	w := c.want
-	opened := w.open >= 0
-	if opened {
-		// A new lane opens, state-only, and its first stage (the worktree,
-		// which the binary performs) is this call's move, just before its
-		// implementer takes the slot left for it.
-		w = want{lane: openLaneRecorded(st, w.open, now), kind: wantBinary, open: -1}
-	}
-	res, err := performMove(repoRoot, st, steps, w, now, rt, guard, remote)
-	if err != nil {
-		return StepResult{}, false, err
-	}
-	if !opened {
-		tookSlot(st, st.Lanes[w.lane].ID, w.role, now)
-	}
-	return res, true, nil
 }
 
 // performMove runs one lane's next stage body and applies its outcome. remote
-// is a drive's record of origin's identity (Options.remote), nil for none.
-func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error, remote *remoteIdentity) (StepResult, error) {
+// is a drive's record of origin's identity (Options.remote), nil for none;
+// judge is the calibration gate a round's judge is asked again as it launches
+// (Options.judgeGate), nil for production's.
+func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time, rt *roundRouter, guard func() error, remote *remoteIdentity, judge func() (bool, string)) (StepResult, error) {
 	i := w.lane
 	lane := st.Lanes[i]
-	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote}
+	c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, router: rt, planGuard: guard, remote: remote, judgeGate: judge}
 	if w.withdraw {
 		return withdrawOwed(repoRoot, st, i, c, now)
 	}
@@ -702,11 +764,18 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 		// each step at its validators (widen.go): a path a receipt's widening
 		// could not reserve yet, or a fix round changed since, is held before a
 		// validator judges it, and another holder's live hold on one waits.
+		// An intent lane's hold is widened to its spec step's packages as the
+		// lane opens, before its worktree is made: a start reserves only the
+		// step it opens next (widen.go, holdOpeningStep).
 		var widened []Entry
-		if lane.Stage == StageValidate {
-			if widened, err = holdBeforeValidators(c, lane); err != nil {
-				return StepResult{}, err
-			}
+		switch lane.Stage {
+		case StageValidate:
+			widened, err = holdBeforeValidators(c, lane)
+		case StageWorktree:
+			widened, err = holdOpeningStep(c, lane)
+		}
+		if err != nil {
+			return StepResult{}, err
 		}
 		out, err = def.Run(c, &lane)
 		if err == nil {

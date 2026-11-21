@@ -661,6 +661,12 @@ func (s State) reviewersUnwritten() string {
 			}
 		}
 		for _, a := range l.Awaits {
+			if a.Role == RoleJudge {
+				if !judgeAwaitWritten(l, a) {
+					return fmt.Sprintf("%s's await of the %s names no judge its round records", l.ID, a.Role)
+				}
+				continue
+			}
 			if a.Reviewer == nil {
 				if a.Class != "" || a.Model != "" || a.Effort != "" {
 					return fmt.Sprintf("%s's await of the %s carries a class with no reviewer", l.ID, a.Role)
@@ -1063,6 +1069,25 @@ func withdrawReviewer(st State, l *Lane, ri, vi int) string {
 	}
 	r.Validators[vi] = fresh
 	r.Comparisons = slices.DeleteFunc(slices.Clone(r.Comparisons), func(c Comparison) bool { return c.Role == v.Role })
+	if j := r.Judge; j != nil {
+		// The judge ruled on returns one of which no longer counts: its
+		// ruling goes with it, its await too, and the round asks again
+		// once its reviewers are back (judge.go).
+		r.Judge = nil
+		l.Awaits = slices.DeleteFunc(slices.Clone(l.Awaits), func(a Await) bool { return a.Receipt == j.Return })
+		for k := range r.Validators {
+			u := &r.Validators[k]
+			u.Findings = slices.Clone(u.Findings)
+			for m := range u.Findings {
+				if u.Findings[m].Status == FindingStruck {
+					u.Findings[m].Status, u.Findings[m].Reason = "", ""
+					if r.Fix != "" {
+						u.Findings[m].Status = FindingUnknown
+					}
+				}
+			}
+		}
+	}
 	markCitedBy(r)
 	l.Awaits = slices.DeleteFunc(slices.Clone(l.Awaits), func(a Await) bool { return a.Receipt == v.Return })
 	return name

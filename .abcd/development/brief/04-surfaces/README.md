@@ -314,8 +314,9 @@ rendering one, and bare `abcd statusline` renders abcd's row only in a managed
 repository, where it needs none of the payload the harness hands it on stdin,
 and prints nothing of its own anywhere else. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
-paragraph is the one enumeration of the exceptions; the chapters point here
-rather than restating it. Each exception is also recorded with its reason in
+paragraph is the one complete enumeration of the exceptions; a chapter may
+state its own verb's bare behaviour in a line, and the exception-table test
+below keeps this paragraph complete. Each exception is also recorded with its reason in
 the front door's exception table, and a test runs bare every other top-level
 verb not hidden from the help, bar the framework's own `help` and
 `completion`, and fails when one renders no state, so a verb added later is
@@ -339,7 +340,7 @@ verb the binary registers apart from the framework's own `help`.
 
 | Verb | What it is | Delivered by |
 |---|---|---|
-| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
+| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one, and `--prompt` shows what one prompt would bring back to a fresh session. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
 | `hook` | Hidden from `--help`: twelve hook entrypoints. Nine are host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and then the memory notes and pages it recalls ([`05-internals/07-memory.md`](../05-internals/07-memory.md#9-retrieval--scope-aware-budget-bracketed-itd-39)), shrinking both by the context brackets as the session fills, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and on every prompt re-asserts the session's hold on that name in the machine register ([`08-abcd.md`](08-abcd.md)), and `prompt-router-reset` clears the per-session ledgers and deletes the session's fill file so they inject again, and before a compaction records its time and trigger beside the checklist ([`40-checklist.md`](40-checklist.md#at-every-compaction)); `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)); `permission-request`, on the shell tool's `PermissionRequest`, refuses the host's approval prompt while a build or drain runs with nobody at the terminal ([`34-build.md`](34-build.md#approval-prompts-while-it-runs)); `stop`, on `Stop`, keeps a session working while the person is away and work is owed, and `stop-failure`, on `StopFailure`, records a turn the host ended on an API error while the person is away ([`26-mode.md`](26-mode.md)). Two serve the dogfood store ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-dogfood-store)): every hook shim asks `dogfood-binary` for a finished build of the reviewed branch's tip to run in the installed release's place, and `dogfood-build` checks the declared remote and builds that tip, started in the background or run by hand. The last, `scheduled-refresh`, is what `prompt-router` starts in the background when the kept answer about a repository's scheduled workflow has aged, or a person runs by hand ([`39-status.md`](39-status.md#the-latest-scheduled-verdict)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
@@ -366,13 +367,28 @@ the checkout from the root the loader resolves for the working directory.
   to a fresh session, running the prompt router's own path: the domains its
   words match, then the memory notes and pages it would recall, ranked together
   with each one's rank, score and the terms that scored it, and the form each
-  would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`) under the context bracket in force, which `--fill <percent-used>` sets and which is the unknown-fill form without it, with any layer or page that
-  could not be read. The rules take what the away block the hook reads first
+  would take (a domain `full`, `shrunk`, `pointer` or `over-budget`, a note or page `full`, `one-line`, `over-budget` or `too-large`) under the context bracket in force, with any layer or page that
+  could not be read. `--fill <percent-used>`, the share of the context window
+  used from 0 to 100, sets that bracket; without it the diagnostic has no
+  session, so the fill is unknown and it renders the unknown-fill form.
+  `--fill` without `--prompt`, or outside 0 to 100, is refused at exit 2 and
+  renders nothing, as is a `DOMAIN` given with `--prompt`. The rules take what the away block the hook reads first
   leaves them; the status block is not counted, since reading it takes in the
   status branches. On a drive's stage it reads the rules as the lane's base
   commit holds them and recalls no notes or pages, as the hook does there, and
   says it is on a stage, so an empty recall there reads apart from a prompt
   that matched nothing. It writes nothing: no session state is loaded or saved.
+  The JSON form carries `stage`, `bracket` (its name, its `source`,
+  `flag` from `--fill` or `unknown` without it, the share used when given, and
+  the table's own words for the row), `domains` (each with the recall words that
+  hit, or `*NAME` for a star activation, and its form), `notes` and `pages`
+  (each with its layer, hits, rank, score, scoring terms and form, a page also
+  with its `page:<filename>` key), `disabled`, true under the kill switch, when
+  nothing comes back, and `unreadable`, each file that could not be read and why.
+  The two forms are kept apart: a `DOMAIN` beside `--prompt` is refused, exit 2,
+  since `abcd rules <DOMAIN>` renders one domain's rules instead, and `--fill`
+  without `--prompt`, or outside 0 to 100, is refused, exit 2, with nothing
+  rendered.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
   document: a refused root, a domain skipped for carrying no rules, each
   bundled entry of a guardrail domain an override's list leaves out, and the

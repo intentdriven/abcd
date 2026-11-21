@@ -90,7 +90,7 @@ two, four and six columns.
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N`, `adr-N`, `dcn-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
 record is, where it lives, and the concrete next move for its lifecycle state.
-An admission and a surprise are the issue ledger's two folderless families
+An admission and a surprise are ledger records with no lifecycle folder
 (spc-2609020626040342): their status reads `admitted` and `recorded`, their links
 are the records they join to, and neither has a next move. A reframe record
 (`rfm-N`, spc-2609020626048705) reads `open` until its after half is written and

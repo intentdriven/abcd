@@ -131,6 +131,16 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		return AssembleResult{}, err
 	}
 
+	// Both artefacts are measured against the limit the ingest reads them under
+	// before anything is written, a dry run included: a context parked past it
+	// would be transcribed against and then refused by every ingest.
+	if err := reading.RefuseOverLimit(ContextFileName, len(contextRaw), contextLimit); err != nil {
+		return AssembleResult{}, fmt.Errorf("scribe: %w", err)
+	}
+	if err := reading.RefuseOverLimit(ManifestFileName, len(manifestRaw), manifestLimit); err != nil {
+		return AssembleResult{}, fmt.Errorf("scribe: %w", err)
+	}
+
 	res := AssembleResult{
 		Run: req.Run, ContextStamp: stamp, ContextSHA256: m.ContextSHA256, ItemCount: len(entries),
 		AllowList: m.AllowList, Artefacts: []string{}, Context: ctx, Manifest: m,

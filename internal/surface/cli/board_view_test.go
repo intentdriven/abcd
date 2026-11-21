@@ -249,6 +249,25 @@ func TestAbcdPageRelaysTheMarkdownForm(t *testing.T) {
 	}
 }
 
+// TestReadmeFacilitatorSentenceMatchesTheBoard pins the README's account of
+// the full board to what it draws (iss-2610252211549081): Now and Next rows
+// each with a spec, and the Later group as one count line ("Later: N
+// intents"), never every intent.
+func TestReadmeFacilitatorSentenceMatchesTheBoard(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRootFromTest(t), "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readme := string(raw)
+	const want = "`abcd --view facilitator` shows the full board: the repository, the record, the work tiers, the presence line, and the intents being built or ready to build, each with its spec, then a count of the rest."
+	if !strings.Contains(readme, want) {
+		t.Errorf("README.md lacks the facilitator sentence %q", want)
+	}
+	if strings.Contains(readme, "presence line and every intent with its spec") {
+		t.Errorf("README.md still says the full board shows every intent with its spec; it draws the Later group as a count")
+	}
+}
+
 // TestBoardShowsTheVersion is A9 at the front door (spc-2610100613109045,
 // decision 4): the installed version is the board's last line in both views
 // and both forms, read from the same core.VersionInfo `abcd --version`

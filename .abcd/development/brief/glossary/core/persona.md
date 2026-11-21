@@ -22,9 +22,15 @@ documents without embedding real names or PII. Each persona has a role hint (e.g
 
 ## When to use
 
-Use a persona whenever a press release, intent document, or design fiction needs a human voice or
-quote. Always pick from the registry — never invent names. Selection is by role, never by
-name: the document's audience determines the role, and the role's registered name is used.
+Use a persona whenever a press release, intent document, or design fiction needs the voice or
+quote of a modelled user. Always pick from the registry — never invent names. Selection is by
+role, never by name: the document's audience determines the role, and the role's registered
+name is used.
+
+A real role abcd addresses is not a modelled user and needs no persona: the
+[product thinker](product-thinker.md) may be quoted by role, unnamed ("said a product thinker
+who ran the first ledger drains by hand"), as many intents' press releases already do. A role
+alone invents no name; a name, where one is used, is still a registered persona's.
 
 ## When NOT to use
 

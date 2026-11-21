@@ -73,6 +73,7 @@ func (st State) masked() State {
 		})
 		return f
 	})
+	st = st.maskedBundle()
 	return st
 }
 
@@ -161,7 +162,7 @@ func (r ValidationRound) masked() ValidationRound {
 		})
 		v.Route = maskPtr(v.Route, maskRoute)
 		v.Findings = maskEach(v.Findings, func(f Finding) Finding {
-			f.File, f.Status = line(f.File), line(f.Status)
+			f.File, f.Status, f.Reason = line(f.File), line(f.Status), line(f.Reason)
 			f.CitedBy = maskEach(f.CitedBy, func(c Citer) Citer {
 				c.Role = line(c.Role)
 				return c
@@ -181,6 +182,16 @@ func (r ValidationRound) masked() ValidationRound {
 	r.Comparisons = maskEach(r.Comparisons, func(c Comparison) Comparison {
 		c.Role, c.Outcome, c.Verdicts = line(c.Role), line(c.Outcome), maskEach(c.Verdicts, line)
 		return c
+	})
+	r.Judge = maskPtr(r.Judge, func(j RoundJudge) RoundJudge {
+		j.Roles = maskEach(j.Roles, line)
+		j.Class, j.Model, j.Effort = line(j.Class), line(j.Model), line(j.Effort)
+		j.Brief, j.Return, j.Unlaunched = line(j.Brief), line(j.Return), line(j.Unlaunched)
+		j.Strikes = maskEach(j.Strikes, func(s JudgeStrike) JudgeStrike {
+			s.File, s.Reason = line(s.File), line(s.Reason)
+			return s
+		})
+		return j
 	})
 	return r
 }

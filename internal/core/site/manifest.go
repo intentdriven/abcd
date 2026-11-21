@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -311,6 +312,67 @@ type RecordOpts struct {
 	// Decisions publishes the decision records, `.abcd/work/decisions/`, as the
 	// decision log page and a page per record (itd-2609151138388536).
 	Decisions bool `json:"decisions"`
+	// Elsewhere says the record is built and served at another address,
+	// for a composed site whose own deploy narrows to its documentation
+	// (spc-2610142146250176 step 3). Absent, the record is this site's own.
+	Elsewhere *RecordElsewhere `json:"elsewhere,omitempty"`
+}
+
+// RecordElsewhere is where a composed site's record is built instead, and
+// the two cut-over switches (spc-2610142146250176 step 4). Each is off until
+// the person turns it on, one committed change apiece, so declaring the
+// address changes nothing the site serves:
+//
+//   - Forward answers each of the record's addresses here (/record, /record/
+//     and every page below it, /record.json) with a 301 to the same path at
+//     Address, by rules the build adds to the redirect map it copies from
+//     site-src/redirects. The host keeps the query string itself.
+//   - Narrow builds none of the record's pages and no record.json, and points
+//     every link the site draws into the record at Address. The contributors
+//     and references pages stay: the project route builds neither
+//     (dcn-2611201438402486). The record's other keys stay as they are, read
+//     by nothing while it is on, so turning it off again restores the record
+//     unchanged.
+type RecordElsewhere struct {
+	// Address is an https directory URL: the project route's GitHub Pages
+	// address, for abcd's own site.
+	Address string `json:"address"`
+	Forward bool   `json:"forward"`
+	Narrow  bool   `json:"narrow"`
+}
+
+// recordElsewhere is the record's address where the site narrows to its
+// documentation, and empty where it builds its own record.
+func (m Manifest) recordElsewhere() string {
+	if e := m.Record.Elsewhere; e != nil && e.Narrow {
+		return e.Address
+	}
+	return ""
+}
+
+// recordForwardTo is the address the record's paths forward to, and empty
+// where they do not.
+func (m Manifest) recordForwardTo() string {
+	if e := m.Record.Elsewhere; e != nil && e.Forward {
+		return e.Address
+	}
+	return ""
+}
+
+// validate refuses an address the host cannot forward to, or the build
+// cannot link: an https URL with a host, naming a directory, with nothing
+// a path cannot carry.
+func (e *RecordElsewhere) validate(bad func(string, ...any) error) error {
+	if e == nil {
+		return nil
+	}
+	u, err := url.Parse(e.Address)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil ||
+		u.RawQuery != "" || u.Fragment != "" || strings.HasSuffix(e.Address, "?") || strings.HasSuffix(e.Address, "#") ||
+		!strings.HasSuffix(u.Path, "/") || strings.ContainsAny(e.Address, " \t\n") {
+		return bad("record.elsewhere.address %q is not an https directory URL (https://host/path/, ending in a slash, with no query or fragment)", e.Address)
+	}
+	return nil
 }
 
 // DocsRefs names the documentation pages the site links its docs surface to.
@@ -494,6 +556,9 @@ func (m Manifest) validateAt(rel string) error {
 		return err
 	}
 	if err := m.Pages.validate(bad); err != nil {
+		return err
+	}
+	if err := m.Record.Elsewhere.validate(bad); err != nil {
 		return err
 	}
 	return m.Hosting.validate(bad)

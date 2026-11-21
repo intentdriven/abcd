@@ -66,8 +66,9 @@ const injectionTruncatedMarker = "INJECTION TRUNCATED"
 
 // DefaultRefreshBackstop is the fixed-N full-refresh backstop (D1): the primary
 // refresh is event-driven (a SessionStart/PreCompact reset clears the ledger),
-// and this large counter only catches always-relevant domains that never
-// recall-match. It is deliberately larger than CARL's every-5.
+// and this large counter clears the dedup ledgers on every Nth prompt, so any
+// domain or memory note that prompt matches is sent again; a domain the prompt
+// does not match is not sent. It is deliberately larger than CARL's every-5.
 const DefaultRefreshBackstop = 15
 
 // InjectResult is the outcome of one prompt-router evaluation. Text is empty
@@ -160,8 +161,9 @@ func UnknownFillNotice(st *SessionState, f Fill) string {
 //
 // backstop is the fixed-N full-refresh interval; <= 0 uses DefaultRefreshBackstop.
 // When the (incremented) prompt count is a multiple of the backstop, the ledger
-// is cleared first so always-relevant domains re-inject, and the recalled
-// ledger with it, so a recalled item comes back on the same prompt.
+// is cleared first, and the recalled ledger with it, so any domain or recalled
+// item the prompt matches comes back on that prompt; nothing it does not match
+// is sent.
 //
 // bracket is the context bracket the session's fill puts the prompt in
 // (brackets.go, BracketFor). In a bracket whose row shrinks rules, each
@@ -557,8 +559,10 @@ func SaveState(session string, st SessionState) error {
 
 // LoadBackstop reads rules.force_refresh_every_n from <repoRoot>/.abcd/config.json
 // — the fixed-N full-refresh backstop (D1). Event-driven reset is the primary
-// refresh, so this only bounds always-relevant domains; a missing file/key or a
-// non-positive value falls back to DefaultRefreshBackstop.
+// refresh, so this only bounds how long a matched domain or note stays deduped:
+// on every Nth prompt the ledgers clear and whatever that prompt matches is sent
+// again. A missing file/key or a non-positive value falls back to
+// DefaultRefreshBackstop.
 func LoadBackstop(repoRoot string) int {
 	path := filepath.Join(repoRoot, ".abcd", "config.json")
 	data, err := readGuarded(path, maxRulesFileBytes)

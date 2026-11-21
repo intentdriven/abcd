@@ -173,7 +173,7 @@ In a repository abcd manages the board ends with the Now / Next / Later block,
 the `status` object in the JSON (`now`, `next`, `later`, `order`), rendered as
 a `status:` heading with the three counts, one line per intent under `Now:` and
 `Next:`, and a closing `Later: N intents` line that gives Later as a count
-alone: its rows are in the JSON and on the site's Status page. Now is every
+alone: its rows are in the JSON and on the site's record health page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
 its next stage and the role it waits on, its `branch` once cut, and
 `in_flight` while that branch exists and the spec is open), then the intent

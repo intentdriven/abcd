@@ -97,6 +97,9 @@ func (m Manifest) validateProject(bad func(string, ...any) error) error {
 		{"docs", m.Docs != (DocsRefs{})},
 		{"record_pages", m.RecordPages != (RecordPages{})},
 		{"checks", m.Checks != (ManifestGate{})},
+		// A project site builds its record where it is served, so it never
+		// names another address for it.
+		{"record.elsewhere", m.Record.Elsewhere != nil},
 	} {
 		if f.set {
 			return bad("%s is a composition key, and a project site's settings carry none: its pages are built from what abcd writes to the repository", f.key)

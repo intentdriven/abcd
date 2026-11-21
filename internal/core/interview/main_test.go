@@ -12,12 +12,15 @@ package interview
 // directory the runner was started in, and turnDirToken in a file's content
 // is replaced by the turn's directory. A content starting with linkToken
 // makes the path a link to the rest of it, and one starting with sparseToken
-// makes it a sparse file of the size the rest of it gives. A turn-<n>.sleep
+// makes it an unreadable sparse file of the size the rest of it gives. A
+// turn-<n>.run.json (stubPeer) makes the turn run shell commands, a peer's
+// git commands among them, while the role runs. A turn-<n>.sleep
 // in the script makes the turn mark turn-<n>.started beside the script and
-// sleep, so a test can stop it mid-run.
+// sleep for the duration it holds, so a test can stop it mid-run.
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,7 +47,10 @@ const linkToken = "{{link}}"
 
 // sparseToken leading a turn-<n>.also.json file's content makes the turn
 // write a sparse file at that path, of the byte count the rest of the content
-// gives: one costing nothing to make that takes minutes to hash whole.
+// gives: one costing nothing to make that takes minutes to hash whole. It is
+// left with no permissions, so a reading (or git) that opened it before
+// refusing fails on the open rather than on the test's hang guard; a user the
+// mode does not stop (root) still opens it.
 const sparseToken = "{{sparse}}"
 
 func TestMain(m *testing.M) {
@@ -165,7 +171,7 @@ func stubRunner(dir string) int {
 				if err == nil {
 					var f *os.File
 					if f, err = os.Create(target); err == nil {
-						err = errors.Join(f.Truncate(size), f.Close())
+						err = errors.Join(f.Truncate(size), f.Close(), os.Chmod(target, 0))
 					}
 				}
 				if err != nil {
@@ -180,9 +186,15 @@ func stubRunner(dir string) int {
 			}
 		}
 	}
+	if raw, err := os.ReadFile(filepath.Join(dir, turn+".run.json")); err == nil {
+		if err := stubRun(raw); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 3
+		}
+	}
 	if _, err := os.Stat(filepath.Join(dir, turn+".sleep")); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, turn+".started"), nil, 0o600)
-		time.Sleep(30 * time.Second)
+		time.Sleep(stubSleepFor(dir, turn))
 	}
 	fmt.Println(`{"type":"system","subtype":"init","session_id":"stub-session-1","model":"stub-model"}`)
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"stub-session-1"}`)
@@ -222,11 +234,69 @@ func stubAlso(t *testing.T, script string, turn int, files map[string]string) {
 	}
 }
 
-// stubSleep makes the script's turn sleep once it has started, marking
-// turn-<n>.started beside the script.
-func stubSleep(t *testing.T, script string, turn int) {
+// stubCommands is a turn-<n>.run.json: shell commands the turn runs while
+// the role runs, each in its own directory and under the fixture's isolated
+// git environment, as a peer session working another worktree would.
+type stubCommands struct {
+	Env  []string  `json:"env"`
+	Runs []stubCmd `json:"runs"`
+}
+
+type stubCmd struct {
+	Dir    string `json:"dir"`
+	Script string `json:"script"`
+}
+
+// stubRun runs a turn's stubCommands in order, each bounded, failing on the
+// first that fails.
+func stubRun(raw []byte) error {
+	var c stubCommands
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return err
+	}
+	for _, r := range c.Runs {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", r.Script)
+		cmd.Dir, cmd.Env = r.Dir, c.Env
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("%s in %s: %v: %s", r.Script, r.Dir, err, out)
+		}
+	}
+	return nil
+}
+
+// stubPeer makes the script's turn run script in dir, in order, under env,
+// while the role runs.
+func stubPeer(t *testing.T, script string, turn int, env []string, runs ...stubCmd) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.sleep", turn)), nil, 0o600); err != nil {
+	b, err := json.Marshal(stubCommands{Env: env, Runs: runs})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.run.json", turn)), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// stubSleep makes the script's turn sleep once it has started, marking
+// turn-<n>.started beside the script, for the test's budget: a test stops it
+// mid-run, however late a loaded runner lets the stop land.
+func stubSleep(t *testing.T, script string, turn int) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.sleep", turn)), []byte(budget(t).String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// stubSleepFor is how long the script's turn sleeps: the duration its
+// turn-<n>.sleep holds, and 30 seconds when it holds none.
+func stubSleepFor(dir, turn string) time.Duration {
+	if b, err := os.ReadFile(filepath.Join(dir, turn+".sleep")); err == nil {
+		if d, err := time.ParseDuration(strings.TrimSpace(string(b))); err == nil && d > 0 {
+			return d
+		}
+	}
+	return 30 * time.Second
 }

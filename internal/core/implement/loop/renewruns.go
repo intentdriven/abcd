@@ -35,7 +35,9 @@ type RunRenewal struct {
 	// RunID and Key name the run and the record it reserves.
 	RunID string
 	Key   string
-	// Renewed is true for a renewal pushed and logged as reservation_renewed.
+	// Renewed is true for a renewal pushed and logged as reservation_renewed;
+	// in a run with members, only when no issue's renewal in the pass failed
+	// (membersRenewal).
 	Renewed bool
 	// Note is what the run record logged: the renewal's line when Renewed,
 	// else why it failed, or that the reservation is another person's or
@@ -111,7 +113,8 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			}
 			view = &snap
 		}
-		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" {
+		// A run with members is due when any issue it holds is (renewalDueAny).
+		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" && !(st.hasMembers() && renewalDueAny(st, *view, now)) {
 			continue
 		}
 		// A renewal due under a stop settles the run first: what a stop lets go
@@ -134,7 +137,10 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			// nil: the view is read again under the lock, not the one read
 			// before it, which another waiter's renewal may have outdated.
 			r.Note = renewReservation(root, st, now, nil)
-			if n := len(st.Record); n > logged && st.Record[n-1].Stage == StageReservationRenewed {
+			switch n := len(st.Record); {
+			case st.hasMembers():
+				r.Renewed, r.Note = membersRenewal(st.Record[logged:], r.Note)
+			case n > logged && st.Record[n-1].Stage == StageReservationRenewed:
 				r.Renewed, r.Note = true, st.Record[n-1].Note
 			}
 			return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
@@ -155,6 +161,25 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		}
 	}
 	return out
+}
+
+// membersRenewal is what one pass's renewal of a run with members reports,
+// from the lines it logged (added) and what renewReservation returned (failed):
+// a renewal of the run only when no issue's renewal failed or was lost, its
+// note each renewed line; otherwise not, its note the failure, naming each
+// issue, followed by the issues renewed beside it, so one issue's success
+// never hides another's failure.
+func membersRenewal(added []Entry, failed string) (renewed bool, note string) {
+	var lines []string
+	for _, e := range added {
+		if e.Stage == StageReservationRenewed {
+			lines = append(lines, e.Note)
+		}
+	}
+	if failed != "" {
+		return false, joinNext(append([]string{failed}, lines...)...)
+	}
+	return len(lines) > 0, joinNext(lines...)
 }
 
 // renewalRuns reads the runs in root that a renewal may look at (the one runID

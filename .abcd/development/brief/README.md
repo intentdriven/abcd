@@ -9,9 +9,16 @@ It is split across numbered folders for concurrent editing, diff legibility, and
 > from-scratch Go rebuild. They attribute *which spec owns which behaviour*;
 > they are not delivery claims. In this repo nothing is shipped until its
 > intent reaches `intents/shipped/` (see
-> [`intents/README.md`](../intents/README.md)), and current delivery state
-> lives in the roadmap dashboard, never in brief prose (per
-> [adr-5](../decisions/adrs/0005-brief-is-current-state.md)).
+> [`intents/README.md`](../intents/README.md)). Current delivery state splits
+> by kind (per [adr-5](../decisions/adrs/0005-brief-is-current-state.md)).
+> What exists is stated in the brief: each surface chapter's `shipped` /
+> `staged` table and the Status column of
+> [`04-surfaces/README.md`](04-surfaces/README.md), which `surface_coverage`
+> checks against the command tree, and the verification matrix
+> ([`06-delivery/02-verification-matrix.md`](06-delivery/02-verification-matrix.md)),
+> whose design-target rows open **(staged)**. What is scheduled or in flight
+> is the status board's Now / Next / Later block (on the bare `abcd` board
+> and the site's Status page), never brief prose.
 
 > **Naming and structural conventions:** see [`00-meta.md`](00-meta.md). It explains why this directory uses numbered folders and the brief↔lifeboat shape contract.
 

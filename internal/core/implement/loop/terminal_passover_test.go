@@ -68,7 +68,7 @@ func (w *passedOverWorld) leave(t *testing.T, runID string) {
 	now := w.clock.now()
 	clause, failed := releaseReservation(root, run.Key, "", now)
 	if err := mutateReservation(root, runID, func(st *State) (bool, error) {
-		noteRecordReleased(root, st, failed, now)
+		noteRecordReleasedFor(root, st, st.Key, failed, now)
 		st.Record = append(st.Record, Entry{At: now, Stage: StageDriveReleased, Note: clause})
 		st.UpdatedAt = now
 		return true, nil

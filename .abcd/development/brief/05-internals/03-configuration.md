@@ -153,7 +153,9 @@ hand-set: the binary reads them and never writes them.
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
                                         //   event-driven, on SessionStart and PreCompact, so this large
-                                        //   counter only re-injects always-relevant domains
+                                        //   counter is a backstop: on every Nth prompt it clears the dedup
+                                        //   ledgers, so any domain or memory note that prompt matches is
+                                        //   sent again; a domain the prompt does not match is not sent
   },
   "match": {                            // the filing-time match of capture and the intent create
                                         //   (itd-2609212137116617), a lexical heuristic
@@ -1162,6 +1164,21 @@ records for that exact tree, and copies the counts and the mode (`tests reuse`, 
 no tree and mints nothing. A file a test leaves in the tree moves its directory's
 time, so a test that walks the tree does not replay; the stage names the file.
 
+**What it took.** Beside its `reused N of M` line a stage says how long it spent
+checking, apart from what it waited for the check directory's lock and the race
+gate (iss-2611190439574731). `make preflight` names one clock per run under the
+local tier's `preflight-clock/`, by the run's start in Unix seconds: the load
+gate's wait is noted there as the stages' make starts, the race gate's around
+it, and each test stage notes its own times. After the receipt line the run's
+last lines give one time per stage, `preflight: stage unit: 3m12s`, the lint
+gates, scans, eval lanes, build and vet together as `stage gates`, then
+`preflight: checked in 41m07s (waited 6m12s: load gate 10s, race gate 6m02s)`:
+the whole run's time less every wait, then the total waited and where, one field
+per kind of wait (`load gate`, `race gate`, `check lock` for the check
+directory's lock), a kind with no wait left out, or `(waited 0s)` when the run
+waited for nothing. Each time is whole seconds in a form Go's
+`time.ParseDuration` reads, so a note set against a baseline can parse it.
+
 **What is not.** The cache sees nothing a subprocess reads, a binary a test builds,
 the clock or the network. What reruns on every check is what is declared or found:
 
@@ -1529,13 +1546,18 @@ explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It keeps abcd's own working records there too: the builds
 of the reviewed default branch in `dogfood/<root-sha>/` ([the dogfood
 store](#the-dogfood-store)), the private idea verdicts in `ideas/<root-sha>/`,
-the away mode's record in `away/<root-sha>/`, the one-shot allows `abcd guard
-allow --once` writes in `guard-allow/<root-sha>/`, each repository's answer to
-the offer after an update and the newest release whose news was shown in
-`after-update/`, one marker per running host session in `occupancy/`, the
-session-name register in `sessions/names.json`, the rules loader's per-session
-ledgers in `rules-state/`, the dashboard's run file, seen devices and lock in
-`dashboard/`, this account's holder id in `holder-id`, the load gate's three
+the away mode's record in `away/<root-sha>/`
+([`../04-surfaces/26-mode.md`](../04-surfaces/26-mode.md#the-away-mode)), the
+one-shot allows `abcd guard allow --once` writes in `guard-allow/<root-sha>/`,
+each repository's answer to the offer after an update and the newest release
+whose news was shown in `after-update/`
+([`../04-surfaces/21-update.md`](../04-surfaces/21-update.md#an-update-says-so-once)),
+one marker per running host session in `occupancy/`, the session-name register
+in `sessions/names.json`
+([`../04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md#what-ships-today)), the
+rules loader's per-session ledgers in `rules-state/`, the dashboard's run file,
+seen devices and lock in `dashboard/`
+([`../04-surfaces/36-dashboard.md`](../04-surfaces/36-dashboard.md#starting-stopping-reading-the-state)), this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
 `.load-wait.lock`), its memory admission in `load-memory-admit.json`, the
 markers of the preflights' test stages queued or running in `whole-runs/`, the

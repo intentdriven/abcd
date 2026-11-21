@@ -314,6 +314,35 @@ func TestBinaryInsideTheRepositoryIsRefused(t *testing.T) {
 	}
 }
 
+// TestBinaryReachedThroughADirectoryLinkIntoTheRepositoryIsRefused: a PATH
+// entry outside the repository that is a link to a directory inside it
+// reaches the repository's own entries, so a link the repository holds there
+// is repository content and never run, though it points at a harness outside.
+func TestBinaryReachedThroughADirectoryLinkIntoTheRepositoryIsRefused(t *testing.T) {
+	f := newFake(t, "ok")
+	self, _ := os.Executable()
+	planted := filepath.Join(f.repo, "tools")
+	if err := os.Mkdir(planted, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(self, filepath.Join(planted, Claude)); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(planted, alias); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", alias)
+	_, _, err := newClaude("").Run(context.Background(), f.request("scribe"))
+	var fl *Failure
+	if !errors.As(err, &fl) || fl.Reason != ReasonAbsent {
+		t.Fatalf("err = %v, want the link reached through a directory link refused as absent", err)
+	}
+	if f.launched(Claude) {
+		t.Fatal("the link inside the repository was launched")
+	}
+}
+
 // TestLaunchEnvironmentIsScrubbed: an inherited repository-selection or config
 // injection variable never reaches the harness, and the launch runs in the
 // repository directory with no stdin.

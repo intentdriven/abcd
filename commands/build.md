@@ -46,38 +46,62 @@ the reservation keeps people apart. In a checkout with a remote named
 checks below pass and before the run is created: the branch
 `abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
 `~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
-the files the spec's
-`## Footprint` `- packages:` line names (an issue's `found_at` path for
-`build <iss-N>`). Every other participant, a second person, a second
+the files the step it opens next names on its `- packages:` line, the first
+step with no `- landed:` line (for a resume, the steps still to build its
+lanes are open on), or the spec's `## Footprint` `- packages:` line when the
+steps cannot say: the spec lists no steps, its steps section cannot be read,
+that step names no packages, or an entry on its line names no path (an
+issue's `found_at` path for `build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The
 payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
 reserves nothing and carries none.
 
-The reservation names exactly the paths that line names, so a file named there
-is reserved as that file, and one reservation holds them for every step of the
-run. A path naming a directory git tracks is reserved as it stands, and the
+The reservation names exactly the paths those lines name, so a file named there
+is reserved as that file, and one reservation holds them for every step the
+run builds. It widens as each later step's lane opens: before that lane's
+worktree is made, `abcd implement step` reserves the step's own `- packages:`
+line (the `## Footprint` line when it cannot say) beside what the reservation
+holds, judged for overlap like any reservation, so a package only a later step
+names holds no one off until that step's lane opens. Another's live hold on
+one of them holds that step back alone, with no worktree made for it: the
+step moves the run's other lanes, or opens a later step's lane in its place,
+and names the wait; it exits 3 only when nothing else moved. The step goes on
+once the hold ends. Once a step lands, the next `abcd implement step` narrows
+the reservation to what the steps still in flight need (their packages, the
+paths their lanes widened to, the files their lanes' branches changed, and the
+spec, which each landing marks), so a package only a landed step names holds
+no one off, and a run waiting for a later step's package never holds the one a
+peer's next step waits for. Narrowing waits only while a lane has been
+handed an implementer or a fix round and has not reached its landing with
+nothing pending: its branch shows its edits only once its receipt commits
+them. A lane still at its worktree or brief holds nothing back. A resume never
+takes back a path the narrowing gave up; while a lane is mid-edit it keeps
+what the reservation still names. A resume after every step has landed
+reserves the packages of the steps the run built.
+A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the
 work changes instead` (`reservation_warnings` in `--json`, a list of those
 lines). `build next` warns the same way for the run it starts, and its
 `--json` carries the list under `start`. A directory holds off every other
 reservation of a file inside it, so tell the user, and suggest narrowing the
-spec's `- packages:` line to the files the work changes. A step's own
-`- packages:` line is not read for the reservation.
+spec's `- packages:` lines to the files the work changes.
 
-- A spec with no footprint is refused at the `reservation` stage, exit 2,
-  starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
+- A spec whose steps cannot say and whose `## Footprint` names no packages
+  is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
-  started`. An issue whose `found_at` names no repository-relative path is
+  started`. An issue whose `found_at` names no repository-relative path (a lone
+  name such as `Makefile` counts when that file is at the checkout's root) is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Each entry of that line is read as its path alone. An entry that names
+- Each entry of those lines is read as its path alone. An entry that names
   something in the tree as written is reserved as written; otherwise a
   trailing parenthetical note set off by a space is dropped
   (`internal/core/x (new)` reserves `internal/core/x`, while
   `app/(marketing)` stays whole), and a comma inside a note does not split
-  the entry. An entry that is still prose
+  the entry. A step's entry that is still prose
   once its note is dropped, holding a space and naming nothing in the tree,
+  sends the build to the `## Footprint` line; such an entry on that line
   is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N>'s
   packages entry "<entry>" under ## Footprint names no path; write it as its
   path alone, any note in a trailing parenthetical, then run abcd build
@@ -103,7 +127,7 @@ tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
 issue lane is handed back releases it then. A run's reservation follows
 what its lanes change, an intent's as an issue's: once the implementer hands
 its receipt back, the run reserves every path the lane's branch changes beyond
-the footprint it holds (the `found_at`, or the spec's `- packages:` line), the
+the footprint it holds (the `found_at`, or the spec's packages), the
 decision records it wrote and the records its landing changes among them, each
 by its own name, and again
 before each step at its validators and before its landing's push, judged for
@@ -112,7 +136,7 @@ ends (`/abcd:implement`). Starting again while the run is in
 progress reserves again: it renews this copy's live reservation (keeping its
 footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
-`- packages:` line names; once the spec has widened its footprint, it reserves
+packages name; once the spec has widened its footprint, it reserves
 again with the widened one, which is judged for overlap like any reservation
 and keeps the term, so origin names every path the build will change. An
 issue's reservation that its landing narrowed to the files the lane changed
@@ -467,7 +491,22 @@ the same function, less one this checkout already has a run in progress for.
 In a checkout with `origin`, an intent whose spec's `## Footprint` names no
 packages, or names one by prose rather than by its path, is excluded too, at
 the check `footprint`, since its start would be refused at the reservation;
-the pick moves to the next candidate.
+the pick moves to the next candidate. So is an intent whose footprint (the
+one its start reserves with: the packages of the step it opens next, or
+the `## Footprint` packages line) shares a path with another copy's live
+reservation of another record, as this checkout last fetched them, at the
+check `overlap`: its reason names the path the hold shares (or the intent
+itself, where the hold is on it), the record holding it, the holder and the
+hold's expiry. It is the reservation's own overlap rule, so a
+hold that expired or was released, and this copy's own reservations, exclude
+nothing. A reservation this copy made under a holder id that is no longer
+yours (your home was emptied, so a new id was minted) is not its own: the
+start's reservation backs off over it, so it excludes like another copy's. Run
+`abcd peers` first to judge against what `origin` holds now. A
+hold that reached `origin` since that fetch still refuses the picked intent's
+start, and the refusal's reason opens `build next picked <itd-N>, and its start
+was refused:`. The board's next-up head passes over an intent excluded at
+`overlap` or at `footprint` too.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in
@@ -646,7 +685,13 @@ The four classes are named for what each is for, strongest first: `research`,
   judge is stored with a status fixed when the run starts: `waiting` until an
   agent clears the gate, `active` from then on. A waiting judge is never
   launched, awaited or counted in an estimate, the stricter verdict decides, and
-  the run record says so in one line; a run never gains a judge part-way. A
+  the run record says so in one line; a run never gains a judge part-way. An
+  active judge, where a role's two reviewers disagree, may only strike from the
+  fix brief a finding it rules false, with its reason, and never passes a round
+  (`commands/implement.md`); the round's judge keeps each strike's location and
+  reason, so the run record shows them once the run is finished, except
+  where only the count is kept: a state trimmed to its size limit, or a
+  version-28 run whose struck round's findings were already dropped. A
   judge a configuration file names while no agent has cleared the gate is
   refused at the `review` stage, since the run cannot give it.
 - `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2

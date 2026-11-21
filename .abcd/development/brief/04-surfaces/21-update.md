@@ -193,7 +193,9 @@ release as `previous_tag` in the `binary-meta` it writes at the swap (the ruling
 CJ1). A first install, a copy out of the cache at the same release and the
 per-session fast path replace no release and print no such line. The session
 start check never prints that line, with one exception: the bootstrap salvage
-that the per-prompt, per-command and pre-compaction hooks run discards its output, so a swap made there adds
+that the `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`
+and `PreCompact` hooks run discards its output (the five events
+`05-internals/03-configuration.md` counts), so a swap made there adds
 `transition_unseen=yes` to the `binary-meta` it writes, and the next session
 start shows the line once. Once is a claim per release: the session check
 creates `cache/update-shown-<new>` in the plugin data directory, or

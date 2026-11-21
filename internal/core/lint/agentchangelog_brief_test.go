@@ -99,3 +99,23 @@ func TestBriefCalibrationBandNamesEveryEntryThatStatesNoDelta(t *testing.T) {
 		t.Errorf("the calibration-band bullet says %q entries say it nowhere; %s holds %d: %v", m[1], defaultAgentChangelog, len(silent), silent)
 	}
 }
+
+// The layer-B section once said the golden-test harness lands with the first
+// Pass-A agent's spec, "the point at which a second agent exists to generalise
+// the runner over", while the same section counts eighteen shipped agents and
+// no Pass-A agent has shipped (iss-2611060809335201). The clause gave a reason
+// that no longer held, so it went; the section keeps the timing alone.
+func TestBriefLayerBGivesNoStaleSecondAgentReason(t *testing.T) {
+	const briefRel = ".abcd/development/brief/05-internals/05-prompt-quality.md"
+	brief, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(briefRel)))
+	if err != nil {
+		t.Fatalf("read %s: %v", briefRel, err)
+	}
+	flat := strings.Join(strings.Fields(string(brief)), " ")
+	if strings.Contains(flat, "a second agent exists to generalise the runner over") {
+		t.Errorf("%s still says the layer-B harness waits for a second agent to generalise the runner over, though eighteen agents ship", briefRel)
+	}
+	if !strings.Contains(flat, "The harness lands with the first Pass-A agent's spec") {
+		t.Errorf("%s no longer says when the layer-B harness lands", briefRel)
+	}
+}

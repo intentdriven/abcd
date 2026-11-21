@@ -335,7 +335,7 @@ func Read(lines []string, rule Rule) Reading {
 		}
 		// A list item ends at a non-blank line at column 0, and a fence it held
 		// ends with it. The line itself is then read as live.
-		if fenceOpen != "" && inItem(rule, fenceIndent) && strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
+		if fenceOpen != "" && inItem(rule, fenceIndent) && !blankLine(ln) && indentWidth(ln) == 0 {
 			closeFence(i)
 		}
 		switch {
@@ -362,7 +362,7 @@ func Read(lines []string, rule Rule) Reading {
 			if inItem(rule, fenceIndent) {
 				reach = fenceIndent + 3
 			}
-			if ok && run[0] == fenceOpen[0] && len(run) >= len(fenceOpen) && strings.TrimSpace(rest) == "" && indent <= reach {
+			if ok && run[0] == fenceOpen[0] && len(run) >= len(fenceOpen) && blankLine(rest) && indent <= reach {
 				closeFence(i + 1)
 			}
 		default:
@@ -647,7 +647,7 @@ func ReadPage(lines []string) Page {
 		for _, c := range r.comments {
 			lead := strings.TrimRight(lines[c.Start], "\r")[:c.col]
 			switch {
-			case strings.TrimSpace(lead) == "" && indentWidth(lead) < 4:
+			case blankLine(lead) && indentWidth(lead) < 4:
 				spans = append(spans, indentedSpan{c.Span, indentWidth(lead)})
 			case !inParagraph(lines, c):
 				at(c.Start)
@@ -722,7 +722,7 @@ func leftOfSpan(lines []string, items *listItems, s Span, indent int, at func(in
 	keep = min(keep, indent)
 	for j := s.Start + 1; j < s.End; j++ {
 		step()
-		if ln := strings.TrimRight(lines[j], "\r"); strings.TrimSpace(ln) != "" && indentWidth(ln) < keep {
+		if ln := strings.TrimRight(lines[j], "\r"); !blankLine(ln) && indentWidth(ln) < keep {
 			at(j)
 			return
 		}
@@ -752,7 +752,7 @@ func inParagraph(lines []string, c commentSpan) bool {
 	for j := c.Start + 1; j < c.End; j++ {
 		step()
 		l := strings.TrimRight(lines[j], "\r")
-		if strings.TrimSpace(l) == "" || paragraphBreakRe.MatchString(l) {
+		if blankLine(l) || paragraphBreakRe.MatchString(l) {
 			return false
 		}
 	}
@@ -806,11 +806,11 @@ func (li *listItems) contentCol(at, indent int) (int, bool) {
 // far as it or further.
 func (li *listItems) fold(x int) {
 	ln := strings.TrimRight(li.lines[x], "\r")
-	if strings.TrimSpace(ln) == "" || li.mask[x] != 0 {
+	if blankLine(ln) || li.mask[x] != 0 {
 		return
 	}
 	w := indentWidth(ln)
-	if w == 0 && x > 0 && strings.TrimSpace(li.lines[x-1]) == "" {
+	if w == 0 && x > 0 && BlankLine(li.lines[x-1]) {
 		li.markers = li.markers[:0]
 	}
 	c, ok := listContentCol(ln)
@@ -911,7 +911,7 @@ func htmlBlocks(lines []string, mask []uint8, at func(int)) {
 		for ; j < len(lines); j++ {
 			step()
 			l := strings.TrimRight(lines[j], "\r")
-			if closer == "" && strings.TrimSpace(l) == "" {
+			if closer == "" && blankLine(l) {
 				break
 			}
 			if j > i && mask[j]&MaskComment == 0 && nestedFenceRe.MatchString(l) {
@@ -983,7 +983,7 @@ func BulletBlocks(lines []string, mask []uint8, start, end int) []BulletBlock {
 		j := i + 1
 		for ; j < end; j++ {
 			cont := strings.TrimRight(lines[j], "\r")
-			if masked(mask, j) || strings.TrimSpace(cont) == "" || anyBulletRe.MatchString(cont) {
+			if masked(mask, j) || blankLine(cont) || anyBulletRe.MatchString(cont) {
 				break
 			}
 		}
@@ -1004,7 +1004,7 @@ func PeelTrailingLinkRefs(section *[]string) []string {
 	start := len(s)
 	for i := len(s) - 1; i >= 0; i-- {
 		t := strings.TrimRight(s[i], "\r")
-		if strings.TrimSpace(t) == "" || linkRefDefRe.MatchString(t) {
+		if blankLine(t) || linkRefDefRe.MatchString(t) {
 			start = i
 			continue
 		}
@@ -1022,10 +1022,10 @@ func PeelTrailingLinkRefs(section *[]string) []string {
 	}
 	refs := s[start:]
 	s = s[:start]
-	for len(s) > 0 && strings.TrimSpace(s[len(s)-1]) == "" {
+	for len(s) > 0 && BlankLine(s[len(s)-1]) {
 		s = s[:len(s)-1]
 	}
-	for len(refs) > 0 && strings.TrimSpace(refs[0]) == "" {
+	for len(refs) > 0 && BlankLine(refs[0]) {
 		refs = refs[1:]
 	}
 	*section = s
@@ -1143,12 +1143,12 @@ func LabelledParagraph(lines []string, label string) (start, end int, ok bool) {
 		}
 		// The paragraph must BEGIN here: a line directly continuing a previous
 		// paragraph is inside that paragraph, whatever it opens with.
-		if i > 0 && !masked(mask, i-1) && strings.TrimSpace(lines[i-1]) != "" && !IsHeading(lines[i-1]) {
+		if i > 0 && !masked(mask, i-1) && !BlankLine(lines[i-1]) && !IsHeading(lines[i-1]) {
 			continue
 		}
 		end = len(lines)
 		for j := i + 1; j < len(lines); j++ {
-			if masked(mask, j) || strings.TrimSpace(lines[j]) == "" || IsHeading(strings.TrimRight(lines[j], "\r")) {
+			if masked(mask, j) || BlankLine(lines[j]) || IsHeading(strings.TrimRight(lines[j], "\r")) {
 				end = j
 				break
 			}

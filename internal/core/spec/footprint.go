@@ -92,6 +92,19 @@ func ReadFootprint(content string) Footprint {
 	return fp
 }
 
+// PackageEntries is a step's `- packages:` line split as the `## Footprint`
+// packages line is, on its commas outside parentheses, each entry trimmed and
+// kept as written, note and all; empty when the step names none.
+func (s Step) PackageEntries() []string {
+	var out []string
+	for _, p := range splitOutsideParens(s.Packages) {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // splitOutsideParens splits a packages value on its commas, less those inside
 // a parenthetical note: `x (new, the host connector)` is one entry, its note
 // left on it for the reader to drop (iss-2610241549334990).

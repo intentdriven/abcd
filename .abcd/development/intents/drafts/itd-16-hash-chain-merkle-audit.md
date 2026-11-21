@@ -13,8 +13,9 @@ severity: major
      this intent owns the substrate (chain mechanics + the conversation/edit-chain application).
      Lifeboat verification (the original itd-16 framing, 2026-05-03 → 2026-05-08) was extracted
      to itd-35 as a sibling sub-verb application. The umbrella/application split lets future
-     audit applications (e.g., schema audit, prompt-quality audit) register as sub-verbs without
-     re-litigating the substrate. -->
+     audit applications register as sub-verbs without re-litigating the substrate; the umbrella
+     takes only audits in adr-40's sense (reality against a recorded commitment), and a check of
+     form is a lint, an `abcd lint` target. -->
 
 # `/abcd:audit` Is the Umbrella; Conversation/Edit Chain Is Its Default Application
 
@@ -26,7 +27,7 @@ severity: major
 
 ## Why This Matters
 
-**`/abcd:audit` is the whole; specific verifications are applications.** This intent ships the *whole*: the umbrella verb, the substrate (JCS, UUIDv7, Merkle), the bare-verb dispatcher behaviour, and the default conversation/edit-chain application. Future audit needs (lifeboat integrity per itd-35, schema audit, prompt-quality audit) register as sub-verbs that share this substrate rather than re-implementing chain mechanics from scratch.
+**`/abcd:audit` is the whole; specific verifications are applications.** This intent ships the *whole*: the umbrella verb, the substrate (JCS, UUIDv7, Merkle), the bare-verb dispatcher behaviour, and the default conversation/edit-chain application. Future audit needs (lifeboat integrity per itd-35, and any other comparison of reality against a recorded commitment) register as sub-verbs that share this substrate rather than re-implementing chain mechanics from scratch.
 
 abcd captures a lot of project history — the native transcript store's transcripts, the native spec store's spec states, `.abcd/logbook/` per-command reports, the `.abcd/work/` shared working material and `.abcd/development/` curated durable record. That history is **legible** but not **tamper-evident**: anyone with filesystem access can edit a transcript or rewrite a logbook entry post-hoc, and a casual reader has no way to detect it. For most uses this is fine — abcd's audience is solo developers and small teams operating in good faith.
 
@@ -62,7 +63,7 @@ abcd doesn't need to host a separate audit service: the chain lives in `.abcd/lo
 - **Lifeboat-artefact-only Merkle** (the original itd-16 framing, 2026-05-03 → 2026-05-08) — replaced by this broader conversation/edit chain. If a narrower lifeboat-only integrity proof is needed independent of the full chain, that's a separate intent.
 - **Real-time chain verification on every command** — verification is on-demand (`/abcd:audit chain`) plus mandatory at embark. Continuous verification would add latency without proportional value.
 - **Chain compression / pruning** — entries grow unboundedly with project activity. Pruning policy is a future concern if chains become unwieldy.
-- **Specific audit applications other than chain and lifeboat** — schema audit, prompt-quality audit, third-party-vendor audit, etc., are deliberately not in scope here. The umbrella is open; specific applications register as their own intents (precedent: itd-35 for lifeboat).
+- **Specific audit applications other than chain and lifeboat** — deliberately not in scope here. The umbrella is open only to audits in adr-40's sense, a comparison of reality against a recorded commitment such as the lifeboat integrity check, and each registers as its own intent (precedent: itd-35 for lifeboat). A check of form, such as a schema or prompt-quality check, is a lint under adr-40 and lands as an `abcd lint` target, never as an `/abcd:audit` sub-verb.
 
 ## Acceptance Criteria
 

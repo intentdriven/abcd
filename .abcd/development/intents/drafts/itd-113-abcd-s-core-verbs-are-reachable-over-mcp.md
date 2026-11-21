@@ -13,13 +13,13 @@ severity: major
 
 ## Press Release
 
-> **abcd's second front door is open: MCP.** The same transport-agnostic core the CLI drives is now reachable as `mcp:abcd:*` tools from any MCP-capable harness — no plugin, no per-host adaptor, no waiting for an integration. Register the server, and intents, capture, guard checks, rules, and history are on the harness's tool palette, returning the same structured results the CLI returns. Under the host-tier policy (adr-39) this is the universal floor: the guarantee every harness starts from, before any native adaptor makes it richer.
+> **abcd's MCP front door is open.** The same transport-agnostic core the CLI drives is now reachable as `mcp:abcd:*` tools from any MCP-capable harness — no plugin, no per-host adaptor, no waiting for an integration. Register the server, and intents, capture, guard checks, rules, and history are on the harness's tool palette, returning the same structured results the CLI returns. Under the host-tier policy (adr-39) this is the universal floor: the guarantee every harness starts from, before any native adaptor makes it richer.
 >
 > "Our harness had no abcd integration, and it didn't matter," said Alice. "One MCP server entry and the whole record was drivable from the agent. When a native adaptor shipped later, nothing we'd built on the floor had to change."
 
 ## Why This Matters
 
-adr-23 committed to the MCP server as the second thin front door over the unchanged core, and Phase 3 schedules it ("MCP front door opens") — but no intent, spec, or code exists for it; `internal/surface/mcp` is a reserved, empty seam. adr-39 raises the stakes: the MCP front door is the floor of the whole multi-harness policy — the tier every MCP-capable harness gets with zero per-host work, and the fallback rung every adaptor ladder ends on. Nothing above the floor (per-host adoptions, the eventual open-source default) is credible until the floor exists.
+adr-23 committed to the MCP server as one of the later thin front doors over the unchanged core, and Phase 3 schedules it ("MCP front door opens") — but no intent, spec, or code exists for it; `internal/surface/mcp` is a reserved, empty seam. adr-39 raises the stakes: the MCP front door is the floor of the whole multi-harness policy — the tier every MCP-capable harness gets with zero per-host work, and the fallback rung every adaptor ladder ends on. Nothing above the floor (per-host adoptions, the eventual open-source default) is credible until the floor exists.
 
 ## What's In Scope
 

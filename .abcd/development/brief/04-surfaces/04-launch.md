@@ -280,9 +280,8 @@ It is idempotent and fail-safe: a re-run on current machinery is a no-op
 the caller confirms, and a structural fault before the writes, a missing declaration or an unknown
 kind exits 2 with nothing written.
 
-**The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
-binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
-names it as a flag. Its report is
+**How the preview is asked for is the generated appendix's to state**, at the
+foot of this chapter, beside every other flag and sub-verb launch takes. Its report is
 preview-only, and what it finds changes no exit code (the opening of this
 chapter names the cases where it cannot run). It is **not** "ship minus
 publish": it runs the same gate suite the cut's render path runs and reports
@@ -435,7 +434,13 @@ resolves to a manifest whose name matches the listing (a pinned archive source
 resolves to the payload root it is rendered from, and its pin must be an https
 `.zip` URL with a 64-hex digest), and every declared path
 the payload is responsible for is carried. Resolution reads the resolved bundle,
-so a file present in the tree but excluded from the payload fails here.
+so a path declared explicitly, by a `plugin.json` key or a hook's command, that
+is present in the tree but excluded from the payload fails here. The convention
+register lists only what the payload already holds, so a page reached by
+convention but left outside the includes yields no entry and no finding; the
+guard for the convention directories is `payload_completeness_test.go`, whose
+test fails on a command, agent, hook or skill directory present on disk that
+the includes neither ship nor withhold with a reason.
 `dry-run` reports it; the payload render refuses on it, because the render is
 the only step that materialises an artefact.
 

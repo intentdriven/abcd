@@ -203,22 +203,48 @@ step 13). The claim above keeps one person's sessions in one copy apart; the
 reservation keeps people, and one person's computers, apart. In a checkout
 with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
-`internal/core/claim`, as `abcd reserve` does: with the packages its spec's
-`## Footprint` `- packages:` line names, each read as written when that names
+`internal/core/claim`, as `abcd reserve` does: for an intent, with the
+packages of the step it opens next alone, the `- packages:` line of the first
+step with no `- landed:` line (iss-2611201418535169), or, for a resume, of the
+steps still to build its lanes are open on, so a package only a landed step
+touched (iss-2611181755106054), or only a later step touches, holds no one
+off, and with the spec's `## Footprint` `- packages:` line when the steps
+cannot say: the spec lists no steps, its steps section cannot be read, that
+step names no packages, or an entry on its line names no path; each entry read as written when that names
 something in the tree and otherwise as its path alone (a trailing
 parenthetical note set off by a space dropped, a comma inside one not
-splitting the entry), and cleaned of a trailing slash, for an intent, and the
-path an issue's `found_at` names for an issue. The reservation names exactly
+splitting the entry), and cleaned of a trailing slash; for an issue, with the
+path its `found_at` names. The reservation names exactly
 those paths, so a file named there is reserved as
-that file, and one reservation holds them for every step of the run; a step's
-own packages line is not read for it. A path naming a directory git tracks is
+that file, and one reservation holds them for every step the run builds. The
+reservation widens as each later step's lane opens: before the lane's
+worktree is made, the loop reserves that step's own packages (the
+`## Footprint` line when the step cannot say) beside what the reservation
+holds, keeping its term, judged for overlap and against the cap like any
+reservation, and another's live hold on one of them holds that step back
+alone, a wait until that hold ends, with no worktree made for it: the step
+moves the run's other lanes, or opens a later step's lane in its place, and
+is contention only when nothing else moved. Once a step lands, the run's next
+renewal narrows the reservation to what the steps still in flight need, their
+packages, the paths their lanes widened to, the files their lanes' branches
+changed and the spec each landing marks (dcn-2611201503122480), so a package
+only a landed step touched holds no one off and two runs whose step orders
+cross never each hold what the other waits for. Narrowing waits only while a
+lane has been handed an implementer or a fix round and has not reached its
+landing with nothing pending, since its branch shows its edits only once its
+receipt commits them; a lane still at its worktree or brief holds nothing
+back. A resume never takes back a path the narrowing gave up, and while a lane
+is mid-edit it keeps what the reservation still names. A resumed run whose every step has since landed reserves the
+packages of the steps it built, never wider than its start. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning
-on stderr in the text form; iss-2610230016544142). A spec with
-no footprint, or an issue with no such path, is refused at the `reservation`
-stage, starting nothing (C35), and so is a spec whose packages entry is still
-prose once its note is dropped, holding a space and naming nothing in the
-tree, the refusal naming the spec and the entry (iss-2610241549334990);
+on stderr in the text form; iss-2610230016544142). A spec whose
+steps cannot say and whose `## Footprint` names no packages, or an issue with
+no such path, is refused at the `reservation` stage, starting nothing (C35),
+and so is a spec whose `## Footprint` packages entry, read because the steps
+cannot say, is still prose once its note is dropped, holding a space and
+naming nothing in the tree, the refusal naming the spec and the entry
+(iss-2610241549334990);
 another's hold, a person's or this person's other copy's, is contention at the
 same stage; a take-over asked for passes
 through, moving this person's own live reservation from another copy and never
@@ -254,9 +280,24 @@ The pick sub-verb chooses the intent instead of taking one named
 intents that pass every check above, judged by the same function, less one
 this checkout already has a run in progress for, and, in a checkout with a
 remote named `origin`, less one whose spec's `## Footprint` names no packages
-to reserve it with, or names one by prose (the check `footprint`), since its
-start would be refused
-at the reservation; a planned intent a check excludes is named with the first
+to reserve it with, or names one by prose (the check `footprint`), and less
+one whose footprint shares a path with another copy's live reservation of
+another record as this checkout last fetched them (the check `overlap`,
+iss-2611182334466021), since its start would be refused
+at the reservation. The footprint is the one the start reserves with, that
+of the step it opens next or the packages line, and the overlap is the
+reservation act's own rule (`claim.Snapshot.Contention`), so an expired or
+released hold, and this copy's own, exclude nothing. This copy's own is one
+it made under a holder the reader owns, the test the act's own judgement
+makes: one this copy made under a holder id the reader no longer holds (a home
+emptied, so the id was minted again) excludes like another copy's, since the
+start backs off over it (iss-2611190011141331). The reason names the
+path the hold shares (or the intent itself, where the hold is on it), the
+record holding it, its holder and the hold's expiry, and the pick
+moves to the next candidate. The board's next-up head passes over such an
+intent too, and over one excluded at `footprint`. A hold that reached `origin` after the last fetch still refuses
+the picked intent's start, which fetches, and that refusal names the intent
+picked. A planned intent a check excludes is named with the first
 check that excluded it. Each candidate is
 scored from its record, three parts of 0 to 100 at equal weight (decision 7,
 the bundled default): criteria clarity (the share of its acceptance criteria
@@ -365,7 +406,19 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 27. Version 27
+under a run id it does not name. The state is schema version 29. Version 29
+kept each location a round's judge struck, with its reason, on the judge
+(iss-2611182238519860), so a finished run keeps a strike's reason once the
+next round drops the struck round's findings: a file of version 28 reads as
+the current version, each ruled judge taking its strikes from its round's
+findings where those are still kept and keeping its count alone where they
+were dropped, and one of version 28 or lower carrying a judge's strikes is
+refused. Version 28
+added the review judge's ruling (itd-2610240922461281): a round's judge, with
+the roles it ruled on, its brief and return, whether it ruled and why it was
+not launched, and a finding's `struck` status with the judge's reason. A file
+of version 27 reads as a run no judge ruled on, and one of version 27 or lower
+carrying a judge, a strike or a reason is refused. Version 27
 added the models that wrote and reviewed each lane (itd-2610301750162657): a
 reviewer's writers' models, the model it was asked for and the one its return
 named, and a mark for a reviewer an earlier version handed out with none of
@@ -1025,7 +1078,18 @@ default, a repository's value being skipped with a warning. `review.judge`
 names one class, else the bundled `top`, which is stored `waiting` until a
 judge's agent has cleared itd-81's calibration gate and `active` from then on,
 fixed at the run's start; a waiting judge is never launched, awaited or
-counted. A judge a configuration file names is refused at the `review` stage
+counted. Where a role's two reviewers disagree, an active judge is handed both
+returns and the head once every validator has returned, the gate asked again as
+it launches; it may strike only a failing finding of that role, each strike
+with its reason, and passes nothing: a struck finding leaves the fix brief, and
+a round whose failing findings are all struck still opens a fix round. The
+round's judge keeps each location it struck and its reason, which outlive the
+round's findings, so the run record, in its JSON and its text, shows each
+strike's reason once the run is finished. Two cases keep only the count
+struck: a state trimmed to its size limit, which drops the oldest judge's
+strikes once no round carries findings, and a version-28 run whose struck
+round's findings were already dropped; the text record then says that judge's
+strikes were not kept. A judge a configuration file names is refused at the `review` stage
 until an agent has cleared the gate, as is any fault in the others, before
 anything is written. A file naming an old class (`middle`, `below`,
 `smallest`) is refused with the mapping, and a machine class map that sets

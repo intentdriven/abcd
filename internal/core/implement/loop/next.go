@@ -4,20 +4,23 @@ package loop
 // the run picks the intent it builds. The candidates are every planned intent
 // that passes every pre-start check `abcd build <itd-N>` runs, judged by the
 // same function (Check's rows, scope 1), less one this checkout already has a
-// run for; each is scored from its record (intent.ReadinessIn) and the pick
-// order (intent.PickLess) takes the readiest, the oldest among equals. The
-// pick then starts the run `abcd build <itd-N>` would start for that intent,
-// with the pick and its reason in the state, and the lane's worktree stage
-// commits the reason onto the intent as the lane branch's first commit
-// (lane.go, pickCommit), a record-only commit the receipt verifier does not
-// count as the implementer's (receipt.go).
+// run for and, in a checkout with a remote named origin, one whose start's
+// reservation would be refused: a spec naming no footprint to reserve with,
+// or a footprint sharing a path with another copy's live reservation as last
+// fetched (overlapHeld, iss-2611182334466021); each is scored from its record
+// (intent.ReadinessIn) and the pick order (intent.PickLess) takes the
+// readiest, the oldest among equals. The pick then starts the run `abcd build
+// <itd-N>` would start for that intent, with the pick and its reason in the
+// state, and the lane's worktree stage commits the reason onto the intent as
+// the lane branch's first commit (lane.go, pickCommit), a record-only commit
+// the receipt verifier does not count as the implementer's (receipt.go). A
+// start refused anyway names the intent picked.
 //
 // One pick by default; `--max <n>` and `--until-empty` begin a series that
 // picks again once each pick is delivered or its lane stops, under the pace
 // rule (criterion 5, nextseries.go).
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -44,6 +47,12 @@ const CheckRun = "run"
 // its path, in a checkout with a remote named origin: its start would be
 // refused at the reservation.
 const CheckFootprint = "footprint"
+
+// CheckOverlap is the exclusion of a planned intent whose start-time footprint
+// shares a path with another copy's live reservation of another record, as
+// this checkout last fetched them: its start would be refused at the
+// reservation (iss-2611182334466021).
+const CheckOverlap = "overlap"
 
 // Excluded is a planned intent the pick did not consider, with the first
 // check that excluded it.
@@ -178,17 +187,19 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 			continue
 		}
 		if reserves {
-			fp, err := specPackages(repoRoot, chk.Spec)
-			var entry *footprintEntryError
-			if errors.As(err, &entry) {
-				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: termsafe.Sanitize(entry.Error())})
+			// The footprint the start reserves with (reserveStart): its
+			// refusal, a spec naming none or naming one by prose, is the
+			// exclusion's reason.
+			fp, err := runFootprint(repoRoot, id, chk.Spec, nil, "the pick passes it over")
+			if rf, ok := AsRefusal(err); ok {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: termsafe.Sanitize(rf.Reason)})
 				continue
 			}
 			if err != nil {
 				return set, err
 			}
-			if len(fp) == 0 {
-				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: noFootprint(chk.Spec, id)})
+			if why := snap.overlapHeld(id, fp); why != "" {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckOverlap, Reason: why})
 				continue
 			}
 		}
@@ -200,6 +211,31 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 	}
 	intent.PickOrder(set.Candidates)
 	return set, nil
+}
+
+// overlapHeld is why a start's reservation of id with footprint fp would back
+// off in the reservations as last fetched: a path of fp shared with another
+// copy's live reservation of another record, judged by claim's one overlap
+// rule, the one the reservation act's crowding applies (Snapshot.Contention),
+// for the reader the start reserves as (peerSnapshot.reader). An expired or
+// released hold is not live and holds nothing; this copy's own reservations
+// never do, while one this copy made under a holder id the reader no longer
+// owns does, as the start's reservation backs off over it
+// (iss-2611190011141331). "" when nothing holds one off, or when there is no
+// view: no remote named origin, or a view that could not be read, on which the
+// peers check has already failed closed. It reads the view alone; the start's
+// reservation, whose push is the compare-and-swap, judges what origin holds by
+// then.
+func (snap *peerSnapshot) overlapHeld(id string, fp []string) string {
+	if snap.reserved == nil {
+		return ""
+	}
+	why := snap.reserved.Contention(id, fp, snap.now, snap.reader, false)
+	if why == "" {
+		return ""
+	}
+	// The reason quotes what another writer chose (a reserved footprint).
+	return termsafe.Sanitize(why) + "; its start would be refused at the reservation"
 }
 
 // readiness scores one candidate from its record and its open spec's, through
@@ -298,6 +334,12 @@ func startPick(repoRoot string, o Options, set CandidateSet, p intent.Pick) (Nex
 	}
 	started, err := start(repoRoot, p.Chosen.ID, o, &RunPick{Pick: p, Excluded: set.Excluded})
 	if err != nil {
+		// A start refused past the candidate checks (a hold that reached
+		// origin after the last fetch, which the start's reservation fetches)
+		// names the intent the pick chose, which its own words may not.
+		if rf, ok := AsRefusal(err); ok {
+			rf.Reason = "build next picked " + p.Chosen.ID + ", and its start was refused: " + rf.Reason
+		}
 		return NextResult{}, err
 	}
 	res := NextResult{CandidateSet: set, Pick: &p, Start: &started}

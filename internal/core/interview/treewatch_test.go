@@ -22,9 +22,10 @@ import (
 // TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview: the guard
 // watches what git status alone does not show. A role that plants a hook,
 // edits the repository's git configuration or its info files, moves HEAD,
-// adds a ref or rewrites the packed refs, plants a submodule's hook or edits
-// its configuration, writes into the local tier (a push receipt, the
-// handover), writes a gitignored file or one inside a gitignored directory,
+// moves the checkout's own branch (its loose ref or its line in the packed
+// refs; a peer's ref is not the interview's, iss-2611012144422634), plants a
+// submodule's hook or edits
+// its configuration, writes into the local tier (the handover), writes a gitignored file or one inside a gitignored directory,
 // rewrites an ignored file at the same size, writes into a hooks directory
 // core.hooksPath names outside the tree (through a link included), or writes
 // the host's local settings, is stopped after that dispatch with the path
@@ -73,10 +74,6 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 		{name: "an attributes file under info", write: func(*writtenRun) (string, string, string) {
 			return ".git/info/attributes", "* filter=planted\n", ".git/info/attributes"
 		}},
-		{name: "a push receipt in the local tier", write: func(*writtenRun) (string, string, string) {
-			p := ".abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567"
-			return p, "ok\n", p
-		}},
 		{name: "a gitignored file", setup: ignoring("*.log\n"), write: func(*writtenRun) (string, string, string) {
 			return "build.log", "planted\n", "build.log"
 		}},
@@ -121,11 +118,17 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 		{name: "HEAD pointed at another branch", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(*writtenRun) (string, string, string) {
 			return ".git/HEAD", "ref: refs/heads/other\n", ".git/HEAD"
 		}},
-		{name: "a new ref", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
-			return ".git/refs/heads/planted", r.git.Git("rev-parse", "HEAD") + "\n", ".git/refs/heads/planted"
+		{name: "the checkout's branch moved", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
+			r.git.Commit("second")
+			first := r.git.Git("rev-parse", "HEAD~1")
+			return ".git/refs/heads/main", first + "\n", ".git/refs/heads/main"
 		}},
-		{name: "the packed refs", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
-			return ".git/packed-refs", r.git.Git("rev-parse", "HEAD") + " refs/heads/packed\n", ".git/packed-refs"
+		{name: "the checkout's branch moved in the packed refs", setup: func(r *writtenRun) {
+			r.git.Commit("base")
+			r.git.Commit("second")
+			r.git.Git("pack-refs", "--all")
+		}, write: func(r *writtenRun) (string, string, string) {
+			return ".git/packed-refs", r.git.Git("rev-parse", "HEAD~1") + " refs/heads/main\n", ".git/refs/heads/main"
 		}},
 		{name: "a submodule's hook", setup: gitDirOf("sub"), write: func(*writtenRun) (string, string, string) {
 			return ".git/modules/sub/hooks/pre-commit", "#!/bin/sh\n", ".git/modules/sub/hooks/pre-commit"
@@ -475,39 +478,23 @@ func TestAGitEntryReachedThroughALinkIsReadWhereItLeads(t *testing.T) {
 }
 
 // TestAWorktreeRouteToAPushOrAHookStopsTheInterview: git keeps every linked
-// worktree's metadata in the common directory's worktrees/, and the pre-push
-// gate takes a receipt from the local tier of any worktree git lists. So a
-// role registering a worktree (one whose gitdir names the role's own turn
-// directory, holding a push receipt there), planting a receipt in a sibling
-// worktree's local tier, or repointing a sibling's commondir or gitdir (a
-// fake common directory whose configuration carries an alias), locking one
-// or giving one its own configuration, is stopped after that dispatch with
-// the path named, nothing more drawn, and the answer given before it kept.
+// worktree's metadata in the common directory's worktrees/, and a sibling
+// worktree's commondir places the configuration and hooks git runs there
+// (iss-2610040739124513). So a role repointing a sibling's commondir or
+// gitdir (a fake common directory whose configuration carries an alias), or
+// giving one its own configuration, is stopped after that dispatch with the
+// path named, nothing more drawn, and the answer given before it kept. A
+// sibling's HEAD, lock and push receipts are a peer's own work
+// (TestASiblingWorktreesOwnWorkDoesNotStopTheInterview).
 func TestAWorktreeRouteToAPushOrAHookStopsTheInterview(t *testing.T) {
-	receipts := receiptsRel + "/"
 	for _, c := range []struct {
 		name string
 		// write is what the role writes, given the repository, its HEAD and a
 		// sibling worktree; named is every path the refusal must name.
 		write func(r *writtenRun, head, lane string) (files map[string]string, named []string)
-		// listed: git must list the turn directory as a worktree after the
-		// run, so the probe is shown to be one git honours.
-		listed bool
 		// setup, when set, runs once the sibling worktree stands.
 		setup func(r *writtenRun, lane string)
 	}{
-		{name: "a worktree registered at the turn directory, holding a receipt", write: func(r *writtenRun, head, _ string) (map[string]string, []string) {
-			return map[string]string{
-				".git/worktrees/planted/gitdir":    turnDirToken + "/.git\n",
-				".git/worktrees/planted/HEAD":      head + "\n",
-				".git/worktrees/planted/commondir": "../..\n",
-				"turns/" + receipts + head:         "commit " + head + "\n",
-			}, []string{".git/worktrees/planted/gitdir", ".git/worktrees/planted/HEAD", ".git/worktrees/planted/commondir", receipts + head}
-		}, listed: true},
-		{name: "a receipt in a sibling worktree's local tier", write: func(r *writtenRun, head, lane string) (map[string]string, []string) {
-			p := filepath.ToSlash(filepath.Join(lane, filepath.FromSlash(receiptsRel), head))
-			return map[string]string{p: "commit " + head + "\n"}, []string{"/" + receipts + head}
-		}},
 		{name: "a sibling worktree's commondir repointed", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
 			fake := t.TempDir()
 			return map[string]string{
@@ -522,19 +509,6 @@ func TestAWorktreeRouteToAPushOrAHookStopsTheInterview(t *testing.T) {
 		{name: "a sibling worktree's own configuration", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
 			return map[string]string{".git/worktrees/lane/config.worktree": "[alias]\n\tst = !sh -c true\n"}, []string{".git/worktrees/lane/config.worktree"}
 		}},
-		{name: "a sibling worktree locked", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
-			return map[string]string{".git/worktrees/lane/locked": "kept\n"}, []string{".git/worktrees/lane/locked"}
-		}},
-		{name: "a worktree entry holding nothing git reads", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
-			return map[string]string{".git/worktrees/planted/index": "x\n"}, []string{".git/worktrees/planted"}
-		}},
-		{name: "a worktree registered at a file's path", write: func(r *writtenRun, head, _ string) (map[string]string, []string) {
-			return map[string]string{
-				".git/worktrees/planted/gitdir":    filepath.ToSlash(filepath.Join(r.repo, "notes.txt", ".git")) + "\n",
-				".git/worktrees/planted/HEAD":      head + "\n",
-				".git/worktrees/planted/commondir": "../..\n",
-			}, []string{".git/worktrees/planted/gitdir"}
-		}, setup: func(r *writtenRun, _ string) { r.git.Write("notes.txt", "a file\n") }},
 		{name: "the commondir of a worktree entry that is a link", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
 			moved := filepath.Join(filepath.Dir(r.repo), "moved-lane-entry")
 			return map[string]string{filepath.ToSlash(filepath.Join(moved, "commondir")): t.TempDir() + "\n"}, []string{"/moved-lane-entry/commondir"}
@@ -547,9 +521,6 @@ func TestAWorktreeRouteToAPushOrAHookStopsTheInterview(t *testing.T) {
 			if err := os.Symlink(moved, entry); err != nil {
 				t.Fatal(err)
 			}
-		}},
-		{name: "a sibling worktree's HEAD moved", write: func(r *writtenRun, _, _ string) (map[string]string, []string) {
-			return map[string]string{".git/worktrees/lane/HEAD": "ref: refs/heads/main\n"}, []string{".git/worktrees/lane/HEAD"}
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -579,12 +550,6 @@ func TestAWorktreeRouteToAPushOrAHookStopsTheInterview(t *testing.T) {
 			}
 			if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
 				t.Fatalf("record %+v", rec)
-			}
-			if c.listed {
-				list := r.git.Git("worktree", "list", "--porcelain")
-				if !strings.Contains(list, "/"+TurnsRel+"/") {
-					t.Fatalf("git does not list the planted worktree, so the probe is not one git honours:\n%s", list)
-				}
 			}
 		})
 	}
@@ -651,7 +616,7 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(budget(t)):
 		t.Fatal("the reading did not end on a link cycle under .git/hooks")
 	}
 	if _, ok := st[".git/hooks/a"]; !ok {
@@ -666,42 +631,30 @@ func TestALinkCycleUnderGitsOwnDirectoryIsReadOnce(t *testing.T) {
 // read within a small budget of entries and bytes, shared by every link that
 // reading follows, and a reading past it is refused promptly, naming the
 // link, rather than walking toward the general bound. So a role planting a
-// link to a large tree where the guard follows links (its own turn
-// directory's push receipts with the turn directory registered as a
-// worktree, a hook, the hooks directory, the worktrees directory or one
-// worktree's entry) cannot slow a turn for minutes before the guard refuses.
+// link to a large tree where the guard follows links (a hook, the hooks
+// directory, the worktrees directory or one worktree's entry) cannot slow a turn for minutes before the guard refuses.
 func TestAFollowedLinkIsBounded(t *testing.T) {
 	// within runs read and fails the test when it does not end within the
-	// time bound: reading the large trees below whole takes minutes.
+	// test's budget, a guard against a hang only: that a file past the byte
+	// budget is refused before it is read is held by the file itself, which
+	// cannot be opened (unreadable).
 	within := func(t *testing.T, read func() error) error {
 		t.Helper()
+		wait := budget(t)
 		done := make(chan error, 1)
 		go func() { done <- read() }()
 		select {
 		case err := <-done:
 			return err
-		case <-time.After(20 * time.Second):
-			t.Fatal("the reading did not end within 20s: a followed link was read past its budget")
+		case <-time.After(wait):
+			t.Fatalf("the reading did not end within %s: a followed link was read past its budget", wait.Round(time.Second))
 			return nil
 		}
 	}
 	// huge is a directory holding name, a sparse file far past the byte
-	// budget: making it costs nothing, hashing it whole takes minutes.
-	huge := func(t *testing.T, name string) string {
-		t.Helper()
-		dir := filepath.Join(t.TempDir(), "huge")
-		if err := os.Mkdir(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
-			t.Fatal(err)
-		}
-		return dir
-	}
+	// budget that cannot be opened: making it costs nothing, and a reading
+	// that opened it before refusing fails with the open's error.
+	huge := bigSparseDir
 	// many is a directory holding n empty files.
 	many := func(t *testing.T, n int) string {
 		t.Helper()
@@ -735,34 +688,6 @@ func TestAFollowedLinkIsBounded(t *testing.T) {
 		}
 	}
 
-	t.Run("a turn directory's receipts link, the turn directory registered as a worktree", func(t *testing.T) {
-		script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
-		r := newWrittenRun(t, routedToClaude)
-		r.git.Commit("base")
-		head := r.git.Git("rev-parse", "HEAD")
-		stubAlso(t, script, 2, map[string]string{
-			".git/worktrees/planted/gitdir":    turnDirToken + "/.git\n",
-			".git/worktrees/planted/HEAD":      head + "\n",
-			".git/worktrees/planted/commondir": "../..\n",
-			"turns/" + receiptsRel:             linkToken + huge(t, head),
-		})
-		var res WrittenResult
-		err := within(t, func() (err error) {
-			res, err = r.w.Run(context.Background())
-			return err
-		})
-		refused(t, err, receiptsRel)
-		if !strings.Contains(err.Error(), TurnsRel+"/") {
-			t.Fatalf("err = %v, want the link in the turn directory named", err)
-		}
-		if len(r.asked) != 1 || len(r.finished) != 0 {
-			t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the refusal", len(r.asked), len(r.finished))
-		}
-		if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
-			t.Fatalf("record %+v", rec)
-		}
-	})
-
 	for _, c := range []struct {
 		name string
 		// plant makes the links under the repository, returning the path the
@@ -789,8 +714,8 @@ func TestAFollowedLinkIsBounded(t *testing.T) {
 			link(t, many(t, maxFollowedEntries+1), filepath.Join(repo, ".git", "worktrees"))
 			return ".git/worktrees"
 		}},
-		{name: "a worktree entry linked to a directory whose HEAD is past the byte budget", plant: func(t *testing.T, repo string) string {
-			link(t, huge(t, "HEAD"), filepath.Join(repo, ".git", "worktrees", "planted"))
+		{name: "a worktree entry linked to a directory whose commondir is past the byte budget", plant: func(t *testing.T, repo string) string {
+			link(t, huge(t, "commondir"), filepath.Join(repo, ".git", "worktrees", "planted"))
 			return ".git/worktrees/planted"
 		}},
 	} {
@@ -803,14 +728,10 @@ func TestAFollowedLinkIsBounded(t *testing.T) {
 }
 
 // TestAReadingOutsideTheTreeIsBounded: a hooks directory core.hooksPath
-// names outside the tree, and the push receipts of a worktree git lists, are
-// read within the budget the followed links are held to, so a role pointing
-// core.hooksPath at a large tree, or registering a worktree whose receipts
-// directory is one, is refused promptly, naming the value or the directory,
-// rather than read toward the general bound. The hooks directory shares the
-// links' budget of entries and bytes; each receipts directory is held to the
-// entry budget on its own and shares the byte budget, so a checkout with many
-// worktrees, each holding the receipts it keeps, is read whole.
+// names outside the tree is read within the budget the followed links are
+// held to, so a role pointing core.hooksPath at a large tree is refused
+// promptly, naming the value, rather than read toward the general bound. The
+// hooks directory shares the links' budget of entries and bytes.
 func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 	refused := func(t *testing.T, err error, named ...string) {
 		t.Helper()
@@ -823,23 +744,6 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 			}
 		}
 	}
-	// register makes git list a worktree at dir, holding its receipts.
-	register := func(t *testing.T, r *writtenRun, name, dir string) {
-		t.Helper()
-		head := r.git.Git("rev-parse", "HEAD")
-		r.git.Write(".git/worktrees/"+name+"/gitdir", filepath.Join(dir, ".git")+"\n")
-		r.git.Write(".git/worktrees/"+name+"/HEAD", head+"\n")
-		r.git.Write(".git/worktrees/"+name+"/commondir", "../..\n")
-	}
-	receiptsAt := func(t *testing.T, dir string) string {
-		t.Helper()
-		p := filepath.Join(dir, filepath.FromSlash(receiptsRel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-
 	for _, c := range []struct {
 		name string
 		// plant sets the reading up, returning what the refusal must name.
@@ -874,26 +778,6 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 			r.git.Git("config", "core.hooksPath", dir)
 			return []string{"core.hooksPath", dir}
 		}},
-		{name: "a registered worktree's receipts directory holding a file past the byte budget", plant: func(t *testing.T, r *writtenRun) []string {
-			r.git.Commit("base")
-			wt := t.TempDir()
-			p := receiptsAt(t, wt)
-			if err := os.Rename(bigSparseDir(t, r.git.Git("rev-parse", "HEAD")), p); err != nil {
-				t.Fatal(err)
-			}
-			register(t, r, "planted", wt)
-			return []string{"push receipts", filepath.ToSlash(p)}
-		}},
-		{name: "a registered worktree's receipts directory past the entry budget", plant: func(t *testing.T, r *writtenRun) []string {
-			r.git.Commit("base")
-			wt := t.TempDir()
-			p := receiptsAt(t, wt)
-			if err := os.Rename(dirOfEmpties(t, maxFollowedEntries+1), p); err != nil {
-				t.Fatal(err)
-			}
-			register(t, r, "planted", wt)
-			return []string{"push receipts", filepath.ToSlash(p)}
-		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := newWrittenRun(t, "")
@@ -901,32 +785,6 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 			refused(t, readWithin(t, func() error { _, err := readTree(r.repo, ""); return err }), named...)
 		})
 	}
-
-	t.Run("many worktrees each holding the receipts a checkout keeps are read whole", func(t *testing.T) {
-		r := newWrittenRun(t, "")
-		r.git.Commit("base")
-		const worktrees, kept = 25, 50
-		for i := range worktrees {
-			wt := t.TempDir()
-			p := receiptsAt(t, wt)
-			if err := os.Mkdir(p, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			for j := range kept {
-				id := fmt.Sprintf("%040x", i*kept+j)
-				if err := os.WriteFile(filepath.Join(p, id), []byte("commit "+id+"\nminted 2026-10-05T00:00:00Z\n"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			register(t, r, fmt.Sprintf("lane%02d", i), wt)
-		}
-		if worktrees*(kept+1) <= maxFollowedEntries {
-			t.Fatalf("the case holds %d receipts entries, within one shared entry budget; it proves nothing", worktrees*(kept+1))
-		}
-		if _, err := readTree(r.repo, ""); err != nil {
-			t.Fatalf("a checkout's kept receipts are refused: %v", err)
-		}
-	})
 
 	t.Run("a role writing core.hooksPath to a large tree is refused promptly, the answers kept", func(t *testing.T) {
 		script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
@@ -954,37 +812,61 @@ func TestAReadingOutsideTheTreeIsBounded(t *testing.T) {
 }
 
 // readWithin runs read and fails the test when it does not end within the
-// time bound: reading the large trees the budget tests plant whole takes
-// minutes.
+// test's budget, a guard against a hang only: that a reading past a budget
+// refuses before reading the large file it planted is held by what the
+// refusal says or, where two refusals say the same, by the file itself,
+// which cannot be opened (bigSparseDir).
 func readWithin(t *testing.T, read func() error) error {
 	t.Helper()
+	wait := budget(t)
 	done := make(chan error, 1)
 	go func() { done <- read() }()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(20 * time.Second):
-		t.Fatal("the reading did not end within 20s: a place outside the tree was read past its budget")
+	case <-time.After(wait):
+		t.Fatalf("the reading did not end within %s: a place outside the tree was read past its budget", wait.Round(time.Second))
 		return nil
 	}
 }
 
-// bigSparseDir is a directory holding name, a sparse file far past the byte
-// budget: making it costs nothing, hashing it whole takes minutes.
+// bigSparseDir is a directory holding name, a sparse file far past the
+// followed-link byte budget that cannot be opened: making it costs nothing,
+// and a reading that opened it before refusing (hashing it, then charging it)
+// fails with the open's error, which the tests' refused rejects, rather than
+// hashing it whole inside the hang guard. The charge before the read and the
+// hash's own bound past it refuse in the same words, so the refusal alone
+// cannot say which came first.
 func bigSparseDir(t *testing.T, name string) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "huge")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Create(filepath.Join(dir, name))
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 		t.Fatal(err)
 	}
+	unreadable(t, p)
 	return dir
+}
+
+// unreadable takes every permission off p, so opening it fails. A user the
+// mode does not stop (root) still opens it: the test then says that only the
+// hang guard stands between a reading that reads before refusing and a pass.
+func unreadable(t *testing.T, p string) {
+	t.Helper()
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(p); err == nil {
+		_ = f.Close()
+		t.Logf("%s opens with no permission (run as root?): that it is refused before it is read rests on the hang guard alone", p)
+	}
 }
 
 // dirOfEmpties is a directory holding n empty files.
@@ -1011,7 +893,10 @@ func dirOfEmpties(t *testing.T, n int) string {
 // promptly, the file named, without git or the guard reading where it leads.
 func TestARedirectedGitDirectoryIsNamedNotRead(t *testing.T) {
 	// elsewhere is a common directory git accepts, whose packed refs are a
-	// sparse file far past what git reads quickly.
+	// sparse file far past what git reads quickly that cannot be opened
+	// (unreadable): git run where the redirect leads before the refusal dies
+	// on the open, which is not the refusal the test wants, rather than
+	// reading it inside the hang guard.
 	elsewhere := func(t *testing.T, r *writtenRun) string {
 		t.Helper()
 		dir := filepath.Join(t.TempDir(), "elsewhere")
@@ -1029,13 +914,15 @@ func TestARedirectedGitDirectoryIsNamedNotRead(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		f, err := os.Create(filepath.Join(dir, "packed-refs"))
+		refs := filepath.Join(dir, "packed-refs")
+		f, err := os.Create(refs)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		unreadable(t, refs)
 		return dir
 	}
 	// lane makes a linked worktree of r and runs the interview there.
@@ -1138,6 +1025,9 @@ func TestTheBytesOneReadingHashesAreBounded(t *testing.T) {
 			t.Fatalf("err = %v, want the reading refused past the byte bound, naming %s", err, named)
 		}
 	}
+	// sparse plants a sparse file of size at p that cannot be opened
+	// (unreadable): a reading that hashed it before refusing fails on the
+	// open, not on the hang guard.
 	sparse := func(t *testing.T, p string, size int64) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -1150,6 +1040,7 @@ func TestTheBytesOneReadingHashesAreBounded(t *testing.T) {
 		if err := errors.Join(f.Truncate(size), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		unreadable(t, p)
 	}
 
 	t.Run("an untracked file past the bound, before the first dispatch", func(t *testing.T) {
@@ -1234,7 +1125,12 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming %s", err, named)
 		}
 	}
-	grow := func(t *testing.T, p string) {
+	// grow makes p a sparse file far past the bound; shut also takes every
+	// permission off it (unreadable), so git run before the sizing dies on the
+	// open rather than reading it inside the hang guard. info/exclude is left
+	// open: git only warns on one it cannot open and runs on, so there a shut
+	// file would hide git reading first, and only the hang guard holds it.
+	grow := func(t *testing.T, p string, shut bool) {
 		t.Helper()
 		f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o644)
 		if err != nil {
@@ -1242,6 +1138,9 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
+		}
+		if shut {
+			unreadable(t, p)
 		}
 	}
 	for _, c := range []struct {
@@ -1252,15 +1151,15 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 		grow func(t *testing.T, r *writtenRun) string
 	}{
 		{name: "the packed refs", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "packed-refs"))
+			grow(t, filepath.Join(r.repo, ".git", "packed-refs"), true)
 			return ".git/packed-refs"
 		}},
 		{name: "HEAD", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "HEAD"))
+			grow(t, filepath.Join(r.repo, ".git", "HEAD"), true)
 			return ".git/HEAD"
 		}},
 		{name: "info/exclude", grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "info", "exclude"))
+			grow(t, filepath.Join(r.repo, ".git", "info", "exclude"), false)
 			return ".git/info/exclude"
 		}},
 		{name: "a linked worktree's own HEAD", at: func(t *testing.T, r *writtenRun) string {
@@ -1269,7 +1168,7 @@ func TestWhatGitReadsWholeIsSizedBeforeGitRuns(t *testing.T) {
 			r.git.Git("worktree", "add", "-q", "-b", "lane", lane)
 			return lane
 		}, grow: func(t *testing.T, r *writtenRun) string {
-			grow(t, filepath.Join(r.repo, ".git", "worktrees", "lane", "HEAD"))
+			grow(t, filepath.Join(r.repo, ".git", "worktrees", "lane", "HEAD"), true)
 			return "/.git/worktrees/lane/HEAD"
 		}},
 	} {
@@ -1338,15 +1237,19 @@ func TestASubmodulesGitDirectoryIsSizedAndWatched(t *testing.T) {
 		if _, err := readTreePinned(r.repo, "", pin); err != nil {
 			t.Fatal(err)
 		}
-		f, err := os.OpenFile(filepath.Join(r.repo, ".git", "modules", "sub", "packed-refs"), os.O_RDWR|os.O_CREATE, 0o644)
+		p := filepath.Join(r.repo, ".git", "modules", "sub", "packed-refs")
+		f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		// Unopenable, so a reading that hashed it before refusing fails on
+		// the open rather than reading it inside the hang guard.
+		unreadable(t, p)
 		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
-		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
+		if err == nil || !strings.Contains(err.Error(), "one reading hashes") || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/modules/sub/packed-refs") {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/modules/sub/packed-refs", err)
 		}
 	})
@@ -1640,6 +1543,9 @@ func TestALaterReadingSizesWhatGitReadsBeforeAskingGitWhereItsDirectoriesAre(t *
 		if err := errors.Join(f.Truncate(128<<30), f.Close()); err != nil {
 			t.Fatal(err)
 		}
+		// Unopenable, so git run before the sizing dies on it rather than
+		// reading it inside the hang guard.
+		unreadable(t, p)
 		err = readWithin(t, func() error { _, err := readTreePinned(r.repo, "", pin); return err })
 		if err == nil || !strings.Contains(err.Error(), "so git is not run") || !strings.Contains(err.Error(), ".git/config") {
 			t.Fatalf("err = %v, want the reading refused before git runs, naming .git/config", err)
