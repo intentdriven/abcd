@@ -309,7 +309,9 @@ run as its own peer.
 the resume's own checks pass, a lane parked at its landing with its head pushed
 is closed when what it pushed is on origin's default branch as the build fetches
 it (resolved to a commit straight after the fetch, and that commit is the proof
-throughout), and the lane's branch is gone or its tip is on that branch: its
+throughout), and the lane's branch is gone or its tip is on that branch, each
+read by the parents the commits store (no replace ref, graft file or
+commit-graph stands in for them): its
 worktree is removed, its branch deleted, its landing records the merge, and the
 run goes on in a new lane, on a new branch cut from origin's default branch tip.
 A resume the checks refuse removes nothing, with one exception: a resume whose
@@ -1116,7 +1118,8 @@ A lane's stages run in order:
    pushed head is an ancestor of the default branch on `origin`, by the parents
    the commits store; stop driving
    the run and come back later. Once it is, the loop removes the lane's
-   worktree and branch, the lane is done, and the next pending step opens the
+   worktree and branch, deleting the branch only at a tip that commit stores,
+   the lane is done, and the next pending step opens the
    next lane. In a repository abcd manages, that step then sweeps on its own
    once its save is written: the provably spent part of `abcd sweep --apply`,
    with the same proofs against a fresh fetch (other merged, clean worktrees

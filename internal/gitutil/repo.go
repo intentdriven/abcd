@@ -904,12 +904,18 @@ func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, 
 // deadline: git is killed when ctx ends, its output is read to EOF before
 // Wait, and a run ctx ended answers ctx's own error, never a partial answer.
 func RunCappedExitOneContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	return runCappedExitOneContextCmd(ctx, func() *exec.Cmd { return isolatedGitContext(ctx, root, args...) }, maxBytes, args)
+}
+
+// runCappedExitOneContextCmd is RunCappedExitOneContext's body for the command
+// build makes, built only once ctx is known not to have ended.
+func runCappedExitOneContextCmd(ctx context.Context, build func() *exec.Cmd, maxBytes int, args []string) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
-	err := procgroup.RunToEOF(ctx, isolatedGitContext(ctx, root, args...), w, e)
+	err := procgroup.RunToEOF(ctx, build(), w, e)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}
