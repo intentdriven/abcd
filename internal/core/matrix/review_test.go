@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -216,6 +217,43 @@ func TestAReviewRefusalNamesNoMachinePath(t *testing.T) {
 				t.Fatalf("the refusal names a machine path: %v", err)
 			}
 		}
+	}
+}
+
+// TestAHugeFlatDirectoryIsRefusedAtTheBoundMidListing: the copy controls its
+// tree, so a directory of millions of entries is no reason to hold millions
+// in memory. A directory is listed in batches, counted as it is listed, and
+// the walk stops at the entry bound inside the directory, never after
+// listing it whole.
+func TestAHugeFlatDirectoryIsRefusedAtTheBoundMidListing(t *testing.T) {
+	dir := t.TempDir()
+	flat := filepath.Join(dir, "flat")
+	if err := os.Mkdir(flat, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 60 {
+		if err := os.WriteFile(filepath.Join(flat, fmt.Sprintf("f%03d.go", i)), []byte("package f\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const bound, batch = 20, 4
+	_, listed, err := walkCopyTree(context.Background(), dir, nil, bound, batch)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("more than %d entries", bound)) {
+		t.Fatalf("a tree past the entry bound is refused: %v", err)
+	}
+	if listed > bound+batch {
+		t.Fatalf("%d entries of a 60-entry directory were listed before the walk refused at %d", listed, bound)
+	}
+	if strings.Contains(err.Error(), dir) {
+		t.Fatalf("the refusal names no machine path: %v", err)
+	}
+	// Within the bound, the same tree is read whole.
+	tree, _, err := walkCopyTree(context.Background(), dir, nil, 100, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree) != 60 || tree["flat/f059.go"].data == nil {
+		t.Fatalf("the tree within its bound is read whole: %d entries", len(tree))
 	}
 }
 

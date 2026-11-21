@@ -44,6 +44,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -53,6 +54,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -113,6 +115,9 @@ const (
 	// maxReviewReadBytes the bytes it reads; a tree past either is refused.
 	maxReviewEntries   = 200_000
 	maxReviewReadBytes = 256 << 20
+	// reviewDirBatch is how many entries of one directory are listed at a
+	// time, so the entry bound holds inside a directory.
+	reviewDirBatch = 256
 	// maxWithheld bounds the withheld paths the manifest lists one by one;
 	// past it they are counted.
 	maxWithheld = 1000
@@ -408,86 +413,180 @@ func readBlob(ctx context.Context, repoRoot, oid string, size int64) ([]byte, er
 // depth and in any letter case, is never entered, and a file of that name
 // never read.
 func readCopyTree(ctx context.Context, dir string, frozen map[string]treeEntry) (map[string]treeEntry, error) {
+	tree, _, err := walkCopyTree(ctx, dir, frozen, maxReviewEntries, reviewDirBatch)
+	return tree, err
+}
+
+// copyWalk is one bounded read of a copy's tree. A directory is listed
+// reviewDirBatch entries at a time and every entry is counted as it is
+// listed, so the entry bound holds inside one directory as well as across
+// them: a directory of millions of entries is refused at the bound, never
+// listed whole first, and the caller's deadline is judged between batches.
+type copyWalk struct {
+	ctx     context.Context
+	root    *os.Root
+	newHash func() hash.Hash
+	bound   int
+	batch   int
+	listed  int
+	read    int64
+	tree    map[string]treeEntry
+}
+
+// walkCopyTree is readCopyTree within bound entries, listing batch at a
+// time, and how many entries it listed.
+func walkCopyTree(ctx context.Context, dir string, frozen map[string]treeEntry, bound, batch int) (map[string]treeEntry, int, error) {
 	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
-		return nil, errors.New("the copy's tree is not a directory that can be read")
+		return nil, 0, errors.New("the copy's tree is not a directory that can be read")
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, errors.New("the copy's tree is not a directory that can be read")
+		return nil, 0, errors.New("the copy's tree is not a directory that can be read")
 	}
 	defer root.Close()
-	newHash := sha1.New
+	w := &copyWalk{ctx: ctx, root: root, newHash: sha1.New, bound: bound, batch: max(batch, 1), tree: map[string]treeEntry{}}
 	for _, e := range frozen {
 		if len(e.oid) == 64 {
-			newHash = sha256.New
+			w.newHash = sha256.New
 		}
 		break
 	}
-	tree := map[string]treeEntry{}
-	entries, read := 0, int64(0)
-	walkErr := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err := ctx.Err(); err != nil {
-			return errors.New("the copy's tree was not read before the review's deadline")
-		}
-		if p == "." {
-			if err != nil {
-				return errors.New("the copy's tree cannot be listed")
-			}
-			return nil
-		}
-		if entries++; entries > maxReviewEntries {
-			return fmt.Errorf("the copy's tree holds more than %d entries, more than a review reads", maxReviewEntries)
-		}
-		if strings.EqualFold(path.Base(p), ".git") {
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if err != nil {
-			// A directory that cannot be listed: what is under it is unknown.
-			tree[p] = treeEntry{withheld: withheldUnreadable}
-			if d != nil && d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		switch t := d.Type(); {
-		case t.IsDir():
-			return nil
-		case t&fs.ModeSymlink != 0:
-			tree[p] = linkEntry(root, p, newHash)
-			return nil
-		case !t.IsRegular():
-			tree[p] = treeEntry{withheld: withheldNotRegular}
-			return nil
-		}
-		data, err := fsutil.ReadGuardedInRoot(root, filepath.FromSlash(p), maxReviewFileBytes)
-		switch {
-		case errors.Is(err, fsutil.ErrTooBig):
-			tree[p] = treeEntry{withheld: withheldTooLarge}
-			return nil
-		case errors.Is(err, fsutil.ErrNotRegular):
-			tree[p] = treeEntry{withheld: withheldNotRegular}
-			return nil
-		case err != nil:
-			tree[p] = treeEntry{withheld: withheldUnreadable}
-			return nil
-		}
-		if read += int64(len(data)); read > maxReviewReadBytes {
-			return fmt.Errorf("the copy's tree holds more than %d bytes, more than a review reads", maxReviewReadBytes)
-		}
-		mode := "100644"
-		if fi, err := root.Lstat(filepath.FromSlash(p)); err == nil && fi.Mode().Perm()&0o111 != 0 {
-			mode = "100755"
-		}
-		tree[p] = treeEntry{mode: mode, oid: blobOID(newHash, data), size: int64(len(data)), data: data}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, walkErr
+	if err := w.walk(); err != nil {
+		return nil, w.listed, err
 	}
-	return tree, nil
+	return w.tree, w.listed, nil
+}
+
+// walk reads the tree depth first from its root. A directory that cannot be
+// opened or listed, the root aside, is marked unreadable: what is under it is
+// unknown.
+func (w *copyWalk) walk() error {
+	dirs := []string{"."}
+	for len(dirs) > 0 {
+		d := dirs[len(dirs)-1]
+		dirs = dirs[:len(dirs)-1]
+		sub, err := w.listDir(d)
+		if err != nil {
+			return err
+		}
+		dirs = append(dirs, sub...)
+	}
+	return nil
+}
+
+// listDir lists the directory d in batches, reading each entry as it comes,
+// and returns its subdirectories to walk.
+func (w *copyWalk) listDir(d string) ([]string, error) {
+	f, err := openDirInRoot(w.root, d)
+	if err != nil {
+		if d == "." {
+			return nil, errors.New("the copy's tree cannot be listed")
+		}
+		w.tree[d] = treeEntry{withheld: withheldUnreadable}
+		return nil, nil
+	}
+	defer f.Close()
+	var sub []string
+	for {
+		if err := w.ctx.Err(); err != nil {
+			return nil, errors.New("the copy's tree was not read before the review's deadline")
+		}
+		ents, err := f.ReadDir(w.batch)
+		for _, de := range ents {
+			if w.listed++; w.listed > w.bound {
+				return nil, fmt.Errorf("the copy's tree holds more than %d entries, more than a review reads", w.bound)
+			}
+			p := path.Join(d, de.Name())
+			isDir, err := w.entry(p, de)
+			if err != nil {
+				return nil, err
+			}
+			if isDir {
+				sub = append(sub, p)
+			}
+		}
+		switch {
+		case errors.Is(err, io.EOF):
+			return sub, nil
+		case err != nil:
+			// Listed in part: what was not listed is unknown.
+			if d == "." {
+				return nil, errors.New("the copy's tree cannot be listed")
+			}
+			w.tree[d] = treeEntry{withheld: withheldUnreadable}
+			return sub, nil
+		case len(ents) == 0:
+			return sub, nil
+		}
+	}
+}
+
+// entry reads one listed entry at p, and reports whether it is a directory to
+// walk.
+func (w *copyWalk) entry(p string, de fs.DirEntry) (bool, error) {
+	if err := w.ctx.Err(); err != nil {
+		return false, errors.New("the copy's tree was not read before the review's deadline")
+	}
+	t := de.Type()
+	if strings.EqualFold(path.Base(p), ".git") {
+		return false, nil
+	}
+	switch {
+	case t.IsDir():
+		return true, nil
+	case t&fs.ModeSymlink != 0:
+		w.tree[p] = linkEntry(w.root, p, w.newHash)
+		return false, nil
+	case !t.IsRegular():
+		w.tree[p] = treeEntry{withheld: withheldNotRegular}
+		return false, nil
+	}
+	data, err := fsutil.ReadGuardedInRoot(w.root, filepath.FromSlash(p), maxReviewFileBytes)
+	switch {
+	case errors.Is(err, fsutil.ErrTooBig):
+		w.tree[p] = treeEntry{withheld: withheldTooLarge}
+		return false, nil
+	case errors.Is(err, fsutil.ErrNotRegular):
+		w.tree[p] = treeEntry{withheld: withheldNotRegular}
+		return false, nil
+	case err != nil:
+		w.tree[p] = treeEntry{withheld: withheldUnreadable}
+		return false, nil
+	}
+	if w.read += int64(len(data)); w.read > maxReviewReadBytes {
+		return false, fmt.Errorf("the copy's tree holds more than %d bytes, more than a review reads", maxReviewReadBytes)
+	}
+	mode := "100644"
+	if fi, err := w.root.Lstat(filepath.FromSlash(p)); err == nil && fi.Mode().Perm()&0o111 != 0 {
+		mode = "100755"
+	}
+	w.tree[p] = treeEntry{mode: mode, oid: blobOID(w.newHash, data), size: int64(len(data)), data: data}
+	return false, nil
+}
+
+// openDirInRoot opens the directory d of root to list it, judged by Lstat
+// before it is opened, opened without blocking, and judged again by its
+// descriptor, so a link is never followed and an entry swapped for a FIFO
+// after it was listed is never waited on.
+func openDirInRoot(root *os.Root, d string) (*os.File, error) {
+	name := filepath.FromSlash(d)
+	fi, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, errors.New("not a directory")
+	}
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil || !st.IsDir() || !os.SameFile(fi, st) {
+		f.Close()
+		return nil, errors.New("the directory was replaced between its listing and its opening")
+	}
+	return f, nil
 }
 
 // linkEntry is a link in the copy's tree: its target is read only to tell
