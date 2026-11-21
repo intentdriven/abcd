@@ -1264,7 +1264,8 @@ func (r Registry) envNames() []string {
 // entry matches the settings the file holds as it matches them written on the
 // line. A file the guard cannot read now is read as settingsUnreadText,
 // which the entry refuses: a name the line does not fix, one relative to a
-// directory it leaves unknown, a glob that does not match exactly one file,
+// directory it leaves unknown, a glob that does not match exactly one file or
+// holds a pattern character besides `*` and `?` (globOne),
 // a file the line writes before the command, one that is not a regular file
 // the guard may open, one past the size it reads, and one past the check's
 // reading budget. The guard runs nothing to produce a file. A file that does
@@ -1420,10 +1421,13 @@ func settingsWritten(p string, before []writeTarget) bool {
 
 // globOne is the one file the pattern p matches as the shell expands it, a
 // name starting with a dot only where the pattern's own last component
-// does, and false where it matches none or several, or holds a bracket
-// negation (`[!…]`) Go's matcher does not read as the shell does.
+// does, and false where it matches none or several, or holds a pattern
+// character besides `*` and `?` (globShellOnly): Go's matcher reads a bracket
+// expression and a backslash by its own grammar, not the shell's (a POSIX
+// class such as `[[:digit:]]` names another file to it), and zsh reads more
+// characters as pattern syntax than Go does.
 func globOne(p string) (string, bool) {
-	if strings.Contains(p, "[!") {
+	if strings.ContainsAny(p, globShellOnly) {
 		return "", false
 	}
 	matches, err := filepath.Glob(p)
@@ -1442,6 +1446,13 @@ func globOne(p string) (string, bool) {
 	}
 	return kept[0], true
 }
+
+// globShellOnly are the characters a pattern may hold that the shell and Go's
+// matcher do not read alike: a bracket expression and a backslash, which both
+// read by different grammars, and the characters zsh reads as pattern syntax
+// (numeric ranges, groups, alternation, extendedglob's operators, braces)
+// where Go reads a plain character.
+const globShellOnly = "[]\\<>()|#~^{}"
 
 // containsSignal reports whether sigs holds sig, so a verdict two states of
 // one segment raise alike is reported once.
