@@ -1436,7 +1436,7 @@
         "command": "claude",
         "flag_values": [{"flag": "--settings", "values": [], "shape": "claude-settings-unchecked"}]
       },
-      "why": "`--settings` that sets the bypass mode, grants `permissions.allow` rules or declares `hooks` starts a claude that asks no one, and nothing it runs passes this guard. Settings it cannot read are refused too: unparsable, not fixed by the line, a glob not naming one file, or a file the line writes, cannot open, or that is over 256 KiB.",
+      "why": "`--settings` that turns the checks off, grants rules or directories, runs a command (`hooks`, `apiKeyHelper`, `statusLine` and the like) or sets `disableAllHooks` starts a claude this guard never sees. Settings it cannot read are refused too: unparsable, not fixed by the line, or a file the line writes, cannot open, or over 256 KiB.",
       "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its checks on (`claude -p \"<task>\"`, with any `--settings` written out on the line or in a file the line does not write).",
       "fixtures": {
         "known_bad": [
@@ -1444,14 +1444,61 @@
           "claude --settings='{\"permissions\":{\"allow\":[\"Bash(*)\"]}}' -p x",
           "claude -p x --settings '{\"permissions\": {\"defaultMode\": \"BYPASSPERMISSIONS\"}}'",
           "claude -p x --settings '{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"*\",\"hooks\":[{\"type\":\"command\",\"command\":\"true\"}]}]}}'",
-          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},}'"
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},}'",
+          "claude -p x --settings '{\"apiKeyHelper\":\"./key.sh\"}'",
+          "claude -p x --settings '{\"statusLine\":{\"type\":\"command\",\"command\":\"./line.sh\"}}'",
+          "claude -p x --settings '{\"disableAllHooks\":true}'",
+          "claude -p x --settings '{\"permissions\":{\"additionalDirectories\":[\"/\"]}}'"
         ],
         "known_good": [
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"default\"}}'",
           "claude -p x --settings '{\"permissions\":{\"deny\":[\"Bash(rm:*)\"]}}'",
           "claude -p x --settings '{\"model\":\"sonnet\"}'",
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"acceptEdits\"},\"hooks\":{}}'",
+          "claude -p x --settings '{\"disableAllHooks\":false}'",
           "abcd capture \"an agent ran claude --settings with bypassPermissions\""
+        ]
+      }
+    },
+    "agent-launch-claude-allowed-tools": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--allowedTools|--allowed-tools"]
+      },
+      "why": "`--allowedTools` (also spelled `--allowed-tools`) starts another claude agent that runs the tools it names without asking anyone, as a `permissions.allow` list does, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without the flag).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --allowedTools Bash",
+          "claude -p x --allowedTools=Bash",
+          "claude --allowed-tools 'Bash(*)' -p x"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "claude --model x",
+          "claude -p x --disallowedTools Bash",
+          "abcd capture \"an agent ran claude --allowedTools Bash\""
+        ]
+      }
+    },
+    "agent-launch-claude-prompt-tool": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--permission-prompt-tool", "--mcp-config"]
+      },
+      "why": "`--permission-prompt-tool` with `--mcp-config` starts another claude agent whose permission prompts a tool from a server the line configures answers, as a hook can, so it can run every command without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without `--permission-prompt-tool`).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --mcp-config m.json --permission-prompt-tool mcp__a__b",
+          "claude --permission-prompt-tool=mcp__a__b -p x --mcp-config=m.json"
+        ],
+        "known_good": [
+          "claude -p x --mcp-config m.json",
+          "claude --model x",
+          "abcd capture \"an agent ran claude --permission-prompt-tool x --mcp-config m.json\""
         ]
       }
     },

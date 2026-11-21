@@ -1212,8 +1212,18 @@ none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
 (`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
 `permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
-rules or declares `hooks`, which can answer the permission prompts, written on
-the line or in the file it names (`agent-launch-claude-unchecked-settings`),
+rules or `permissions.additionalDirectories`, declares `hooks`, which can
+answer the permission prompts, or another key whose value is a command claude
+runs (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`,
+`gcpAuthRefresh`, `otelHeadersHelper`, `statusLine`, `fileSuggestion`,
+`processWrapper`, `sshHostCommands`), or sets `disableAllHooks` to anything but
+`false` or `null`, which starts a claude without the hooks that send its
+commands here, written on the line or in the file it names
+(`agent-launch-claude-unchecked-settings`), `claude --allowedTools` or
+`--allowed-tools` on the line, the flag form of an allow list
+(`agent-launch-claude-allowed-tools`), `claude --permission-prompt-tool` with
+`--mcp-config`, a tool from a server the line configures that answers the
+permission prompts as a hook can (`agent-launch-claude-prompt-tool`),
 `codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
