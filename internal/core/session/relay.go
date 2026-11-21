@@ -537,7 +537,7 @@ type Conn struct {
 	id       string // "p" and num, as the roster shows it
 	num      uint32 // the participant number attributed updates carry
 	peer     Peer
-	addr     string // the failed-join key: an IPv4 address or an IPv6 /64
+	addr     string // the address key (addressKey) its caps and wrong codes count by
 	room     *room
 	role     string
 	name     string
@@ -1079,7 +1079,9 @@ func (c *Conn) verify(ctx context.Context, token, repo string) {
 		c.fail("verify-failed", "GitHub did not accept the sign-in")
 		return
 	}
-	c.login = login
+	// The login and its grant are this verify's alone: a login that may not
+	// push replaces an earlier one that could, and takes its grant with it.
+	c.login, c.memberOf = login, ""
 	if push {
 		c.memberOf = strings.ToLower(repo)
 	}
@@ -1154,22 +1156,24 @@ func (c *Conn) join(code, name string) {
 		return
 	}
 	now := r.now()
-	if r.failed.blocked(c.addr, now) {
+	// A verified team member is neither paused nor counted towards the
+	// pause, and its wrong codes are counted against its login rather than
+	// its address, so guessers cannot lock the team out of its own session.
+	member := c.memberOf != ""
+	key := c.failKey()
+	if r.failed.blocked(key, now) {
 		c.fail("too-many-tries", "too many wrong codes from this address; try again later")
 		c.leave()
 		c.peer.Close(true, "too many wrong codes")
 		return
 	}
-	// A verified team member is neither paused nor counted towards the
-	// pause, so guessers cannot lock the team out of its own session.
-	member := c.memberOf != ""
 	if !member && now.Before(r.allFailed.pausedUntil) {
 		// Every code tried during a pause, right or wrong, gets this answer
 		// without being looked up, and counts for its own address but not
 		// towards the pause: the addresses that caused it are blocked when
 		// it ends instead of starting the next.
 		c.fail("paused", "joining by code is paused on this relay for a while; try again later")
-		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
+		if r.failed.note(key, now) >= r.limits.MaxFailedJoins {
 			c.leave()
 			c.peer.Close(true, "too many wrong codes")
 		}
@@ -1188,7 +1192,7 @@ func (c *Conn) join(code, name string) {
 		if !member {
 			r.noteFailedJoin(now)
 		}
-		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
+		if r.failed.note(key, now) >= r.limits.MaxFailedJoins {
 			c.leave()
 			c.peer.Close(true, "too many wrong codes")
 		}
@@ -1212,6 +1216,17 @@ func (c *Conn) join(code, name string) {
 	rm.conns = append(rm.conns, c)
 	r.giveSeat(c, token)
 	c.admitted(token)
+}
+
+// failKey is what c's wrong codes and wrong rejoin tokens are counted by:
+// its address, or, once it has verified as a team member, its login, so the
+// wrong codes of others sharing its address do not shut it out, and its own
+// do not shut them out. No address key has the prefix.
+func (c *Conn) failKey() string {
+	if c.memberOf != "" && c.login != "" {
+		return "login:" + strings.ToLower(c.login)
+	}
+	return c.addr
 }
 
 // admitted tells c, newly in its room, who it is there, replays the room's
@@ -1259,7 +1274,8 @@ func (c *Conn) rejoin(token string) {
 		return
 	}
 	now := r.now()
-	if r.failed.blocked(c.addr, now) {
+	key := c.failKey()
+	if r.failed.blocked(key, now) {
 		c.fail("too-many-tries", "too many wrong codes from this address; try again later")
 		c.leave()
 		c.peer.Close(true, "too many wrong codes")
@@ -1276,7 +1292,7 @@ func (c *Conn) rejoin(token string) {
 	}
 	if s == nil {
 		c.fail("bad-rejoin", "no session holds that rejoin token")
-		if r.failed.note(c.addr, now) >= r.limits.MaxFailedJoins {
+		if r.failed.note(key, now) >= r.limits.MaxFailedJoins {
 			c.leave()
 			c.peer.Close(true, "too many wrong codes")
 		}
