@@ -195,14 +195,22 @@ func goCacheLimit() (uint64, string) {
 }
 
 // goCachePath is the directory `go env GOCACHE` reports, or why there is none to
-// trim. It never guesses: no go command, no trim.
+// trim. It never guesses: no go command, no trim. The go asked is the one PATH
+// finds, held to the in-checkout rule (tools.LookPath, from the working
+// directory), so a go inside the working tree is never run and nothing is
+// trimmed.
 func goCachePath() (dir, skip string) {
-	got, err := machineload.GoEnvCache()
+	goBin, err := tools.LookPath("go", "")
+	switch {
+	case errors.Is(err, tools.ErrInsideWorkingTree):
+		return "", "the go command PATH finds is never run: " + tools.ErrInsideWorkingTree.Error()
+	case err != nil:
+		return "", "no go command to say where the cache is"
+	}
+	got, err := machineload.GoEnvCache(goBin)
 	switch {
 	case errors.Is(err, exec.ErrNotFound):
 		return "", "no go command to say where the cache is"
-	case errors.Is(err, tools.ErrInsideWorkingTree):
-		return "", "the go command PATH finds is never run: " + tools.ErrInsideWorkingTree.Error()
 	case err != nil:
 		return "", "`go env GOCACHE` failed: " + shownPath(causeOf(err))
 	case got == "" || got == "off":

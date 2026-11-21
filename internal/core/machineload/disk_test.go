@@ -3,13 +3,12 @@ package machineload
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // TestNearestExisting: a directory not yet created is read on the volume of
@@ -195,30 +194,24 @@ func TestLooksLikeGoCache(t *testing.T) {
 	}
 }
 
-// TestGoEnvCacheDoesNotRunAGoFromTheWorkingTree: the go command asked where
-// the build cache is, found by name on PATH, is held to the in-checkout rule
-// (tools.LookPath): a go inside the working tree abcd runs from, from any
-// directory in it, is refused and never run, so its answer never names the
-// directory a trim deletes from.
-func TestGoEnvCacheDoesNotRunAGoFromTheWorkingTree(t *testing.T) {
-	checkout := t.TempDir()
-	bin, sub := filepath.Join(checkout, "bin"), filepath.Join(checkout, "pkg")
+// TestGoEnvCacheAsksOnlyTheGoItIsGiven: GoEnvCache runs the go program its
+// caller found and no other; given none, it is exec.ErrNotFound and runs
+// nothing, whatever PATH holds.
+func TestGoEnvCacheAsksOnlyTheGoItIsGiven(t *testing.T) {
+	bin, cache := t.TempDir(), t.TempDir()
 	marker := filepath.Join(t.TempDir(), "ran")
-	for _, d := range []string{filepath.Join(checkout, ".git"), bin, sub} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	script := "#!/bin/sh\ntouch '" + marker + "'\necho '" + t.TempDir() + "'\n"
+	script := "#!/bin/sh\ntouch '" + marker + "'\necho '" + cache + "'\n"
 	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
-	t.Chdir(sub)
-	if got, err := GoEnvCache(); !errors.Is(err, tools.ErrInsideWorkingTree) {
-		t.Fatalf("GoEnvCache = %q, %v; want tools.ErrInsideWorkingTree", got, err)
+	if got, err := GoEnvCache(""); !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("GoEnvCache(\"\") = %q, %v; want exec.ErrNotFound", got, err)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Fatalf("the go inside the working tree ran (%v)", err)
+		t.Fatalf("a go found on PATH ran (%v)", err)
+	}
+	if got, err := GoEnvCache(filepath.Join(bin, "go")); err != nil || got != cache {
+		t.Fatalf("GoEnvCache(the go given) = %q, %v; want %q", got, err, cache)
 	}
 }

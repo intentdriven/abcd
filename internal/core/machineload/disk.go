@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Free disk is the load gate's other resource (iss-2610281502581386): on 28
@@ -106,8 +104,13 @@ const goEnvTimeout = 10 * time.Second
 // repository's go.mod is read and no toolchain is fetched to answer. Where
 // no go command can be run, the cache is where go would put it: GOCACHE, or
 // go-build in the user cache directory.
-func GoCacheDir() string {
-	return goCacheDir(goEnvGOCACHE, os.Getenv, os.UserCacheDir)
+//
+// goBin is the go program to ask, found by the caller (tools.LookPath, which
+// refuses a go inside the working tree abcd runs from), since this package
+// imports nothing beyond the standard library and runs no program it looked up
+// itself; "" asks no go command.
+func GoCacheDir(goBin string) string {
+	return goCacheDir(func() (string, error) { return goEnvGOCACHE(goBin) }, os.Getenv, os.UserCacheDir)
 }
 
 func goCacheDir(goEnv func() (string, error), getenv func(string) string, userCache func() (string, error)) string {
@@ -131,17 +134,15 @@ func goCacheDir(goEnv func() (string, error), getenv func(string) string, userCa
 
 // GoEnvCache is what `go env GOCACHE` reports, run as GoCacheDir runs it but
 // with none of its fallbacks: an error where no go command can answer. A caller
-// about to delete files from the path asks this, never a guess at it.
-func GoEnvCache() (string, error) { return goEnvGOCACHE() }
+// about to delete files from the path asks this, never a guess at it. goBin is
+// the go program to ask, as GoCacheDir takes it; "" is exec.ErrNotFound.
+func GoEnvCache(goBin string) (string, error) { return goEnvGOCACHE(goBin) }
 
-// goEnvGOCACHE runs `go env GOCACHE`, with the go PATH finds held to the
-// in-checkout rule (tools.LookPath, from the working directory): a go inside the
-// working tree abcd runs from is refused with tools.ErrInsideWorkingTree and
-// never run.
-func goEnvGOCACHE() (string, error) {
-	goBin, err := tools.LookPath("go", "")
-	if err != nil {
-		return "", err
+// goEnvGOCACHE runs `go env GOCACHE` through goBin, the go program the caller
+// found; "" is exec.ErrNotFound and runs nothing.
+func goEnvGOCACHE(goBin string) (string, error) {
+	if goBin == "" {
+		return "", exec.ErrNotFound
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), goEnvTimeout)
 	defer cancel()
