@@ -108,52 +108,58 @@ record stands by then.
 
 The role is granted Read, for its turn's brief, and Write, for its receipt,
 and changes no file of the repository: abcd reads the working tree's state
-(git's listing of what differs from HEAD, each path's content hashed; every path
-git ignores, the local tier among them, by its mode, size and modification
-time; git's own hooks, info files, configuration, `HEAD` and the branch it
-names, each submodule's hooks, configuration, `HEAD` and refs, this
-checkout's own entry under `worktrees/` (its `HEAD`, `commondir`, `gitdir`,
-`config.worktree` and `locked`), and of another worktree's entry its
-`commondir`, `gitdir` and `config.worktree` while that entry stands, read in
-the repository's common git directory and where a link there leads, any
-hooks directory `core.hooksPath` names outside the tree, read where its links
-lead, and the push receipts in this checkout's own local tier, read where a
-link there leads, each hashed; whether the pre-push gate lets a push of this
-checkout's HEAD through with no new preflight (a receipt for it in the local
-tier of any worktree the gate reads, or a remote-tracking ref outside the
-gate's receipt-less prefixes holding it), which stops the interview when a
-dispatch opens it, saying in plain words what opened it; another worktree's
-`HEAD` and lock, its push receipts for its own commits, and a worktree added
-or removed beside this one as `git worktree add` makes it, are that
-worktree's own work and are not read, but an entry that appears carrying its
-own `config.worktree` or a `commondir` leading to another common directory
-is, and a worktree added with upstream tracking writes the shared
-configuration, which is read; left out are only the run's own turn
-directory, where the role writes its receipt, a checkout's local transcript
-store, a file named `.DS_Store` anywhere and `.claude/scheduled_tasks.lock` at
-the root, which execute nothing, every other `.claude/` path watched) before
-and after each dispatch, and any path that changes during a dispatch stops the
-interview, whatever changed it (abcd cannot tell the role's writes from another
-program's, so two interviews run in one checkout stop each other), exit 1,
-naming each and keeping the answers given. What the links one reading follows
-lead to, a hooks directory `core.hooksPath` names outside the tree, and this
-checkout's push receipts are read within 1,024 entries and 64 MiB in all, and
-a reading past that stops the
+(git's listing of what differs from HEAD, each path's content hashed; every
+path git ignores, the local tier among them, by its mode, size and
+modification time; git's own hooks, info files but `info/refs`, which no local
+git command reads, configuration, `HEAD` and the branch it names, each
+submodule's hooks, configuration, `HEAD` and refs, this checkout's own entry
+under `worktrees/` (its `HEAD`, `commondir`, `gitdir`, `config.worktree` and
+`locked`), and of another worktree's entry its `commondir`, `gitdir` and
+`config.worktree` while that entry stands, read in the repository's common git
+directory and where a link there leads, any hooks directory `core.hooksPath`
+names outside the tree, read where its links lead, and the push receipts in
+this checkout's own local tier, read where a link there leads, each hashed;
+whether the pre-push gate lets a push of this checkout's HEAD through with no
+new preflight (a receipt for it in the local tier of any worktree the gate
+reads, or a remote-tracking ref outside the gate's receipt-less prefixes
+holding it), which stops the interview when a dispatch opens it, saying in
+plain words what opened it, judged as the hook judges it (history as stored,
+whatever a replacement ref says, and a receipt counted only where the hook
+counts one), and a worktree whose path holds a newline stops the interview,
+since the hook reads git's worktree listing a line at a time and would take
+that path for more than one worktree; another worktree's `HEAD` and lock, its
+push receipts for its own commits, and a worktree added or removed beside this
+one as `git worktree add` makes it, are that worktree's own work and are not
+read, but an entry that appears carrying its own `config.worktree`, a
+`commondir` leading to another common directory or no `commondir` at all is,
+as is a worktree added where per-worktree configuration is on
+(`extensions.worktreeConfig`), whose entry git gives a copy of the
+`config.worktree` of the worktree it was added from, and a worktree added with
+upstream tracking writes the shared configuration, which is read; left out are
+only the run's own turn directory, where the role writes its receipt, a
+checkout's local transcript store, a file named `.DS_Store` anywhere and
+`.claude/scheduled_tasks.lock` at the root, which execute nothing, every other
+`.claude/` path watched) before and after each dispatch, and any path that
+changes during a dispatch stops the interview, whatever changed it (abcd
+cannot tell the role's writes from another program's, so two interviews run in
+one checkout stop each other), exit 1, naming each and keeping the answers
+given. What the links one reading follows lead to, a hooks directory
+`core.hooksPath` names outside the tree, and this checkout's push receipts are
+read within 1,024 entries and 64 MiB in all, and a reading past that stops the
 interview, exit 1, naming the link, the `core.hooksPath` value or the receipts
 directory. git's own directory and common directory are the ones the
 interview's first reading found: a linked worktree's `.git` file or a
 `commondir` file changed during a turn stops the interview, naming the file,
 and neither git nor abcd reads where it leads; a working tree git names other
 than the first reading's (a `core.worktree` set since) stops the interview
-before git reads it. What one reading hashes (the
-paths git lists, git's own directory) is held to 2 GiB, and the files git
-reads whole on every command (`HEAD`, the configuration, the packed refs,
-`info/exclude`, in git's own directory and in each submodule's) are sized
-against the same 2 GiB before git runs; a reading
-past it stops the interview, exit 1, naming the file (the largest, when the
-paths git lists hold more), and a large untracked file of the person's own
-belongs in `.gitignore`, where only its size and modification time are read,
-while a large tracked one is restored or committed.
+before git reads it. What one reading hashes (the paths git lists, git's own
+directory) is held to 2 GiB, and the files git reads whole on every command
+(`HEAD`, the configuration, the packed refs, `info/exclude`, in git's own
+directory and in each submodule's) are sized against the same 2 GiB before git
+runs; a reading past it stops the interview, exit 1, naming the file (the
+largest, when the paths git lists hold more), and a large untracked file of
+the person's own belongs in `.gitignore`, where only its size and modification
+time are read, while a large tracked one is restored or committed.
 
 A drawn question takes a choice, not typed prose, so the role offers drafts of
 a section's answer, and the retrospective carries the drafts the person chose.

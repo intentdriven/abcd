@@ -601,7 +601,8 @@ reporting the readiness gate. The role may change the intent's record and
 nothing else: any other path that changes while a turn runs stops the
 interview, exit 1, naming each, whether git tracks it, ignores it (the local
 tier's handover and push receipts included) or keeps it in its own directory (a
-hook, the git configuration, HEAD and the branch it names, a submodule's
+hook, an info file but `info/refs`, which no local git command reads, the
+git configuration, HEAD and the branch it names, a submodule's
 hooks, configuration, HEAD and refs, this checkout's own worktree entry: its
 HEAD, common directory, working-tree path, own configuration and lock; and,
 of another worktree's entry, its common directory, working-tree path and own
@@ -612,13 +613,21 @@ HEAD skip the preflight stops it too, saying so in plain words: a push
 receipt for HEAD written in the local tier of any worktree the pre-push gate
 reads (a worktree registered during the turn among them), or a
 remote-tracking ref outside the gate's receipt-less prefixes made to hold
-HEAD. Work in another worktree of the repository is that worktree's own and
-does not stop the interview: a commit, a branch switch, a rebase or a fetch
-there, a worktree added or removed beside it with no upstream tracking set,
+HEAD. The gate is judged as the pre-push hook judges it: history as stored,
+whatever a replacement ref says, and a receipt counted only where the hook
+counts one. A worktree whose path holds a newline stops the interview, since
+the hook reads git's worktree listing a line at a time and would take that
+path for more than one worktree. Work in another worktree of the repository
+is that worktree's own and does not stop the interview: a commit, a branch
+switch, a rebase or a fetch there, a worktree added or removed beside it with no upstream tracking set,
 and a push receipt its preflight mints in its own local tier for its own
 commit. A worktree entry that appears carrying its own configuration
-(`config.worktree`) or a `commondir` leading to another common directory
-stops it, and so does any write to the shared git configuration: a worktree
+(`config.worktree`), a `commondir` leading to another common directory, or no
+`commondir` at all stops it; so does a worktree added in a repository with
+per-worktree configuration on (`extensions.worktreeConfig`, which `git
+sparse-checkout init` turns on), since `git worktree add` copies the
+`config.worktree` of the worktree it runs in into the new entry; and so does
+any write to the shared git configuration: a worktree
 added with upstream tracking (`git worktree add -b <branch> <path>
 origin/main`), a `git push -u` and a `git branch --set-upstream-to` each
 write the branch's tracking there. Only the run's own turn directory is
