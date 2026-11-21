@@ -115,7 +115,9 @@ func consent(repoRoot string, p Plan, approve string, in ConsentInputs, s Starte
 		return RunRecord{}, err
 	}
 	if err := s.Start(p, rec); err != nil {
-		return rec, afterWrite(fmt.Errorf("the run's record is written, and the run did not start: %w", err))
+		// A starter that fails part-way leaves the copies it handed off before
+		// the failure in place, each in its own clone.
+		return rec, afterWrite(fmt.Errorf("the run's record is written, and not every copy is handed off: %w; a copy handed off before this keeps its clone", err))
 	}
 	return rec, nil
 }

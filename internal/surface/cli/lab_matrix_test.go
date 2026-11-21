@@ -243,7 +243,7 @@ func TestAMatrixRefusalAfterAWriteDoesNotSayNothingWasWritten(t *testing.T) {
 	if !errors.As(matrixFailure(errors.New("the plan is refused")), &ee) || !strings.HasSuffix(ee.Msg, "; nothing was written") {
 		t.Fatalf("a refusal before any write = %v; want it to say nothing was written", ee)
 	}
-	after := fmt.Errorf("the run's record is written, and the run did not start: %w", matrix.ErrWrittenInPart)
+	after := fmt.Errorf("the run's record is written, and not every copy is handed off: %w", matrix.ErrWrittenInPart)
 	if !errors.As(matrixFailure(after), &ee) || ee.Code != 2 {
 		t.Fatalf("matrixFailure = %v; want exit 2", ee)
 	}

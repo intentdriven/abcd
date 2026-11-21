@@ -176,3 +176,42 @@ func TestARerunOfARunFolderTheScreenRefusesIsRefusedAsItIsRead(t *testing.T) {
 		t.Fatalf("a re-run whose carried trial holds a credential = %v; want it refused as it is read, the value never shown", err)
 	}
 }
+
+// A re-run reads the first run's record as writeRun screened it: a four-part
+// version, which reads as an address, is a version, so a run the lab recorded
+// cleanly is repeated, from the lab and from its carried folder alike.
+func TestARerunOfARunWithFourPartVersionsIsNotRefusedAsAnAddress(t *testing.T) {
+	r, home, m, first := reportLab(t, func(in *runInputs) {
+		in.Binary.Version = "1.10.2.3"
+		for i := range in.Cells {
+			in.Cells[i].HarnessVersion = "2.10.3.4"
+		}
+	})
+	if _, err := loadRerun(r.Root(), m.ID, first.RunID); err != nil {
+		t.Fatalf("a re-run of a recorded run with four-part versions = %v; want it read", err)
+	}
+	dir := filepath.Join(t.TempDir(), "carried")
+	if err := os.CopyFS(dir, os.DirFS(runDir(home, m, first.RunID))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadRerun(r.Root(), m.ID, dir); err != nil {
+		t.Fatalf("a re-run of a carried run with four-part versions = %v; want it read", err)
+	}
+}
+
+// A trial is screened as a run's record is: its harness version is a version,
+// so a four-part one is written, while an address in its free text still
+// refuses it.
+func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.T) {
+	r, _, m, rec, _ := checkLab(t)
+	tr := codeTrial(t, rec, "host-big", 1, StatusPassed)
+	tr.HarnessVersion = "2.10.3.4"
+	if err := writeTrial(r.Root(), m.ID, tr); err != nil {
+		t.Fatalf("writeTrial with a four-part harness version = %v; want it written", err)
+	}
+	tr = codeTrial(t, rec, "host-big", 2, StatusFailed)
+	tr.Reason = "its hidden tests could not reach 10.20.30.40"
+	if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "net:ipv4") {
+		t.Fatalf("writeTrial with an address in its reason = %v; want it refused", err)
+	}
+}

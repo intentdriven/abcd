@@ -299,17 +299,42 @@ func writeTrial(repoRoot, labID string, t TrialRecord) error {
 	return proc.WriteState(t.Run+"/"+t.Key.rel(), data)
 }
 
-// screenTrial is trial t as written, passed through the secret screen.
+// screenTrial is trial t as written, passed through the secret screen: the
+// network screen reads it with its versions emptied, as a run's record is
+// read, so a four-part harness version is never read as an address.
 func screenTrial(repoRoot string, t TrialRecord) ([]byte, error) {
-	data, err := encodeCheck(t)
+	data, network, err := encodeTrial(t)
 	if err != nil {
 		return nil, err
 	}
 	rel := t.Run + "/" + t.Key.rel()
-	if err := screen(repoRoot, []screened{{lab.StateFile{Rel: rel, Data: data}, data}}); err != nil {
+	if err := screen(repoRoot, []screened{{lab.StateFile{Rel: rel, Data: data}, network}}); err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+// encodeTrial is trial t as written, and as the network screen reads it.
+func encodeTrial(t TrialRecord) (data, network []byte, err error) {
+	if data, err = encodeCheck(t); err != nil {
+		return nil, nil, err
+	}
+	if network, err = encodeCheck(t.withoutVersions()); err != nil {
+		return nil, nil, err
+	}
+	return data, network, nil
+}
+
+// withoutVersions is the trial with its harness version and the field names
+// its unpinned list carries emptied and nothing else changed, so it encodes
+// to the trial's own lines, as withoutVersionsAndDigests is a run's record.
+func (t TrialRecord) withoutVersions() TrialRecord {
+	t.HarnessVersion = ""
+	t.Unpinned = slices.Clone(t.Unpinned)
+	for i := range t.Unpinned {
+		t.Unpinned[i].Field = ""
+	}
+	return t
 }
 
 // readRun is run's record and declaration as its lab holds them, the two

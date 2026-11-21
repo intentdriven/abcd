@@ -63,6 +63,30 @@ type rerun struct {
 	First       RunRecord
 	Declaration []byte
 	files       []lab.StateFile
+	// network is each record, by its path in files, as the network screen
+	// reads it: the run's record and each trial with its versions (and the
+	// record's digests) emptied, exactly as each was screened when written.
+	network map[string][]byte
+}
+
+// screens is the first run's records to screen, each under prefix: the run's
+// record and each trial are screened for network kinds with their versions
+// (and the record's digests) emptied, as when each was written, so a
+// four-part version is never read as an address; every other screen reads
+// each file whole.
+func (r rerun) screens(prefix string) ([]lab.StateFile, []screened) {
+	files := make([]lab.StateFile, 0, len(r.files))
+	sc := make([]screened, 0, len(r.files))
+	for _, f := range r.files {
+		network, ok := r.network[f.Rel]
+		if !ok {
+			network = f.Data
+		}
+		f.Rel = prefix + f.Rel
+		files = append(files, f)
+		sc = append(sc, screened{f, network})
+	}
+	return files, sc
 }
 
 // loadRerun reads the run from names (a run id in the lab labID, or a run's
@@ -111,25 +135,29 @@ func loadRerun(repoRoot, labID, from string) (rerun, error) {
 	if err != nil {
 		return rerun{}, err
 	}
+	runNetwork, err := encodeRun(rec.withoutVersionsAndDigests())
+	if err != nil {
+		return rerun{}, err
+	}
 	files := []lab.StateFile{{Rel: "run.json", Data: raw}, {Rel: "declaration.json", Data: decl}}
+	network := map[string][]byte{"run.json": runNetwork}
 	for _, t := range trials {
-		data, err := encodeCheck(t)
+		data, nw, err := encodeTrial(t)
 		if err != nil {
 			return rerun{}, err
 		}
 		files = append(files, lab.StateFile{Rel: t.Key.rel(), Data: data})
+		network[t.Key.rel()] = nw
 	}
 	// The records the re-run keeps a copy of pass the secret screen as they
 	// are read, so a run the screen refuses is refused at its plan, before
 	// the re-run's record is written; the starter screens them again.
-	sc := make([]screened, 0, len(files))
-	for _, f := range files {
-		sc = append(sc, screened{f, f.Data})
-	}
+	out := rerun{First: rec, Declaration: decl, files: files, network: network}
+	_, sc := out.screens("")
 	if err := screen(repoRoot, sc); err != nil {
 		return rerun{}, fmt.Errorf("the first run's records are not copied, and the re-run is not started: %w", err)
 	}
-	return rerun{First: rec, Declaration: decl, files: files}, nil
+	return out, nil
 }
 
 // strictRun decodes a run record and checks its id's shape.
@@ -185,13 +213,7 @@ type rerunStarter struct {
 }
 
 func (s rerunStarter) Start(p Plan, rec RunRecord) error {
-	files := make([]lab.StateFile, 0, len(s.r.files))
-	var sc []screened
-	for _, f := range s.r.files {
-		f.Rel = rec.RunID + "/" + firstDir + "/" + f.Rel
-		files = append(files, f)
-		sc = append(sc, screened{f, f.Data})
-	}
+	files, sc := s.r.screens(rec.RunID + "/" + firstDir + "/")
 	if err := screen(s.repoRoot, sc); err != nil {
 		return fmt.Errorf("the first run's records are not copied, and the re-run is not started: %w", err)
 	}
