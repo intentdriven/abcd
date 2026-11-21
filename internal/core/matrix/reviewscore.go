@@ -131,12 +131,17 @@ func (s *ReviewScores) add(truth CopyTruth, defective bool) {
 
 // GuessScore is the author guess as the measured leak: of the verdicts
 // given, how many guessed, and of those, how many named the builder's model
-// and how many its developer.
+// and how many its developer. A guess on a copy whose builder's name cannot
+// be read, or names no version, can never name the model, and one whose
+// builder's developer cannot be read can never name the developer: each is
+// kept out of that rate, so it cannot understate the leak, and counted apart.
 type GuessScore struct {
-	Asked     int  `json:"asked"`
-	Guessed   int  `json:"guessed"`
-	Model     Rate `json:"model"`
-	Developer Rate `json:"developer"`
+	Asked               int  `json:"asked"`
+	Guessed             int  `json:"guessed"`
+	Model               Rate `json:"model"`
+	ModelUnscorable     int  `json:"model_unscorable"`
+	Developer           Rate `json:"developer"`
+	DeveloperUnscorable int  `json:"developer_unscorable"`
 }
 
 // ReviewerScore is one reviewer cell's score, on its own.
@@ -243,9 +248,17 @@ func scoreReviewers(copies []ReviewedCopy, pins []CellPin, verdicts []ReviewVerd
 				continue
 			}
 			sc.AuthorGuess.Guessed++
-			sc.AuthorGuess.Model.add(guessedModel(v.AuthorGuess, builder))
-			dev := developerOf(v.AuthorGuess)
-			sc.AuthorGuess.Developer.add(dev != "" && dev == theirs)
+			if b, ok := readModel(builder); ok && b.version != "" {
+				sc.AuthorGuess.Model.add(guessedModel(v.AuthorGuess, builder))
+			} else {
+				sc.AuthorGuess.ModelUnscorable++
+			}
+			if theirs != "" {
+				dev := developerOf(v.AuthorGuess)
+				sc.AuthorGuess.Developer.add(dev != "" && dev == theirs)
+			} else {
+				sc.AuthorGuess.DeveloperUnscorable++
+			}
 		}
 		out = append(out, sc)
 	}

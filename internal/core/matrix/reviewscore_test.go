@@ -124,6 +124,41 @@ func TestAnUnreadFamilyIsReportedApartFromBoth(t *testing.T) {
 	}
 }
 
+// A guess at the author of a copy whose builder's name cannot be read, or
+// names no version, can never be a hit, so counting it would understate the
+// leak: it is kept out of the rate it cannot be scored in and counted apart.
+func TestAGuessOnAnUnreadBuilderIsKeptOutOfTheLeakRates(t *testing.T) {
+	pins := append(reviewPins(),
+		CellPin{Cell: "mystery", Role: RoleBuilder, Model: "default"},
+		CellPin{Cell: "unversioned", Role: RoleBuilder, Model: "claude-opus"})
+	key := func(cell string) TrialKey { return TrialKey{Task: "widget", Cell: cell, Repeat: 1} }
+	copies := []ReviewedCopy{
+		{Label: "copy-00000001", Key: key("gpt"), Truth: TruthPassing},
+		{Label: "copy-0000000a", Key: key("mystery"), Truth: TruthFailing},
+		{Label: "copy-0000000b", Key: key("mystery"), Truth: TruthPassing},
+		{Label: "copy-0000000c", Key: key("unversioned"), Truth: TruthPassing},
+	}
+	scores, err := scoreReviewers(copies, pins, []ReviewVerdict{
+		verdict("qwen-rev", "copy-00000001", false, "gpt-5.1"),         // the model and the developer
+		verdict("qwen-rev", "copy-0000000a", true, "claude-opus-5-5"),  // no builder name to score against
+		verdict("qwen-rev", "copy-0000000b", false, "claude-opus-5-5"), // nor here
+		verdict("qwen-rev", "copy-0000000c", false, "claude-opus-5-5"), // the developer; the builder has no version
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := scoreOf(t, scores, "qwen-rev").AuthorGuess
+	if g.Asked != 4 || g.Guessed != 4 {
+		t.Fatalf("four asked, four guessed: %+v", g)
+	}
+	if g.Model != (Rate{Hits: 1, Of: 1}) || g.ModelUnscorable != 3 {
+		t.Fatalf("only the gpt copy's guess can name the model; three are counted apart: %+v", g)
+	}
+	if g.Developer != (Rate{Hits: 2, Of: 2}) || g.DeveloperUnscorable != 2 {
+		t.Fatalf("the mystery copies' guesses are counted apart from the developer rate: %+v", g)
+	}
+}
+
 // TestTheAuthorGuessIsScored: the step's third test. The guess is the measured
 // leak: how often the reviewer named the builder's model, how often its
 // family, and how often it declined.
