@@ -533,7 +533,10 @@ signed where your git configuration signs every commit; one still waiting after 
 minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
-rebase or an amend. No existing entry changes, the checkout you run in is not written but
+rebase or an amend. The verifier, and the stage that finds the commit again
+after a restart, read each commit by the parents and content it stores: a
+replace ref, a graft file or a commit-graph in the repository changes neither
+answer. No existing entry changes, the checkout you run in is not written but
 for the run state, and `intent ready` keeps reporting the person's entry as the
 most recent conjecture.
 

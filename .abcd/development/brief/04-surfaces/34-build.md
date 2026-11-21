@@ -683,7 +683,9 @@ merged into its branch with a merge commit, never a rebase, whose computed
 message carries the same abcd label as the pick's commit, and a fresh round
 judges the merge head. A conflicting merge is aborted with the branch unchanged
 and goes to a fresh implementer with a sync brief; its receipt must carry the
-merged sha as an ancestor of its head. A sync counts no fix round. The closing
+merged sha as an ancestor of its head, read by the parents the commits store
+(no replace ref, graft file or commit-graph in force), as every ancestry check
+of the sync and the receipt is. A sync counts no fix round. The closing
 lane reaches its landing with no step pending, no other lane open and none handed
 back; its audit reads each of the run's lanes' own diff. After a hand-back the
 siblings finish, no new lane opens, no lane closes the spec, and a lane whose
