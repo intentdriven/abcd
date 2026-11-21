@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // gateWords is the plain words a refusal leads with when the pre-push gate
@@ -224,7 +226,7 @@ func TestAPeersFetchOrPreflightDoesNotOpenTheGate(t *testing.T) {
 			ignoring(".abcd/.work.local/\n")(r)
 			r.git.Commit("base")
 			origin := filepath.Join(t.TempDir(), "origin.git")
-			r.git.Git("init", "-q", "--bare", origin)
+			gittest.InitBare(t, origin)
 			r.git.Git("remote", "add", "origin", origin)
 			r.git.Git("push", "-q", "origin", "HEAD:refs/heads/main")
 			r.git.Git("fetch", "-q", "origin")
