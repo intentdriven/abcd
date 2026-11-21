@@ -1814,10 +1814,12 @@ when its pull request merged into the default branch with the local tip as its
 head commit, when its tip is an ancestor of the default branch and it holds a
 commit of its own, when every commit on it has an equivalent on the default
 branch (a rebase merge), or when its whole change matches one commit there by
-patch id (a squash merge). A branch that was cut and never committed to is not
-merged, so a worktree just added is never reclaimed. When no forge answers (no
-`gh`, no login, no GitHub remote, or no answer in time) the verbs judge from git
-alone and say so once, on a `note:` line or in `forge_note`.
+patch id (a squash merge). Each of these reads history as git stores it, with
+no replace ref, graft file or commit-graph in force. A branch that was cut and
+never committed to is not merged, so a worktree just added is never reclaimed.
+When no forge answers (no `gh`, no login, no GitHub remote, or no answer in
+time) the verbs judge from git alone and say so once, on a `note:` line or in
+`forge_note`.
 
 `prune` reclaims the lane's merged, clean worktrees and gives each worktree one
 row: `reclaimed`, `quiet`, or `kept` with its reason. It removes only a worktree
