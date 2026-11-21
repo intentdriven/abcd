@@ -738,7 +738,9 @@ reviews. Two things follow, and both must be said plainly if a user asks. An
 edit that weakens the guard — `"disabled": true`, or a blocker retiered or its
 pattern changed — takes effect only once it is **committed**: until `HEAD`
 carries it, the edit is refused, the committed registry stays in force, the hook
-says so on every command, and the check exits `2` naming the edit. An edit that
+says so on every command, and the check exits `2` naming the edit. `HEAD`'s
+file is read as git stores it, with no replace ref, graft file or commit-graph
+in force. An edit that
 only adds or tightens a hazard takes effect at once. And a repo whose guard is
 switched off is an unguarded session: every command it lets through carries an
 UNGUARDED warning naming the file, so the state cannot pass unnoticed.
