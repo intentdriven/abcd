@@ -142,3 +142,27 @@ func TestGuardCarriesTheEnvironmentAndAllexportIntoAScriptItRuns(t *testing.T) {
 		{`OPENCODE_CONFIG=/tmp/o.json bash {d}/pc.sh`, VerdictAllow, ""},
 	})
 }
+
+// TestGuardRefusesClaudesShellVariablesOnTheLineAsInItsSettings: the
+// variables a settings `env` block may not set because they change what
+// claude's shell commands run (CLAUDE_CODE_SHELL_PREFIX, CLAUDE_CODE_SHELL,
+// BASH_ENV, ENV) are refused when the line sets them for the claude it starts
+// too, and the settings reading refuses every variable the line form does.
+func TestGuardRefusesClaudesShellVariablesOnTheLineAsInItsSettings(t *testing.T) {
+	checkLines(t, "agent-launch-claude-config-env", []string{
+		`CLAUDE_CODE_SHELL_PREFIX=/tmp/wrap claude -p x`,
+		`CLAUDE_CODE_SHELL=/tmp/sh claude -p x`,
+		`BASH_ENV=/tmp/rc claude -p x`,
+		`ENV=/tmp/rc claude -p x`,
+		`export CLAUDE_CODE_SHELL_PREFIX=/tmp/wrap; claude -p x`,
+		`env BASH_ENV=/tmp/rc claude -p x`,
+	}, []string{
+		`CLAUDE_CODE_SHELL_PREFIX=/tmp/wrap echo hi`,
+		`env -u BASH_ENV claude -p x`,
+	})
+	for _, name := range Defaults().envNames() {
+		if !settingsEnvRefused(name) {
+			t.Errorf("%s is watched on the line but allowed in a settings env block", name)
+		}
+	}
+}
