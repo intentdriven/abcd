@@ -512,7 +512,11 @@ only writes are to a private temporary tree it removes.
 The payload is an **include list**, pinned in
 `.abcd/config/launch-payload.json`, over one tree. Everything not named is
 excluded, along with anything `.gitignore` matches. The list is the only
-mechanism that can put a path *into* the release artefact.
+mechanism that can put a path *into* the release artefact. It is read only as a
+regular file of at most 64 KiB inside the repository: a symlink, a FIFO or
+device, or a file reached through a directory that links out of the repository
+is refused as unreadable, and the pinned scripts closure beside it is read on
+the same terms.
 
 The `.abcd/` exclusion is not an entry on a deny list: it is **structural**
 (`internal/core/launch/bundle.go`, per

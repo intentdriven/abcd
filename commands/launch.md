@@ -560,6 +560,12 @@ declaring its kind as `binary` or `application`, `launch scaffold`, `launch ship
 writing the dated CHANGELOG heading, and the auto-release workflow. Relay that;
 it is not a misconfiguration.
 
+The include set and the pinned scripts closure
+(`.abcd/config/scripts-closure.json`) are read only as regular files inside the
+repository: a symlink, a FIFO or device, a file reached through a directory that
+links out of the repository, or an include set over 64 KiB is refused as
+unreadable before anything is read from it.
+
 ## Ship — the release cut
 
 A release cut is **three steps over two Go entry points**, with a host-run agent in
