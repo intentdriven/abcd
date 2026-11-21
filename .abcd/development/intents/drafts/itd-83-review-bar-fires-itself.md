@@ -81,7 +81,7 @@ same kind of rule, and it belongs in the same place — not copied into every re
 - **Auto-fixing what a reviewer finds.** Findings go to the human.
 - **Calibrating the reviewers.** That is itd-81's corpus work, and it is a hard
   prerequisite for trusting anything this intent causes to fire.
-- **Changing the agents' prompts.** They ship as-is at `0.1.0`.
+- **Changing the agents' prompts.** They ship as they are.
 
 ## Acceptance Criteria
 

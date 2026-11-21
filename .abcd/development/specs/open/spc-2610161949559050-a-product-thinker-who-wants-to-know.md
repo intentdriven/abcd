@@ -115,6 +115,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - tests: a judge's subset holds at most eight copies and every pair of models is compared; copies render as inert text; a verdict file is validated and refused whole when malformed; one ranking per judge identity; guest verdicts and the host's self-blinded verdicts reported apart
    - needs: 2, 3
    - waits on: itd-2610091016262335 and iss-2610161928115039 (the session and its kinds)
+   - landed: 2719e3765dcd
 7. Checks compared in two phases
    - packages: internal/core/matrix, internal/core/docfidelity, internal/core/record/findingkey
    - tests: a check copy's findings are read before its clone is deleted; the doc-fidelity receipts and the issue ledger are unchanged by a run; exact-key matching first, the matcher's agreement on a labelled sample reported; the overlap table appears only after the person's verdicts are locked; recall on seeded falsehoods

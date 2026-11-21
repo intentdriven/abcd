@@ -314,16 +314,10 @@ func judgesOf(d Declaration) []JudgeNeed {
 			out = append(out, JudgeNeed{Task: t.ID, Kind: t.Kind, Who: "hidden tests and the reviewer models", Count: len(d.Reviewers)})
 		case KindWriting:
 			// Each judge ranks at most eight copies, and every pair of
-			// builder models must meet in some judge's subset: enough judges
-			// that the models' copies cover each pair, never fewer than the
-			// floor below which rankings are not pooled.
-			models := len(d.Builders)
-			n := judgeFloor
-			if models > maxJudgeSubset {
-				half := maxJudgeSubset / 2
-				groups := (models + half - 1) / half
-				n = max(n, groups*(groups-1)/2)
-			}
+			// builder models must meet in some judge's subset: one judge for
+			// each block of models the judging draws (modelBlocks), never
+			// fewer than the floor below which rankings are not pooled.
+			n := max(judgeFloor, len(modelBlocks(len(d.Builders))))
 			out = append(out, JudgeNeed{Task: t.ID, Kind: t.Kind, Who: "people who have not read the copies, blind to their authors", Count: n,
 				Note: fmt.Sprintf("each ranks at most %d copies; with fewer than %d judges each ranking is reported on its own", maxJudgeSubset, judgeFloor)})
 		case KindCheck:

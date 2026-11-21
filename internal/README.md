@@ -159,7 +159,10 @@ plugin surface, and a future MCP server share one engine.
   it obeys the lab's halts and pins its binary through the lab's one hashing
   path (`lab.BinaryIdentity`). The run record and its declaration pass the
   repository's secret scanner (`adapter/scanner`) before they are written, and
-  are written together or not at all (`lab.Procedure.WriteStates`).
+  are written together or not at all (`lab.Procedure.WriteStates`). A writing
+  task's copies are judged by people from a packet that names no model, its
+  documents rendered as inert text, and the judging session's verdicts are read
+  back as an untrusted file, refused whole when any part fails.
 - **`core/sweep/`** — one sweep over everything a repository leaves lying
   around (itd-2610222214476887): its worktrees, local branches, merged branches
   on origin, reservation branches and waiting inbox reports, one row each with
