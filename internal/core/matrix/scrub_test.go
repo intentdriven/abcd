@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 // scrubFor is the identity scrub of the first copy of writingInputs' run.
@@ -32,6 +33,18 @@ func TestTheScrubWithholdsANameWrittenInAnyForm(t *testing.T) {
 		"Gеmіnі",        // Cyrillic e and i
 		"Llаmа 3",       // Cyrillic a
 		"De‍ep‌Seek-V3", // a zero-width joiner and non-joiner
+		"Cl⃝aude",       // an enclosing mark (Me)
+		"Clःaude",       // a spacing mark (Mc)
+		"Clㅤaude",       // a Hangul filler
+		"Clᅟaude",       // a Hangul choseong filler
+		"Clᅠaude",       // a Hangul jungseong filler
+		"Clﾠaude",       // a halfwidth Hangul filler
+		"Cl\baude",      // a backspace
+		"Cl\x7faude",    // a delete
+		"Cl\u009baude",  // a C1 control
+		"Claսde",        // an Armenian seh for u
+		"Օpus",          // an Armenian capital oh
+		"ցemini",        // an Armenian co for g
 	} {
 		text := "Written by " + signed + " for the page."
 		got, n := s.scrub(text)
@@ -62,6 +75,8 @@ func TestTheScrubWithholdsTheWholeModelIDTokenAfterAName(t *testing.T) {
 		{"by qwen2.5-coder-32b today", "by " + withheldMark + " today"},
 		{"by Claude. Then", "by " + withheldMark + ". Then"},
 		{"by Claude and more", "by " + withheldMark + " and more"},
+		{"by claude–opus-5-5 today", "by " + withheldMark + " today"},
+		{"by claude—opus today", "by " + withheldMark + " today"},
 	} {
 		if got, _ := s.scrub(c.text); got != c.want {
 			t.Errorf("scrub(%q) = %q; want %q", c.text, got, c.want)
@@ -114,4 +129,69 @@ func TestTheJudgingPacketCarriesNoRespelledSignature(t *testing.T) {
 func strconvQuote(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
+}
+
+// A known model's or maker's name whose letters are split by single
+// separators (a space, a dot, a hyphen, an asterisk, an underscore, a line
+// break) is withheld whole: the separated form is read as the name it spells
+// when it is that whole name, not part of a longer word.
+func TestTheScrubWithholdsANameSpelledWithSeparators(t *testing.T) {
+	s := scrubFor(writingInputs(1, 1, 1))
+	for _, signed := range []string{
+		"c-l-a-u-d-e",
+		"C l a u d e",
+		"g.p.t",
+		"G.P.T-4o",
+		"C*l*a*u*d*e",
+		"c_l_a_u_d_e",
+		"Clau\nde",
+		"Cl.aude",
+		"An-thro-pic",
+		"S o n n e t",
+		"o.p.u.s",
+		"D e e p S e e k",
+		"C​.l.a.u.d.e", // separators beside a format character
+		"С-l-a-u-d-e",  // a separator beside a look-alike
+	} {
+		text := "Written by " + signed + " for the page."
+		got, n := s.scrub(text)
+		if n == 0 || got != "Written by "+withheldMark+" for the page." {
+			t.Errorf("scrub(%q) = %q (%d withheld); want the name withheld whole and the rest kept", text, got, n)
+		}
+	}
+	for _, prose := range []string{
+		"I met a friend at the top usage of the open air market.",
+		"The magnum op us was a b c, and the ex-pert dev in the morning wrote code x.",
+		"Me ta, kim i and gro k are not names here, nor is the g p s unit.",
+		"I met\na friend; the meta-analysis held.",
+		"e.g. the U.S.A. and i.e. the a.m. train",
+		"a co-author and a show-off up-ended the plan",
+	} {
+		if got, n := s.scrub(prose); n != 0 && got != prose {
+			if strings.Contains(prose, "meta-analysis") && got == strings.Replace(prose, "meta", withheldMark, 1) {
+				continue // a name written straight on is withheld as a substring already
+			}
+			t.Errorf("scrub of ordinary prose %q = %q (%d withheld); want it kept", prose, got, n)
+		}
+	}
+}
+
+// The scrub reads a text in time linear in its length: a copy's text of the
+// largest size the run keeps, built so that every name or version starts a
+// match that could run to the end of the text, is scrubbed within a tight
+// bound, so no text can stall the draw that reads it.
+func TestTheScrubIsLinearOnAdversarialText(t *testing.T) {
+	s := scrubFor(writingInputs(1, 1, 1))
+	for _, unit := range []string{"o1-", "claude-1-", "gpt 4 ", "c-l-a-u-d-e-", "opus-5-5-", "-", "o", "a b "} {
+		text := strings.Repeat(unit, maxCopyBytes/len(unit))
+		start := time.Now()
+		got, _ := s.scrub(text)
+		took := time.Since(start)
+		if got == "" {
+			t.Errorf("the scrub of %q repeated returned nothing", unit)
+		}
+		if !raceEnabled && took > time.Second {
+			t.Errorf("the scrub of %d bytes of %q repeated took %s; want under 1s", len(text), unit, took)
+		}
+	}
 }

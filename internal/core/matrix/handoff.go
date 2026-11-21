@@ -351,7 +351,9 @@ type CopyBack struct {
 // into the run's record before its clone is deleted; a writing copy's text is
 // kept for its judging. It refuses, writing nothing: a copy the run did not
 // hand to the host (a runner cell's, or a refused cell's), one already taken
-// back, a receipt that does not validate, a made code copy without its hidden
+// back (short of a check copy whose clone outlived its trial, which a hand-back
+// again deletes, returning the trial written: leftoverClone), a receipt that
+// does not validate, a made code copy without its hidden
 // tests' result, and a made writing or check copy without its answer.
 func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack) (TrialRecord, error) {
 	if !runIDRe.MatchString(run) {
@@ -371,6 +373,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	rec, d, err := readRun(proc, run)
 	var h HandOff
 	var alias string
+	var written []byte
 	if err == nil {
 		h, err = readHandOff(proc, run, key)
 	}
@@ -378,8 +381,8 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		alias, err = readAlias(proc, run, key)
 	}
 	if err == nil {
-		if _, terr := proc.ReadState(run + "/" + key.rel()); terr == nil {
-			err = fmt.Errorf("copy %s is already handed back; a copy's trial is written once", key)
+		if raw, terr := proc.ReadState(run + "/" + key.rel()); terr == nil {
+			written = raw
 		} else if !errors.Is(terr, fs.ErrNotExist) {
 			err = terr
 		}
@@ -387,6 +390,9 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	proc.Close()
 	if err != nil {
 		return TrialRecord{}, err
+	}
+	if written != nil {
+		return leftoverClone(home, rec, h, alias, key, written)
 	}
 	switch h.State {
 	case HandOffWaiting:
@@ -486,17 +492,60 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 			t.Status, t.Reason = StatusFailed, cc.Reason
 		}
 		// The clone goes only once the trial is written: a write the screen
-		// refuses, or one a concurrent hand-back of the same copy won, keeps
-		// it, and a retry finds the same findings recorded and goes on.
+		// refuses keeps it, and a retry finds the same findings recorded and
+		// goes on; a write a concurrent hand-back of the same copy won leaves
+		// the clone to that one (lostTrialWrite), and a deletion that fails
+		// is tried again by handing the copy back again (leftoverClone).
 		if err := writeTrial(repoRoot, labID, t); err != nil {
-			return TrialRecord{}, fmt.Errorf("copy %s keeps its clone: %w", key, err)
+			return TrialRecord{}, lostTrialWrite(repoRoot, labID, run, key, err)
 		}
 		if err := os.RemoveAll(clone); err != nil {
-			return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone could not be deleted: %w", key, err)
+			return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err)
 		}
 		return t, nil
 	}
 	return t, writeTrial(repoRoot, labID, t)
+}
+
+// leftoverClone answers a hand-back of copy key whose trial is already
+// written. A check copy whose clone outlived its trial, because deleting it
+// failed, has the clone deleted now and its trial, as written, returned, so
+// the hand-back can be tried again until the clone is gone; its receipt is not
+// read again and no second trial is written. Anything else is refused: a
+// copy's trial is written once.
+func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key TrialKey, written []byte) (TrialRecord, error) {
+	refused := fmt.Errorf("copy %s is already handed back; a copy's trial is written once", key)
+	if h.Kind != KindCheck || alias == "" {
+		return TrialRecord{}, refused
+	}
+	clone := cloneDir(cloneStore(home, rec.RootSHA), rec.RunID, alias)
+	if _, err := os.Lstat(clone); errors.Is(err, fs.ErrNotExist) {
+		return TrialRecord{}, refused
+	}
+	var t TrialRecord
+	if err := jsonstrict.Decode(written, &t); err != nil || t.Key != key || t.Run != rec.RunID {
+		return TrialRecord{}, fmt.Errorf("copy %s's trial does not read as its own, so its clone at %s is kept", key, clone)
+	}
+	if err := os.RemoveAll(clone); err != nil {
+		return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err)
+	}
+	return t, nil
+}
+
+// lostTrialWrite is the refusal of a check copy's hand-back whose trial was
+// not written. Where a trial of the copy is written even so, another
+// hand-back of it wrote it first, and that one deletes the clone, so the
+// refusal says so rather than that the clone is kept; otherwise the clone is
+// kept for the copy to be handed back again.
+func lostTrialWrite(repoRoot, labID, run string, key TrialKey, err error) error {
+	if proc, perr := lab.OpenProcedure(repoRoot, labID); perr == nil {
+		_, terr := proc.ReadState(run + "/" + key.rel())
+		proc.Close()
+		if terr == nil {
+			return fmt.Errorf("copy %s was handed back by another hand-back, whose trial is the one written: %w; handing it back again returns that trial, and deletes its clone if one is left", key, err)
+		}
+	}
+	return fmt.Errorf("copy %s keeps its clone: %w", key, err)
 }
 
 // parseCopyReceipt reads a copy receipt strictly and holds it to its bounds.

@@ -12,8 +12,10 @@ package matrix
 // maker is withheld from the copy's own words wherever it stands, inside a
 // longer word too, so a copy cannot sign what it found in front of the person,
 // the matcher or the outside judge (identityScrub); a quote the frozen
-// material holds is the material's own and is kept whole. Every position is
-// computed from the frozen material, never taken from the copy. A doc-fidelity copy's verdict is validated by the recorder's
+// material holds is located and verified against the material as written,
+// and shown with every model and maker withheld, since a copy chooses which
+// line it quotes. Every position is computed from the frozen material, never
+// taken from the copy. A doc-fidelity copy's verdict is validated by the recorder's
 // own decoder (docfidelity.ReportFindings) and never recorded where the release
 // gates read; what it drafted as a correction is dropped, never applied.
 //
@@ -39,6 +41,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,7 +141,7 @@ type CheckCopy struct {
 // final message, and Failure the runner's failure, "" when it answered. Gates
 // is what the release gates read, snapshotted before the copy started
 // (snapshotGates), and Identity what in the run identifies a copy, which
-// collectCheckCopy reads from the run's record, its declaration and the
+// recordCheckCopy reads from the run's record, its declaration and the
 // copy's alias record, replacing a caller's.
 type checkCopyInputs struct {
 	RepoRoot, Store, Run, Frozen string
@@ -356,16 +359,24 @@ func (r checkRedactor) path(p string, material map[string]string) error {
 }
 
 // end is one end of a finding: the quote made inert, and where the frozen
-// material at p holds it. A quote the material holds is the material's own
-// words, the same for every copy that quotes it, so it signs no copy and is
-// kept whole (dcn-2611210903322839). One it does not hold is the copy's own,
-// and has everything the identity scrub withholds withheld.
+// material at p holds it. The quote is located in the material as written,
+// before anything is withheld from it, so where it stands and whether the
+// material holds it are read from the material's own words. A quote the
+// material holds is the same for every copy that quotes it, but a copy chooses
+// which line it quotes, so a quote of a line naming a model would sign it by
+// choice: it is shown with every model and maker withheld (scrubModels), and
+// the rest of the line, the run's other words among them, kept, and it stays
+// located (dcn-2611211626560528, correcting dcn-2611210903322839 in part). One the
+// material does not hold is the copy's own, and has everything the identity
+// scrub withholds withheld.
 func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, int) {
 	q, n := inert(quote, r.place)
 	lines := locate(material[p], q)
 	var m int
 	if lines == nil {
 		q, m = r.model.scrub(q)
+	} else {
+		q, m = r.model.scrubModels(q)
 	}
 	return FindingEnd{Path: p, Quote: q, Lines: lines}, n + m
 }
@@ -385,12 +396,16 @@ const withheldClass = "withheld"
 // wherever it stands, fused to a letter or a digit or joined by any mark, so
 // no way of writing an ordinary id escapes a word boundary, and in the text
 // as scrubFold folds it, so no respelling does either: compatibility forms
-// read as their plain letters, combining marks and format characters (a
-// zero-width space or joiner, a soft hyphen) dropped, every dash read as a
-// hyphen, and Cyrillic and Greek letters that look Latin read as the Latin
-// ones. A withheld name takes the rest of its model id token with it
-// (versionEnd), and a joiner between two withheld spans is withheld with
-// them, so "claude-opus-5-5" goes under one mark:
+// read as their plain letters, combining marks, format characters (a
+// zero-width space or joiner, a soft hyphen), Hangul fillers and controls
+// other than white space dropped, every dash read as a hyphen, and Cyrillic,
+// Greek and Armenian letters that look Latin read as the Latin ones. A model's
+// or a maker's name spelled with its letters split by single separators
+// ("c-l-a-u-d-e", "g.p.t") is withheld too (spacedSpans). A withheld name
+// takes the rest of its model id token with it (versionEnds), and a joiner
+// between two withheld spans is withheld with them, so "claude-opus-5-5" goes
+// under one mark. The scrub reads its text in time linear in its length.
+// It withholds:
 //
 //   - every name in the run that could identify a copy: the run's id; every
 //     task's id; and each cell's id, source, route whole and by its parts (its
@@ -407,9 +422,20 @@ const withheldClass = "withheld"
 // letters fall, so it is not matched: a task's or a cell's id that short is
 // kept from the copy instead, which is never shown its task's or its cell's id
 // (cloneDir), only its alias.
+//
+// A quote the frozen material holds has only the model and maker names
+// withheld (scrubModels): the model families and their developers, the AI
+// names, an o-series name, and each cell's model and the vendors its route and
+// pin name.
 type identityScrub struct {
-	// withheld is every name withheld, lower-cased.
+	// withheld is every name withheld, folded.
 	withheld []string
+	// models is the names of models and their makers, folded: the part of
+	// withheld a located quote has withheld.
+	models []string
+	// spaced is the names of models and makers matched when spelled with
+	// separators (spacedSpans).
+	spaced []string
 }
 
 // minNameBytes is the shortest name the scrub matches.
@@ -417,24 +443,86 @@ const minNameBytes = 3
 
 func newIdentityScrub(run string, key TrialKey, id runIdentity) identityScrub {
 	var s identityScrub
-	seen := map[string]bool{}
-	add := func(n string) {
-		if n, _, _ = scrubFold(strings.TrimSpace(n)); len(n) >= minNameBytes && !seen[n] {
+	seen, seenModel := map[string]bool{}, map[string]bool{}
+	add := func(n string, model bool) {
+		n, _, _ = scrubFold(strings.TrimSpace(n))
+		if len(n) < minNameBytes {
+			return
+		}
+		if !seen[n] {
 			seen[n] = true
 			s.withheld = append(s.withheld, n)
 		}
+		if model && !seenModel[n] {
+			seenModel[n] = true
+			s.models = append(s.models, n)
+		}
 	}
 	for _, n := range identityNames(run, key, id) {
-		add(n)
+		add(n, false)
 	}
-	for _, n := range modelFamilies {
-		add(n)
-	}
-	for _, d := range developers {
-		add(d)
+	for _, n := range modelVendorNames(id) {
+		add(n, true)
 	}
 	sort.Strings(s.withheld)
+	sort.Strings(s.models)
+	short := map[string]bool{}
+	for _, n := range modelFamilies {
+		short[n] = true
+	}
+	for _, d := range developers {
+		short[d] = true
+	}
+	for _, n := range s.models {
+		if isLetters(n) && (len(n) >= minSpacedBytes || short[n]) {
+			s.spaced = append(s.spaced, n)
+		}
+	}
 	return s
+}
+
+// minSpacedBytes is the shortest name matched spelled with separators, short
+// of the model families' and developers' own short names (gpt, glm, phi, xai),
+// which are matched however short.
+const minSpacedBytes = 4
+
+// isLetters reports whether s is ASCII letters alone.
+func isLetters(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if !isLetter(s[i]) {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// modelVendorNames is every name of a model or its maker in the run: the
+// model families and their developers, and each cell's model whole and by
+// segment and the vendors its route and its provider pin name. The grammar's
+// words for where a model runs (host, local, provider) name no vendor, so a
+// route's segment that is one of them is not among them.
+func modelVendorNames(id runIdentity) []string {
+	out := slices.Clone(modelFamilies)
+	for _, d := range developers {
+		out = append(out, d)
+	}
+	for _, c := range id.Cells {
+		out = append(out, modelNames(c.Model)...)
+		if m := routeModel(c.Route); m != "" {
+			out = append(out, modelNames(m)...)
+		}
+		if p := c.ProviderPin; p != nil {
+			out = append(out, modelNames(p.CanonicalSlug)...)
+			out = append(out, p.Order...)
+		}
+	}
+	return slices.DeleteFunc(out, func(n string) bool {
+		switch Source(strings.ToLower(strings.TrimSpace(n))) {
+		case SourceHost, SourceLocal, SourceProvider:
+			return true
+		}
+		return false
+	})
 }
 
 // identityNames is every name in the run that could identify a copy: the
@@ -501,6 +589,13 @@ func routeNames(route string) []string {
 	return out
 }
 
+// routeModel is the provider and model a cell's route names after its `@`,
+// "" where it names none.
+func routeModel(route string) string {
+	_, model, _ := strings.Cut(route, "@")
+	return model
+}
+
 // asciiLower is s with its ASCII letters lower-cased and every other byte as
 // it is, so offsets into it are offsets into s.
 func asciiLower(s string) string {
@@ -519,7 +614,18 @@ func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 // withheld, each run of withheld bytes under one mark, and how many marks it
 // wrote.
 func (m identityScrub) scrub(s string) (string, int) {
-	held := m.held(s)
+	return markHeld(s, m.held(m.withheld, s))
+}
+
+// scrubModels is scrub with only the names of models and their makers
+// withheld: how a quote the frozen material holds is shown.
+func (m identityScrub) scrubModels(s string) (string, int) {
+	return markHeld(s, m.held(m.models, s))
+}
+
+// markHeld is s with each run of held bytes under one mark, and how many marks
+// it wrote.
+func markHeld(s string, held []bool) (string, int) {
 	var b strings.Builder
 	n := 0
 	for i := 0; i < len(s); i++ {
@@ -534,15 +640,20 @@ func (m identityScrub) scrub(s string) (string, int) {
 	return b.String(), n
 }
 
-// held marks each byte of s that is part of a name the scrub withholds. The
+// held marks each byte of s that is part of one of names, an AI name, an
+// o-series name, or a model's or maker's name spelled with separators. The
 // names are matched in s as scrubFold folds it, and each match holds the
 // bytes of s it was folded from, the format characters inside it included.
-func (m identityScrub) held(s string) []bool {
+// Every step is linear in the length of s: each match's token end is read
+// from a table built once (versionEnds), and the matches are summed into the
+// held bytes once, at the end.
+func (m identityScrub) held(names []string, s string) []bool {
 	low, from, to := scrubFold(s)
-	held := make([]bool, len(s))
+	cover := make([]int32, len(s)+1)
 	hold := func(i, j int) {
-		for ; i < j; i++ {
-			held[i] = true
+		if i < j {
+			cover[i]++
+			cover[j]--
 		}
 	}
 	// holdFolded holds low[i:j] as the bytes of s it came from.
@@ -551,13 +662,14 @@ func (m identityScrub) held(s string) []bool {
 			hold(from[i], to[j-1])
 		}
 	}
-	for _, name := range m.withheld {
+	ends := newVersionEnds(low)
+	for _, name := range names {
 		for at := 0; at < len(low); {
 			i := strings.Index(low[at:], name)
 			if i < 0 {
 				break
 			}
-			holdFolded(at+i, versionEnd(low, at+i+len(name), false))
+			holdFolded(at+i, ends.at(at+i+len(name), false))
 			at += i + 1
 		}
 	}
@@ -565,7 +677,7 @@ func (m identityScrub) held(s string) []bool {
 		hold(sp[0], sp[1])
 	}
 	for _, sp := range identity.AINameSpans(low) {
-		holdFolded(sp[0], versionEnd(low, sp[1], false))
+		holdFolded(sp[0], ends.at(sp[1], false))
 	}
 	for i := 0; i+1 < len(low); i++ {
 		if low[i] == oSeries[0] && (i == 0 || !isLetter(low[i-1])) && isDigit(low[i+1]) {
@@ -573,48 +685,166 @@ func (m identityScrub) held(s string) []bool {
 			for j < len(low) && isDigit(low[j]) {
 				j++
 			}
-			holdFolded(i, versionEnd(low, j, true))
+			holdFolded(i, ends.at(j, true))
 		}
 	}
-	// A joiner between two withheld spans joins one name: "claude-opus".
-	for i := 1; i+1 < len(s); i++ {
-		if !held[i] && held[i-1] && held[i+1] && strings.IndexByte(tokenJoiners, s[i]) >= 0 {
+	m.spacedSpans(low, func(i, j int) { holdFolded(i, ends.at(j, false)) })
+	held := make([]bool, len(s))
+	var depth int32
+	for i := range held {
+		depth += cover[i]
+		held[i] = depth > 0
+	}
+	// A joiner between two withheld spans joins one name: "claude-opus",
+	// "claude–opus" (every dash folds to a hyphen).
+	for k := 0; k < len(low); k++ {
+		if strings.IndexByte(tokenJoiners, low[k]) < 0 {
+			continue
+		}
+		i, j := from[k], to[k]
+		if i == 0 || j >= len(s) || !held[i-1] || !held[j] || held[i] {
+			continue
+		}
+		for ; i < j; i++ {
 			held[i] = true
 		}
 	}
 	return held
 }
 
+// spacedSpans calls hold with each span of folded text low that spells one of
+// the scrub's spaced names, or an AI name, with its letters split by single
+// separators: one character that is neither a letter nor a digit between two
+// letters (a space, a dot, a hyphen, an asterisk, an underscore, a line
+// break). A span counts only where it is the whole name, with no letter
+// directly before or after it, and holds at least one separator. Ordinary
+// prose splits words at spaces and line breaks, so a span split by white
+// space counts only where every letter is split from the next ("c l a u d
+// e"), or where its only white space is line breaks and the name is at least
+// minWrappedBytes long ("Clau\nde"): "met a" and "op us" stay prose.
+func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
+	// letters is low's ASCII letters with each single separator between two
+	// of them dropped, and a zero byte for anything else; at[k] is where its
+	// byte k stands in low.
+	letters := make([]byte, 0, len(low))
+	at := make([]int, 0, len(low))
+	for i := 0; i < len(low); {
+		r, w := utf8.DecodeRuneInString(low[i:])
+		switch {
+		case isLetter(low[i]):
+			letters, at = append(letters, low[i]), append(at, i)
+		case i > 0 && isLetter(low[i-1]) && i+w < len(low) && isLetter(low[i+w]) && !unicode.IsLetter(r) && !unicode.IsDigit(r):
+		default:
+			letters, at = append(letters, 0), append(at, i)
+		}
+		i += w
+	}
+	text := string(letters)
+	try := func(a, b int) {
+		lo, hi := at[a], at[b-1]+1
+		if before, _ := utf8.DecodeLastRuneInString(low[:lo]); lo > 0 && unicode.IsLetter(before) {
+			return
+		}
+		if after, _ := utf8.DecodeRuneInString(low[hi:]); hi < len(low) && unicode.IsLetter(after) {
+			return
+		}
+		seps, white, wrapped := 0, false, true
+		for k := a; k+1 < b; k++ {
+			if at[k+1] == at[k]+1 {
+				continue
+			}
+			seps++
+			if r, _ := utf8.DecodeRuneInString(low[at[k]+1:]); unicode.IsSpace(r) {
+				white = true
+				wrapped = wrapped && r == '\n'
+			}
+		}
+		switch {
+		case seps == 0:
+		case !white, seps == b-a-1, wrapped && b-a >= minWrappedBytes:
+			hold(lo, hi)
+		}
+	}
+	for _, name := range m.spaced {
+		for from := 0; from < len(text); {
+			i := strings.Index(text[from:], name)
+			if i < 0 {
+				break
+			}
+			try(from+i, from+i+len(name))
+			from += i + 1
+		}
+	}
+	for _, sp := range identity.AINameSpans(text) {
+		try(sp[0], sp[1])
+	}
+}
+
+// minWrappedBytes is the shortest name matched broken across lines with no
+// other separator: a shorter one ("met\na" for meta) is how prose wraps.
+const minWrappedBytes = 5
+
 // tokenJoiners join the parts of a model id token.
 const tokenJoiners = "-._:/"
 
-// versionEnd is where the model id token a withheld name ends at j in folded
-// text low goes on to: a version after it, joined by a joiner or a space or
-// written straight on ("-5-5", " 5.5", "4o"), each part led by a digit, and
-// once a version has begun (versioned), every part joined to it by a joiner
-// ("-mini", "-coder-32b"). A name fused to a letter, or followed by a word,
-// takes nothing more.
-func versionEnd(low string, j int, versioned bool) int {
-	end := j
-	for i := j; ; {
-		k := i
-		sep := byte(0)
-		if k < len(low) && (low[k] == ' ' || strings.IndexByte(tokenJoiners, low[k]) >= 0) {
-			sep = low[k]
-			k++
+// versionEnds is, for each place j in folded text low, where the model id
+// token a withheld name ending at j goes on to: a version after it, joined by
+// a joiner or a space or written straight on ("-5-5", " 5.5", "4o"), each
+// part led by a digit, and once a version has begun, every part joined to it
+// by a joiner ("-mini", "-coder-32b"). A name fused to a letter, or followed
+// by a word, takes nothing more. The table is built once, from the end of
+// the text back, so reading it for every match costs nothing more.
+type versionEnds struct {
+	// end[0][j] is the end where no version has begun at j, end[1][j]
+	// where one has.
+	end [2][]int32
+}
+
+func newVersionEnds(low string) versionEnds {
+	n := len(low)
+	// run[k] is where the run of letters and digits starting at k ends.
+	run := make([]int32, n+1)
+	run[n] = int32(n)
+	for k := n - 1; k >= 0; k-- {
+		run[k] = int32(k)
+		if isAlnum(low[k]) {
+			run[k] = run[k+1]
 		}
-		if k >= len(low) || !isAlnum(low[k]) {
-			return end
-		}
-		digit := isDigit(low[k])
-		if !digit && (sep == 0 || sep == ' ' || !versioned) {
-			return end
-		}
-		for k < len(low) && isAlnum(low[k]) {
-			k++
-		}
-		i, end, versioned = k, k, versioned || digit
 	}
+	e := versionEnds{end: [2][]int32{make([]int32, n+1), make([]int32, n+1)}}
+	for j := n; j >= 0; j-- {
+		for v := 0; v < 2; v++ {
+			e.end[v][j] = int32(j)
+			k := j
+			sep := byte(0)
+			if k < n && (low[k] == ' ' || strings.IndexByte(tokenJoiners, low[k]) >= 0) {
+				sep = low[k]
+				k++
+			}
+			if k >= n || !isAlnum(low[k]) {
+				continue
+			}
+			digit := isDigit(low[k])
+			if !digit && (sep == 0 || sep == ' ' || v == 0) {
+				continue
+			}
+			next := v
+			if digit {
+				next = 1
+			}
+			e.end[v][j] = e.end[next][run[k]]
+		}
+	}
+	return e
+}
+
+// at is where the token a name ending at j goes on to, versioned saying
+// whether a version has begun.
+func (e versionEnds) at(j int, versioned bool) int {
+	if versioned {
+		return int(e.end[1][j])
+	}
+	return int(e.end[0][j])
 }
 
 func isAlnum(c byte) bool { return isLetter(c) || isDigit(c) }
@@ -625,9 +855,10 @@ func isAlnum(c byte) bool { return isLetter(c) || isDigit(c) }
 // would) and a combining mark comes apart from its letter; drops every
 // combining mark and every format character (a zero-width space, joiner or
 // non-joiner, a word joiner, a soft hyphen, a direction mark); reads every
-// dash and the minus sign as a hyphen; and folds the Cyrillic and Greek
-// letters that look Latin (scrubConfusables) to the Latin ones, and every
-// other letter to lower case.
+// dash and the minus sign as a hyphen; and folds the Cyrillic, Greek and
+// Armenian letters that look Latin (scrubConfusables) to the Latin ones, and
+// every other letter to lower case. It also drops every enclosing and spacing
+// mark, the Hangul fillers, and every control that is not white space.
 func scrubFold(s string) (string, []int, []int) {
 	var b strings.Builder
 	from := make([]int, 0, len(s))
@@ -647,7 +878,7 @@ func scrubFold(s string) (string, []int, []int) {
 			}
 			k += w
 			switch {
-			case unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Cf, r):
+			case foldDropped(r):
 				continue
 			case unicode.Is(unicode.Pd, r) || r == '\u2212':
 				r = '-'
@@ -669,9 +900,21 @@ func scrubFold(s string) (string, []int, []int) {
 	return b.String(), from, to
 }
 
-// scrubConfusables are the Cyrillic and Greek letters, in both cases, that
-// look like a Latin letter, each to the lower-case Latin letter it looks
-// like: the common ones of Unicode's confusables (TR39) for these scripts.
+// foldDropped reports whether scrubFold drops r: a combining, enclosing or
+// spacing mark, a format character, a Hangul filler, or a control that is not
+// white space, none of which shows as a letter of a name.
+func foldDropped(r rune) bool {
+	switch r {
+	case '\u115f', '\u1160', '\u3164', '\uffa0':
+		return true
+	}
+	return unicode.In(r, unicode.Mn, unicode.Me, unicode.Mc, unicode.Cf) || unicode.Is(unicode.Cc, r) && !unicode.IsSpace(r)
+}
+
+// scrubConfusables are the Cyrillic, Greek and Armenian letters, in both
+// cases, that look like a Latin letter, each to the lower-case Latin letter
+// it looks like: the common ones of Unicode's confusables (TR39) for these
+// scripts.
 var scrubConfusables = map[rune]rune{
 	// Cyrillic capitals and smalls.
 	'А': 'a', 'а': 'a', 'В': 'b', 'в': 'b', 'С': 'c', 'с': 'c', 'Ԁ': 'd', 'ԁ': 'd',
@@ -685,6 +928,9 @@ var scrubConfusables = map[rune]rune{
 	'η': 'n', 'Ι': 'i', 'ι': 'i', 'Κ': 'k', 'κ': 'k', 'Μ': 'm', 'Ν': 'n', 'ν': 'v',
 	'Ο': 'o', 'ο': 'o', 'Ρ': 'p', 'ρ': 'p', 'Τ': 't', 'τ': 't', 'Υ': 'y', 'υ': 'u',
 	'Χ': 'x', 'χ': 'x', 'ϲ': 'c', 'Ϲ': 'c', 'ϳ': 'j',
+	// Armenian capitals and smalls.
+	'Օ': 'o', 'օ': 'o', 'Ս': 'u', 'ս': 'u', 'Տ': 's', 'Լ': 'l', 'հ': 'h', 'ո': 'n',
+	'ց': 'g', 'զ': 'q', 'ք': 'f', 'յ': 'j', 'ա': 'w',
 	// Latin letters that read as another.
 	'ı': 'i', 'ɡ': 'g', 'ɑ': 'a',
 }
@@ -898,30 +1144,18 @@ func encodeCheck(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// collectCheckCopy reads copy in.Key's answer into its run's record in lab
-// labID, and only then deletes the copy's clone. A copy whose findings the
-// secret screen refuses is recorded as failed, with nothing of its answer
-// kept. A copy whose findings cannot be recorded (another record of the copy
-// is already written) keeps its clone, and so does a run that finds the
-// release gates' receipts, the review flags or the ledger changed since
-// in.Gates was snapshotted, before the copy started. A record already written
-// with the same bytes counts as written, so a collection that failed after
-// writing it can be tried again, and the retry deletes the clone.
-func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
-	c, clone, err := recordCheckCopy(labID, in)
-	if err != nil {
-		return CheckCopy{}, err
-	}
-	if err := os.RemoveAll(clone); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
-	}
-	return c, nil
-}
-
-// recordCheckCopy is collectCheckCopy short of deleting the clone: it records
-// copy in.Key's findings, proves the release gates' reads unchanged, and
-// returns the clone to delete once the caller has written what else it must
-// (a hand-back's trial), so nothing it refuses can leave a copy with no clone.
+// recordCheckCopy reads copy in.Key's answer into its run's record in lab
+// labID: it records the copy's findings, proves the release gates' reads
+// unchanged, and returns the clone to delete once the caller has written what
+// else it must (a hand-back's trial, CollectCopy), so nothing it refuses can
+// leave a copy with no clone. A copy whose findings the secret screen refuses
+// is recorded as failed, with nothing of its answer kept. A copy whose
+// findings cannot be recorded (another record of the copy is already
+// written), or whose run finds the release gates' receipts, the review flags
+// or the ledger changed since in.Gates was snapshotted, before the copy
+// started, is refused, keeping its clone. A record already written with the
+// same bytes counts as written, so a hand-back that failed after writing it
+// can be tried again.
 func recordCheckCopy(labID string, in checkCopyInputs) (CheckCopy, string, error) {
 	if !runIDRe.MatchString(in.Run) {
 		return CheckCopy{}, "", fmt.Errorf("%q is not a run id", clip(in.Run))
