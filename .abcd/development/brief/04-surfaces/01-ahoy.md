@@ -1290,8 +1290,9 @@ takes nothing, so the most a hostile file above the tree can cause is a
 warning. The version warning asks the `claude` command on `PATH` once for its
 version (`host_version.go`), through the runner's one launch primitive for a
 vendor binary (`runner.Exec`): the command is refused when it resolves to a
-relative path or inside the project, or when group or other can write it or a
-folder it is reached through, and it runs with the git-scrubbed environment,
+relative path, inside the project or inside any git working tree the project
+lies in (the account's own home aside), or when group or other can write it or
+a folder it is reached through, and it runs with the git-scrubbed environment,
 each stream bounded, and a three-second limit that kills the process group it
 leads. The warning reads the first `major.minor.patch` the command prints on
 stdout, and warns, naming no version, when it is below the one floor constant,
@@ -1333,7 +1334,11 @@ version, or the copy is removed again. The copy is recorded, path and digest, in
 same condition. A copy installed some other way is used when its version lies in
 the tool's compatible range, and is never changed: when the bin folder already
 holds a program of that name abcd did not install, it installs nothing and says
-why. The record is read only from a home the home rule admits
+why. A copy `PATH` finds inside the directory the verb runs from, or inside any
+git working tree that directory lies in (the whole checkout from a subdirectory,
+and a superproject as well; the account's own home aside), is repository
+content: it is never run, never counts as installed, and its gap stays. The
+record is read only from a home the home rule admits
 (`gitutil.HomeInsideWorkingTree`): under a `HOME` inside a git working tree that
 is not the account's own, abcd reads no record there, runs no copy it names, and
 installs nothing there.

@@ -105,7 +105,8 @@ func (r *Refusal) Error() string {
 // Rule is what a copy is judged against.
 type Rule struct {
 	// Guards are the trees a program must not lie within: the repository a
-	// role runs in and the checkout it belongs to. "" is skipped.
+	// role runs in and the checkout it belongs to, each held with every git
+	// working tree it lies in (tools.GuardForms). "" is skipped.
 	Guards []string
 	// ReachedThrough is a further path the program was reached through, held
 	// to the guards as the path is; "" for none.

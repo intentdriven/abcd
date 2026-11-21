@@ -308,7 +308,10 @@ func admitBinary(repoRoot, candidate, origin string) (string, error) {
 		return refuse("cannot be judged: a link on its way cannot be examined")
 	}
 	fold := caseFoldingFS()
-	for _, root := range []string{rootLexical, rootResolved} {
+	// The repository is held with every working tree it lies in, as the
+	// installer holds its guard (tools.GuardForms): a superproject's content
+	// is repository content as well.
+	for _, root := range append([]string{rootLexical, rootResolved}, tools.GuardForms(rootLexical)...) {
 		for _, cand := range append([]string{candLexical, candResolved, route.Real}, route.Links...) {
 			if fsutil.PathWithin(cand, root, fold) {
 				return refuse(inside)

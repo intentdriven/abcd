@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -121,7 +122,9 @@ type Installer struct {
 	// GOOS and GOARCH select the platform's download.
 	GOOS, GOARCH string
 	// Guard is the directory a program abcd runs, and the bin folder it
-	// writes into, must lie outside: the repository the verb was run from.
+	// writes into, must lie outside: the directory the verb was run from, held
+	// with every working tree it lies in (GuardForms), so a verb run from a
+	// subdirectory holds the whole checkout.
 	Guard string
 	// Home is the person's home directory: the record lives below it, and
 	// ~/.local/bin is the default bin folder.
@@ -733,10 +736,11 @@ func (in *Installer) admit(name string) (string, error) {
 }
 
 // WithinTree reports whether the program at p, which resolves to resolved
-// after symlinks, lies inside the tree at guard, judged lexically and after
-// symlink resolution on both sides, and with the location of every link on
-// p's route held to the tree (Walk): a step of its link chain and a directory
-// link in the middle of a folder path alike. It is the one in-checkout
+// after symlinks, lies inside the tree at guard or any working tree guard
+// lies in (GuardForms), judged lexically and after symlink resolution on both
+// sides, and with the location of every link on p's route held to the tree
+// (Walk): a step of its link chain and a directory link in the middle of a
+// folder path alike. It is the one in-checkout
 // judgement for a program: the installer refuses to run what it holds, and
 // ahoy's presence check does not count it as installed. Both p and guard are
 // absolute; the caller has already resolved p. A step that cannot be examined
@@ -781,12 +785,29 @@ func causeOf(err error) string {
 	return err.Error()
 }
 
-// GuardForms is the guard as given, cleaned, and its real location by Walk,
-// the reading every route held to it is in, so a guard under a linked
-// directory (macOS's /var and /tmp) is met in the form a route reaches it.
-// A guard Walk refuses keeps the system's own resolution instead, and one
-// that does not resolve keeps its written form alone.
+// GuardForms is every tree a guard holds a program outside of: the guard
+// itself and each working tree it lies in (gitutil.WorkingTreesAround, the
+// account's own home aside), so a guard naming a subdirectory of a checkout
+// holds the whole checkout, and a submodule's the superproject as well. Each
+// is given as written, cleaned, and at its real location by Walk, the reading
+// every route held to it is in, so a guard under a linked directory (macOS's
+// /var and /tmp) is met in the form a route reaches it. A guard Walk refuses
+// keeps the system's own resolution instead, and one that does not resolve
+// keeps its written form alone.
 func GuardForms(guard string) []string {
+	var forms []string
+	for _, g := range append([]string{guard}, gitutil.WorkingTreesAround(guard)...) {
+		for _, f := range guardForms(g) {
+			if !slices.Contains(forms, f) {
+				forms = append(forms, f)
+			}
+		}
+	}
+	return forms
+}
+
+// guardForms is one tree as written, cleaned, and at its real location.
+func guardForms(guard string) []string {
 	forms := []string{filepath.Clean(guard)}
 	if route, err := Walk(guard); err == nil && !route.Missing {
 		return append(forms, route.Real)
