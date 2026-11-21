@@ -11,7 +11,7 @@ block: people
 Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
 <!-- /generated -->
 
-Take one intent from READY towards delivered with the loop holding the run, not
+Take one intent from READY towards delivered with the implement loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
 does at most one stage, writes it and exits, so a session that stops, is
 compacted or is killed loses nothing, and the next invocation resumes where the

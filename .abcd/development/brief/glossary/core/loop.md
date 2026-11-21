@@ -34,6 +34,7 @@ The loop has a last step and nothing runs it automatically: `abcd intent plan` m
 | Brief to intent to spec to shipped work to verdict and back | **the loop**, or "the record loop" where a run loop is also in view | [`docs/explanation/process.md`](../../../../../docs/explanation/process.md), [`commands/intent.md`](../../../../../commands/intent.md) |
 | The iteration an autonomous-run adapter supplies: pick up ready work, gate each step on a receipt, apply the safety guard | **the run loop** | [adr-27](../../../decisions/adrs/0027-autonomous-run-pluggable-seam.md), [`roadmap/phases/phase-5-run-seam.md`](../../../roadmap/phases/phase-5-run-seam.md) |
 | Pack a lifeboat out of a repository and unpack it into a fresh one | **the lifeboat round-trip** | [`roadmap/phases/phase-6-lifeboat.md`](../../../roadmap/phases/phase-6-lifeboat.md), [disembark](disembark.md) |
+| The loop over a build run's state file that `build` starts and the `implement` sub-verbs drive: each invocation reads the state, does at most one stage, writes it and exits | **the implement loop** | [`04-surfaces/34-build.md`](../../04-surfaces/34-build.md), [`04-surfaces/27-implement.md`](../../04-surfaces/27-implement.md), [`commands/build.md`](../../../../../commands/build.md) |
 
 **abcd never owns the run loop.** It defines the contract — iterate over ready work, gate on a
 receipt, guard for safety — and a pluggable adapter supplies the loop itself. That is the whole
@@ -47,8 +48,11 @@ yet adopted: "closed loop" is recorded here as an alias, not as the form to writ
 
 ## When to use
 
-Use "the loop" for the record loop, and only where no run loop or round-trip is in view. Name
-the other two in full every time.
+Use "the loop" for the record loop, and only where no run loop, implement loop or round-trip is
+in view. Name the others in full every time, with one exception: inside a chapter whose subject
+is the implement loop — `34-build.md`, `27-implement.md` and `commands/build.md` — bare "the
+loop" means the implement loop once the chapter has named it "the implement loop". Everywhere
+else the implement loop keeps its full name.
 
 ## When NOT to use
 
