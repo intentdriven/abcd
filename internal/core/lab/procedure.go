@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -192,6 +193,36 @@ func (p *Procedure) ReadState(rel string) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// ListState lists the entries a procedure wrote under the folder rel of its
+// records, by name and sorted, folders and files alike. A folder never written
+// lists as not existing (os.ErrNotExist).
+func (p *Procedure) ListState(rel string) ([]string, error) {
+	full, err := stateRel(rel)
+	if err != nil {
+		return nil, err
+	}
+	f, err := p.l.root.Open(full)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("%s is not written: %w", p.l.display(full), os.ErrNotExist)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s: %v", p.l.display(full), redact(err, p.l.store.home))
+	}
+	defer f.Close()
+	names, err := f.Readdirnames(maxStateEntries + 1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("cannot list %s: %v", p.l.display(full), redact(err, p.l.store.home))
+	}
+	if len(names) > maxStateEntries {
+		return nil, fmt.Errorf("%w: %s holds more than the %d entries a procedure lists", ErrRefused, p.l.display(full), maxStateEntries)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// maxStateEntries bounds the entries ListState lists of one folder.
+const maxStateEntries = 1 << 16
 
 // BinaryIdentity is a binary's build vintage and its sha256, read without
 // running it. The preflight pins a lab's work binary through it, and a

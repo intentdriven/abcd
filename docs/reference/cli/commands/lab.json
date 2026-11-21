@@ -36,7 +36,32 @@
         }
       ],
       "inputs": [],
-      "example": "abcd lab matrix lab-260901000000-0123abc matrix.json"
+      "example": "abcd lab matrix lab-260901000000-0123abc matrix.json",
+      "subcommands": [
+        "report",
+        "rerun"
+      ]
+    },
+    {
+      "path": "abcd lab matrix report",
+      "sentence": "Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.",
+      "usage": "abcd lab matrix report <lab-id> <run-id> [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b"
+    },
+    {
+      "path": "abcd lab matrix rerun",
+      "sentence": "Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: Writes only with --approve; refuses a run of another frozen commit.",
+      "usage": "abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]",
+      "flags": [
+        {
+          "name": "approve",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b"
     },
     {
       "path": "abcd lab mint",

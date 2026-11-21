@@ -338,6 +338,10 @@ var sentences = map[string]string{
 		"Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
 	"abcd lab matrix": "Show a model matrix run's plan, or record the run its digest consents to: " +
 		"Writes the run record only with --approve; refuses a metered run with no cap.",
+	"abcd lab matrix report": "Print a recorded matrix run's report, its limitations and suggested improvements: " +
+		"Writes nothing; refuses a run the lab never recorded.",
+	"abcd lab matrix rerun": "Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: " +
+		"Writes only with --approve; refuses a run of another frozen commit.",
 	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
 		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
 	"abcd lab preflight": "Run a lab's harness-isolation and dual-binary checks: " +

@@ -161,6 +161,44 @@ person's own machine configuration, never the repository's), a local cell with
 no load cap or one at or above the cores, a route this machine's runners refuse,
 an OpenRouter or local cell with no pin, and a stale approval.
 
+**Read a recorded run's report**, which writes nothing:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix report --json <lab-id> <run-id>
+```
+
+`code` gives, per task, each builder cell's `pass_at_1` (passes of the attempts
+that count, the rate and its 95% `interval`), `pass_hat_k`, the copies set
+apart (`not_started`, `unexamined`, `excluded`, in no rate), `reviews`
+(`confirmed` findings on failing copies, `unconfirmed` flags on passing ones),
+`costs` by unit with `per_pass` and what the figure is `comparable` with, and
+`model_time_ms` apart from `gate_wait_ms`; and `comparisons`, each `ranked` only
+at the repeats its power estimate asks for (`needed`, from the declaration's
+`repeats.min_difference`), otherwise stating `min_detectable`, the smallest
+difference it could have detected, in its `note`. `writing` gives each model's
+`ratings` (a regularised Bradley–Terry rating, its `interval` and whether it is
+`separable`), `agreement` (alpha with an interval, or `not_estimable` saying
+why), `good_enough` and each copy's length; with fewer than three judges,
+`floor` says so and `rankings` holds each judge's ranking instead. `check` gives
+the table the person's locked verdicts unlocked, null until then. `drift`, on a
+re-run, lists every field that drifted from the first run with both values.
+Show the person the rows and read them `limitations` and `improvements` in
+plain words: a comparison that is not ranked is not a result either way.
+
+**Re-run a recorded run** from its own declaration, by its id in the lab or a
+run's folder carried from elsewhere:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix rerun --json <lab-id> <run-id|run-folder>
+```
+
+It shows the plan as the first form does and writes nothing; record the re-run
+only after the person has seen that plan and said yes to it, with the digest it
+carried (`--approve <digest>`). The re-run's record is written beside a copy of
+the first run's records, and its report shows the drift. Refused, exit 2, with
+nothing written: a run the lab never recorded, a folder holding no run's
+records, a run whose frozen commit is not the lab's pin, and a stale approval.
+
 Exit codes: `0` done; `1` a gate refused or a halted lab refused a probe; `2`
 the request was refused (no checkout, an unknown lab, a bad name, question or
 pin), with nothing written.
@@ -189,6 +227,10 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd lab harvest lab-260901000000-0123abc`.
 - `abcd lab matrix <lab-id> <declaration.json> [flags]`
   - An example call is `abcd lab matrix lab-260901000000-0123abc matrix.json`.
+- `abcd lab matrix report <lab-id> <run-id> [flags]`
+  - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
+- `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
+  - An example call is `abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab mint <question> [flags]`
   - An example call is `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`.
 - `abcd lab preflight <lab-id> [flags]`

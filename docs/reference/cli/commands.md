@@ -4725,6 +4725,71 @@ is not the plan's digest. A halted lab exits 1.
 abcd lab matrix lab-260901000000-0123abc matrix.json
 ```
 
+##### `abcd lab matrix report`
+
+Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.
+
+**Usage:** `abcd lab matrix report <lab-id> <run-id>`
+
+abcd lab matrix report <lab-id> <run-id>
+
+Print a recorded run's report from its records in the lab, writing nothing.
+A code task gives each builder's pass rate on its hidden tests with a 95%
+interval, its pass^k, what the reviewers caught, its cost per passing build
+by source and its model time apart from gate waits; each pair of builders is
+ranked only at the repeats its power estimate asks for, otherwise it states
+the smallest difference it could have detected. A written doc gives each
+model's rating from all the judges' rankings with its interval, whether it is
+separable, the judges' agreement and each copy's length; below three judges,
+each judge's ranking and the good-enough counts only. A check gives the table
+the person's locked verdicts unlocked. A re-run's report shows, field by field,
+where it drifted from the run it repeats. Every report ends with its
+limitations and suggested improvements.
+
+Refused, exit 2: a run id that is not one, and a run the lab never recorded.
+A halted lab exits 1.
+
+**Example:**
+
+```
+abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b
+```
+
+##### `abcd lab matrix rerun`
+
+Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: Writes only with --approve; refuses a run of another frozen commit.
+
+**Usage:** `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
+
+abcd lab matrix rerun <lab-id> <run-id|run-folder> [--approve <digest>]
+
+Show the plan for a re-run of a recorded run: the run named by its id in the
+lab, or a run's folder carried from elsewhere. The plan is built from that
+run's own declaration, as `abcd lab matrix` builds one, and writes nothing.
+
+--approve <digest> records the re-run, once the person has seen the plan and
+said yes to it, and copies the first run's records beside it, so the re-run's
+report shows field by field where it drifted. A model run is re-runnable, not
+reproducible: the drift is the finding. Starting the copies is not built yet,
+so nothing is launched; the output says so.
+
+Refused, exit 2, with nothing written: a run the lab never recorded, a folder
+that holds no run's records, a run whose frozen commit is not the lab's pin,
+every refusal `abcd lab matrix` gives, and an approval that is not the plan's
+digest. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --approve string   the digest of the plan the person saw and said yes to; records the re-run
+```
+
+**Example:**
+
+```
+abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b
+```
+
 #### `abcd lab mint`
 
 Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.

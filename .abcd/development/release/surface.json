@@ -3255,6 +3255,26 @@
       ]
     },
     {
+      "path": "abcd lab matrix report",
+      "hidden": false,
+      "sentence": "Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab matrix rerun",
+      "hidden": false,
+      "sentence": "Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: Writes only with --approve; refuses a run of another frozen commit.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd lab mint",
       "hidden": false,
       "sentence": "Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",

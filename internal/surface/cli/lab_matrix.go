@@ -106,6 +106,7 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&approve, "approve", "", "the digest of the plan the person saw and said yes to; records the run")
+	cmd.AddCommand(newLabMatrixReportCommand(asJSON), newLabMatrixRerunCommand(asJSON))
 	return cmd
 }
 

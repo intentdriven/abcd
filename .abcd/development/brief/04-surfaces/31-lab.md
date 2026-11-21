@@ -42,6 +42,34 @@ run's copies is step 3's, so a consented run is recorded and nothing is
 launched, and the verb says so. A refusal exits 2 with nothing written; a
 halted lab exits 1.
 
+A recorded run's report is read from its records in the lab and writes nothing
+(spc-2610161949559050 step 8). A code task gives each builder's pass rate on
+its hidden tests with a 95% interval and its pass^k, what the reviewers caught
+of its copies, its cost per passing build stated by source with what that cost
+is comparable with, and its model time apart from the time spent waiting on
+gates; a copy that never started, or one the compliance check set apart, is
+counted apart and in no rate. Each pair of builders is ranked only at the
+repeats its power estimate asks for, from the smallest difference in pass rate
+the declaration names; otherwise the comparison states the smallest difference
+it could have detected and is not ranked. A written doc gives each model's
+rating from a regularised Bradley–Terry fit of every judge's ranking, with an
+interval bootstrapped over judges and copies and whether it is separable from
+the others, how often its copies were good enough, the judges' agreement as
+Krippendorff's alpha with an interval (or not estimable, saying why) and each
+copy's length; below three judges it gives each judge's ranking and the
+good-enough counts only. Guests and the host's own self-blinded rankings are
+reported apart. Every report lists the run's limitations and the improvements
+it suggests for the next run.
+
+A model run is re-runnable, not reproducible. A re-run starts from a recorded
+run, named by its id in the lab or by a run's folder carried from elsewhere,
+and is planned from that run's own declaration under the person's consent to
+its own plan; a run whose frozen commit is not the lab's pin is refused. The
+re-run keeps a copy of the first run's records beside its own, each passed
+through the secret screen, and its report shows, field by field, where it
+drifted: the run's record and each copy's trial, with both values, leaving out
+the ids and clocks that differ by construction.
+
 ## The store
 
 The lab store is machine-scoped and keyed on the repository's root commit, as
@@ -200,6 +228,20 @@ Sub-verbs: none.
 Flags: none.
 
 ### `abcd lab matrix`
+
+Sub-verbs: `abcd lab matrix report`, `abcd lab matrix rerun`.
+
+| Flag | Type |
+|---|---|
+| `--approve` | string |
+
+### `abcd lab matrix report`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd lab matrix rerun`
 
 Sub-verbs: none.
 
