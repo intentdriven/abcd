@@ -2298,8 +2298,12 @@ ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
 machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
-message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse`,
-`PermissionRequest` and `PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
+message, declares a 120-second `timeout`; `PreToolUse`, which runs the guard
+on every call its matcher names, declares 240 seconds, the download's worst case
+with room to spare and far above the guard's 5-second git deadline, so a
+git that hangs past that deadline holds a call 240 seconds at most;
+`PostToolUse`, `PermissionRequest` and `PreCompact` declare none and take the
+host's ten-minute default; `SessionStart` declares 240 seconds,
 and the transcript hooks declare none. Every event that runs `bootstrap.sh`
 names a `statusMessage`, the host's spinner text while the hook runs, because the
 salvage sends the script's output nowhere; the text states no duration, since

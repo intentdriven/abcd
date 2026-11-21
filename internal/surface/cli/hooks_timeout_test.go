@@ -14,10 +14,14 @@ import (
 // hooks/bootstrap.sh as a salvage and declares 120 seconds, because the host's
 // default for that event is shorter than bootstrap's download worst case and a
 // killed salvage stamps .bootstrap.attempt and suppresses the retry for ten
-// minutes. The before-command (PreToolUse) and before-compaction (PreCompact)
-// salvage hooks declare no timeout and take the host's default of ten minutes,
-// so a slow first download always finishes there. SessionStart, the primary
-// provisioner, declares 240. The transcript hooks declare none. The wait must
+// minutes. The before-command hook (PreToolUse) runs the guard on every call
+// its matcher names, so it declares 240 seconds, bootstrap's worst case with
+// room to spare, as SessionStart does: a slow first download still finishes
+// there, and a guard that hangs past its own git deadline holds a call four
+// minutes at most, not ten (TestTheGuardHooksGitBudgetSitsUnderItsTimeout).
+// The before-compaction (PreCompact) salvage hook declares no timeout and
+// takes the host's default of ten minutes, so a slow first download always
+// finishes there. SessionStart, the primary provisioner, declares 240. The transcript hooks declare none. The wait must
 // also never be silent: every entry that runs bootstrap.sh, SessionStart
 // included, names a statusMessage, the host's spinner text shown while a hook
 // runs, because the salvage command itself sends bootstrap's output to
@@ -30,7 +34,7 @@ import (
 var wantHookTimeouts = map[string]int{
 	"SessionStart":      240,
 	"UserPromptSubmit":  120,
-	"PreToolUse":        0,
+	"PreToolUse":        240,
 	"PostToolUse":       0,
 	"PermissionRequest": 0,
 	"PreCompact":        0,

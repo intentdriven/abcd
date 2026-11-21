@@ -1,12 +1,14 @@
 package rules
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -717,5 +719,38 @@ func TestResolveRootRefusalNeverSaysASymlinkedAbcdIsRead(t *testing.T) {
 	}
 	if strings.Contains(note, "IS read") || !strings.Contains(note, "NOT read") {
 		t.Errorf("the note says a symlinked .abcd the loader refuses is read: %s", note)
+	}
+}
+
+// TestResolveContextTellsAGitThatDidNotAnswerFromNoRepository: bound to a
+// context git outlives, ResolveContext resolves nothing and says git did not
+// answer, where Resolve would have read the silence as no repository; with
+// time to answer it resolves what Resolve does.
+func TestResolveContextTellsAGitThatDidNotAnswerFromNoRepository(t *testing.T) {
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	sub := filepath.Join(repo, "a")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ended, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	res, err := ResolveContext(ended, sub)
+	if !errors.Is(err, gitutil.ErrGitTimedOut) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("ResolveContext on an ended context: err = %v, want git's timeout wrapping the deadline", err)
+	}
+	if res.Root != sub || len(res.Notes) != 0 {
+		t.Errorf("ResolveContext on an ended context = %+v, want the directory itself and no notes", res)
+	}
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel2()
+	res, err = ResolveContext(ctx, sub)
+	if err != nil {
+		t.Fatalf("ResolveContext with time to answer: %v", err)
+	}
+	if got, want := realPath(t, res.Root), realPath(t, Resolve(sub).Root); got != want {
+		t.Errorf("ResolveContext(%q) = %q, Resolve gives %q", sub, got, want)
 	}
 }

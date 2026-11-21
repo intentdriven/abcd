@@ -7553,6 +7553,20 @@ func rulesRoot(cwd string, w io.Writer) string {
 	return res.Root
 }
 
+// rulesRootContext is rulesRoot with its git call bound to ctx
+// (rules.ResolveContext). When git does not answer before ctx ends, it prints
+// nothing and returns the error, for the caller to say what it could not do.
+func rulesRootContext(ctx context.Context, cwd string, w io.Writer) (string, error) {
+	res, err := rules.ResolveContext(ctx, cwd)
+	if err != nil {
+		return cwd, err
+	}
+	for _, note := range res.Notes {
+		diagnosticLine(w, "abcd %s", note)
+	}
+	return res.Root, nil
+}
+
 func repoRootSHA() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {

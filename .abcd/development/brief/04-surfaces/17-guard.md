@@ -73,7 +73,8 @@ load, a refused repository root) leads the reason rather than vanishing. A warn
 exits 1 because a pre-tool-use hook that exits 0 has its stderr discarded, so a
 warn returning 0 would run as if allowed with nobody told (iss-231). An allow
 prints nothing on stdout, where the host reads a decision. A guard that cannot answer at all — a registry with
-nothing left to check against, a registry switched off — exits 1 on the hook and
+nothing left to check against, a registry switched off, a git that does not
+answer within the hook's git deadline — exits 1 on the hook and
 lets the command run, and exits 2 on the check so that a script never reads
 silence as clearance. A command line the guard cannot split is the exception on
 the hook: it is blocked (`command-unparsable`), not let through, because a line
@@ -539,6 +540,23 @@ one as `\u0000`, and a trailing newline is whitespace to JSON. A payload that
 does carry a raw NUL reaches the binary with the byte gone rather than as an
 unreadable payload, and one over the size cap only by trailing newlines comes
 under it.
+
+A hook that waits is as unguarded as one that fails, so the hook bounds its
+own time. Its first git calls, the lookups of the checkout holding the session
+directory and the call's `workdir` for a shell command and of the one holding
+the session directory for a question, run under a five-second deadline
+(`guardGitBudget`, through `rules.ResolveContext` and
+`gitutil.ToplevelContext`). Every later git call reads the configuration those
+lookups read, so a configuration git cannot finish reading, such as one that
+includes a named pipe, is caught there: git is killed, and the hook fails open
+loudly with a line naming git, the deadline, the directory and that cause,
+where it would otherwise have held every call until the host's timeout and
+then let it run with nothing said. The manifest gives the pre-tool-use hook a
+240-second timeout, well above the deadline and the 15-second fetched
+`facilitator.mode` read a merge command adds, and the worst case of the first
+download the hook's salvage may make, so a git that hangs later in the check,
+past calls not yet bound (iss-2611100548341325), holds a call four minutes at
+most rather than the host's ten.
 
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it

@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -141,15 +142,36 @@ type Resolution struct {
 }
 
 // Resolve is ResolveRoot with its diagnostics kept. ResolveRoot is the shorthand
-// for the callers that have nowhere to print them.
+// for the callers that have nowhere to print them. It has no deadline, so a
+// slow git is waited for; a caller on a deadline uses ResolveContext.
 func Resolve(cwd string) Resolution {
+	top, err := gitutil.Toplevel(cwd)
+	return resolveFrom(cwd, top, err)
+}
+
+// ResolveContext is Resolve with its git call bound to ctx
+// (gitutil.ToplevelContext). When ctx ends before git answers, nothing is
+// resolved: it returns cwd as the root and an error wrapping
+// gitutil.ErrGitTimedOut and ctx's own error, so a caller tells "git did not
+// answer" from "not a repository", which Resolve would read the same way. A
+// git that never answers is one reading a configuration file that never
+// finishes, such as a named pipe a repository's config includes.
+func ResolveContext(ctx context.Context, cwd string) (Resolution, error) {
+	top, err := gitutil.ToplevelContext(ctx, cwd)
+	if err != nil && ctx.Err() != nil {
+		return Resolution{Root: cwd}, fmt.Errorf("%w: %w", gitutil.ErrGitTimedOut, ctx.Err())
+	}
+	return resolveFrom(cwd, top, err), nil
+}
+
+// resolveFrom is Resolve's walk from git's toplevel answer for cwd.
+func resolveFrom(cwd, top string, err error) Resolution {
 	// git reports the physical path; resolve cwd the same way so the ancestor
 	// chain from cwd actually passes through top (macOS /var -> /private/var).
-	dir, err := filepath.EvalSymlinks(cwd)
-	if err != nil {
+	dir, eerr := filepath.EvalSymlinks(cwd)
+	if eerr != nil {
 		dir = filepath.Clean(cwd)
 	}
-	top, err := gitutil.Toplevel(cwd)
 	if err != nil {
 		// The marker walk runs on the symlink-resolved path, so the bound it
 		// returns is already on the same chain the walk below climbs.

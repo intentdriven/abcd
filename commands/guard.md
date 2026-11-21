@@ -294,8 +294,23 @@ only where it would otherwise admit the question silently.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not
-load — allows the command and warns loudly. A guard that cannot answer never
-stops a session, and is never silently absent. A command line is never in that
+load, a git that does not answer — allows the command and warns loudly. A guard
+that cannot answer never stops a session, and is never silently absent. The
+hook's first git calls run under a five-second deadline: for a shell command,
+the lookups of the checkout holding the session directory and the one holding
+the call's `workdir`, and for a question, the lookup of the checkout holding
+the session directory. git answers them in milliseconds, and every later git
+call reads the same configuration, so a git that has not answered by then is
+killed and the hook says on stderr that git did not answer within the
+deadline, naming the directory and the usual cause: a repository configuration
+that includes a file which never finishes reading, such as a named pipe. The
+call then runs on the loud exit 1, as any call the guard cannot judge does,
+except a shell command inside a stage, which is refused, as every unchecked
+shell command there is. The
+plugin's hook manifest gives the hook a 240-second timeout of its own, the
+worst case of a first download with room to spare, so a git that hangs later
+in the check holds the call four minutes at most before the host lets it run,
+rather than the host's ten-minute default. A command line is never in that
 set: one the guard cannot split is a **block** (`command-unparsable`), because a
 line the guard misreads may be one bash runs, and letting it through would pass
 every hazard in it; a trailing backslash and an unterminated here-document are
