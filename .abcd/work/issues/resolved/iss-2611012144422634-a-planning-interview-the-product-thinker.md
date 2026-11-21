@@ -17,3 +17,5 @@ impact: fix
 ---
 
 A planning interview the product thinker started at 21:41 on 2026-11-01 stopped before its first question, with its answers record written as answers: null. Its tripwire fired on refs/heads/records/api-route-lessons and refs/heads/records/planning-1101, branches two other sessions were committing to in their own worktrees. Every worktree of a checkout shares one .git, so the interview watches every branch ref, and any peer's ordinary commit anywhere in the repository ends the person's interview. The peers had to hold every git ref change for half an hour so the person could retry. With several sessions working one repository, as abcd's own development does, an interview can hardly run at all.
+
+The remedy's other half, telling the person what changed and offering to continue the interview, needs the terminal front door and is filed as iss-2611210325368304.
