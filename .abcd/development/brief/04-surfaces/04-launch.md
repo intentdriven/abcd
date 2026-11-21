@@ -224,7 +224,7 @@ existing changelog is never opened), and `auto-release.yml` calling the gate
 unless a release workflow of its own is in charge. That workflow is left
 byte-for-byte; the report names it as left alone and prints the job to add to it
 so it calls the gate before its build step, with `publish: false` so the gate
-verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. Every file is read and written inside the repository: where a directory on the way to a planned file is a symlink leading out of it, the run stops with an error and writes nothing there, with or without `--confirm`. A
+verifies only (it tags too when the caller passes `create_tag: true`). Every scaffolded workflow, runbook and script is drift-checked the same way; the changelog anchor and the re-authoring declaration are seeds, laid when absent and never checked again. Every file is read and written inside the repository: where a directory on the way to a planned file is a symlink leading out of it, the run stops with an error and writes nothing there, whether or not the person confirmed overwriting a hand-edited file. A
 managed repository's workflow carries gate plumbing and a **named empty build
 job**: abcd does not guess how a repository builds (iss-2608270559310755), so the
 job holds one step to fill and names `dist/` as its output, and the publish job
