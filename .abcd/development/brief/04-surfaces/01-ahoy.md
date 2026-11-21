@@ -639,7 +639,7 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  the ones filed as captures (itd-2609221656361680)
   interviews/                    the setup answers that change the machine (the
                                  status line, the machine's routing table), one
-                                 record per install run that asked them
+                                 file per install run that asked them
   backups/                       copies of the harness's settings file, taken
                                  before the status line changes it; the newest 10
                                  are kept
@@ -760,7 +760,7 @@ with one line saying which test it failed (for `filter-roots`, a note in
 a line that is not a holder id, refuses the act that needed it; a render reads
 it as declaring no id and names why.
 `path-entry`, `cache-attestation` and `release-mark` are held to the same test,
-by the install verb and by the hook shims that consult `path-entry`, and a record
+by the install verb and by the hook shims that consult `path-entry`, and a file
 failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the four that widen trust, and a file failing it, or holding a line that
@@ -978,21 +978,21 @@ update, and it names the install one-liner as the command to run first — the
 one route that fetches and verifies the release binary on an explicit ask
 (adr-38) — after which a re-run adopts the copy in place. A pin into the plugin
 root is a required `symlink.legacy` gap whatever the cache holds (iss-2609100506263330). An entry
-the record does not name is an install this rung refuses, and it is the one
+the `path-entry` file does not name is an install this rung refuses, and it is the one
 state where a filesystem test alone would call the install healthy while every
 hook quietly degrades, so the board raises it as a gap in its own right and
 names the fix (iss-2609091126475539).
 
-Recording the dev shim does not widen the rung. The record is home-scoped and
+Recording the dev shim does not widen the rung. The `path-entry` file is home-scoped and
 written only by an install the operator ran themselves, which is exactly the
 distinction the rung draws: a checkout the session merely reads may not supply
 the binary, a binary the operator installed may. What ownership *rests on*
-differs by entry, and the copy predicate says so: the owned copy is the record
-plus a byte-for-byte hash match, and explicitly not the shim, because `abcd
+differs by entry, and the copy predicate says so: the owned copy is the `path-entry`
+file plus a byte-for-byte hash match, and explicitly not the shim, because `abcd
 update` reads that predicate as permission to overwrite the file. An owned entry
-the record does not name is its own gap, required and resolvable, because an
+the `path-entry` file does not name is its own gap, required and resolvable, because an
 install with no actionable gap never builds an apply context and so could not
-otherwise heal one; uninstall drops the record with the entry it names, and only
+otherwise heal one; uninstall drops the `path-entry` file with the entry it names, and only
 that one. Anything else is ignored with one line naming the binary and the
 reason, and the shim degrades. For the pre-tool-use guard that degradation is an
 unguarded line and exit 1, never the exit 0 the host reads as approval. Session
@@ -1217,7 +1217,7 @@ tier; the machine-wide ones (the status line, the machine's routing table)
 to `~/.abcd.noindex/interviews/`, made through the guarded home-scope maker. The stamp
 is in the name only, so two runs given the same answers write the same bytes
 and the same configuration, whichever door asked. The line reader writes no
-record, and neither does an install that ends aborted (the adoption declined)
+answers file, and neither does an install that ends aborted (the adoption declined)
 or refused, which changed nothing.
 
 **Every value question carries its own explanation** (iss-163). A question that
