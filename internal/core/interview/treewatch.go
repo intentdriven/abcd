@@ -11,7 +11,7 @@ package interview
 // stops it too (a second interview in the same checkout among them: one
 // checkout is one session).
 //
-// Six places are read:
+// Seven places are read:
 //
 //   - What differs from HEAD, as git lists it (gitutil.Status, the one reader
 //     of `git status --porcelain=v1 -z --untracked-files=all`): each path
@@ -33,9 +33,11 @@ package interview
 //     command, the configuration can name a hooks directory, an alias or a
 //     credential helper, and HEAD and the branch it names decide what the
 //     next commit or push carries. Of the checkout's refs only that branch
-//     is read, by the value it holds (readOwnBranch): every worktree shares
-//     the common directory's refs, and a peer's commit in its own worktree
-//     is not the interview's concern (iss-2611012144422634). In a linked
+//     is read by the value it holds (readOwnBranch), followed through every
+//     symbolic ref it leads to, and the symbolic refs by what they name
+//     (below): every worktree shares the common directory's refs, and a
+//     peer's commit in its own worktree is not the interview's concern
+//     (iss-2611012144422634). In a linked
 //     worktree these live in the repository's common directory and are read
 //     there, besides the worktree's own HEAD and config.worktree; the main
 //     worktree's HEAD there is then a sibling's, and is not read. The
@@ -85,6 +87,13 @@ package interview
 //     the hook's line-by-line read of git's listing names them, a worktree
 //     whose path holds a newline stopping the interview, and a receipt
 //     counted by the hook's own checks (hookOwnReceipt).
+//   - Every symbolic ref under the common directory's refs/, by its name and
+//     the ref it names, read from the files (readSymbolicRefs): git resolves
+//     one when the gate asks which remote-tracking refs hold a commit, so one
+//     naming a ref outside its remote holds whatever the next commit or
+//     stash puts there, whatever the gate reads of HEAD now. One made,
+//     changed or removed stops the interview, unless it stays inside its
+//     remote, as refs/remotes/<remote>/HEAD does.
 //
 // git's own directory and common directory are placed by the run's first
 // reading, taken before any role ran, and every later reading reads those
@@ -847,6 +856,9 @@ func (r *treeReader) readGitDirs() error {
 	if err := r.readOwnBranch(); err != nil {
 		return err
 	}
+	if err := r.readSymbolicRefs(); err != nil {
+		return err
+	}
 	if err := r.readModules(); err != nil {
 		return err
 	}
@@ -1423,22 +1435,298 @@ const branchState = "branch "
 // ref's content, or its line in the packed refs when there is no loose ref,
 // so a peer packing the refs moves nothing while a commit, a reset or a
 // rebase on the branch does. A detached HEAD names no branch: HEAD itself,
-// read above, holds the commit.
+// read above, holds the commit. A branch that is itself a symbolic ref is
+// followed as git follows it, to maxSymrefDepth, each ref's value joined to
+// the next's, so a commit on the ref it leads to moves the state too: the
+// next push of the branch carries that ref's commit. A loose ref on the way
+// that is a link is refused: git follows it to a file whose content no
+// reading holds.
 func (r *treeReader) readOwnBranch() error {
 	ref, ok := symbolicHead(r.gitDir)
 	if !ok {
 		return nil
 	}
+	common, err := os.OpenRoot(r.common)
+	if err != nil {
+		return err
+	}
+	defer common.Close()
+	own, err := os.OpenRoot(r.gitDir)
+	if err != nil {
+		return err
+	}
+	defer own.Close()
+	value, next := "", ref
+	for depth := 0; ; depth++ {
+		root := common
+		if perWorktreeRef(next) {
+			root = own
+		}
+		if fi, err := root.Lstat(next); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("%s, which the branch this checkout is on leads to, is a link, and git reads the ref where it leads, which the reading does not hold; replace it with the ref itself (git update-ref) and run the interview again", r.keyOf(r.common, next))
+		}
+		v, err := r.refValue(root, next)
+		if err != nil {
+			return err
+		}
+		if value != "" {
+			value += " -> "
+		}
+		value += v
+		target, ok := symrefTarget(v)
+		if !ok || !plainRefName(target) || depth == maxSymrefDepth {
+			break
+		}
+		next = target
+	}
+	return r.put(r.keyOf(r.common, ref), branchState+ref+" "+value)
+}
+
+// maxSymrefDepth is how many symbolic refs git follows from one before it
+// gives up (SYMREF_MAXDEPTH), and so the reading.
+const maxSymrefDepth = 5
+
+// perWorktreeRef reports whether git keeps ref in each worktree's own git
+// directory rather than the common one.
+func perWorktreeRef(ref string) bool {
+	for _, p := range []string{"refs/worktree/", "refs/bisect/", "refs/rewritten/"} {
+		if strings.HasPrefix(ref, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// symrefTarget is the ref a loose ref's content names when git reads it as a
+// symbolic ref: content opening "ref:", the rest with the whitespace around it
+// trimmed, as git's parse_loose_ref_contents takes it.
+func symrefTarget(content string) (string, bool) {
+	rest, ok := strings.CutPrefix(content, "ref:")
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(rest), true
+}
+
+// plainRefName reports whether ref is a ref name under refs/ in the shape git
+// writes one: no empty, "." or ".." segment, no segment opening with a dot or
+// ending in .lock, and none of the characters git refuses in a ref name, a
+// control character among them. A name failing it is never taken as
+// staying inside a remote.
+func plainRefName(ref string) bool {
+	if !strings.HasPrefix(ref, "refs/") || strings.HasSuffix(ref, ".") || strings.Contains(ref, "@{") {
+		return false
+	}
+	for _, c := range []byte(ref) {
+		if c < 0x20 || c == 0x7f || strings.IndexByte(" ~^:?*[\\", c) >= 0 {
+			return false
+		}
+	}
+	for _, seg := range strings.Split(ref, "/") {
+		if seg == "" || strings.HasPrefix(seg, ".") || strings.HasSuffix(seg, ".lock") {
+			return false
+		}
+	}
+	return true
+}
+
+// symrefState leads the state of a symbolic ref under the common directory's
+// refs/ (readSymbolicRefs): symrefInside or symrefOutside, then, after NULs,
+// how git reads it (a file opening "ref:", or a link), what it names, and
+// its content's hash.
+const symrefState = "symref "
+
+const (
+	symrefInside  = "inside"
+	symrefOutside = "outside"
+)
+
+// maxLooseRefs bounds the entries one reading walks under the common
+// directory's refs/; a tree past it is refused rather than read in part. git
+// packs loose refs on every gc, so a refs/ holding this many has something in
+// it worth packing.
+var maxLooseRefs = 500_000
+
+// readSymbolicRefs records every symbolic ref under the common directory's
+// refs/, by its name and what it names (symrefState): a loose ref file whose
+// content opens "ref:", and any link, which git reads as a symbolic ref when
+// its text is a ref name and follows otherwise. The pre-push gate asks git
+// which remote-tracking refs hold a commit (on_a_remote), and git resolves a
+// symbolic ref there at that moment, so one naming a ref outside its remote
+// (the checkout's own branch, refs/stash, a branch not yet made) holds
+// whatever the person's next commit or stash puts there, a commit no
+// preflight read (iss-2611012144422634). git's listings skip a symbolic ref
+// whose target does not exist, so the files are read, not listed. The packed
+// refs hold no symbolic ref: each line there is an object name and a ref
+// name, or a peeled tag's object name. One staying inside its remote, a
+// remote-tracking ref naming another under its own directory, as `git remote
+// set-head`, a clone and a fetch write refs/remotes/<remote>/HEAD, follows
+// what only a fetch moves, and is marked so (symrefInside); changedSince
+// leaves out its coming, going and changing. Every other is named. The
+// checkout's own branch is read by readOwnBranch, through every symbolic ref
+// it leads to. A refs/ that is not a directory, a link under it leading to a
+// directory, and a reftable, which keeps the refs in binary tables, are
+// refused: what git reads through them cannot be held.
+func (r *treeReader) readSymbolicRefs() error {
 	root, err := os.OpenRoot(r.common)
 	if err != nil {
 		return err
 	}
 	defer root.Close()
-	value, err := r.refValue(root, ref)
-	if err != nil {
+	if _, err := root.Lstat("reftable"); err == nil {
+		return fmt.Errorf("%s keeps its refs in a reftable, where the reading cannot tell a symbolic ref made pointing outside its remote, which would let a push skip the preflight; "+
+			"the interview runs only in a repository that keeps its refs as files (git refs migrate --ref-format=files)", r.keyOf(r.common, ""))
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	return r.put(r.keyOf(r.common, ref), branchState+ref+" "+value)
+	fi, err := root.Lstat("refs")
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	case !fi.IsDir():
+		return fmt.Errorf("%s is not a directory, and git reads the refs where it leads, which the reading does not hold; make it the directory itself and run the interview again", r.keyOf(r.common, "refs"))
+	}
+	own, _ := symbolicHead(r.gitDir)
+	walked := 0
+	return fs.WalkDir(root.FS(), "refs", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if walked++; walked > maxLooseRefs {
+			return fmt.Errorf("%s holds more than %d entries, too many to read around each turn; pack them (git pack-refs --all) and run the interview again", r.keyOf(r.common, "refs"), maxLooseRefs)
+		}
+		if d.IsDir() || p == own {
+			return nil
+		}
+		key := r.keyOf(r.common, p)
+		if d.Type()&fs.ModeSymlink != 0 {
+			text, err := root.Readlink(p)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if fi, err := os.Stat(filepath.Join(r.common, filepath.FromSlash(p))); err == nil && fi.IsDir() {
+				return fmt.Errorf("%s is a link to a directory, and git reads the refs where it leads, which the reading does not hold; replace it with the refs themselves and run the interview again", key)
+			}
+			// git writes no link here unless core.preferSymlinkRefs is set,
+			// and reads one by its text or where it leads, so none stays
+			// inside its remote.
+			return r.put(key, symrefState+symrefOutside+"\x00link\x00"+text+"\x00")
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		st, err := r.looseSymref(root, p)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			// Pruned by a peer's packing between the walk and the read.
+			return nil
+		case err != nil:
+			return err
+		case st == "":
+			return nil
+		}
+		return r.put(key, st)
+	})
+}
+
+// looseSymref is the state of the loose ref file p under root when git reads
+// it as a symbolic ref, or "" when it holds anything else. Only its first
+// bytes are read unless it opens "ref:", so the walk reads a few bytes of
+// each plain ref; a symbolic ref is read whole, within maxPointerBytes, and
+// counted against maxHashedBytes.
+func (r *treeReader) looseSymref(root *os.Root, p string) (string, error) {
+	f, err := root.Open(p)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	lead := make([]byte, len("ref:"))
+	if _, err := io.ReadFull(f, lead); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return "", nil
+		}
+		return "", err
+	}
+	if string(lead) != "ref:" {
+		return "", nil
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if fi.Size() > maxPointerBytes {
+		return fmt.Sprintf("%s%s\x00file\x00past %d bytes\x00", symrefState, symrefOutside, fi.Size()), nil
+	}
+	if fi.Size() > maxHashedBytes-r.hashedBytes {
+		return "", fmt.Errorf("%s takes one reading past the %d MiB one reading hashes of the tree and git's own directory, so it is not read; restore it and run the interview again", r.keyOf(r.common, p), maxHashedBytes>>20)
+	}
+	r.hashedBytes += fi.Size()
+	rest, err := io.ReadAll(io.LimitReader(f, fi.Size()))
+	if err != nil {
+		return "", err
+	}
+	content := append(lead, rest...)
+	sum := sha256.Sum256(content)
+	target, _ := symrefTarget(strings.TrimRight(string(content), " \t\n\v\f\r"))
+	where := symrefOutside
+	if symrefInsideRemote(p, target) {
+		where = symrefInside
+	}
+	return symrefState + where + "\x00file\x00" + target + "\x00" + hex.EncodeToString(sum[:]), nil
+}
+
+// symrefInsideRemote reports whether the symbolic ref name, naming target,
+// stays inside its remote: name is a remote-tracking ref, and target a plain
+// ref name under name's own directory there, refs/remotes/<remote>/ for
+// refs/remotes/<remote>/HEAD.
+func symrefInsideRemote(name, target string) bool {
+	dir := path.Dir(name)
+	return strings.HasPrefix(dir, "refs/remotes/") && plainRefName(target) && strings.HasPrefix(target, dir+"/")
+}
+
+// insideSymref reports whether state is a symbolic ref's that stays inside
+// its remote (symrefInside).
+func insideSymref(state string) bool {
+	return strings.HasPrefix(state, symrefState+symrefInside+"\x00")
+}
+
+// symrefSaid is the plain words for each symbolic ref outside its remote made,
+// changed or removed between before and after.
+func symrefSaid(before, after treeState, role string) []string {
+	var out []string
+	for _, k := range slices.Sorted(maps.Keys(after)) {
+		s := after[k]
+		rest, ok := strings.CutPrefix(s, symrefState)
+		if !ok || insideSymref(s) || before[k] == s {
+			continue
+		}
+		parts := strings.Split(rest, "\x00")
+		names := ""
+		if len(parts) > 2 {
+			names = parts[2]
+		}
+		verb := "was made"
+		if _, held := before[k]; held {
+			verb = "was changed"
+		}
+		out = append(out, fmt.Sprintf("the symbolic ref %s %s naming %s, outside its remote, while the %s ran: the pre-push gate takes a commit it holds as already on a remote, and git resolves it when the gate asks, so it holds whatever the next commit or stash puts there",
+			k, verb, short(names), role))
+	}
+	for _, k := range slices.Sorted(maps.Keys(before)) {
+		if _, held := after[k]; held || !strings.HasPrefix(before[k], symrefState) || insideSymref(before[k]) {
+			continue
+		}
+		out = append(out, fmt.Sprintf("the symbolic ref %s, outside its remote, was removed while the %s ran", k, role))
+	}
+	return out
 }
 
 // symbolicHead is the ref the HEAD in gitDir names, when it names one in the
@@ -1846,7 +2134,8 @@ func contentState(root *os.Root, rel string, limit int64) (string, int64, error)
 // worktree, unless the entry was made since and what it holds carries what
 // a plain `git worktree add` does not write (carriesState). The pre-push gate's
 // judgement is named only when it opened between them, by what opened it
-// (gateOpened).
+// (gateOpened). A symbolic ref staying inside its remote, made, changed or
+// removed, is left out (readSymbolicRefs).
 func changedSince(before, after treeState) []string {
 	alone := func(s string, other treeState, made bool) bool {
 		if strings.HasPrefix(s, branchState) {
@@ -1870,10 +2159,10 @@ func changedSince(before, after treeState) []string {
 			continue
 		}
 		b, ok := before[p]
-		if !ok && alone(s, before, true) {
+		if !ok && (alone(s, before, true) || insideSymref(s)) {
 			continue
 		}
-		if b != s {
+		if b != s && !(insideSymref(b) && insideSymref(s)) {
 			out = append(out, p)
 		}
 	}
@@ -1881,7 +2170,7 @@ func changedSince(before, after treeState) []string {
 		if p == pushGateKey {
 			continue
 		}
-		if _, ok := after[p]; !ok && !alone(s, after, false) {
+		if _, ok := after[p]; !ok && !alone(s, after, false) && !insideSymref(s) {
 			out = append(out, p)
 		}
 	}

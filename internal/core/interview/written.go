@@ -518,7 +518,7 @@ func (w *Written) heldToContract(pre treeState, turnDir string, pin *gitPin, res
 		uc := &UnexpectedChangesError{Role: w.Role, Paths: unexpected}
 		if moved == nil {
 			// A redirected reading read nothing after the dispatch to compare.
-			uc.said = append(branchSaid(pre, post, w.Role), gateSaid(pre, post, w.Role)...)
+			uc.said = slices.Concat(branchSaid(pre, post, w.Role), gateSaid(pre, post, w.Role), symrefSaid(pre, post, w.Role))
 		}
 		return uc
 	}
