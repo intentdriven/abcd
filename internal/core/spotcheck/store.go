@@ -1336,9 +1336,11 @@ func treeOver(ctx context.Context, root, base string, adds []placed) (string, er
 	return storeGit(ctx, root, index, "", "write-tree")
 }
 
-// isAncestor reports whether a is an ancestor of b.
+// isAncestor reports whether a is an ancestor of b as the commits store their
+// parents (no replace ref, graft or commit-graph stands in), which is what a
+// push of b sends.
 func isAncestor(ctx context.Context, root, a, b string) (bool, error) {
-	_, one, err := gitutil.RunCappedExitOneContext(ctx, root, 64, "merge-base", "--is-ancestor", a, b)
+	_, one, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, 64, "merge-base", "--is-ancestor", a, b)
 	if err != nil {
 		return false, fmt.Errorf("reading the spot-check's record: %w", err)
 	}

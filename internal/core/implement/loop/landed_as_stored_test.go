@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -38,5 +39,52 @@ func TestTheLandingPlacesItsPushedHeadOnTheDefaultBranchAsStored(t *testing.T) {
 	}
 	if _, err := os.Stat(l.Worktree); err != nil {
 		t.Fatalf("the lane keeps its worktree: %v", err)
+	}
+}
+
+// TestALandedLaneIsRetiredOnlyAtATipTheMergedCommitStores: the retiring of a
+// landed lane removes its branch only when the merged commit stores the
+// branch's tip; a replace ref or a graft giving the merged commit that tip as
+// a parent leaves the lane refused, its branch kept.
+func TestALandedLaneIsRetiredOnlyAtATipTheMergedCommitStores(t *testing.T) {
+	for name, graftFile := range map[string]bool{"a replace ref": false, "a graft file": true} {
+		t.Run(name, func(t *testing.T) {
+			repo, base, tip, merged := threeCommits(t)
+			const branch = "build/run-1-lane-1"
+			repo.Git("branch", branch, tip)
+			standParents(t, repo, graftFile, merged, base, tip)
+			if !presentedHolds(repo, tip, merged) {
+				t.Fatal("git presents the lane's tip on the merged commit")
+			}
+			lane := Lane{ID: "lane-1", Branch: branch, Landing: &Landing{Pushed: base}}
+			err := retireLanded(context.Background(), Context{RepoRoot: repo.Root()}, lane, merged, string(StageLand), "run it again")
+			if r, ok := AsRefusal(err); !ok || !strings.Contains(r.Reason, "past what landed") {
+				t.Fatalf("the lane is refused for carrying work that did not land: %v", err)
+			}
+			if got := repo.Git("rev-parse", "refs/heads/"+branch); got != tip {
+				t.Fatalf("the lane's branch is kept at %s, got %s", tip, got)
+			}
+		})
+	}
+}
+
+// TestAParkedLaneIsPlacedOnTheMergedCommitAsStored: a resumed build sees a
+// parked lane's pushed head on the fetched default branch only when that
+// commit stores it.
+func TestAParkedLaneIsPlacedOnTheMergedCommitAsStored(t *testing.T) {
+	for name, graftFile := range map[string]bool{"a replace ref": false, "a graft file": true} {
+		t.Run(name, func(t *testing.T) {
+			repo, base, pushed, merged := threeCommits(t)
+			standParents(t, repo, graftFile, merged, base, pushed)
+			if !presentedHolds(repo, pushed, merged) {
+				t.Fatal("git presents the pushed head on the merged commit")
+			}
+			if on, err := onCommit(context.Background(), repo.Root(), pushed, merged); err != nil || on {
+				t.Fatalf("onCommit = %v, %v; want no from the stored parents", on, err)
+			}
+			if on, err := onCommit(context.Background(), repo.Root(), base, merged); err != nil || !on {
+				t.Fatalf("onCommit(base) = %v, %v; want yes", on, err)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,8 @@ import (
 // TestIsAncestorAsStoredReadsTheStoredParents: a graft that parents one
 // commit on another makes IsAncestor answer yes; IsAncestorAsStored reads the
 // parents the commits store and answers no. A refs/replace entry that stands
-// a child of the other commit in for the first does the same.
+// a child of the other commit in for the first does the same, and so does the
+// deadline-bound RunCappedExitOneAsStoredContext asked the same question.
 func TestIsAncestorAsStoredReadsTheStoredParents(t *testing.T) {
 	setup := func(t *testing.T) (r *gittest.Repo, side, main string) {
 		t.Helper()
@@ -38,6 +40,15 @@ func TestIsAncestorAsStoredReadsTheStoredParents(t *testing.T) {
 		}
 		if ok, err := gitutil.IsAncestorAsStored(root, "HEAD~1", main); err != nil || !ok {
 			t.Fatalf("IsAncestorAsStored(HEAD~1) = %v, %v; want yes", ok, err)
+		}
+		if _, no, err := gitutil.RunCappedExitOneContext(context.Background(), root, 64, "merge-base", "--is-ancestor", side, main); err != nil || no {
+			t.Fatalf("RunCappedExitOneContext = no %v, %v; the stand-in does not stand in", no, err)
+		}
+		if _, no, err := gitutil.RunCappedExitOneAsStoredContext(context.Background(), root, 64, "merge-base", "--is-ancestor", side, main); err != nil || !no {
+			t.Fatalf("RunCappedExitOneAsStoredContext = no %v, %v; want no from the stored parents", no, err)
+		}
+		if _, no, err := gitutil.RunCappedExitOneAsStoredContext(context.Background(), root, 64, "merge-base", "--is-ancestor", "HEAD~1", main); err != nil || no {
+			t.Fatalf("RunCappedExitOneAsStoredContext(HEAD~1) = no %v, %v; want yes", no, err)
 		}
 	}
 	t.Run("a graft", func(t *testing.T) {

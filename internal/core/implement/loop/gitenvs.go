@@ -162,6 +162,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.RunCappedContext", isolatedEnv, false},
 	{"gitutil.RunCappedExitOne", isolatedEnv, false},
 	{"gitutil.RunCappedExitOneAsStored", isolatedEnv, false},
+	{"gitutil.RunCappedExitOneAsStoredContext", isolatedEnv, false},
 	{"gitutil.RunCappedExitOneContext", isolatedEnv, false},
 	{"gitutil.RunLimitedNetContext", isolatedEnv, false},
 	{"gitutil.RunWithIndex", isolatedEnv, false},

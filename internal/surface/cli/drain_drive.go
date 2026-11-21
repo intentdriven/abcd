@@ -144,7 +144,8 @@ const recordsOnlyBaseEnv = "ABCD_RECORDS_ONLY_BASE"
 const recordsOnlyUnverified = "unverified"
 
 // originDefaultTip is the commit origin's default branch is at, as origin
-// reports it to `git ls-remote --symref origin HEAD` run in checkout, or
+// reports it to `git ls-remote --symref origin HEAD` run in repoRoot, the
+// drive's own checkout, or
 // recordsOnlyUnverified when the ask fails, or its answer names no branch as
 // origin's HEAD (a detached HEAD) or no full commit id as its tip. The answer
 // is read as the facilitator mode's read of the same ask reads it
@@ -155,9 +156,12 @@ const recordsOnlyUnverified = "unverified"
 // repository's settings say now (gitutil.SetBeforeHookedGitAt, set by the
 // drive's terminal to its heldBeforeGitIn): a lane that pointed origin
 // elsewhere has the ask refused, and the preflight is passed
-// recordsOnlyUnverified.
-func originDefaultTip(checkout string) string {
-	out, err := driveOriginGit(checkout, "ls-remote", "--symref", landing.Remote, "HEAD")
+// recordsOnlyUnverified. The ask runs in the drive's own checkout rather than
+// in the preflight's: every scope of settings git reads there is one the
+// comparison reads, while a linked checkout's own worktree scope
+// (config.worktree, where extensions.worktreeConfig is on) is one it does not.
+func originDefaultTip(repoRoot string) string {
+	out, err := driveOriginGit(repoRoot, "ls-remote", "--symref", landing.Remote, "HEAD")
 	if err != nil {
 		return recordsOnlyUnverified
 	}
@@ -863,7 +867,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Drain:            d,
 		Runners:          loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:           review,
-		Preflight:        drivePreflight(detail, p),
+		Preflight:        drivePreflight(detail, p, repoRoot),
 		PreflightAllowed: driveGateCheck(repoRoot),
 		Say:              say,
 		Stop:             sig.stop,
@@ -954,10 +958,11 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 // own, so the terminal's interrupt does not reach it, and with only what a
 // stage carries of the environment, since the lane's own files decide what it
 // runs (preflightGoEnv). The records-only check takes its merge base with the
-// tip origin reports for its default branch, read by the drive itself just
-// before the preflight starts, so it does not rest on a local remote-tracking
-// ref; a tip it could not read is passed as not a commit, which is the full run.
-func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout, head string) error {
+// tip origin reports for its default branch, read by the drive itself in its
+// own checkout at repoRoot (originDefaultTip) just before the preflight
+// starts, so it does not rest on a local remote-tracking ref; a tip it could
+// not read is passed as not a commit, which is the full run.
+func drivePreflight(w io.Writer, p runner.Profile, repoRoot string) func(ctx context.Context, checkout, head string) error {
 	return func(ctx context.Context, checkout, head string) error {
 		program, args, err := drivePreflightProgram()
 		if err != nil {
@@ -966,7 +971,7 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, che
 		if err := runner.ResetStageHome(p); err != nil {
 			return err
 		}
-		tip := originDefaultTip(checkout)
+		tip := originDefaultTip(repoRoot)
 		// #nosec G204 -- program is the running binary; the arguments are fixed.
 		cmd := exec.CommandContext(ctx, program, args...)
 		cmd.Dir = checkout

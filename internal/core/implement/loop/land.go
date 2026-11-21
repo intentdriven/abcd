@@ -2968,7 +2968,8 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 
 // retireLanded removes a landed lane's worktree and branch once merged, the
 // default branch's commit the landing was proved on, holds what the lane
-// pushed. The branch is deleted only at a tip merged holds: a commit added
+// pushed. The branch is deleted only at a tip merged holds as stored (no
+// replace ref, graft or commit-graph gives either commit other parents): a commit added
 // after the push is work that did not land, and is refused, as a branch another
 // checkout or a stopped rebase or bisect holds is, and a worktree git will not
 // remove (it refuses one with changes). Nothing is removed before every refusal
@@ -2995,7 +2996,7 @@ func retireLanded(ctx context.Context, c Context, lane Lane, merged, stage, agai
 		tip = ""
 	}
 	if tip != "" {
-		_, notOn, err := gitutil.RunCappedExitOneContext(ctx, c.RepoRoot, 4096, "merge-base", "--is-ancestor", tip, merged)
+		_, notOn, err := gitutil.RunCappedExitOneAsStoredContext(ctx, c.RepoRoot, 4096, "merge-base", "--is-ancestor", tip, merged)
 		if ctxErr := ctx.Err(); err != nil && ctxErr != nil {
 			return fmt.Errorf("reading whether %s is on %s: %w", lane.Branch, shortSHA(merged), ctxErr)
 		}

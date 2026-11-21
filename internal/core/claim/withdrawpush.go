@@ -45,7 +45,8 @@ type pushPageLookup func(ctx context.Context, root, ref, after string) (pushes [
 // reservation branch, asked by its full ref (refs/heads/abcd-reserved/<id>):
 // the same activity record `abcd status` asks for the status branches
 // (github.PushersPage), answered with ErrPartialRecord beside the pushes when
-// the page came back full and names no page past it.
+// the page says older activities lie past it (it came back full, or its Link
+// header names a next page) and names no cursor abcd reads to them.
 func reservationPushPage(ctx context.Context, root, ref, after string) ([]Push, string, error) {
 	page, err := github.PushersPage(ctx, root, ref, after)
 	if err != nil {

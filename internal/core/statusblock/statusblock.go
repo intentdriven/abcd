@@ -387,7 +387,7 @@ func landed(repoRoot string, l Lane) bool {
 // the intent resumes a run whose lane merged (iss-2611101317510356). It holds
 // when the lane's recorded branch is gone, or when the lane is at its land stage
 // (atLand) and its branch's tip is on the default branch as last fetched
-// (gitutil.DefaultRefContext). A lane with no branch yet, a branch name git
+// (gitutil.DefaultRefContext), read as the commits store their parents. A lane with no branch yet, a branch name git
 // would not take as safe, and a lane git cannot answer for, within ctx or at
 // all, have not landed. A squash or rebase merge writes new commits, so the
 // branch's tip is not on the default branch after one: such a lane reads as
@@ -413,7 +413,7 @@ func LandedContext(ctx context.Context, repoRoot, branch string, atLand bool) bo
 	if def == "" {
 		return false
 	}
-	_, notOn, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", tip, def)
+	_, notOn, err := gitutil.RunCappedExitOneAsStoredContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", tip, def)
 	return err == nil && !notOn
 }
 

@@ -87,6 +87,14 @@ func RunCappedExitOneAsStored(root string, maxBytes int, args ...string) ([]byte
 	return runCappedExitOneCmd(asStored(isolatedGit(root, args...)), maxBytes, args)
 }
 
+// RunCappedExitOneAsStoredContext is RunCappedExitOneContext reading history
+// as stored (asStored): for a deadline-bound ancestry verdict
+// (`merge-base --is-ancestor`, which answers no with exit 1) that a removal
+// or a landing acts on.
+func RunCappedExitOneAsStoredContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	return runCappedExitOneContextCmd(ctx, func() *exec.Cmd { return asStored(isolatedGitContext(ctx, root, args...)) }, maxBytes, args)
+}
+
 // RunCappedBytesAsStoredContext is RunCappedAsStored bound to ctx, with stdin
 // as the command's standard input ("" for none), returning stdout verbatim:
 // for a deadline-bound read of history as stored, a batch of objects named on
