@@ -412,6 +412,18 @@ func (snap *peerSnapshot) ledgerNote(repoRoot, key string, openThere, named bool
 	return note
 }
 
+// judgedHere is the run record's line for a build of key that could not read
+// origin's default branch (snap.originUnread), and so judged key from this
+// checkout's own ledger: the eligible row says so and is not stored, so the
+// run's record says so for a later reader. "" when origin was read, or not
+// asked.
+func (snap *peerSnapshot) judgedHere(key string) string {
+	if snap.originUnread == "" {
+		return ""
+	}
+	return key + " was judged from this checkout's own ledger, which may be behind " + claim.Remote + ": " + snap.originUnread
+}
+
 // readIssueLedger is the ledger a person's `abcd build <iss-N>` judges the
 // issue by (iss-2611101316317556), read as the drain's own move reads its
 // plan (movePlan): in a checkout with a remote named origin, after a fetch

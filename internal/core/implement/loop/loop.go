@@ -871,6 +871,11 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
+	// A build that could not read origin's default branch judged the issue
+	// from this checkout's own ledger (readIssueLedger). The eligible row
+	// says so, and is not stored, so the run's record says so too, for a
+	// later reader of the run.
+	judgedHere := snap.judgedHere(chk.Key)
 	var res StartResult
 	err = withLock(repoRoot, func(root *os.Root) error {
 		runs, err := readRuns(root)
@@ -953,6 +958,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: review.Judge.note()})
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
+		if judgedHere != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: CheckEligible, Note: judgedHere})
+		}
 		if st.Admitted != nil {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted, Note: "admitted under " + st.Admitted.String()})
 		}

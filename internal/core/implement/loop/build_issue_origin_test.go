@@ -125,3 +125,49 @@ func TestABuildThatCannotFetchOriginJudgesFromTheCheckoutAndSaysSo(t *testing.T)
 	}
 	runTierAbsent(t, repo.Root())
 }
+
+// TestABuildThatCannotReadOriginsDefaultBranchRecordsItInTheRun: origin
+// answers but no longer holds the branch this checkout tracks as its default;
+// the build judges the issue from this checkout's own ledger, its eligible row
+// says why, and so does the run's own record, which outlives the row.
+func TestABuildThatCannotReadOriginsDefaultBranchRecordsItInTheRun(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	gitIn(t, bare, "branch", "-m", "main", "trunk-renamed")
+
+	start, err := Start(repo.Root(), secondIssue, Options{})
+	if err != nil {
+		t.Fatalf("a build that cannot read origin's default branch judges the checkout's ledger: %v", err)
+	}
+	const why = "could not read origin's default branch"
+	if row := eligibleRow(t, start.Checks); !row.OK || !strings.Contains(row.Detail, why) ||
+		!strings.Contains(row.Detail, "so it is judged from this checkout's own ledger, which may be behind origin") {
+		t.Fatalf("the eligible row = %+v; want it to say %q", row, why)
+	}
+	if note := recordNote(t, repo, start.RunID, CheckEligible); !strings.Contains(note, why) ||
+		!strings.Contains(note, "judged from this checkout's own ledger") {
+		t.Fatalf("the run's record says the issue was judged from the checkout's own ledger: %q", note)
+	}
+}
+
+// TestABuildInACheckoutNamingNoDefaultBranchOfOriginSaysSo: a checkout that
+// tracks no default branch of origin (no origin/HEAD, and none of the
+// conventional names) has no commit of origin to judge the issue from; the
+// build judges this checkout's own ledger and its row and record say why.
+func TestABuildInACheckoutNamingNoDefaultBranchOfOriginSaysSo(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	gitIn(t, bare, "branch", "-m", "main", "release")
+	repo.Git("update-ref", "--no-deref", "-d", "refs/remotes/origin/HEAD")
+	repo.Git("update-ref", "-d", "refs/remotes/origin/main")
+
+	start, err := Start(repo.Root(), secondIssue, Options{})
+	if err != nil {
+		t.Fatalf("a build in a checkout naming no default branch of origin judges the checkout's ledger: %v", err)
+	}
+	const why = "this checkout names no default branch of origin"
+	if row := eligibleRow(t, start.Checks); !row.OK || !strings.Contains(row.Detail, why) {
+		t.Fatalf("the eligible row = %+v; want it to say %q", row, why)
+	}
+	if note := recordNote(t, repo, start.RunID, CheckEligible); !strings.Contains(note, why) {
+		t.Fatalf("the run's record says why origin was not read: %q", note)
+	}
+}
