@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,7 +18,13 @@ import (
 // not abcd's own repository unless asAbcd says so.
 func labCheckout(t *testing.T) (home, repo string) {
 	t.Helper()
-	home = t.TempDir()
+	// The home's last segment is the account name the secret screen looks
+	// for; a bare temporary folder's ("001") is also how abcd numbers a review
+	// request's items, so the home is given a name that occurs nowhere else.
+	home = filepath.Join(t.TempDir(), "xq9zhome")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("ABCD_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")

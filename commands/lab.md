@@ -190,11 +190,15 @@ for reads outside the clone (without it that rule is unexamined and the copy is
 reported apart). A writing copy names its document with `--answer`; a check
 copy its answer with `--answer` and `--form`. The copy is checked for
 compliance first, and the trial (`status`, `reason`, `score`, `compliance`) is
-written once; the trial says the host, not abcd, ran the hidden tests. Refused,
-exit 2, with nothing written: a runner cell's copy, a copy already handed back,
-and a receipt, score or answer that does not validate.
+written once; the trial says the host, not abcd, ran the hidden tests. A check
+copy's clone is deleted only once its trial is written. Refused, exit 2, with
+nothing written: a runner cell's copy, a copy already handed back, a receipt,
+score or answer that does not validate, and a trial the secret screen refuses.
+Hand back every host copy you were handed, a failed one with its reason: a copy
+never handed back is in no rate, and the report names it.
 
-**Review a code task's copies**, once its copies are handed back:
+**Review a code task's copies**, once every copy of it handed to you is back:
+the review is drawn once, so it is refused while one is out.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task>
@@ -203,15 +207,18 @@ and a receipt, score or answer that does not validate.
 `requests` gives each reviewer cell's blinded `request` about each copy under
 an opaque `label`. Hand each `handed_off` request, and nothing else, to a fresh
 sub-agent, and save its one JSON answer at `<dir>/<reviewer-cell>/<label>.json`;
-a request `awaiting_runner` waits, as a runner cell's copy does. Then record
+a request `awaiting_runner` waits, as a runner cell's copy does. Every request
+passes the secret screen before it is stored or handed out, and a refusal
+draws nothing. Then record
 them, read as untrusted input and scored before anything is written:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task> --answers <dir>
 ```
 
-**Draw a writing task's judging** from its made copies, with one good and one
-bad example the person gives and how many judges' subsets to draw:
+**Draw a writing task's judging** from its made copies, once every copy of it
+handed to you is back, with one good and one bad example the person gives and
+how many judges' subsets to draw:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>
@@ -220,7 +227,8 @@ bad example the person gives and how many judges' subsets to draw:
 The packet, written in the run's state with its key beside it, renders every
 copy as inert text with every mention of where it ran, its alias, every task,
 cell, route and model and every maker withheld, and names no run, task or path.
-It is what the person's judging session shows; hand the session's verdict file
+The packet and key pass the secret screen before they are written, and a
+refusal draws nothing. It is what the person's judging session shows; hand the session's verdict file
 back with `--verdicts <file>` (and `--host <login>` when the host judged too,
 whose rankings are reported apart).
 
@@ -245,7 +253,10 @@ why), `good_enough` and each copy's length; with fewer than three judges,
 `floor` says so and `rankings` holds each judge's ranking instead. `check` gives
 the table the person's locked verdicts unlocked, null until then. `drift`, on a
 re-run, lists every field that drifted from the first run with both values.
-Show the person the rows and read them `limitations` and `improvements` in
+`unreturned` lists every copy handed off that holds no trial, by task, cell
+and `state` (`not_handed_back`, `awaiting_runner`, `refused`, or
+`never_handed_off` when the run's start stopped before it), with its
+`repeats`; each code cell counts them too, and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
 plain words: a comparison that is not ranked is not a result either way.
 
 **Re-run a recorded run** from its own declaration, by its id in the lab or a

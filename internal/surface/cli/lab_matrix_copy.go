@@ -77,8 +77,9 @@ func newLabMatrixCopyCommand(asJSON *bool) *cobra.Command {
 			"compliance under one overall deadline, a check copy's findings are recorded\n" +
 			"before its clone is deleted, and the trial is written through the secret screen.\n\n" +
 			"Refused, exit 2, with nothing written: a key that is not one, a copy the run did\n" +
-			"not hand off to the host, one already handed back, and a receipt, score or answer\n" +
-			"that does not validate. A halted lab exits 1.",
+			"not hand off to the host, one already handed back, a receipt, score or answer\n" +
+			"that does not validate, and a trial the secret screen refuses. A check copy's\n" +
+			"clone is deleted only once its trial is written. A halted lab exits 1.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix copy"
@@ -183,7 +184,8 @@ func newLabMatrixReviewCommand(asJSON *bool) *cobra.Command {
 			"Refused, exit 2, with nothing written: a task that is not one of the run's code\n" +
 			"tasks, a task no copy of which its hidden tests judged, an answer that does not\n" +
 			"validate or names a label never asked about, an answer for a runner reviewer\n" +
-			"cell, and reviews already recorded. A halted lab exits 1.",
+			"cell, reviews already recorded, a task with a copy handed to the host and not\n" +
+			"handed back, and a request the secret screen refuses. A halted lab exits 1.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix review"
@@ -292,7 +294,9 @@ func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
 			"names the host's own GitHub login, whose rankings are reported apart.\n\n" +
 			"Refused, exit 2, with nothing written: a task that is not one of the run's\n" +
 			"writing tasks, no made copy, a missing example, too few judges, a judging\n" +
-			"already drawn, and a verdict file that does not validate. A halted lab exits 1.",
+			"already drawn, a task with a copy handed to the host and not handed back, a\n" +
+			"packet the secret screen refuses, and a verdict file that does not validate.\n" +
+			"A halted lab exits 1.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix judge"

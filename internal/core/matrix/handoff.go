@@ -9,16 +9,20 @@ package matrix
 // copy starts, and records each copy's hand-off in the run's state, with the
 // blind brief the copy is made from. The host makes a host cell's copy in its
 // clone and hands it back (CollectCopy): the run checks it for compliance
-// under one overall deadline (checkCompliance), reads a check copy's findings
-// before its clone is deleted (collectCheckCopy), and writes its trial record
-// through the secret screen (writeTrial).
+// under one overall deadline (checkCompliance), records a check copy's
+// findings (recordCheckCopy), writes its trial record through the secret
+// screen (writeTrial), and only then deletes a check copy's clone.
 //
 // A copy on a runner cell is handed off and waits for a launcher: nothing in
 // this step starts a runner in a copy's clone, and nothing stands in for one,
 // since an answer from any other model would measure the wrong one (decision
 // 4). So the host is never taken at its word for a runner cell's copy, and
-// the copy stays absent from the report until a launcher makes it.
-// dcn-2611211433133728 records what is left.
+// the report counts it as awaiting its runner, in no rate, until a launcher
+// makes it. dcn-2611211433133728 records what is left.
+//
+// Every copy handed off is accounted for (readHandOffs): the report shows each
+// one that holds no trial, and a review or a judging, drawn once, waits while
+// any copy of its task is handed to the host and not back (awaitHost).
 
 import (
 	"bytes"
@@ -27,6 +31,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -208,6 +213,83 @@ func readHandOff(proc stateReader, run string, key TrialKey) (HandOff, error) {
 	return h, nil
 }
 
+// readHandOffs is every copy hand-off of run, each read as its own, in key
+// order. A run no launcher started holds none.
+func readHandOffs(proc stateReader, run string) ([]HandOff, error) {
+	dir := run + "/copies"
+	list := func(rel string) ([]string, error) {
+		names, err := proc.ListState(rel)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		if len(names) > MaxRepeats+maxTasks+maxCells {
+			return nil, fmt.Errorf("%s holds %d entries, more than a run writes", rel, len(names))
+		}
+		return names, err
+	}
+	tasks, err := list(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []HandOff
+	for _, task := range tasks {
+		cells, err := list(dir + "/" + task)
+		if err != nil {
+			return nil, err
+		}
+		for _, cell := range cells {
+			files, err := list(dir + "/" + task + "/" + cell)
+			if err != nil {
+				return nil, err
+			}
+			for _, f := range files {
+				n, ok := strings.CutSuffix(f, ".json")
+				r, err := strconv.Atoi(n)
+				key := TrialKey{Task: task, Cell: cell, Repeat: r}
+				if !ok || err != nil || strconv.Itoa(r) != n || key.validate() != nil {
+					return nil, fmt.Errorf("the hand-off at %s/%s/%s is not a copy's", clip(task), clip(cell), clip(f))
+				}
+				h, err := readHandOff(proc, run, key)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, h)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key.String() < out[j].Key.String() })
+	return out, nil
+}
+
+// awaitHost refuses a draw of task's what (its review, its judging) while a
+// copy of task is handed to the host and not handed back: a draw is made
+// once, so a copy handed back after it could never join it. A runner cell's
+// copy, which nothing makes yet, and a refused cell's, which never starts, do
+// not hold a draw; the report names both.
+func awaitHost(proc stateReader, run, task, what string) error {
+	handed, err := readHandOffs(proc, run)
+	if err != nil {
+		return err
+	}
+	var out []string
+	for _, h := range handed {
+		if h.Key.Task != task || h.State != HandOffWaiting {
+			continue
+		}
+		if _, err := proc.ReadState(run + "/" + h.Key.rel()); err == nil {
+			continue
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		out = append(out, h.Key.String())
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%d copies of %s are handed to the host and not handed back (%s); %s is drawn once, from every copy, so it waits for them: hand each back, a failed one with its reason",
+		len(out), task, strings.Join(out, ", "), what)
+}
+
 // ParseTrialKey reads a copy's key from its one-token form, task/cell/repeat.
 func ParseTrialKey(s string) (TrialKey, error) {
 	parts := strings.Split(s, "/")
@@ -379,6 +461,12 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 			return TrialRecord{}, err
 		}
 	case KindCheck:
+		// The trial is screened before anything of the copy is recorded, so
+		// a receipt the screen refuses leaves the copy as it was, its clone
+		// in place, to be handed back again.
+		if _, err := screenTrial(repoRoot, t); err != nil {
+			return TrialRecord{}, err
+		}
 		in := checkCopyInputs{RepoRoot: repoRoot, Store: store, Run: run, Frozen: rec.FrozenCommit, Key: key, Form: back.Form,
 			Answer: back.Answer, Gates: h.Gates}
 		if rc.Outcome == OutcomeFailed {
@@ -390,13 +478,23 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		if err != nil {
 			return TrialRecord{}, fmt.Errorf("copy %s keeps its clone: its frozen material could not be read: %w", key, err)
 		}
-		cc, err := collectCheckCopy(labID, in)
+		cc, clone, err := recordCheckCopy(labID, in)
 		if err != nil {
 			return TrialRecord{}, err
 		}
 		if !cc.Answered && t.Status == StatusPassed {
 			t.Status, t.Reason = StatusFailed, cc.Reason
 		}
+		// The clone goes only once the trial is written: a write the screen
+		// refuses, or one a concurrent hand-back of the same copy won, keeps
+		// it, and a retry finds the same findings recorded and goes on.
+		if err := writeTrial(repoRoot, labID, t); err != nil {
+			return TrialRecord{}, fmt.Errorf("copy %s keeps its clone: %w", key, err)
+		}
+		if err := os.RemoveAll(clone); err != nil {
+			return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone could not be deleted: %w", key, err)
+		}
+		return t, nil
 	}
 	return t, writeTrial(repoRoot, labID, t)
 }

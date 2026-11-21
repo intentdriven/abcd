@@ -74,6 +74,9 @@ func ReviewRequests(repoRoot, home, labID, run, task string) ([]ReviewHandOff, e
 		}
 		return reviewHandOffs(rec, a), nil
 	}
+	if err := awaitHost(proc, run, task, "its review"); err != nil {
+		return nil, err
+	}
 	trials, err := readTrials(proc, run, run+"/trials")
 	if err != nil {
 		return nil, err
@@ -94,6 +97,9 @@ func ReviewRequests(repoRoot, home, labID, run, task string) ([]ReviewHandOff, e
 	a := reviewAsked{SchemaVersion: ReviewSchema, Run: run, Task: task}
 	store := cloneStore(home, rec.RootSHA)
 	var files []lab.StateFile
+	// Each request is screened on its own as well as in asked.json, so a
+	// refusal names the copy's label and not only the record holding it.
+	var screens []screened
 	for i, t := range judged {
 		alias, err := readAlias(proc, run, t.Key)
 		if err != nil {
@@ -121,6 +127,7 @@ func ReviewRequests(repoRoot, home, labID, run, task string) ([]ReviewHandOff, e
 		a.Copies = append(a.Copies, ReviewedCopy{Label: labels[i], Key: t.Key, Truth: truth})
 		a.Requests = append(a.Requests, string(body))
 		files = append(files, lab.StateFile{Rel: reviewAskRel(run, task, "manifest-"+labels[i]+".json"), Data: mb})
+		screens = append(screens, screened{lab.StateFile{Rel: reviewAskRel(run, task, "request-"+labels[i]), Data: body}, body})
 	}
 	// The copies are put in the order of their labels, which are drawn at
 	// random, so a request's place says nothing of whose copy it is.
@@ -139,6 +146,15 @@ func ReviewRequests(repoRoot, home, labID, run, task string) ([]ReviewHandOff, e
 		return nil, err
 	}
 	files = append(files, lab.StateFile{Rel: reviewAskRel(run, task, "asked.json"), Data: data})
+	// A request is a copy's words, and it is stored here and handed to every
+	// reviewer cell, a provider's among them, so it passes the secret screen
+	// first, as a trial does: one refusal draws nothing.
+	for _, f := range files {
+		screens = append(screens, screened{f, f.Data})
+	}
+	if err := screen(repoRoot, screens); err != nil {
+		return nil, fmt.Errorf("the review of %s is not drawn: %w", task, err)
+	}
 	if err := proc.WriteStates(files...); err != nil {
 		return nil, err
 	}
@@ -296,6 +312,9 @@ func writingInputsOf(proc *lab.Procedure, repoRoot, home string, rec RunRecord, 
 	}
 	if task == nil || task.Kind != KindWriting {
 		return judgingInputs{}, fmt.Errorf("the run declares no writing task %s", id)
+	}
+	if err := awaitHost(proc, rec.RunID, id, "its judging"); err != nil {
+		return judgingInputs{}, err
 	}
 	trials, err := readTrials(proc, rec.RunID, rec.RunID+"/trials")
 	if err != nil {

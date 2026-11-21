@@ -52,8 +52,13 @@ result as the host ran them, and its trial says abcd neither placed nor ran
 them. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
 and the host never stands in for one, since its answer would measure the wrong
 model. A copy handed back is checked for compliance under one overall deadline
-before its trial is written, a check copy's findings are recorded before its
-clone is deleted, and every trial passes the secret screen. A code task's
+before its trial is written, a check copy's findings are recorded and its trial
+written before its clone is deleted, and every trial, review request and
+judging packet passes the secret screen. The report accounts for every copy
+handed off that holds no trial: one the host never handed back, one waiting for
+its runner, a refused cell's, and one the run's start never reached are each
+shown and kept out of every rate. A review or a judging is drawn once, so it
+waits until every copy of its task handed to the host is back. A code task's
 copies are then reviewed through blinded requests, each assembled from the
 frozen tree and the copy's clone read as data under an opaque label, whose
 answers are scored before they are recorded. A writing task's judging packet is

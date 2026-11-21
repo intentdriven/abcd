@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // matrixRunLab mints a lab of a throwaway repository, passes its preflight,
@@ -178,6 +179,28 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 		t.Errorf("showing a hand-off: exit %d, %s%s", code, out, errOut)
 	}
 
+	// A request passes the secret screen before it is stored or handed out:
+	// a copy whose change carries a credential refuses the draw, and nothing
+	// is written, so the draw can be made once the copy is clean.
+	token := "ghp_" + testsecret.Synthetic(31, 36)
+	feature1 := filepath.Join(strings.Replace(h1.Clone, "~", home, 1), "feature.go")
+	clean, err := os.ReadFile(feature1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(feature1, append(append([]byte{}, clean...), []byte("\n// key "+token+"\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := runLab(t, "lab", "matrix", "review", id, run, "feature-a"); code != 2 || strings.Contains(out+errOut, token) {
+		t.Errorf("a review of a copy carrying a credential: exit %d, %s%s; want 2, the value never shown", code, out, errOut)
+	}
+	if _, err := os.Stat(labState(t, home, id, run, "review", "feature-a", "asked.json")); !os.IsNotExist(err) {
+		t.Errorf("a refused review wrote its requests: %v", err)
+	}
+	if err := os.WriteFile(feature1, clean, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	// The host reviewer's requests are drawn from the copies' clones, blind.
 	code, out, errOut = runLab(t, "lab", "--json", "matrix", "review", id, run, "feature-a")
 	var asked struct {
@@ -240,6 +263,17 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 	bad := filepath.Join(t.TempDir(), "bad.md")
 	if os.WriteFile(good, []byte("The README says root.\n"), 0o600) != nil || os.WriteFile(bad, []byte("The README is a novel.\n"), 0o600) != nil {
 		t.Fatal("calibration examples")
+	}
+	// The packet passes the secret screen before it is written.
+	keyed := filepath.Join(t.TempDir(), "keyed.md")
+	if err := os.WriteFile(keyed, []byte("The README says root, keyed "+token+".\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := runLab(t, "lab", "matrix", "judge", id, run, "doc-a", "--good", keyed, "--bad", bad, "--judges", "1"); code != 2 || strings.Contains(out+errOut, token) {
+		t.Errorf("a judging whose calibration carries a credential: exit %d, %s%s; want 2, the value never shown", code, out, errOut)
+	}
+	if _, err := os.Stat(labState(t, home, id, run, "judging", "doc-a", "packet.json")); !os.IsNotExist(err) {
+		t.Errorf("a refused judging wrote its packet: %v", err)
 	}
 	if code, out, errOut := runLab(t, "lab", "matrix", "judge", id, run, "doc-a", "--good", good, "--bad", bad, "--judges", "1"); code != 0 {
 		t.Fatalf("drawing the judging (exit %d): %s%s", code, out, errOut)
@@ -309,6 +343,30 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 		t.Errorf("the check copy's clone is not deleted once its findings are recorded: %v", err)
 	}
 
+	// A check copy's clone is deleted only once its trial is written: a
+	// receipt the secret screen refuses leaves the copy as it was, its clone
+	// in place, and a clean hand-back then records it as the failure it is.
+	hc2 := handed["check-a/host-big/2"]
+	checkClone2 := strings.Replace(hc2.Clone, "~", home, 1)
+	keyedReceipt := writeJSONFile(t, "receipt.json", map[string]any{"schema_version": 1, "outcome": "failed", "reason": "gave up at " + token})
+	if code, out, errOut := runLab(t, "lab", "matrix", "copy", id, run, hc2.key(), "--receipt", keyedReceipt, "--transcript", transcript, "--form", "consistency"); code != 2 || strings.Contains(out+errOut, token) {
+		t.Errorf("a check copy whose receipt carries a credential: exit %d, %s%s; want 2, the value never shown", code, out, errOut)
+	}
+	if _, err := os.Stat(checkClone2); err != nil {
+		t.Fatalf("a refused hand-back deleted the check copy's clone: %v", err)
+	}
+	failed := writeJSONFile(t, "receipt.json", map[string]any{"schema_version": 1, "outcome": "failed", "reason": "gave up"})
+	code, out, errOut = runLab(t, "lab", "--json", "matrix", "copy", id, run, hc2.key(), "--receipt", failed, "--transcript", transcript, "--form", "consistency")
+	var failedTrial struct {
+		Status string `json:"status"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &failedTrial) != nil || failedTrial.Status != "failed" {
+		t.Fatalf("handing %s back clean (exit %d): %s%s; want it recorded failed", hc2.key(), code, out, errOut)
+	}
+	if _, err := os.Stat(checkClone2); !os.IsNotExist(err) {
+		t.Errorf("the check copy's clone is not deleted once its trial is written: %v", err)
+	}
+
 	// The report reads the finished run end to end.
 	code, out, errOut = runLab(t, "lab", "--json", "matrix", "report", id, run)
 	var rep struct {
@@ -327,13 +385,37 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 		Writing []struct {
 			Judged bool `json:"judged"`
 		} `json:"writing"`
-		Trials int `json:"trials"`
+		Trials     int `json:"trials"`
+		Unreturned []struct {
+			Task    string `json:"task"`
+			Cell    string `json:"cell"`
+			State   string `json:"state"`
+			Repeats []int  `json:"repeats"`
+		} `json:"unreturned"`
 	}
 	if code != 0 || json.Unmarshal([]byte(out), &rep) != nil || len(rep.Code) != 1 || len(rep.Writing) != 1 {
 		t.Fatalf("the report (exit %d): %s%s", code, out, errOut)
 	}
-	if rep.Trials != 7 || !rep.Writing[0].Judged || len(rep.Code[0].Reviewers) != 1 {
-		t.Errorf("the report holds %d trials, writing judged %v, %d reviewers; want 7, true, 1", rep.Trials, rep.Writing[0].Judged, len(rep.Code[0].Reviewers))
+	if rep.Trials != 8 || !rep.Writing[0].Judged || len(rep.Code[0].Reviewers) != 1 {
+		t.Errorf("the report holds %d trials, writing judged %v, %d reviewers; want 8, true, 1", rep.Trials, rep.Writing[0].Judged, len(rep.Code[0].Reviewers))
+	}
+	// Every copy handed off and not back is counted: the host's check copy
+	// never handed back, and every runner cell's copy waiting for its runner.
+	accounted := map[string]int{}
+	for _, u := range rep.Unreturned {
+		accounted[u.Task+"/"+u.Cell+" "+u.State] += len(u.Repeats)
+	}
+	for k, n := range map[string]int{"check-a/host-big not_handed_back": 1, "feature-a/or-cheap awaiting_runner": 3,
+		"doc-a/or-cheap awaiting_runner": 3, "check-a/or-cheap awaiting_runner": 3} {
+		if accounted[k] != n {
+			t.Errorf("the report accounts %d copies as %s; want %d (all: %+v)", accounted[k], k, n, rep.Unreturned)
+		}
+	}
+	if len(accounted) != 4 {
+		t.Errorf("the report accounts %+v; want those four alone", accounted)
+	}
+	if code, out, _ := runLab(t, "lab", "matrix", "report", id, run); code != 0 || !strings.Contains(out, "awaiting its runner") || !strings.Contains(out, "never handed back") {
+		t.Errorf("the printed report does not say which copies wait for a runner or were never handed back:\n%s", out)
 	}
 	for _, c := range rep.Code[0].Cells {
 		if c.Cell == "host-big" && (c.PassAt1.Passed != 2 || c.PassAt1.Attempts != 3) {

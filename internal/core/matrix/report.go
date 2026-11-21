@@ -32,6 +32,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
@@ -52,9 +53,13 @@ type Report struct {
 	Check         []CheckReport `json:"check"`
 	// Drift is where a re-run drifted from the run it repeats, nil for a run
 	// that repeats none.
-	Drift        *Drift   `json:"drift"`
-	Limitations  []string `json:"limitations"`
-	Improvements []string `json:"improvements"`
+	Drift *Drift `json:"drift"`
+	// Unreturned is every copy the run handed off, or its pilot asked for
+	// once it began handing copies off, that holds no trial, by task, cell and
+	// where it stands. None of them is in any rate.
+	Unreturned   []UnreturnedCopies `json:"unreturned"`
+	Limitations  []string           `json:"limitations"`
+	Improvements []string           `json:"improvements"`
 }
 
 // CodeReport is a code task's rows.
@@ -74,18 +79,48 @@ type CodeCell struct {
 	Runner string `json:"runner"`
 	// PassAt1 counts the passes and the failures; a copy never started, or
 	// one set apart by the compliance check, is in neither.
-	PassAt1    PassRate    `json:"pass_at_1"`
-	PassHatK   []PassHat   `json:"pass_hat_k"`
-	NotStarted int         `json:"not_started"`
-	Excluded   int         `json:"excluded"`
-	Unexamined int         `json:"unexamined"`
-	Reviews    CellReviews `json:"reviews"`
-	Costs      []CellCost  `json:"costs"`
+	PassAt1    PassRate  `json:"pass_at_1"`
+	PassHatK   []PassHat `json:"pass_hat_k"`
+	NotStarted int       `json:"not_started"`
+	Excluded   int       `json:"excluded"`
+	Unexamined int       `json:"unexamined"`
+	// NotHandedBack, AwaitingRunner, Refused and NeverHandedOff count the
+	// copies with no trial, by where they stand; none is in any rate.
+	NotHandedBack  int         `json:"not_handed_back"`
+	AwaitingRunner int         `json:"awaiting_runner"`
+	Refused        int         `json:"refused"`
+	NeverHandedOff int         `json:"never_handed_off"`
+	Reviews        CellReviews `json:"reviews"`
+	Costs          []CellCost  `json:"costs"`
 	// ModelTimeMS and GateWaitMS are each the mean over the attempts: the
 	// time the models spent, and apart from it the time spent waiting on
 	// gates.
 	ModelTimeMS int64 `json:"model_time_ms"`
 	GateWaitMS  int64 `json:"gate_wait_ms"`
+}
+
+// UnreturnedState is where a copy with no trial stands.
+type UnreturnedState string
+
+const (
+	// UnreturnedNotHandedBack: handed to the host and never handed back.
+	UnreturnedNotHandedBack UnreturnedState = "not_handed_back"
+	// UnreturnedAwaitingRunner: a runner cell's copy, waiting for a launcher.
+	UnreturnedAwaitingRunner UnreturnedState = "awaiting_runner"
+	// UnreturnedRefused: its cell's clone was refused before the copy started.
+	UnreturnedRefused UnreturnedState = "refused"
+	// UnreturnedNeverHandedOff: a pilot copy the run's start never reached.
+	UnreturnedNeverHandedOff UnreturnedState = "never_handed_off"
+)
+
+// UnreturnedCopies is the copies of one task on one builder cell that stand
+// alike and hold no trial: their repeats, and for a refused cell, why.
+type UnreturnedCopies struct {
+	Task    string          `json:"task"`
+	Cell    string          `json:"cell"`
+	State   UnreturnedState `json:"state"`
+	Repeats []int           `json:"repeats"`
+	Reason  string          `json:"reason,omitempty"`
 }
 
 // CellReviews is what the reviewers caught of one builder's copies: a flag on
@@ -249,15 +284,24 @@ func writeTrial(repoRoot, labID string, t TrialRecord) error {
 	if t.FrozenCommit != rec.FrozenCommit {
 		return fmt.Errorf("the trial %s starts from %s, not its run's frozen commit %s", t.Key, t.FrozenCommit, rec.FrozenCommit)
 	}
-	data, err := encodeCheck(t)
+	data, err := screenTrial(repoRoot, t)
 	if err != nil {
 		return err
 	}
+	return proc.WriteState(t.Run+"/"+t.Key.rel(), data)
+}
+
+// screenTrial is trial t as written, passed through the secret screen.
+func screenTrial(repoRoot string, t TrialRecord) ([]byte, error) {
+	data, err := encodeCheck(t)
+	if err != nil {
+		return nil, err
+	}
 	rel := t.Run + "/" + t.Key.rel()
 	if err := screen(repoRoot, []screened{{lab.StateFile{Rel: rel, Data: data}, data}}); err != nil {
-		return err
+		return nil, err
 	}
-	return proc.WriteState(rel, data)
+	return data, nil
 }
 
 // readRun is run's record and declaration as its lab holds them, the two
@@ -373,9 +417,16 @@ func BuildReport(repoRoot, labID, run string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	b := reportBuilder{rec: rec, decl: d, trials: trials}
+	unreturned, err := accountCopies(proc, rec, d, trials)
+	if err != nil {
+		return Report{}, err
+	}
+	b := reportBuilder{rec: rec, decl: d, trials: trials, unreturned: unreturned}
 	rep := Report{SchemaVersion: ReportSchema, Run: run, Lab: rec.Lab, FrozenCommit: rec.FrozenCommit, Trials: len(trials),
-		Code: []CodeReport{}, Writing: []WritingRow{}, Check: []CheckReport{}}
+		Code: []CodeReport{}, Writing: []WritingRow{}, Check: []CheckReport{}, Unreturned: unreturned}
+	if rep.Unreturned == nil {
+		rep.Unreturned = []UnreturnedCopies{}
+	}
 	for _, task := range d.Tasks {
 		switch task.Kind {
 		case KindCode:
@@ -425,19 +476,138 @@ func BuildReport(repoRoot, labID, run string) (Report, error) {
 	} else if drift != nil {
 		rep.Drift = drift
 	}
+	b.unreturnedLimits()
 	b.runLimits()
 	rep.Limitations, rep.Improvements = b.limits, b.improves
 	return rep, nil
 }
 
+// accountCopies is every copy of run that holds no trial: each the run handed
+// off, and, once it began handing copies off, each pilot copy its start never
+// reached. A run no launcher started (one whose trials were written another
+// way) holds no hand-off and is accounted by its trials alone.
+func accountCopies(proc stateReader, rec RunRecord, d Declaration, trials []TrialRecord) ([]UnreturnedCopies, error) {
+	handed, err := readHandOffs(proc, rec.RunID)
+	if err != nil || len(handed) == 0 {
+		return nil, err
+	}
+	tried := map[TrialKey]bool{}
+	for _, t := range trials {
+		tried[t.Key] = true
+	}
+	byKey := map[TrialKey]HandOff{}
+	for _, h := range handed {
+		byKey[h.Key] = h
+	}
+	var out []UnreturnedCopies
+	for _, task := range d.Tasks {
+		for _, cell := range d.Builders {
+			repeats := map[int]bool{}
+			for r := 1; r <= d.Repeats.Pilot; r++ {
+				repeats[r] = true
+			}
+			for k := range byKey {
+				if k.Task == task.ID && k.Cell == cell.ID {
+					repeats[k.Repeat] = true
+				}
+			}
+			rs := make([]int, 0, len(repeats))
+			for r := range repeats {
+				rs = append(rs, r)
+			}
+			slices.Sort(rs)
+			groups := map[UnreturnedState]*UnreturnedCopies{}
+			for _, r := range rs {
+				k := TrialKey{Task: task.ID, Cell: cell.ID, Repeat: r}
+				if tried[k] {
+					continue
+				}
+				state, reason := UnreturnedNeverHandedOff, ""
+				if h, ok := byKey[k]; ok {
+					switch h.State {
+					case HandOffWaiting:
+						state = UnreturnedNotHandedBack
+					case HandOffAwaitingRunner:
+						state = UnreturnedAwaitingRunner
+					default:
+						state, reason = UnreturnedRefused, h.Reason
+					}
+				}
+				g := groups[state]
+				if g == nil {
+					g = &UnreturnedCopies{Task: task.ID, Cell: cell.ID, State: state, Reason: reason}
+					groups[state] = g
+				}
+				g.Repeats = append(g.Repeats, r)
+			}
+			for _, s := range []UnreturnedState{UnreturnedNotHandedBack, UnreturnedAwaitingRunner, UnreturnedRefused, UnreturnedNeverHandedOff} {
+				if g := groups[s]; g != nil {
+					out = append(out, *g)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// unreturnedInto counts task's copies on row's cell that hold no trial into it.
+func (b *reportBuilder) unreturnedInto(task string, row *CodeCell) {
+	for _, u := range b.unreturned {
+		if u.Task != task || u.Cell != row.Cell {
+			continue
+		}
+		switch u.State {
+		case UnreturnedNotHandedBack:
+			row.NotHandedBack += len(u.Repeats)
+		case UnreturnedAwaitingRunner:
+			row.AwaitingRunner += len(u.Repeats)
+		case UnreturnedRefused:
+			row.Refused += len(u.Repeats)
+		case UnreturnedNeverHandedOff:
+			row.NeverHandedOff += len(u.Repeats)
+		}
+	}
+}
+
+// unreturnedLimits names every copy that holds no trial, by task and cell.
+func (b *reportBuilder) unreturnedLimits() {
+	for _, u := range b.unreturned {
+		n, which := len(u.Repeats), repeatList(u.Repeats)
+		switch u.State {
+		case UnreturnedNotHandedBack:
+			b.limit("%d copies of %s on %s (%s) were handed to the host and never handed back; they are in no rate, so the cell's figures stand on the copies returned alone", n, u.Task, u.Cell, which)
+			b.improve("hand back every copy of %s on %s, a failed one with its reason, so the cell's figures count every copy the run made", u.Task, u.Cell)
+		case UnreturnedAwaitingRunner:
+			b.limit("%d copies of %s on %s (%s) wait for the cell's runner, which abcd does not launch yet; nothing stands in for it, so they are in no rate, review or judging", n, u.Task, u.Cell, which)
+		case UnreturnedRefused:
+			b.limit("%d copies of %s on %s (%s) were refused before they started (%s); they are in no rate", n, u.Task, u.Cell, which, u.Reason)
+		case UnreturnedNeverHandedOff:
+			b.limit("%d copies of %s on %s (%s) were never handed off: the run's start stopped before them; they are in no rate", n, u.Task, u.Cell, which)
+		}
+	}
+}
+
+// repeatList names repeats: "repeat 4", "repeats 1, 2 and 3".
+func repeatList(rs []int) string {
+	if len(rs) == 1 {
+		return "repeat " + strconv.Itoa(rs[0])
+	}
+	s := make([]string, len(rs))
+	for i, r := range rs {
+		s[i] = strconv.Itoa(r)
+	}
+	return "repeats " + strings.Join(s[:len(s)-1], ", ") + " and " + s[len(s)-1]
+}
+
 // reportBuilder gathers a report's rows and, as it goes, its limitations and
 // improvements, each said once.
 type reportBuilder struct {
-	rec      RunRecord
-	decl     Declaration
-	trials   []TrialRecord
-	limits   []string
-	improves []string
+	rec        RunRecord
+	decl       Declaration
+	trials     []TrialRecord
+	unreturned []UnreturnedCopies
+	limits     []string
+	improves   []string
 }
 
 func (b *reportBuilder) limit(format string, args ...any) {
@@ -547,6 +717,7 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 			row.Reviews = *r
 		}
 		row.Costs = costs(pin.Source, ts, passed)
+		b.unreturnedInto(task.ID, &row)
 		b.cellLimits(task.ID, row)
 		cr.Cells = append(cr.Cells, row)
 	}

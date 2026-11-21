@@ -129,6 +129,20 @@ func rate(r *float64, iv *matrix.Interval) string {
 	return fmt.Sprintf("%.2f [%.2f, %.2f]", *r, iv.Low, iv.High)
 }
 
+// unreturnedWords says where a copy with no trial stands.
+func unreturnedWords(st matrix.UnreturnedState) string {
+	switch st {
+	case matrix.UnreturnedNotHandedBack:
+		return "handed to the host and never handed back"
+	case matrix.UnreturnedAwaitingRunner:
+		return "awaiting its runner, which abcd does not launch yet"
+	case matrix.UnreturnedRefused:
+		return "refused before they started"
+	default:
+		return "never handed off"
+	}
+}
+
 // renderMatrixReport draws a run's report for the person to read.
 func renderMatrixReport(w io.Writer, r matrix.Report) {
 	s := termsafe.Sanitize
@@ -153,6 +167,10 @@ func renderMatrixReport(w io.Writer, r matrix.Report) {
 				fmt.Fprintf(w, "; pass^%d %.2f", h.K, h.Value)
 			}
 			fmt.Fprintf(w, "\n    apart: %d never started, %d unexamined, %d excluded\n", cell.NotStarted, cell.Unexamined, cell.Excluded)
+			if n := cell.NotHandedBack + cell.AwaitingRunner + cell.Refused + cell.NeverHandedOff; n > 0 {
+				fmt.Fprintf(w, "    no trial: %d never handed back, %d awaiting its runner, %d refused, %d never handed off\n",
+					cell.NotHandedBack, cell.AwaitingRunner, cell.Refused, cell.NeverHandedOff)
+			}
 			fmt.Fprintf(w, "    reviews: %d confirmed finding(s), %d unconfirmed flag(s)\n", cell.Reviews.Confirmed, cell.Reviews.Unconfirmed)
 			for _, k := range cell.Costs {
 				switch {
@@ -233,6 +251,12 @@ func renderMatrixReport(w io.Writer, r matrix.Report) {
 		for _, sc := range c.Table.Scores {
 			fmt.Fprintf(w, "  %-14s precision %d of %d, unique valid %d, recall of seeded %d of %d\n",
 				s(sc.Cell), sc.Precision.Hits, sc.Precision.Of, sc.UniqueValid, sc.RecallSeeded.Hits, sc.RecallSeeded.Of)
+		}
+	}
+	if len(r.Unreturned) > 0 {
+		fmt.Fprintln(w, "copies with no trial, in no rate:")
+		for _, u := range r.Unreturned {
+			fmt.Fprintf(w, "  %s on %s: %d %s\n", s(u.Task), s(u.Cell), len(u.Repeats), unreturnedWords(u.State))
 		}
 	}
 	fmt.Fprintln(w, "limitations:")

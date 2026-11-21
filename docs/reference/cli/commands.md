@@ -4755,8 +4755,9 @@ compliance under one overall deadline, a check copy's findings are recorded
 before its clone is deleted, and the trial is written through the secret screen.
 
 Refused, exit 2, with nothing written: a key that is not one, a copy the run did
-not hand off to the host, one already handed back, and a receipt, score or answer
-that does not validate. A halted lab exits 1.
+not hand off to the host, one already handed back, a receipt, score or answer
+that does not validate, and a trial the secret screen refuses. A check copy's
+clone is deleted only once its trial is written. A halted lab exits 1.
 
 **Flags:**
 
@@ -4796,7 +4797,9 @@ names the host's own GitHub login, whose rankings are reported apart.
 
 Refused, exit 2, with nothing written: a task that is not one of the run's
 writing tasks, no made copy, a missing example, too few judges, a judging
-already drawn, and a verdict file that does not validate. A halted lab exits 1.
+already drawn, a task with a copy handed to the host and not handed back, a
+packet the secret screen refuses, and a verdict file that does not validate.
+A halted lab exits 1.
 
 **Flags:**
 
@@ -4902,7 +4905,8 @@ read as untrusted input and scored before anything is recorded.
 Refused, exit 2, with nothing written: a task that is not one of the run's code
 tasks, a task no copy of which its hidden tests judged, an answer that does not
 validate or names a label never asked about, an answer for a runner reviewer
-cell, and reviews already recorded. A halted lab exits 1.
+cell, reviews already recorded, a task with a copy handed to the host and not
+handed back, and a request the secret screen refuses. A halted lab exits 1.
 
 **Flags:**
 

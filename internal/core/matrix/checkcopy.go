@@ -778,45 +778,60 @@ func encodeCheck(v any) ([]byte, error) {
 // with the same bytes counts as written, so a collection that failed after
 // writing it can be tried again, and the retry deletes the clone.
 func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
-	if !runIDRe.MatchString(in.Run) {
-		return CheckCopy{}, fmt.Errorf("%q is not a run id", clip(in.Run))
-	}
-	if err := in.Key.validate(); err != nil {
+	c, clone, err := recordCheckCopy(labID, in)
+	if err != nil {
 		return CheckCopy{}, err
 	}
+	if err := os.RemoveAll(clone); err != nil {
+		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
+	}
+	return c, nil
+}
+
+// recordCheckCopy is collectCheckCopy short of deleting the clone: it records
+// copy in.Key's findings, proves the release gates' reads unchanged, and
+// returns the clone to delete once the caller has written what else it must
+// (a hand-back's trial), so nothing it refuses can leave a copy with no clone.
+func recordCheckCopy(labID string, in checkCopyInputs) (CheckCopy, string, error) {
+	if !runIDRe.MatchString(in.Run) {
+		return CheckCopy{}, "", fmt.Errorf("%q is not a run id", clip(in.Run))
+	}
+	if err := in.Key.validate(); err != nil {
+		return CheckCopy{}, "", err
+	}
 	if !filepath.IsAbs(in.RepoRoot) || !filepath.IsAbs(in.Store) {
-		return CheckCopy{}, errors.New("the run's checkout and its clone store are named by absolute paths")
+		return CheckCopy{}, "", errors.New("the run's checkout and its clone store are named by absolute paths")
 	}
 	if in.Form != CheckDocFidelity && in.Form != CheckConsistency {
-		return CheckCopy{}, fmt.Errorf("%q is not a check form abcd reads", clip(string(in.Form)))
+		return CheckCopy{}, "", fmt.Errorf("%q is not a check form abcd reads", clip(string(in.Form)))
 	}
 	if in.Gates == nil {
-		return CheckCopy{}, errors.New("the copy is not collected: what the release gates read was not snapshotted before it ran")
+		return CheckCopy{}, "", errors.New("the copy is not collected: what the release gates read was not snapshotted before it ran")
 	}
 	proc, err := lab.OpenProcedure(in.RepoRoot, labID)
 	if err != nil {
-		return CheckCopy{}, err
+		return CheckCopy{}, "", err
 	}
 	defer proc.Close()
 	raw, err := proc.ReadState(in.Run + "/run.json")
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: its run's record is not written: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: its run's record is not written: %w", err)
 	}
 	var rec RunRecord
 	if err := jsonstrict.Decode(raw, &rec); err != nil || rec.RunID != in.Run {
-		return CheckCopy{}, errors.New("the copy is not collected: its run's record does not read as the run's")
+		return CheckCopy{}, "", errors.New("the copy is not collected: its run's record does not read as the run's")
 	}
 	decl, err := proc.ReadState(in.Run + "/declaration.json")
 	if err != nil || contentOf("declaration.json", decl) != rec.Declaration {
-		return CheckCopy{}, errors.New("the copy is not collected: its run's declaration does not read as the one its record keeps")
+		return CheckCopy{}, "", errors.New("the copy is not collected: its run's declaration does not read as the one its record keeps")
 	}
 	d, err := parseDeclaration(decl)
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: %w", err)
 	}
 	alias, err := readAlias(proc, in.Run, in.Key)
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: its clone's alias is not recorded: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: its clone's alias is not recorded: %w", err)
 	}
 	in.Identity = runIdentity{Cells: rec.Cells, Alias: alias}
 	for _, t := range d.Tasks {
@@ -825,22 +840,19 @@ func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	rel := checkCopyRel(in.Run, in.Key)
 	c, data, err := screenedCheckCopy(in, rel)
 	if err != nil {
-		return CheckCopy{}, err
+		return CheckCopy{}, "", err
 	}
 	werr := proc.WriteState(rel, data)
 	if back, err := proc.ReadState(rel); err != nil || !bytes.Equal(back, data) {
 		if werr != nil {
-			return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
+			return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
 		}
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key)
+		return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key)
 	}
 	if err := in.Gates.unchanged(in.RepoRoot); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
+		return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
 	}
-	if err := os.RemoveAll(cloneDir(in.Store, in.Run, alias)); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
-	}
-	return c, nil
+	return c, cloneDir(in.Store, in.Run, alias), nil
 }
 
 // screenRefusedReason is a copy's failure when the secret screen refuses its
