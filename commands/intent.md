@@ -602,7 +602,7 @@ nothing else: any other path that changes while a turn runs stops the
 interview, exit 1, naming each, whether git tracks it, ignores it (the local
 tier's handover and push receipts included) or keeps it in its own directory (a
 hook, an info file but `info/refs`, which no local git command reads, the
-git configuration, HEAD and the branch it names, a submodule's
+git configuration, HEAD and the branch it names, an operation in progress in this checkout (what a rebase, an am, a cherry-pick or revert sequence, a merge, cherry-pick or revert left for its commit, or a bisect keeps, and ORIG_HEAD), a submodule's
 hooks, configuration, HEAD and refs, this checkout's own worktree entry: its
 HEAD, common directory, working-tree path, own configuration and lock; and,
 of another worktree's entry, its common directory, working-tree path and own
@@ -622,7 +622,8 @@ the repository's `refs/` stops it too, whatever the gate reads, since git
 follows one when the gate asks which remote-tracking refs hold a commit, so one
 naming the checkout's own branch or `refs/stash` would hold the next commit or
 stash: every one is read from the files, by its name and the ref it names, and
-only a remote-tracking ref naming another ref of its own remote, as `git remote
+only a remote-tracking ref naming another ref of its own remote that the gate
+counts, outside its receipt-less prefixes, as `git remote
 set-head`, a clone or a fetch writes `refs/remotes/<remote>/HEAD`, is left out.
 A link under `refs/` is never left out, one leading to a directory is refused,
 and so is a repository that keeps its refs in a reftable; the packed refs hold

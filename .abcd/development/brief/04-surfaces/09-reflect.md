@@ -112,7 +112,7 @@ and changes no file of the repository: abcd reads the working tree's state
 path git ignores, the local tier among them, by its mode, size and
 modification time; git's own hooks, info files but `info/refs`, which no local
 git command reads, configuration, `HEAD` and the branch it names (followed
-through every symbolic ref it leads to), each
+through every symbolic ref it leads to), an operation in progress in this checkout's own git directory (`rebase-merge/`, `rebase-apply/`, `sequencer/`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `ORIG_HEAD` and the rest of what a merge, a squash or a bisect keeps there, another worktree's being its own), each
 submodule's hooks, configuration, `HEAD` and refs, this checkout's own entry
 under `worktrees/` (its `HEAD`, `commondir`, `gitdir`, `config.worktree` and
 `locked`), and of another worktree's entry its `commondir`, `gitdir` and
@@ -134,7 +134,7 @@ themselves, since git's listings skip one whose target does not exist: the gate
 asks git which remote-tracking refs hold a commit, and git follows a symbolic
 ref there when the gate asks, so one made, changed or removed during a dispatch
 stops the interview whatever the gate reads, saying so in plain words, unless
-it is a remote-tracking ref naming another ref of its own remote, as
+it is a remote-tracking ref naming another ref of its own remote that the gate counts, outside its receipt-less prefixes, as
 `git remote set-head`, a clone or a fetch writes `refs/remotes/<remote>/HEAD`; a
 link under `refs/` is never one, a link there leading to a directory is
 refused, and a repository keeping its refs in a reftable is refused; the packed
