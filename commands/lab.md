@@ -226,7 +226,9 @@ how many judges' subsets to draw:
 
 The packet, written in the run's state with its key beside it, renders every
 copy as inert text with every mention of where it ran, its alias, every task,
-cell, route and model and every maker withheld, and names no run, task or path.
+cell, route and model and every maker withheld, however it is spelt (split by
+invisible characters, in look-alike letters, or with its version after it), and
+names no run, task or path.
 The packet and key pass the secret screen before they are written, and a
 refusal draws nothing. It is what the person's judging session shows; hand the session's verdict file
 back with `--verdicts <file>` (and `--host <login>` when the host judged too,

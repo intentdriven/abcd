@@ -63,7 +63,9 @@ copies are then reviewed through blinded requests, each assembled from the
 frozen tree and the copy's clone read as data under an opaque label, whose
 answers are scored before they are recorded. A writing task's judging packet is
 drawn from its made copies with every mention of where a copy ran, its alias,
-every task, cell, route and model and every maker withheld, and a judging
+every task, cell, route and model and every maker withheld, however it is
+spelt (split by invisible characters, in look-alike letters, or with its
+version after it), and a judging
 session's verdict file is recorded against it.
 
 A recorded run's report is read from its records in the lab and writes nothing

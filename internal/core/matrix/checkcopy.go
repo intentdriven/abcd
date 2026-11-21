@@ -42,6 +42,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/docfidelity"
@@ -51,6 +52,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/termsafe"
+	"golang.org/x/text/unicode/norm"
 )
 
 // CheckCopySchema is a check copy's record's schema version.
@@ -381,7 +383,14 @@ const withheldClass = "withheld"
 // tell a judge which copy wrote them (dcn-2611210903322839), so a copy cannot
 // sign its findings. Each name is matched in any case and as a substring,
 // wherever it stands, fused to a letter or a digit or joined by any mark, so
-// no way of writing an ordinary id escapes a word boundary:
+// no way of writing an ordinary id escapes a word boundary, and in the text
+// as scrubFold folds it, so no respelling does either: compatibility forms
+// read as their plain letters, combining marks and format characters (a
+// zero-width space or joiner, a soft hyphen) dropped, every dash read as a
+// hyphen, and Cyrillic and Greek letters that look Latin read as the Latin
+// ones. A withheld name takes the rest of its model id token with it
+// (versionEnd), and a joiner between two withheld spans is withheld with
+// them, so "claude-opus-5-5" goes under one mark:
 //
 //   - every name in the run that could identify a copy: the run's id; every
 //     task's id; and each cell's id, source, route whole and by its parts (its
@@ -410,7 +419,7 @@ func newIdentityScrub(run string, key TrialKey, id runIdentity) identityScrub {
 	var s identityScrub
 	seen := map[string]bool{}
 	add := func(n string) {
-		if n = asciiLower(strings.TrimSpace(n)); len(n) >= minNameBytes && !seen[n] {
+		if n, _, _ = scrubFold(strings.TrimSpace(n)); len(n) >= minNameBytes && !seen[n] {
 			seen[n] = true
 			s.withheld = append(s.withheld, n)
 		}
@@ -525,13 +534,21 @@ func (m identityScrub) scrub(s string) (string, int) {
 	return b.String(), n
 }
 
-// held marks each byte of s that is part of a name the scrub withholds.
+// held marks each byte of s that is part of a name the scrub withholds. The
+// names are matched in s as scrubFold folds it, and each match holds the
+// bytes of s it was folded from, the format characters inside it included.
 func (m identityScrub) held(s string) []bool {
-	low := asciiLower(s)
+	low, from, to := scrubFold(s)
 	held := make([]bool, len(s))
 	hold := func(i, j int) {
 		for ; i < j; i++ {
 			held[i] = true
+		}
+	}
+	// holdFolded holds low[i:j] as the bytes of s it came from.
+	holdFolded := func(i, j int) {
+		if i < j {
+			hold(from[i], to[j-1])
 		}
 	}
 	for _, name := range m.withheld {
@@ -540,12 +557,15 @@ func (m identityScrub) held(s string) []bool {
 			if i < 0 {
 				break
 			}
-			hold(at+i, at+i+len(name))
+			holdFolded(at+i, versionEnd(low, at+i+len(name), false))
 			at += i + 1
 		}
 	}
 	for _, sp := range identity.AINameSpans(s) {
 		hold(sp[0], sp[1])
+	}
+	for _, sp := range identity.AINameSpans(low) {
+		holdFolded(sp[0], versionEnd(low, sp[1], false))
 	}
 	for i := 0; i+1 < len(low); i++ {
 		if low[i] == oSeries[0] && (i == 0 || !isLetter(low[i-1])) && isDigit(low[i+1]) {
@@ -553,10 +573,120 @@ func (m identityScrub) held(s string) []bool {
 			for j < len(low) && isDigit(low[j]) {
 				j++
 			}
-			hold(i, j)
+			holdFolded(i, versionEnd(low, j, true))
+		}
+	}
+	// A joiner between two withheld spans joins one name: "claude-opus".
+	for i := 1; i+1 < len(s); i++ {
+		if !held[i] && held[i-1] && held[i+1] && strings.IndexByte(tokenJoiners, s[i]) >= 0 {
+			held[i] = true
 		}
 	}
 	return held
+}
+
+// tokenJoiners join the parts of a model id token.
+const tokenJoiners = "-._:/"
+
+// versionEnd is where the model id token a withheld name ends at j in folded
+// text low goes on to: a version after it, joined by a joiner or a space or
+// written straight on ("-5-5", " 5.5", "4o"), each part led by a digit, and
+// once a version has begun (versioned), every part joined to it by a joiner
+// ("-mini", "-coder-32b"). A name fused to a letter, or followed by a word,
+// takes nothing more.
+func versionEnd(low string, j int, versioned bool) int {
+	end := j
+	for i := j; ; {
+		k := i
+		sep := byte(0)
+		if k < len(low) && (low[k] == ' ' || strings.IndexByte(tokenJoiners, low[k]) >= 0) {
+			sep = low[k]
+			k++
+		}
+		if k >= len(low) || !isAlnum(low[k]) {
+			return end
+		}
+		digit := isDigit(low[k])
+		if !digit && (sep == 0 || sep == ' ' || !versioned) {
+			return end
+		}
+		for k < len(low) && isAlnum(low[k]) {
+			k++
+		}
+		i, end, versioned = k, k, versioned || digit
+	}
+}
+
+func isAlnum(c byte) bool { return isLetter(c) || isDigit(c) }
+
+// scrubFold is s as the identity scrub matches it, and, for each byte of the
+// result, the span of s it was folded from (from[i] to to[i]). It reads s
+// through NFKD, so a compatibility form becomes its plain letters (as NFKC
+// would) and a combining mark comes apart from its letter; drops every
+// combining mark and every format character (a zero-width space, joiner or
+// non-joiner, a word joiner, a soft hyphen, a direction mark); reads every
+// dash and the minus sign as a hyphen; and folds the Cyrillic and Greek
+// letters that look Latin (scrubConfusables) to the Latin ones, and every
+// other letter to lower case.
+func scrubFold(s string) (string, []int, []int) {
+	var b strings.Builder
+	from := make([]int, 0, len(s))
+	to := make([]int, 0, len(s))
+	var it norm.Iter
+	it.InitString(norm.NFKD, s)
+	for !it.Done() {
+		pos := it.Pos()
+		seg := string(it.Next())
+		end := it.Pos()
+		exact := seg == s[pos:end]
+		for k := 0; k < len(seg); {
+			r, w := utf8.DecodeRuneInString(seg[k:])
+			lo, hi := pos, end
+			if exact {
+				lo, hi = pos+k, pos+k+w
+			}
+			k += w
+			switch {
+			case unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Cf, r):
+				continue
+			case unicode.Is(unicode.Pd, r) || r == '\u2212':
+				r = '-'
+			default:
+				if c, ok := scrubConfusables[r]; ok {
+					r = c
+				} else {
+					r = unicode.ToLower(r)
+				}
+			}
+			n := b.Len()
+			b.WriteRune(r)
+			for ; n < b.Len(); n++ {
+				from = append(from, lo)
+				to = append(to, hi)
+			}
+		}
+	}
+	return b.String(), from, to
+}
+
+// scrubConfusables are the Cyrillic and Greek letters, in both cases, that
+// look like a Latin letter, each to the lower-case Latin letter it looks
+// like: the common ones of Unicode's confusables (TR39) for these scripts.
+var scrubConfusables = map[rune]rune{
+	// Cyrillic capitals and smalls.
+	'А': 'a', 'а': 'a', 'В': 'b', 'в': 'b', 'С': 'c', 'с': 'c', 'Ԁ': 'd', 'ԁ': 'd',
+	'Е': 'e', 'е': 'e', 'Һ': 'h', 'һ': 'h', 'Н': 'h', 'н': 'h', 'І': 'i', 'і': 'i',
+	'Ј': 'j', 'ј': 'j', 'К': 'k', 'к': 'k', 'Ӏ': 'l', 'ӏ': 'l', 'М': 'm', 'м': 'm',
+	'О': 'o', 'о': 'o', 'Р': 'p', 'р': 'p', 'Ԛ': 'q', 'ԛ': 'q', 'Ѕ': 's', 'ѕ': 's',
+	'Т': 't', 'т': 't', 'Ү': 'y', 'ү': 'y', 'У': 'y', 'у': 'y', 'Ԝ': 'w', 'ԝ': 'w',
+	'Х': 'x', 'х': 'x', 'Ь': 'b', 'ь': 'b',
+	// Greek capitals and smalls.
+	'Α': 'a', 'α': 'a', 'Β': 'b', 'β': 'b', 'Ε': 'e', 'ε': 'e', 'Ζ': 'z', 'Η': 'h',
+	'η': 'n', 'Ι': 'i', 'ι': 'i', 'Κ': 'k', 'κ': 'k', 'Μ': 'm', 'Ν': 'n', 'ν': 'v',
+	'Ο': 'o', 'ο': 'o', 'Ρ': 'p', 'ρ': 'p', 'Τ': 't', 'τ': 't', 'Υ': 'y', 'υ': 'u',
+	'Χ': 'x', 'χ': 'x', 'ϲ': 'c', 'Ϲ': 'c', 'ϳ': 'j',
+	// Latin letters that read as another.
+	'ı': 'i', 'ɡ': 'g', 'ɑ': 'a',
 }
 
 // names reports whether s names anything the scrub withholds.
