@@ -11,7 +11,7 @@ package interview
 // stops it too (a second interview in the same checkout among them: one
 // checkout is one session).
 //
-// Five places are read:
+// Four places are read:
 //
 //   - What differs from HEAD, as git lists it (gitutil.Status, the one reader
 //     of `git status --porcelain=v1 -z --untracked-files=all`): each path
@@ -22,8 +22,7 @@ package interview
 //     walked the same way: each file by its mode, size and modification time,
 //     never its content, since an ignored tree (a build's output, the local
 //     tier's scratch) can be large. The local tier is watched like any other
-//     path: a push receipt under preflight-receipts/ or the handover changed
-//     by the role stops the interview.
+//     path, the handover among them, but for the push receipts (below).
 //   - git's own directory, which no status lists: every entry of hooks/ and
 //     info/, the configuration (config, and config.worktree), HEAD, the
 //     branch HEAD names, each submodule's git directory under modules/ (read
@@ -37,12 +36,18 @@ package interview
 //     the common directory's refs, and a peer's commit in its own worktree
 //     is not the interview's concern (iss-2611012144422634). In a linked
 //     worktree these live in the repository's common directory and are read
-//     there, besides the worktree's own HEAD and config.worktree. Every
-//     worktree's entry under the common directory's worktrees/ is read too:
-//     the entry itself, so one made or removed is noticed, and its HEAD,
-//     commondir, gitdir, config.worktree and locked, which decide where git
-//     places that worktree, which configuration and hooks it runs there, and
-//     where git lists it. git follows a link there, so a link (a
+//     there, besides the worktree's own HEAD and config.worktree; the main
+//     worktree's HEAD there is then a sibling's, and is not read. The
+//     checkout's own entry under the common directory's worktrees/ is read
+//     whole: the entry itself, and its HEAD, commondir, gitdir,
+//     config.worktree and locked (worktreeFiles). Of a sibling worktree's
+//     entry only what could make git run something there is read: its
+//     commondir, gitdir and config.worktree (siblingFiles), which place its
+//     configuration and hooks or carry its own configuration
+//     (iss-2610040739124513), compared only while the entry stands in both
+//     readings. Its HEAD, what a rebase or a merge writes there, and the
+//     entry made or removed are a peer's own work in its own worktree, which
+//     is not the interview's concern. git follows a link there, so a link (a
 //     dotfiles-managed hooks directory, a hook or a configuration file) is
 //     read where it leads too.
 //   - The directory each core.hooksPath value names, in any scope the
@@ -52,12 +57,6 @@ package interview
 //     reached through a link (a dotfiles-managed one, or an in-tree link to a
 //     directory elsewhere) is read where git runs its hooks from, held to
 //     the budget maxFollowedEntries and maxFollowedBytes set.
-//   - The push receipts (.abcd/.work.local/preflight-receipts/) of every
-//     worktree git lists, by mode, size and content hash: the pre-push gate
-//     takes a commit's receipt from any of them, so a receipt written into
-//     another worktree's local tier during a turn stops the interview too.
-//     They are held to the same budget, since a worktree stands where its
-//     registration says.
 //
 // git's own directory and common directory are placed by the run's first
 // reading, taken before any role ran, and every later reading reads those
@@ -79,7 +78,12 @@ package interview
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
 // receipt, and the local transcript store a checkout can pull its runners'
-// transcripts into. Every other run's turn directory is watched. Two paths are
+// transcripts into. Every other run's turn directory is watched. The push
+// receipts (receiptsRel), in this checkout's local tier or any other
+// worktree's, are left out too: the interview's contract reads none, a
+// peer's preflight mints one in its own worktree at any time, and a receipt
+// is a local convenience gate CI stands behind, not a security boundary
+// (scripts/preflight-receipt.sh). Two paths are
 // left out because something else on the machine writes them while a role
 // runs and neither executes anything: a file named .DS_Store anywhere
 // (Finder's metadata), and the host scheduler's lock at the repository's root,
@@ -124,28 +128,19 @@ const maxStatusBytes = 8 << 20
 var maxWatched = 500_000
 
 // maxFollowedEntries and maxFollowedBytes bound what one reading reads
-// outside what it owns: what the links it follows lead to, every hooks
-// directory core.hooksPath names outside the tree, and the push receipts of
-// every worktree git lists. Every entry read there (a directory included)
-// and every byte of the files hashed there is counted. A reading past either
-// is refused, naming the link, the core.hooksPath value or the receipts
-// directory, before the entry past it is read, rather than walking toward
+// outside what it owns: what the links it follows lead to, and every hooks
+// directory core.hooksPath names outside the tree. Every entry read there (a
+// directory included) and every byte of the files hashed there is counted. A
+// reading past either is refused, naming the link or the core.hooksPath
+// value, before the entry past it is read, rather than walking toward
 // maxWatched: a role can plant a link to a large tree in one write where the
-// guard follows links (its own turn directory's push receipts, registered as
-// a worktree, among them), point core.hooksPath at one, or register a
-// worktree whose receipts directory is one, and hashing that whole would
-// hold the turn for minutes before the guard refused. What the guard
+// guard follows links, or point core.hooksPath at one, and hashing that whole
+// would hold the turn for minutes before the guard refused. What the guard
 // legitimately reads there is small: git's sample hooks are 14 files and
-// 26 KiB, a checkout keeps at most 50 push receipts of 76 bytes each
-// (scripts/preflight-receipt.sh), and a dotfiles-managed hooks directory
-// holds tens of scripts. The budget is some twenty times the receipts' cap
-// and holds a compiled hook binary, and reading all of it takes tens of
+// 26 KiB, and a dotfiles-managed hooks directory holds tens of scripts. The
+// budget holds a compiled hook binary, and reading all of it takes tens of
 // milliseconds. It is shared by everything one reading reads there, so
-// planting many links or hooks directories does not multiply it, with one
-// exception: each receipts directory is held to the entry budget on its own,
-// since a checkout's receipts grow with its worktrees (twenty worktrees each
-// keeping their 50 would pass a shared count), while their bytes, a few KiB
-// for any real checkout, stay shared.
+// planting many links or hooks directories does not multiply it.
 var (
 	maxFollowedEntries       = 1024
 	maxFollowedBytes   int64 = 64 << 20
@@ -229,6 +224,9 @@ type treeReader struct {
 	// modules are the submodules' git directories under common's modules/,
 	// relative to common, as sizeGitReads found them.
 	modules []string
+	// sibling is the key of the sibling worktree's entry being read, when
+	// one is: put marks each state it records with it (siblingState).
+	sibling string
 }
 
 // gitPin is where a run's first reading found git's own directory and
@@ -259,15 +257,10 @@ func (e *redirectedError) Error() string {
 }
 
 // reach is what took a reading outside what it owns, and so to the budget: a
-// followed link, a hooks directory core.hooksPath names outside the tree, or
-// a worktree's push receipts.
+// followed link, or a hooks directory core.hooksPath names outside the tree.
 type reach struct {
 	// what names it in a refusal, and fix says how to clear it.
 	what, fix string
-	// own holds the reach to the entry budget on its own, counted in
-	// entries, rather than sharing the reading's count.
-	own     bool
-	entries int
 }
 
 // linkReach is the link key, followed.
@@ -285,7 +278,7 @@ func readTree(repo, turnDir string) (treeState, error) {
 // readTreePinned is readTree reading git's own directories where pin placed
 // them. An empty pin is filled by this reading, the run's first.
 func readTreePinned(repo, turnDir string, pin *gitPin) (treeState, error) {
-	r := &treeReader{repo: repo, realRepo: fsutil.RealExistingPath(repo), skip: []string{history.LocalStoreRelPath}, st: treeState{}, pin: pin}
+	r := &treeReader{repo: repo, realRepo: fsutil.RealExistingPath(repo), skip: []string{history.LocalStoreRelPath, receiptsRel}, st: treeState{}, pin: pin}
 	if turnDir != "" {
 		r.skip = append(r.skip, turnDir)
 	}
@@ -698,6 +691,9 @@ func (r *treeReader) put(key, state string) error {
 		return fmt.Errorf("the tree holds more than %d paths outside what git tracks unchanged (untracked, ignored, or in git's own directory), "+
 			"too many to read around each turn; remove what it no longer needs (a scratch directory, a build's output) and run the interview again", maxWatched)
 	}
+	if r.sibling != "" {
+		state = siblingState + r.sibling + "\x00" + state
+	}
 	r.st[key] = state
 	return nil
 }
@@ -710,18 +706,14 @@ func (r *treeReader) charge(via *reach, fi fs.FileInfo) error {
 	if via == nil {
 		return nil
 	}
-	entries, limit := &r.followedEntries, fmt.Sprintf("%d entries and %d MiB in all", maxFollowedEntries, maxFollowedBytes>>20)
-	if via.own {
-		entries, limit = &via.entries, fmt.Sprintf("%d entries for each worktree's push receipts and %d MiB in all", maxFollowedEntries, maxFollowedBytes>>20)
-	}
-	*entries++
+	r.followedEntries++
 	if fi.Mode().IsRegular() {
 		r.followedBytes += fi.Size()
 	}
-	if *entries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
-		return fmt.Errorf("%s leads past what one reading follows links to (%s), "+
-			"more than git's own directory, a hooks directory or the push receipts hold, so it is not read; "+
-			"%s, and run the interview again", via.what, limit, via.fix)
+	if r.followedEntries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
+		return fmt.Errorf("%s leads past what one reading follows links to (%d entries and %d MiB in all), "+
+			"more than git's own directory or a hooks directory holds, so it is not read; "+
+			"%s, and run the interview again", via.what, maxFollowedEntries, maxFollowedBytes>>20, via.fix)
 	}
 	return nil
 }
@@ -813,6 +805,11 @@ func (r *treeReader) readGitDirs() error {
 		}
 	}
 	for _, rel := range commonEntries {
+		if rel == "HEAD" && gitDir != common {
+			// A linked worktree's HEAD is its own, read below; the common
+			// directory's is the main worktree's, a sibling's.
+			continue
+		}
 		if err := r.hashIn(common, rel); err != nil {
 			return err
 		}
@@ -860,21 +857,43 @@ func (r *treeReader) readGitDirs() error {
 			return err
 		}
 	}
-	return r.readReceipts()
+	return nil
 }
 
-// worktreeFiles are the files of a linked worktree's entry under the common
+// worktreeFiles are the files of the checkout's own entry under the common
 // directory's worktrees/ that git reads to place the worktree and run there:
 // its HEAD, the common directory it uses (and so the configuration, the
 // hooks and the refs), the working tree it belongs to (and so the place git
-// lists it, whose local tier the pre-push gate reads), its own configuration,
-// and its lock.
+// lists it), its own configuration, and its lock.
 var worktreeFiles = []string{"HEAD", "commondir", "gitdir", "config.worktree", "locked"}
 
-// readWorktrees records every entry of common's worktrees/ by its kind, so
-// one made or removed is noticed, and each entry's worktreeFiles by mode,
-// size and content hash. A link, there or as worktrees/ itself, is recorded
-// by its target's text and read where it leads, as git reads it.
+// siblingFiles are the files of a sibling worktree's entry read: those that
+// place the configuration and hooks git runs there, or carry its own
+// configuration, so a role repointing one at a fake common directory whose
+// configuration carries an alias, or writing it one, is stopped
+// (iss-2610040739124513). Its HEAD and lock are a peer's own work.
+var siblingFiles = []string{"commondir", "gitdir", "config.worktree"}
+
+// siblingState leads the state of what a sibling worktree's entry holds:
+// the entry's key, a NUL, then the state, so changedSince can leave out what
+// came or went with the entry itself.
+const siblingState = "sibling "
+
+// siblingOf is the entry key a sibling state names.
+func siblingOf(state string) (string, bool) {
+	rest, ok := strings.CutPrefix(state, siblingState)
+	if !ok {
+		return "", false
+	}
+	entry, _, ok := strings.Cut(rest, "\x00")
+	return entry, ok
+}
+
+// readWorktrees records every entry of common's worktrees/ by its kind and
+// the files it holds: the checkout's own entry whole (worktreeFiles), and a
+// sibling's siblingFiles, marked as the sibling's (siblingState), each by
+// mode, size and content hash. A link, there or as worktrees/ itself, is
+// recorded by its target's text and read where it leads, as git reads it.
 func (r *treeReader) readWorktrees(common string) error {
 	dir := filepath.Join(common, "worktrees")
 	fi, err := os.Lstat(dir)
@@ -901,8 +920,16 @@ func (r *treeReader) readWorktrees(common string) error {
 	if err != nil {
 		return err
 	}
+	fold := fsutil.CaseFoldingFS()
+	realGitDir := fsutil.RealExistingPath(r.gitDir)
+	defer func() { r.sibling = "" }()
 	for _, e := range entries {
 		at, entryVia := filepath.Join(dir, e.Name()), via
+		files := worktreeFiles
+		r.sibling = ""
+		if real := fsutil.RealExistingPath(at); !fsutil.PathWithin(real, realGitDir, fold) || !fsutil.PathWithin(realGitDir, real, fold) {
+			files, r.sibling = siblingFiles, r.keyOf(dir, e.Name())
+		}
 		if via != nil {
 			fi, err := e.Info()
 			if errors.Is(err, fs.ErrNotExist) {
@@ -927,7 +954,7 @@ func (r *treeReader) readWorktrees(common string) error {
 		if fi, err := os.Stat(at); err != nil || !fi.IsDir() {
 			continue
 		}
-		for _, f := range worktreeFiles {
+		for _, f := range files {
 			if err := r.hashAt(at, f, true, entryVia); err != nil {
 				return err
 			}
@@ -937,38 +964,8 @@ func (r *treeReader) readWorktrees(common string) error {
 }
 
 // receiptsRel is where a checkout's push receipts stand, under each worktree
-// (scripts/preflight-receipt.sh).
+// (scripts/preflight-receipt.sh); the reading leaves them out.
 const receiptsRel = ".abcd/.work.local/preflight-receipts"
-
-// readReceipts records the push receipts of every worktree git lists by
-// mode, size and content hash: the pre-push gate takes a receipt for the
-// commit being pushed from any of them, so one written into another
-// worktree's local tier, or into a worktree the role made git list, would
-// pass a push the gates never read.
-func (r *treeReader) readReceipts() error {
-	wts, err := gitutil.ListWorktrees(r.repo, maxStatusBytes)
-	if err != nil {
-		return err
-	}
-	for _, wt := range wts {
-		if wt.Path == "" {
-			continue
-		}
-		dir := filepath.Join(wt.Path, filepath.FromSlash(receiptsRel))
-		// Held to the budget: a worktree's path is what its registration
-		// says, which a role can write, so its receipts directory may be any
-		// tree on the machine.
-		via := &reach{
-			what: "the push receipts directory " + filepath.ToSlash(dir),
-			fix:  "remove what is not a push receipt from it, or the worktree registration that names it if you did not make that worktree (git worktree list names each)",
-			own:  true,
-		}
-		if err := r.hashAt(filepath.Dir(dir), filepath.Base(dir), true, via); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 // gitDirEntries are the entries of each submodule's git directory read by
 // mode, size and content hash.
@@ -1396,13 +1393,27 @@ func contentState(root *os.Root, rel string, limit int64) (string, int64, error)
 }
 
 // changedSince is every path whose state differs between before and after,
-// sorted. The checkout's own branch held by one reading alone is left out:
-// HEAD named another between them, and HEAD's own change names that.
+// sorted. Two kinds of path held by one reading alone are left out: the
+// checkout's own branch, since HEAD named another between them and HEAD's own
+// change names that; and what a sibling worktree's entry holds when the
+// other reading does not hold the entry, since a peer made or removed that
+// worktree.
 func changedSince(before, after treeState) []string {
+	alone := func(s string, other treeState) bool {
+		if strings.HasPrefix(s, branchState) {
+			return true
+		}
+		entry, ok := siblingOf(s)
+		if !ok {
+			return false
+		}
+		_, held := other[entry]
+		return !held
+	}
 	var out []string
 	for p, s := range after {
 		b, ok := before[p]
-		if !ok && strings.HasPrefix(s, branchState) {
+		if !ok && alone(s, before) {
 			continue
 		}
 		if b != s {
@@ -1410,7 +1421,7 @@ func changedSince(before, after treeState) []string {
 		}
 	}
 	for p, s := range before {
-		if _, ok := after[p]; !ok && !strings.HasPrefix(s, branchState) {
+		if _, ok := after[p]; !ok && !alone(s, after) {
 			out = append(out, p)
 		}
 	}

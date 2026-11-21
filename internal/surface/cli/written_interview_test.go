@@ -796,20 +796,18 @@ func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
 
 // TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused: what git
 // status does not list is watched too. A planning role that plants a git
-// hook, edits the git configuration, writes a push receipt into the local
-// tier or a sibling worktree's, repoints a sibling worktree's common
+// hook, edits the git configuration, repoints a sibling worktree's common
 // directory, or writes a gitignored file stops the interview, exit 1, naming
 // the path, with the answer given before it recorded and no readiness
-// reported.
+// reported. Push receipts are not the interview's (the interview package's
+// TestASiblingWorktreesOwnWorkDoesNotStopTheInterview).
 func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T) {
 	// laneToken in a case's path or body is the sibling worktree's path.
 	const laneToken = "{lane}"
 	for _, c := range []struct{ name, path, body string }{
 		{"hook", ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n"},
 		{"config", ".git/config", "[core]\n\trepositoryformatversion = 0\n[alias]\n\tst = !sh -c true\n"},
-		{"receipt", ".abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
 		{"ignored", "build.log", "planted\n"},
-		{"sibling receipt", laneToken + "/.abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
 		{"sibling commondir", ".git/worktrees/lane/commondir", laneToken + "-fake\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
