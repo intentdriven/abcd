@@ -32,7 +32,10 @@ package interview
 //     mode, size and content hash. A hook runs on the person's next git
 //     command, the configuration can name a hooks directory, an alias or a
 //     credential helper, and HEAD and the branch it names decide what the
-//     next commit or push carries. Of the checkout's refs only that branch
+//     next commit or push carries. In this checkout's own git directory, an
+//     operation in progress is read the same way (operationEntries): a
+//     rebase's todo runs its "exec" lines on the next --continue, and a
+//     sibling worktree's operation is its own. Of the checkout's refs only that branch
 //     is read by the value it holds (readOwnBranch), followed through every
 //     symbolic ref it leads to, and the symbolic refs by what they name
 //     (below): every worktree shares the common directory's refs, and a
@@ -93,7 +96,8 @@ package interview
 //     naming a ref outside its remote holds whatever the next commit or
 //     stash puts there, whatever the gate reads of HEAD now. One made,
 //     changed or removed stops the interview, unless it stays inside its
-//     remote, as refs/remotes/<remote>/HEAD does.
+//     remote, as refs/remotes/<remote>/HEAD does, naming a ref the gate
+//     itself counts, outside every receipt-less prefix.
 //
 // git's own directory and common directory are placed by the run's first
 // reading, taken before any role ran, and every later reading reads those
@@ -865,6 +869,11 @@ func (r *treeReader) readGitDirs() error {
 	if err := r.readWorktrees(common); err != nil {
 		return err
 	}
+	for _, rel := range operationEntries {
+		if err := r.hashIn(gitDir, rel); err != nil {
+			return err
+		}
+	}
 	if gitDir != common {
 		for _, rel := range []string{"config.worktree", "HEAD"} {
 			if err := r.hashIn(gitDir, rel); err != nil {
@@ -903,6 +912,28 @@ func (r *treeReader) readGitDirs() error {
 		return err
 	}
 	return r.readPushGate()
+}
+
+// operationEntries are the entries of the checkout's own git directory that
+// hold an operation in progress there, and what it carries into the
+// commands that go on with it: a rebase's (rebase-merge/, rebase-apply/,
+// whose todo's "exec" lines `git rebase --continue` runs), an am's
+// (rebase-apply/), a cherry-pick or revert sequence's (sequencer/, whose todo
+// runs as a rebase's does), a merge, cherry-pick or revert left for its
+// commit (MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD, and the message, mode,
+// autostash, rerere and merge results the commit or --abort takes), a
+// squash's message, ORIG_HEAD, which an --abort and a reset to it return to,
+// and a bisect's state, which its next step and its reset read. None is
+// listed by git status. They are read in this checkout's own git directory
+// only, the common one in the main worktree and its own entry under
+// worktrees/ in a linked one: a sibling worktree's operation is a peer's own
+// work in its own worktree.
+var operationEntries = []string{
+	"rebase-merge", "rebase-apply", "sequencer",
+	"MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "MERGE_AUTOSTASH", "MERGE_RR", "AUTO_MERGE",
+	"CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD", "SQUASH_MSG", "ORIG_HEAD",
+	"BISECT_START", "BISECT_TERMS", "BISECT_LOG", "BISECT_NAMES", "BISECT_EXPECTED_REV",
+	"BISECT_ANCESTORS_OK", "BISECT_HEAD", "BISECT_FIRST_PARENT", "BISECT_RUN",
 }
 
 // worktreeFiles are the files of the checkout's own entry under the common
@@ -1536,9 +1567,16 @@ func plainRefName(ref string) bool {
 // its content's hash.
 const symrefState = "symref "
 
+// A symbolic ref's class: symrefInside, a remote-tracking ref naming a ref
+// of its own remote that the pre-push gate counts; symrefReceiptless, one
+// naming a ref of its own remote under a receipt-less prefix;
+// symrefOutside, a remote-tracking ref naming anything else, or a link
+// there; symrefElsewhere, one outside refs/remotes/.
 const (
-	symrefInside  = "inside"
-	symrefOutside = "outside"
+	symrefInside      = "inside"
+	symrefReceiptless = "receiptless"
+	symrefOutside     = "outside"
+	symrefElsewhere   = "elsewhere"
 )
 
 // maxLooseRefs bounds the entries one reading walks under the common
@@ -1559,9 +1597,10 @@ var maxLooseRefs = 500_000
 // whose target does not exist, so the files are read, not listed. The packed
 // refs hold no symbolic ref: each line there is an object name and a ref
 // name, or a peeled tag's object name. One staying inside its remote, a
-// remote-tracking ref naming another under its own directory, as `git remote
-// set-head`, a clone and a fetch write refs/remotes/<remote>/HEAD, follows
-// what only a fetch moves, and is marked so (symrefInside); changedSince
+// remote-tracking ref naming another under its own directory that the gate
+// counts, outside every receipt-less prefix, as `git remote set-head`, a
+// clone and a fetch write refs/remotes/<remote>/HEAD, follows what only a
+// fetch moves, and is marked so (symrefInside); changedSince
 // leaves out its coming, going and changing. Every other is named. The
 // checkout's own branch is read by readOwnBranch, through every symbolic ref
 // it leads to. A refs/ that is not a directory, a link under it leading to a
@@ -1575,7 +1614,7 @@ func (r *treeReader) readSymbolicRefs() error {
 	defer root.Close()
 	if _, err := root.Lstat("reftable"); err == nil {
 		return fmt.Errorf("%s keeps its refs in a reftable, where the reading cannot tell a symbolic ref made pointing outside its remote, which would let a push skip the preflight; "+
-			"the interview runs only in a repository that keeps its refs as files (git refs migrate --ref-format=files)", r.keyOf(r.common, ""))
+			"the interview does not run in a repository that keeps its refs in a reftable, only in one that keeps them as files", r.keyOf(r.common, ""))
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -1618,7 +1657,7 @@ func (r *treeReader) readSymbolicRefs() error {
 			// git writes no link here unless core.preferSymlinkRefs is set,
 			// and reads one by its text or where it leads, so none stays
 			// inside its remote.
-			return r.put(key, symrefState+symrefOutside+"\x00link\x00"+text+"\x00")
+			return r.put(key, symrefState+symrefWhere(p, "")+"\x00link\x00"+text+"\x00")
 		}
 		if !d.Type().IsRegular() {
 			return nil
@@ -1663,7 +1702,7 @@ func (r *treeReader) looseSymref(root *os.Root, p string) (string, error) {
 		return "", err
 	}
 	if fi.Size() > maxPointerBytes {
-		return fmt.Sprintf("%s%s\x00file\x00past %d bytes\x00", symrefState, symrefOutside, fi.Size()), nil
+		return fmt.Sprintf("%s%s\x00file\x00past %d bytes\x00", symrefState, symrefWhere(p, ""), fi.Size()), nil
 	}
 	if fi.Size() > maxHashedBytes-r.hashedBytes {
 		return "", fmt.Errorf("%s takes one reading past the %d MiB one reading hashes of the tree and git's own directory, so it is not read; restore it and run the interview again", r.keyOf(r.common, p), maxHashedBytes>>20)
@@ -1676,20 +1715,41 @@ func (r *treeReader) looseSymref(root *os.Root, p string) (string, error) {
 	content := append(lead, rest...)
 	sum := sha256.Sum256(content)
 	target, _ := symrefTarget(strings.TrimRight(string(content), " \t\n\v\f\r"))
-	where := symrefOutside
-	if symrefInsideRemote(p, target) {
-		where = symrefInside
-	}
-	return symrefState + where + "\x00file\x00" + target + "\x00" + hex.EncodeToString(sum[:]), nil
+	return symrefState + symrefWhere(p, target) + "\x00file\x00" + target + "\x00" + hex.EncodeToString(sum[:]), nil
 }
 
 // symrefInsideRemote reports whether the symbolic ref name, naming target,
 // stays inside its remote: name is a remote-tracking ref, and target a plain
 // ref name under name's own directory there, refs/remotes/<remote>/ for
-// refs/remotes/<remote>/HEAD.
+// refs/remotes/<remote>/HEAD, that the pre-push gate would itself count,
+// outside every receipt-less prefix (receiptlessTracking). The gate judges a
+// symbolic ref by its own name, so one naming a receipt-less ref would count
+// a commit pushed there first, with no preflight, as already on a remote.
 func symrefInsideRemote(name, target string) bool {
+	return symrefOwnRemote(name, target) && !receiptlessTracking(strings.TrimPrefix(target, "refs/remotes/"))
+}
+
+// symrefOwnRemote reports whether target is a plain ref name under the
+// remote-tracking ref name's own directory.
+func symrefOwnRemote(name, target string) bool {
 	dir := path.Dir(name)
 	return strings.HasPrefix(dir, "refs/remotes/") && plainRefName(target) && strings.HasPrefix(target, dir+"/")
+}
+
+// symrefWhere is the class of the symbolic ref name naming target. A link,
+// or a file past maxPointerBytes, is classed with target "", which names no
+// ref, so neither is ever inside.
+func symrefWhere(name, target string) string {
+	switch {
+	case !strings.HasPrefix(name, "refs/remotes/"):
+		return symrefElsewhere
+	case symrefInsideRemote(name, target):
+		return symrefInside
+	case symrefOwnRemote(name, target):
+		return symrefReceiptless
+	default:
+		return symrefOutside
+	}
 }
 
 // insideSymref reports whether state is a symbolic ref's that stays inside
@@ -1698,33 +1758,63 @@ func insideSymref(state string) bool {
 	return strings.HasPrefix(state, symrefState+symrefInside+"\x00")
 }
 
-// symrefSaid is the plain words for each symbolic ref outside its remote made,
-// changed or removed between before and after.
+// symrefWhy is why a symbolic ref of each class but symrefInside, made or
+// changed, stops the interview.
+var symrefWhy = map[string]string{
+	symrefOutside:     "the pre-push gate takes a commit it holds as already on a remote, and git resolves it when the gate asks, so it holds whatever the next commit or stash puts there",
+	symrefReceiptless: "the pre-push gate judges it by its own name, not by the ref it names, so it takes a commit pushed there first, which needs no preflight, as already on a remote",
+	symrefElsewhere:   "the pre-push gate does not read it, but git follows it wherever the ref is read, and the role may make no symbolic ref but a remote's HEAD naming a branch of that remote the gate counts",
+}
+
+// symrefWhat is the plain words for the symbolic ref k in state: what it is,
+// what it names and its class, each as found.
+func symrefWhat(k, state string) (what, where string) {
+	parts := strings.Split(strings.TrimPrefix(state, symrefState), "\x00")
+	for len(parts) < 3 {
+		parts = append(parts, "")
+	}
+	where, kind, names := parts[0], parts[1], parts[2]
+	switch {
+	case kind == "link":
+		what = fmt.Sprintf("the link %s, leading to %s,", k, short(names))
+	case strings.HasPrefix(names, "past "):
+		what = fmt.Sprintf("the symbolic ref %s, %s and so not read,", k, names)
+	default:
+		what = fmt.Sprintf("the symbolic ref %s, naming %s,", k, short(names))
+	}
+	switch where {
+	case symrefReceiptless:
+		what += " a ref of its own remote under a receipt-less prefix,"
+	case symrefOutside:
+		what += " outside its remote,"
+	case symrefElsewhere:
+		what += " outside refs/remotes/,"
+	}
+	return what, where
+}
+
+// symrefSaid is the plain words for each symbolic ref but one inside its
+// remote made, changed or removed between before and after.
 func symrefSaid(before, after treeState, role string) []string {
 	var out []string
 	for _, k := range slices.Sorted(maps.Keys(after)) {
 		s := after[k]
-		rest, ok := strings.CutPrefix(s, symrefState)
-		if !ok || insideSymref(s) || before[k] == s {
+		if !strings.HasPrefix(s, symrefState) || insideSymref(s) || before[k] == s {
 			continue
-		}
-		parts := strings.Split(rest, "\x00")
-		names := ""
-		if len(parts) > 2 {
-			names = parts[2]
 		}
 		verb := "was made"
 		if _, held := before[k]; held {
 			verb = "was changed"
 		}
-		out = append(out, fmt.Sprintf("the symbolic ref %s %s naming %s, outside its remote, while the %s ran: the pre-push gate takes a commit it holds as already on a remote, and git resolves it when the gate asks, so it holds whatever the next commit or stash puts there",
-			k, verb, short(names), role))
+		what, where := symrefWhat(k, s)
+		out = append(out, fmt.Sprintf("%s %s while the %s ran: %s", what, verb, role, symrefWhy[where]))
 	}
 	for _, k := range slices.Sorted(maps.Keys(before)) {
 		if _, held := after[k]; held || !strings.HasPrefix(before[k], symrefState) || insideSymref(before[k]) {
 			continue
 		}
-		out = append(out, fmt.Sprintf("the symbolic ref %s, outside its remote, was removed while the %s ran", k, role))
+		what, _ := symrefWhat(k, before[k])
+		out = append(out, fmt.Sprintf("%s was removed while the %s ran", what, role))
 	}
 	return out
 }

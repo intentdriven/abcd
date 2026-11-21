@@ -3,6 +3,8 @@ package interview
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -63,6 +65,8 @@ func TestASymbolicRefOutsideItsRemoteStopsTheInterview(t *testing.T) {
 		// returns the commit a push would carry next and the ref that must
 		// then hold it.
 		prove func(t *testing.T, r *writtenRun, mine string) (commit, ref string)
+		// said are words the refusal must hold, and unsaid words it must not.
+		said, unsaid []string
 	}{
 		{name: "a symbolic ref at the own branch, the gate open", origin: true, write: plantSymref("x", "refs/heads/"), prove: nextCommit("refs/remotes/origin/x")},
 		{name: "a symbolic ref at the own branch, the gate open, the interview in a linked worktree", origin: true, linked: true, write: plantSymref("x", "refs/heads/"), prove: nextCommit("refs/remotes/origin/x")},
@@ -80,6 +84,31 @@ func TestASymbolicRefOutsideItsRemoteStopsTheInterview(t *testing.T) {
 			stubPeer(t, script, 2, r.git.Env(), stubCmd{Dir: mine, Script: "ln -s ../../heads/" + branch + " " + filepath.Join(common, "refs", "remotes", "origin", "l")})
 			return "refs/remotes/origin/l"
 		}, prove: nextCommit("refs/remotes/origin/l")},
+		{name: "a remote's HEAD naming a receipt-less branch of its own remote", write: func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+			stubAlso(t, script, 2, map[string]string{filepath.Join(common, "refs", "remotes", "origin", "HEAD"): "ref: refs/remotes/origin/abcd-wip/x\n"})
+			return "refs/remotes/origin/HEAD"
+		}, prove: func(t *testing.T, r *writtenRun, mine string) (string, string) {
+			commit, _ := nextCommit("")(t, r, mine)
+			r.git.Git("-C", mine, "update-ref", "refs/remotes/origin/abcd-wip/x", commit)
+			return commit, "refs/remotes/origin/HEAD"
+		}, said: []string{"naming \"refs/remotes/origin/abcd-wip/x\"", "receipt-less"}, unsaid: []string{"outside its remote"}},
+		{name: "a remote's HEAD naming a reserved branch of its own remote, the gate open", origin: true, write: func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+			stubAlso(t, script, 2, map[string]string{filepath.Join(common, "refs", "remotes", "origin", "HEAD"): "ref: refs/remotes/origin/abcd-reserved/x\n"})
+			return "refs/remotes/origin/HEAD"
+		}, said: []string{"receipt-less"}},
+		{name: "a symbolic ref outside refs/remotes made", write: plantSymrefAt("refs/heads/alias", "refs/heads/"), said: []string{"refs/heads/alias, naming", "outside refs/remotes/, was made"}, unsaid: []string{"outside its remote", "the pre-push gate takes"}},
+		{name: "a symbolic ref outside its remote changed", origin: true, before: func(r *writtenRun, common string) {
+			r.git.Git("symbolic-ref", "refs/remotes/origin/x", "refs/heads/main")
+		}, write: func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+			stubAlso(t, script, 2, map[string]string{filepath.Join(common, "refs", "remotes", "origin", "x"): "ref: refs/stash\n"})
+			return "refs/remotes/origin/x"
+		}, said: []string{"refs/remotes/origin/x, naming \"refs/stash\", outside its remote, was changed"}},
+		{name: "a symbolic ref outside its remote removed", origin: true, before: func(r *writtenRun, common string) {
+			r.git.Git("symbolic-ref", "refs/remotes/origin/x", "refs/heads/main")
+		}, write: func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+			stubPeer(t, script, 2, r.git.Env(), stubCmd{Dir: mine, Script: "rm " + filepath.Join(common, "refs", "remotes", "origin", "x")})
+			return "refs/remotes/origin/x"
+		}, said: []string{"refs/remotes/origin/x, naming \"refs/heads/main\", outside its remote, was removed"}},
 		{name: "the own branch a symbolic ref, its target moved", before: func(r *writtenRun, common string) {
 			r.git.Git("branch", "other")
 			r.git.Git("symbolic-ref", "refs/heads/main", "refs/heads/other")
@@ -120,6 +149,16 @@ func TestASymbolicRefOutsideItsRemoteStopsTheInterview(t *testing.T) {
 			if !slices.ContainsFunc(uc.Paths, func(got string) bool { return strings.HasSuffix(got, named) }) || !strings.Contains(err.Error(), named) {
 				t.Fatalf("the refusal does not name %s: %v", named, err)
 			}
+			for _, w := range c.said {
+				if !strings.Contains(err.Error(), w) {
+					t.Fatalf("the refusal does not say %q: %v", w, err)
+				}
+			}
+			for _, w := range c.unsaid {
+				if strings.Contains(err.Error(), w) {
+					t.Fatalf("the refusal says %q, which is not what was found: %v", w, err)
+				}
+			}
 			if len(r.asked) != 1 || len(r.finished) != 0 {
 				t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
 			}
@@ -142,6 +181,15 @@ func plantSymref(name, prefix string) func(t *testing.T, r *writtenRun, script, 
 	return func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
 		stubAlso(t, script, 2, map[string]string{filepath.Join(common, "refs", "remotes", "origin", name): "ref: " + prefix + branch + "\n"})
 		return "refs/remotes/origin/" + name
+	}
+}
+
+// plantSymrefAt is a turn-2 write of a loose symbolic ref name pointing at
+// prefix plus the checkout's branch.
+func plantSymrefAt(name, prefix string) func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+	return func(t *testing.T, r *writtenRun, script, mine, branch, head, common string) string {
+		stubAlso(t, script, 2, map[string]string{filepath.Join(common, filepath.FromSlash(name)): "ref: " + prefix + branch + "\n"})
+		return name
 	}
 }
 
@@ -223,5 +271,139 @@ func TestARepositoryKeepingItsRefsInAReftableIsRefused(t *testing.T) {
 	_, err := readTree(dir, "")
 	if err == nil || !strings.Contains(err.Error(), "reftable") {
 		t.Fatalf("err = %v, want the reading refused naming the reftable", err)
+	}
+}
+
+// TestARemotesHeadStaysInsideOnlyNamingARefTheGateCounts: a remote's HEAD
+// naming a branch of its own remote is left out only when the pre-push hook
+// would itself count that branch, outside every receipt-less prefix, in any
+// case: the hook judges the symbolic ref by its own name, so one naming a
+// receipt-less branch would count a commit pushed there first with no
+// preflight as already on a remote.
+func TestARemotesHeadStaysInsideOnlyNamingARefTheGateCounts(t *testing.T) {
+	for target, want := range map[string]bool{
+		"refs/remotes/origin/main":                true,
+		"refs/remotes/origin/feat/x":              true,
+		"refs/remotes/origin/abcd-wip/x":          false,
+		"refs/remotes/origin/feat/ABCD-WIP/x":     false,
+		"refs/remotes/origin/abcd-reserved/itd-1": false,
+		"refs/remotes/origin/Abcd-Status/someone": false,
+		"refs/remotes/upstream/main":              false,
+		"refs/heads/main":                         false,
+	} {
+		if got := symrefInsideRemote("refs/remotes/origin/HEAD", target); got != want {
+			t.Errorf("symrefInsideRemote(refs/remotes/origin/HEAD, %s) = %v, want %v", target, got, want)
+		}
+	}
+}
+
+// TestAReftableKeptInTheCommonDirectoryIsRefused: the refusal of a
+// repository keeping its refs in a reftable is reached wherever git can make
+// one or not (a reftable/ in the common directory is what git reads one by),
+// and names no remedy git refuses: `git refs migrate` refuses a repository
+// with worktrees, abcd's usual layout.
+func TestAReftableKeptInTheCommonDirectoryIsRefused(t *testing.T) {
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Commit("base")
+	if err := os.Mkdir(filepath.Join(r.repo, ".git", "reftable"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := readTree(r.repo, "")
+	if err == nil || !strings.Contains(err.Error(), "reftable") || !strings.Contains(err.Error(), "does not run") {
+		t.Fatalf("err = %v, want the reading refused, saying the interview does not run with a reftable", err)
+	}
+	if strings.Contains(err.Error(), "refs migrate") {
+		t.Fatalf("the refusal names git refs migrate, which refuses a repository with worktrees: %v", err)
+	}
+}
+
+// TestRefsGitReadsElsewhereAreRefused: what git reads of the refs through a
+// link, which no reading holds, is refused before the first dispatch, naming
+// the link: the common directory's refs/ a link to a directory elsewhere, a
+// link under refs/ leading to a directory, and a link on the way from the
+// checkout's own branch.
+func TestRefsGitReadsElsewhereAreRefused(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		// plant makes the link in the repository's git directory.
+		plant func(t *testing.T, r *writtenRun, gitDir string)
+		said  string
+	}{
+		{name: "refs/ a link to a directory elsewhere", plant: func(t *testing.T, r *writtenRun, gitDir string) {
+			// A detached HEAD names no branch, so the refusal is refs/'s own.
+			r.git.Git("checkout", "-q", "--detach")
+			elsewhere := filepath.Join(t.TempDir(), "refs")
+			if err := os.Rename(filepath.Join(gitDir, "refs"), elsewhere); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(elsewhere, filepath.Join(gitDir, "refs")); err != nil {
+				t.Fatal(err)
+			}
+		}, said: ".git/refs is not a directory"},
+		{name: "a link under refs/ leading to a directory", plant: func(t *testing.T, r *writtenRun, gitDir string) {
+			if err := os.Symlink("heads", filepath.Join(gitDir, "refs", "aliased")); err != nil {
+				t.Fatal(err)
+			}
+		}, said: ".git/refs/aliased is a link to a directory"},
+		{name: "the own branch's loose ref a link", plant: func(t *testing.T, r *writtenRun, gitDir string) {
+			head := r.git.Git("rev-parse", "HEAD")
+			real := filepath.Join(gitDir, "main-elsewhere")
+			if err := os.WriteFile(real, []byte(head+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			own := filepath.Join(gitDir, "refs", "heads", "main")
+			if err := os.Remove(own); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../../main-elsewhere", own); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.git.Git("rev-parse", "refs/heads/main"); got != head {
+				t.Fatalf("git reads the linked branch as %s, not %s", got, head)
+			}
+		}, said: ".git/refs/heads/main, which the branch this checkout is on leads to, is a link"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newWrittenRun(t, routedToClaude)
+			r.git.Commit("base")
+			if b := r.git.Git("symbolic-ref", "--short", "HEAD"); b != "main" {
+				t.Fatalf("the fixture is on %s, not main", b)
+			}
+			c.plant(t, r, filepath.Join(r.repo, ".git"))
+			_, err := readTree(r.repo, "")
+			if err == nil || !strings.Contains(err.Error(), c.said) {
+				t.Fatalf("err = %v, want the reading refused saying %q", err, c.said)
+			}
+		})
+	}
+}
+
+// TestRefsPastTheEntryBoundAreRefused: a common directory's refs/ holding
+// more entries than one reading walks is refused, naming the bound and the
+// packing that clears it, rather than read in part; one at the bound is
+// read.
+func TestRefsPastTheEntryBoundAreRefused(t *testing.T) {
+	keep := maxLooseRefs
+	t.Cleanup(func() { maxLooseRefs = keep })
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Commit("base")
+	for _, b := range []string{"one", "two", "three"} {
+		r.git.Git("branch", b)
+	}
+	n := 0
+	if err := filepath.WalkDir(filepath.Join(r.repo, ".git", "refs"), func(string, fs.DirEntry, error) error {
+		n++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	maxLooseRefs = n
+	if _, err := readTree(r.repo, ""); err != nil {
+		t.Fatalf("refs/ at the bound of %d entries is refused: %v", n, err)
+	}
+	maxLooseRefs = n - 1
+	_, err := readTree(r.repo, "")
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("more than %d entries", n-1)) || !strings.Contains(err.Error(), "git pack-refs --all") {
+		t.Fatalf("err = %v, want refs/ past the bound of %d refused", err, n-1)
 	}
 }
