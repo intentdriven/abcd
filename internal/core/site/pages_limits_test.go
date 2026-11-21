@@ -6,7 +6,9 @@ package site
 // 1 GB. The deploy hands Pages the rendered tree as one tar archive, which
 // may hold no symbolic or hard links (itd-2610091010348892's grounds, from
 // the upload-pages-artifact README), so the test writes that archive for
-// real, uncompressed, the larger of its two sizes, and refuses a link.
+// real, uncompressed, the larger of its two sizes, and refuses a symbolic
+// link. A hard link is a regular file to the walk, so the test cannot see
+// one; a fresh build writes none.
 
 import (
 	"archive/tar"
