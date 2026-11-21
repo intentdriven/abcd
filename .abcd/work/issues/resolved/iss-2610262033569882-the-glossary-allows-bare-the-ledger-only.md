@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/ledger.md:44"
 remedy: "Name 'the sources ledger' where 07-library.md says bare 'the ledger' for the provenance store (line 247 among others), or let the ledger glossary entry allow the bare form inside the library chapter, where the ledger sub-verb lives."
 finding_ref: cfk-e24eac9749ba609a
+resolution: "Took the remedy's second option: the ledger glossary entry's When to use and senses table now allow bare 'the ledger' inside the library surface chapter (07-library.md), where it means the sources ledger and no issue ledger appears; TestTheLedgerGlossaryAllowsTheLibraryChaptersBareLedger in internal/core/source pins the two documents together."
+impact: internal
+resolved_by:
+  commit: "b7d9089c2ce949b7a63dd0d7ae1228a97e39dcd5"
 ---
 
 The glossary allows bare 'the ledger' only for the issue ledger; the library chapter uses bare 'the ledger' for the sources ledger.
@@ -23,3 +27,7 @@ A terminology drift (severity nitpick) found by the cross-document consistency p
 glossary/core/ledger.md says to use bare 'the ledger' only where the issue ledger is unambiguous and to name every other ledger in full, and lists the sources ledger as one of those others. 07-library says the host 'records the influence through the ledger', meaning the per-repository sources ledger. The chapter uses the bare form for a sense the glossary says must always be named in full.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 454.
+
+## Grounds
+
+- pursued: the glossary sanctions every bare 'the ledger' the library chapter says, so the consistency pass no longer finds the drift; a library chapter that speaks of the issue ledger, or a glossary When to use that drops the library exception, would show it wrong, and the detector fails on either

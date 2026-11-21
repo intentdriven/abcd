@@ -1,8 +1,10 @@
 package matrix
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -567,5 +569,52 @@ func TestAFailedCopyTheCheckCouldNotExamineStaysAFailure(t *testing.T) {
 	tr.Status, tr.Score, tr.Reason = StatusFailed, nil, "the runner crashed"
 	if tr = c.check(t).apply(tr); tr.Status != StatusExcluded || tr.validate() != nil {
 		t.Fatalf("a failed copy that broke a rule: %s, %v; want excluded", tr.Status, tr.validate())
+	}
+}
+
+// TestOneReadOfTheFrozenTreeServesBothChecks: the compliance check and the
+// review's assembly read the frozen commit's tree through one readFrozenTree,
+// so each view is cut from the same listing. Every file is in the review's
+// view with its mode, object and size; the test files, the attribute files and
+// the links the compliance check reads are those same entries; and a read cut
+// off by the caller's deadline is refused in words that name no machine path.
+func TestOneReadOfTheFrozenTreeServesBothChecks(t *testing.T) {
+	c := newComplianceCase(t, func(r *gittest.Repo) {
+		r.Write(".gitattributes", "*.go text\n")
+		if err := os.Symlink("widget.go", filepath.Join(r.Root(), "widget", "alias.go")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	tree, err := readFrozenTree(context.Background(), c.in.RepoRoot, c.in.Frozen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".gitattributes", "README.md", "widget/alias.go", "widget/testdata/case.txt", "widget/widget.go", "widget/widget_test.go"}
+	got := make([]string, 0, len(tree.files))
+	for p := range tree.files {
+		got = append(got, p)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("the review's view holds %v, want every file of the frozen commit %v", got, want)
+	}
+	for _, ft := range append(append([]frozenTest{}, tree.tests...), tree.attrs...) {
+		if fe := tree.files[ft.path]; fe.mode != ft.mode || fe.oid != ft.oid || fe.size != ft.size {
+			t.Fatalf("%s is %+v to the compliance check and %+v to the review", ft.path, ft, fe)
+		}
+	}
+	if len(tree.tests) == 0 || len(tree.attrs) != 1 {
+		t.Fatalf("the compliance check's view holds tests %v and attribute files %v", tree.tests, tree.attrs)
+	}
+	if oid, ok := tree.links["widget/alias.go"]; !ok || tree.files["widget/alias.go"].mode != "120000" || oid != tree.files["widget/alias.go"].oid {
+		t.Fatalf("the link is %q to the compliance check and %+v to the review", oid, tree.files["widget/alias.go"])
+	}
+	if tree.newHash == nil {
+		t.Fatal("the read names no object hash")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := readFrozenTree(ctx, c.in.RepoRoot, c.in.Frozen); err == nil || strings.Contains(err.Error(), c.in.RepoRoot) {
+		t.Fatalf("a read past the caller's deadline returned %v", err)
 	}
 }
