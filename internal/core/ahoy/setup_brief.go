@@ -11,8 +11,9 @@ import (
 // 6, and the amendment of brief invariant 1 for setup): a question is shown
 // as its one line and its answers' labels, and answering ? shows the whole
 // question (the material, what each answer does, what holds now and where to
-// change it later) and asks again. The plan screen keeps its plan, which is
-// the screen; only what each answer does waits for ?.
+// change it later) and asks again. The plan screen keeps its plan's counts,
+// which are the screen; what each answer does, and every item the counts
+// count (PlanInFull), wait for ?.
 
 // ExplainHint closes the one line of every setup question.
 const ExplainHint = "(? explains)"
@@ -31,7 +32,7 @@ var briefValueAsks = map[string]string{
 // BriefQuestion is q in its one-line form: the question's one line, ending on
 // ExplainHint, and the answers' labels, with the material, the meanings and
 // the Now and change-later lines left for ?. The plan screen keeps its
-// material, which is the plan itself.
+// material, which is the plan in counts.
 func BriefQuestion(q question.Question) question.Question {
 	b := q
 	if q.ID != PlanQuestionID {

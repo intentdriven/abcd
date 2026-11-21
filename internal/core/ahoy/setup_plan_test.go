@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,5 +226,76 @@ func TestDownloadComesBeforeTheStatusLine(t *testing.T) {
 				t.Error("a declined download wrote the binary")
 			}
 		})
+	}
+}
+
+// TestPlanScreenCountsAndListsEveryItemBehindHelp (iss-2611152326582649): the
+// plan screen quotes the plan in counts, and every item it counts (each
+// change, each default with its value and where to change it, each question
+// that follows) is in PlanInFull, the list ? shows, and in no material of the
+// question itself.
+func TestPlanScreenCountsAndListsEveryItemBehindHelp(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	det, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, plan := range map[string]SetupPlan{
+		"a fresh repository": buildSetupPlan(det, []string{"the repository's visibility", "where agents read their instructions"}),
+		"the tallest plan":   tallestSetupPlan(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := SetupPlanQuestion(1, plan)
+			if len(q.Material) != 1 || q.Material[0].Kind != "paragraph" {
+				t.Fatalf("the plan is not quoted as one paragraph of counts: %+v", q.Material)
+			}
+			summary := q.Material[0].Text
+			var full []string
+			for _, b := range PlanInFull(plan) {
+				full = append(full, b.Text)
+				full = append(full, b.Items...)
+			}
+			listed := strings.Join(full, "\n")
+			var want []string
+			for i, g := range plan.Changes {
+				count := fmt.Sprintf("%d %s", len(g.Items), strings.ToLower(g.Where))
+				if i == 0 {
+					count = fmt.Sprintf("%d changes %s", len(g.Items), strings.ToLower(g.Where))
+				}
+				if !strings.Contains(summary, count) {
+					t.Errorf("the counts do not say %q: %q", count, summary)
+				}
+				want = append(want, g.Where)
+				want = append(want, g.Items...)
+			}
+			if c := fmt.Sprintf("takes %d defaults", len(plan.Defaults)); !strings.Contains(summary, c) {
+				t.Errorf("the counts do not say %q: %q", c, summary)
+			}
+			if c := fmt.Sprintf("asks you %d questions", len(plan.AsksYou)); !strings.Contains(summary, c) {
+				t.Errorf("the counts do not say %q: %q", c, summary)
+			}
+			if !strings.Contains(summary, "Answer ? to see every item.") {
+				t.Errorf("the counts do not say where the full list is: %q", summary)
+			}
+			for _, d := range plan.Defaults {
+				want = append(want, d.What+": "+d.Value+" (change: "+d.ChangeWith+")")
+			}
+			want = append(want, plan.AsksYou...)
+			for _, w := range want {
+				if !strings.Contains(listed, w) {
+					t.Errorf("the full list does not hold %q", w)
+				}
+				if strings.Contains(summary, w) && !strings.HasPrefix(w, "In ") && !strings.HasPrefix(w, "On ") {
+					t.Errorf("the counts quote an item, %q, which belongs behind ?", w)
+				}
+			}
+		})
+	}
+	if got := PlanInFull(SetupPlan{}); got != nil {
+		t.Errorf("an empty plan lists %+v behind ?", got)
 	}
 }
