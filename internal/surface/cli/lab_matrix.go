@@ -149,11 +149,16 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 }
 
 // matrixFailure maps a refusal to exit 2 and a halted lab to exit 1, the
-// message masked and with no home path.
+// message masked and with no home path. A refusal says nothing was written
+// only when it came before any write; one raised after a write says what was
+// written in its own words.
 func matrixFailure(err error) error {
 	msg := "abcd lab matrix: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	if errors.Is(err, lab.ErrHalted) {
 		return &exitError{Code: 1, Msg: msg}
+	}
+	if errors.Is(err, matrix.ErrWrittenInPart) {
+		return &exitError{Code: 2, Msg: msg}
 	}
 	return &exitError{Code: 2, Msg: msg + "; nothing was written"}
 }

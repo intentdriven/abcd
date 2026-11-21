@@ -538,7 +538,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 			return TrialRecord{}, lostTrialWrite(repoRoot, labID, run, key, err)
 		}
 		if err := os.RemoveAll(clone); err != nil {
-			return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err)
+			return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 		}
 		return t, nil
 	}
@@ -565,7 +565,7 @@ func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key Tria
 		return TrialRecord{}, fmt.Errorf("copy %s's trial does not read as its own, so its clone at %s is kept", key, clone)
 	}
 	if err := os.RemoveAll(clone); err != nil {
-		return TrialRecord{}, fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err)
+		return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 	}
 	return t, nil
 }

@@ -97,8 +97,8 @@ func TestACheckCopysHandBackDeletesItsLeftoverCloneOnRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
-	if _, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, key, back); err == nil || !strings.Contains(err.Error(), "could not be deleted") {
-		t.Fatalf("a clone that cannot be deleted = %v; want a refusal saying so", err)
+	if _, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, key, back); err == nil || !strings.Contains(err.Error(), "could not be deleted") || !errors.Is(err, ErrWrittenInPart) {
+		t.Fatalf("a clone that cannot be deleted = %v; want a refusal saying so, marked as written in part", err)
 	}
 	trialPath := filepath.Join(runDir(home, m, rec.RunID), key.rel())
 	first, err := os.ReadFile(trialPath)

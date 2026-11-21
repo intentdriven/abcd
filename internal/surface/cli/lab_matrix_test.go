@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,5 +232,22 @@ func TestAMatrixReportPrintsACellsSourceEscaped(t *testing.T) {
 		Code: []matrix.CodeReport{{Task: "feature-a", Cells: []matrix.CodeCell{{Cell: "c", Source: matrix.Source("host\x1b[2J")}}}}})
 	if strings.Contains(b.String(), "\x1b") {
 		t.Fatalf("the report prints a cell's source raw: %q", b.String())
+	}
+}
+
+// A matrix refusal says nothing was written only when nothing was: a failure
+// the core marks as raised after a write keeps its own account of what was
+// written.
+func TestAMatrixRefusalAfterAWriteDoesNotSayNothingWasWritten(t *testing.T) {
+	var ee *exitError
+	if !errors.As(matrixFailure(errors.New("the plan is refused")), &ee) || !strings.HasSuffix(ee.Msg, "; nothing was written") {
+		t.Fatalf("a refusal before any write = %v; want it to say nothing was written", ee)
+	}
+	after := fmt.Errorf("the run's record is written, and the run did not start: %w", matrix.ErrWrittenInPart)
+	if !errors.As(matrixFailure(after), &ee) || ee.Code != 2 {
+		t.Fatalf("matrixFailure = %v; want exit 2", ee)
+	}
+	if strings.Contains(ee.Msg, "nothing was written") {
+		t.Errorf("a refusal after a write says nothing was written: %q", ee.Msg)
 	}
 }

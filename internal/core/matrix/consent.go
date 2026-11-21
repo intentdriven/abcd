@@ -20,6 +20,22 @@ import (
 // (acceptance criterion 1).
 var ErrNotConsented = errors.New("the run has no consent: show the person the plan, and start it only with the digest of the plan they said yes to")
 
+// ErrWrittenInPart marks a failure raised after the verb had already written
+// something (a run's record, a copy's trial), so a front door never reports
+// that nothing was written. errors.Is finds it; the error's text is unchanged.
+var ErrWrittenInPart = errors.New("written in part")
+
+// writtenInPart is a failure raised after a write: its message is the wrapped
+// error's own, and it matches ErrWrittenInPart.
+type writtenInPart struct{ err error }
+
+func (w writtenInPart) Error() string        { return w.err.Error() }
+func (w writtenInPart) Unwrap() error        { return w.err }
+func (w writtenInPart) Is(target error) bool { return target == ErrWrittenInPart }
+
+// afterWrite marks err as raised once something was written.
+func afterWrite(err error) error { return writtenInPart{err: err} }
+
 // Starter starts a consented run. It is the seam the run's trial mode fills
 // (spec step 3); consent calls it once, after the run's record is written.
 type Starter interface {
@@ -99,7 +115,7 @@ func consent(repoRoot string, p Plan, approve string, in ConsentInputs, s Starte
 		return RunRecord{}, err
 	}
 	if err := s.Start(p, rec); err != nil {
-		return rec, fmt.Errorf("the run's record is written, and the run did not start: %w", err)
+		return rec, afterWrite(fmt.Errorf("the run's record is written, and the run did not start: %w", err))
 	}
 	return rec, nil
 }
