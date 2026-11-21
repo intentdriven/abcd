@@ -227,7 +227,12 @@ correct the section above.
   for each judging run, and not from the review set. The set is fixed when a
   run starts: a reviewer whose class holds the model that wrote the work is
   moved to another class, a fix round runs the reviewers again, and the
-  judge of a round and the drain's judge are not in the set.
-- The serializer's package imports the docs lint's core and the outbound
-  scanner directly, and reaches the cores of the launch preview and the
+  drain's judge, which is asked for no class and no effort, is not in the
+  set.
+- The serializer's package imports the docs lint's core, the outbound
+  scanner and the site's core directly, and reaches the cores of the launch preview and the
   readiness gate through them. The conclusion stands for all four.
+- What this note calls standing exclusions is what the intent now calls the
+  hand-written list of kinds a command is known not to look at. The intent
+  keeps the word exclusions for what a command's code leaves out by a rule
+  the code itself reads.

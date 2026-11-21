@@ -21,11 +21,11 @@ impact: additive
 _Drafted by the technical facilitator on 2026-11-21 from the reframing of an
 ideate verdict, and reworded the same day after two reviews. The product
 thinker read the promise in short form at the planning interview that day
-and let it stand. One sentence of it is now narrower than the criteria:
+and let it stand. The criteria have since refined one sentence of it:
 where the host's agents did the judging, a result first names what a receipt
-on disk carries and says abcd was not told for the rest (criterion 20). The
-text above is left as the product thinker read it, and the difference is
-flagged for them with the other refinements._
+on disk carries, and says abcd was not told for the rest (criterion 20).
+The text above is left as the product thinker read it, and the difference
+is flagged for them with the other refinements._
 
 ## Why This Matters
 
@@ -56,9 +56,9 @@ asserted.
   drafts with a state-of-the-art section and no criteria yet. This intent
   states the depth one run used; it does not choose a depth, and it does not
   compose what a shipped thing says. itd-176 can build its block from the
-  statements defined here. Whether a gap blocks a release is itd-176's open
-  question and stays open; decision 2 below answers only the narrower one,
-  that a gap in one run's result blocks nothing.
+  statements defined here. Whether something not checked blocks a release is
+  itd-176's open question and stays open; decision 2 below answers only the
+  narrower one, that a check one run could not make blocks nothing.
 - [itd-2609180517121254](../drafts/itd-2609180517121254-every-payload-a-host-hands-back-from-a.md)
   has a host's payload name its model and how many agents ran. The depth of
   work the host judged is that draft's to deliver. Until it does, a result
@@ -68,7 +68,7 @@ asserted.
 - [itd-166](../shipped/itd-166-each-run-should-record-the-model.md), shipped,
   already records what each model call was asked for and why a field could
   not be pinned, and keeps that record with the technical facilitator. The
-  depth line does not read it. It reads what a run's own state records as it
+  depth line does not read it. It reads what a drive's state records as it
   hands out each judging run: the class and the effort the review set names
   ([itd-2610240922461281](../shipped/itd-2610240922461281-a-person-sets-how-many-models-review.md),
   [itd-2611101419006280](../shipped/itd-2611101419006280-a-person-sets-the-whole-model-set-a-run.md)),
@@ -83,7 +83,7 @@ asserted.
   already holds the same stance for one verb: a clean spot-check states what
   it rules out and is never reported as no problems.
 
-Three things show the gap.
+Three things show the need.
 
 - A clear result is read as complete when it is not. The help of `abcd sweep`
   says it lists everything the repository has left lying around, and it works
@@ -157,12 +157,12 @@ explanation can raise trust in an answer whether or not the answer is right._
 
 ## Acceptance Criteria
 
-Seeded by the technical facilitator on 2026-11-21 and reworked after three
-review passes. At the planning interview that day the product thinker read
+Seeded by the technical facilitator on 2026-11-21 and reworked after its
+reviews. At the planning interview that day the product thinker read
 them as eleven plain lines, six on what a person will see and five on what
 the work leaves alone, and let each stand. A plan review reported after the
-sign-off and found bars that could not be tested as written, and a final
-review before landing found more. The technical facilitator, on auto,
+sign-off and found bars that could not be tested as written, and the final
+reviews before landing found more. The technical facilitator, on auto,
 tightened them the same day. Four things the product thinker read or
 answered are refined, none reversed, and each is flagged for them: a command
 that looks at nothing states that in place of a list (their line 4); work
@@ -170,35 +170,45 @@ the host's agents judged shows what a receipt carries before it says abcd
 was not told (line 5); an option may also narrow or redirect what is looked
 at (line 11); and their answer that what a command is known not to look at
 shows only when nothing was found now covers two results, the clear one and
-the one that is clear except for gaps (decision 12).
+the one that is clear except for gaps (decision 12). The four are queued
+for the product thinker's return.
 
 The words the criteria use:
 
 - A declared command is a command path, or a named way of running one, that
-  carries a declaration. A way of running a command that no one types (the
-  sweep abcd runs on its own) has no help and no flag of its own: the
-  criteria about help, explain and flags are met on the command it is a way
-  of running, and its text names that command where a criterion names a
-  flag.
+  carries a declaration. Where the way is a flag on a wider command (the
+  launch preview, the drive of a drain), the criteria about help, explain
+  and flags are met on that command for that flag, and its other ways,
+  where it has any, stay undeclared under the command's own name. A way of
+  running a command that no one types (the sweep abcd runs on its own) has
+  no help and no flag of its own: the criteria about help and explain are
+  met on the command it is a way of running, and its text lists every gap
+  in full.
 - A command's registry is the list of the kinds of thing it can look at,
   which a run works through. It is fixed in the command's code, or, where
-  the kinds are a repository's own (the rules its configuration adds, the
-  confidential sources of its corpus), read by that code from the one place
-  the repository names them.
+  the kinds are a repository's own (the banned tokens its configuration
+  names, the confidential sources of its corpus), read by that code from
+  the one place the repository names them. Help, explain and the files
+  generated from them name such a registry by where it is read from, since
+  the binary cannot list a repository's kinds.
+- Left out in this run is a registry kind the run did not look at, with its
+  cause from a closed set: the configuration did not arm it, there was
+  nothing to read it against, the host runs it, or it is left to another
+  way of running the command. It is a fact of one run, taken from the code.
 - A command's exclusions are what its code leaves out by a rule the code
   itself reads: a path a lint prunes, a class of finding a scanner filters
-  out. They are not kinds the command can look at. A run reports each as not
-  looked at in this run.
-- What a result lists as not looked at comes from the code (a registry kind
-  this run left out, and each exclusion) or from a list written by hand
-  beside the command, of kinds the command is known not to look at. Help
-  names the exclusions and the hand-written list, since what a run leaves
-  out is not known before it runs.
-- A gap is a check that could not be made in this run. The word is not used
-  for a kind a command is known not to look at.
+  out. They are not kinds the command can look at, and they stand in every
+  run.
+- What a command is known not to look at is its exclusions, taken from the
+  code, and a list written by hand beside the command. Both stand from run
+  to run, and both are labelled as known.
+- Nothing was checked means the run looked at no kind in its registry.
+- A gap is a check that could not be made in this run. The criteria do not
+  use the word for a kind a command is known not to look at.
 - Recorded means the result's JSON form, and shown means its text.
-- In the depth line the number of runs is the number of judging runs.
-  Everywhere else a run is one execution of a command.
+- In the depth line the number of runs is the number of judging runs the
+  drive's state records. Everywhere else a run is one execution of a
+  command.
 
 What counts as clear differs by command:
 
@@ -212,21 +222,22 @@ What counts as clear differs by command:
 | launch preview | every gate it measured passes | a gate fails | does not arise |
 | drive of a drain | none: it reports what its lanes did | none | none |
 
-A run in which every check failed has checked nothing: it gives no verdict
-and lists its gaps, also where the table says the case does not arise. The
-readiness gate has three advisory checks that never withhold readiness; one
-that does not pass is reported as it is today and changes neither the ready
-flag nor the verdict.
+A run that looked at no kind in its registry has checked nothing, whatever
+the reason (no check armed, nothing to read, or no kind could be read): it
+gives no verdict and says why, also where the table says the case does not
+arise. The readiness gate has advisory checks that never withhold
+readiness; one that does not pass is reported as it is today and changes
+neither the ready flag nor the verdict.
 
 What a result says:
 
 - **Given** a declared command, **when** a run finishes, **then** its result
-  names every kind in the command's registry that the run looked at, a kind
-  in which it found nothing included.
+  records and shows every kind in the command's registry that the run looked
+  at, a kind in which it found nothing included.
 - **Given** a declared command, **when** a run finishes on a fixture,
   **then** a test fails unless every kind in the command's registry is
-  reported exactly once, as looked at, as not looked at in this run or as
-  one it could not check, and unless every other entry is one of the
+  reported exactly once, as looked at, as left out in this run or as one
+  it could not check, and unless every other entry is one of the
   command's exclusions or a kind on its hand-written list.
 - **Given** a declared command with a clear state, **when** its result is
   clear or clear except for gaps, **then** what is shown to a person names
@@ -234,7 +245,7 @@ What a result says:
 - **Given** a check that could not be made in this run (a store that could
   not be read, a forge that did not answer, a program that is missing, a
   check that ran out of time), **when** the command reports, **then** the
-  result lists it as could not check.
+  result records it as could not check.
 - **Given** an item listed as could not check, **when** it is recorded,
   **then** it carries one reason from a closed set of reasons and a line of
   text.
@@ -264,28 +275,28 @@ What a command does not look at:
   declaration names at least one kind of thing it is known not to look at; a
   command that looks at nothing declares that instead.
 - **Given** a registry kind this run left out (a check the configuration
-  did not arm, a kind left to another way of running the command, a check
-  the host runs) or one of the command's exclusions, **when** the command
-  reports, **then** the result names it as not looked at in this run, taken
-  from the code.
+  did not arm, a check with nothing to read, a kind left to another way of
+  running the command, a check the host runs), **when** the command reports,
+  **then** the result records it and shows it as left out in this run, with
+  its cause, taken from the code.
 - **Given** the list of what a command is known not to look at, **when** it
   is shown, in a result or in help, **then** it is labelled as known, never
   as everything that was left out.
 - **Given** a declared command with a clear state, **when** its result is
   clear or clear except for gaps, **then** what is shown to a person names
   what the command is known not to look at.
-- **Given** a declared command, **when** its result lists findings,
-  **then** what is shown leaves that list out.
+- **Given** a declared command, **when** its result lists findings or gives
+  no verdict, **then** what is shown leaves that list out.
 - **Given** a declared command, **when** any run finishes, **then** the
   recorded result carries that list.
 
 How hard a model looked:
 
 - **Given** a declared command that starts models itself to do the judging,
-  **when** it reports, **then** for each lane and each judging role the
-  result names the class each judging run ran at, the number of judging
-  runs and the effort each was asked for, as the run's own state recorded
-  them when it handed each one out.
+  **when** it reports, **then** for each judging role, by lane or by issue,
+  the result names the class each judging run ran at, the number of judging
+  runs and the effort each was asked for, as the drive's state recorded
+  them, and says so where abcd asked for none.
 - **Given** a declared command whose result includes a check the host's own
   agents judge, **when** it reports, **then** for the class of model, the
   number of runs and the effort it names what a receipt on disk carries and
@@ -332,13 +343,13 @@ How it is delivered:
 ## Decisions
 
 Decisions 1 to 11, 13, 14 and 16 to 19 are the technical facilitator's.
-Where the record settles one, the decision names the record; where it does
-not, the decision names the other answer that was open. Decisions 12 and 15
-and the last sentence of decision 9 are the product thinker's, from the
-interview of 2026-11-21. A plan review reported after the intent was
-planned, and a final review before landing. Decisions 2 to 6, 8, 10 and 12
-to 14 were reworded for them and 16 to 19 added, and the spec lists each
-finding with what was done about it. Decision 12 is the product thinker's
+Where the record settles one, the decision names the record. Decisions 2,
+4, 5 and 14 chose between answers the record left open, and each names the
+other answer. Decisions 12 and 15 and the last sentence of decision 9 are
+the product thinker's, from the interview of 2026-11-21. A plan review
+reported after the intent was planned, and final reviews before landing.
+Decisions 2 to 6, 8, 10 and 12 to 14 were reworded for them and 16 to 19
+added, and the spec lists each major finding with what was done about it. Decision 12 is the product thinker's
 and its rewording is flagged for them: once a result that is clear except
 for gaps became a state of its own, their answer had to name both.
 
@@ -365,29 +376,31 @@ for gaps became a state of its own, their answer had to name both.
    reads only the exit status still cannot tell a clear run from a partial
    one, and has to read the result.
 3. Each declared command keeps one registry of the kinds of thing it can
-   look at, in its own code, and a run works through that registry. What a
-   run looked at is reported from what the run did with each kind: looked
-   at, not looked at in this run, or could not check. A check the
-   configuration did not arm, a check the host runs and a kind left to
-   another way of running the command are registry kinds a run left out. A
-   class of finding a scanner filters out and a path a lint prunes are
-   exclusions: the code leaves them out by a rule it reads itself, they are
-   not kinds the command can look at, and they are kept apart from the
-   registry. The code states all of these already, and each is reported as
-   not looked at in this run, taken from the code. Only the standing list
-   of what a command is known not to look at is written by hand, beside the
-   command, and both are labelled as known. An entry joins the hand-written
-   list whenever someone is surprised
-   that a command did not cover a thing, unless the command is changed to
+   look at, in its own code or read by it from the one place a repository
+   names them, and a run works through that registry. What a run looked at
+   is reported from what the run did with each kind: looked at, left out in
+   this run, or could not check. A check the configuration did not arm, a
+   check with nothing to read, a check the host runs and a kind left to
+   another way of running the command are registry kinds a run left out,
+   each with its cause. A class of finding a scanner filters out and a path
+   a lint prunes are exclusions: the code leaves them out by a rule it
+   reads itself, they are not kinds the command can look at, and they are
+   kept apart from the registry. The code states all of these already, and
+   each is reported from the code. Only the standing list of what a command
+   is known not to look at is written by hand, beside the command; that list
+   and the exclusions are what the command is known not to look at, and are
+   labelled as known. An entry joins the hand-written list whenever someone
+   is surprised that a command did not cover a thing, unless the command is changed to
    cover it; a kind that enters the registry leaves the list. Invariant 18
    bears on this directly, since the declaration is the binary recording a
    claim about behaviour where a generator can read it: decision 18 says
    which artefacts carry it.
 4. The fields commands carry today stay as they are and feed the statement,
    so the change is additive, which the product thinker let stand at the
-   interview. The lint result's list of rules skipped as not applicable is
-   one of them. A field that already gives a verdict keeps its value and its
-   meaning: the launch report's verdict and the readiness gate's ready flag
+   interview. The list of rules skipped as not applicable, on the result of
+   the bare lint command, is one of them, and it waits for the spec that
+   declares that command. A field that already gives a verdict keeps its
+   value and its meaning: the launch report's verdict and the readiness gate's ready flag
    say what they say today, and the statement's own verdict stands beside
    them and is the one that marks a gap. A field restates a member of the
    statement when it gives the same fact under another name: what was looked
@@ -466,36 +479,46 @@ for gaps became a state of its own, their answer had to name both.
     SARIF is written down in the spec. The statement is not written through
     the serializer interface the lint command has (itd-85): that interface
     takes the lint's own result, and its package imports the docs lint's
-    core and the outbound scanner, and through them reaches the cores of the
-    launch preview and the readiness gate, so none of those four can import
-    it. A SARIF writer, when one is built under itd-85, reads
+    core, the outbound scanner and the site's core, and through them reaches
+    the cores of the launch preview and the readiness gate, so none of those
+    four can import it. A SARIF writer, when one is built under itd-85, reads
     the statement from the statement's own package. A command that acts has
     no such format, and none is claimed.
-14. The depth line reads what a run's own state records as it hands out each
-    judging run, and not the review set the run was started with. The set
-    (itd-2610240922461281, itd-2611101419006280) names a class and an effort
-    for each reviewer of a role, but it is fixed when the run starts: a
-    reviewer whose class holds the model that wrote the work is moved to
-    another class, a lane with a fix round runs its reviewers again, and the
-    judge of a round and the drain's judge are judging roles the set does
-    not list. So for each lane and each judging role the line gives the
-    class each judging run ran at, the number of judging runs and the effort
-    each was asked for. It gives the class and never the model's name. The
-    opening text of a drive shows the set a run started then would use, and
-    a result can differ from it. Where the state records no class or effort
-    for a judging role, as for the drain's judge today, the first spec has
-    the run record them as it hands the role out, which is the one field
-    this intent adds; a run made before that says they were not recorded.
-    The record of what each call was asked for and served (itd-166) stays
-    with the technical facilitator, as that intent decided, and the depth
-    line does not read it. Where the host's agents did the judging, the
-    result names what a receipt on disk carries and says abcd was not told
-    for the rest; a receipt is the host's own account, relayed with its
-    source and not vouched for, so the scope condition that abcd knows the
-    depth only where it started the model itself stands. The depth member
-    is defined once, here; the draft that has a host's payload name its
-    model and its agents (itd-2609180517121254) fills it for the host's work
-    and mints no second shape. The other answer was to label the line as
+14. The depth line mints no field. It reads what the state of a drive
+    records as it hands out each judging run, and not the review set a run
+    was started with. The set (itd-2610240922461281, itd-2611101419006280)
+    names a class and an effort for each reviewer of a role and for a
+    round's judge, but it is fixed when the run starts: a reviewer whose
+    class holds the model that wrote the work is moved to another class,
+    and a lane with a fix round runs its reviewers again. So for each lane
+    and each judging role the line gives the class each judging run ran at,
+    the number of judging runs and the effort each was asked for, from the
+    records the lane's rounds hold. The number counts records: a reviewer
+    handed out again within a round reuses its record and is counted once,
+    and a judge that could not be started is a gap and not a run. The
+    drain's judge is the one judging role the set does not list. It judges
+    an issue's remedy before any lane exists, the drain's own state records
+    it, and abcd asks it for no class and no effort, so the runner's default
+    applies: its line is keyed by issue, counts each judgement a runner
+    answered as one judging run and says of its class and effort that none
+    was asked. A judgement the host answered is the host's judging, and
+    the line says abcd was not told. A runner that did not give an answer
+    the drain could take, which that state keeps as a fallback, is a gap
+    and not a run. The other answer there was to start launching that
+    judge at a class, which would change which model judges and is not this
+    intent's to decide. The line gives the class and never the model's
+    name. The opening text of a drive shows the set a run started then
+    would use, and a result can differ from it. The record of what each
+    call was asked for and served (itd-166) stays with the technical
+    facilitator, as that intent decided, and the depth line does not read
+    it. Where the host's agents did the judging, the result names what a
+    receipt on disk carries and says abcd was not told for the rest; a
+    receipt is the host's own account, relayed with its source and not
+    vouched for, so the scope condition that abcd knows the depth only
+    where it started the model itself stands. The depth member is defined
+    once, here; the draft that has a host's payload name its model and its
+    agents (itd-2609180517121254) fills it for the host's work and mints no
+    second shape. The other answer on the source was to label the line as
     what the run was started with. It was not chosen because it would name
     a class a moved reviewer did not run at and undercount the runs of any
     lane with a fix round.
@@ -508,7 +531,9 @@ for gaps became a state of its own, their answer had to name both.
     above the criteria. The drive of a drain has no clear state: it reports
     what its lanes did. The lines about a clear result therefore do not bind
     it, and its statement carries what it looked at, what it is known not to
-    look at, the gaps and the depth.
+    look at, the gaps and the depth. A result with no verdict does not show
+    what the command is known not to look at either: it says nothing was
+    checked, and why.
 17. Recorded means the result's JSON form and shown means its text. Where a
     command writes files, a JSON file is recorded and a text file is shown:
     the launch report is one of each, and a log a person reads, as the
@@ -517,9 +542,10 @@ for gaps became a state of its own, their answer had to name both.
     one. Two of the first set are a flag on a wider command (the launch
     preview and the drive of a drain), and the sweep abcd runs on its own is
     typed by no one: it has no help and no flag of its own, so the criteria
-    about help, explain and flags are met on sweep, and its text names sweep
-    where a criterion names a flag. The command facts the binary exports carry the
-    declaration, so the explain command and the per-command files derived
+    about help and explain are met on sweep, and its text lists every gap in
+    full. For a way that is a flag on a wider command, those criteria are
+    met on that command for that flag. The command facts the binary exports
+    carry the declaration, so the explain command and the per-command files derived
     from those facts name the same kinds as help. Explain's text keeps to
     its line limit and its JSON carries the whole declaration. The generated
     appendix of a surface chapter stays flags and sub-verbs. A command that
@@ -536,7 +562,7 @@ for gaps became a state of its own, their answer had to name both.
 The questions the pre-pass raised were settled without a question to the
 product thinker, each for the reason given: the exit status (decision 2), the
 duplicated fields (decision 4), the neighbouring records under "What it
-touches" (none is superseded; two drafts gained a dated note and two a
+touches" (none is superseded; two drafts gained a dated note and three a
 `builds_on` edge to this intent), the hand-written list (decision 3), which
 commands make the first set (decision 5) and what the mechanism counts
 (under `## Mechanism`).
@@ -614,7 +640,7 @@ _All resolved at the planning interview of 2026-11-21, in `## Decisions`
 (whether the choice of depth is planned as well, in decisions 9 and 15, and
 when a result shows what its command is known not to look at, in
 decision 12). The plan review that reported after the sign-off raised no
-question for the product thinker, and neither did the final review before
+question for the product thinker, and neither did the final reviews before
 landing. What they changed is in decisions 2 to 6, 8, 10, 12 to 14 and 16
 to 19, and four refinements are flagged in the introduction to the
 criteria._
