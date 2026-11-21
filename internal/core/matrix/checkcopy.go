@@ -6,7 +6,7 @@ package matrix
 // model's output and is read as untrusted input: bounded, decoded strictly,
 // every text made one inert line with every mention of where the copy ran
 // withheld. A check copy is never shown its task's or its cell's id: its clone
-// is made under an alias minted at random when it starts (makeCheckClone), and
+// is made under an alias minted at random when it starts (makeCopyClone), and
 // every name in the run that could identify a copy (its run, task, cell,
 // route, runner and pins, and its alias) and every name of a model or of its
 // maker is withheld from the copy's own words wherever it stands, inside a
@@ -28,7 +28,6 @@ package matrix
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -159,89 +158,6 @@ type runIdentity struct {
 	Alias string
 }
 
-// checkAlias is a check copy's alias as the run's state records it: the one
-// name its clone is made under, and so the one name the copy is shown of
-// which copy it is (dcn-2611210903322839). It is minted at random when the
-// copy starts and never derived from the copy's key, route, runner or model,
-// so a copy echoing it tells its judges nothing.
-type checkAlias struct {
-	SchemaVersion int    `json:"schema_version"`
-	Alias         string `json:"alias"`
-}
-
-// checkAliasRe is an alias: 128 random bits, under a word no task's or cell's
-// id can be (an id holds no underscore), so no copy's clone is ever made where
-// a trial's is.
-var checkAliasRe = regexp.MustCompile(`^copy_[0-9a-f]{32}$`)
-
-// checkAliasRel is copy key's alias record in its run's directory.
-func checkAliasRel(run string, key TrialKey) string {
-	return run + "/check/" + key.Task + "/aliases/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + ".json"
-}
-
-// checkCloneDir is a check copy's clone under store: the run's id and the
-// copy's alias, and nothing of its task or its cell.
-func checkCloneDir(store, run, alias string) string { return filepath.Join(store, run, alias) }
-
-// makeCheckClone makes check copy key's clone of frozen, as makeClone makes a
-// trial's, at checkCloneDir under the copy's alias. The alias is minted and
-// recorded in the run's state before the clone is made, or read back where an
-// earlier attempt recorded it, so a clone that was not made is made again
-// under the alias its copy was given, and one that is there is refused. The
-// run's record must be written first.
-func makeCheckClone(labID, repoRoot, store, run, frozen string, key TrialKey) (string, error) {
-	if err := cloneArgs(repoRoot, run, frozen, key); err != nil {
-		return "", err
-	}
-	proc, err := lab.OpenProcedure(repoRoot, labID)
-	if err != nil {
-		return "", err
-	}
-	defer proc.Close()
-	if _, err := proc.ReadState(run + "/run.json"); err != nil {
-		return "", fmt.Errorf("copy %s is not made: its run's record is not written: %w", key, err)
-	}
-	alias, err := readCheckAlias(proc, run, key)
-	if errors.Is(err, fs.ErrNotExist) {
-		alias, err = mintCheckAlias(proc, run, key)
-	}
-	if err != nil {
-		return "", err
-	}
-	return makeCloneAt(repoRoot, store, checkCloneDir(store, run, alias), frozen, "copy "+key.String())
-}
-
-// mintCheckAlias mints copy key's alias and records it, once.
-func mintCheckAlias(proc *lab.Procedure, run string, key TrialKey) (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("copy %s's alias could not be minted: %w", key, err)
-	}
-	alias := "copy_" + hex.EncodeToString(b[:])
-	data, err := encodeCheck(checkAlias{SchemaVersion: CheckCopySchema, Alias: alias})
-	if err != nil {
-		return "", err
-	}
-	if err := proc.WriteState(checkAliasRel(run, key), data); err != nil {
-		return "", fmt.Errorf("copy %s's alias is not recorded: %w", key, err)
-	}
-	return alias, nil
-}
-
-// readCheckAlias is copy key's alias as its run's state records it; an error
-// wrapping fs.ErrNotExist where none is recorded.
-func readCheckAlias(proc *lab.Procedure, run string, key TrialKey) (string, error) {
-	raw, err := proc.ReadState(checkAliasRel(run, key))
-	if err != nil {
-		return "", err
-	}
-	var a checkAlias
-	if err := jsonstrict.Decode(raw, &a); err != nil || a.SchemaVersion != CheckCopySchema || !checkAliasRe.MatchString(a.Alias) {
-		return "", fmt.Errorf("copy %s's alias record does not read as one", key)
-	}
-	return a.Alias, nil
-}
-
 // checkCopyRel is copy key's findings record in its run's directory.
 func checkCopyRel(run string, key TrialKey) string {
 	return run + "/check/" + key.Task + "/copies/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + ".json"
@@ -252,7 +168,7 @@ func checkCopyRel(run string, key TrialKey) string {
 func readCheckCopy(in checkCopyInputs) CheckCopy {
 	c := CheckCopy{SchemaVersion: CheckCopySchema, Run: in.Run, Key: in.Key, Form: in.Form, Findings: []CheckFinding{}}
 	red := checkRedactor{
-		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: checkCloneDir(in.Store, in.Run, in.Identity.Alias), Run: in.Run}),
+		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: cloneDir(in.Store, in.Run, in.Identity.Alias), Run: in.Run}),
 		model: newIdentityScrub(in.Run, in.Key, in.Identity),
 	}
 	reason := func(s string) string {
@@ -481,7 +397,7 @@ const withheldClass = "withheld"
 // A name shorter than minNameBytes would withhold ordinary text wherever its
 // letters fall, so it is not matched: a task's or a cell's id that short is
 // kept from the copy instead, which is never shown its task's or its cell's id
-// (checkCloneDir), only its alias.
+// (cloneDir), only its alias.
 type identityScrub struct {
 	// withheld is every name withheld, lower-cased.
 	withheld []string
@@ -517,8 +433,24 @@ func newIdentityScrub(run string, key TrialKey, id runIdentity) identityScrub {
 // scrubbed of them too, and its alias. A cell's role is not one (every copy of
 // a check shares it), nor are its sampling settings or its pin's
 // data-collection policy, which are values, not names.
+//
+// Every task's id joined to every cell's by a slash is one too: how a key is
+// written (<task>/<cell>/<repeat>) and how every record of a copy is filed
+// (trials/, aliases/ and the check's copies/ under <task>/<cell>/), so an
+// error naming a copy's key or a record's path, which a runner may echo, is
+// withheld whole however short the cell's own id.
 func identityNames(run string, key TrialKey, id runIdentity) []string {
 	out := append([]string{run, key.Task, key.Cell, id.Alias}, id.Tasks...)
+	tasks := append([]string{key.Task}, id.Tasks...)
+	cells := []string{key.Cell}
+	for _, c := range id.Cells {
+		cells = append(cells, c.Cell)
+	}
+	for _, t := range tasks {
+		for _, c := range cells {
+			out = append(out, t+"/"+c)
+		}
+	}
 	for _, c := range id.Cells {
 		out = append(out, c.Cell, string(c.Source), c.Runner, c.HarnessVersion)
 		out = append(out, routeNames(c.Route)...)
@@ -882,7 +814,7 @@ func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	if err != nil {
 		return CheckCopy{}, fmt.Errorf("the copy is not collected: %w", err)
 	}
-	alias, err := readCheckAlias(proc, in.Run, in.Key)
+	alias, err := readAlias(proc, in.Run, in.Key)
 	if err != nil {
 		return CheckCopy{}, fmt.Errorf("the copy is not collected: its clone's alias is not recorded: %w", err)
 	}
@@ -905,7 +837,7 @@ func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	if err := in.Gates.unchanged(in.RepoRoot); err != nil {
 		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
 	}
-	if err := os.RemoveAll(checkCloneDir(in.Store, in.Run, alias)); err != nil {
+	if err := os.RemoveAll(cloneDir(in.Store, in.Run, alias)); err != nil {
 		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
 	}
 	return c, nil

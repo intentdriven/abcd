@@ -9,6 +9,7 @@ package matrix
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -33,8 +34,23 @@ const maxHiddenBytes = 4 << 20
 
 // hiddenDir is where task's hidden tests are kept for run: under the clone
 // store's hidden/ directory, which no run id names (a run id is mx-...), so it
-// is never inside any copy's clone, cloneDir(store, run, key).
-func hiddenDir(store, run, task string) string { return filepath.Join(store, "hidden", run, task) }
+// is never inside any copy's clone, cloneDir(store, run, alias). The folder is
+// named by hiddenName, never by the task's id, so nothing a copy can list in
+// the store spells a task.
+func hiddenDir(store, run, task string) string {
+	return filepath.Join(store, "hidden", run, hiddenName(run, task))
+}
+
+// hiddenName is the folder task's hidden tests are kept in for run: tests_ and
+// the first 128 bits of a digest of the run's and the task's ids, the same on
+// every reading, so the run finds the folder again without a record of its
+// own, and spelling nothing of the task. A copy that already knew the task's
+// id and this derivation could compute it; the name is withheld from a copy's
+// view, not a secret.
+func hiddenName(run, task string) string {
+	sum := sha256.Sum256([]byte("abcd matrix hidden tests\x00" + run + "\x00" + task))
+	return "tests_" + hex.EncodeToString(sum[:16])
+}
 
 // placeHiddenTests writes task's hidden tests for run at hiddenDir, read-only,
 // and returns each as the run record keeps it (by its path, its sha256 and

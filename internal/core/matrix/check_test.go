@@ -240,7 +240,7 @@ func collectForm(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestACheckCopysFindingsAreReadBeforeItsCloneIsDeleted(t *testing.T) {
 	// A second collection of the same copy cannot be recorded, so its clone
 	// stays where it is.
 	key2 := TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}
-	clone2, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
+	clone2, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +832,7 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -849,7 +849,7 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		}
 	}
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
-	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
+	if _, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, nil, dfAnswer(t, "It refuses a hazard"))); err == nil ||
@@ -999,7 +999,7 @@ func identityLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, st
 // run's state as the test's own reading.
 func cloneAlias(t *testing.T, home string, m lab.Minted, rec RunRecord, key TrialKey) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "check", key.Task, "aliases", key.Cell, strconv.Itoa(key.Repeat)+".json"))
+	data, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "aliases", key.Task, key.Cell, strconv.Itoa(key.Repeat)+".json"))
 	if err != nil {
 		t.Fatalf("copy %s's alias is not in the run's state: %v", key, err)
 	}
@@ -1093,9 +1093,9 @@ func TestACheckCopyIsShownNoCellOrTaskID(t *testing.T) {
 	for _, cell := range []string{"or-cheap", "lr", "host-big"} {
 		for repeat := 1; repeat <= 2; repeat++ {
 			key := TrialKey{Task: checkTask, Cell: cell, Repeat: repeat}
-			clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+			clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 			if err != nil {
-				t.Fatalf("makeCheckClone(%s): %v", key, err)
+				t.Fatalf("makeCopyClone(%s): %v", key, err)
 			}
 			alias := cloneAlias(t, home, m, rec, key)
 			if !regexp.MustCompile(`^copy_[0-9a-f]{32}$`).MatchString(alias) {
@@ -1120,13 +1120,13 @@ func TestACheckCopyIsShownNoCellOrTaskID(t *testing.T) {
 	// given; one that is there is never made twice.
 	key := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
 	alias := cloneAlias(t, home, m, rec, key)
-	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err == nil {
+	if _, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err == nil {
 		t.Error("a copy's clone was made twice")
 	}
 	if err := os.RemoveAll(filepath.Join(store, rec.RunID, alias)); err != nil {
 		t.Fatal(err)
 	}
-	again, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	again, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil || again != filepath.Join(store, rec.RunID, alias) {
 		t.Errorf("the clone made again = %q, %v; want it under the alias %s", again, err, alias)
 	}
@@ -1151,7 +1151,7 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 	var shown []string
 	for i, cell := range []string{"or-cheap", "lr", "host-big"} {
 		key := TrialKey{Task: checkTask, Cell: cell, Repeat: 1}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1221,7 +1221,7 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 		func(string, string) string { return "docs/opencode1.md" },
 	} {
 		key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2 + i}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1321,7 +1321,7 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 		t.Fatal(err)
 	}
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
-	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1377,7 +1377,7 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	// A copy whose runner failed is recorded with the runner's words, which
 	// name nothing of the run either.
 	fkey := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
-	fclone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, fkey)
+	fclone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, fkey)
 	if err != nil {
 		t.Fatal(err)
 	}

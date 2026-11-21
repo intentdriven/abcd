@@ -292,3 +292,49 @@ func TestThePacketCarriesNoSourcePathRunOrTaskID(t *testing.T) {
 		t.Fatalf("key = %+v; the host's half still names the run and task", k)
 	}
 }
+
+// A writing copy cannot sign its own work in front of its judges: its text is
+// passed through the same identity scrub a check copy's words are, so a copy
+// that names its model, its maker, its cell, its route, its runner, its run,
+// its task or its alias reaches the judge with each of them withheld, and
+// the key, on the host's machine, counts what was withheld and measures the
+// copy as the judge reads it.
+func TestAWritingCopyCannotSignItsWorkInFrontOfItsJudges(t *testing.T) {
+	in := writingInputs(2, 1, 3)
+	in.Cells = []CellPin{
+		{Cell: cellName(0), Role: RoleBuilder, Source: SourceOpenRouter, Route: "builder=runner:opencode@openrouter/acme/wordsmith-7b",
+			Runner: "opencode", Model: "openrouter/acme/wordsmith-7b", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"fastinfer"}}},
+		{Cell: cellName(1), Role: RoleBuilder, Source: SourceHost, Route: "host", Runner: "host"},
+	}
+	in.Copies[0].Alias = "copy_" + strings.Repeat("ab", 16)
+	signed := "# Guide\n\nWritten by wordsmith-7b (openrouter/acme/wordsmith-7b) through opencode 1.2.3 on fastinfer, " +
+		"cell " + cellName(0) + ", task doc-page of run " + in.Run + ", in " + in.Copies[0].Alias + ".\n" +
+		"Also signed: Claude, Anthropic, GPT-4o, Gemini and o3.\n"
+	in.Copies[0].Text = signed
+	p, k := draw(t, in, seedA)
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{"wordsmith", "acme", "openrouter", "opencode", "1.2.3", "fastinfer", cellName(0), "leakcell",
+		"doc-page", in.Run, in.Copies[0].Alias, "Claude", "Anthropic", "GPT", "Gemini", "o3"} {
+		if strings.Contains(string(data), leak) {
+			t.Fatalf("the packet carries %q, which the copy signed its work with", leak)
+		}
+	}
+	if !strings.Contains(string(data), withheldMark) {
+		t.Fatalf("the packet shows no mark where the copy's signature was withheld")
+	}
+	var withheld, size int
+	for _, kc := range k.Documents {
+		if kc.Key == in.Copies[0].Key {
+			withheld, size = kc.Withheld, kc.Bytes
+		}
+	}
+	if withheld == 0 {
+		t.Fatalf("the key counts nothing withheld from the signed copy: %+v", k.Documents)
+	}
+	if size == len(signed) {
+		t.Fatalf("the key measures the signed copy at %d bytes, the copy as written; want the copy as the judge reads it", size)
+	}
+}

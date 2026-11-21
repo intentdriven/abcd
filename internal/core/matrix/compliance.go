@@ -42,6 +42,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -126,18 +127,29 @@ type complianceInputs struct {
 	// frozen commit the copy's clone was made from.
 	RepoRoot string
 	// Store is the run's clone store, an absolute path: the copy's clone is
-	// cloneDir(Store, Run, Key) and the hidden tests are under it, at
+	// cloneDir(Store, Run, Alias) and the hidden tests are under it, at
 	// hiddenDir.
 	Store, Run string
 	Key        TrialKey
-	Frozen     string
+	// Alias is the alias the copy's clone was made under (makeCopyClone).
+	Alias  string
+	Frozen string
 	// Source is the copy's cell's source, which decides how its isolation
 	// stands.
 	Source Source
 	// Transcript is the copy's transcript as its harness wrote it, nil when
 	// none was read.
 	Transcript []byte
+	// State is the run's state, an absolute path, or empty: the repository's
+	// lab store (labStore), where the record of which alias is which copy
+	// sits beside every other record of the run. A copy whose transcript names
+	// a path in it read what would un-blind it.
+	State string
 }
+
+// labStore is where the repository with root commit rootSHA keeps its labs,
+// and so every matrix run's state, under the account's abcd home.
+func labStore(home, rootSHA string) string { return abcdhome.Path(home, "lab", rootSHA) }
 
 // checkCompliance runs every rule for one copy. It refuses only inputs that
 // name no copy; whatever it cannot read of the copy is that rule's
@@ -159,8 +171,14 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 	if !in.Source.valid() {
 		return Compliance{}, fmt.Errorf("%q is not a cell's source", clip(string(in.Source)))
 	}
+	if !aliasRe.MatchString(in.Alias) {
+		return Compliance{}, fmt.Errorf("%q is not a copy's alias", clip(in.Alias))
+	}
+	if in.State != "" && !filepath.IsAbs(in.State) {
+		return Compliance{}, errors.New("the compliance check reads the run's state by absolute path")
+	}
 	tree, treeErr := readFrozenTree(context.Background(), in.RepoRoot, in.Frozen)
-	scan, scanErr := scanClone(cloneDir(in.Store, in.Run, in.Key))
+	scan, scanErr := scanClone(cloneDir(in.Store, in.Run, in.Alias))
 	isolation := ComplianceCheck{Rule: RuleIsolation, State: StateKept,
 		Detail: "abcd launches the copy's runner in the copy's own clone"}
 	if in.Source == SourceHost {
@@ -327,7 +345,7 @@ func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCh
 	if treeErr != nil {
 		return unexamined("the frozen commit's tests could not be read from the run's checkout, so the copy's edits to them cannot be examined")
 	}
-	clone := cloneDir(in.Store, in.Run, in.Key)
+	clone := cloneDir(in.Store, in.Run, in.Alias)
 	if fi, err := os.Lstat(clone); err != nil || !fi.IsDir() {
 		return unexamined("the copy's clone is gone or is no longer a directory, so its edits to the tests cannot be examined")
 	}
@@ -750,7 +768,7 @@ func ownCopyOnly(in complianceInputs, tree frozenTree, treeErr error, scan clone
 	broken := func(why string) ComplianceCheck {
 		return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateBroken, Detail: clipTo(why, maxDetailBytes)}
 	}
-	clone := cloneDir(in.Store, in.Run, in.Key)
+	clone := cloneDir(in.Store, in.Run, in.Alias)
 	forms := storeForms(in)
 	if scanErr == nil {
 		if link, ok := linkOut(clone, forms, scan, tree, treeErr); ok {
@@ -777,28 +795,52 @@ func ownCopyOnly(in complianceInputs, tree frozenTree, treeErr error, scan clone
 		Detail: "the copy's transcript names nothing in the run's clone store outside its own clone, and its clone holds no link out into it; a heuristic scan, not a barrier"}
 }
 
-// storeForm is one spelling of the store and of the copy's clone within it:
-// slash-separated, clean and lower-cased (lowerASCII).
-type storeForm struct{ store, clone string }
+// storeForm is one spelling of a place no copy reads, and of the copy's own
+// clone within it ("" where the place holds none): slash-separated, clean and
+// lower-cased (lowerASCII). state marks the run's state rather than its clone
+// store.
+type storeForm struct {
+	store, clone string
+	state        bool
+}
 
-// storeForms is the store as given and as its links resolve.
+// storeForms is the store, and the run's state where it is given, each as
+// given and as its links resolve.
 func storeForms(in complianceInputs) []storeForm {
-	own := lowerASCII(path.Join(in.Run, in.Key.Task, in.Key.Cell, strconv.Itoa(in.Key.Repeat)))
+	own := lowerASCII(path.Join(in.Run, in.Alias))
 	var forms []storeForm
-	add := func(dir string) {
+	add := func(dir string, state bool) {
 		s := lowerASCII(path.Clean(filepath.ToSlash(dir)))
 		for _, f := range forms {
 			if f.store == s {
 				return
 			}
 		}
-		forms = append(forms, storeForm{store: s, clone: path.Join(s, own)})
+		f := storeForm{store: s, state: state}
+		if !state {
+			f.clone = path.Join(s, own)
+		}
+		forms = append(forms, f)
 	}
-	add(in.Store)
-	if real, err := filepath.EvalSymlinks(in.Store); err == nil {
-		add(real)
+	for _, place := range []struct {
+		dir   string
+		state bool
+	}{{in.Store, false}, {in.State, true}} {
+		if place.dir == "" {
+			continue
+		}
+		add(place.dir, place.state)
+		if real, err := filepath.EvalSymlinks(place.dir); err == nil {
+			add(real, place.state)
+		}
 	}
 	return forms
+}
+
+// outsideOwn reports whether the clean, lower-cased path lp is in f's place
+// and outside the copy's own clone.
+func (f storeForm) outsideOwn(lp string) bool {
+	return under(lp, f.store) && (f.clone == "" || !under(lp, f.clone))
 }
 
 // homeForms is the home directory as given and as its links resolve, for a
@@ -946,7 +988,7 @@ func linkOut(clone string, forms []storeForm, scan cloneScan, tree frozenTree, t
 		for _, c := range cands {
 			lc := lowerASCII(c)
 			for _, f := range forms {
-				if under(lc, f.store) && !under(lc, f.clone) || under(f.store, lc) {
+				if f.outsideOwn(lc) || under(f.store, lc) {
 					return rel, true
 				}
 			}
@@ -1096,7 +1138,11 @@ func (sc *transcriptScan) absolute(p string) (string, bool) {
 	p = path.Clean(p)
 	lp := lowerASCII(p)
 	for _, f := range sc.forms {
-		if under(lp, f.store) && !under(lp, f.clone) {
+		if f.outsideOwn(lp) {
+			if f.state {
+				return "the copy's transcript names the run's state, where which copy is which is recorded: <run state>" +
+					termsafe.Sanitize(p[len(f.store):]), true
+			}
 			return "the copy's transcript names the run's clone store outside its own clone: <clone store>" +
 				termsafe.Sanitize(p[len(f.store):]), true
 		}
@@ -1146,7 +1192,7 @@ func (sc *transcriptScan) outside(k int, rest string) bool {
 		p := path.Join(base, rest)
 		lp := lowerASCII(p)
 		for _, f := range sc.forms {
-			if under(lp, f.store) && !under(lp, f.clone) {
+			if f.outsideOwn(lp) {
 				if _, err := os.Lstat(filepath.FromSlash(p)); err == nil {
 					return true
 				}

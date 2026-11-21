@@ -21,7 +21,9 @@
 //   - the copies (clone.go, cell.go, localserver.go; step 3): each copy made
 //     in its own clone of the frozen commit alone in the machine-scoped store,
 //     outside every working tree, with no local tier and no other copy's
-//     refs; dispatched in the runners' cell mode, so a runner's failure is
+//     refs, under an alias minted at random, so nothing the copy can read of
+//     where it runs names its task, its cell or its route, and the record of
+//     which alias is which copy kept in the run's state in the lab; dispatched in the runners' cell mode, so a runner's failure is
 //     the cell's and nothing falls back; an outage before the copy began
 //     retried on the same pin and never scored; a clone bound for a provider
 //     passed through the launch bundle's scan first; and one local inference
@@ -41,7 +43,8 @@
 //     each judge's subset at most eight copies, in an order and under codes
 //     drawn for it, so that every pair of models meets in some subset, every
 //     document rendered as inert text through one template, and no cell,
-//     model, trial, run, task or path named; the copy-to-model mapping kept
+//     model, trial, run, task or path named, a copy's own text passed through
+//     the check copies' identity scrub first, so it cannot sign its work; the copy-to-model mapping kept
 //     in a key on the host's machine; and the session's verdict file read back as untrusted
 //     input against both, refused whole when any part fails, one ranking
 //     kept per judge identity, and the guests' and the host's self-blinded
@@ -67,8 +70,8 @@
 // findings are read as untrusted input into the run's record before its clone
 // is deleted, a doc-fidelity verdict through the recorder's own decoder and
 // never saved where the release gates read. A copy is never shown its task's
-// or its cell's id: its clone is made under an alias minted at random when it
-// starts. Everything in the run that could identify it (its run, task, cell,
+// or its cell's id: its clone, like every copy's, is made under its alias.
+// Everything in the run that could identify it (its run, task, cell,
 // route, runner and pins, and its alias) and every name of a model or its
 // maker is withheld from the copy's own words wherever it stands, inside a
 // longer word too, while a quote the frozen material holds is kept whole, and
