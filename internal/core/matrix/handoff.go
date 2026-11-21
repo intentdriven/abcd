@@ -38,6 +38,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -334,6 +335,31 @@ const maxReceiptBytes = 64 << 10
 // hidden tests.
 const hostScoreDetail = "the hidden tests' result as the host session ran and reported it; abcd neither placed nor ran them"
 
+// hostTrialUnpinned is what a trial built from the host's receipt rc could
+// not pin. The host hands back no call receipts, so every field of a call's
+// served side is not reported but the model the receipt names, which is the
+// host's own word, as are the harness version and the times it gives, and, for
+// a scored copy, its hidden tests' result: the host ran them, not abcd.
+func hostTrialUnpinned(rc CopyReceipt, scored bool) []oracle.Unpinned {
+	var un oracle.Unpin
+	reported := func(have bool) oracle.UnpinnedReason {
+		if have {
+			return oracle.SelfReported
+		}
+		return oracle.NotReported
+	}
+	un.Add(oracle.AskedHarnessVersion, reported(rc.HarnessVersion != ""))
+	for _, f := range oracle.ServedFields {
+		un.Add(f, reported(f == oracle.ServedModel && rc.ModelServed != ""))
+	}
+	un.Add(TrialCalls, oracle.NotReported)
+	if scored {
+		un.Add(TrialScore, oracle.SelfReported)
+	}
+	un.Add(TrialTimes, reported(!rc.StartedAt.IsZero() || !rc.FinishedAt.IsZero() || rc.ModelTimeMS != 0 || rc.GateWaitMS != 0))
+	return un.List()
+}
+
 // CopyBack is one copy handed back: the host's receipt, the copy's transcript
 // as its harness wrote it (nil where none), and, for a writing or a check
 // copy, its answer and, for a check, the form it is in.
@@ -419,6 +445,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		return TrialRecord{}, fmt.Errorf("copy %s is a check copy, handed back with its answer's form (doc-fidelity or consistency)", key)
 	}
 	var text string
+	scored := false
 	switch {
 	case rc.Outcome == OutcomeFailed:
 		if t.FinishedAt.IsZero() {
@@ -431,6 +458,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 			return TrialRecord{}, fmt.Errorf("copy %s is a made code copy, handed back with its hidden tests' result (a score of at least one test); it carries none", key)
 		}
 		t.Score = &Score{Passed: s.Passed, Total: s.Total, Detail: hostScoreDetail}
+		scored = true
 		t.Status, t.Reason = StatusFailed, fmt.Sprintf("its hidden tests: %d of %d passed", s.Passed, s.Total)
 		if s.Passed == s.Total {
 			t.Status = StatusPassed
@@ -454,11 +482,21 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		return TrialRecord{}, err
 	}
 	t = c.apply(t)
+	t.Unpinned = hostTrialUnpinned(rc, scored)
 	if err := t.validate(); err != nil {
 		return TrialRecord{}, fmt.Errorf("the trial is not written: %w", err)
 	}
 	switch task.Kind {
 	case KindWriting:
+		// The trial is screened before the copy's text is kept, so a
+		// receipt the screen refuses keeps nothing and the copy can be
+		// handed back again with any document. A failed copy has no text.
+		if _, err := screenTrial(repoRoot, t); err != nil {
+			return TrialRecord{}, err
+		}
+		if rc.Outcome == OutcomeFailed {
+			break
+		}
 		// Where the copy ran is withheld before its text is kept, so the
 		// kept text never carries a place on this machine; the judging's
 		// scrub withholds everything else that could sign it.
@@ -535,14 +573,15 @@ func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key Tria
 // lostTrialWrite is the refusal of a check copy's hand-back whose trial was
 // not written. Where a trial of the copy is written even so, another
 // hand-back of it wrote it first, and that one deletes the clone, so the
-// refusal says so rather than that the clone is kept; otherwise the clone is
-// kept for the copy to be handed back again.
+// refusal says so rather than that the clone is kept, and promises no retry:
+// a hand-back once the clone is gone is refused (leftoverClone). Otherwise
+// the clone is kept for the copy to be handed back again.
 func lostTrialWrite(repoRoot, labID, run string, key TrialKey, err error) error {
 	if proc, perr := lab.OpenProcedure(repoRoot, labID); perr == nil {
 		_, terr := proc.ReadState(run + "/" + key.rel())
 		proc.Close()
 		if terr == nil {
-			return fmt.Errorf("copy %s was handed back by another hand-back, whose trial is the one written: %w; handing it back again returns that trial, and deletes its clone if one is left", key, err)
+			return fmt.Errorf("copy %s was handed back by another hand-back, whose trial is the one written: %w; that hand-back deletes the copy's clone, so there is nothing more to hand back", key, err)
 		}
 	}
 	return fmt.Errorf("copy %s keeps its clone: %w", key, err)

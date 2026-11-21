@@ -4830,7 +4830,9 @@ A code task gives each builder's pass rate on its hidden tests with a 95%
 interval, its pass^k, what the reviewers caught, its cost per passing build
 by source and its model time apart from gate waits; each pair of builders is
 ranked only at the repeats its power estimate asks for, otherwise it states
-the smallest difference it could have detected. A written doc gives each
+the smallest difference it could have detected. A pass rate resting on hidden
+tests' results the host reported counts them, a limitation names their
+copies, and a comparison on them says so. A written doc gives each
 model's rating from all the judges' rankings with its interval, whether it is
 separable, the judges' agreement and each copy's length; below three judges,
 each judge's ranking and the good-enough counts only. A check gives the table

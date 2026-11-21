@@ -49,6 +49,12 @@ func codeTrial(t *testing.T, rec RunRecord, cell string, repeat int, status Tria
 	case StatusNotStarted:
 		tr.Reason, tr.FinishedAt, tr.ModelTimeMS, tr.GateWaitMS = "the provider was down before the copy began", time.Time{}, 0, 0
 	}
+	if pin.Source == SourceHost && tr.Score != nil {
+		// A host copy's trial is built from the host's receipt alone.
+		tr.Score.Detail = hostScoreDetail
+		tr.Unpinned = hostTrialUnpinned(CopyReceipt{ModelServed: tr.ModelServed, HarnessVersion: tr.HarnessVersion,
+			ModelTimeMS: tr.ModelTimeMS, GateWaitMS: tr.GateWaitMS}, true)
+	}
 	return tr
 }
 

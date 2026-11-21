@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -155,6 +156,25 @@ type TrialRecord struct {
 	ModelTimeMS int64             `json:"model_time_ms"`
 	GateWaitMS  int64             `json:"gate_wait_ms"`
 	Unpinned    []oracle.Unpinned `json:"unpinned"`
+}
+
+// The fields of a trial, beside the fixed lists of a call's record, that a
+// trial lists in Unpinned where only its maker reported them: its hidden
+// tests' result (TrialScore), the receipts of its calls (TrialCalls) and its
+// times (TrialTimes). A copy made in the host's harness lists the first as
+// self-reported, the second as not reported, since the host hands back no
+// call receipts, and the third as self-reported where the host gave them.
+const (
+	TrialScore oracle.Field = "trial.score"
+	TrialCalls oracle.Field = "trial.calls"
+	TrialTimes oracle.Field = "trial.times"
+)
+
+// HostReportedScore reports whether the copy's hidden tests' result is its
+// maker's own report, which abcd neither placed nor ran: a score its trial
+// lists as self-reported.
+func (t TrialRecord) HostReportedScore() bool {
+	return t.Score != nil && slices.Contains(t.Unpinned, oracle.Unpinned{Field: TrialScore, Reason: oracle.SelfReported})
 }
 
 // Attempted reports whether the copy counts as an attempt of its cell: every

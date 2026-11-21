@@ -36,6 +36,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 )
 
 // ReportSchema is the report's schema version.
@@ -79,11 +80,14 @@ type CodeCell struct {
 	Runner string `json:"runner"`
 	// PassAt1 counts the passes and the failures; a copy never started, or
 	// one set apart by the compliance check, is in neither.
-	PassAt1    PassRate  `json:"pass_at_1"`
-	PassHatK   []PassHat `json:"pass_hat_k"`
-	NotStarted int       `json:"not_started"`
-	Excluded   int       `json:"excluded"`
-	Unexamined int       `json:"unexamined"`
+	PassAt1 PassRate `json:"pass_at_1"`
+	// HostReported counts the attempts in PassAt1 whose hidden tests' result
+	// is the host's report, which abcd neither placed nor ran.
+	HostReported int       `json:"host_reported"`
+	PassHatK     []PassHat `json:"pass_hat_k"`
+	NotStarted   int       `json:"not_started"`
+	Excluded     int       `json:"excluded"`
+	Unexamined   int       `json:"unexamined"`
 	// NotHandedBack, AwaitingRunner, Refused and NeverHandedOff count the
 	// copies with no trial, by where they stand; none is in any rate.
 	NotHandedBack  int         `json:"not_handed_back"`
@@ -158,6 +162,10 @@ type Comparison struct {
 	MinDetectable float64 `json:"min_detectable"`
 	Needed        int     `json:"needed"`
 	Ranked        bool    `json:"ranked"`
+	// HostReported is whether either cell's pass rate rests on hidden
+	// tests' results the host reported; its Note then says so, so no
+	// ranking on them is shown unqualified.
+	HostReported bool `json:"host_reported"`
 	// Ahead is the cell whose pass rate is ahead where the comparison is
 	// ranked and the difference is past chance; "" otherwise.
 	Ahead string `json:"ahead"`
@@ -689,6 +697,7 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 		row := CodeCell{Cell: d.ID, Model: pin.Model, Source: pin.Source, Runner: pin.Runner}
 		passed, counted := 0, 0
 		var model, gates int64
+		var hostReported []int
 		for _, t := range ts {
 			switch {
 			case !t.Attempted():
@@ -702,6 +711,9 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 				counted++
 			case t.Failed():
 				counted++
+			}
+			if (t.Passed() || t.Failed()) && t.HostReportedScore() {
+				hostReported = append(hostReported, t.Key.Repeat)
 			}
 			if t.Attempted() {
 				model += t.ModelTimeMS
@@ -717,6 +729,11 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 			row.Reviews = *r
 		}
 		row.Costs = costs(pin.Source, ts, passed)
+		row.HostReported = len(hostReported)
+		if len(hostReported) > 0 {
+			b.limit("the hidden tests' results of %s on %s (%s) are the host's report: abcd neither placed nor ran those tests, so the cell's pass rate, and any comparison on it, rests on the host's word", task.ID, d.ID, repeatList(hostReported))
+			b.improve("run %s's hidden tests through abcd, so %s's pass rate is measured rather than reported", task.ID, d.ID)
+		}
 		b.unreturnedInto(task.ID, &row)
 		b.cellLimits(task.ID, row)
 		cr.Cells = append(cr.Cells, row)
@@ -792,6 +809,16 @@ func comparable(src Source) string {
 // compare sets two builder cells' pass rates against each other, ranked only
 // at the repeats the power estimate asks for.
 func (b *reportBuilder) compare(task string, a, c CodeCell) Comparison {
+	cmp := b.comparison(task, a, c)
+	if a.HostReported > 0 || c.HostReported > 0 {
+		cmp.HostReported = true
+		cmp.Note += "; its pass rates rest on hidden tests' results that are the host's report, which abcd neither placed nor ran"
+	}
+	return cmp
+}
+
+// comparison is compare's figures and note, before any is qualified.
+func (b *reportBuilder) comparison(task string, a, c CodeCell) Comparison {
 	cmp := Comparison{A: a.Cell, B: c.Cell, Kind: "model", RepeatsA: a.PassAt1.Attempts, RepeatsB: c.PassAt1.Attempts}
 	if a.Source != c.Source {
 		cmp.Kind = "model and harness"
@@ -965,10 +992,13 @@ func (b *reportBuilder) runLimits() {
 		b.limit("%s could not be pinned (%s)", u.Field, u.Reason)
 		b.improve("pin %s in the next run, or say why it cannot be", u.Field)
 	}
-	host, examined := false, false
+	host, examined, noCalls := false, false, false
 	for _, t := range b.trials {
 		if t.Source == SourceHost {
 			host = true
+		}
+		if slices.Contains(t.Unpinned, oracle.Unpinned{Field: TrialCalls, Reason: oracle.NotReported}) {
+			noCalls = true
 		}
 		if t.Compliance != nil {
 			examined = true
@@ -981,6 +1011,9 @@ func (b *reportBuilder) runLimits() {
 	}
 	if host {
 		b.limit("copies made in the host's harness ran where abcd neither launches nor confines them, so their isolation is asserted, not proven")
+	}
+	if noCalls {
+		b.limit("copies made in the host's harness carry no call receipts: the model served, the harness version and the times of each are the host's word, marked self-reported in its trial, and its tokens and cost are not reported")
 	}
 	if examined {
 		b.limit("no runner reports what a copy reached on the network, so the run's network policy is asserted for every copy, not examined")

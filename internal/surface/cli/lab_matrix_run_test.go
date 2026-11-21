@@ -149,6 +149,7 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 			Compliance *struct {
 				Checks []struct{ Rule, State string } `json:"checks"`
 			} `json:"compliance"`
+			Unpinned []struct{ Field, Reason string } `json:"unpinned"`
 		}
 		if code != 0 || json.Unmarshal([]byte(out), &trial) != nil || trial.Compliance == nil || len(trial.Compliance.Checks) != 4 {
 			t.Fatalf("handing back %s (exit %d): %s%s", h.key(), code, out, errOut)
@@ -159,6 +160,14 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 		}
 		if trial.Status != want {
 			t.Errorf("copy %s is %s; want %s", h.key(), trial.Status, want)
+		}
+		// Its hidden tests' result is the host's word, and its trial says so.
+		marked := false
+		for _, u := range trial.Unpinned {
+			marked = marked || u.Field == "trial.score" && u.Reason == "self_reported"
+		}
+		if !marked {
+			t.Errorf("copy %s's trial does not mark its score as the host's report: %+v", h.key(), trial.Unpinned)
 		}
 		if _, err := os.Stat(labState(t, home, id, run, "trials", "feature-a", "host-big", itoa(r)+".json")); err != nil {
 			t.Errorf("copy %s's trial is not written: %v", h.key(), err)
@@ -416,6 +425,8 @@ func TestAConsentedMatrixRunGoesFromItsClonesToItsReportThroughTheCLI(t *testing
 	}
 	if code, out, _ := runLab(t, "lab", "matrix", "report", id, run); code != 0 || !strings.Contains(out, "awaiting its runner") || !strings.Contains(out, "never handed back") {
 		t.Errorf("the printed report does not say which copies wait for a runner or were never handed back:\n%s", out)
+	} else if !strings.Contains(out, "3 the host's report") || !strings.Contains(out, "are the host's report") {
+		t.Errorf("the printed report does not say host-big's results are the host's report:\n%s", out)
 	}
 	for _, c := range rep.Code[0].Cells {
 		if c.Cell == "host-big" && (c.PassAt1.Passed != 2 || c.PassAt1.Attempts != 3) {

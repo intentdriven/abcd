@@ -28,7 +28,9 @@ func newLabMatrixReportCommand(asJSON *bool) *cobra.Command {
 			"interval, its pass^k, what the reviewers caught, its cost per passing build\n" +
 			"by source and its model time apart from gate waits; each pair of builders is\n" +
 			"ranked only at the repeats its power estimate asks for, otherwise it states\n" +
-			"the smallest difference it could have detected. A written doc gives each\n" +
+			"the smallest difference it could have detected. A pass rate resting on hidden\n" +
+			"tests' results the host reported counts them, a limitation names their\n" +
+			"copies, and a comparison on them says so. A written doc gives each\n" +
 			"model's rating from all the judges' rankings with its interval, whether it is\n" +
 			"separable, the judges' agreement and each copy's length; below three judges,\n" +
 			"each judge's ranking and the good-enough counts only. A check gives the table\n" +
@@ -165,6 +167,9 @@ func renderMatrixReport(w io.Writer, r matrix.Report) {
 			fmt.Fprintf(w, "    pass@1 %d of %d: %s", cell.PassAt1.Passed, cell.PassAt1.Attempts, rate(cell.PassAt1.Rate, cell.PassAt1.Interval))
 			for _, h := range cell.PassHatK {
 				fmt.Fprintf(w, "; pass^%d %.2f", h.K, h.Value)
+			}
+			if cell.HostReported > 0 {
+				fmt.Fprintf(w, "; of its hidden tests' results, %d the host's report", cell.HostReported)
 			}
 			fmt.Fprintf(w, "\n    apart: %d never started, %d unexamined, %d excluded\n", cell.NotStarted, cell.Unexamined, cell.Excluded)
 			if n := cell.NotHandedBack + cell.AwaitingRunner + cell.Refused + cell.NeverHandedOff; n > 0 {

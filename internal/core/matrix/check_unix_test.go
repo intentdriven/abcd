@@ -121,8 +121,11 @@ func TestACheckCopysHandBackDeletesItsLeftoverCloneOnRetry(t *testing.T) {
 	// A hand-back that lost the trial's write to another says so, rather
 	// than that it keeps a clone the other deleted; one whose trial is not
 	// written keeps its clone.
-	if err := lostTrialWrite(r.Root(), m.ID, rec.RunID, key, fs.ErrExist); !strings.Contains(err.Error(), "another hand-back") || strings.Contains(err.Error(), "keeps its clone") {
-		t.Errorf("the loser's refusal = %v; want it to name the other hand-back's trial", err)
+	// It promises no retry: the other hand-back deletes the clone, and a
+	// hand-back once the clone is gone is refused.
+	if err := lostTrialWrite(r.Root(), m.ID, rec.RunID, key, fs.ErrExist); !strings.Contains(err.Error(), "another hand-back") || strings.Contains(err.Error(), "keeps its clone") ||
+		strings.Contains(err.Error(), "returns that trial") || !strings.Contains(err.Error(), "nothing more to hand back") {
+		t.Errorf("the loser's refusal = %v; want it to name the other hand-back's trial and promise no retry", err)
 	}
 	if err := lostTrialWrite(r.Root(), m.ID, rec.RunID, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}, fs.ErrPermission); !strings.Contains(err.Error(), "keeps its clone") {
 		t.Errorf("a refused trial write = %v; want it to keep its clone", err)
