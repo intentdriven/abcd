@@ -1343,9 +1343,10 @@ the tool's compatible range, and is never changed: when the bin folder already
 holds a program of that name abcd did not install, it installs nothing and says
 why. A copy `PATH` finds inside the directory the verb runs from, or inside any
 git working tree that directory lies in (the whole checkout from a subdirectory,
-a superproject as well, and from a linked worktree its repository's main
-checkout, read from the worktree's `.git` file and its git directory's
-`commondir`; the account's own home aside), is repository
+a superproject as well, and every other working tree of the same repository:
+its main checkout and each linked worktree, read from the worktree's `.git`
+file, its git directory's `commondir` and the shared git directory's
+`worktrees/<name>/gitdir` files; the account's own home aside), is repository
 content: it is never run, never counts as installed, and its gap stays. The
 record is read only from a home the home rule admits
 (`gitutil.HomeInsideWorkingTree`): under a `HOME` inside a git working tree that

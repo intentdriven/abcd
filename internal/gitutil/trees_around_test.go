@@ -115,3 +115,71 @@ func TestALinkedWorktreesMainCheckoutIsNamed(t *testing.T) {
 		t.Errorf("WorkingTreesAround with the main checkout as the account home = %q, want %q", got, want)
 	}
 }
+
+// TestEveryLinkedWorktreeOfTheRepositoryIsNamed: from inside one linked
+// worktree, and from the main checkout, WorkingTreesAround names every linked
+// worktree of the same repository, read from the shared git directory's
+// worktrees/<name>/gitdir files without starting git. An entry whose working
+// tree is gone, or whose gitdir does not name a .git, adds nothing, and the
+// account's own home is not read for its worktrees.
+func TestEveryLinkedWorktreeOfTheRepositoryIsNamed(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	common := filepath.Join(main, ".git")
+	write := func(p, s string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	worktree := func(name, dir string) {
+		t.Helper()
+		admin := filepath.Join(common, "worktrees", name)
+		write(filepath.Join(dir, ".git"), "gitdir: "+admin+"\n")
+		write(filepath.Join(admin, "commondir"), "../..\n")
+		write(filepath.Join(admin, "gitdir"), filepath.Join(dir, ".git")+"\n")
+	}
+	a := filepath.Join(base, "trees", "a")
+	b := filepath.Join(base, "elsewhere", "b")
+	worktree("a", a)
+	worktree("b", b)
+	sub := filepath.Join(a, "pkg")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A worktree removed without pruning, and an entry naming no .git.
+	write(filepath.Join(common, "worktrees", "gone", "gitdir"), filepath.Join(base, "gone", ".git")+"\n")
+	write(filepath.Join(common, "worktrees", "odd", "gitdir"), base+"\n")
+
+	accountHomeIs(t, filepath.Join(base, "nobody"), nil)
+	if got, want := gitutil.WorkingTreesAround(sub), []string{a, main, b}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(inside linked worktree a) = %q, want %q", got, want)
+	}
+	if got, want := gitutil.WorkingTreesAround(main), []string{main, a, b}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(the main checkout) = %q, want %q", got, want)
+	}
+
+	// A bare repository's worktrees name each other, with no main checkout.
+	bare := filepath.Join(base, "repo.git")
+	c, d := filepath.Join(base, "bare", "c"), filepath.Join(base, "bare", "d")
+	for name, dir := range map[string]string{"c": c, "d": d} {
+		admin := filepath.Join(bare, "worktrees", name)
+		write(filepath.Join(dir, ".git"), "gitdir: "+admin+"\n")
+		write(filepath.Join(admin, "commondir"), "../..\n")
+		write(filepath.Join(admin, "gitdir"), filepath.Join(dir, ".git")+"\n")
+	}
+	if got, want := gitutil.WorkingTreesAround(c), []string{c, d}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(a bare repository's worktree) = %q, want %q", got, want)
+	}
+
+	accountHomeIs(t, main, nil)
+	if got := gitutil.WorkingTreesAround(main); len(got) != 0 {
+		t.Errorf("WorkingTreesAround(the main checkout as the account home) = %q, want none", got)
+	}
+}

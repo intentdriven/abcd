@@ -2017,8 +2017,8 @@ back.
 
 A command after `--` named by a path runs as given. One named by its name alone
 runs as `PATH` finds it, unless that program lies inside the working tree the
-waiter runs from or any working tree around it (from a linked worktree, its
-repository's main checkout too): then the waiter exits 127 at once, before any
+waiter runs from or any working tree around it (every other working tree of
+the same repository too: its main checkout and each linked worktree): then the waiter exits 127 at once, before any
 wait, names why, and runs nothing. A drive's lane preflight starts `make
 preflight` this way, in the lane's checkout.
 

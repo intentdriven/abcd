@@ -77,3 +77,43 @@ func TestLookPathRefusesAProgramInTheMainCheckoutFromALinkedWorktree(t *testing.
 		t.Errorf("LookPath with a linked worktree as the working directory = %v, want ErrInsideWorkingTree", err)
 	}
 }
+
+// TestLookPathRefusesAProgramInAnotherLinkedWorktree: run from one linked
+// worktree, LookPath holds a program to every other linked worktree of the
+// same repository as well, so a program in a sibling worktree's bin folder,
+// put on PATH while working there, is refused here too.
+func TestLookPathRefusesAProgramInAnotherLinkedWorktree(t *testing.T) {
+	r := newRig(t)
+	common := filepath.Join(r.repo, ".git")
+	base := t.TempDir()
+	here, there := filepath.Join(base, "here"), filepath.Join(base, "there")
+	files := map[string]string{}
+	for name, dir := range map[string]string{"here": here, "there": there} {
+		admin := filepath.Join(common, "worktrees", name)
+		files[filepath.Join(dir, ".git")] = "gitdir: " + admin + "\n"
+		files[filepath.Join(admin, "commondir")] = "../..\n"
+		files[filepath.Join(admin, "gitdir")] = filepath.Join(dir, ".git") + "\n"
+	}
+	prog := filepath.Join(there, "bin", "make")
+	files[prog] = "#!/bin/sh\n"
+	for p, s := range files {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(s), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	accountHomeIs(t, r.home)
+	withHome(t, r.home, func(string) (string, error) { return prog, nil })
+	wd := workingDir
+	t.Cleanup(func() { workingDir = wd })
+	workingDir = func() (string, error) { return t.TempDir(), nil }
+
+	if _, err := LookPath("make", here); !errors.Is(err, ErrInsideWorkingTree) {
+		t.Errorf("LookPath from a linked worktree for a program in another = %v, want ErrInsideWorkingTree", err)
+	}
+	if _, err := LookPath("make", r.repo); !errors.Is(err, ErrInsideWorkingTree) {
+		t.Errorf("LookPath from the main checkout for a program in a linked worktree = %v, want ErrInsideWorkingTree", err)
+	}
+}
