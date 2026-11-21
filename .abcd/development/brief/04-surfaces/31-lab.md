@@ -25,6 +25,11 @@ the verb encodes is the discipline record
 | `sweep` | gate | shipped |
 | `harvest` | — | shipped |
 | `matrix` | — | shipped |
+| `matrix copy` | — | shipped |
+| `matrix review` | — | shipped |
+| `matrix judge` | — | shipped |
+| `matrix report` | — | shipped |
+| `matrix rerun` | — | shipped |
 
 ## A model matrix run
 
