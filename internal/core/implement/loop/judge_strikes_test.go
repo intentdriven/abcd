@@ -83,8 +83,8 @@ func TestAStrikeKeepsItsLocationAndReasonOnceTheNextRoundOpens(t *testing.T) {
 // round still holds its findings the judge's strikes are taken from them, and
 // where they were dropped the judge keeps its count alone.
 func TestAVersion28FileReadsAsTheCurrentVersion(t *testing.T) {
-	if SchemaVersion != schemaVersionUnreasoned+1 || schemaVersionUnreasoned != schemaVersionUnjudged+1 {
-		t.Fatalf("a judge's kept strikes are the version after %d: %d", schemaVersionUnreasoned, SchemaVersion)
+	if schemaVersionUnbundled != schemaVersionUnreasoned+1 || schemaVersionUnreasoned != schemaVersionUnjudged+1 {
+		t.Fatalf("a judge's kept strikes are the version after %d: %d", schemaVersionUnreasoned, schemaVersionUnbundled)
 	}
 	for _, next := range []bool{false, true} {
 		repo, id := struckThenFixed(t, next)

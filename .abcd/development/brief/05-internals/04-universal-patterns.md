@@ -71,15 +71,15 @@ Examples:
 
 ## 3. Native by default, peer interop over conventions and MCP
 
-abcd runs fully on its own native code with no peer installed. When a peer tool is present — the companion harness above all — abcd interoperates with it as a **peer over shared conventions and MCP**, never a code dependency in either direction (adr-24). Interoperation is a capability, never a prerequisite.
+abcd runs fully on its own native code with no peer installed. When a peer tool is present — the companion harness above all — abcd interoperates with it as a **peer over shared conventions**, and over MCP once abcd has its MCP front door (a design target), never a code dependency in either direction (adr-24). Interoperation is a capability, never a prerequisite.
 
 ```
 native default (abcd's own core)
-    └─ when a peer is present → interoperate over conventions (shared on-disk shapes) + MCP
+    └─ when a peer is present → interoperate over conventions (shared on-disk shapes) + MCP (design target)
 ```
 
 - **Conventions** are the ground-level contract: shared on-disk markdown shapes — the `ccpm` spec/task layout (adr-26) — that either tool reads and writes without linking to the other.
-- **MCP** is the runtime contract: when both are present, abcd and the companion harness interoperate as two independent MCP servers, each a front door over its own core (adr-23).
+- **MCP** *(design target)* is the intended runtime contract: once abcd has its MCP front door ([`../06-delivery/01-build-sequence.md`](../06-delivery/01-build-sequence.md) marks it a design target, and `internal/surface/` holds no MCP door), abcd and the companion harness will interoperate as two independent MCP servers, each a front door over its own core (adr-23). Today abcd and a peer interoperate over shared on-disk conventions only.
 - **Spec/task creation**: `/abcd:intent plan <itd-N>` scaffolds the bidirectionally-linked spec in the native minimal spec store (adr-26); the canonical create `/abcd:intent "<text>"` only writes a draft. When the companion harness's `ccpm` is wired as the deeper backend, the same on-disk shape is read and written at the convention level.
 - **Future**: any abcd capability with a strong peer counterpart interoperates at the convention/MCP boundary, never by importing or vendoring it.
 

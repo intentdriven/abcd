@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 	"github.com/intentdriven/abcd/internal/core/site"
 )
 
@@ -1029,12 +1030,20 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// The scan runs over the unfenced body JOINED, not line by line, because
 	// `<h2>` and its text and its close need not share a line. The match offset
 	// maps back to a line so the refusal still names one.
-	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, offset, headings)
+	//
+	// An opener written as code is text, so both raw scans skip one standing in
+	// a code span the page is sure of (floorCodeSpans), as they skip one on a
+	// fenced line (iss-2611040555367558).
+	code := floorCodeSpans(lines, bodyStart(hasBlock, fmClose, len(lines)))
+	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, code, offset, headings)
 	if ok {
 		if want, m := namesExcludedHeading(title, headings); m != noHeading {
+			// The title is quoted by its opening words alone. It can run to the
+			// end of the document, and a refusal that quoted it whole carried
+			// most of the file (iss-2611040555367558); the line names where it is.
 			return fmt.Errorf("reading: %s carries the excluded heading %q as raw HTML at line %d; "+
 				"the floor names %q, and a heading is excluded however it is spelled",
-				rel, title, line, want)
+				rel, mdrender.Clip(title), line, want)
 		}
 	}
 
@@ -1043,7 +1052,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// that admitted the heading sitting under it (iss-2608301421380392). It is
 	// asked before the budget below is, so a document that is both is refused
 	// by the shape it has rather than by what reading it would cost.
-	if line, ok := unboundedRawHeading(lines, fenced, offset); ok {
+	if line, ok := unboundedRawHeading(lines, fenced, code, offset); ok {
 		return fmt.Errorf("reading: %s opens a raw heading element that is never closed at line "+
 			"%d, and nothing bounds its title short of the end of the document; the title is "+
 			"refused rather than read over the remainder", rel, line)
@@ -1663,7 +1672,11 @@ func maskAngles(out []byte, from, to int) {
 //
 // The fourth return reports that the titles overlapped past the read budget
 // (titleReadBudget); the scan stops there, and the caller refuses.
-func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[string]bool) (int, string, bool, bool) {
+//
+// An opener inside a code span the page is sure of (code) is skipped the same
+// way: a renderer shows it as text, so it opens no heading, and reading it as
+// one took the rest of the document for its title (iss-2611040555367558).
+func rawHTMLHeading(lines []string, fenced []bool, code codeSpans, offset int, headings map[string]bool) (int, string, bool, bool) {
 	raw := strings.Join(lines, "\n")
 	lineBounded, _ := maskMarkupData(raw, true)
 	unbounded, _ := maskMarkupData(raw, false)
@@ -1683,7 +1696,7 @@ func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[stri
 		at := lineCounter{text: text}
 		for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
 			line := at.at(open[0])
-			if line < offset || (line < len(fenced) && fenced[line]) {
+			if line < offset || (line < len(fenced) && fenced[line]) || code.holds(line, open[0]) {
 				continue
 			}
 			name := openerName(text, open)
@@ -2031,7 +2044,7 @@ func htmlBlockInterior(body []string) []int {
 		}
 		switch {
 		case open && terminator == "":
-			open = strings.TrimSpace(ln) != ""
+			open = !mdrecord.BlankLine(ln)
 		case open:
 			hay := ln
 			if raw {
@@ -2053,6 +2066,123 @@ func htmlBlockInterior(body []string) []int {
 		}
 	}
 	return inside
+}
+
+// blockMarkersRe matches the run of indentation, blockquote markers and list
+// markers a line opens with, nestedHeadingRe's prefix: an HTML block opens
+// after them as it opens at column 0.
+var blockMarkersRe = regexp.MustCompile(`^[ \t]*(?:(?:>|[-*+][ \t]|[0-9]{1,9}[.)][ \t])[ \t]*)*`)
+
+// codeSpans is, per line of a document, the byte ranges inside an inline code
+// span the floor treats as text, with each line's offset in the joined
+// document, so a match offset in the joined text can be asked about.
+type codeSpans struct {
+	spans  [][][2]int
+	starts []int
+}
+
+// holds reports whether the byte at offset of the joined document, which sits
+// on line, lies inside one of that line's code spans.
+func (c codeSpans) holds(line, offset int) bool {
+	if line >= len(c.spans) || len(c.spans[line]) == 0 {
+		return false
+	}
+	return mdrecord.InAnyRange(c.spans[line], offset-c.starts[line])
+}
+
+// floorCodeSpans reports the code spans of the body from start on that a raw
+// heading scan may read as text (iss-2611040555367558).
+//
+// The spans are mdrecord's page reading (ReadPage): paired on one line by the
+// tree's one pairer, outside a comment and a fence, and none on a line below a
+// backtick run the page might pair over the line break, nor from the line where
+// the page can be read more than one way.
+//
+// That pairer reads no inline markup, while a renderer reads a tag, an
+// autolink, a link's destination and title, an escape, an entity, a table
+// row's cells and a GFM bare autolink before a code span, so a backtick inside
+// one opens no span to it while the pairer pairs it with a later backtick.
+// Each round of naming those constructs found another, so the floor names
+// instead what a paragraph must be for its spans to be trusted. It is an
+// allow-list: the spans of a paragraph, its lines up to the next blank line,
+// are trusted only when the paragraph is plain, and no span is trusted in any
+// other. A paragraph is plain when every byte of its lines outside the page's
+// spans, after each line's leading indentation and list and blockquote
+// markers, is none of `<`, `>`, `[`, `]`, `|`, `\` and `&`, and the bytes
+// outside the spans hold neither `://` nor `www.`, in any case. The scope is the paragraph,
+// not the line, because a link title may run over a line break.
+//
+// A renderer parses no code span inside an HTML block, where the backticks are
+// literal and a tag between them is markup, so a paragraph holding a line that
+// opens an HTML block or sits inside one is not plain either. The block is
+// htmlBlockInterior's, asked twice: as the lines stand, and with each line's
+// list and blockquote markers removed, because a block also opens after a
+// marker and the interior walk reads none.
+//
+// A span not trusted leaves its paragraph read whole, which can only
+// over-refuse, and it does: a backticked opener such as `<h1>` in a paragraph
+// that also holds a link, a tag, a table cell, an entity, an escape or a URL is
+// refused as a raw heading, as it was before the floor skipped code at all. A
+// full reading, which would trust such a span, needs a real Markdown parser,
+// and adding one is a dependency the person signs off (iss-2608220750025153).
+func floorCodeSpans(lines []string, start int) codeSpans {
+	c := codeSpans{spans: make([][][2]int, len(lines)), starts: make([]int, len(lines))}
+	at := 0
+	for i, ln := range lines {
+		c.starts[i] = at
+		at += len(ln) + 1
+	}
+	if start >= len(lines) {
+		return c
+	}
+	body := lines[start:]
+	bare := make([]string, len(body))
+	for i, ln := range body {
+		bare[i] = ln[len(blockMarkersRe.FindString(ln)):]
+	}
+	inside, bareInside := htmlBlockInterior(body), htmlBlockInterior(bare)
+	page := mdrecord.ReadPage(body)
+	blank := func(i int) bool { return mdrecord.BlankLine(body[i]) }
+	for i := 0; i < len(body); {
+		if blank(i) {
+			i++
+			continue
+		}
+		end, plain := i, true
+		for ; end < len(body) && !blank(end); end++ {
+			if inside[end] >= 0 || bareInside[end] >= 0 || htmlBlockStartRe.MatchString(bare[end]) ||
+				!plainOutside(body[end], len(body[end])-len(bare[end]), page.Spans[end]) {
+				plain = false
+			}
+		}
+		for ; plain && i < end; i++ {
+			if len(page.Spans[i]) > 0 {
+				c.spans[start+i] = page.Spans[i]
+			}
+		}
+		i = end
+	}
+	return c
+}
+
+// plainOutside reports whether line[from:], outside the spans, is plain text
+// to floorCodeSpans: none of the bytes and sequences that open inline markup a
+// renderer reads before a code span. The bytes outside the spans are read
+// joined, so a sequence split by a span is still found, which can only refuse.
+func plainOutside(line string, from int, spans [][2]int) bool {
+	var out strings.Builder
+	for _, sp := range spans {
+		if sp[0] > from {
+			out.WriteString(line[from:sp[0]])
+		}
+		from = max(from, sp[1])
+	}
+	if from < len(line) {
+		out.WriteString(line[from:])
+	}
+	text := out.String()
+	return !strings.ContainsAny(text, "<>[]|\\&") &&
+		!strings.Contains(text, "://") && !strings.Contains(strings.ToLower(text), "www.")
 }
 
 // displacedFrontmatter reports a delimited block that does not open at line 0
@@ -2099,14 +2229,18 @@ func displacedFrontmatter(lines []string) (int, string, bool) {
 // The document is its own only reading here, so every opener's `>` is a `>` in
 // the reading its bounds come from and titleEnds never walks: the scan is one
 // pass to index and a lookup per opener.
-func unboundedRawHeading(lines []string, fenced []bool, offset int) (int, bool) {
+//
+// An opener in a code span the page is sure of opens nothing, as in
+// rawHTMLHeading: a span naming the tag at the end of a document is not a
+// heading left open.
+func unboundedRawHeading(lines []string, fenced []bool, code codeSpans, offset int) (int, bool) {
 	text := strings.Join(lines, "\n")
 	bounds := indexRawHeadingBounds(text)
 	budget := newTitleReadBudget(len(text))
 	at := lineCounter{text: text}
 	for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
 		line := at.at(open[0])
-		if line < offset || (line < len(fenced) && fenced[line]) {
+		if line < offset || (line < len(fenced) && fenced[line]) || code.holds(line, open[0]) {
 			continue
 		}
 		name := openerName(text, open)

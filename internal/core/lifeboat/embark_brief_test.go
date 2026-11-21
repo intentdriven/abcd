@@ -1,7 +1,9 @@
 package lifeboat
 
 import (
+	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,5 +53,48 @@ func TestBriefEmbarkChapterPlacesTheExemptionAfterTheProbeHeading(t *testing.T) 
 		if !strings.Contains(body, want) {
 			t.Errorf("%s does not say %q about where the exemption prints", rel, want)
 		}
+	}
+}
+
+// The embark chapter's packing-history example once showed `"dest":
+// "../abcd-lifeboat"` (iss-2611060809546274), but Pack resolves the destination
+// before it logs it, so the field never holds a relative path
+// (TestPackVoyageRecordsTheResolvedDest holds the code to that). The example
+// must show an absolute path, and the chapter must say the field holds the
+// resolved destination.
+func TestBriefEmbarkHistoryExampleShowsTheResolvedDest(t *testing.T) {
+	const rel = ".abcd/development/brief/04-surfaces/03-embark.md"
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	text := string(raw)
+	const lead = "`disembark/history.jsonl` is append-only"
+	i := strings.Index(text, lead)
+	if i < 0 {
+		t.Fatalf("%s no longer introduces the history example with %q", rel, lead)
+	}
+	rest := text[i:]
+	open := strings.Index(rest, "```json\n")
+	if open < 0 {
+		t.Fatalf("%s has no json example after %q", rel, lead)
+	}
+	rest = rest[open+len("```json\n"):]
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		t.Fatalf("%s: the history example's fence never closes", rel)
+	}
+	dec := json.NewDecoder(strings.NewReader(rest[:end]))
+	dec.DisallowUnknownFields()
+	var e voyageEntry
+	if err := dec.Decode(&e); err != nil {
+		t.Fatalf("%s: the history example is not a voyage entry: %v", rel, err)
+	}
+	if !path.IsAbs(e.Dest) {
+		t.Errorf("%s: the history example's dest is %q; the ledger records the resolved, absolute destination", rel, e.Dest)
+	}
+	body := strings.Join(strings.Fields(rest[end:]), " ")
+	if !strings.Contains(body, "the destination resolved to an absolute path") {
+		t.Errorf("%s does not say the history entry's dest holds the destination resolved to an absolute path", rel)
 	}
 }

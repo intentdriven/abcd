@@ -1,6 +1,7 @@
 package lint_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,6 +106,116 @@ func TestPersonasPageAllowsAQuoteAttributedToARoleAlone(t *testing.T) {
 	for _, want := range []string{"a role alone", "itd-79", "dcn-2610271112330536"} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("05-personas.md does not say %q: a quote may be attributed to a role alone, as itd-79 allows by dcn-2610271112330536:\n%s", want, body)
+		}
+	}
+}
+
+// TestTheProductThinkerQuotesNameTheRegisteredPersona holds the press release
+// and itd-106 to one name for the product-thinker role (iss-2610262031403463):
+// the registry picks the name from the role, so each quote attributed to "a
+// product thinker" names the persona personas.json gives that role, and the
+// two quotes agree.
+func TestTheProductThinkerQuotesNameTheRegisteredPersona(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var want string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "product thinker" {
+				want = p.Name
+			}
+		}
+	}
+	if want == "" {
+		t.Fatal("personas.json gives no persona the \"product thinker\" role hint")
+	}
+
+	for _, rel := range []string{
+		".abcd/development/brief/01-product/01-press-release.md",
+		".abcd/development/intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and.md",
+	} {
+		found := false
+		for i, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+			if !strings.Contains(line, ", a product thinker") {
+				continue
+			}
+			name, ok := lint.PersonaAttribution(line)
+			if !ok {
+				continue
+			}
+			found = true
+			if name != want {
+				t.Errorf("%s:%d attributes the product thinker's quote to %s; personas.json gives the role to %s", rel, i+1, name, want)
+			}
+		}
+		if !found {
+			t.Errorf("%s holds no quote attributed to a named product thinker", rel)
+		}
+	}
+}
+
+// TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint holds the
+// product-thinker glossary entry to the registry (iss-2610262041032173):
+// personas.json gives Iris "product thinker" among its role hints, so the
+// entry's "When NOT to use" no longer calls a persona's role hint an outside
+// job title. It says a persona such as Iris may carry the hint, while the
+// persona stays a modelled archetype and not the role abcd addresses.
+func TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var holder string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "product thinker" {
+				holder = p.Name
+			}
+		}
+	}
+	if holder == "" {
+		t.Fatal("personas.json gives no persona the \"product thinker\" role hint")
+	}
+
+	body := readRepoFile(t, root, ".abcd/development/brief/glossary/core/product-thinker.md")
+	section := body
+	if i := strings.Index(section, "## When NOT to use"); i >= 0 {
+		section = section[i:]
+	} else {
+		t.Fatalf("product-thinker.md has no \"When NOT to use\" section")
+	}
+	if i := strings.Index(section, "## Examples"); i >= 0 {
+		section = section[:i]
+	}
+	flat := strings.Join(strings.Fields(section), " ")
+	if strings.Contains(flat, "outside job title") {
+		t.Errorf("product-thinker.md's \"When NOT to use\" still calls a persona's role hint an outside job title, but personas.json gives %s the \"product thinker\" hint:\n%s", holder, section)
+	}
+	for _, want := range []string{
+		"such as " + holder,
+		"\"product thinker\" among its role hints",
+		"personas.json",
+		"modelled archetype",
+		"not the role abcd addresses",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("product-thinker.md's \"When NOT to use\" does not say %q:\n%s", want, section)
 		}
 	}
 }

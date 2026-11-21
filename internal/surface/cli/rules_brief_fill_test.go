@@ -9,9 +9,10 @@ import (
 
 // The rules verb section of the surfaces brief describes each form of
 // `abcd rules`. Its --prompt bullet describes --fill, the flag that sets the
-// context bracket --prompt shows: the range it takes, and its refusal at
+// context bracket --prompt shows: the range it takes, that it sets the
+// bracket, the unknown-fill form rendered without it, and its refusal at
 // exit 2 without --prompt or outside that range, as rulesCmd enforces it
-// (iss-2611060809025632).
+// (iss-2611060809025632, iss-2611060809405161).
 func TestTheRulesBriefsPromptBulletDescribesFill(t *testing.T) {
 	rel := ".abcd/development/brief/04-surfaces/README.md"
 	raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
@@ -36,6 +37,8 @@ func TestTheRulesBriefsPromptBulletDescribesFill(t *testing.T) {
 	for _, want := range []string{
 		"`--fill <percent-used>`",
 		"0 to 100",
+		"sets that bracket",
+		"without it the diagnostic has no session, so the fill is unknown and it renders the unknown-fill form",
 		"`--fill` without `--prompt`",
 		"exit 2",
 	} {

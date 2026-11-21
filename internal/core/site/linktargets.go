@@ -5,7 +5,8 @@ package site
 // Two things on the site name a page the site build does not write. A
 // composed page links into `/docs/`, in the URL shape siteHref assumes the
 // docs generator serves (a directory URL per page), and the redirect map,
-// copied verbatim from site-src/redirects to `_redirects`, sends every old
+// copied verbatim from site-src/redirects to `_redirects` (with the record's
+// forwards around it where record.elsewhere.forward asks), sends every old
 // docs URL to a `/docs/` route written by hand. `/docs/` is the docs
 // generator's own tree, written into the output after this build, so no gate
 // that reads only what this build wrote can see whether either still lands: a
@@ -107,6 +108,15 @@ func (c *checker) checkLinkTargets() error {
 	case err != nil:
 		return err
 	default:
+		// A build forwarding the record wrote its forwards above the
+		// committed rules (withRecordForwards), so each committed rule sits
+		// that many lines lower here than in the file a finding names.
+		shift := 0
+		if addr := c.manifest.recordForwardTo(); addr != "" {
+			if head := recordForwardsHead(addr); bytes.HasPrefix(data, []byte(head)) {
+				shift = strings.Count(head, "\n")
+			}
+		}
 		for _, r := range parseRedirects(data) {
 			if strings.Contains(r.to, "://") || strings.HasPrefix(r.to, "//") ||
 				strings.ContainsAny(r.to, "*:") {
@@ -120,7 +130,7 @@ func (c *checker) checkLinkTargets() error {
 			if want, ok := c.serves(out, p); !ok {
 				c.fail(CheckLinkTargets, redirectsSourceRel, "",
 					"line %d redirects %s to %s, which names nothing in the built output: there is no %s",
-					r.line, r.from, r.to, want)
+					r.line-shift, r.from, r.to, want)
 			}
 		}
 	}

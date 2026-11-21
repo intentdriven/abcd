@@ -1498,6 +1498,12 @@ func (r cliReference) flagKnown(path, flag string) bool {
 // FAILS, and a baseline entry whose reference has been fixed is reported as
 // shrinkable without failing — growing is refused, shrinking is invited.
 func (c *checker) checkBaseline() error {
+	// A site narrowed to its documentation writes no record export: the
+	// ratchet is measured where the record is built.
+	if addr := c.manifest.recordElsewhere(); addr != "" {
+		c.note(CheckBaseline, ManifestRelPath, "the record is built at %s (record.elsewhere), so this site writes no record export and the ratchet is measured there", addr)
+		return nil
+	}
 	data, err := fsutil.ReadGuarded(filepath.Join(c.outDir, "record.json"), maxOutputPageBytes)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-135, itd-136, itd-137, itd-138]
 related_rfcs: []
-related_adrs: [adr-47, adr-37, adr-38]
+related_adrs: [adr-47, adr-37, adr-38, adr-2610142147242544]
 ---
 
 # ADR-48: The website deploys on release, not on merge
@@ -89,3 +89,7 @@ in the implementation prompt's Part 2
 - The runtime posture matches [adr-38](0038-implicit-checks-are-disk-only.md):
   everything the site knows is injected at build time; the published pages
   make no API calls.
+
+## Amendment of 2026-11-20: the deploy narrows to the documentation
+
+Amended by [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) (spc-2610142146250176). abcd's record is built onto its own GitHub Pages address by the project route, so this deploy narrows to the documentation, its landing page, and the contributors and references pages, and the record's old addresses forward there (dcn-2611201438402486). Both are switches in `.abcd/site.json` (`record.elsewhere.forward` and `record.elsewhere.narrow`), off until the cut-over turns each on, on the person's word. Decisions 1 to 5 stand for what the deploy still builds: on release, from the tag and the released bytes, with the labelled preview of `main` and the emergency redeploy from the latest tag.

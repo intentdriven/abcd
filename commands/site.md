@@ -151,6 +151,16 @@ per-record `dates` in `record.json`. A record is dated by the `date` in its
 own frontmatter alone, and one without is undated.
 A build whose `--project` and settings file disagree is refused, both ways.
 
+A composition whose record is built on a project site beside it names that
+address in `"record": {"elsewhere": {"address": "https://<owner>.github.io/<repo>/",
+"forward": false, "narrow": false}}`. `forward` adds a 301 from each of the
+record's addresses (`/record`, `/record/` and every page below it, and
+`/record.json`) to the same path there. `narrow` drops the record's pages and
+`record.json` from the composed build and points its links into the record
+there, keeping the contributors and references pages. Each is off until a
+committed change turns it on, and with both off the composed build is
+unchanged.
+
 Every page opens with one line saying it is the record of an abcd-managed
 repository, linking to that repository. Its words are the `managed_record`
 interface string: on a composed site, the one in `site-src/ui.json`, declared

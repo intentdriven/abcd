@@ -332,6 +332,23 @@ func TestParseIdent(t *testing.T) {
 // including its role asymmetry: a `noreply@` mailbox is a machine as the
 // AUTHOR, but the forge stamps `GitHub <noreply@github.com>` as the committer
 // of every web-UI merge on a human's click, so it passes in that role alone.
+// AINameSpans finds every name on the gate's AI list wherever it stands, in
+// any case and inside a longer word too, so a reader withholding one cannot be
+// passed by fusing it to a letter or a digit; text naming none holds no span.
+func TestAINameSpansFindsAnAINameInsideALongerWord(t *testing.T) {
+	const s = "xclaude, Codex2 and GITHUB COPILOT wrote it; devin-ish too"
+	var got []string
+	for _, sp := range AINameSpans(s) {
+		got = append(got, s[sp[0]:sp[1]])
+	}
+	if want := []string{"claude", "Codex", "GITHUB COPILOT", "devin"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("AINameSpans(%q) = %q; want %q", s, got, want)
+	}
+	if sp := AINameSpans("the guard reads its registry"); len(sp) != 0 {
+		t.Errorf("text naming no AI holds spans %v", sp)
+	}
+}
+
 func TestIsToolIdentity(t *testing.T) {
 	cases := []struct {
 		role        Role

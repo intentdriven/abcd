@@ -143,3 +143,22 @@ reverse it or any other decision.
   but this one: `abcd build <iss-N>` takes an issue the drain hands back as
   `promoted`, naming the intent, which is how an after-merge audit's owed check
   reaches a lane (dcn-2610161428244461).
+
+## Amendment — 2026-11-20: the order chooses each lane's lead once the drain bundles
+
+Step 4 of spc-2611201455051897 (itd-2611201450052326) lets one lane carry
+several eligible issues of one category in one area, as the person ruled
+(dcn-2611201429107457). From that step on, decision 4's order must choose each
+lane's lead, and the lead's members must be drawn after it in drain order from
+its category and area, at either fixable severity. A member may therefore be
+taken ahead of an older issue, or a `nitpick` issue, in another area. Nothing
+does this yet: until that step lands no drain bundles, and decision 4 reads as
+it did.
+
+Members joining only at the lead's severity was rejected, because a member
+would still pass older issues of its own tier in other areas, so it would not
+keep the order either (dcn-2611201515310051). The rule itself is unchanged:
+every member must be eligible by decision 1 on its own, pass its own judgement
+by decision 3, and a bundle opens one lane under the drain's lane cap, so the
+order still decides which lanes open first. This amendment adds to decision 4;
+it reverses no decision.

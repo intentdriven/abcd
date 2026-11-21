@@ -42,16 +42,18 @@ func TestAStartReservesOnlyTheUnlandedStepsPackages(t *testing.T) {
 }
 
 // TestTheFootprintLineStandsWhenNoStepNamesPackages: a spec listing no steps,
-// one whose steps name no packages, one whose step still to build names none
-// beside one that does, and one whose every step landed each reserve the
-// `## Footprint` packages line, as before.
+// one whose steps name no packages, one whose step opened next names none
+// before one that does, and one whose every step landed each reserve the
+// `## Footprint` packages line, as before. A later step that names none
+// leaves the start's reservation to the step opened next
+// (iss-2611201418535169); its own lane widens to the Footprint line.
 func TestTheFootprintLineStandsWhenNoStepNamesPackages(t *testing.T) {
 	const footprint = "\n## Footprint\n\n- packages: internal/widget, commands/\n- tests: the widget\n"
 	for name, steps := range map[string]string{
-		"no steps":          "",
-		"no step packages":  "1. One\n   - landed: #1\n2. Two\n   - tests: the widget\n",
-		"a step names none": "1. One\n   - packages: internal/widget\n2. Two\n   - tests: the widget\n",
-		"every step landed": "1. One\n   - packages: internal/widget\n   - landed: #1\n2. Two\n   - packages: commands\n   - landed: #2\n",
+		"no steps":                 "",
+		"no step packages":         "1. One\n   - landed: #1\n2. Two\n   - tests: the widget\n",
+		"the next step names none": "1. One\n   - tests: the widget\n2. Two\n   - packages: internal/other\n",
+		"every step landed":        "1. One\n   - packages: internal/widget\n   - landed: #1\n2. Two\n   - packages: commands\n   - landed: #2\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(steps)+footprint)
@@ -63,6 +65,28 @@ func TestTheFootprintLineStandsWhenNoStepNamesPackages(t *testing.T) {
 				t.Fatalf("specPackages = %q, want the Footprint line %q", got, want)
 			}
 		})
+	}
+}
+
+// TestALaterStepThatNamesNoPackagesWidensToTheFootprintLineAsItOpens: step 2
+// names no packages, so the start reserves step 1's alone, and stepPackages
+// reads step 2 as the Footprint line, what its lane widens to as it opens.
+func TestALaterStepThatNamesNoPackagesWidensToTheFootprintLineAsItOpens(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. One\n   - packages: internal/widget\n2. Two\n   - tests: the widget\n")+
+		"\n## Footprint\n\n- packages: internal/widget, commands/\n- tests: the widget\n")
+	got, err := specPackages(repo.Root(), "spc-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"internal/widget"}; !slices.Equal(got, want) {
+		t.Fatalf("specPackages = %q, want step 1's %q", got, want)
+	}
+	got, err = stepPackages(repo.Root(), "spc-1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"internal/widget", "commands"}; !slices.Equal(got, want) {
+		t.Fatalf("stepPackages of step 2 = %q, want the Footprint line %q", got, want)
 	}
 }
 

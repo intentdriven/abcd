@@ -155,9 +155,10 @@ func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 }
 
 // letGoAtLand reports whether l waits at land on a reservation its run let go, with no stop's
-// mark standing, whose answer is the run's take-over instead.
+// mark standing, whose answer is the run's take-over instead. A run with members is let go
+// only when no issue of it is held: the lead's and every member's reserved_at are clear.
 func letGoAtLand(repoRoot string, st State, l Lane) bool {
-	if l.Stage != StageLand || st.ReservedAt != nil || !letItsReservationGo(st) {
+	if l.Stage != StageLand || len(st.reservedIssues()) > 0 || st.ReservedAt != nil || !letItsReservationGo(st) {
 		return false
 	}
 	c, err := runControl(repoRoot, st.RunID)

@@ -98,7 +98,8 @@ func renewParkedDue(repoRoot string, now time.Time, passed []string) []string {
 			}
 			read = true
 		}
-		if _, d, lost := renewalDue(run, snap, now); d || lost != "" {
+		// A run with members is due when any issue it holds is (renewalDueAny).
+		if _, d, lost := renewalDue(run, snap, now); d || lost != "" || (run.hasMembers() && renewalDueAny(run, snap, now)) {
 			due = append(due, run)
 		}
 	}
