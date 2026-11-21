@@ -5,6 +5,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -534,8 +535,10 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 // holding any rule or a non-empty `permissions.additionalDirectories`; where
 // it declares hooks, a non-empty `hooks`, since a hook can answer the
 // permission prompts for every call; where it holds any other command claude
-// runs (settingsCommandKeys); and where it turns hooks off, a
-// `disableAllHooks` that is neither false nor null. Every other mode is the
+// runs (settingsCommandKeys); where it turns hooks off, a
+// `disableAllHooks` that is neither false nor null; and where its `env`
+// block sets a variable that changes what claude runs (settingsEnvRefused)
+// or is not an object, whose names the guard cannot read. Every other mode is the
 // permission-mode flag's to judge, and that entry refuses only the bypass.
 // Text that starts as an object and does not parse is refused, since
 // claude's reader may take what Go's refuses, and so is an object holding a
@@ -571,6 +574,17 @@ func settingsUnchecked(got string) bool {
 	if off, ok := root["disableAllHooks"]; ok && off != nil && off != false {
 		return true
 	}
+	if env, ok := root["env"]; ok && env != nil {
+		vars, isObject := env.(map[string]any)
+		if !isObject {
+			return true
+		}
+		for name := range vars {
+			if settingsEnvRefused(name) {
+				return true
+			}
+		}
+	}
 	perms, _ := root["permissions"].(map[string]any)
 	if mode, _ := perms["defaultMode"].(string); strings.EqualFold(mode, "bypassPermissions") {
 		return true
@@ -587,6 +601,20 @@ var settingsCommandKeys = []string{
 	"hooks", "apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "gcpAuthRefresh",
 	"otelHeadersHelper", "statusLine", "fileSuggestion", "processWrapper", "sshHostCommands",
 }
+
+// settingsEnvRefused reports whether a variable a settings `env` block sets
+// is one settingsUnchecked refuses: CLAUDE_CODE_SHELL_PREFIX, a command every
+// shell command claude runs is run behind; any OPENCODE_ variable, opencode's
+// configuration; and every variable a bundled entry watches in the
+// environment of a harness it starts (Pattern.Env), CLAUDE_CONFIG_DIR among
+// them. Names are compared as written, as the environment compares them.
+func settingsEnvRefused(name string) bool {
+	return name == "CLAUDE_CODE_SHELL_PREFIX" || strings.HasPrefix(name, "OPENCODE_") ||
+		slices.Contains(watchedEnv(), name)
+}
+
+// watchedEnv is every variable a bundled entry names (Pattern.Env), read once.
+var watchedEnv = sync.OnceValue(func() []string { return defaultRegistry.envNames() })
 
 // trimSettings is a settings text with leading and trailing space removed as
 // JavaScript's trim removes it, a byte-order mark included.

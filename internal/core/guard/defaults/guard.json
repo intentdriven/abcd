@@ -1437,7 +1437,7 @@
         "command": "claude",
         "flag_values": [{"flag": "--settings", "values": [], "shape": "claude-settings-unchecked"}]
       },
-      "why": "`--settings` that turns the checks off, grants rules or directories, runs a command (`hooks`, `apiKeyHelper`, `statusLine` and the like) or sets `disableAllHooks` starts a claude this guard never sees. Settings it cannot read are refused too: unparsable, not fixed by the line, or a file the line writes, cannot open, or over 256 KiB.",
+      "why": "`--settings` that turns the checks off, grants rules or directories, runs a command (`hooks`, `apiKeyHelper` and the like), or sets `disableAllHooks` or an `env` variable that changes what claude runs starts a claude this guard never sees. Settings it cannot read are refused too: unparsable, unfixed, or a file the line writes or too large.",
       "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its checks on (`claude -p \"<task>\"`, with any `--settings` written out on the line or in a file the line does not write).",
       "fixtures": {
         "known_bad": [
@@ -1449,7 +1449,8 @@
           "claude -p x --settings '{\"apiKeyHelper\":\"./key.sh\"}'",
           "claude -p x --settings '{\"statusLine\":{\"type\":\"command\",\"command\":\"./line.sh\"}}'",
           "claude -p x --settings '{\"disableAllHooks\":true}'",
-          "claude -p x --settings '{\"permissions\":{\"additionalDirectories\":[\"/\"]}}'"
+          "claude -p x --settings '{\"permissions\":{\"additionalDirectories\":[\"/\"]}}'",
+          "claude -p x --settings '{\"env\":{\"CLAUDE_CODE_SHELL_PREFIX\":\"/tmp/wrap\"}}'"
         ],
         "known_good": [
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"default\"}}'",
@@ -1457,6 +1458,7 @@
           "claude -p x --settings '{\"model\":\"sonnet\"}'",
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"acceptEdits\"},\"hooks\":{}}'",
           "claude -p x --settings '{\"disableAllHooks\":false}'",
+          "claude -p x --settings '{\"env\":{\"DEBUG\":\"1\"}}'",
           "abcd capture \"an agent ran claude --settings with bypassPermissions\""
         ]
       }
