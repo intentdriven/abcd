@@ -22,7 +22,9 @@ comes from the repository. This directory holds:
 - `audit/` — CI-only tooling, never part of the site. `overflow-audit.js` drives
   a headless browser over every route at four viewport widths and fails on
   horizontal overflow; it runs in the optional `site-screenshots` workflow and
-  in no build or deploy path. The build reaches it by no path: `copiedSources`
+  in no build or deploy path. `routes.json` names the routes it loads for each
+  build it measures: the documentation site's own pages on the composed build,
+  and the record's pages on a build of the project route. The build reaches it by no path: `copiedSources`
   in `internal/core/site/build.go` is an explicit five-file allowlist and
   nothing walks this directory, so files added here cannot reach the output.
 

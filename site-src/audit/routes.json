@@ -1,0 +1,30 @@
+{
+  "purpose": "The routes overflow-audit.js loads, by the build it measures. CI-only: never served. `docs` is the composed build abcdev.app serves, narrowed to its documentation; `record` is the project route's build of abcd's record, as GitHub Pages serves it. Each route is a page that build writes, which internal/core/site's audit tests check against real builds. `sample` names the export the audit reads and the record types it samples two pages of.",
+  "targets": {
+    "docs": {
+      "routes": [
+        "/",
+        "/contributors/",
+        "/references/"
+      ]
+    },
+    "record": {
+      "routes": [
+        "/",
+        "/record/",
+        "/record/graph/",
+        "/record/foundations/",
+        "/record/development/",
+        "/record/health/"
+      ],
+      "sample": {
+        "export": "record.json",
+        "types": [
+          "adr",
+          "intent",
+          "issue"
+        ]
+      }
+    }
+  }
+}

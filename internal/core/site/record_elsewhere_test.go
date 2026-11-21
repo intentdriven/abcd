@@ -243,16 +243,24 @@ func TestARecordAddressIsAnHTTPSDirectory(t *testing.T) {
 }
 
 // abcd's documentation site names its record at the Pages address the
-// project route builds it onto (spc-2610142146250176 step 3). The two
-// switches are step 4's, turned on in the cut-over's order on the person's
-// word, so this test holds the address and leaves them alone.
+// project route builds it onto (spc-2610142146250176 step 3), and is
+// narrowed to its documentation without forwarding the record's old
+// addresses, as the person ruled for the cut-over (dcn-2611211021237477,
+// dcn-2611211223308175).
 func TestAbcdsDocumentationSiteNamesItsRecordAtItsPagesAddress(t *testing.T) {
 	m, err := LoadManifest(repoRoot())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Record.Elsewhere == nil || m.Record.Elsewhere.Address != abcdRecordAddress {
-		t.Fatalf("%s names its record elsewhere as %+v, want at %s", ManifestRelPath, m.Record.Elsewhere, abcdRecordAddress)
+	e := m.Record.Elsewhere
+	if e == nil || e.Address != abcdRecordAddress {
+		t.Fatalf("%s names its record elsewhere as %+v, want at %s", ManifestRelPath, e, abcdRecordAddress)
+	}
+	if !e.Narrow {
+		t.Errorf("%s does not narrow abcdev.app to its documentation: record.elsewhere.narrow is off", ManifestRelPath)
+	}
+	if e.Forward {
+		t.Errorf("%s forwards the record's old addresses, which the person ruled against: record.elsewhere.forward is on", ManifestRelPath)
 	}
 }
 

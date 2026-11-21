@@ -4,6 +4,12 @@ name: site-screenshots
 # viewport widths and fails if the document scrolls horizontally (itd-135 AC 7,
 # itd-136 AC 8, itd-137 AC 7).
 #
+# It measures two builds. abcdev.app's composed build is narrowed to the
+# documentation (record.elsewhere.narrow in .abcd/site.json) and holds none of
+# the record, so the record's pages are measured on the project route's build,
+# which is what abcd's GitHub Pages site serves (spc-2610142146250176, the
+# cut-over). site-src/audit/routes.json names each build's routes.
+#
 # THIS WORKFLOW IS OPTIONAL AND MUST STAY THAT WAY. It is deliberately a separate
 # file with its own triggers, and it must never be added to a required-checks set
 # or a merge-queue gate. Two reasons, both from the record:
@@ -49,6 +55,8 @@ on:
       - 'site-src/**'
       - 'docs/**'
       - '.abcd/site.json'
+      - '.abcd/project-site.json'
+      - 'site-src/audit/routes.json'
       - '.github/workflows/site-screenshots.yml'
   workflow_dispatch:
 
@@ -67,7 +75,8 @@ permissions:
 jobs:
   screenshots:
     runs-on: ubuntu-latest
-    # Generous: ~80 page renderings plus a browser download on a cold runner.
+    # Generous: ~120 page renderings over two builds plus a browser download on
+    # a cold runner.
     timeout-minutes: 25
     permissions:
       contents: read
@@ -79,9 +88,10 @@ jobs:
       # compromised publish has had time to surface. 1.62.1 was published
       # 2026-07-30. This is the only Node dependency in the repository.
       PLAYWRIGHT_VERSION: '1.62.1'
-      # Loopback only. The server is reachable by the browser in this job and by
-      # nothing else, for the seconds the audit takes.
+      # Loopback only. Each server, one per build, is reachable by the browser in
+      # this job and by nothing else, for the seconds the audit takes.
       AUDIT_PORT: '8080'
+      PAGES_PORT: '8081'
     steps:
       - name: Check out the pull request's merge result
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,12 +114,16 @@ jobs:
         # could contain it.
         run: go build -trimpath -o "$RUNNER_TEMP/abcd" ./cmd/abcd
 
-      - name: Render the site
+      - name: Render both sites
         # No --version or --commit: the defaults read the newest CHANGELOG heading
         # and git HEAD, and nothing in this audit depends on the build stamp.
+        # The project route is built below the base path GitHub Pages serves it
+        # at, so its pages load their assets from where the live site has them.
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/abcd" site build --out "$RUNNER_TEMP/site"
+          mkdir -p "$RUNNER_TEMP/pages"
+          "$RUNNER_TEMP/abcd" site build --project --base-path /abcd/ --out "$RUNNER_TEMP/pages/abcd"
 
       - name: Install Playwright and Chromium (pinned)
         # Installed into RUNNER_TEMP, not the workspace, so the checkout this job
@@ -133,33 +147,48 @@ jobs:
           "$RUNNER_TEMP/node_modules/.bin/playwright" --version
 
       - name: Audit every route for horizontal overflow
-        # Server and audit in ONE step on purpose: a background process started in
-        # an earlier step is not guaranteed to survive into a later one, and a
+        # Servers and audits in ONE step on purpose: a background process started
+        # in an earlier step is not guaranteed to survive into a later one, and a
         # silently dead server would make every route fail to load — which the
-        # script reports as a failure, but for the wrong reason. Started here, it
-        # dies with the step, and the trap closes it on every path.
+        # script reports as a failure, but for the wrong reason. Started here,
+        # they die with the step, and the trap closes them on every path.
         #
         # `python3 -m http.server` is the whole server: it is on the runner image,
         # it resolves a directory to its index.html exactly as the site's URLs
-        # expect, and it adds no dependency. Bound to loopback explicitly.
+        # expect, and it adds no dependency. Bound to loopback explicitly. One
+        # server per build; the project route's is rooted above its base path,
+        # as GitHub Pages serves it. Both audits run whatever the first finds,
+        # and the step fails if either does.
         run: |
           set -euo pipefail
           python3 -m http.server "$AUDIT_PORT" \
             --bind 127.0.0.1 \
             --directory "$RUNNER_TEMP/site" \
             >"$RUNNER_TEMP/http.log" 2>&1 &
-          server=$!
-          trap 'kill "$server" 2>/dev/null || true' EXIT
+          docs_server=$!
+          python3 -m http.server "$PAGES_PORT" \
+            --bind 127.0.0.1 \
+            --directory "$RUNNER_TEMP/pages" \
+            >"$RUNNER_TEMP/http-pages.log" 2>&1 &
+          pages_server=$!
+          trap 'kill "$docs_server" "$pages_server" 2>/dev/null || true' EXIT
 
-          base="http://127.0.0.1:${AUDIT_PORT}"
-          for _ in $(seq 1 50); do
-            if curl -fsS "$base/index.html" >/dev/null 2>&1; then break; fi
-            sleep 0.2
+          docs="http://127.0.0.1:${AUDIT_PORT}"
+          record="http://127.0.0.1:${PAGES_PORT}/abcd"
+          for base in "$docs" "$record"; do
+            for _ in $(seq 1 50); do
+              if curl -fsS "$base/index.html" >/dev/null 2>&1; then break; fi
+              sleep 0.2
+            done
+            curl -fsS "$base/index.html" >/dev/null
           done
-          curl -fsS "$base/index.html" >/dev/null
 
+          failed=0
           NODE_PATH="$RUNNER_TEMP/node_modules" \
-            node site-src/audit/overflow-audit.js "$base" "$RUNNER_TEMP/screenshots"
+            node site-src/audit/overflow-audit.js docs "$docs" "$RUNNER_TEMP/screenshots/docs" || failed=1
+          NODE_PATH="$RUNNER_TEMP/node_modules" \
+            node site-src/audit/overflow-audit.js record "$record" "$RUNNER_TEMP/screenshots/record" || failed=1
+          exit "$failed"
 
       - name: Upload the screenshots
         # always(): the screenshots are most wanted when the audit FAILED — the

@@ -48,9 +48,11 @@ name: site
 # `forward` makes the record's addresses here answer with a 301 to the same path
 # there, and `narrow` drops the record's pages and record.json from this build,
 # keeping the landing page, the docs and the contributors and references pages.
-# Both are off until the cut-over turns each on, forward first, each in a committed
-# change of its own; with both off this deploy builds what it built before. A
-# switch reaches production at the next release, read from the tag's site.json.
+# Here narrow is on and forward is off, by the person's ruling for the cut-over
+# (dcn-2611211021237477, dcn-2611211223308175): this deploy builds the
+# documentation and links the record at its Pages address, and the record's old
+# addresses here are not forwarded. A switch reaches production at the next
+# release, read from the tag's site.json.
 #
 # PUBLICATION. On the release chain this workflow publishes the Release: release.yml
 # leaves it a DRAFT holding the binaries, the plugin archive, install.sh and checksums.txt and
