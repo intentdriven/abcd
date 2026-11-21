@@ -1,7 +1,7 @@
 ---
 term: loop
 bounded_context: core
-definition: The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Three other loops carry the word and are qualified: the autonomous-run loop, the implement loop (bare inside its own chapters once they name it) and the lifeboat round-trip.
+definition: The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Two other loops carry the word and are always qualified: the autonomous-run loop and the lifeboat round-trip.
 aliases: ["the loop", "closed loop", "record loop"]
 forbidden_synonyms: ["workflow", "pipeline", "cycle", "process"]
 status: draft
