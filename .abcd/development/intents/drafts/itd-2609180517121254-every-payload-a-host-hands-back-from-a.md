@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2611211024360819]
 severity: minor
 impact: additive
 origin: researcher-authored
@@ -86,6 +86,15 @@ Development. Names only, no OTel SDK, no Go dependency. The independent
 fit-challenge runs at plan time.
 
 ## Open Questions
+
+**Decided 2026-11-21 (product thinker).** This draft is planned second of
+three: after
+[itd-2611211024360819](../planned/itd-2611211024360819-every-result-abcd-gives-says-how-far-it.md)
+(every result says how far it looked), whose results say abcd was not told
+how hard the host's agents looked until this draft ships, and before
+[itd-173](itd-173-verification-escalates-from-the-built-in.md) (a project
+chooses how hard its work is checked), which cannot check a chosen depth for
+those agents without it.
 
 - (SOTA 2026-10-23) Whether "the number of agents that ran" counts distinct
   agent ids (the top-level one included) or only sub-agents, and whether a

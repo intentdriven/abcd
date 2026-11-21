@@ -2942,3 +2942,20 @@ The proposal: a fully customisable model set, the classes renamed for their use 
 Verdict at filing: FILE-AS-IS, one intent. Typed links: builds on itd-2610240922461281, and reverses its decision 1 (the bundled pair), a reversal flagged for the product thinker to confirm at review, since they asked for the new pair and were not there to confirm the link. No person confirmed this routing: the product thinker asked for the intent to be filed and built within an unattended run and its decisions recorded for review.
 
 Grade: the routing survived two reviewers; the design did not. Both said fix first: a reused class name could change meaning unseen, the claim that stored run state needed no version was false against the state check, and a waiting judge had no stored shape. All three were settled in the intent before planning.
+
+## 2026-11-21: every result says how far it looked (technical facilitator, routing confirmed at the product thinker's sign-off)
+
+The proposal: a switch on sweep and other commands that makes them go into depth and never assume, so both roles can be certain nothing was missed. It went through the ideate gauntlet first, and what is routed here is that verdict's reframing (dcn-2611211021077161), not the switch.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| every result names what the run looked at, what the command is known not to look at and what it could not check, with the depth of judging abcd started itself | capability | itd-2611211024360819 |
+| no general switch for looking harder and no claim of completeness; a cheap gap goes in the default run, a slow or risky check gets a flag named for what it adds | stance | the proposed principle `no-general-depth-switch` |
+| a result states no more than the examination behind it establishes | trust rule | already held by adr-56 and the brief's invariant 16; the intent applies it to every result, with no new ADR |
+| sweep's help says everything and lists five kinds | defect | iss-2611211020368839, fixed in the default run |
+| the shared statement type, the per-command declaration, the committed list of commands not yet declared | plumbing | the spec, carried into the brief's surface chapters |
+| choosing how hard to look, per project | capability | itd-173, unchanged and still a draft |
+
+Verdict at filing: SPLIT, one intent, one principle and one issue, with three existing drafts kept as they are. Typed links: none asserted. The intent applies adr-56 to new ground without changing it, itd-176 can build on it, and itd-173 and itd-2609180517121254 stay the homes of the depth choice and of what a host's payload states. No reversal is flagged.
+
+Grade: the routing survived two reviewers; the design did not. Both said fix first. The record review found the typed link to adr-56 overstated, a criterion that contradicted the payload draft's refusal, and a ruling left uncited. The design review found three blockers: the declaration was a hand-written claim dressed as a derived one, a result with nothing to disclose fell back to a bare clear, and a criterion about the verdict collided with exit statuses a ruling had already fixed. All were settled in the draft before any question went to the product thinker: what a run looked at is derived from the command's own lists, only the known-not-looked-at list is written by hand and it may not be empty, and a gap changes what a result says and records, never its exit status. The product thinker then read the draft in eleven plain lines, let each stand and signed it off the same day, and added one thing to the routing: the two neighbouring drafts are planned after this intent, the host's payload draft (itd-2609180517121254) second and the choice of depth (itd-173) third.

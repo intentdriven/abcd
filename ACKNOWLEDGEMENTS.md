@@ -565,6 +565,29 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   path and fingerprint, and for putting only that file first on PATH. The
   evidence is
   `.abcd/development/research/notes/2026-11-04-repository-tools-on-path-sota.md`.
+- **The auditor's modified opinion (ISA 705 (Revised), IAASB,
+  <https://www.ifac.org/_flysystem/azure-private/publications/files/ISA-705-Revised_0.pdf>);
+  SARIF 2.1.0's notifications (OASIS,
+  <https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/sarif-v2.1.0-os.html>);
+  the assessment report of OWASP ASVS 5.0
+  (<https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x04-Assessment_and_Certification.md>);
+  E. W. Dijkstra's "The Humble Programmer" (EWD340,
+  <https://www.cs.utexas.edu/~EWD/transcriptions/EWD03xx/EWD340.html>); the
+  skip reporting of pytest (<https://docs.pytest.org/en/stable/how-to/skipping.html>)
+  and Semgrep (<https://docs.semgrep.dev/cli-reference>); and the narrowly
+  named check flags of restic
+  (<https://restic.readthedocs.io/en/stable/045_working_with_repos.html>), git
+  fsck (<https://git-scm.com/docs/git-fsck>) and rsync
+  (<https://download.samba.org/pub/rsync/rsync.1>)**
+  — the grounds for a result that says how far it looked
+  (itd-2611211024360819) and for the stance against a general switch for
+  looking harder (`.abcd/development/principles/no-general-depth-switch.md`):
+  a check that could not be made changes what the result says and is given
+  with its reason, skipped work is reported as a count for each reason, and a
+  costly check gets a flag named for what it adds. The evidence is
+  `.abcd/development/research/notes/2026-11-21-result-coverage-statement-sota.md`
+  and the ideate verdict
+  `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-21-ideate-thorough-flag-on-verbs.md`.
 
 ## References & sources
 
