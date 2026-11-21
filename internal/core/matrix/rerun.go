@@ -413,8 +413,20 @@ func (d *runDirReader) ReadState(rel string) ([]byte, error) {
 	return data, nil
 }
 
+// ListState lists the folder at rel, refusing, without opening it, anything
+// there that is not a directory, and any entry in it that is neither a
+// regular file nor a directory: a FIFO or a device in a carried folder would
+// otherwise block the open that reads it.
 func (d *runDirReader) ListState(rel string) ([]string, error) {
-	f, err := d.root.Open(filepath.FromSlash(rel))
+	name := filepath.FromSlash(rel)
+	fi, err := d.root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("%s in the run's folder is not a folder", rel)
+	}
+	f, err := d.root.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +434,15 @@ func (d *runDirReader) ListState(rel string) ([]string, error) {
 	names, err := f.Readdirnames(MaxRepeats + maxTasks + maxCells + 1)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
+	}
+	for _, n := range names {
+		fi, err := d.root.Lstat(filepath.Join(name, n))
+		if err != nil {
+			return nil, err
+		}
+		if !fi.Mode().IsRegular() && !fi.IsDir() {
+			return nil, fmt.Errorf("%s/%s in the run's folder is neither a file nor a folder", rel, n)
+		}
 	}
 	sort.Strings(names)
 	return names, nil
