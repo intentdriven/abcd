@@ -201,27 +201,35 @@ func TestRecordsOnlyTakesAGivenSHA256Base(t *testing.T) {
 	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base); !ok || !strings.Contains(out, "merge base with the given base "+base+", "+base+",") {
 		t.Fatalf("given a 64-digit base = %v, %q; want records-only against it", ok, out)
 	}
-	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base[:40]); ok || !strings.Contains(out, "names no commit here") {
+	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base[:40]); ok || !strings.Contains(out, "is not a commit present here") {
 		t.Fatalf("given 40 digits of a 64-digit base = %v, %q; want the full run", ok, out)
 	}
 }
 
 // TestRecordsOnlyRunsAGivenBaseItCannotUseInFull: a given base that is not a
 // full commit id (the word a caller passes when it could not read the tip, an
-// abbreviation, upper case), or a full id naming no commit here (one absent,
-// or a tree), is the full run, saying the given base could not be used.
+// abbreviation, upper case), or a full id that is not a commit present here
+// (one absent, a tree, or an annotated tag, whose id peels to the commit it
+// names), is the full run, saying the given base could not be used.
 func TestRecordsOnlyRunsAGivenBaseItCannotUseInFull(t *testing.T) {
 	r := recordsRepo(t)
 	r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
 	r.Commit("records")
 	base := r.Git("rev-parse", "origin/main")
+	// An annotated tag's own id names a tag object, which peels to base.
+	r.Git("tag", "-a", "-m", "a tag on the base", "v1", base)
+	tag := r.Git("rev-parse", "refs/tags/v1")
+	if tag == base || r.Git("cat-file", "-t", tag) != "tag" {
+		t.Fatalf("refs/tags/v1 is %s, not a tag object of its own", tag)
+	}
 	for _, c := range []struct{ name, value, want string }{
 		{"unverified", "unverified", "it is not a full commit id"},
 		{"abbreviated", base[:12], "it is not a full commit id"},
 		{"upper case", strings.ToUpper(base), "it is not a full commit id"},
 		{"a ref name", "HEAD", "it is not a full commit id"},
-		{"absent", strings.Repeat("0", 39) + "1", "names no commit here"},
-		{"a tree", r.Git("rev-parse", "HEAD^{tree}"), "names no commit here"},
+		{"absent", strings.Repeat("0", 39) + "1", "is not a commit present here"},
+		{"a tree", r.Git("rev-parse", "HEAD^{tree}"), "is not a commit present here"},
+		{"an annotated tag", tag, "is not a commit present here"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+c.value)

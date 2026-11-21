@@ -145,19 +145,40 @@ const recordsOnlyUnverified = "unverified"
 
 // originDefaultTip is the commit origin's default branch is at, as origin
 // reports it to `git ls-remote --symref origin HEAD` run in checkout, or
-// recordsOnlyUnverified when the ask fails or its answer names no full commit
-// id.
+// recordsOnlyUnverified when the ask fails, or its answer names no branch as
+// origin's HEAD (a detached HEAD) or no full commit id as its tip. The answer
+// is read as the facilitator mode's read of the same ask reads it
+// (landing.readFetchedFacilitator).
+//
+// The ask goes through gitutil.Net, which in a drive first compares what the
+// drive holds, origin's identity and every URL rewrite among it, with what the
+// repository's settings say now (gitutil.SetBeforeHookedGitAt, set by the
+// drive's terminal to its heldBeforeGitIn): a lane that pointed origin
+// elsewhere has the ask refused, and the preflight is passed
+// recordsOnlyUnverified.
 func originDefaultTip(checkout string) string {
 	out, err := driveOriginGit(checkout, "ls-remote", "--symref", landing.Remote, "HEAD")
 	if err != nil {
 		return recordsOnlyUnverified
 	}
+	branch, tip := "", ""
 	for _, l := range strings.Split(out, "\n") {
-		if sha, name, ok := strings.Cut(strings.TrimRight(l, "\r"), "\t"); ok && name == "HEAD" && gitutil.IsFullSHA(sha) {
-			return sha
+		l = strings.TrimRight(l, "\r")
+		if rest, ok := strings.CutPrefix(l, "ref: "); ok {
+			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				branch, _ = strings.CutPrefix(target, "refs/heads/")
+				if branch == target {
+					branch = ""
+				}
+			}
+		} else if sha, name, ok := strings.Cut(l, "\t"); ok && name == "HEAD" {
+			tip = sha
 		}
 	}
-	return recordsOnlyUnverified
+	if branch == "" || branch == "HEAD" || !gitutil.IsFullSHA(tip) {
+		return recordsOnlyUnverified
+	}
+	return tip
 }
 
 // hooksPathRemedy is what a person does about a hooks path that cannot be

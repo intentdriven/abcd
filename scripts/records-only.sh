@@ -109,8 +109,10 @@ classify() {
 			reason='the given base (ABCD_RECORDS_ONLY_BASE) could not be used: it is not a full commit id'
 			return 1
 		fi
+		# A tag's id peels to the commit it names, a different id, so the
+		# comparison with the id given keeps a tag from standing in for one.
 		if ! full="$(git rev-parse -q --verify "${given}^{commit}" 2>/dev/null)" || [ "$full" != "$given" ]; then
-			reason="the given base (ABCD_RECORDS_ONLY_BASE) could not be used: ${given} names no commit here"
+			reason="the given base (ABCD_RECORDS_ONLY_BASE) could not be used: ${given} is not a commit present here"
 			return 1
 		fi
 		ref="the given base ${given}"
