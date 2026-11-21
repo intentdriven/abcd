@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -80,9 +81,11 @@ func (r ruleset) targets(def string) bool {
 // of a branch with the default branch), so the branch's own commits cannot
 // change the rule it lands by. at names base in a refusal ("the lane's base").
 // A mirror that cannot be read is a *MirrorError, a listing git refused a
-// *ListError.
+// *ListError. The listing and every file are read from base as stored
+// (RunCappedBytesAsStoredContext), so no refs/replace entry or commit-graph
+// stands another tree or file in for the mirror base holds.
 func ReadMergeRule(repoRoot, base, def, at string) (MergeRule, error) {
-	names, err := gitutil.RunCappedBytes(repoRoot, maxListing, "ls-tree", "-z", "--name-only", base, "--", RulesetsRelDir+"/")
+	names, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxListing, "ls-tree", "-z", "--name-only", base, "--", RulesetsRelDir+"/")
 	if err != nil {
 		return MergeRule{}, &ListError{Err: err}
 	}
@@ -95,7 +98,7 @@ func ReadMergeRule(repoRoot, base, def, at string) (MergeRule, error) {
 		if count++; count > maxRulesets {
 			return MergeRule{}, &MirrorError{fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror"}
 		}
-		raw, err := gitutil.RunCappedBytes(repoRoot, maxRulesetBytes, "cat-file", "blob", base+":"+name)
+		raw, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxRulesetBytes, "cat-file", "blob", base+":"+name)
 		if err != nil {
 			return MergeRule{}, &MirrorError{name + " cannot be read at " + at, "restore the ruleset mirror"}
 		}
