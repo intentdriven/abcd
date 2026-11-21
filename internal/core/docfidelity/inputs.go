@@ -38,3 +38,22 @@ func Check(raw []byte) error {
 	_, err := decodePayload(raw)
 	return err
 }
+
+// ReportFindings runs Check's validation and hands back the verdict and the
+// sentences it names, each chapter read through the recorder's own parse, and
+// writes nothing: no receipt, no flag, no edit. It is how a model-matrix check
+// copy's verdict is read (decision 30 of itd-2610161733316518): validated as a
+// recorded verdict is, kept in the run's own record, and never saved where the
+// release gates read.
+func ReportFindings(raw []byte) (string, []Sentence, error) {
+	p, err := decodePayload(raw)
+	if err != nil {
+		return "", nil, err
+	}
+	out := make([]Sentence, 0, len(p.Failing))
+	for _, f := range p.Failing {
+		out = append(out, Sentence{Doc: docOf(f.Doc), Chapter: f.Chapter, Sentence: f.Sentence,
+			Evidence: f.Evidence, Replacement: f.Replacement})
+	}
+	return p.VerificationResult, out, nil
+}
