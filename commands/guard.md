@@ -1212,8 +1212,9 @@ or `abcd-source-ledger-flip-retired-any-program` in the retired spelling.
 
 Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
-none of its commands reach this guard: `claude --dangerously-skip-permissions`
-(`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
+none of its commands reach this guard: `claude --dangerously-skip-permissions`,
+and `--allow-dangerously-skip-permissions`, which lets the agent turn its checks
+off itself (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
 (`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
 `permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
 rules or `permissions.additionalDirectories`, declares `hooks`, which can
@@ -1225,7 +1226,9 @@ runs (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`,
 commands here, written on the line or in the file it names
 (`agent-launch-claude-unchecked-settings`), `claude --allowedTools` or
 `--allowed-tools` on the line, the flag form of an allow list
-(`agent-launch-claude-allowed-tools`), `claude --permission-prompt-tool` with
+(`agent-launch-claude-allowed-tools`), `claude --add-dir`, the flag form of
+`permissions.additionalDirectories` (`agent-launch-claude-add-dir`), `claude
+--permission-prompt-tool` with
 `--mcp-config`, a tool from a server the line configures that answers the
 permission prompts as a hook can (`agent-launch-claude-prompt-tool`),
 `codex --dangerously-bypass-approvals-and-sandbox`

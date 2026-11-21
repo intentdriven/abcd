@@ -1390,16 +1390,17 @@
       "tier": "blocker",
       "pattern": {
         "command": "claude",
-        "flags": ["--dangerously-skip-permissions"]
+        "flags": ["--dangerously-skip-permissions|--allow-dangerously-skip-permissions"]
       },
-      "why": "`--dangerously-skip-permissions` starts another claude agent that runs every command and writes every file without asking anyone, and none of what it runs passes through this guard.",
+      "why": "`--dangerously-skip-permissions` starts another claude agent that runs every command and writes every file without asking anyone, and `--allow-dangerously-skip-permissions` lets that agent turn its checks off itself; none of what it runs passes through this guard.",
       "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without the flag).",
       "fixtures": {
         "known_bad": [
           "claude --dangerously-skip-permissions",
           "claude -p \"fix the tests\" --dangerously-skip-permissions",
           "cd sub && claude -p x --dangerously-skip-permissions",
-          "sh -c 'claude -p x --dangerously-skip-permissions'"
+          "sh -c 'claude -p x --dangerously-skip-permissions'",
+          "claude -p x --allow-dangerously-skip-permissions"
         ],
         "known_good": [
           "claude -p \"fix the tests\"",
@@ -1479,6 +1480,26 @@
           "claude --model x",
           "claude -p x --disallowedTools Bash",
           "abcd capture \"an agent ran claude --allowedTools Bash\""
+        ]
+      }
+    },
+    "agent-launch-claude-add-dir": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--add-dir"]
+      },
+      "why": "`--add-dir` starts another claude agent with directories outside the one it starts in among those its file tools reach, as `permissions.additionalDirectories` does in settings, and none of what it does there passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it in the directory it needs (`cd <dir> && claude -p \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --add-dir /",
+          "claude -p x --add-dir=../other"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "claude --model x -p x",
+          "abcd capture \"an agent ran claude --add-dir /\""
         ]
       }
     },
