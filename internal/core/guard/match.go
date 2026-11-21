@@ -413,43 +413,211 @@ func setsName(tok string, names []string) bool {
 
 // exportsAny reports whether the command s exports one of names to the
 // commands after it in the shell: `export NAME` or `export NAME=…`, and
-// `declare -x` or `typeset -x` with the same operands (exportOperands). A
-// name a substitution prints can be any of them (nameCouldBe).
-func exportsAny(s segment, names []string) bool {
-	for _, a := range commandSites(s) {
-		first, ok := exportOperands(s.tokens, a.idx)
-		if !ok {
+// `declare -x`, `typeset -x` or `local -x` with the same operands
+// (exportOperands). Where allexport holds, a bare assignment (`NAME=…` with
+// no command after it) and an assignment a declaration builtin makes export
+// too. A file s sources runs in the same shell, so a variable it exports
+// counts (exportStep). A name a substitution prints can be any of them
+// (nameCouldBe).
+func exportsAny(s segment, names []string, allexport bool) bool {
+	exports, _ := exportStep(s, names, allexport)
+	return exports
+}
+
+// exportStep reads the command s for the export walk (exportsBefore): whether
+// it exports one of names (exportsAny), and whether allexport holds after it
+// (allexportAfter), given whether it held before it.
+func exportStep(s segment, names []string, allexport bool) (exports, after bool) {
+	sites := commandSites(s)
+	if allexport && len(sites) == 0 {
+		for _, tok := range s.tokens {
+			if setsName(tok, names) {
+				exports = true
+			}
+		}
+	}
+	for _, a := range sites {
+		first, explicit, unexports, ok := exportOperands(s.tokens, a.idx)
+		if !ok || !(explicit || allexport && !unexports) {
 			continue
 		}
 		for _, tok := range s.tokens[first:] {
 			if setsName(tok, names) {
-				return true
+				exports = true
 			}
 			for _, n := range names {
-				if tok == n {
-					return true
+				if explicit && tok == n {
+					exports = true
 				}
 			}
 		}
 	}
-	return false
+	after = allexportAfter(s, allexport)
+	// Each file s sources is read as its own walk, from the allexport the
+	// source runs under; where s sources several files (one per way the line
+	// can be read), allexport holds after it where any of them leaves it on.
+	if len(s.sourced) > 0 {
+		in, out := after, after
+		for _, file := range s.sourced {
+			_, e, a := exportsBefore(file, names, in)
+			exports = exports || e
+			out = out || a
+		}
+		after = out
+	}
+	return exports, after
 }
 
-// exportOperands reports whether the command at site exports the names it is
-// given, and the index of its first operand. export always does. declare
-// and typeset do when an option among the words before their first operand
-// carries x (`-x`, `-gx`, `-rx`), as bash and zsh read it, and not when the
-// last such option is `+x`, which takes the export away; `--` ends the
-// options. A word a substitution prints can be an option, -x among them.
-func exportOperands(tokens []string, site int) (first int, ok bool) {
+// exportsBefore walks the commands of segs in the order they run (runOrder)
+// and reports, for each, whether a command that runs before it exports one of
+// names (exportStep), whether any command of segs does, and whether allexport
+// holds after the last of them. allexport is whether it holds before the
+// first. A string an eval runs is placed where the eval stands, so an export
+// in it holds for the commands after the eval.
+func exportsBefore(segs []segment, names []string, allexport bool) (before []bool, exported, allexportEnd bool) {
+	before = make([]bool, len(segs))
+	for _, i := range runSequence(segs) {
+		before[i] = exported
+		e, a := exportStep(segs[i], names, allexport)
+		exported, allexport = exported || e, a
+	}
+	return before, exported, allexport
+}
+
+// runOrder is, for each command of segs, where it runs on the line: its own
+// index, after the place of the command that carries its string
+// (segment.carrier), so earlier compares where two commands run.
+func runOrder(segs []segment) [][]int {
+	order := make([][]int, len(segs))
+	for i, s := range segs {
+		if s.carrier > 0 && s.carrier-1 < i {
+			order[i] = append(append([]int(nil), order[s.carrier-1]...), i)
+		} else {
+			order[i] = []int{i}
+		}
+	}
+	return order
+}
+
+// runSequence is the indices of segs in the order the commands run
+// (runOrder): a string's commands where the command that carries them stands,
+// rather than after the line's own.
+func runSequence(segs []segment) []int {
+	seq := make([]int, len(segs))
+	carried := false
+	for i := range segs {
+		seq[i] = i
+		carried = carried || segs[i].carrier > 0
+	}
+	if !carried {
+		return seq
+	}
+	order := runOrder(segs)
+	sort.SliceStable(seq, func(a, b int) bool { return earlier(order[seq[a]], order[seq[b]]) })
+	return seq
+}
+
+// allexportAfter reports whether allexport holds after the command s, given
+// whether it held before it: `set -a` turns it on and `set +a` off, alone or
+// in a cluster of set's options, as do `set -o allexport` and `set +o
+// allexport`, and zsh's `setopt` and `unsetopt` with the option in any of its
+// spellings (zshOption). A word a substitution prints can be an option that
+// turns it on.
+func allexportAfter(s segment, on bool) bool {
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		args := s.tokens[a.idx+1:]
+		switch {
+		case nameCouldBe(tok, "set"):
+			on = setAllexport(args, on)
+		case nameCouldBe(tok, "setopt"), nameCouldBe(tok, "unsetopt"):
+			sets := nameCouldBe(tok, "setopt")
+			for _, w := range args {
+				if isUnknown(w) {
+					on = on || sets
+					continue
+				}
+				switch zshOption(w) {
+				case "allexport":
+					on = sets
+				case "noallexport":
+					on = !sets
+				}
+			}
+		}
+	}
+	return on
+}
+
+// setAllexport is allexport after set's arguments args, given on before them.
+// Options end at `--`, `-`, or the first word that is not one, which starts
+// the positional parameters.
+func setAllexport(args []string, on bool) bool {
+	for i := 0; i < len(args); i++ {
+		w := args[i]
+		if w == "--" || w == "-" {
+			break
+		}
+		if isUnknown(w) {
+			on = on || clusterCouldCarry(w, 'a') || clusterCouldCarry(w, 'o')
+			continue
+		}
+		if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
+			break
+		}
+		turnsOn := w[0] == '-'
+		for j := 1; j < len(w); j++ {
+			switch w[j] {
+			case 'a':
+				on = turnsOn
+			case 'o':
+				// The option's name is the next word.
+				if i+1 >= len(args) {
+					break
+				}
+				i++
+				switch name := args[i]; {
+				case isUnknown(name):
+					on = on || turnsOn
+				case zshOption(name) == "allexport":
+					on = turnsOn
+				case zshOption(name) == "noallexport":
+					on = !turnsOn
+				}
+				j = len(w)
+			}
+		}
+	}
+	return on
+}
+
+// zshOption is an option name as zsh compares it: case and underscores
+// ignored (`ALL_EXPORT` is `allexport`).
+func zshOption(w string) string {
+	return strings.ToLower(strings.ReplaceAll(w, "_", ""))
+}
+
+// declarationBuiltins set the variables their operands name and take
+// typeset's options.
+var declarationBuiltins = []string{"declare", "typeset", "local", "readonly"}
+
+// exportOperands reads the command at site as one that sets the variables
+// its operands name: the index of its first operand, whether it exports them
+// (explicit), whether it takes the export away (unexports), and ok where the
+// command is export or a declaration builtin at all. export always exports.
+// declare, typeset, local and readonly do when an option among the words
+// before their first operand carries x (`-x`, `-gx`, `-rx`), as bash and zsh
+// read it, and take the export away when the last such option is `+x`; `--`
+// ends the options. A word a substitution prints can be an option, -x among
+// them.
+func exportOperands(tokens []string, site int) (first int, explicit, unexports, ok bool) {
 	tok := tokens[site]
 	if nameCouldBe(tok, "export") {
-		return site + 1, true
+		return site + 1, true, false, true
 	}
-	if !nameCouldBe(tok, "declare") && !nameCouldBe(tok, "typeset") {
-		return 0, false
+	if !nameCouldBeAny(tok, declarationBuiltins) {
+		return 0, false, false, false
 	}
-	exports := false
 	i := site + 1
 	for ; i < len(tokens); i++ {
 		w := tokens[i]
@@ -459,17 +627,17 @@ func exportOperands(tokens []string, site int) (first int, ok bool) {
 		}
 		if isUnknown(w) {
 			// It can be an option, so the words after it can be too.
-			exports = exports || clusterCouldCarry(w, 'x')
+			explicit = explicit || clusterCouldCarry(w, 'x')
 			continue
 		}
 		if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
 			break
 		}
 		if strings.ContainsRune(w[1:], 'x') {
-			exports = w[0] == '-'
+			explicit, unexports = w[0] == '-', w[0] == '+'
 		}
 	}
-	return i, exports
+	return i, explicit, unexports, true
 }
 
 // directoryChanges names the builtins an `after_cd` entry reads as the

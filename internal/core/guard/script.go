@@ -1042,6 +1042,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		}
 	}
 
+	order := runOrder(segs)
 	var top *shellState
 	if run != nil {
 		top = run.state
@@ -1091,11 +1092,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			here = []*shellState{here[0].unresolved()}
 		}
 		recs[i].states = here
-		if s.carrier > 0 && s.carrier-1 < i {
-			recs[i].order = append(append([]int(nil), recs[s.carrier-1].order...), i)
-		} else {
-			recs[i].order = []int{i}
-		}
+		recs[i].order = order[i]
 		next := make([]*shellState, len(here))
 		for j, st := range here {
 			next[j] = r.after(rc, st, s, dirChangeBelow[i])
@@ -1168,7 +1165,11 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				before = append(before, recs[j].writes...)
 			}
 		}
-		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before)...)
+		var sourced [][]segment
+		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before, &sourced)...)
+		// A sourced file runs in the line's own shell, so the export walk
+		// reads its commands where the source stands (exportStep).
+		segs[p.seg].sourced = append(segs[p.seg].sourced, sourced...)
 	}
 	return signals
 }
@@ -1281,8 +1282,8 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			out = out.unresolved()
 		case (name == "source" || name == ".") && sourcedChangesDir(rc, out, s, a.idx):
 			out = out.unresolved()
-		case name == "export" || name == "declare" || name == "typeset":
-			// `declare -x`/`typeset -x` export as `export` does; `export -n`
+		case name == "export" || name == "declare" || name == "typeset" || name == "local":
+			// `declare -x`/`typeset -x`/`local -x` export as `export` does; `export -n`
 			// and `declare +x` take the export away. A declare without -x sets
 			// the value and leaves the export attribute as it was, as bash does.
 			exports, unexports := name == "export", false
@@ -2730,8 +2731,9 @@ func shellExpandsStartup(value string) bool {
 }
 
 // readTarget reads one file a command points a shell at and judges it.
-// before are the files written before the command runs.
-func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget) []payloadSignal {
+// before are the files written before the command runs. The commands of a
+// file the shell sources are added to sourced, where it is not nil.
+func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget, sourced *[][]segment) []payloadSignal {
 	if t.path == os.DevNull {
 		return nil
 	}
@@ -2854,7 +2856,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
 			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
-					kind: targetStartup, env: t.env}, before)...)
+					kind: targetStartup, env: t.env}, before, nil)...)
 			}
 		}
 	}
@@ -2865,6 +2867,9 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	if err != nil {
 		sig := unparsableSignal(err)
 		return append(sigs, carriedOut(sig, t.shown))
+	}
+	if t.sourced && sourced != nil {
+		*sourced = append(*sourced, v.segs)
 	}
 	return append(sigs, r.scriptSignals(v, text, t.shown)...)
 }

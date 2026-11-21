@@ -1050,7 +1050,8 @@ which file a bare name finds; the files a shell loads from the account's real
 read like any other; file text substituted into a command string (`eval "$(cat
 f)"`, `bash -c "$(<f)"`), which keeps its warn; a file changed between the
 check and the run; a writer missing from the list above; a variable a sourced
-file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
+file sets, for the files the line reads after it (an entry that names the
+variable counts the file's export, below); a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
 the current directory; `INPUTRC` (key bindings, not commands); a
@@ -1190,7 +1191,10 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x` or `typeset -x` earlier in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
+`declare -x`, `typeset -x` or `local -x` earlier in the line, a bare assignment
+while `set -a`, `set -o allexport` or zsh's `setopt allexport` holds, an export
+inside an `eval` that stands before it, or an export in a file the line sources
+before it — is a **block** too (`agent-launch-opencode-permission-env`), and
 one that starts opencode without setting it is not. So is a line that sets
 `OPENCODE_CONFIG`, a configuration file opencode loads, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode

@@ -217,6 +217,11 @@ type segment struct {
 	// deep it sits, counted from the text the reading began at.
 	carrier int
 	depth   int
+	// sourced holds the commands of each file this command sources, as the
+	// script reading judged them (readTarget), one list per file, so an
+	// export a file makes holds for the commands after this one
+	// (exportStep). nil where the command sources nothing the guard read.
+	sourced [][]segment
 	// arrayOf names the variable whose array assignment (`fpath=(a b)`) this
 	// command's words are elements of, and arrayAppend records `+=`; "" for
 	// any other command. The words are still read as a command, as before;
