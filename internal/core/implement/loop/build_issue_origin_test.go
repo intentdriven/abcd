@@ -171,3 +171,79 @@ func TestABuildInACheckoutNamingNoDefaultBranchOfOriginSaysSo(t *testing.T) {
 		t.Fatalf("the run's record says why origin was not read: %q", note)
 	}
 }
+
+// TestABuildOfAnIssueOnOriginWithNoFoundAtIsRefusedAtTheReservation: origin's
+// record names no found_at path, and this checkout holds none at all, so the
+// start is refused at the reservation as one of the checkout's own would be,
+// starting nothing and reserving nothing.
+func TestABuildOfAnIssueOnOriginWithNoFoundAtIsRefusedAtTheReservation(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	pushFromOtherCopy(t, bare, "file "+originIssue, func(dir string) {
+		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: dir, Text: "The drain page misses a flag (" + originIssue + ")",
+			Severity: capture.SeverityMinor, Category: capture.Category("tech-debt"), Source: "manual-test", Slug: "flag",
+			FoundDuring: "the loop's tests", ForceID: originIssue, Remedy: "Name the new flag on the drain page."}); err != nil {
+			t.Fatalf("capture on origin: %v", err)
+		}
+	})
+
+	_, err := Start(repo.Root(), originIssue, Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageReservation || !strings.Contains(r.Reason, originIssue+" has no found_at path to reserve it with") ||
+		!strings.HasSuffix(r.Reason, "nothing was started") {
+		t.Fatalf("an origin record with no found_at is refused at the reservation: %+v", r)
+	}
+	runTierAbsent(t, repo.Root())
+	noReservations(t, bare)
+}
+
+// TestABuildOfAPromotedIssueOnOriginAloneIsAskedAgainFromOrigin: an issue
+// linked to an intent, which a drain hands back as promoted, sits on origin
+// alone; a person's build asks the plan again with promoted set aside from
+// origin's ledger, not the checkout's, so it starts, reserved with origin's
+// found_at.
+func TestABuildOfAPromotedIssueOnOriginAloneIsAskedAgainFromOrigin(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	pushFromOtherCopy(t, bare, "file "+originIssue, func(dir string) {
+		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: dir, Text: "The audit of itd-2609300000000201 could not decide ac-1",
+			Severity: capture.SeverityMinor, Category: capture.Category("inconsistency"), Source: "agent-finding", Slug: "owed",
+			FoundDuring: "abcd intent audit ingest", FoundAt: "commands/drain.md", ForceID: originIssue, Remedy: "re-run the audit",
+			RelatedIntents: []string{"itd-2609300000000201"}}); err != nil {
+			t.Fatalf("capture on origin: %v", err)
+		}
+	})
+
+	start, err := Start(repo.Root(), originIssue, Options{})
+	if err != nil {
+		t.Fatalf("a person's build of a promoted issue only origin holds starts: %v", err)
+	}
+	row := eligibleRow(t, start.Checks)
+	for _, want := range []string{"itd-2609300000000201", "promoted", "read from origin/main at"} {
+		if !row.OK || !strings.Contains(row.Detail, want) {
+			t.Fatalf("the eligible row = %+v; want it to say %q", row, want)
+		}
+	}
+	if fp := footprintOf(t, bare, originIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
+		t.Fatalf("the reservation's footprint is origin's found_at: %v", fp)
+	}
+}
+
+// TestABuildOfARecordNotYetOnOriginSaysTheCheckoutIsNotBehind: Pat captures an
+// issue here and has not pushed it; origin's default branch, which the lane is
+// cut from, holds no such record, so the build refuses it and says the
+// checkout is not behind, but holds it open in its own ledger.
+func TestABuildOfARecordNotYetOnOriginSaysTheCheckoutIsNotBehind(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	fileIssueAt(t, repo, originIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "commands/drain.md")
+	repo.Commit("file " + originIssue + " here")
+
+	_, err := Start(repo.Root(), originIssue, Options{})
+	r := mustRefusal(t, err)
+	for _, want := range []string{originIssue + " is not an open issue on origin/main at",
+		"this checkout is not behind origin/main, but its own ledger holds " + originIssue + " open"} {
+		if r.Check != CheckEligible || !strings.Contains(r.Reason, want) {
+			t.Fatalf("the refusal = %+v; want it at the eligible check saying %q", r, want)
+		}
+	}
+	runTierAbsent(t, repo.Root())
+	noReservations(t, bare)
+}
