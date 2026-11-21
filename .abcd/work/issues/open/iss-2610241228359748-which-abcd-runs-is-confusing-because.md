@@ -19,3 +19,13 @@ Which abcd runs is confusing because several installs coexist and nothing says w
 ## Deferral 2026-10-27
 
 Deferred past v0.15.1: Which copy of abcd runs when several are installed needs the product thinker's design ruling (an ADR on precedence across plugin scopes, the PATH binary and a source build) before any code fix; behaviour is unchanged since v0.15.1 (ruled 27 October 2026).
+
+## Evidence 2026-11-21
+
+The same split recurred. On one machine the plugin is installed at user scope at v0.16.0 (updated 2026-10-31, the only copy holding a binary) and at project scope for this repository at v0.16.2 (2026-11-06), while the newest release is v0.17.0 (2026-11-18). Sessions started in this repository on 2026-11-20 were served the user-scope copy, its command pages and its hooks. Three things followed in one session.
+
+- The `/abcd:ideate` page it was handed predates the current-state mode, which the v0.16.1 and v0.16.2 pages carry. The session ran the recorder built from the tree, as the rule for this checkout requires, and that recorder refused the verdict for its missing `current_state` after all three legs. The adversarial leg was run again; a second session met the same refusal the same day.
+- The page named the v0.16.0 binary for the record step. That release has no `current_state` field and refuses a document carrying one as an unknown field, so a verdict the page's own binary accepts is one the tree's refuses, and the reverse.
+- The rules hook injected between 20 and 53 thousand characters on each of four prompts over 20 and 21 November, against the 10,000-character cap of the host, which abcd stays under from v0.17.0 (iss-2611041419354106), so the host kept all but a preview of about two thousand characters out of the session.
+
+`abcd ahoy` from the tree reported no gaps. At a session start on 21 November the hook's one line in the session was a count: two notices on the hook's stderr, with `abcd history staged` and `abcd ahoy` named as where to look. The text of the notices did not reach the session, so what they said was not seen. The hook's code composes a notice at that point for a binary that is behind its own source (internal/surface/cli/staleness.go), and its advice is to rebuild with `make build`, which does not fit a binary in a plugin's folder. Asked directly, the installed copy's `--version` said it was behind the checkout tip. The part of the ideate failure that a current page would not cure is iss-2611211024539425 and iss-2611211025072947, and the missing notice of a newer release is iss-2610290709017008.
