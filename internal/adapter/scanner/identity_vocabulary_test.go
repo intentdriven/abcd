@@ -132,6 +132,20 @@ func TestLocalUsernameSpecificAccountNameKeepsTheWordRule(t *testing.T) {
 	}
 }
 
+// A login of more than six digits is a person's number (a student's or a
+// member of staff's), not a uid-numbered home, so it keeps the whole-word
+// rule; six digits or fewer read as a generic account.
+func TestLocalUsernameALongNumericLoginKeepsTheWordRule(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	if got := ScanText("access granted to 20241234 today", Identity{HomeUser: "20241234"}, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+		t.Errorf("a long numeric login in prose was not flagged: %+v", got)
+	}
+	if got := ScanText("the review drew item-123456 today", Identity{HomeUser: "123456"}, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("a six-digit home in prose was flagged as the local username: %+v", got)
+	}
+}
+
 // The finding names where the matched value came from, so a reader can tell a
 // collision from a leak without reopening the scanner.
 func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
@@ -149,12 +163,12 @@ func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
 }
 
 func TestGenericAccountNameFloor(t *testing.T) {
-	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a", "1000", "001"} {
+	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a", "1000", "001", "65534", "123456"} {
 		if !isGenericAccountName(name) {
 			t.Errorf("%q should be under the generic-account floor", name)
 		}
 	}
-	for _, name := range []string{"zq8home", "alice", "colleague", "", "user1000", "1000a"} { // abcd-audit:allow
+	for _, name := range []string{"zq8home", "alice", "colleague", "", "user1000", "1000a", "1234567", "20241234"} { // abcd-audit:allow
 		if isGenericAccountName(name) {
 			t.Errorf("%q should not be under the generic-account floor", name)
 		}

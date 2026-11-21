@@ -1045,17 +1045,23 @@ var genericAccountNames = map[string]bool{
 // prose everywhere and names no one.
 const maxGenericAccountRunes = 2
 
+// maxGenericAccountDigits is the longest account name of digits alone read as
+// generic: a uid-numbered home (1000, 65534) is short, while a login that is a
+// person's number (a student's or a member of staff's) usually runs longer.
+const maxGenericAccountDigits = 6
+
 // isGenericAccountName reports whether an account name is under the generic
 // floor (genericAccountNames, or maxGenericAccountRunes or shorter, or digits
-// alone). A home named by a number alone (a container's uid-numbered home,
-// /1000) names no person, and the number is ordinary text everywhere (a count,
-// an item's number), so like a generic name it is caught only where it stands
-// as an account.
+// alone, maxGenericAccountDigits or fewer). A home named by a short number
+// alone (a container's uid-numbered home, /1000) names no person, and the
+// number is ordinary text everywhere (a count, an item's number), so like a
+// generic name it is caught only where it stands as an account. A longer
+// number keeps the whole-word rule, since it can be a person's login.
 func isGenericAccountName(name string) bool {
 	if name == "" {
 		return false
 	}
-	if utf8.RuneCountInString(name) <= maxGenericAccountRunes || isDigitsOnly(name) {
+	if utf8.RuneCountInString(name) <= maxGenericAccountRunes || isDigitsOnly(name) && len(name) <= maxGenericAccountDigits {
 		return true
 	}
 	return genericAccountNames[strings.ToLower(name)]
