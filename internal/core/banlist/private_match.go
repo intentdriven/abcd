@@ -33,7 +33,7 @@ var ErrNoEngine = errors.New("banlist: the private layer's engine (grep) cannot 
 // a pattern the engine refuses, or no engine at all is an error, and the caller
 // must treat every name as matched.
 func MatchPrivate(repoRoot string, names []string) ([]bool, error) {
-	grepBinOnce.Do(func() { grepBin, _ = exec.LookPath("grep") })
+	lookGrep()
 	return matchPrivateWith(repoRoot, names, grepBin)
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -52,6 +53,46 @@ func HomeInsideWorkingTree(home string) string {
 		return ""
 	}
 	return tree
+}
+
+// WorkingTreesAround is every working tree dir lies in, nearest first: each
+// directory at or above dir that carries a .git entry (RepoShapedRoot's
+// marker, judged at every level rather than the nearest alone), walked both as
+// dir is spelled and at its physical path. A submodule's superproject, and a
+// checkout that holds another checkout, are named with the tree dir is in.
+// The account's own home is left out, as HomeInsideWorkingTree leaves it out:
+// a dotfiles-in-HOME account keeps its home in a working tree, and that home
+// is the person's.
+//
+// It is the bound a program abcd runs is held outside of (tools.GuardForms):
+// git's own toplevel for dir is one of these directories, since git names a
+// toplevel only where its .git sits (ToplevelContext). It reads directory
+// entries alone, starts no git and reads no repository configuration, so it
+// answers at once whatever a repository's configuration holds, and it still
+// names a tree git would refuse to answer for (another account's checkout, an
+// unsafe directory).
+func WorkingTreesAround(dir string) []string {
+	if dir == "" {
+		return nil
+	}
+	starts := []string{filepath.Clean(dir)}
+	if phys, err := filepath.EvalSymlinks(dir); err == nil && phys != starts[0] {
+		starts = append(starts, phys)
+	}
+	var trees []string
+	for _, start := range starts {
+		for d := start; ; {
+			if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil && !slices.Contains(trees, d) {
+				trees = append(trees, d)
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				break
+			}
+			d = parent
+		}
+	}
+	return slices.DeleteFunc(trees, isAccountHome)
 }
 
 // isAccountHome reports whether dir is the home the account database names

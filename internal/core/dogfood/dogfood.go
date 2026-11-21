@@ -100,6 +100,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -1158,7 +1159,10 @@ var goModVersionRe = regexp.MustCompile(`(?m)^go ([0-9][0-9.]*)\s*$`)
 // is itself a repository must not be stamped), and with the ambient
 // workspace and flags neutralised so the build is the commit's alone.
 func goBuild(ctx context.Context, src, dst string, log io.Writer) error {
-	goBin, err := exec.LookPath("go")
+	goBin, err := tools.LookPath("go", src)
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return fmt.Errorf("the go toolchain PATH finds is never run: %w", tools.ErrInsideWorkingTree)
+	}
 	if err != nil {
 		return errors.New("no go toolchain is on PATH")
 	}

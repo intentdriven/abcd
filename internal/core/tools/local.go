@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The installed-tools record is how abcd knows a copy is its own: the
@@ -73,14 +75,23 @@ func userBinDir(getenv func(string) string, home string) string {
 	return filepath.Join(home, ".local", "bin")
 }
 
+// errHomeInTree is readRecord's refusal of a home the home rule declines.
+var errHomeInTree = errors.New("HOME lies inside a git working tree and is not this account's home, so " +
+	abcdhome.Display("tools.json") + " is not read there and nothing is recorded there; run abcd with your own HOME")
+
 // readRecord reads the record from home. An absent record is an empty one; a
-// record that does not pass the home-declaration guards (owned by this
-// account, writable by no one else, not behind a symlink) or does not parse
-// is an error, and reads as no tool installed by abcd.
+// home inside a git working tree that is not the account's own
+// (gitutil.HomeInsideWorkingTree), a record that does not pass the
+// home-declaration guards (owned by this account, writable by no one else,
+// not behind a symlink) or does not parse is an error, and reads as no tool
+// installed by abcd.
 func readRecord(home string) (Record, error) {
 	rec := Record{SchemaVersion: 1, Tools: map[string]Installed{}}
 	if !filepath.IsAbs(home) {
 		return rec, errors.New("no absolute home directory to read " + abcdhome.Display("tools.json") + " from")
+	}
+	if gitutil.HomeInsideWorkingTree(home) != "" {
+		return rec, errHomeInTree
 	}
 	raw, refusal, err := fsutil.ReadHomeDeclaration(home, recordRel, maxRecordBytes)
 	if refusal == fsutil.DeclarationAbsent {
@@ -202,18 +213,59 @@ var userHome = os.UserHomeDir
 // pathLookup is the PATH lookup Resolve falls back to, a seam for tests.
 var pathLookup = exec.LookPath
 
+// workingDir is the process's working directory, a seam for tests.
+var workingDir = os.Getwd
+
+// ErrInsideWorkingTree is LookPath's refusal: PATH found the program inside
+// the directory abcd runs from, or inside a working tree that directory lies
+// in, where a program is repository content and is never run.
+var ErrInsideWorkingTree = errors.New("it lies inside the directory abcd runs from or the working tree that directory is in; " +
+	"a program there is repository content and is never run")
+
+// LookPath is where abcd runs a program it finds by name on PATH: the PATH
+// lookup, held to the in-checkout rule (WithinTree). A result that lies inside
+// dir or the process's working directory, or inside any working tree either
+// lies in, lexically, after symlinks or through any link on its route, is
+// refused with ErrInsideWorkingTree; dir "" holds the working directory alone.
+// PATH is read as it is and never changed, so what the person's own shell
+// runs is untouched. A working directory that cannot be read holds nothing of
+// its own; dir still does.
+func LookPath(name, dir string) (string, error) {
+	p, err := pathLookup(name)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(p) {
+		return "", fmt.Errorf("%s resolves to a relative path, which is never run", name)
+	}
+	resolved := resolvedOrSelf(p)
+	guards := []string{dir}
+	if wd, err := workingDir(); err == nil {
+		guards = append(guards, wd)
+	}
+	for _, g := range guards {
+		if g != "" && filepath.IsAbs(g) && WithinTree(p, resolved, g) {
+			return "", fmt.Errorf("%s: %w", name, ErrInsideWorkingTree)
+		}
+	}
+	return p, nil
+}
+
 // Resolve is where abcd runs name from: abcd's own recorded copy when there is
 // one, it is intact and its version lies in the range abcd works with,
 // whatever comes first on PATH (the intent's fourth criterion), and otherwise
-// the PATH lookup. Every caller that runs a registered tool resolves it here,
-// never by a bare exec.LookPath.
+// the PATH lookup held to the in-checkout rule (LookPath, from the process's
+// working directory). The record is read only from a home the home rule
+// admits (readRecord), so a home inside a working tree that is not the
+// account's own names no copy and the PATH lookup decides. Every caller that
+// runs a registered tool resolves it here, never by a bare exec.LookPath.
 func Resolve(name string) (string, error) {
 	if home, err := userHome(); err == nil {
 		if e, ok := owned(home, name); ok && ownedCompatible(name, e) {
 			return e.Path, nil
 		}
 	}
-	return pathLookup(name)
+	return LookPath(name, "")
 }
 
 // ownedCompatible reports whether abcd's recorded copy e of name is a version

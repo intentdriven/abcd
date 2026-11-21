@@ -398,6 +398,9 @@ func gh(parent context.Context, dir string, run func(context.Context, *exec.Cmd,
 	// abcd's own recorded copy runs whatever comes first on PATH
 	// (itd-2610240918594138); otherwise PATH finds gh, as before.
 	bin, err := tools.Resolve("gh")
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return "", fmt.Errorf("%w: the one PATH finds is never run, because %w", ErrNoForgeClient, tools.ErrInsideWorkingTree)
+	}
 	if err != nil {
 		return "", ErrNoForgeClient
 	}

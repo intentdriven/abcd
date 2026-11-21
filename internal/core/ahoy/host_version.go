@@ -83,8 +83,8 @@ var (
 
 // readHostVersion asks command, found on PATH, for its version with its
 // --version flag, and returns the first major.minor.patch it prints on
-// stdout. project is the folder the reading is made for; a command inside it
-// is never run. The error says why no version was read. It is the one reading
+// stdout. project is the folder the reading is made for; a command inside it,
+// or inside any git working tree it lies in, is never run. The error says why no version was read. It is the one reading
 // of an agent tool's installed version: the harness-version check calls it per
 // harness.
 func readHostVersion(command, project string) (hostVersion, error) {
