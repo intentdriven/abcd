@@ -111,7 +111,8 @@ and changes no file of the repository: abcd reads the working tree's state
 (git's listing of what differs from HEAD, each path's content hashed; every
 path git ignores, the local tier among them, by its mode, size and
 modification time; git's own hooks, info files but `info/refs`, which no local
-git command reads, configuration, `HEAD` and the branch it names, each
+git command reads, configuration, `HEAD` and the branch it names (followed
+through every symbolic ref it leads to), each
 submodule's hooks, configuration, `HEAD` and refs, this checkout's own entry
 under `worktrees/` (its `HEAD`, `commondir`, `gitdir`, `config.worktree` and
 `locked`), and of another worktree's entry its `commondir`, `gitdir` and
@@ -127,7 +128,17 @@ plain words what opened it, judged as the hook judges it (history as stored,
 whatever a replacement ref says, and a receipt counted only where the hook
 counts one), and a worktree whose path holds a newline stops the interview,
 since the hook reads git's worktree listing a line at a time and would take
-that path for more than one worktree; another worktree's `HEAD` and lock, its
+that path for more than one worktree; every symbolic ref under the common git
+directory's `refs/`, by its name and the ref it names, read from the files
+themselves, since git's listings skip one whose target does not exist: the gate
+asks git which remote-tracking refs hold a commit, and git follows a symbolic
+ref there when the gate asks, so one made, changed or removed during a dispatch
+stops the interview whatever the gate reads, saying so in plain words, unless
+it is a remote-tracking ref naming another ref of its own remote, as
+`git remote set-head`, a clone or a fetch writes `refs/remotes/<remote>/HEAD`; a
+link under `refs/` is never one, a link there leading to a directory is
+refused, and a repository keeping its refs in a reftable is refused; the packed
+refs hold no symbolic ref; another worktree's `HEAD` and lock, its
 push receipts for its own commits, and a worktree added or removed beside this
 one as `git worktree add` makes it, are that worktree's own work and are not
 read, but an entry that appears carrying its own `config.worktree`, a

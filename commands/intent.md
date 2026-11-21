@@ -617,7 +617,17 @@ HEAD. The gate is judged as the pre-push hook judges it: history as stored,
 whatever a replacement ref says, and a receipt counted only where the hook
 counts one. A worktree whose path holds a newline stops the interview, since
 the hook reads git's worktree listing a line at a time and would take that
-path for more than one worktree. Work in another worktree of the repository
+path for more than one worktree. A symbolic ref made, changed or removed under
+the repository's `refs/` stops it too, whatever the gate reads, since git
+follows one when the gate asks which remote-tracking refs hold a commit, so one
+naming the checkout's own branch or `refs/stash` would hold the next commit or
+stash: every one is read from the files, by its name and the ref it names, and
+only a remote-tracking ref naming another ref of its own remote, as `git remote
+set-head`, a clone or a fetch writes `refs/remotes/<remote>/HEAD`, is left out.
+A link under `refs/` is never left out, one leading to a directory is refused,
+and so is a repository that keeps its refs in a reftable; the packed refs hold
+no symbolic ref. A branch that is itself a symbolic ref is read through every
+ref it leads to. Work in another worktree of the repository
 is that worktree's own and does not stop the interview: a commit, a branch
 switch, a rebase or a fetch there, a worktree added or removed beside it with no upstream tracking set,
 and a push receipt its preflight mints in its own local tier for its own
