@@ -70,7 +70,7 @@ flags.
   the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
-  own `PATH` entry where abcd owns it, the provenance record that proves
+  own `PATH` entry where abcd owns it, the provenance file that proves
   that ownership, and the `PATH` line setup added to the shell settings. It
   leaves `.abcd/` intact but for clearing `readme.created` from
   `.abcd/config.json` once the README.md that record vouches for is gone,
@@ -563,8 +563,8 @@ abcd manages exactly one kind of folder, a **repository**, and keeps one
 user-scope directory for machine-local state. Every writer creates that
 directory, and each folder in it, private to the account (`0700`), so the home
 is the same whichever command creates it first, the hook's bootstrap included;
-one that already exists keeps its mode. The records it writes there, the
-path-entry record and the registry's index among them, are `0600`, and one an
+one that already exists keeps its mode. The files it writes there, the
+path-entry file and the registry's index among them, are `0600`, and one an
 earlier version wrote wider is narrowed when abcd next writes it
 (iss-2610032205304585).
 
@@ -845,7 +845,7 @@ resolving symlinks, and classifies each hit as abcd's own entry, the dev shim,
 or a foreign binary. An abcd-owned entry anywhere on `PATH` is the install; with
 none, the default location answers the same question. A symlink whose target
 has gone is abcd's own when it is the one a plugin update stranded or when the
-home-scoped `path-entry` record names it, read exactly as the hook shims read
+home-scoped `path-entry` file names it, read exactly as the hook shims read
 it; any other dangling link asserts no provenance (iss-2609100506263330).
 Three states are named
 rather than lumped together: an owned entry whose target has gone is dangling; an
@@ -858,7 +858,7 @@ gone is the exception to "never reached" in wording, not in the gap: it runs
 nothing, because the shell skips it, and what it still threatens is to answer
 whatever reappears at its target, so neither the gap nor the note says it is what
 runs. An owned one that is not the entry install acts on — typically a link a
-plugin update stranded ahead of the one-liner's copy — is removed with its record
+plugin update stranded ahead of the one-liner's copy — is removed with its provenance file
 by an install that leaves a working entry of abcd's own behind it
 (iss-2609280932480608), the same danglingness rule that clears one at the target
 (iss-2609100506256636); an unowned one is named and left. Install carries the two
@@ -944,7 +944,7 @@ whether or not the binary is already there, and relays whatever it says: with
 the binary in place the script's own fast path costs a file test and does the
 provisioning housekeeping that keeps the next plugin update served from the
 local cache rather than the network, and it is the one place a binary that no
-longer matches its provenance record is called out. It stamps the same marker,
+longer matches its provenance file is called out. It stamps the same marker,
 so the five throttled events see a recent try, and reads no throttle of its
 own. `SessionEnd` and `SubagentStop` are the deliberate exceptions and download
 nothing: both fire where the host cancels a slow hook rather than wait — one as
@@ -967,7 +967,7 @@ working directory nor world-writable, naming a binary that is not itself
 world-writable once a symlink is followed to the file it names — the shapes the
 documented install never produces (iss-2609012039117381, iss-2609020352438590)
 — and only when the home-scoped `path-entry`
-record names that exact path as this machine's installed binary. The record is a
+file names that exact path as this machine's installed binary. The check is a
 string comparison and no hashing, because adr-46 keeps the fast path at one file
 test. Both install routes write it, and the ahoy installer writes it for **every**
 entry shape it leaves on `PATH`: the owned copy, the dev shim, and a working
@@ -1047,7 +1047,7 @@ anything, in this order:
    never the track-latest dev shim.
 5. **One line each** (`setup_brief.go`). Every question is drawn on its one
    line with its answers' labels; `?` draws the whole question and asks again
-   (`ask.ErrExplain`). The answers record keeps the whole question.
+   (`ask.ErrExplain`). The answers file setup writes keeps the whole question.
 6. **The report** (`setup_report.go`): done, one line per change with where;
    needs you, a numbered checklist of exact steps, each with why; next, one
    step. A change the person approved that then failed (a tool or abcd
@@ -1194,7 +1194,7 @@ an answers file named on the command line answers the questions wherever the
 install runs: each question is written as plain text (the drawing in Mono at
 80 columns, no escape byte), and one the file does not answer stops the run
 with exit 2, naming the question's id, the flag that answers it and the file
-line that would, with no answers record written. The file is checked before
+line that would, with no setup answers file written. The file is checked before
 the first write: an entry whose question has a fixed set of answers must
 give one of them, and every config value the run would ask must be
 answered, by its flag or by the file, walked in the order and as far as the
@@ -1205,8 +1205,8 @@ status line's elements, the offers, the artefact kind) leaves the steps before
 it done, and says so. A file never answers the questions put only to a person
 at a terminal (the git identity, the drain rule, installing a tool).
 
-**Every answer is recorded with where it was given.** The drawn door and the
-answers file write one answers record through `interview.Write`: per question,
+**Every answer is recorded with where it was given.** The drawn door and a named
+answers file each write one setup answers file through `interview.Write`: per question,
 the sanitised question as asked, the value, the note and `answered_in`,
 `Terminal` or `Claude Code` and nothing else. The drawn door stamps
 `Terminal`; an answers-file entry carries its own, or takes the place the
@@ -1577,16 +1577,16 @@ manifest are intact); the audit reconciles the registered path against the
 registry. It never mutates, and never auto-fixes user-scope state.
 
 **Uninstall** removes the marker block, abcd's own `PATH` entry where abcd owns
-it, the provenance record by which that ownership is proven, and the `PATH`
+it, the provenance file by which that ownership is proven, and the `PATH`
 line setup added to the shell settings. Ownership is
 the same three-shape predicate detection classifies with, and only one of the
-three is a pointer at all: the dev shim; the owned copy the `path-entry` record
+three is a pointer at all: the dev shim; the owned copy the `path-entry` file
 names and whose bytes still hash to the recorded value, which is the default
 install and a regular file pointing at nothing; and lastly a legacy symlink
 whose target is this plugin's binary, or whose target has gone when it is the
-link a plugin update stranded or the one the `path-entry` record names. The
+link a plugin update stranded or the one the `path-entry` file names. The
 recorded dangling link needs no plugin root to be recognised, so uninstall finds
-it on `PATH` and removes it with its record on a machine where abcd itself is
+it on `PATH` and removes it with its provenance file on a machine where abcd itself is
 gone. Anything else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
 
 **Uninstall then install is a tested round-trip invariant**: afterwards the
