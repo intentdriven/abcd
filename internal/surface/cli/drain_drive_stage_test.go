@@ -168,7 +168,7 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
 		t.Fatal(err)
 	}
-	if err := drivePreflight(os.Stderr, p)(context.Background(), dir, ""); err != nil {
+	if err := drivePreflight(os.Stderr, p, dir)(context.Background(), dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(out)
@@ -187,7 +187,8 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 
 // TestAPreflightIsHandedTheTipOriginReports: a lane's preflight is handed, in
 // ABCD_RECORDS_ONLY_BASE, the tip origin reports for its default branch, read
-// by the drive itself in the checkout, and `unverified` when that read fails,
+// by the drive itself in its own checkout (not the preflight's), and
+// `unverified` when that read fails,
 // names no branch as origin's HEAD (a detached HEAD) or no full commit id; a
 // value the drive's own environment carries never reaches the preflight.
 func TestAPreflightIsHandedTheTipOriginReports(t *testing.T) {
@@ -228,10 +229,11 @@ func TestAPreflightIsHandedTheTipOriginReports(t *testing.T) {
 				asked = append([]string{d}, args...)
 				return c.answer, c.err
 			}
-			if err := drivePreflight(os.Stderr, p)(context.Background(), dir, ""); err != nil {
+			root := t.TempDir()
+			if err := drivePreflight(os.Stderr, p, root)(context.Background(), dir, ""); err != nil {
 				t.Fatal(err)
 			}
-			if want := []string{dir, "ls-remote", "--symref", "origin", "HEAD"}; !slices.Equal(asked, want) {
+			if want := []string{root, "ls-remote", "--symref", "origin", "HEAD"}; !slices.Equal(asked, want) {
 				t.Errorf("the drive asked %q of origin, want %q", asked, want)
 			}
 			raw, err := os.ReadFile(out)
@@ -299,7 +301,7 @@ func TestThePreflightsAskOfOriginIsComparedFirst(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = drivePreflight(os.Stderr, p)(context.Background(), r.Root(), "")
+			err = drivePreflight(os.Stderr, p, r.Root())(context.Background(), r.Root(), "")
 			unset()
 			if err != nil {
 				t.Fatal(err)
@@ -318,6 +320,53 @@ func TestThePreflightsAskOfOriginIsComparedFirst(t *testing.T) {
 				t.Errorf("the preflight's environment states %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+// TestThePreflightsAskOfOriginReadsTheDrivesOwnCheckout: the drive asks
+// origin for its tip in its own checkout, so a URL rewrite standing at the
+// preflight checkout's own worktree scope (config.worktree, with
+// extensions.worktreeConfig on), which the drive's comparison does not read,
+// does not decide where the ask goes: origin answers with its tip.
+func TestThePreflightsAskOfOriginReadsTheDrivesOwnCheckout(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("base")
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	r.Git("remote", "add", "origin", bare)
+	r.Git("push", "-q", "origin", "main")
+	r.Git("--git-dir="+bare, "symbolic-ref", "HEAD", "refs/heads/main")
+	tip := r.Git("rev-parse", "HEAD")
+	r.Git("config", "extensions.worktreeConfig", "true")
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	r.Git("worktree", "add", "-q", "--detach", checkout, "HEAD")
+	r.Git("-C", checkout, "config", "--worktree", "url."+filepath.Join(t.TempDir(), "elsewhere.git")+".insteadOf", bare)
+	w := newDriveWorld(t)
+	p, err := runner.DriveProfile(w.home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Repo = w.repo
+	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	was := drivePreflightProgram
+	t.Cleanup(func() { drivePreflightProgram = was })
+	out := filepath.Join(t.TempDir(), "env")
+	drivePreflightProgram = func() (string, []string, error) {
+		return "/bin/sh", []string{"-c", "/usr/bin/env > '" + out + "'"}, nil
+	}
+	if err := drivePreflight(os.Stderr, p, r.Root())(context.Background(), checkout, ""); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := slices.DeleteFunc(strings.Split(string(raw), "\n"), func(l string) bool { return !strings.HasPrefix(l, "ABCD_RECORDS_ONLY_BASE=") })
+	if want := []string{"ABCD_RECORDS_ONLY_BASE=" + tip}; !slices.Equal(got, want) {
+		t.Errorf("the preflight's environment states %q, want %q", got, want)
 	}
 }
 
@@ -682,7 +731,7 @@ func TestAPreflightReadsNoGoWorkspaceOrGoSettingsFile(t *testing.T) {
 			drivePreflightProgram = func() (string, []string, error) {
 				return "/bin/sh", []string{"-c", script}, nil
 			}
-			if err := drivePreflight(os.Stderr, p)(context.Background(), dir, head); err != nil {
+			if err := drivePreflight(os.Stderr, p, dir)(context.Background(), dir, head); err != nil {
 				t.Fatal(err)
 			}
 			raw, err := os.ReadFile(env)
@@ -737,7 +786,7 @@ func TestAPreflightLeavesNoProcessBehind(t *testing.T) {
 			drivePreflightProgram = func() (string, []string, error) {
 				return "/bin/sh", []string{"-c", "/bin/sleep 60 >/dev/null 2>&1 & echo $! > '" + left + "'; exit " + exit}, nil
 			}
-			_ = drivePreflight(os.Stderr, p)(context.Background(), dir, "")
+			_ = drivePreflight(os.Stderr, p, dir)(context.Background(), dir, "")
 			pid := waitPidFile(t, left)
 			if !pidGone(pid, 5*time.Second) {
 				t.Fatalf("process %d outlived the preflight", pid)
