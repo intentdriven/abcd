@@ -37,10 +37,29 @@ call, no price fetched (a cost is reckoned only from a cell's declared
 Approving that digest records the run once the person has seen the plan and said
 yes to it; the plan is built again and must carry the same digest. The spending
 cap comes from the declaration's `spend_cap` or the machine's
-`matrix.spend_cap`, never from the repository's configuration. Starting the
-run's copies is step 3's, so a consented run is recorded and nothing is
-launched, and the verb says so. A refusal exits 2 with nothing written; a
-halted lab exits 1.
+`matrix.spend_cap`, never from the repository's configuration. A refusal
+exits 2 with nothing written; a halted lab exits 1.
+
+A consented run hands off every pilot copy (spc-2610161949559050 step 8): each
+copy's clone of the frozen commit is made under a random alias in the clone
+store outside every checkout, the record of which alias is which copy is kept
+in the run's state in the lab, and a clone bound for a provider passes the
+launch bundle's secret scan first, a hit refusing the cell. Each hand-off
+carries the brief the copy is made from, which names no task id, cell, route
+or model. A host cell's copy is the host's to make in its clone and hand back
+with a receipt and its transcript; a made code copy carries its hidden tests'
+result as the host ran them, and its trial says abcd neither placed nor ran
+them. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
+and the host never stands in for one, since its answer would measure the wrong
+model. A copy handed back is checked for compliance under one overall deadline
+before its trial is written, a check copy's findings are recorded before its
+clone is deleted, and every trial passes the secret screen. A code task's
+copies are then reviewed through blinded requests, each assembled from the
+frozen tree and the copy's clone read as data under an opaque label, whose
+answers are scored before they are recorded. A writing task's judging packet is
+drawn from its made copies with every mention of where a copy ran, its alias,
+every task, cell, route and model and every maker withheld, and a judging
+session's verdict file is recorded against it.
 
 A recorded run's report is read from its records in the lab and writes nothing
 (spc-2610161949559050 step 8). A code task gives each builder's pass rate on
@@ -68,7 +87,8 @@ its own plan; a run whose frozen commit is not the lab's pin is refused. The
 re-run keeps a copy of the first run's records beside its own, each passed
 through the secret screen, and its report shows, field by field, where it
 drifted: the run's record and each copy's trial, with both values, leaving out
-the ids and clocks that differ by construction.
+the ids and clocks that differ by construction. A re-run hands off its own
+pilot copies as a run does.
 
 ## The store
 
@@ -229,11 +249,34 @@ Flags: none.
 
 ### `abcd lab matrix`
 
-Sub-verbs: `abcd lab matrix report`, `abcd lab matrix rerun`.
+Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
 
 | Flag | Type |
 |---|---|
 | `--approve` | string |
+
+### `abcd lab matrix copy`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answer` | string |
+| `--form` | string |
+| `--receipt` | string |
+| `--transcript` | string |
+
+### `abcd lab matrix judge`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--bad` | string |
+| `--good` | string |
+| `--host` | string |
+| `--judges` | string |
+| `--verdicts` | string |
 
 ### `abcd lab matrix report`
 
@@ -248,6 +291,14 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--approve` | string |
+
+### `abcd lab matrix review`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answers` | string |
 
 ### `abcd lab mint`
 

@@ -152,14 +152,77 @@ with the digest it carried:
 
 The plan is built again and must carry that digest; an approval naming another
 plan is refused with nothing written. Never pass `--approve` on your own
-judgement, and never with a digest the person did not see. Starting the run's
-copies is not built yet, so a consented run is recorded in the lab and nothing
-is launched: `launched` is false and `note` says so; tell the person that
-plainly. Refused, exit 2, with nothing written: a metered cell with no spending
+judgement, and never with a digest the person did not see. The run then hands
+off every pilot copy: `copies` lists each one's `key`, `state`, `clone` (its own
+clone of the frozen commit under a random alias, outside every checkout) and
+`brief` (what the copy is asked, naming no task id, cell, route or model). A
+clone bound for a provider passes the launch bundle's secret scan first, and a
+hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
+make, below. A runner cell's copy is `awaiting_runner`: abcd does not launch a
+runner in a clone yet, and nothing stands in for it, so never make it yourself
+and tell the person plainly that those cells wait. Refused, exit 2, with nothing
+written: a metered cell with no spending
 cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
 person's own machine configuration, never the repository's), a local cell with
 no load cap or one at or above the cores, a route this machine's runners refuse,
 an OpenRouter or local cell with no pin, and a stale approval.
+
+**Make each host cell's copy and hand it back.** Show a copy's hand-off with:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <task>/<cell>/<repeat>
+```
+
+Hand its `brief` to a fresh sub-agent working in its `clone` and nowhere else,
+telling it nothing more of the run. For a code copy, then run the task's hidden
+tests against the clone yourself, through the load gate, outside the clone.
+Hand the copy back with a receipt file, `{"schema_version": 1, "outcome":
+"made"}` or `"failed"` with a `reason`, with `started_at`, `finished_at`,
+`model_time_ms` and `gate_wait_ms` where known, and for a made code copy
+`"score": {"passed": <n>, "total": <n>}` from those hidden tests:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <key> --receipt <file> --transcript <file> [--answer <file>] [--form doc-fidelity|consistency]
+```
+
+`--transcript` is the sub-agent's transcript, which the compliance check reads
+for reads outside the clone (without it that rule is unexamined and the copy is
+reported apart). A writing copy names its document with `--answer`; a check
+copy its answer with `--answer` and `--form`. The copy is checked for
+compliance first, and the trial (`status`, `reason`, `score`, `compliance`) is
+written once; the trial says the host, not abcd, ran the hidden tests. Refused,
+exit 2, with nothing written: a runner cell's copy, a copy already handed back,
+and a receipt, score or answer that does not validate.
+
+**Review a code task's copies**, once its copies are handed back:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task>
+```
+
+`requests` gives each reviewer cell's blinded `request` about each copy under
+an opaque `label`. Hand each `handed_off` request, and nothing else, to a fresh
+sub-agent, and save its one JSON answer at `<dir>/<reviewer-cell>/<label>.json`;
+a request `awaiting_runner` waits, as a runner cell's copy does. Then record
+them, read as untrusted input and scored before anything is written:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task> --answers <dir>
+```
+
+**Draw a writing task's judging** from its made copies, with one good and one
+bad example the person gives and how many judges' subsets to draw:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>
+```
+
+The packet, written in the run's state with its key beside it, renders every
+copy as inert text with every mention of where it ran, its alias, every task,
+cell, route and model and every maker withheld, and names no run, task or path.
+It is what the person's judging session shows; hand the session's verdict file
+back with `--verdicts <file>` (and `--host <login>` when the host judged too,
+whose rankings are reported apart).
 
 **Read a recorded run's report**, which writes nothing:
 
@@ -195,7 +258,8 @@ run's folder carried from elsewhere:
 It shows the plan as the first form does and writes nothing; record the re-run
 only after the person has seen that plan and said yes to it, with the digest it
 carried (`--approve <digest>`). The re-run's record is written beside a copy of
-the first run's records, and its report shows the drift. Refused, exit 2, with
+the first run's records, its pilot copies are handed off as the first form's
+are, and its report shows the drift. Refused, exit 2, with
 nothing written: a run the lab never recorded, a folder holding no run's
 records, a run whose frozen commit is not the lab's pin, and a stale approval.
 
@@ -227,10 +291,17 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd lab harvest lab-260901000000-0123abc`.
 - `abcd lab matrix <lab-id> <declaration.json> [flags]`
   - An example call is `abcd lab matrix lab-260901000000-0123abc matrix.json`.
+- `abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [flags]`
+  - An example call is `abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1`.
+- `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
+  - An example call is `abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3`.
 - `abcd lab matrix report <lab-id> <run-id> [flags]`
   - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
   - An example call is `abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b`.
+- `abcd lab matrix review <lab-id> <run-id> <task> [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd lab matrix review lab-260901000000-0123abc mx-260901000000-0a1b feature-a`.
 - `abcd lab mint <question> [flags]`
   - An example call is `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`.
 - `abcd lab preflight <lab-id> [flags]`

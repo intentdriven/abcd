@@ -74,8 +74,8 @@ func newLabMatrixRerunCommand(asJSON *bool) *cobra.Command {
 			"--approve <digest> records the re-run, once the person has seen the plan and\n" +
 			"said yes to it, and copies the first run's records beside it, so the re-run's\n" +
 			"report shows field by field where it drifted. A model run is re-runnable, not\n" +
-			"reproducible: the drift is the finding. Starting the copies is not built yet,\n" +
-			"so nothing is launched; the output says so.\n\n" +
+			"reproducible: the drift is the finding. The re-run then hands off its pilot\n" +
+			"copies as `abcd lab matrix --approve` does.\n\n" +
 			"Refused, exit 2, with nothing written: a run the lab never recorded, a folder\n" +
 			"that holds no run's records, a run whose frozen commit is not the lab's pin,\n" +
 			"every refusal `abcd lab matrix` gives, and an approval that is not the plan's\n" +
@@ -102,15 +102,16 @@ func newLabMatrixRerunCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd lab matrix rerun: the running binary cannot be named: %w", err)
 			}
-			rec, plan, err := matrix.StartRerun(root, args[0], args[1], approve, cores, exe, core.Version, recordOnly{})
+			l, err := matrixLauncher(root)
+			if err != nil {
+				return fmt.Errorf("abcd lab matrix rerun: %w", err)
+			}
+			rec, plan, err := matrix.StartRerun(root, args[0], args[1], approve, cores, exe, core.Version, l)
 			if err != nil {
 				return matrixFailure(err)
 			}
-			out := labMatrixStarted{RunID: rec.RunID, Digest: plan.Digest, Launched: false,
-				Note: "the re-run's record is written in the lab beside a copy of the first run's records; starting its copies is not built yet (spec step 3), so nothing was launched"}
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd lab matrix rerun: recorded run %s for the plan %s\n  %s\n", out.RunID, out.Digest[:12], out.Note)
-			})
+			out := startedView(rec, plan, l, "the re-run's record, beside a copy of the first run's records,")
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderStarted(w, "abcd lab matrix rerun", out) })
 		},
 	}
 	cmd.Flags().StringVar(&approve, "approve", "", "the digest of the plan the person saw and said yes to; records the re-run")
@@ -146,7 +147,7 @@ func renderMatrixReport(w io.Writer, r matrix.Report) {
 	for _, c := range r.Code {
 		fmt.Fprintf(w, "code %s (%s)\n", s(c.Task), s(c.Intent))
 		for _, cell := range c.Cells {
-			fmt.Fprintf(w, "  %-14s %s (%s)\n", s(cell.Cell), s(cell.Model), cell.Source)
+			fmt.Fprintf(w, "  %-14s %s (%s)\n", s(cell.Cell), s(cell.Model), s(string(cell.Source)))
 			fmt.Fprintf(w, "    pass@1 %d of %d: %s", cell.PassAt1.Passed, cell.PassAt1.Attempts, rate(cell.PassAt1.Rate, cell.PassAt1.Interval))
 			for _, h := range cell.PassHatK {
 				fmt.Fprintf(w, "; pass^%d %.2f", h.K, h.Value)

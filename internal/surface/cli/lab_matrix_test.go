@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/matrix"
 )
 
 // matrixLabCLI mints a lab of a throwaway repository outside abcd, passes its
@@ -112,7 +113,7 @@ func TestLabMatrixWithTheShownDigestWritesTheRunRecord(t *testing.T) {
 		Launched bool   `json:"launched"`
 		Note     string `json:"note"`
 	}
-	if code != 0 || json.Unmarshal([]byte(out), &started) != nil || started.RunID == "" || started.Launched || !strings.Contains(started.Note, "nothing was launched") {
+	if code != 0 || json.Unmarshal([]byte(out), &started) != nil || started.RunID == "" || !started.Launched || !strings.Contains(started.Note, "6 pilot copies are handed off") {
 		t.Fatalf("approve (exit %d): %s%s", code, out, errOut)
 	}
 	runs, _ := filepath.Glob(filepath.Join(abcdhome.Path(home, "lab"), "*", id, "state", "matrix", started.RunID, "run.json"))
@@ -219,5 +220,16 @@ func TestLabMatrixRerunRecordsAReRunAndItsReportShowsDrift(t *testing.T) {
 	}
 	if _, out, _ := runLab(t, "lab", "matrix", "report", id, again); !strings.Contains(out, "drift from "+first) {
 		t.Errorf("the re-run's report does not name its first run:\n%s", out)
+	}
+}
+
+// A report's cell source reaches the terminal escaped, as every other field
+// does: a trial carried from elsewhere names it.
+func TestAMatrixReportPrintsACellsSourceEscaped(t *testing.T) {
+	var b strings.Builder
+	renderMatrixReport(&b, matrix.Report{Run: "mx-261023012949-ab12", FrozenCommit: strings.Repeat("a", 40),
+		Code: []matrix.CodeReport{{Task: "feature-a", Cells: []matrix.CodeCell{{Cell: "c", Source: matrix.Source("host\x1b[2J")}}}}})
+	if strings.Contains(b.String(), "\x1b") {
+		t.Fatalf("the report prints a cell's source raw: %q", b.String())
 	}
 }
