@@ -607,8 +607,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		leads    map[int]bool
 		leadFrom map[int]leadSource
 		// keywords records, per token index of the command being built, a
-		// for, case or in the line leaves wholly unquoted, which bashParens
-		// reads.
+		// for, case, in or [[ the line leaves wholly unquoted, which
+		// bashParens and testsWords read.
 		keywords map[int]bool
 		// parenNext rides with the segment the next flushSegment ends
 		// (segment.parenWord), and qualNext with it (segment.qualifierCode).
@@ -1030,7 +1030,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordSpelling(tok, tok == string(cur))
 		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
 		bare := !curQuoted && tok == string(cur) && allStruct(curMask)
-		if bare && parenKeywords[tok] {
+		if bare && (parenKeywords[tok] || tok == "[[") {
 			if keywords == nil {
 				keywords = map[int]bool{}
 			}
@@ -1056,7 +1056,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
-			inTest = (inTest || testsWords(toks)) && !containsString(toks, "]]")
+			inTest = (inTest || testsWords(toks, keywords)) && !containsString(toks, "]]")
 			for _, k := range curDocs {
 				docOwners[k] = len(segs)
 			}
@@ -1926,7 +1926,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if parenNext {
 					code, expands := zshQualifierCode(line, i)
 					qualNext = append(qualNext, code...)
-					if glued && !inTest && !testsWords(toks) {
+					if glued && !inTest && !testsWords(toks, keywords) {
 						qualUnfixedNext = qualUnfixedNext || expands == qualifierUnfixed
 						qualPositionalNext = qualPositionalNext || expands == qualifierPositional
 					}
@@ -2352,13 +2352,15 @@ func bashParens(line string, i int, toks []string, keywords map[int]bool, cur st
 
 // testsWords reports whether the command being read is a `[[ … ]]` test,
 // past the reserved words before it, where a `(` groups a pattern or a
-// regular expression and names no path.
-func testsWords(toks []string) bool {
+// regular expression and names no path. The `[[` counts only when the line
+// leaves it wholly unquoted (keywords): a quoted or escaped `[[` is a
+// command's name to bash and zsh, which no `]]` closes.
+func testsWords(toks []string, keywords map[int]bool) bool {
 	lead := 0
 	for lead < len(toks) && reserved[toks[lead]] {
 		lead++
 	}
-	return lead < len(toks) && toks[lead] == "[["
+	return lead < len(toks) && toks[lead] == "[[" && keywords[lead]
 }
 
 // allReserved reports whether every token so far is a reserved word, so the
