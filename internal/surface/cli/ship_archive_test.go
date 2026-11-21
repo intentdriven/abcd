@@ -83,7 +83,7 @@ func TestLaunchShipPinsTheReleaseArchive(t *testing.T) {
 	if got := readFileString(t, filepath.Join(r.Root(), ".claude-plugin/plugin.json")); got != pluginBefore {
 		t.Error("adr-19: the ship mutated the working tree's plugin.json")
 	}
-	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), filepath.Join(r.Root(), ".abcd/config/version-location.json")); !res.OK {
+	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), r.Root()); !res.OK {
 		t.Errorf("a pinned working tree must stay version-absent, got %+v", res)
 	}
 
