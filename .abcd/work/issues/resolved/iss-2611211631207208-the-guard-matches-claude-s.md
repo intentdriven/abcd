@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/guard"
 remedy: "Refuse a claude settings flag that sets the bypass permission mode or any allow rule, reading the JSON on the line and a readable named file"
 refines: [iss-2610240932215918]
+resolution: "A new guard entry refuses claude's settings flag when it sets the bypass permission mode or any allow rule, read from the JSON on the line or a readable named file."
+impact: additive
+resolved_by:
+  commit: "62edeabc9"
 ---
 
 The guard matches claude's permission-mode flag but not its settings flag, whose JSON or file can set the same mode or allow rules.

@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard"
 remedy: "Read the code a zsh glob qualifier runs the way the guard reads an eval string"
+resolution: "The guard reads the code a zsh glob qualifier runs the way it reads an eval string, on the check and hook path."
+impact: additive
+resolved_by:
+  commit: "4486eff7c"
 ---
 
 On the interactive check and hook path the guard does not read zsh glob qualifiers that run code (e qualifiers and +function qualifiers), so a command it would refuse is allowed inside one.
