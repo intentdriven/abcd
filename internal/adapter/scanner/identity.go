@@ -1046,15 +1046,29 @@ var genericAccountNames = map[string]bool{
 const maxGenericAccountRunes = 2
 
 // isGenericAccountName reports whether an account name is under the generic
-// floor (genericAccountNames, or maxGenericAccountRunes or shorter).
+// floor (genericAccountNames, or maxGenericAccountRunes or shorter, or digits
+// alone). A home named by a number alone (a container's uid-numbered home,
+// /1000) names no person, and the number is ordinary text everywhere (a count,
+// an item's number), so like a generic name it is caught only where it stands
+// as an account.
 func isGenericAccountName(name string) bool {
 	if name == "" {
 		return false
 	}
-	if utf8.RuneCountInString(name) <= maxGenericAccountRunes {
+	if utf8.RuneCountInString(name) <= maxGenericAccountRunes || isDigitsOnly(name) {
 		return true
 	}
 	return genericAccountNames[strings.ToLower(name)]
+}
+
+// isDigitsOnly reports whether s is ASCII digits alone.
+func isDigitsOnly(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // accountRootPrefixes are the spellings that put the next segment in the

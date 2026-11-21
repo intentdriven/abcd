@@ -880,3 +880,21 @@ func TestAnUnpinnedFieldNamedForACellIsNotReadAsAHostName(t *testing.T) {
 		t.Fatalf("writeRun with cell.local-rev.harness_version unpinned: %v", err)
 	}
 }
+
+// A home whose last segment is a bare number (a container's uid-numbered
+// home) names no person, so the screen does not refuse that number where it
+// stands as ordinary text: a review request's "item-1000", a count of copies.
+func TestTheScreenPassesTheNumberAHomeIsNamedBy(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "1000")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	r := gittest.NewRepo(t)
+	r.Write("README.md", "root\n")
+	r.Commit("root")
+	data := []byte("# item-1000\n\nThe review drew 1000 copies.\n")
+	if err := screen(r.Root(), []screened{{lab.StateFile{Rel: "run/review/item-1000.md", Data: data}, data}}); err != nil {
+		t.Errorf("the screen under HOME=%s refused the number it is named by: %v", home, err)
+	}
+}
