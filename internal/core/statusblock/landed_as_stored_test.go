@@ -3,6 +3,7 @@ package statusblock
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,7 +15,8 @@ import (
 // TestALaneAtItsLandingReadsAsLandedOnlyWhenTheDefaultBranchStoresItsTip: a
 // lane branch whose tip the default branch does not store has not landed,
 // whatever parents a refs/replace entry or a .git/info/grafts line gives the
-// default branch's tip; the same tip merged in the stored history has.
+// default branch's tip, and whatever object a refs/replace entry stands in for
+// the branch's tip; the same tip merged in the stored history has.
 func TestALaneAtItsLandingReadsAsLandedOnlyWhenTheDefaultBranchStoresItsTip(t *testing.T) {
 	setup := func(t *testing.T) (r *gittest.Repo, base, work, tip string) {
 		t.Helper()
@@ -51,6 +53,18 @@ func TestALaneAtItsLandingReadsAsLandedOnlyWhenTheDefaultBranchStoresItsTip(t *t
 			t.Fatal(err)
 		}
 		check(t, r, work, tip)
+	})
+	t.Run("a refs/replace entry standing a tree in for the lane's tip", func(t *testing.T) {
+		r, base, work, _ := setup(t)
+		r.Git("update-ref", "refs/replace/"+work, r.Git("rev-parse", base+"^{tree}"))
+		peel := exec.Command("git", "-C", r.Root(), "rev-parse", "--verify", "--quiet", "refs/heads/build/run-1-lane-1^{commit}", "--")
+		peel.Env = r.Env()
+		if err := peel.Run(); err == nil {
+			t.Fatal("git presents the lane's tip as a commit")
+		}
+		if LandedContext(context.Background(), r.Root(), "build/run-1-lane-1", true) {
+			t.Fatal("a lane whose branch stands at a commit main does not store reads as landed")
+		}
 	})
 	t.Run("a stored merge", func(t *testing.T) {
 		r, _, work, _ := setup(t)

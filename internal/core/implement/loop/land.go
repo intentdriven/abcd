@@ -2987,9 +2987,12 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 func retireLanded(ctx context.Context, c Context, lane Lane, merged, stage, again string) error {
 	ref := "refs/heads/" + lane.Branch
 	// A branch git does not name a commit for is gone, as the land step has
-	// always read it: there is nothing of it to delete.
-	tip, tipErr := gitutil.RunCappedContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	if tip = strings.TrimSpace(tip); tipErr != nil || !gitutil.IsFullSHA(tip) {
+	// always read it: there is nothing of it to delete. The tip is read as
+	// stored, so a refs/replace entry standing another object in for it does
+	// not make a standing branch read as gone and skip the gates below.
+	out, _, tipErr := gitutil.RunCappedExitOneAsStoredContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	tip := strings.TrimSpace(string(out))
+	if tipErr != nil || !gitutil.IsFullSHA(tip) {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("resolving the lane branch %s: %w", lane.Branch, ctxErr)
 		}

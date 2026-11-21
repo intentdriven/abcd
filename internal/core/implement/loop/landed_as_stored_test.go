@@ -68,6 +68,26 @@ func TestALandedLaneIsRetiredOnlyAtATipTheMergedCommitStores(t *testing.T) {
 	}
 }
 
+// TestALandedLaneIsRetiredOnlyAtTheTipItsBranchStores: the retiring of a
+// landed lane reads the branch's tip as stored, so a refs/replace entry
+// standing a tree in for a tip past what landed leaves the lane refused, its
+// branch kept.
+func TestALandedLaneIsRetiredOnlyAtTheTipItsBranchStores(t *testing.T) {
+	repo, base, merged, _ := threeCommits(t)
+	tip := repo.Git("commit-tree", base+"^{tree}", "-p", merged, "-m", "past the push")
+	const branch = "build/run-1-lane-1"
+	repo.Git("branch", branch, tip)
+	repo.Git("update-ref", "refs/replace/"+tip, repo.Git("rev-parse", base+"^{tree}"))
+	lane := Lane{ID: "lane-1", Branch: branch, Landing: &Landing{Pushed: merged}}
+	err := retireLanded(context.Background(), Context{RepoRoot: repo.Root()}, lane, merged, string(StageLand), "run it again")
+	if r, ok := AsRefusal(err); !ok || !strings.Contains(r.Reason, "past what landed") {
+		t.Fatalf("the lane is refused for carrying work that did not land: %v", err)
+	}
+	if got := repo.Git("rev-parse", "refs/heads/"+branch); got != tip {
+		t.Fatalf("the lane's branch is kept at %s, got %s", tip, got)
+	}
+}
+
 // TestAParkedLaneIsPlacedOnTheMergedCommitAsStored: a resumed build sees a
 // parked lane's pushed head on the fetched default branch only when that
 // commit stores it.

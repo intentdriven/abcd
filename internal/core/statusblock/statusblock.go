@@ -385,7 +385,8 @@ func landed(repoRoot string, l Lane) bool {
 // LandedContext is the one reading of whether a lane's pull request merged from
 // local refs alone, never the forge: the board's, and the loop's when a build of
 // the intent resumes a run whose lane merged (iss-2611101317510356). It holds
-// when the lane's recorded branch is gone, or when the lane is at its land stage
+// when the lane's recorded branch is gone (it names no commit as stored, so no
+// refs/replace entry makes a standing branch read as gone), or when the lane is at its land stage
 // (atLand) and its branch's tip is on the default branch as last fetched
 // (gitutil.DefaultRefContext), read as the commits store their parents. A lane with no branch yet, a branch name git
 // would not take as safe, and a lane git cannot answer for, within ctx or at
@@ -396,13 +397,14 @@ func LandedContext(ctx context.Context, repoRoot, branch string, atLand bool) bo
 	if branch == "" || !gitutil.RefIsSafe(branch) {
 		return false
 	}
-	out, gone, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}", "--")
+	out, gone, err := gitutil.RunCappedExitOneAsStoredContext(ctx, repoRoot, 4096, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch+"^{commit}", "--")
 	if err != nil {
 		return false
 	}
 	if gone {
 		// rev-parse --verify --quiet exits 1, saying nothing, for a ref that
-		// names no commit; any other failure is git unable to answer.
+		// names no commit as stored; any other failure is git unable to
+		// answer.
 		return true
 	}
 	tip := strings.TrimSpace(string(out))
