@@ -1,7 +1,7 @@
 ---
 term: ledger
 bounded_context: core
-definition: An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are named in full, save the sources ledger inside the library surface chapter, where the bare word means it.
+definition: An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are always named in full.
 aliases: ["issue ledger"]
 forbidden_synonyms: ["database", "log file", "queue", "tracker"]
 status: stable
