@@ -222,7 +222,8 @@ that name with none at this head, since the proof may lie past the bound.
    its dependency merges is not done yet. Where a merge queue
    gates the default branch, land lists before arming the open pull requests
    into it that are queued or armed, and a branch that shares a commit not on
-   the default branch with one of them (a branch cut from that one's branch)
+   the default branch with one of them (a branch cut from that one's branch),
+   read by the parents the commits store,
    is not armed: the step is `stopped`, naming each such pull request and
    whether it is queued or armed, because the merge queue removes a pull
    request whose branch carries another queued or armed one's commits. Relay

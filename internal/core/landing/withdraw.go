@@ -348,13 +348,13 @@ func gateAtLocalHead(res *Result, o Options, dir, tracking, nameWithOwner, n str
 
 // movedByPush refuses unless the push will fast-forward: the forge's head and
 // origin's branch (tip, "" when origin has none) are both ancestors of the local
-// head. A commit this checkout does not hold is no ancestor it can vouch for.
+// head as the commits store their parents, which is what the push sends. A commit this checkout does not hold is no ancestor it can vouch for.
 func movedByPush(res *Result, dir, n, head, tip string) error {
 	for _, c := range []struct{ what, sha string }{{"pull request #" + n + "'s head on the forge", head}, {Remote + "'s " + res.Branch, tip}} {
 		if c.sha == "" {
 			continue
 		}
-		if on, err := gitutil.IsAncestor(dir, c.sha, res.Head); err == nil && on {
+		if on, err := gitutil.IsAncestorAsStored(dir, c.sha, res.Head); err == nil && on {
 			continue
 		}
 		return refuse(c.what+", "+short(c.sha)+", is not an ancestor of the local head "+short(res.Head)+", so the push would not move it: land leaves pull request #"+n+"'s arming as it is",
