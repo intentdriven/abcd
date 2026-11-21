@@ -385,6 +385,18 @@ func TestOwnCopyOnlyReadsTheStoreInEverySpelling(t *testing.T) {
 		"${HOME}": func(t *testing.T, c complianceCase) string {
 			return `{"command":"cat ${HOME}\/` + home(t, c) + `/README.md"}`
 		},
+		"a quoted $HOME": func(t *testing.T, c complianceCase) string {
+			return `cat "$HOME"/` + home(t, c) + "/README.md"
+		},
+		"a quoted $HOME, JSON-escaped": func(t *testing.T, c complianceCase) string {
+			return `{"command":"cat \"$HOME\"\/` + home(t, c) + `/README.md"}`
+		},
+		"a quoted ${HOME}": func(t *testing.T, c complianceCase) string {
+			return `cat '${HOME}'/` + home(t, c) + "/README.md"
+		},
+		"$HOME after an option": func(t *testing.T, c complianceCase) string {
+			return "cc -I$HOME/" + home(t, c) + "/widget -c x.c"
+		},
 		"a doubled slash": func(t *testing.T, c complianceCase) string {
 			return "cat " + c.store + "//" + cloneRun + "/widget/dear/1/README.md"
 		},
@@ -464,6 +476,7 @@ func TestOwnCopyOnlyKeepsACopyThatStayedInItsClone(t *testing.T) {
 		"cd widget && go test ../...",
 		"ls ..",
 		"cat ~/.profile $HOME/notes.txt",
+		`cat "$HOME"/notes.txt -I$HOME/include`,
 	} {
 		c.in.Transcript = append(c.in.Transcript, []byte(line+"\n")...)
 	}

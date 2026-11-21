@@ -32,13 +32,16 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -342,19 +345,20 @@ func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCh
 			differ = append(differ, ft)
 		}
 	}
+	var viewErr error
 	if len(differ) > 0 {
-		viewed := attributesKept(root, clone, tree)
+		var viewed bool
+		viewed, viewErr = attributesKept(root, clone, tree)
 		var changed map[string]bool
-		var viewErr error
-		if viewed {
-			changed, viewErr = gitChanged(in.RepoRoot, clone, in.Frozen, differ)
+		if viewed && viewErr == nil {
+			changed, viewErr = gitChanged(in.RepoRoot, root, clone, in.Frozen, differ)
 		}
 		for _, ft := range differ {
 			switch {
-			case !viewed:
-				edited = append(edited, ft.path+" (changed)")
 			case viewErr != nil:
 				unread = append(unread, ft.path)
+			case !viewed:
+				edited = append(edited, ft.path+" (changed)")
 			case changed[ft.path]:
 				edited = append(edited, ft.path+" (changed)")
 			}
@@ -364,6 +368,10 @@ func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCh
 		slices.Sort(edited)
 		return ComplianceCheck{Rule: RuleTestsKept, State: StateBroken,
 			Detail: clipTo(fmt.Sprintf("edited %d test file(s) the frozen commit holds: %s", len(edited), safeList(edited)), maxDetailBytes)}
+	}
+	if errors.Is(viewErr, errConfigUnread) {
+		return unexamined(fmt.Sprintf("the copy's git configuration is not a regular file of at most %d bytes, so git cannot be asked whether its %d changed test file(s) were edited",
+			maxConfigBytes, len(differ)))
 	}
 	if len(unread) > 0 {
 		slices.Sort(unread)
@@ -378,7 +386,7 @@ func safeList(names []string) string { return termsafe.Sanitize(strings.Join(nam
 
 // readFrozenTree reads the frozen commit's tree from the run's own checkout.
 func readFrozenTree(repoRoot, frozen string) (frozenTree, error) {
-	format, err := git("-C", repoRoot, "rev-parse", "--show-object-format")
+	format, err := checkGit("-C", repoRoot, "rev-parse", "--show-object-format")
 	if err != nil {
 		return frozenTree{}, err
 	}
@@ -391,7 +399,7 @@ func readFrozenTree(repoRoot, frozen string) (frozenTree, error) {
 	default:
 		return frozenTree{}, fmt.Errorf("the checkout names its objects by %q", clip(format))
 	}
-	out, err := gitRaw("-C", repoRoot, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
+	out, err := gitRawWithin(checkGitBound, "-C", repoRoot, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
 	if err != nil {
 		return frozenTree{}, err
 	}
@@ -453,11 +461,18 @@ func (ft frozenTest) compare(root *os.Root, newHash func() hash.Hash) (string, e
 	if !fi.Mode().IsRegular() || fi.Size() != ft.size {
 		return "changed", nil
 	}
-	f, err := root.Open(p)
+	// Opened without blocking and judged again on the descriptor: a FIFO put
+	// in the file's place after the Lstat is never waited on.
+	f, err := root.OpenFile(p, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	if st, err := f.Stat(); err != nil {
+		return "", err
+	} else if !st.Mode().IsRegular() || !os.SameFile(fi, st) {
+		return "changed", nil
+	}
 	h := newHash()
 	fmt.Fprintf(h, "blob %d\x00", ft.size)
 	n, err := io.Copy(h, io.LimitReader(f, ft.size+1))
@@ -474,30 +489,27 @@ func (ft frozenTest) compare(root *os.Root, newHash func() hash.Hash) (string, e
 // commit's, line endings aside (an eol attribute rewrites a .gitattributes
 // file's own), and the clone holds no attribute file the frozen commit lacks,
 // at any path outside its git directory, in any letter case: only then does
-// git read the clone's tests by the frozen commit's attributes.
-func attributesKept(root *os.Root, clone string, tree frozenTree) bool {
+// git read the clone's tests by the frozen commit's attributes. Each file is
+// read as a regular file within twice its frozen size (fsutil.ReadGuardedInRoot),
+// and the walk reads at most maxScanEntries entries: a clone past that is an
+// error, so its tests go unexamined.
+func attributesKept(root *os.Root, clone string, tree frozenTree) (bool, error) {
 	frozen := map[string]bool{}
 	for _, a := range tree.attrs {
 		frozen[a.path] = true
-		fi, err := root.Lstat(filepath.FromSlash(a.path))
-		if err != nil || !fi.Mode().IsRegular() || fi.Size() > 2*a.size+1 {
-			return false
-		}
-		f, err := root.Open(filepath.FromSlash(a.path))
-		if err != nil {
-			return false
-		}
-		data, err := io.ReadAll(io.LimitReader(f, 2*a.size+2))
-		_ = f.Close()
+		data, err := fsutil.ReadGuardedInRoot(root, a.path, 2*a.size+1)
 		if err != nil || blobID(tree.newHash, data) != a.oid &&
 			blobID(tree.newHash, bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))) != a.oid {
-			return false
+			return false, nil
 		}
 	}
-	kept := true
+	kept, n := true, 0
 	err := filepath.WalkDir(clone, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if n++; n > maxScanEntries {
+			return errScanBound
 		}
 		if d.IsDir() && d.Name() == ".git" && filepath.Dir(p) == clone {
 			return filepath.SkipDir
@@ -511,11 +523,26 @@ func attributesKept(root *os.Root, clone string, tree frozenTree) bool {
 		}
 		return nil
 	})
-	return err == nil && kept
+	if errors.Is(err, errScanBound) {
+		return false, err
+	}
+	return err == nil && kept, nil
 }
 
 // maxPathspecs bounds the paths one git command is handed.
 const maxPathspecs = 256
+
+// checkGitBound bounds one git command the compliance check runs: each reads
+// the run's checkout or a copy's clone, which the copy could have made large
+// or made to wait, so a git past it is stopped and what it was asking is
+// unexamined, never answered.
+const checkGitBound = 2 * time.Minute
+
+// checkGit is git bounded by checkGitBound, its output trimmed.
+func checkGit(args ...string) (string, error) {
+	out, err := gitRawWithin(checkGitBound, args...)
+	return strings.TrimSpace(string(out)), err
+}
 
 // gitChanged asks git which of tests changed in the clone from the frozen
 // commit. git runs from a scratch repository of the check's own, removed
@@ -525,9 +552,10 @@ const maxPathspecs = 256
 // runs, and nothing of the run's checkout is written. The scratch repository
 // has a fresh configuration, as the clone had when makeClone checked it out
 // (isolated from the person's), with the clone's own line-ending settings
-// (core.autocrlf, core.eol) read from its configuration as values.
-func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]bool, error) {
-	common, err := git("-C", repoRoot, "rev-parse", "--git-common-dir")
+// (core.autocrlf, core.eol) read as values from a copy of its configuration
+// (lineEndings). Every git command is bounded by checkGitBound.
+func gitChanged(repoRoot string, root *os.Root, clone, frozen string, tests []frozenTest) (map[string]bool, error) {
+	common, err := checkGit("-C", repoRoot, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
@@ -539,8 +567,12 @@ func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
+	endings, err := lineEndings(root, tmp)
+	if err != nil {
+		return nil, err
+	}
 	view := filepath.Join(tmp, "view")
-	if _, err := git("init", "-q", "--template=", view); err != nil {
+	if _, err := checkGit("init", "-q", "--template=", view); err != nil {
 		return nil, err
 	}
 	gitDir := filepath.Join(view, ".git")
@@ -551,8 +583,8 @@ func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]
 	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(filepath.Join(common, "objects")+"\n"), 0o600); err != nil {
 		return nil, err
 	}
-	base := append(lineEndings(clone), "--literal-pathspecs", "--git-dir="+gitDir, "--work-tree="+clone)
-	if _, err := git(append(slices.Clone(base), "read-tree", frozen)...); err != nil {
+	base := append(endings, "--literal-pathspecs", "--git-dir="+gitDir, "--work-tree="+clone)
+	if _, err := checkGit(append(slices.Clone(base), "read-tree", frozen)...); err != nil {
 		return nil, err
 	}
 	changed := map[string]bool{}
@@ -561,7 +593,7 @@ func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]
 		for _, ft := range chunk {
 			args = append(args, ft.path)
 		}
-		out, err := gitRaw(args...)
+		out, err := gitRawWithin(checkGitBound, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -574,12 +606,42 @@ func gitChanged(repoRoot, clone, frozen string, tests []frozenTest) (map[string]
 	return changed, nil
 }
 
+// maxConfigBytes bounds the clone's configuration the check reads.
+const maxConfigBytes = 64 << 10
+
+// errConfigUnread is a clone whose configuration the check would not read: a
+// git directory that is not a directory, or a configuration that is not a
+// regular file within maxConfigBytes (a FIFO, a link, an endless device).
+var errConfigUnread = errors.New("the copy's git configuration is not a regular file within its bound")
+
 // lineEndings is the clone's own line-ending settings as git options, each
-// read from its configuration file as a value and passed only when it is one
-// git knows.
-func lineEndings(clone string) []string {
+// passed only when it is a value git knows. The copy controls the clone's git
+// directory, so git never reads its configuration where it sits: the file is
+// read once, through root, as a regular file within maxConfigBytes
+// (fsutil.ReadGuardedInRoot), and git is asked its settings from a copy in
+// tmp, the check's own scratch directory. A clone with no git directory or no
+// configuration has no settings; one whose configuration the check would not
+// read is errConfigUnread.
+func lineEndings(root *os.Root, tmp string) ([]string, error) {
+	fi, err := root.Lstat(".git")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil || !fi.IsDir() {
+		return nil, errConfigUnread
+	}
+	data, err := fsutil.ReadGuardedInRoot(root, ".git/config", maxConfigBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errConfigUnread
+	}
+	config := filepath.Join(tmp, "clone-config")
+	if err := os.WriteFile(config, data, 0o600); err != nil {
+		return nil, err
+	}
 	var opts []string
-	config := filepath.Join(clone, ".git", "config")
 	for _, setting := range []struct {
 		key    string
 		values map[string]string
@@ -588,15 +650,20 @@ func lineEndings(clone string) []string {
 			"false": "false", "no": "false", "off": "false", "0": "false", "input": "input"}},
 		{"core.eol", map[string]string{"lf": "lf", "crlf": "crlf", "native": "native"}},
 	} {
-		v, err := git("config", "--file", config, "--get", setting.key)
-		if err != nil {
+		v, err := checkGit("config", "--file", config, "--get", setting.key)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			// Not set, or a configuration git cannot parse: no setting.
 			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 		if norm, ok := setting.values[strings.ToLower(v)]; ok {
 			opts = append(opts, "-c", setting.key+"="+norm)
 		}
 	}
-	return opts
+	return opts, nil
 }
 
 // blobID is git's object id of a blob holding data.
@@ -649,7 +716,9 @@ func isTestPath(p string) bool {
 //     of it into the store or above it (one the frozen commit holds as it is
 //     is the commit's, not the copy's);
 //   - every absolute path the transcript names, spelled as given, through a
-//     ~, $HOME or ${HOME}, with slashes plain or JSON-escaped, and cleaned of
+//     ~, $HOME or ${HOME} (quoted before the path goes on, "$HOME"/x, or
+//     after an option's prefix, -I$HOME/x), with slashes plain or
+//     JSON-escaped, and cleaned of
 //     doubled slashes, "." segments and ".." climbs, matched in any letter
 //     case, against the store as given and as its links resolve;
 //   - every relative path with a ".." climb, from $PWD or bare, resolved
@@ -905,6 +974,12 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 	for i := 0; i < len(b); i++ {
 		c := b[i]
 		switch {
+		case (c == '"' || c == '\'') && homeGoesOn(tok, b[i+1:]):
+			// A quote closing "$HOME" before the path goes on ("$HOME"/x):
+			// the shell joins the two into one word.
+		case c == '\\' && i+1 < len(b) && b[i+1] == '"' && homeGoesOn(tok, b[i+2:]):
+			// The same, JSON-escaped (\"$HOME\"\/x).
+			i++
 		case c == '\\' && i+1 < len(b) && b[i+1] == '/':
 			tok = append(tok, '/')
 			i++
@@ -937,6 +1012,16 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 	return flush()
 }
 
+// homeGoesOn reports whether tok ends with $HOME or ${HOME} and next, the
+// bytes after a quote that closes it, goes on with a path below it, its slash
+// plain or JSON-escaped.
+func homeGoesOn(tok, next []byte) bool {
+	if !bytes.HasSuffix(tok, []byte("$HOME")) && !bytes.HasSuffix(tok, []byte("${HOME}")) {
+		return false
+	}
+	return bytes.HasPrefix(next, []byte("/")) || bytes.HasPrefix(next, []byte(`\/`))
+}
+
 // token judges one path-like token of the transcript.
 func (sc *transcriptScan) token(t string) (string, bool) {
 	// A sentence's full stop is not part of the path it ends.
@@ -957,6 +1042,12 @@ func (sc *transcriptScan) token(t string) (string, bool) {
 	}
 	if seen, ok := sc.climb(t); ok {
 		return seen, true
+	}
+	if i := strings.IndexByte(t, '$'); i > 0 {
+		// $HOME after an option's prefix (-I$HOME/x).
+		if rest, ok := variable(t[i:], "HOME"); ok {
+			return sc.home(rest)
+		}
 	}
 	if i := strings.IndexByte(t, '/'); i > 0 {
 		// A path after an option's or a scheme's prefix (-I/x, @/x).
