@@ -574,7 +574,9 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   E. W. Dijkstra's "The Humble Programmer" (EWD340,
   <https://www.cs.utexas.edu/~EWD/transcriptions/EWD03xx/EWD340.html>); the
   skip reporting of pytest (<https://docs.pytest.org/en/stable/how-to/skipping.html>)
-  and Semgrep (<https://docs.semgrep.dev/cli-reference>); and the narrowly
+  and Semgrep, read from its source
+  (<https://raw.githubusercontent.com/semgrep/semgrep/develop/cli/src/semgrep/output.py>);
+  and the narrowly
   named check flags of restic
   (<https://restic.readthedocs.io/en/stable/045_working_with_repos.html>), git
   fsck (<https://git-scm.com/docs/git-fsck>) and rsync

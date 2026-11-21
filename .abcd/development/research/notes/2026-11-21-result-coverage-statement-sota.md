@@ -217,3 +217,17 @@ the fit-challenge. Two of its findings bear on what this note says.
 - The depth of model-judged work is read from a run's review set (the class
   of each reviewer, how many there are, the effort asked for), and not from
   the record of each call, which stays with the technical facilitator.
+
+## Corrections from the final review
+
+A final review before landing reported the same day. Two of its findings
+correct the section above.
+
+- The depth of model-judged work is read from what a run's state records
+  for each judging run, and not from the review set. The set is fixed when a
+  run starts: a reviewer whose class holds the model that wrote the work is
+  moved to another class, a fix round runs the reviewers again, and the
+  judge of a round and the drain's judge are not in the set.
+- The serializer's package imports the docs lint's core and the outbound
+  scanner directly, and reaches the cores of the launch preview and the
+  readiness gate through them. The conclusion stands for all four.

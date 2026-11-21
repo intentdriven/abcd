@@ -59,7 +59,7 @@ every id resolved in this repository when the verdict was recorded.
 | assurance level; assurance ladder; verification ladder; verification rung; verification level; rung | .abcd/development/brief/; .abcd/development/intents/drafts/; .abcd/development/intents/planned/; .abcd/development/intents/shipped/; .abcd/development/intents/disciplines/; .abcd/development/intents/superseded/; .abcd/development/decisions/adrs/; .abcd/development/principles/; .abcd/development/research/notes/; .abcd/development/research/ideas/; .abcd/work/decisions/; the private ideas store on this machine | 100 |
 | what was not checked; not checked; could not be checked; could not be made; could not be verified | .abcd/development/brief/; .abcd/development/intents/drafts/; .abcd/development/intents/planned/; .abcd/development/intents/shipped/; .abcd/development/intents/disciplines/; .abcd/development/intents/superseded/; .abcd/development/decisions/adrs/; .abcd/development/principles/; .abcd/development/research/notes/; .abcd/development/research/ideas/; .abcd/work/decisions/; the private ideas store on this machine | 39 |
 | flag definitions named deep, full, strict, verify, all, audit, thorough, exhaustive, depth, effort, paranoid, narrow, wide, quick, fast or shallow | internal/surface/cli/ | 8 |
-| stash; .lock; dogfood; transcripts; scratch | internal/core/sweep/ | 0 |
+| stash; .lock; dogfood; transcripts; scratch | internal/core/sweep/ (code outside its tests) | 0 |
 | sweep | .abcd/work/issues/open/ | 49 |
 
 ## Leg 3 — Adversarial review

@@ -48,12 +48,13 @@ The idea, its research and both reviews are recorded in the ideate verdict
   adds and what it costs, and it adds nothing else.
 - Depth for judged work is real. By the product thinker's ruling of
   2026-09-23 (dcn-2609230000000008), delivered work states the rung it was
-  checked at, and a project declares what its work can reach before it may
-  lower that rung. That ruling is why the rule places the choice with the
-  project. How a project chooses a rung, and whether there is one ladder or
-  several, are questions of itd-173, still a draft, and this stance answers
-  neither. The stance rules out the per-command choice and the promise of
-  completeness, never the setting.
+  checked at, and a project whose work can reach strangers declares that
+  reach before it may lower that rung. That ruling is why the rule places
+  the choice with the project. How a project chooses a rung is a question
+  of itd-173, still a draft, and this stance does not answer it; that draft
+  records the product thinker's answer of 2026-11-21 that each kind of
+  check has a level of its own. The stance rules out the per-command choice
+  and the promise of completeness, never the setting.
 - A command that cannot afford a check in its default run says so in what it
   reports, as something it does not check. Leaving the check out silently is
   the failure this stance exists to prevent.
