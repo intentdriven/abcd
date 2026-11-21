@@ -327,7 +327,8 @@ type RecordOpts struct {
 //     and every page below it, /record.json) with a 301 to the same path at
 //     Address, by rules the build adds to the redirect map it copies from
 //     site-src/redirects. The host keeps the query string itself.
-//   - Narrow builds none of the record's pages and no record.json, and points
+//   - Narrow builds none of the record's pages, no record.json and no
+//     record.js, drops the record's blocks from `_headers`, and points
 //     every link the site draws into the record at Address. The contributors
 //     and references pages stay: the project route builds neither
 //     (dcn-2611201438402486). The record's other keys stay as they are, read

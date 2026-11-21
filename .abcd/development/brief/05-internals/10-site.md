@@ -110,7 +110,8 @@ intents:
   Here `narrow` is on and `forward` is off, by the person's ruling
   (dcn-2611211021237477, dcn-2611211223308175): abcdev.app builds the
   documentation, its landing page and the contributors and references pages,
-  links the record at the Pages address, and forwards none of the record's
+  links the record at the Pages address, ships neither the chart's script
+  nor a header block for a record path, and forwards none of the record's
   old addresses. The screenshots audit measures the record on a build of the
   project route, by the routes `site-src/audit/routes.json` names.
 - **The README migration** — README's product narrative lives in

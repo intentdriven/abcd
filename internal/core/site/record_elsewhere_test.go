@@ -6,8 +6,9 @@ package site
 // on the person's word and each on its own. Both off, the site builds exactly
 // what it built before. Forward on, each of the record's addresses here
 // answers with a 301 to the same path at the address. Narrow on, the build
-// writes none of the record's pages and no record.json, and every link into
-// the record names the address; the contributors and references pages stay,
+// writes none of the record's pages, no record.json and no record.js, its
+// `_headers` keeps no record block, and every link into the record names the
+// address; the contributors and references pages stay,
 // since the record's own site, the project route, builds neither
 // (dcn-2611201438402486).
 
@@ -15,6 +16,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -290,5 +293,83 @@ func TestABrokenRedirectIsReportedAtItsLineInTheCommittedMapWhenForwarding(t *te
 	}
 	if found[0].Where != redirectsSourceRel || !strings.HasPrefix(found[0].Detail, "line 4 redirects /nowhere/ ") {
 		t.Errorf("the broken rule is on line 4 of %s, but the finding reads %s: %s", redirectsSourceRel, found[0].Where, found[0].Detail)
+	}
+}
+
+// Narrowed, the documentation site ships none of the record's surface: no
+// chart script, which only a record page loads, and no header block for a
+// record path, where the host now serves nothing. Every file the narrowed
+// build does write keeps its block. The un-narrowed build of the same tree
+// keeps both, so the record is dropped only where it is built elsewhere.
+func TestTheNarrowSwitchShipsNoRecordScriptAndNoRecordHeaderBlock(t *testing.T) {
+	isRecord := func(pattern string) bool { return strings.HasPrefix(pattern, "/record") }
+
+	whole := newFixture(t)
+	whole.write("site-src/record.js", "/* fixture chart */\n")
+	wholeOut := t.TempDir()
+	wholeRes := buildFixture(t, whole, wholeOut)
+	if !strings.Contains(strings.Join(wholeRes.Files, "\n")+"\n", "\nrecord.js\n") {
+		t.Fatalf("the un-narrowed build wrote no record.js: %v", wholeRes.Files)
+	}
+	recordBlocks := 0
+	for _, b := range parseHeaders(outFile(t, wholeOut, "_headers")) {
+		if isRecord(b.pattern) {
+			recordBlocks++
+		}
+	}
+	if recordBlocks == 0 {
+		t.Fatal("the un-narrowed build's _headers holds no record block, so this proves nothing")
+	}
+
+	f := newFixture(t)
+	f.write("site-src/record.js", "/* fixture chart */\n")
+	declareRecordElsewhere(t, f, false, true)
+	out := t.TempDir()
+	res := buildFixture(t, f, out)
+	for _, name := range res.Files {
+		if name == "record.js" {
+			t.Errorf("the narrowed build wrote record.js, but the record is built at %s", elsewhereAddress)
+		}
+	}
+	blocks := parseHeaders(outFile(t, out, "_headers"))
+	if len(blocks) == 0 {
+		t.Fatal("the narrowed build emitted no _headers blocks")
+	}
+	for _, b := range blocks {
+		if isRecord(b.pattern) {
+			t.Errorf("the narrowed build's _headers keeps a block for %s, a record path it does not serve", b.pattern)
+		}
+	}
+	for _, name := range res.Files {
+		if route, required, served := servedRoute(name); served {
+			assertHeaderCoverage(t, "the narrowed _headers", blocks, route, required)
+		}
+	}
+}
+
+// The header map abcd ships, narrowed, loses the record's blocks and the
+// comments that describe them, and keeps every other block with its headers
+// as they were.
+func TestTheShippedHeaderMapNarrowsToItsNonRecordBlocks(t *testing.T) {
+	shipped, err := os.ReadFile(filepath.FromSlash("../../../site-src/headers"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowed := string(withoutRecordHeaders(shipped))
+	var want []headerBlock
+	for _, b := range parseHeaders(string(shipped)) {
+		if !strings.HasPrefix(b.pattern, "/record") {
+			want = append(want, b)
+		}
+	}
+	got := parseHeaders(narrowed)
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the narrowed map's blocks are\n%v\nwant the shipped map's non-record blocks\n%v", got, want)
+	}
+	if strings.Contains(narrowed, "# The record explorer.") || strings.Contains(narrowed, "# The export the chart reads.") {
+		t.Errorf("the narrowed map keeps a comment for a record block it dropped:\n%s", narrowed)
+	}
+	if !strings.HasPrefix(narrowed, "# Source of the Cloudflare _headers file.") {
+		t.Errorf("the narrowed map lost its opening comment:\n%s", narrowed)
 	}
 }

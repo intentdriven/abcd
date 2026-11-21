@@ -46,8 +46,9 @@ name: site
 # (adr-2610142147242544), and `record.elsewhere` in .abcd/site.json holds the two
 # switches that narrow this deploy to the documentation (adr-2611210848450372):
 # `forward` makes the record's addresses here answer with a 301 to the same path
-# there, and `narrow` drops the record's pages and record.json from this build,
-# keeping the landing page, the docs and the contributors and references pages.
+# there, and `narrow` drops the record's pages, record.json, record.js and the
+# record's `_headers` blocks from this build, keeping the landing page, the docs
+# and the contributors and references pages.
 # Here narrow is on and forward is off, by the person's ruling for the cut-over
 # (dcn-2611211021237477, dcn-2611211223308175): this deploy builds the
 # documentation and links the record at its Pages address, and the record's old
