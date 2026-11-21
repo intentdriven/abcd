@@ -197,3 +197,29 @@ func TestAgreementIsAlphaWithAnIntervalOrNotEstimable(t *testing.T) {
 		t.Errorf("agreement when every mark is the same = %+v; want alpha not estimable and full percentage agreement", ge)
 	}
 }
+
+// Alpha read twice from the same marks is the same to the last bit: its sums
+// never follow a map's order, so a report read twice says the same thing even
+// where units are judged by three, four or more judges, whose terms are
+// thirds and sixths.
+func TestKrippendorffsAlphaIsTheSameEveryTimeItIsRead(t *testing.T) {
+	cats := []string{"a", "b", "c", "d", "e", "f", "g"}
+	var units [][]string
+	for u := range 40 {
+		n := 3 + u%5
+		var vs []string
+		for j := range n {
+			vs = append(vs, cats[(u*7+j*j*3+j)%len(cats)])
+		}
+		units = append(units, vs)
+	}
+	first, ok := krippendorff(units)
+	if !ok {
+		t.Fatal("alpha is not estimable for the marks")
+	}
+	for i := range 500 {
+		if got, _ := krippendorff(units); math.Float64bits(got) != math.Float64bits(first) {
+			t.Fatalf("read %d, alpha = %v; read first, %v: the same marks give another alpha", i+2, got, first)
+		}
+	}
+}

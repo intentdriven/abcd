@@ -1,6 +1,7 @@
 package matrix
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // rerunOf records a re-run of first in its lab, as consent would: the run's
@@ -140,5 +142,37 @@ func TestARerunStartsFromARunFolderAtItsOwnFrozenCommitOnly(t *testing.T) {
 	}
 	if _, err := loadRerun(r.Root(), m.ID, "mx-261023012949-ffff"); err == nil {
 		t.Fatal("a re-run of a run the lab never recorded was admitted")
+	}
+}
+
+// A carried run whose records the secret screen refuses is refused when it is
+// read, at its plan, so no re-run's record is ever written for it.
+func TestARerunOfARunFolderTheScreenRefusesIsRefusedAsItIsRead(t *testing.T) {
+	r, home, m, first := reportLab(t)
+	dir := filepath.Join(t.TempDir(), "carried")
+	if err := os.CopyFS(dir, os.DirFS(runDir(home, m, first.RunID))); err != nil {
+		t.Fatal(err)
+	}
+	trial := filepath.Join(dir, TrialKey{"feature-a", "or-cheap", 2}.rel())
+	data, err := os.ReadFile(trial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := "ghp_" + testsecret.Synthetic(51, 36)
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	fields["reason"] = "its hidden tests failed near " + token
+	carried, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(trial, carried, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// PlanRerun and StartRerun each read the run through loadRerun first.
+	if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "not copied") || strings.Contains(err.Error(), token) {
+		t.Fatalf("a re-run whose carried trial holds a credential = %v; want it refused as it is read, the value never shown", err)
 	}
 }

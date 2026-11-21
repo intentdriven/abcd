@@ -4757,7 +4757,9 @@ before its clone is deleted, and the trial is written through the secret screen.
 Refused, exit 2, with nothing written: a key that is not one, a copy the run did
 not hand off to the host, one already handed back, a receipt, score or answer
 that does not validate, and a trial the secret screen refuses. A check copy's
-clone is deleted only once its trial is written. A halted lab exits 1.
+clone is deleted only once its trial is written. A refusal raised once a check
+copy's findings are recorded, or a writing copy's document is kept, says so
+instead. A halted lab exits 1.
 
 **Flags:**
 
@@ -4869,8 +4871,8 @@ copies as `abcd lab matrix --approve` does.
 
 Refused, exit 2, with nothing written: a run the lab never recorded, a folder
 that holds no run's records, a run whose frozen commit is not the lab's pin,
-every refusal `abcd lab matrix` gives, and an approval that is not the plan's
-digest. A halted lab exits 1.
+a run whose records the secret screen refuses, every refusal `abcd lab matrix`
+gives, and an approval that is not the plan's digest. A halted lab exits 1.
 
 **Flags:**
 

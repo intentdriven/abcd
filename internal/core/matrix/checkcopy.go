@@ -1180,7 +1180,8 @@ func encodeCheck(v any) ([]byte, error) {
 // or the ledger changed since in.Gates was snapshotted, before the copy
 // started, is refused, keeping its clone. A record already written with the
 // same bytes counts as written, so a hand-back that failed after writing it
-// can be tried again.
+// can be tried again. A refusal raised once the findings are written says
+// they are recorded, and is marked ErrWrittenInPart.
 func recordCheckCopy(labID string, in checkCopyInputs) (CheckCopy, string, error) {
 	if !runIDRe.MatchString(in.Run) {
 		return CheckCopy{}, "", fmt.Errorf("%q is not a run id", clip(in.Run))
@@ -1236,10 +1237,11 @@ func recordCheckCopy(labID string, in checkCopyInputs) (CheckCopy, string, error
 		if werr != nil {
 			return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
 		}
-		return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key)
+		return CheckCopy{}, "", afterWrite(fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key))
 	}
+	// The findings are recorded from here on, so a refusal says so.
 	if err := in.Gates.unchanged(in.RepoRoot); err != nil {
-		return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
+		return CheckCopy{}, "", afterWrite(fmt.Errorf("copy %s's findings are recorded, and it keeps its clone: %w", in.Key, err))
 	}
 	return c, cloneDir(in.Store, in.Run, alias), nil
 }

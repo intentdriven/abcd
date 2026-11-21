@@ -430,23 +430,39 @@ func krippendorff(units [][]string) (float64, bool) {
 			}
 		}
 	}
-	for k, v := range o {
+	// Every sum runs in sorted order, never a map's, so the same marks give
+	// the same alpha to the last bit each time they are read.
+	pairs := make([][2]string, 0, len(o))
+	for k := range o {
+		pairs = append(pairs, k)
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i][0] != pairs[j][0] {
+			return pairs[i][0] < pairs[j][0]
+		}
+		return pairs[i][1] < pairs[j][1]
+	})
+	var observed, expected float64
+	for _, k := range pairs {
+		v := o[k]
 		nc[k[0]] += v
 		n += v
-	}
-	if n <= 1 {
-		return 0, false
-	}
-	var observed, expected float64
-	for k, v := range o {
 		if k[0] != k[1] {
 			observed += v
 		}
 	}
-	for c, x := range nc {
-		for k, y := range nc {
+	if n <= 1 {
+		return 0, false
+	}
+	values := make([]string, 0, len(nc))
+	for c := range nc {
+		values = append(values, c)
+	}
+	sort.Strings(values)
+	for _, c := range values {
+		for _, k := range values {
 			if c != k {
-				expected += x * y
+				expected += nc[c] * nc[k]
 			}
 		}
 	}

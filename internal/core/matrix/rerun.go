@@ -67,7 +67,7 @@ type rerun struct {
 
 // loadRerun reads the run from names (a run id in the lab labID, or a run's
 // folder) to be repeated in that lab, refusing one whose frozen commit is not
-// the lab's pin.
+// the lab's pin, and one whose records the secret screen refuses.
 func loadRerun(repoRoot, labID, from string) (rerun, error) {
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
@@ -118,6 +118,16 @@ func loadRerun(repoRoot, labID, from string) (rerun, error) {
 			return rerun{}, err
 		}
 		files = append(files, lab.StateFile{Rel: t.Key.rel(), Data: data})
+	}
+	// The records the re-run keeps a copy of pass the secret screen as they
+	// are read, so a run the screen refuses is refused at its plan, before
+	// the re-run's record is written; the starter screens them again.
+	sc := make([]screened, 0, len(files))
+	for _, f := range files {
+		sc = append(sc, screened{f, f.Data})
+	}
+	if err := screen(repoRoot, sc); err != nil {
+		return rerun{}, fmt.Errorf("the first run's records are not copied, and the re-run is not started: %w", err)
 	}
 	return rerun{First: rec, Declaration: decl, files: files}, nil
 }

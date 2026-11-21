@@ -105,6 +105,11 @@ func TestACheckCopysHandBackDeletesItsLeftoverCloneOnRetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the trial is not written: %v", err)
 	}
+	// Handed back again while the clone still cannot be deleted, the copy's
+	// leftover clone is refused the same way, marked as written in part.
+	if _, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, key, back); err == nil || !strings.Contains(err.Error(), "could not be deleted") || !errors.Is(err, ErrWrittenInPart) {
+		t.Fatalf("a leftover clone that cannot be deleted = %v; want a refusal saying so, marked as written in part", err)
+	}
 	if err := os.Chmod(parent, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -123,15 +128,50 @@ func TestACheckCopysHandBackDeletesItsLeftoverCloneOnRetry(t *testing.T) {
 	// written keeps its clone.
 	// It promises no retry: the other hand-back deletes the clone, and a
 	// hand-back once the clone is gone is refused.
+	// Either way the copy's findings are recorded, so each refusal says so
+	// and is marked as written in part.
 	if err := lostTrialWrite(r.Root(), m.ID, rec.RunID, key, fs.ErrExist); !strings.Contains(err.Error(), "another hand-back") || strings.Contains(err.Error(), "keeps its clone") ||
 		strings.Contains(err.Error(), "returns that trial") || !strings.Contains(err.Error(), "nothing more to hand back") {
 		t.Errorf("the loser's refusal = %v; want it to name the other hand-back's trial and promise no retry", err)
+	} else if !errors.Is(err, ErrWrittenInPart) || !strings.Contains(err.Error(), "findings are recorded") {
+		t.Errorf("the loser's refusal = %v; want it to say the findings are recorded, marked as written in part", err)
 	}
 	if err := lostTrialWrite(r.Root(), m.ID, rec.RunID, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}, fs.ErrPermission); !strings.Contains(err.Error(), "keeps its clone") {
 		t.Errorf("a refused trial write = %v; want it to keep its clone", err)
+	} else if !errors.Is(err, ErrWrittenInPart) || !strings.Contains(err.Error(), "findings are recorded") {
+		t.Errorf("a refused trial write = %v; want it to say the findings are recorded, marked as written in part", err)
 	}
 	// Once the clone is gone, a further hand-back is refused as before.
 	if _, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, key, back); err == nil || !strings.Contains(err.Error(), "already handed back") {
 		t.Fatalf("a hand-back after the clone is gone = %v; want it refused as already handed back", err)
+	}
+}
+
+// A writing copy's hand-back whose text is kept and whose trial then fails to
+// write says the text is kept, marked as written in part, so no front door
+// reports that nothing was written.
+func TestAWritingCopyWhoseTrialFailsAfterItsTextIsKeptSaysSo(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a read-only directory does not stop root writing in it")
+	}
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "doc-page", Cell: "host-big", Repeat: 1}
+	clone := handOffWithClone(t, r, home, m, rec, key, KindWriting)
+	// The trial's folder cannot be written in; the text's folder can.
+	trials := filepath.Dir(filepath.Join(runDir(home, m, rec.RunID), key.rel()))
+	if err := os.MkdirAll(trials, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(trials, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(trials, 0o700) })
+	_, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, key, CopyBack{Receipt: hostReceipt(t, nil),
+		Transcript: []byte("wrote the page in " + clone + "\n"), Answer: []byte("# Guide\n\nThe draft.\n")})
+	if err == nil || !strings.Contains(err.Error(), "text is kept") || !errors.Is(err, ErrWrittenInPart) {
+		t.Fatalf("a trial that fails to write after the text is kept = %v; want it to say the text is kept, marked as written in part", err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir(home, m, rec.RunID), "writing", "doc-page", "host-big", "1.md")); err != nil {
+		t.Fatalf("the copy's text is not kept: %v", err)
 	}
 }

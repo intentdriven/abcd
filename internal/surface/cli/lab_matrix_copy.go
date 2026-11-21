@@ -79,7 +79,9 @@ func newLabMatrixCopyCommand(asJSON *bool) *cobra.Command {
 			"Refused, exit 2, with nothing written: a key that is not one, a copy the run did\n" +
 			"not hand off to the host, one already handed back, a receipt, score or answer\n" +
 			"that does not validate, and a trial the secret screen refuses. A check copy's\n" +
-			"clone is deleted only once its trial is written. A halted lab exits 1.",
+			"clone is deleted only once its trial is written. A refusal raised once a check\n" +
+			"copy's findings are recorded, or a writing copy's document is kept, says so\n" +
+			"instead. A halted lab exits 1.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix copy"
@@ -106,13 +108,7 @@ func newLabMatrixCopyCommand(asJSON *bool) *cobra.Command {
 					return matrixReportFailure(err)
 				}
 				h.Clone, h.Brief, h.Gates = fsutil.RedactHome(h.Clone), fsutil.RedactHome(h.Brief), nil
-				return render(cmd.OutOrStdout(), *asJSON, h, func(w io.Writer) {
-					fmt.Fprintf(w, "%s %s: %s\n  clone: %s\n  brief: %s\n", verb, termsafe.Sanitize(key.String()), h.State,
-						termsafe.Sanitize(cmpOr(h.Clone, "none")), termsafe.Sanitize(h.Brief))
-					if h.Reason != "" {
-						fmt.Fprintf(w, "  why:   %s\n", termsafe.Sanitize(h.Reason))
-					}
-				})
+				return render(cmd.OutOrStdout(), *asJSON, h, func(w io.Writer) { renderHandOff(w, verb, key, h) })
 			}
 			back := matrix.CopyBack{Form: matrix.CheckForm(form)}
 			if back.Receipt, err = readHanded(verb, "receipt", receipt, maxCopyReceiptFile); err != nil {
@@ -147,6 +143,26 @@ func newLabMatrixCopyCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&answer, "answer", "", "a writing copy's document, or a check copy's answer")
 	cmd.Flags().StringVar(&form, "form", "", "a check copy's answer form: doc-fidelity or consistency")
 	return cmd
+}
+
+// renderHandOff prints copy key's hand-off, every field read back from the
+// lab's state escaped, its state among them.
+func renderHandOff(w io.Writer, verb string, key matrix.TrialKey, h matrix.HandOff) {
+	fmt.Fprintf(w, "%s %s: %s\n  clone: %s\n  brief: %s\n", verb, termsafe.Sanitize(key.String()), termsafe.Sanitize(string(h.State)),
+		termsafe.Sanitize(cmpOr(h.Clone, "none")), termsafe.Sanitize(h.Brief))
+	if h.Reason != "" {
+		fmt.Fprintf(w, "  why:   %s\n", termsafe.Sanitize(h.Reason))
+	}
+}
+
+// renderReviewRequests prints a code task's review requests, every field read
+// back from the lab's state escaped, each request's label and state among
+// them.
+func renderReviewRequests(w io.Writer, verb string, out labMatrixReview) {
+	fmt.Fprintf(w, "%s %s: %d request(s)\n", verb, termsafe.Sanitize(out.Task), len(out.Requests))
+	for _, r := range out.Requests {
+		fmt.Fprintf(w, "  %-14s %s %s (%d bytes)\n", termsafe.Sanitize(r.Reviewer), termsafe.Sanitize(r.Label), termsafe.Sanitize(string(r.State)), len(r.Request))
+	}
 }
 
 // cmpOr is s, or alt where s is empty.
@@ -219,10 +235,7 @@ func newLabMatrixReviewCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "%s %s: %d answer(s) recorded\n", verb, termsafe.Sanitize(out.Task), out.Recorded)
 					return
 				}
-				fmt.Fprintf(w, "%s %s: %d request(s)\n", verb, termsafe.Sanitize(out.Task), len(out.Requests))
-				for _, r := range out.Requests {
-					fmt.Fprintf(w, "  %-14s %s %s (%d bytes)\n", termsafe.Sanitize(r.Reviewer), r.Label, r.State, len(r.Request))
-				}
+				renderReviewRequests(w, verb, out)
 			})
 		},
 	}

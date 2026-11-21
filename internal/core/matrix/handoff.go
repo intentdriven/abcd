@@ -504,6 +504,12 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		if err := keepWriting(repoRoot, labID, run, key, text); err != nil {
 			return TrialRecord{}, err
 		}
+		// The text is kept from here on, so a trial that then fails to
+		// write says so rather than that nothing was written.
+		if err := writeTrial(repoRoot, labID, t); err != nil {
+			return t, afterWrite(fmt.Errorf("copy %s's text is kept, and its trial is not written: %w", key, err))
+		}
+		return t, nil
 	case KindCheck:
 		// The trial is screened before anything of the copy is recorded, so
 		// a receipt the screen refuses leaves the copy as it was, its clone
@@ -575,16 +581,18 @@ func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key Tria
 // hand-back of it wrote it first, and that one deletes the clone, so the
 // refusal says so rather than that the clone is kept, and promises no retry:
 // a hand-back once the clone is gone is refused (leftoverClone). Otherwise
-// the clone is kept for the copy to be handed back again.
+// the clone is kept for the copy to be handed back again. Either way the
+// copy's findings are recorded already (recordCheckCopy), so the refusal is
+// marked as raised after a write.
 func lostTrialWrite(repoRoot, labID, run string, key TrialKey, err error) error {
 	if proc, perr := lab.OpenProcedure(repoRoot, labID); perr == nil {
 		_, terr := proc.ReadState(run + "/" + key.rel())
 		proc.Close()
 		if terr == nil {
-			return fmt.Errorf("copy %s was handed back by another hand-back, whose trial is the one written: %w; that hand-back deletes the copy's clone, so there is nothing more to hand back", key, err)
+			return afterWrite(fmt.Errorf("copy %s's findings are recorded, and it was handed back by another hand-back, whose trial is the one written: %w; that hand-back deletes the copy's clone, so there is nothing more to hand back", key, err))
 		}
 	}
-	return fmt.Errorf("copy %s keeps its clone: %w", key, err)
+	return afterWrite(fmt.Errorf("copy %s's findings are recorded, and it keeps its clone: %w", key, err))
 }
 
 // parseCopyReceipt reads a copy receipt strictly and holds it to its bounds.

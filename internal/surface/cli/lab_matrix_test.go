@@ -251,3 +251,21 @@ func TestAMatrixRefusalAfterAWriteDoesNotSayNothingWasWritten(t *testing.T) {
 		t.Errorf("a refusal after a write says nothing was written: %q", ee.Msg)
 	}
 }
+
+// A copy's hand-off and a review's requests reach the terminal escaped, each
+// field read back from the lab's state: a hand-off's state, and a request's
+// label and state, as much as its reviewer.
+func TestAMatrixHandOffAndItsReviewRequestsPrintEscaped(t *testing.T) {
+	var b strings.Builder
+	renderHandOff(&b, "abcd lab matrix copy", matrix.TrialKey{Task: "feature-a", Cell: "c", Repeat: 1},
+		matrix.HandOff{State: matrix.HandOffState("handed_off\x1b[2J"), Clone: "/c", Brief: "make it"})
+	if strings.Contains(b.String(), "\x1b") {
+		t.Errorf("a hand-off prints its state raw: %q", b.String())
+	}
+	b.Reset()
+	renderReviewRequests(&b, "abcd lab matrix review", labMatrixReview{Task: "feature-a", Requests: []matrix.ReviewHandOff{
+		{Reviewer: "host-rev", Label: "r1\x1b]0;x\x07", State: matrix.HandOffState("handed_off\x1b[2J")}}})
+	if strings.Contains(b.String(), "\x1b") || strings.Contains(b.String(), "\x07") {
+		t.Errorf("a review request prints its label or state raw: %q", b.String())
+	}
+}

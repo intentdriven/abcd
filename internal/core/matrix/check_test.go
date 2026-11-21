@@ -860,6 +860,11 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), filepath.ToSlash(rel)) {
 			t.Errorf("%s changed while the copy ran: collectCheckCopy = %v; want a refusal naming it", rel, err)
 		}
+		// The refusal comes once the copy's findings are recorded, so it
+		// says so, and no front door reports that nothing was written.
+		if !errors.Is(err, ErrWrittenInPart) || !strings.Contains(err.Error(), "findings are recorded") {
+			t.Errorf("%s changed while the copy ran: collectCheckCopy = %v; want it to say the findings are recorded, marked as written in part", rel, err)
+		}
 		if _, err := os.Stat(clone); err != nil {
 			t.Errorf("%s changed while the copy ran, and the copy lost its clone: %v", rel, err)
 		}

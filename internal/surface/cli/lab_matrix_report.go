@@ -80,8 +80,8 @@ func newLabMatrixRerunCommand(asJSON *bool) *cobra.Command {
 			"copies as `abcd lab matrix --approve` does.\n\n" +
 			"Refused, exit 2, with nothing written: a run the lab never recorded, a folder\n" +
 			"that holds no run's records, a run whose frozen commit is not the lab's pin,\n" +
-			"every refusal `abcd lab matrix` gives, and an approval that is not the plan's\n" +
-			"digest. A halted lab exits 1.",
+			"a run whose records the secret screen refuses, every refusal `abcd lab matrix`\n" +
+			"gives, and an approval that is not the plan's digest. A halted lab exits 1.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := labRoot("abcd lab matrix rerun")

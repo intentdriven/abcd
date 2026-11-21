@@ -198,6 +198,8 @@ document is kept only once its trial passes the secret screen. A check
 copy's clone is deleted only once its trial is written. Refused, exit 2, with
 nothing written: a runner cell's copy, a copy already handed back, a receipt,
 score or answer that does not validate, and a trial the secret screen refuses.
+A refusal raised once a check copy's findings are recorded, or a writing copy's
+document is kept, says so instead.
 Hand back every host copy you were handed, a failed one with its reason: a copy
 never handed back is in no rate, and the report names it.
 
@@ -281,7 +283,8 @@ carried (`--approve <digest>`). The re-run's record is written beside a copy of
 the first run's records, its pilot copies are handed off as the first form's
 are, and its report shows the drift. Refused, exit 2, with
 nothing written: a run the lab never recorded, a folder holding no run's
-records, a run whose frozen commit is not the lab's pin, and a stale approval.
+records, a run whose frozen commit is not the lab's pin, a run whose records
+the secret screen refuses, and a stale approval.
 
 Exit codes: `0` done; `1` a gate refused or a halted lab refused a probe; `2`
 the request was refused (no checkout, an unknown lab, a bad name, question or
