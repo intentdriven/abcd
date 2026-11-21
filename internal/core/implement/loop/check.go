@@ -308,8 +308,14 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		return res, nil
 	}
 	i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+	openThere := i >= 0
 	if i >= 0 && plan.Dispositions[i].Rule == capture.RulePromoted {
-		aside, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, SetAsidePromoted: true})
+		var aside capture.DrainPlan
+		if snap != nil && snap.plan != nil && snap.aside != nil {
+			aside, err = snap.aside()
+		} else {
+			aside, err = capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, SetAsidePromoted: true})
+		}
 		if err != nil {
 			return res, err
 		}
@@ -321,6 +327,9 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		}
 	}
 	switch {
+	case i < 0 && plan.Source != "":
+		row.Detail = res.Key + " is not an open issue on " + plan.Source
+		row.Remedy = "name an open issue: `abcd drain --dry-run` lists every one with its disposition"
 	case i < 0:
 		row.Detail = res.Key + " is not an open issue in this checkout's ledger"
 		row.Remedy = "name an open issue: `abcd drain --dry-run` lists every one with its disposition"
@@ -346,6 +355,9 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		row.Detail = fmt.Sprintf("%s is eligible under %s: %s", v.ID, plan.Record, v.Reason)
 		res.steps = []PendingStep{{Number: 1, Title: issueStepTitle(v)}}
 	}
+	if snap != nil {
+		row.Detail += snap.ledgerNote(repoRoot, res.Key, openThere, i >= 0 && plan.Source != "")
+	}
 	res.Checks = append(res.Checks, row)
 	if !row.OK {
 		return res, nil
@@ -365,6 +377,95 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		}
 	}
 	return res, nil
+}
+
+// ledgerNote is what key's eligible row adds about the ledger it was judged
+// from (iss-2611101316317556). A plan read from a commit (one of origin's,
+// the drain's or a build's) is named when the row does not already name it
+// (named). A build that read origin's default branch (snap.origin) says,
+// when this checkout's own ledger disagrees about whether key is open
+// (openThere is origin's answer), that the checkout is behind and by how
+// many commits; a build that could not read origin says why, and that the
+// checkout's own ledger was judged. "" when there is nothing to add.
+func (snap *peerSnapshot) ledgerNote(repoRoot, key string, openThere, named bool) string {
+	var note string
+	if named && snap.plan != nil && snap.plan.Source != "" {
+		note += "; read from " + snap.plan.Source
+	}
+	if snap.originUnread != "" {
+		note += "; " + snap.originUnread + ", so it is judged from this checkout's own ledger, which may be behind " + claim.Remote
+	}
+	if o := snap.origin; o != nil {
+		_, openHereToo := slices.BinarySearch(openHere(repoRoot), recordid.CanonCitedID(key))
+		if openHereToo != openThere {
+			held := "does not hold " + key + " open"
+			if openHereToo {
+				held = "still holds " + key + " open"
+			}
+			if o.Behind > 0 {
+				note += fmt.Sprintf("; this checkout is %d commit(s) behind %s, and its own ledger %s", o.Behind, o.Ref, held)
+			} else {
+				note += fmt.Sprintf("; this checkout is not behind %s, but its own ledger %s", o.Ref, strings.Replace(held, "still holds", "holds", 1))
+			}
+		}
+	}
+	return note
+}
+
+// readIssueLedger is the ledger a person's `abcd build <iss-N>` judges the
+// issue by (iss-2611101316317556), read as the drain's own move reads its
+// plan (movePlan): in a checkout with a remote named origin, after a fetch
+// bounded as the move's is (claim.Fetch, under gitutil.NetTimeout), one
+// snapshot of the ledger out of origin's default branch (lastFetchedOrigin:
+// gitutil.DefaultRef, the ref the lane's worktree is cut from). snap.plan,
+// snap.aside and snap.origin are set from it. A build is a person's act, not
+// an unattended move, so where origin cannot be read (the fetch fails or runs
+// out of time, it could not read the default branch, or this checkout names
+// none) it does not wait as the drain does: snap.originUnread says why, and
+// the check judges the checkout's own ledger, as a build always did. A
+// checkout with no remote named origin, or with no drain rule the plan can be
+// read under (the check refuses it naming the rule), is left as it is.
+func readIssueLedger(repoRoot string, snap *peerSnapshot) error {
+	has, err := claim.HasOrigin(repoRoot)
+	if err != nil || !has {
+		return err
+	}
+	if _, err := drainrule.Load(repoRoot); err != nil {
+		if drainRuleRefusal(err) {
+			return nil
+		}
+		return err
+	}
+	now := snap.now
+	gap, ferr := claim.Fetch(repoRoot, claim.Options{Now: func() time.Time { return now }})
+	v, kind, unread := lastFetchedOrigin(repoRoot)
+	switch {
+	case ferr != nil:
+		snap.originUnread = "could not fetch " + claim.Remote + ": " + termsafe.Sanitize(fsutil.RedactHome(ferr.Error()))
+		return nil
+	case gap != "":
+		snap.originUnread = "could not read " + claim.Remote + "'s default branch: " + termsafe.Sanitize(gap)
+		return nil
+	case kind != "":
+		snap.originUnread = unread
+		return nil
+	}
+	ledger, err := treeLedger(repoRoot, v)
+	if err != nil {
+		return err
+	}
+	req := capture.DrainPlanRequest{RepoRoot: repoRoot, Ledger: ledger, Files: treeFiles(repoRoot, v)}
+	plan, err := capture.PlanDrain(req)
+	if err != nil {
+		return err
+	}
+	snap.plan, snap.origin = &plan, originViewOf(repoRoot, v, ledger, now)
+	snap.aside = func() (capture.DrainPlan, error) {
+		r := req
+		r.SetAsidePromoted = true
+		return capture.PlanDrain(r)
+	}
+	return nil
 }
 
 // maxIssueTitle caps the issue's title a lane carries as its step title.
@@ -440,9 +541,18 @@ type peerSnapshot struct {
 	reader claim.Self
 	// now is when the reservations are judged.
 	now time.Time
-	// plan is the drain plan an issue's check reads (Options.plan); nil
-	// reads the checkout's ledger.
+	// plan is the drain plan an issue's check reads (Options.plan, or the
+	// build's from origin, readIssueLedger); nil reads the checkout's ledger.
 	plan *capture.DrainPlan
+	// aside asks plan's ledger again with promoted set aside (issueCheck);
+	// nil asks the checkout's.
+	aside func() (capture.DrainPlan, error)
+	// origin is the view of origin's default branch a build read plan from;
+	// nil when plan is the drain's or the checkout's ledger is read.
+	origin *DrainOrigin
+	// originUnread is why a build could not read origin's default branch,
+	// and so judges the issue from the checkout's own ledger; "" otherwise.
+	originUnread string
 	// takeOver is a start's --take-over: this person's own live reservation
 	// from another copy is then no holder, since the start's reservation
 	// moves it to this copy.

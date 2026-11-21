@@ -791,6 +791,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	snap.takeOver = o.TakeOver
 	snap.plan = o.plan
+	if o.plan == nil && validIssueKey(key) {
+		// A person's build of an issue judges it from origin's default
+		// branch after a fetch, as the drain's move does (readIssueLedger).
+		if err := readIssueLedger(repoRoot, snap); err != nil {
+			return StartResult{}, err
+		}
+	}
 	planning, err := autoPlans(repoRoot, key, o)
 	if err != nil {
 		return StartResult{}, err
@@ -812,6 +819,17 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	if chk.autoPlan != nil && o.reserve == nil {
 		o.reserve = autoPlanFootprint(*chk.autoPlan)
+	}
+	if snap.origin != nil && o.reserve == nil {
+		// The issue was judged from origin's record, so it is reserved with
+		// that record's found_at, which this checkout's ledger may not hold.
+		if iss, ok := snap.plan.OpenIssue(chk.Key); ok {
+			fp, ok := issueFootprint(repoRoot, iss)
+			if !ok && !o.noReserve && !o.Trial && o.held == nil {
+				return StartResult{}, noFoundAtRefusal(chk.Key, "nothing was started")
+			}
+			o.reserve = fp
+		}
 	}
 	// The budget check runs once the record may start, and writes nothing:
 	// a run its estimate exceeds is refused before the run directory exists.

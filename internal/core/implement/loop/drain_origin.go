@@ -224,6 +224,13 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}
+	return plan, originViewOf(repoRoot, v, ledger, now), nil
+}
+
+// originViewOf is the view v at now, whose ledger is the one read out of
+// its commit: when it was fetched, how many commits this checkout is behind
+// it, and the issues open here that it holds finished.
+func originViewOf(repoRoot string, v originView, ledger *capture.TreeLedger, now time.Time) *DrainOrigin {
 	o := &DrainOrigin{Ref: gitutil.ShortRef(v.ref), Commit: v.commit, Finished: []string{}}
 	if at := claim.LastFetched(repoRoot); !at.IsZero() {
 		o.FetchedAt = &at
@@ -240,7 +247,7 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 			o.Finished = append(o.Finished, id)
 		}
 	}
-	return plan, o, nil
+	return o
 }
 
 // maxLedgerBatch caps what one move's read of the open records may answer:

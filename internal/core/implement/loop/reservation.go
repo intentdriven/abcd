@@ -1396,8 +1396,7 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 		if fp, ok := issueFootprint(repoRoot, lr.Issues[i]); ok {
 			return fp, nil
 		}
-		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
-			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
+		return nil, noFoundAtRefusal(key, outcome)
 	}
 	fp, err := specPackages(repoRoot, specID, built)
 	var entry *footprintEntryError
@@ -1413,6 +1412,13 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 			"name the packages the build will change on the `- packages:` line of "+specID+"'s `## Footprint` section; the reservation names them for every other participant")
 	}
 	return fp, nil
+}
+
+// noFoundAtRefusal refuses a build of issue key whose record names no
+// found_at path to reserve it with; outcome says what the refusal left.
+func noFoundAtRefusal(key, outcome string) *Refusal {
+	return refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
+		"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 }
 
 // noFootprint says that specID names no footprint to reserve key with: the
