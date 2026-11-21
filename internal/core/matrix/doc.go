@@ -56,9 +56,11 @@
 // checkmatch.go, checkjudge.go; step 7, decisions 22, 27 and 30). Each copy's
 // findings are read as untrusted input into the run's record before its clone
 // is deleted, a doc-fidelity verdict through the recorder's own decoder and
-// never saved where the release gates read, every name of a model or its
-// maker withheld from the copy's own words, every position computed from the
-// frozen material; and the run proves, from a snapshot taken before the copy
+// never saved where the release gates read, everything in the run that
+// identifies the copy (its run, task, cell, route, runner and pins, and any
+// partial clone path) withheld from its text and every name of a model or its
+// maker from the copy's own words, every position computed from the frozen
+// material; and the run proves, from a snapshot taken before the copy
 // starts, that it left the doc-fidelity receipts, the review flags and the
 // issue ledger as they were. Findings are matched into
 // rows by exact key first (the consistency finding key, or the document,
