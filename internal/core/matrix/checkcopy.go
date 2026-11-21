@@ -227,14 +227,14 @@ func docFidelityFindings(data []byte, material map[string]string, red checkRedac
 		if err := red.path(p, material); err != nil {
 			return nil, 0, fmt.Errorf("finding %d: %w", i+1, err)
 		}
-		end, n := red.end(p, s.Sentence, material)
+		end, keyQuote, n := red.end(p, s.Sentence, material)
 		evidence, m := red.inert(s.Evidence)
 		redacted += n + m
 		if len(evidence) > maxFindingBytes {
 			return nil, 0, fmt.Errorf("finding %d's evidence is past its bound of %d bytes", i+1, maxFindingBytes)
 		}
 		out = append(out, CheckFinding{
-			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: end.Quote}, findingkey.End{}),
+			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: keyQuote}, findingkey.End{}),
 			Doc:  s.Doc,
 			Ends: []FindingEnd{end}, Evidence: evidence,
 		})
@@ -299,12 +299,12 @@ func consistencyFindings(data []byte, material map[string]string, red checkRedac
 			if err := red.path(e.Path, material); err != nil {
 				return nil, 0, fmt.Errorf("finding %d end %d: %w", i+1, j+1, err)
 			}
-			end, n := red.end(e.Path, e.Quote, material)
+			end, keyQuote, n := red.end(e.Path, e.Quote, material)
 			redacted += n
 			if end.Quote == "" || len(end.Quote) > maxQuoteBytes {
 				return nil, 0, fmt.Errorf("finding %d end %d quotes nothing, or more than %d bytes", i+1, j+1, maxQuoteBytes)
 			}
-			ends[j] = findingkey.End{Path: e.Path, Quote: end.Quote}
+			ends[j] = findingkey.End{Path: e.Path, Quote: keyQuote}
 			cf.Ends = append(cf.Ends, end)
 		}
 		cf.Key = findingkey.Derive(class, ends[0], ends[1])
@@ -336,11 +336,20 @@ func (r checkRedactor) text(s string) (string, int) {
 	return s, n + m
 }
 
-// inert is s made one inert line with both withheld.
+// inert is s made one inert line with both withheld. The identity scrub
+// reads s before its white space is collapsed, so a name broken across lines
+// ("Clau\nde") is read as broken by a line break, not as two words.
 func (r checkRedactor) inert(s string) (string, int) {
-	s, n := inert(s, r.place)
-	s, m := r.model.scrub(s)
-	return s, n + m
+	return r.inertWith(s, r.model.scrub)
+}
+
+// inertWith is s made one inert line, where the copy ran withheld from it
+// and then what scrub withholds, both before its white space is collapsed.
+func (r checkRedactor) inertWith(s string, scrub func(string) (string, int)) (string, int) {
+	s, n := r.place.redact(strings.ToValidUTF8(s, "?"))
+	s, m := scrub(s)
+	s, k := inert(s, r.place)
+	return s, n + m + k
 }
 
 // path refuses a finding's path unless it is a clean path inside the
@@ -359,26 +368,29 @@ func (r checkRedactor) path(p string, material map[string]string) error {
 }
 
 // end is one end of a finding: the quote made inert, and where the frozen
-// material at p holds it. The quote is located in the material as written,
-// before anything is withheld from it, so where it stands and whether the
-// material holds it are read from the material's own words. A quote the
-// material holds is the same for every copy that quotes it, but a copy chooses
-// which line it quotes, so a quote of a line naming a model would sign it by
-// choice: it is shown with every model and maker withheld (scrubModels), and
-// the rest of the line, the run's other words among them, kept, and it stays
-// located (dcn-2611211626560528, correcting dcn-2611210903322839 in part). One the
-// material does not hold is the copy's own, and has everything the identity
-// scrub withholds withheld.
-func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, int) {
-	q, n := inert(quote, r.place)
-	lines := locate(material[p], q)
-	var m int
+// material at p holds it, with the quote its finding key is derived from. The
+// quote is located in the material as written, before anything is withheld
+// from it, so where it stands and whether the material holds it are read from
+// the material's own words. A quote the material holds is the same for every
+// copy that quotes it, but a copy chooses which line it quotes, so a quote of
+// a line naming a model would sign it by choice: it is shown with every model
+// and maker withheld (scrubModels), and the rest of the line, the run's other
+// words among them, kept, and it stays located (dcn-2611211626560528,
+// correcting dcn-2611210903322839 in part). It is keyed on the line as
+// located, so two lines that differ only in a model named are two findings,
+// though both are shown alike: the path and line span shown already name the
+// line, so its key tells a reader nothing more. One the material does not
+// hold is the copy's own, has everything the identity scrub withholds
+// withheld, and is keyed as shown.
+func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, string, int) {
+	located, _ := inert(quote, r.place)
+	lines := locate(material[p], located)
 	if lines == nil {
-		q, m = r.model.scrub(q)
-	} else {
-		q, m = r.model.scrubModels(q)
+		q, n := r.inertWith(quote, r.model.scrub)
+		return FindingEnd{Path: p, Quote: q}, q, n
 	}
-	return FindingEnd{Path: p, Quote: q, Lines: lines}, n + m
+	q, n := r.inertWith(quote, r.model.scrubModels)
+	return FindingEnd{Path: p, Quote: q, Lines: lines}, located, n
 }
 
 // withheldMark stands in for what is withheld from a check copy's text by the
@@ -721,7 +733,9 @@ func (m identityScrub) held(names []string, s string) []bool {
 // prose splits words at spaces and line breaks, so a span split by white
 // space counts only where every letter is split from the next ("c l a u d
 // e"), or where its only white space is line breaks and the name is at least
-// minWrappedBytes long ("Clau\nde"): "met a" and "op us" stay prose.
+// minWrappedBytes long ("Clau\nde"): "met a" and "op us" stay prose. A
+// carriage return and line feed is one line break. An ordinary hyphenated
+// word that spells a name (hyphenatedWords) is kept.
 func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
 	// letters is low's ASCII letters with each single separator between two
 	// of them dropped, and a zero byte for anything else; at[k] is where its
@@ -730,6 +744,9 @@ func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
 	at := make([]int, 0, len(low))
 	for i := 0; i < len(low); {
 		r, w := utf8.DecodeRuneInString(low[i:])
+		if strings.HasPrefix(low[i:], "\r\n") {
+			w = 2
+		}
 		switch {
 		case isLetter(low[i]):
 			letters, at = append(letters, low[i]), append(at, i)
@@ -748,6 +765,9 @@ func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
 		if after, _ := utf8.DecodeRuneInString(low[hi:]); hi < len(low) && unicode.IsLetter(after) {
 			return
 		}
+		if slices.Contains(hyphenatedWords, low[lo:hi]) {
+			return
+		}
 		seps, white, wrapped := 0, false, true
 		for k := a; k+1 < b; k++ {
 			if at[k+1] == at[k]+1 {
@@ -756,7 +776,7 @@ func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
 			seps++
 			if r, _ := utf8.DecodeRuneInString(low[at[k]+1:]); unicode.IsSpace(r) {
 				white = true
-				wrapped = wrapped && r == '\n'
+				wrapped = wrapped && (r == '\n' || strings.HasPrefix(low[at[k]+1:], "\r\n"))
 			}
 		}
 		switch {
@@ -779,6 +799,11 @@ func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
 		try(sp[0], sp[1])
 	}
 }
+
+// hyphenatedWords are ordinary hyphenated words whose letters spell a name
+// matched spelled with separators: each is kept as written, while the name
+// written straight on, or split at every letter, is still withheld.
+var hyphenatedWords = []string{"co-pilot"}
 
 // minWrappedBytes is the shortest name matched broken across lines with no
 // other separator: a shorter one ("met\na" for meta) is how prose wraps.

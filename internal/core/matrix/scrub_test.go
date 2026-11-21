@@ -195,3 +195,21 @@ func TestTheScrubIsLinearOnAdversarialText(t *testing.T) {
 		}
 	}
 }
+
+// "co-pilot" is an ordinary hyphenated word, kept, though its letters spell an
+// AI name: the name written straight on or split at every letter is still
+// withheld.
+func TestTheHyphenatedWordCoPilotIsKept(t *testing.T) {
+	s := scrubFor(writingInputs(1, 1, 1))
+	for _, prose := range []string{"The co-pilot flies the plane.", "A Co-Pilot reads the chart."} {
+		if got, n := s.scrub(prose); n != 0 {
+			t.Errorf("scrub(%q) = %q (%d withheld); want it kept", prose, got, n)
+		}
+	}
+	for _, signed := range []string{"copilot", "c-o-p-i-l-o-t", "Co.pilot"} {
+		text := "Written by " + signed + " for the page."
+		if got, n := s.scrub(text); n == 0 || got != "Written by "+withheldMark+" for the page." {
+			t.Errorf("scrub(%q) = %q (%d withheld); want the name withheld", text, got, n)
+		}
+	}
+}

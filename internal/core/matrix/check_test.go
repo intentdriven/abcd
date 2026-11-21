@@ -1434,3 +1434,113 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	}
 	noIdentity(t, "a failed copy's reason", []byte(fc.Reason), fparts...)
 }
+
+// modelListDoc is a material file whose lines differ only in the model they
+// name, so a quote of each is shown alike once the model is withheld.
+const (
+	modelListDoc  = "docs/reference/models.md"
+	modelListText = "# Models\n\n- opus: reads the brief\n- sonnet: reads the brief\n"
+)
+
+// modelListCopy reads one consistency copy on cell quoting quote of the
+// model list against its first line.
+func modelListCopy(t *testing.T, cell, quote string) CheckCopy {
+	t.Helper()
+	return readCheckCopy(checkCopyInputs{
+		RepoRoot: "/work/checkout", Store: "/work/store", Run: "mx-261023012949-ab12",
+		Key: TrialKey{Task: checkTask, Cell: cell, Repeat: 1}, Form: CheckConsistency,
+		Material: map[string]string{modelListDoc: modelListText},
+		Answer: consistencyJSON(t, consistencyRow("drift", "the list disagrees with itself",
+			[2]string{modelListDoc, quote}, [2]string{modelListDoc, "# Models"})),
+	})
+}
+
+// A located quote is keyed on the line as the material holds it, and shown
+// with every model and maker withheld: two copies quoting two lines that
+// differ only in the model they name are two findings, never joined by their
+// key as the copies agreeing, though both are shown alike and the path and
+// line span still name each line. A quote the material does not hold is the
+// copy's own words, keyed as it is shown.
+func TestLocatedQuotesThatDifferOnlyInAModelKeepTheirOwnKeys(t *testing.T) {
+	a := modelListCopy(t, "big", "- opus: reads the brief")
+	b := modelListCopy(t, "cheap", "- sonnet: reads the brief")
+	shown := "- " + withheldMark + ": reads the brief"
+	for i, c := range []CheckCopy{a, b} {
+		if !c.Answered || len(c.Findings) != 1 {
+			t.Fatalf("copy %s = %+v; want one finding", c.Key, c)
+		}
+		var end FindingEnd
+		for _, e := range c.Findings[0].Ends {
+			if e.Quote != "# Models" {
+				end = e
+			}
+		}
+		if end.Quote != shown {
+			t.Errorf("copy %s shows %q; want %q", c.Key, end.Quote, shown)
+		}
+		if want := 3 + i; end.Lines == nil || end.Lines.Start != want || end.Lines.End != want {
+			t.Errorf("copy %s's quote is at %+v; want line %d", c.Key, end.Lines, want)
+		}
+	}
+	if a.Findings[0].Key == b.Findings[0].Key {
+		t.Errorf("two located lines that differ only in their model share the key %s", a.Findings[0].Key)
+	}
+	if rows := matchExact([]CheckCopy{a, b}).rows(); len(rows) != 2 {
+		t.Errorf("exact matching joined two different lines: %+v; want two rows", rows)
+	}
+	same := modelListCopy(t, "cheap", "- opus: reads the brief")
+	if same.Findings[0].Key != a.Findings[0].Key {
+		t.Errorf("two copies quoting the same line have keys %s and %s; want one", a.Findings[0].Key, same.Findings[0].Key)
+	}
+	ua := modelListCopy(t, "big", "written by opus")
+	ub := modelListCopy(t, "cheap", "written by sonnet")
+	if ua.Findings[0].Key != ub.Findings[0].Key {
+		t.Errorf("two unlocated quotes shown alike have keys %s and %s; want them keyed as shown", ua.Findings[0].Key, ub.Findings[0].Key)
+	}
+}
+
+// A check copy's words are scrubbed before their white space is collapsed to
+// one line, so a name broken across lines, by a line feed or a carriage
+// return and line feed, is withheld from a check copy's summary and from a
+// quote of its own, as it is from a writing copy's text.
+func TestANameBrokenAcrossLinesIsWithheldFromACheckCopysWords(t *testing.T) {
+	for _, nl := range []string{"\n", "\r\n"} {
+		signed := "Found by Clau" + nl + "de in the list."
+		want := "Found by " + withheldMark + " in the list."
+		c := readCheckCopy(checkCopyInputs{
+			RepoRoot: "/work/checkout", Store: "/work/store", Run: "mx-261023012949-ab12",
+			Key: TrialKey{Task: checkTask, Cell: "big", Repeat: 1}, Form: CheckConsistency,
+			Material: map[string]string{modelListDoc: modelListText},
+			Answer: consistencyJSON(t, consistencyRow("drift", signed,
+				[2]string{modelListDoc, signed}, [2]string{modelListDoc, "# Models"})),
+		})
+		if !c.Answered || len(c.Findings) != 1 {
+			t.Fatalf("copy = %+v; want one finding", c)
+		}
+		if got := c.Findings[0].Evidence; got != want {
+			t.Errorf("a summary broken by %q = %q; want %q", nl, got, want)
+		}
+		quoted := false
+		for _, e := range c.Findings[0].Ends {
+			if e.Lines == nil {
+				quoted = true
+				if e.Quote != want {
+					t.Errorf("an unlocated quote broken by %q = %q; want %q", nl, e.Quote, want)
+				}
+			}
+		}
+		if !quoted {
+			t.Errorf("the copy's own quote is located: %+v", c.Findings[0].Ends)
+		}
+		if got, _ := scrubFor(writingInputs(1, 1, 1)).scrub(signed); got != "Found by "+withheldMark+" in the list." {
+			t.Errorf("a writing copy's text broken by %q = %q; want the name withheld", nl, got)
+		}
+	}
+	// Prose wrapped between two short words stays prose either way.
+	for _, nl := range []string{"\n", "\r\n"} {
+		prose := "I met" + nl + "a friend."
+		if got, n := scrubFor(writingInputs(1, 1, 1)).scrub(prose); n != 0 {
+			t.Errorf("prose wrapped by %q = %q; want it kept", nl, got)
+		}
+	}
+}
