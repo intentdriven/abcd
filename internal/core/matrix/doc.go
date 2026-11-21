@@ -41,6 +41,17 @@
 // state/matrix/ and reach it only through lab.Procedure, so a run obeys the
 // lab's halts and never writes outside its own directory.
 //
+// A reviewer model is blinded (review.go, udiff.go, reviewscore.go; step 5,
+// adr-2610161733400551): it is handed one copy's normalised diff from the
+// frozen tree, assembled through the reading surface's include table under an
+// opaque label, and nothing else, never a commit, trailer, author, branch or
+// record of the run; a hashed manifest the run keeps says what travelled and
+// what was withheld. Each reviewer is scored on its own, never by vote, on
+// copies whose truth is known: recall on the failing and the seeded-defect
+// copies, the true-negative rate on the passing ones, its guess at each
+// copy's author as the measured leak, and its verdicts on its own developer's
+// copies reported apart.
+//
 // The package never writes to stdout: it returns results, and the front doors
 // under internal/surface render them. Its entry points (parseDeclaration,
 // newRunRecord, writeRun) are unexported until the front door that calls them

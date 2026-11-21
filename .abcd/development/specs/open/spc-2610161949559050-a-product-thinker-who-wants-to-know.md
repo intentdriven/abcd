@@ -109,6 +109,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - packages: internal/core/matrix, internal/core/reading, internal/core/oracle
    - tests: a reviewer request is assembled through the include table with no trailer, author, branch or run metadata; recall and true-negative rate on known-good and seeded-defect copies; the author-guess score; same-family verdicts reported apart
    - needs: 2, 3
+   - landed: 110d8f69cdcf
 6. Writing tasks judged in an abcdesign.app session
    - packages: internal/core/matrix, internal/core/oracle
    - tests: a judge's subset holds at most eight copies and every pair of models is compared; copies render as inert text; a verdict file is validated and refused whole when malformed; one ranking per judge identity; guest verdicts and the host's self-blinded verdicts reported apart
@@ -123,3 +124,4 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - packages: internal/core/matrix, internal/surface/cli
    - tests: pass@1 interval and pass^k; regularised Bradley–Terry with bootstrapped intervals and "not separable"; α with interval or "not estimable"; floors below three judges; a comparison under its power estimate states the smallest detectable difference; the report lists limitations and suggested improvements; a re-run reports drift field by field
    - needs: 1, 4, 5, 6, 7
+   - the step that first runs the compliance check on a real trial puts the whole check, every git call and the transcript scan together, under one overall deadline, past which the copy is marked unexamined; step 4 bounds each call alone
