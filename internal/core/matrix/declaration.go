@@ -392,3 +392,15 @@ func clip(s string) string {
 	}
 	return s[:cut] + "…"
 }
+
+// clipTo bounds s to n bytes, cut on a character boundary with "…" after it.
+func clipTo(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	cut := n - len("…")
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut] + "…"
+}
