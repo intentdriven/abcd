@@ -1053,7 +1053,7 @@ func linkOut(clone string, forms []storeForm, scan cloneScan, tree frozenTree, t
 // transcriptScan reads a transcript's paths against the store.
 type transcriptScan struct {
 	// ctx is the check's deadline: the scan stops reading once it ends.
-	ctx context.Context
+	ctx   context.Context
 	forms []storeForm
 	// clone is the copy's clone as given, slash-separated and clean.
 	clone   string
