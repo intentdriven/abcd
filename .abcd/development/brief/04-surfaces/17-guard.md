@@ -820,7 +820,15 @@ among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
 launchers the registry steps, so a harness started under another name, a copied
 or linked binary run by that name, is not recognisable at this layer
-(iss-2610162027075062). The list of agent launches is a mistake filter: it
+(iss-2610162027075062). An agent-launch entry that names a harness's
+environment reads every way the line exports a variable to it, allexport and
+the assignments it turns into exports included, and the `claude --settings`
+entry reads the settings JSON on the line and in the file it names, refusing
+settings that turn the permission checks off, grant permission rules or
+declare hooks, and settings it cannot read now (text that does not parse, a
+value, name or directory the line does not fix, a glob that does not match one
+file, a file the line writes first, or one it cannot open or that is too
+large). The list of agent launches is a mistake filter: it
 steers an agent that starts another harness by an ordinary route, a harness
 started by any route outside it (another name, a copied binary, a
 configuration file it reads) is bounded by the OS sandbox and not by the list,

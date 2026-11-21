@@ -1203,15 +1203,26 @@ Starting another agent harness with its own permission checks turned off is a
 none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
 (`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
-`permissions.defaultMode` to `bypassPermissions` or grants `permissions.allow`
-rules, written on the line or in the file it names where the guard can read
-that file now (`agent-launch-claude-unchecked-settings`), `codex --dangerously-bypass-approvals-and-sandbox`
+`permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
+rules or declares `hooks`, which can answer the permission prompts, written on
+the line or in the file it names (`agent-launch-claude-unchecked-settings`),
+`codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
 `-c sandbox_mode=danger-full-access` (`agent-launch-codex-config-unchecked`),
 and `opencode run --auto` (`agent-launch-opencode-auto`). The same harness
-started with its checks on is allowed. The entries name each program by
+started with its checks on is allowed. The settings entry reads inline JSON as
+claude reads it, string escapes decoded, and refuses settings it cannot read as
+well as those that turn the checks off: text that starts as an object and does
+not parse, JSON holding a part the line does not fix (a value spliced into the
+text can add any key), a value or file name the line does not wholly fix
+(`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
+glob that does not match exactly one file, and a file the line writes before
+the launch, one that is not a regular file, one over 256 KiB, or one that does
+not hold a JSON object. A settings file that does not exist is not refused,
+since claude does not start on it, and other permission modes are left to the
+permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`
 or `command`, or through a package runner (`npx`, `bunx`, `bun x`, `pnpm dlx`,
 `pnpm exec`, `yarn dlx`, `npm exec`, with or without `--`), by the program's

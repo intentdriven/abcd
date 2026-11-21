@@ -1182,11 +1182,15 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) ([]pa
 // settings file by a flag an entry reads for ShapeSettingsUnchecked, another
 // reading of the command with the file's text in place of its name, so the
 // entry matches the settings the file holds as it matches them written on the
-// line. Only a file the guard can read now is read: a name the line does not
-// fix, one relative to a directory it leaves unknown, a file it writes
-// earlier on the line, and one past the reading budget stay unread, and the
-// guard reads no file a command would have to run to produce. Text on the
-// line itself (a JSON object) is the entry's to read, not a file's name.
+// line. A file the guard cannot read now is read as settingsUnreadText,
+// which the entry refuses: a name the line does not fix, one relative to a
+// directory it leaves unknown, a glob that does not match exactly one file,
+// a file the line writes before the command, one that is not a regular file
+// the guard may open, one past the size it reads, and one past the check's
+// reading budget. The guard runs nothing to produce a file. A file that does
+// not exist is left unread, as the program does not start on it. Text on the
+// line itself (an object, or a value whose start the line does not fix) is
+// the entry's to read, not a file's name.
 func (r Registry) settingsFileReadings(rc *readCtx, segs []segment, recs []scriptSeg) []segment {
 	type flagOf struct{ command, flag string }
 	var flags []flagOf
@@ -1224,13 +1228,18 @@ func (r Registry) settingsFileReadings(rc *readCtx, segs []segment, recs []scrip
 						continue
 					}
 					word := strings.TrimPrefix(s.tokens[at], prefix)
-					if isUnknown(word) || strings.ContainsRune(word, varMark) || strings.HasPrefix(strings.TrimSpace(word), "{") || word == "" {
+					if word == "" || settingsUnchecked(word) || strings.HasPrefix(trimSettings(word), "{") {
 						continue
 					}
-					if prefix == "" && s.globAt(at) {
-						continue
+					var texts []string
+					unread := isUnknown(word) || strings.ContainsRune(word, varMark)
+					if !unread {
+						texts, unread = r.settingsTexts(rc, segs, recs, i, word, prefix == "" && s.globAt(at))
 					}
-					for _, text := range r.settingsTexts(rc, segs, recs, i, word) {
+					if unread {
+						texts = append(texts, settingsUnreadText)
+					}
+					for _, text := range texts {
 						d := s
 						d.tokens = append([]string(nil), s.tokens...)
 						d.tokens[at] = prefix + text
@@ -1253,17 +1262,28 @@ func (r Registry) settingsFileReadings(rc *readCtx, segs []segment, recs []scrip
 	return out
 }
 
+// settingsUnreadText stands, in a reading settingsFileReadings builds, for
+// a settings file the guard cannot read now: a value whose start the line
+// does not fix, which settingsUnchecked refuses.
+const settingsUnreadText = unknownText
+
 // settingsTexts is the text of the settings file word names for the command
-// at segs[i], read in every directory the command can run in, where the guard
-// can read it now (settingsFileReadings).
-func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i int, word string) []string {
+// at segs[i], read in every directory the command can run in, and unread
+// where in any of them the guard cannot read it now (settingsFileReadings).
+// glob is whether word is a pattern the shell expands, which must match
+// exactly one file.
+func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i int, word string, glob bool) (texts []string, unread bool) {
 	var before []writeTarget
 	beforeRead := false
-	var texts []string
 	for _, st := range recs[i].states {
 		p, ok := st.resolve(rc, word, strings.HasPrefix(word, "~"))
 		if !ok {
-			continue
+			return texts, true
+		}
+		if glob {
+			if p, ok = globOne(p); !ok {
+				return texts, true
+			}
 		}
 		if !beforeRead {
 			for j := range segs {
@@ -1275,22 +1295,72 @@ func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i
 			}
 			beforeRead = true
 		}
-		if written, _ := writtenBefore(p, before); written {
-			continue
+		if settingsWritten(p, before) {
+			return texts, true
 		}
 		real, err := filepath.EvalSymlinks(p)
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			continue
+		}
+		if err != nil {
+			return texts, true
 		}
 		fr, ok := rc.take(real)
 		if !ok || fr.err != nil || fr.tooBig {
-			continue
+			return texts, true
 		}
-		if text := string(fr.data); !containsString(texts, text) {
+		text := string(fr.data)
+		if !strings.HasPrefix(trimSettings(text), "{") {
+			// Not an object: text claude cannot take as settings, which the
+			// guard does not read as a file's name either.
+			return texts, true
+		}
+		if !containsString(texts, text) {
 			texts = append(texts, text)
 		}
 	}
-	return texts
+	return texts, false
+}
+
+// settingsWritten reports whether a write before the command lands on the
+// settings file p: one the guard places on it, or one it does not place
+// whose last component is p's, or that names a path relative to a directory
+// the line leaves unknown.
+func settingsWritten(p string, before []writeTarget) bool {
+	if written, _ := writtenBefore(p, before); written {
+		return true
+	}
+	for _, w := range before {
+		if !w.ok && (w.rel || w.base != "" && sameName(w.base, filepath.Base(p))) {
+			return true
+		}
+	}
+	return false
+}
+
+// globOne is the one file the pattern p matches as the shell expands it, a
+// name starting with a dot only where the pattern's own last component
+// does, and false where it matches none or several, or holds a bracket
+// negation (`[!…]`) Go's matcher does not read as the shell does.
+func globOne(p string) (string, bool) {
+	if strings.Contains(p, "[!") {
+		return "", false
+	}
+	matches, err := filepath.Glob(p)
+	if err != nil {
+		return "", false
+	}
+	dot := strings.HasPrefix(filepath.Base(p), ".")
+	var kept []string
+	for _, m := range matches {
+		if dot || !strings.HasPrefix(filepath.Base(m), ".") {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) != 1 {
+		return "", false
+	}
+	return kept[0], true
 }
 
 // containsSignal reports whether sigs holds sig, so a verdict two states of
