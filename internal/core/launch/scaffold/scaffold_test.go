@@ -531,7 +531,12 @@ func TestClassifySymlinkLeafIsPathFree(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "elsewhere"), target); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	disp, reason := classify(target, []byte("machinery"))
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	disp, reason := classify(root, "release.yml", []byte("machinery"))
 	if disp != dispDiffers {
 		t.Fatalf("symlink leaf classified %v, want dispDiffers", disp)
 	}

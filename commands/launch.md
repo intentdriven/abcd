@@ -1326,6 +1326,12 @@ to add to it so it calls the gate before its build step (`call_stanza` in
 `--json`). Relay that stanza verbatim; the scaffold never edits the repository's
 own workflow.
 
+Every file the scaffold reads or writes resolves inside the repository. Where a
+directory on the way to a planned file is a symlink leading out of the
+repository (a committed `.github` that links elsewhere), the run stops with an
+error and writes nothing there, with or without `--confirm`, and the workflows
+behind that link supply no check name.
+
 ### Dependency-bump re-authoring (opt-in)
 
 `launch scaffold --dependency-reauthor` opts the repository in to re-authoring a
