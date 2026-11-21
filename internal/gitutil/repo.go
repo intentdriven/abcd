@@ -428,12 +428,20 @@ func InRepo(root string) bool {
 // option, is refused before git runs (RefIsSafe): callers pass names read
 // from stored state as well as from git.
 func IsAncestor(root, ancestor, descendant string) (bool, error) {
+	return isAncestor(root, false, ancestor, descendant)
+}
+
+// isAncestor is IsAncestor (stored false) and IsAncestorAsStored (true).
+func isAncestor(root string, stored bool, ancestor, descendant string) (bool, error) {
 	for _, ref := range []string{ancestor, descendant} {
 		if !RefIsSafe(ref) {
 			return false, fmt.Errorf("refusing ref %q: an empty or option-shaped ref would reach git as a flag", ref)
 		}
 	}
 	cmd := isolatedGit(root, "merge-base", "--is-ancestor", ancestor, descendant)
+	if stored {
+		asStored(cmd)
+	}
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e
 	err := cmd.Run()
