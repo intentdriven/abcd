@@ -202,3 +202,18 @@ The pass could not open SARIF sections 3.8, 3.50 and 3.58, OSCAL's finding
 states, or the full list of OpenTelemetry's attributes in their new
 repository, and did not find any viewer other than the forge's that shows
 SARIF notifications to a person.
+
+## Corrections from the plan review
+
+A plan review of the intent this note serves reported on 2026-11-21, after
+the fit-challenge. Two of its findings bear on what this note says.
+
+- The statement cannot be written through the serializer interface the lint
+  command has. That interface takes the lint's own result, and its package
+  imports the cores of three commands that would need to import it. The
+  seam the intent claims is therefore narrower: identifiers that do not
+  change, and a mapping onto SARIF written down in the spec for a later
+  writer.
+- The depth of model-judged work is read from a run's review set (the class
+  of each reviewer, how many there are, the effort asked for), and not from
+  the record of each call, which stays with the technical facilitator.

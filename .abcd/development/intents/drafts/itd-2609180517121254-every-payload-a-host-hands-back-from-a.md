@@ -94,7 +94,9 @@ three: after
 how hard the host's agents looked until this draft ships, and before
 [itd-173](itd-173-verification-escalates-from-the-built-in.md) (a project
 chooses how hard its work is checked), which cannot check a chosen depth for
-those agents without it.
+those agents without it. That intent defines, once, the part of a result
+that says how hard a model looked (its decision 14); this draft fills that
+part for the host's work and mints no second shape.
 
 - (SOTA 2026-10-23) Whether "the number of agents that ran" counts distinct
   agent ids (the top-level one included) or only sub-agents, and whether a

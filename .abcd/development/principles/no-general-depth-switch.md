@@ -60,8 +60,9 @@ The idea, its research and both reviews are recorded in the ideate verdict
 
 **Promotion.** The enabling artefact is the per-command declaration that
 [itd-2611211024360819](../intents/planned/itd-2611211024360819-every-result-abcd-gives-says-how-far-it.md)
-asks for, which says of each flag either what it adds to what is looked at or
-that it changes nothing looked at. A test can fail on a flag the declaration
+asks for, which says of each flag what it adds to what is looked at, how it
+narrows or redirects that, or that it changes nothing looked at. A test can
+fail on a flag the declaration
 does not mention. No test can tell whether what the declaration says of a flag
 is true, so that part stays a matter for review. Once the test exists, the
 part it covers is promoted to a discipline-kind intent, as the README of this
