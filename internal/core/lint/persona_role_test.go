@@ -94,6 +94,22 @@ func TestPersonaGlossaryScopesItsRuleToAModelledUser(t *testing.T) {
 	}
 }
 
+// TestPersonasPageAllowsAQuoteAttributedToARoleAlone holds the brief's
+// personas page to the same ruling as itd-79 (iss-2610262032106392,
+// dcn-2610271112330536): a press-release quote may be attributed to a role
+// alone, with no name, and only a name that is used must come from the
+// registry. The page said every quote uses a registered name.
+func TestPersonasPageAllowsAQuoteAttributedToARoleAlone(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/01-product/05-personas.md")
+	flat := strings.Join(strings.Fields(body), " ")
+	for _, want := range []string{"a role alone", "itd-79", "dcn-2610271112330536"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("05-personas.md does not say %q: a quote may be attributed to a role alone, as itd-79 allows by dcn-2610271112330536:\n%s", want, body)
+		}
+	}
+}
+
 // TestTheProductThinkerQuotesNameTheRegisteredPersona holds the press release
 // and itd-106 to one name for the product-thinker role (iss-2610262031403463):
 // the registry picks the name from the role, so each quote attributed to "a
