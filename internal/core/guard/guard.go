@@ -656,7 +656,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// segment still stands where the payload expansion put it: the reading
 	// follows each command to the one that carried it (adr-2610091150447054).
 	if rc != nil {
-		signals = append(signals, r.readScripts(segs, rc, run)...)
+		sigs, readings := r.readScripts(segs, rc, run)
+		signals = append(signals, sigs...)
+		// A command that takes a settings file is read once more with the
+		// file's text in its place, where the command stands.
+		if len(readings) > 0 {
+			segs = append(segs, readings...)
+			walkSegments(segs)
+		}
 	}
 
 	// git rewrites its own subcommand from configuration carried IN the command

@@ -322,8 +322,9 @@ func TestGuardReadsARunnerBehindManagerOptions(t *testing.T) {
 }
 
 // TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment: opencode reads a
-// configuration file named by OPENCODE_CONFIG, and configuration text from
-// OPENCODE_CONFIG_CONTENT, over its own, so a line that sets either for the
+// configuration file named by OPENCODE_CONFIG, configuration from the
+// directory OPENCODE_CONFIG_DIR names, and configuration text from
+// OPENCODE_CONFIG_CONTENT, over its own, so a line that sets any of them for the
 // opencode it starts is refused under the config entry, with its reason and
 // what to run instead. Setting them for another program is not.
 func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
@@ -335,6 +336,9 @@ func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
 		`env OPENCODE_CONFIG_CONTENT='{"permission":"allow"}' opencode run x`,
 		`export OPENCODE_CONFIG=/tmp/open.json; opencode run x`,
 		`OPENCODE_CONFIG=/tmp/open.json npx opencode-ai run x`,
+		`OPENCODE_CONFIG_DIR=/tmp/oc opencode run x`,
+		`export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x`,
+		`env OPENCODE_CONFIG_DIR=/tmp/oc opencode run x`,
 	} {
 		d, err := r.Check(line)
 		if err != nil {
@@ -356,6 +360,7 @@ func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
 		`OPENCODE_CONFIG=/tmp/open.json echo hi`,
 		`export OPENCODE_CONFIG_CONTENT=x`,
 		`env -u OPENCODE_CONFIG opencode run x`,
+		`OPENCODE_CONFIG_DIR=/tmp/oc echo hi`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)

@@ -378,4 +378,5 @@ var flagValueShapeTaught = map[string]string{
 	ShapeRefUpdateQuery:          "a query naming a ref update",
 	ShapeForceField:              "a field setting force",
 	ShapeRefForceField:           "a field setting force to anything but false",
+	ShapeSettingsUnchecked:       "settings that turn the permission checks off or grant permission rules",
 }

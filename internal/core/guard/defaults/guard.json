@@ -1430,6 +1430,28 @@
         ]
       }
     },
+    "agent-launch-claude-unchecked-settings": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flag_values": [{"flag": "--settings", "values": [], "shape": "claude-settings-unchecked"}]
+      },
+      "why": "`--settings` that sets `permissions.defaultMode` to `bypassPermissions`, or grants `permissions.allow` rules, starts another claude agent that runs commands and writes files without asking anyone, whether the settings are written on the line or in the file it names, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` with no `--settings` that sets the permission mode or permission rules).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}'",
+          "claude --settings='{\"permissions\":{\"allow\":[\"Bash(*)\"]}}' -p x",
+          "claude -p x --settings '{\"permissions\": {\"defaultMode\": \"BYPASSPERMISSIONS\"}}'"
+        ],
+        "known_good": [
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"default\"}}'",
+          "claude -p x --settings '{\"permissions\":{\"deny\":[\"Bash(rm:*)\"]}}'",
+          "claude -p x --settings '{\"model\":\"sonnet\"}'",
+          "abcd capture \"an agent ran claude --settings with bypassPermissions\""
+        ]
+      }
+    },
     "agent-launch-codex-unchecked": {
       "tier": "blocker",
       "pattern": {
@@ -1571,20 +1593,24 @@
       "tier": "blocker",
       "pattern": {
         "command": "opencode",
-        "env": ["OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"]
+        "env": ["OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT"]
       },
-      "why": "`OPENCODE_CONFIG` (a file to load) and `OPENCODE_CONFIG_CONTENT` (text merged last) give the opencode a line starts settings over its own configuration, permission rules among them, so the agent it starts can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
-      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `OPENCODE_CONFIG` and `OPENCODE_CONFIG_CONTENT`, so opencode's own configuration decides what it asks about (`opencode run \"<task>\"`).",
+      "why": "`OPENCODE_CONFIG` (a file), `OPENCODE_CONFIG_DIR` (a directory) and `OPENCODE_CONFIG_CONTENT` (text merged last) give the opencode a line starts settings over its own, permission rules among them, so the agent can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` and `OPENCODE_CONFIG_CONTENT`, so opencode's own configuration decides what it asks about (`opencode run \"<task>\"`).",
       "fixtures": {
         "known_bad": [
           "OPENCODE_CONFIG='/tmp/open.json' opencode run x",
           "OPENCODE_CONFIG_CONTENT='{\"permission\":\"allow\"}' opencode run x",
-          "export OPENCODE_CONFIG=/tmp/open.json; opencode run x"
+          "export OPENCODE_CONFIG=/tmp/open.json; opencode run x",
+          "OPENCODE_CONFIG_DIR='/tmp/oc' opencode run x",
+          "export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x"
         ],
         "known_good": [
           "opencode run \"fix the tests\"",
           "OPENCODE_CONFIG=/tmp/open.json echo hi",
           "env -u OPENCODE_CONFIG opencode run x",
+          "OPENCODE_CONFIG_DIR=/tmp/oc echo hi",
+          "export OPENCODE_CONFIG_DIR=/tmp/oc",
           "abcd capture \"an agent ran OPENCODE_CONFIG=x opencode run\""
         ]
       }

@@ -1177,7 +1177,10 @@ Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
 none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
-(`agent-launch-claude-unchecked-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
+(`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
+`permissions.defaultMode` to `bypassPermissions` or grants `permissions.allow`
+rules, written on the line or in the file it names where the guard can read
+that file now (`agent-launch-claude-unchecked-settings`), `codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
@@ -1196,9 +1199,10 @@ while `set -a`, `set -o allexport` or zsh's `setopt allexport` holds, an export
 inside an `eval` that stands before it, or an export in a file the line sources
 before it — is a **block** too (`agent-launch-opencode-permission-env`), and
 one that starts opencode without setting it is not. So is a line that sets
-`OPENCODE_CONFIG`, a configuration file opencode loads, or
+`OPENCODE_CONFIG`, a configuration file opencode loads,
+`OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
-it starts (`agent-launch-opencode-config-env`), since either can carry
+it starts (`agent-launch-opencode-config-env`), since each can carry
 permission rules over opencode's own configuration. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents

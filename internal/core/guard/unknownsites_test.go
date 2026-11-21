@@ -162,19 +162,20 @@ var wordReaders = map[string]string{
 
 	// script.go, scriptwrites.go: the files a command points a shell at, and
 	// the files it writes (adr-2610091150447054).
-	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
-	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
-	"actReadings":    "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
-	"adjacentFrom":   "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
-	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
-	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
-	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
-	"isEvalCarrier":  "commandSites and nameCouldBe",
-	"segChangesDir":  "commandSites and nameCouldBeAny",
-	"lastSite":       "commandSites",
-	"carrierShell":   "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
-	"needsShell":     "commandSites and isUnknown: a name the line does not fix is not read as a `source`, as targetsOf does not read one",
-	"unset":          "isUnknown on every operand: a word the line does not fix may be `-f`, so it unsets nothing the reading follows",
+	"after":                "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
+	"targetsOf":            "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"settingsFileReadings": "sitesNamed and isUnknown: a settings value the line does not fix names no file to read",
+	"actReadings":          "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
+	"adjacentFrom":         "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
+	"parseShellCall":       "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
+	"optionName":           "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
+	"bashLongOption":       "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
+	"isEvalCarrier":        "commandSites and nameCouldBe",
+	"segChangesDir":        "commandSites and nameCouldBeAny",
+	"lastSite":             "commandSites",
+	"carrierShell":         "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
+	"needsShell":           "commandSites and isUnknown: a name the line does not fix is not read as a `source`, as targetsOf does not read one",
+	"unset":                "isUnknown on every operand: a word the line does not fix may be `-f`, so it unsets nothing the reading follows",
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).

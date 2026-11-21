@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"encoding/json"
 	"path"
 	"slices"
 	"strings"
@@ -478,6 +479,12 @@ const (
 	ShapeRefForceField           = "rest-ref-force-field"
 )
 
+// ShapeSettingsUnchecked is a claude settings value that turns its permission
+// checks off or grants permission rules (settingsUnchecked). The value is
+// the JSON text `--settings` takes inline, or the text of the file it names
+// where the guard can read the file (settingsFileReadings).
+const ShapeSettingsUnchecked = "claude-settings-unchecked"
+
 // flagValueShapes are the shapes a flag-value constraint may name; Validate
 // refuses any other.
 var flagValueShapes = map[string]bool{
@@ -486,6 +493,7 @@ var flagValueShapes = map[string]bool{
 	ShapeRefUpdateQuery:          true,
 	ShapeForceField:              true,
 	ShapeRefForceField:           true,
+	ShapeSettingsUnchecked:       true,
 }
 
 // flagValueShapeHolds reports whether a setting's fixed text has the shape. The
@@ -496,6 +504,8 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 	switch shape {
 	case ShapeRefForceField:
 		return setsRefForce(got, glob)
+	case ShapeSettingsUnchecked:
+		return settingsUnchecked(got)
 	case ShapeForcedRefMutation:
 		query, ok := strings.CutPrefix(text, "query=")
 		return ok && forcesRefUpdate(query)
@@ -511,6 +521,38 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 		return ok && (key == "force" || strings.HasSuffix(key, "[force]")) && !gitBoolFalse(value)
 	}
 	return false
+}
+
+// settingsUnchecked reports whether a claude settings text turns the
+// permission checks off, with `permissions.defaultMode` set to
+// `bypassPermissions` (compared ignoring case, as the flag's value is), or
+// sets permission rules that let commands run without asking, a
+// `permissions.allow` holding any rule. A text that is not a JSON object is a
+// file's name, which is read where the guard can read the file
+// (settingsFileReadings), not here. An object the line does not wholly fix
+// (a substitution or a variable in it) is read by the text it does fix: one
+// that names the mode, its bypass value or an allow list is taken as setting
+// them, since the part it does not fix can be the rest.
+func settingsUnchecked(got string) bool {
+	whole := !isUnknown(got) && !strings.ContainsRune(got, varMark)
+	text := strings.TrimSpace(strings.ReplaceAll(knownText(got), string(varMark), ""))
+	if !strings.HasPrefix(text, "{") {
+		return false
+	}
+	if !whole {
+		lower := strings.ToLower(text)
+		return strings.Contains(lower, "defaultmode") || strings.Contains(lower, "bypasspermissions") || strings.Contains(lower, `"allow"`)
+	}
+	var root map[string]any
+	if json.Unmarshal([]byte(text), &root) != nil {
+		return false
+	}
+	perms, _ := root["permissions"].(map[string]any)
+	if mode, _ := perms["defaultMode"].(string); strings.EqualFold(mode, "bypassPermissions") {
+		return true
+	}
+	allow, _ := perms["allow"].([]any)
+	return len(allow) > 0
 }
 
 // setsRefForce reports whether a field of a REST call sets force to anything but false, in
