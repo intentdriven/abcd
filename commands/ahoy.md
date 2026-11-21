@@ -892,8 +892,9 @@ installs nothing and says so. No step it shows or runs needs admin rights.
 `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool
 `ahoy install` checks for is refused, naming the ones it does. A copy PATH finds
 inside the directory the verb runs from, or inside any git working tree that
-directory lies in (the whole checkout from a subdirectory; the account's own
-home aside), is never run and never counts as installed. Under a `HOME`
+directory lies in (the whole checkout from a subdirectory, and from a linked
+worktree its repository's main checkout; the account's own home aside), is
+never run and never counts as installed. Under a `HOME`
 inside a git working tree that is not the account's own,
 `~/.abcd.noindex/tools.json` is not read, no copy it names is run, and nothing
 is installed there.

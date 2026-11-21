@@ -59,3 +59,59 @@ func TestEveryWorkingTreeAboveADirectoryIsNamed(t *testing.T) {
 		t.Errorf("WorkingTreesAround with the outer tree as the account home = %q, want only %q", got, inner)
 	}
 }
+
+// TestALinkedWorktreesMainCheckoutIsNamed: from inside a linked worktree,
+// WorkingTreesAround names the worktree and the main checkout its .git file
+// leads to (the gitdir it names, then that gitdir's commondir), read from
+// those two files alone. A submodule's git directory carries no commondir
+// and adds nothing, and a main checkout that is the account's own home is
+// left out as any other tree is.
+func TestALinkedWorktreesMainCheckoutIsNamed(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	admin := filepath.Join(main, ".git", "worktrees", "wt")
+	wt := filepath.Join(base, "elsewhere", "wt")
+	sub := filepath.Join(wt, "pkg")
+	module := filepath.Join(main, ".git", "modules", "vendor")
+	submodule := filepath.Join(base, "detached-submodule")
+	for _, d := range []string{admin, sub, module, submodule} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(p, s string) {
+		t.Helper()
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(wt, ".git"), "gitdir: "+admin+"\n")
+	write(filepath.Join(admin, "commondir"), "../..\n")
+	write(filepath.Join(admin, "gitdir"), filepath.Join(wt, ".git")+"\n")
+	write(filepath.Join(submodule, ".git"), "gitdir: "+module+"\n")
+
+	accountHomeIs(t, filepath.Join(base, "nobody"), nil)
+	if got, want := gitutil.WorkingTreesAround(sub), []string{wt, main}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(inside a linked worktree) = %q, want %q", got, want)
+	}
+	if got, want := gitutil.WorkingTreesAround(submodule), []string{submodule}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(a submodule's tree) = %q, want %q", got, want)
+	}
+	// A relative gitdir is read against the worktree.
+	rel, err := filepath.Rel(wt, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(wt, ".git"), "gitdir: "+rel+"\n")
+	if got, want := gitutil.WorkingTreesAround(sub), []string{wt, main}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround(a relative gitdir) = %q, want %q", got, want)
+	}
+
+	accountHomeIs(t, main, nil)
+	if got, want := gitutil.WorkingTreesAround(sub), []string{wt}; !slices.Equal(got, want) {
+		t.Errorf("WorkingTreesAround with the main checkout as the account home = %q, want %q", got, want)
+	}
+}
