@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"path"
 	"slices"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -173,10 +174,12 @@ func (m *checkMatch) leftovers() []int {
 	return out
 }
 
-// MatcherEnd is one end of a finding the matcher is shown.
+// MatcherEnd is one end of a finding the matcher is shown: what a person
+// labelling its pairs may see, the document by its file name alone, as the
+// person's packet shows it, never its path in the repository.
 type MatcherEnd struct {
-	Path  string `json:"path"`
-	Quote string `json:"quote"`
+	Document string `json:"document"`
+	Quote    string `json:"quote"`
 }
 
 // MatcherItem is one leftover finding under an opaque id: what it says, and
@@ -215,7 +218,7 @@ func (m *checkMatch) matcherRequest(seed [32]byte) (MatcherRequest, map[string]i
 		f := m.finding(i)
 		it := MatcherItem{ID: id, Doc: f.Doc, Class: f.Class, Evidence: f.Evidence}
 		for _, e := range f.Ends {
-			it.Ends = append(it.Ends, MatcherEnd{Path: e.Path, Quote: e.Quote})
+			it.Ends = append(it.Ends, MatcherEnd{Document: path.Base(e.Path), Quote: e.Quote})
 		}
 		req.Items = append(req.Items, it)
 		ids[id] = i

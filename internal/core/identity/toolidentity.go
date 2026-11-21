@@ -52,6 +52,13 @@ func IsToolIdentity(role Role, name, email string) bool {
 		machineNameWord.MatchString(name) || machineLocalWord.MatchString(email)
 }
 
+// IsAIName reports whether name, standing alone, is an AI vendor's or tool's
+// name on the list the attribution gate refuses as an author (`claude`,
+// `codex` and the rest, case-insensitively). A reader that must withhold such
+// a name from text, such as the model matrix keeping a check copy from
+// signing its findings, asks of each word, so the list keeps its one home.
+func IsAIName(name string) bool { return aiNameRe.MatchString(name) }
+
 // IsMachineName reports the STRUCTURAL name signal alone: the `[bot]` suffix the
 // forge stamps on an app's account name. It names no vendor, so a reader that
 // must not decide on a vendor token (the contributors page) can use it.

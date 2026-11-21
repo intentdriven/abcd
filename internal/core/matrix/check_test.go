@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -174,9 +175,9 @@ func TestACheckCopysAnswerIsReadAsUntrustedInput(t *testing.T) {
 }
 
 // checkLab mints a lab whose pin holds the guard chapter, writes a run record
-// at its pin, and returns the source, the home, the lab, the record and a clone
-// store outside every working tree.
-func checkLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, string) {
+// at its pin, each edit made to the run's inputs first, and returns the source,
+// the home, the lab, the record and a clone store outside every working tree.
+func checkLab(t *testing.T, edits ...func(*runInputs)) (*gittest.Repo, string, lab.Minted, RunRecord, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -194,6 +195,9 @@ func checkLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, strin
 	}
 	in := inputs(t)
 	in.Lab, in.RootSHA, in.FrozenCommit = m.ID, m.RootSHA, m.Pin
+	for _, edit := range edits {
+		edit(&in)
+	}
 	rec, err := newRunRecord(in)
 	if err != nil {
 		t.Fatal(err)
@@ -204,21 +208,38 @@ func checkLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, strin
 	return r, home, m, rec, filepath.Join(t.TempDir(), "store")
 }
 
-// collect makes copy key's clone and collects its answer, as the run does once
-// the copy's runner is done.
+// collect snapshots what the release gates read, makes copy key's clone and
+// collects its doc-fidelity answer, as the run does once the copy's runner is
+// done.
 func collect(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, store string, key TrialKey, answer []byte) (string, CheckCopy, error) {
 	t.Helper()
+	return collectForm(t, r, m, rec, store, key, CheckDocFidelity, answer)
+}
+
+func collectForm(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, store string, key TrialKey, form CheckForm, answer []byte) (string, CheckCopy, error) {
+	t.Helper()
+	gates, err := snapshotGates(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
 	clone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
+	c, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, form, gates, answer))
+	return clone, c, err
+}
+
+// checkInputs is copy key's inputs to collectCheckCopy, the gates snapshotted
+// before its copy began.
+func checkInputs(t *testing.T, r *gittest.Repo, rec RunRecord, store string, key TrialKey, form CheckForm, gates gateSnapshot, answer []byte) checkCopyInputs {
+	t.Helper()
 	material, err := readFrozenMaterial(context.Background(), r.Root(), rec.FrozenCommit, []string{docfidelity.ChaptersDir})
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := collectCheckCopy(m.ID, checkCopyInputs{RepoRoot: r.Root(), Store: store, Run: rec.RunID, Frozen: rec.FrozenCommit,
-		Key: key, Form: CheckDocFidelity, Material: material, Answer: answer})
-	return clone, c, err
+	return checkCopyInputs{RepoRoot: r.Root(), Store: store, Run: rec.RunID, Frozen: rec.FrozenCommit,
+		Key: key, Form: form, Material: material, Answer: answer, Gates: gates}
 }
 
 // A check copy's findings are in the run's record before its clone is
@@ -261,9 +282,11 @@ func TestACheckCopysFindingsAreReadBeforeItsCloneIsDeleted(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Close()
-	material := map[string]string{guardChapter: guardText}
-	_, err = collectCheckCopy(m.ID, checkCopyInputs{RepoRoot: r.Root(), Store: store, Run: rec.RunID, Frozen: rec.FrozenCommit,
-		Key: key2, Form: CheckDocFidelity, Material: material, Answer: dfAnswer(t, "It refuses a hazard")})
+	gates, err := snapshotGates(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key2, CheckDocFidelity, gates, dfAnswer(t, "It refuses a hazard")))
 	if err == nil {
 		t.Fatal("a copy whose findings could not be recorded was collected")
 	}
@@ -760,5 +783,174 @@ func TestEachModelIsScoredOnRecallOfSeededFalsehoodsAndAgainstTheValidFindings(t
 		if s.UniqueValid != 0 || s.UniqueUncounted != 1 {
 			t.Errorf("%s run once: unique %d, uncounted %d; want 0 and 1", s.Cell, s.UniqueValid, s.UniqueUncounted)
 		}
+	}
+}
+
+// What the release gates read is snapshotted before a copy runs, not when its
+// answer is collected, so a receipt, a review flag or a ledger entry the copy
+// changes while it runs is seen: the copy keeps its clone, and the refusal
+// names what changed. A collection with no snapshot is refused.
+func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
+	r, _, m, rec, store := checkLab(t)
+	head := r.Git("rev-parse", "HEAD")
+	receipt := filepath.Join(docfidelity.ReceiptsDir, head, docfidelity.GateName+".json")
+	ledger := recordid.IssuesRelDir + "/open/iss-1.md"
+	for rel, body := range map[string]string{
+		receipt:               `{"verificationResult":"PROMOTE"}` + "\n",
+		ledger:                "an open issue\n",
+		docfidelity.FlagsPath: `{"schema_version":1,"flags":[]}` + "\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(r.Root(), rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(r.Root(), rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, rel := range []string{receipt, docfidelity.FlagsPath, ledger} {
+		key := TrialKey{Task: checkTask, Cell: "host-big", Repeat: i + 1}
+		// The run snapshots the gates, then starts the copy.
+		gates, err := snapshotGates(r.Root())
+		if err != nil {
+			t.Fatal(err)
+		}
+		clone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// While the copy runs, something rewrites what a gate reads.
+		if err := os.WriteFile(filepath.Join(r.Root(), rel), []byte("changed while the copy ran\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err = collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, gates, dfAnswer(t, "It refuses a hazard")))
+		if err == nil || !strings.Contains(err.Error(), filepath.ToSlash(rel)) {
+			t.Errorf("%s changed while the copy ran: collectCheckCopy = %v; want a refusal naming it", rel, err)
+		}
+		if _, err := os.Stat(clone); err != nil {
+			t.Errorf("%s changed while the copy ran, and the copy lost its clone: %v", rel, err)
+		}
+	}
+	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
+	if _, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, nil, dfAnswer(t, "It refuses a hazard"))); err == nil ||
+		!strings.Contains(err.Error(), "snapshot") {
+		t.Errorf("a collection with no snapshot taken before its copy ran = %v; want a refusal", err)
+	}
+}
+
+// A copy cannot sign what it found: a model's id, its maker's name or the
+// harness's, in a finding's class, summary, evidence or a quote the frozen
+// material does not hold, is withheld before the record, the person's packet
+// or the matcher's request carries it. The names are the run's own pinned
+// models and the canonical lists (modelFamilies, developers, the AI names the
+// attribution gate refuses), and a path the material does not hold that names
+// one refuses the answer.
+func TestACheckCopyCannotNameItsOwnModelToItsJudges(t *testing.T) {
+	r, home, m, rec, store := checkLab(t, func(in *runInputs) { remodel(in, 1, "acme/zephyrine-7") })
+	const (
+		ownID  = "claude-opus-4-8"
+		pinned = "zephyrine-7"
+	)
+	cons := `{"schema_version":1,"findings":[` +
+		`{"class":"` + ownID + `","summary":"found by ` + ownID + ` (Claude, Anthropic)","ends":[` +
+		`{"path":"` + guardChapter + `","quote":"It refuses a hazard"},{"path":"docs/guide.md","quote":"signed ` + ownID + `"}]},` +
+		`{"class":"` + pinned + `","summary":"cell or-cheap on openrouter/acme/` + pinned + ` says so","ends":[` +
+		`{"path":"` + guardChapter + `","quote":"The guard never logs a refusal."},{"path":"docs/guide.md","quote":"by ` + pinned + `"}]}]}`
+	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
+	_, c, err := collectForm(t, r, m, rec, store, key, CheckConsistency, []byte(cons))
+	if err != nil {
+		t.Fatalf("collectCheckCopy: %v", err)
+	}
+	if !c.Answered || len(c.Findings) != 2 {
+		t.Fatalf("copy = %+v; want both findings answered", c)
+	}
+	// A quote the frozen material holds is the material's, kept as it is.
+	if c.Findings[0].Ends[0].Quote != "It refuses a hazard" || c.Findings[0].Ends[0].Lines == nil {
+		t.Errorf("a located quote = %+v; want it kept with its position", c.Findings[0].Ends[0])
+	}
+	df := strings.Replace(string(dfAnswer(t, "It refuses a hazard")), "internal/core/guard/registry.go:40 reads it elsewhere",
+		ownID+" and gpt-5 and "+pinned+" read it elsewhere", 1)
+	dfKey := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}
+	_, dc, err := collect(t, r, m, rec, store, dfKey, []byte(df))
+	if err != nil {
+		t.Fatalf("collectCheckCopy: %v", err)
+	}
+	copies := []CheckCopy{c, dc}
+	p, _, err := drawCheckPacket(rec.RunID, checkTask, copies, matchExact(copies).rows(), checkSeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _, err := matchExact(copies).matcherRequest(checkSeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "check", checkTask, "copies", "or-cheap", "1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pj, _ := json.Marshal(p)
+	mj, _ := json.Marshal(req)
+	dj, _ := json.Marshal(dc)
+	for what, js := range map[string][]byte{"the record": record, "the packet": pj, "the matcher's request": mj, "the doc-fidelity copy": dj} {
+		low := strings.ToLower(string(js))
+		for _, leak := range []string{"claude", "opus", "anthropic", "zephyrine", "gpt-5"} {
+			if strings.Contains(low, leak) {
+				t.Errorf("%s names %q: %s", what, leak, js)
+			}
+		}
+	}
+	if c.Redacted == 0 || dc.Redacted == 0 {
+		t.Errorf("redacted = %d, %d; want the withheld names counted", c.Redacted, dc.Redacted)
+	}
+
+	// A path the frozen material does not hold, named for a model, refuses
+	// the answer: a path is the finding's place, never withheld in part.
+	signed := `{"schema_version":1,"findings":[{"class":"contradiction","summary":"the two disagree","ends":[` +
+		`{"path":"` + guardChapter + `","quote":"It refuses a hazard"},{"path":"notes/` + ownID + `.md","quote":"It never refuses."}]}]}`
+	_, sc, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 3}, CheckConsistency, []byte(signed))
+	if err != nil {
+		t.Fatalf("collectCheckCopy: %v", err)
+	}
+	if sc.Answered || len(sc.Findings) != 0 || strings.Contains(strings.ToLower(sc.Reason), "claude") {
+		t.Errorf("a copy naming its model in a path = %+v; want it the copy's failure, the name not kept", sc)
+	}
+}
+
+// The matcher is shown what a person labelling its pairs may see: each end's
+// document by its file name, never its path in the repository.
+func TestTheMatcherIsShownNoFullPath(t *testing.T) {
+	// A HOLD names a brief sentence, so both copies name the one they share
+	// by key, which is no leftover.
+	const shared = "The guard reads its registry from the plugin root."
+	copies := []CheckCopy{
+		fidelityCopy(t, "big", 1, shared, "public:docs/guide.md:Run ahoy first."),
+		fidelityCopy(t, "small", 1, shared, "It refuses a hazard"),
+	}
+	req, _, err := matchExact(copies).matcherRequest(checkSeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Items) != 2 {
+		t.Fatalf("matcher request = %+v; want both findings", req)
+	}
+	js, _ := json.Marshal(req)
+	for _, leak := range []string{"docs/guide.md", docfidelity.ChaptersDir} {
+		if bytes.Contains(js, []byte(leak)) {
+			t.Errorf("the matcher's request carries %q: %s", leak, js)
+		}
+	}
+	names := map[string]bool{}
+	for _, it := range req.Items {
+		for _, e := range it.Ends {
+			if strings.Contains(e.Document, "/") {
+				t.Errorf("the matcher is shown the path %q", e.Document)
+			}
+			names[e.Document] = true
+		}
+	}
+	if !names["guide.md"] || !names[path.Base(guardChapter)] {
+		t.Errorf("the matcher's documents = %v; want guide.md and %s", names, path.Base(guardChapter))
 	}
 }

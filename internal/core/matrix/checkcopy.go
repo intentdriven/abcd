@@ -5,16 +5,20 @@ package matrix
 // doc fidelity, over the frozen material in its own clone; what it found is the
 // model's output and is read as untrusted input: bounded, decoded strictly,
 // every text made one inert line with every mention of where the copy ran
-// withheld, and every position computed from the frozen material, never taken
-// from the copy. A doc-fidelity copy's verdict is validated by the recorder's
+// withheld, and every name of a model or of its maker withheld too, so a copy
+// cannot sign what it found in front of the person, the matcher or the outside
+// judge (modelScrub); every position is computed from the frozen material,
+// never taken from the copy. A doc-fidelity copy's verdict is validated by the recorder's
 // own decoder (docfidelity.ReportFindings) and never recorded where the release
 // gates read; what it drafted as a correction is dropped, never applied.
 //
 // The findings reach the run's record before the copy's clone is deleted, and
-// a copy whose findings cannot be recorded keeps its clone. Around the whole,
-// the run proves it left the release gates' receipts, the review flags and the
-// issue ledger as they were (snapshotGates): a check copy's findings are
-// compared, never filed.
+// a copy whose findings cannot be recorded keeps its clone; a collection that
+// failed after the record was written can be tried again. Around the copy's
+// whole run, from a snapshot taken before the copy starts to the check after
+// its findings are recorded, the run proves it left the release gates'
+// receipts, the review flags and the issue ledger as they were
+// (snapshotGates): a check copy's findings are compared, never filed.
 
 import (
 	"bytes"
@@ -30,12 +34,14 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/docfidelity"
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
@@ -123,7 +129,10 @@ type CheckCopy struct {
 // checkCopyInputs is one check copy to read. RepoRoot is the run's own
 // checkout and Store the run's clone store, each absolute; Material is the
 // frozen material by path (readFrozenMaterial); Answer is the copy's runner's
-// final message, and Failure the runner's failure, "" when it answered.
+// final message, and Failure the runner's failure, "" when it answered. Gates
+// is what the release gates read, snapshotted before the copy started
+// (snapshotGates), and Models the models the run's cells pin, which
+// collectCheckCopy reads from the run's record.
 type checkCopyInputs struct {
 	RepoRoot, Store, Run, Frozen string
 	Key                          TrialKey
@@ -131,6 +140,8 @@ type checkCopyInputs struct {
 	Material                     map[string]string
 	Answer                       []byte
 	Failure                      string
+	Gates                        gateSnapshot
+	Models                       []string
 }
 
 // checkCopyRel is copy key's findings record in its run's directory.
@@ -142,9 +153,12 @@ func checkCopyRel(run string, key TrialKey) string {
 // not validate is the copy's failure, said in the record's reason.
 func readCheckCopy(in checkCopyInputs) CheckCopy {
 	c := CheckCopy{SchemaVersion: CheckCopySchema, Run: in.Run, Key: in.Key, Form: in.Form, Findings: []CheckFinding{}}
-	red := newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: cloneDir(in.Store, in.Run, in.Key), Run: in.Run})
+	red := checkRedactor{
+		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: cloneDir(in.Store, in.Run, in.Key), Run: in.Run}),
+		model: newModelScrub(in.Models),
+	}
 	reason := func(s string) string {
-		s, _ = red.redact(termsafe.SanitizeLine(s))
+		s, _ = red.text(termsafe.SanitizeLine(s))
 		return clipTo(s, maxReasonBytes)
 	}
 	if in.Failure != "" {
@@ -160,7 +174,7 @@ func readCheckCopy(in checkCopyInputs) CheckCopy {
 	return c
 }
 
-func parseCheckAnswer(form CheckForm, data []byte, material map[string]string, red redactor) ([]CheckFinding, int, error) {
+func parseCheckAnswer(form CheckForm, data []byte, material map[string]string, red checkRedactor) ([]CheckFinding, int, error) {
 	if len(data) > maxCheckAnswerBytes {
 		return nil, 0, fmt.Errorf("it is %d bytes, past its bound of %d", len(data), maxCheckAnswerBytes)
 	}
@@ -175,7 +189,7 @@ func parseCheckAnswer(form CheckForm, data []byte, material map[string]string, r
 
 // docFidelityFindings reads a doc-fidelity verdict through the recorder's own
 // decoder, recording nothing.
-func docFidelityFindings(data []byte, material map[string]string, red redactor) ([]CheckFinding, int, error) {
+func docFidelityFindings(data []byte, material map[string]string, red checkRedactor) ([]CheckFinding, int, error) {
 	_, sentences, err := docfidelity.ReportFindings(data)
 	if err != nil {
 		return nil, 0, err
@@ -191,19 +205,19 @@ func docFidelityFindings(data []byte, material map[string]string, red redactor) 
 			// The recorder's parse has made it a chapter's file name.
 			p = docfidelity.ChaptersDir + "/" + s.Chapter
 		}
-		if err := checkPath(p); err != nil {
+		if err := red.path(p, material); err != nil {
 			return nil, 0, fmt.Errorf("finding %d: %w", i+1, err)
 		}
-		quote, n := inert(s.Sentence, red)
-		evidence, m := inert(s.Evidence, red)
+		end, n := red.end(p, s.Sentence, material)
+		evidence, m := red.inert(s.Evidence)
 		redacted += n + m
 		if len(evidence) > maxFindingBytes {
 			return nil, 0, fmt.Errorf("finding %d's evidence is past its bound of %d bytes", i+1, maxFindingBytes)
 		}
 		out = append(out, CheckFinding{
-			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: quote}, findingkey.End{}),
+			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: end.Quote}, findingkey.End{}),
 			Doc:  s.Doc,
-			Ends: []FindingEnd{{Path: p, Quote: quote, Lines: locate(material[p], quote)}}, Evidence: evidence,
+			Ends: []FindingEnd{end}, Evidence: evidence,
 		})
 	}
 	return out, redacted, nil
@@ -230,7 +244,7 @@ type consistencyAnswerRow struct {
 // classRe is a consistency finding's class: one lower-case token.
 var classRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
-func consistencyFindings(data []byte, material map[string]string, red redactor) ([]CheckFinding, int, error) {
+func consistencyFindings(data []byte, material map[string]string, red checkRedactor) ([]CheckFinding, int, error) {
 	var a consistencyAnswer
 	if err := jsonstrict.Decode(data, &a); err != nil {
 		return nil, 0, fmt.Errorf("it does not parse: %w", err)
@@ -250,26 +264,31 @@ func consistencyFindings(data []byte, material map[string]string, red redactor) 
 		if len(f.Ends) != 2 {
 			return nil, 0, fmt.Errorf("finding %d names %d ends; a contradiction has exactly two", i+1, len(f.Ends))
 		}
-		summary, n := inert(f.Summary, red)
+		summary, n := red.inert(f.Summary)
 		redacted += n
 		if summary == "" || len(summary) > maxFindingBytes {
 			return nil, 0, fmt.Errorf("finding %d's summary is empty or past its bound of %d bytes", i+1, maxFindingBytes)
 		}
-		cf := CheckFinding{Class: f.Class, Evidence: summary}
+		class := f.Class
+		if red.model.names(class) {
+			class = withheldClass
+			redacted++
+		}
+		cf := CheckFinding{Class: class, Evidence: summary}
 		var ends [2]findingkey.End
 		for j, e := range f.Ends {
-			if err := checkPath(e.Path); err != nil {
+			if err := red.path(e.Path, material); err != nil {
 				return nil, 0, fmt.Errorf("finding %d end %d: %w", i+1, j+1, err)
 			}
-			q, n := inert(e.Quote, red)
+			end, n := red.end(e.Path, e.Quote, material)
 			redacted += n
-			if q == "" || len(q) > maxQuoteBytes {
+			if end.Quote == "" || len(end.Quote) > maxQuoteBytes {
 				return nil, 0, fmt.Errorf("finding %d end %d quotes nothing, or more than %d bytes", i+1, j+1, maxQuoteBytes)
 			}
-			ends[j] = findingkey.End{Path: e.Path, Quote: q}
-			cf.Ends = append(cf.Ends, FindingEnd{Path: e.Path, Quote: q, Lines: locate(material[e.Path], q)})
+			ends[j] = findingkey.End{Path: e.Path, Quote: end.Quote}
+			cf.Ends = append(cf.Ends, end)
 		}
-		cf.Key = findingkey.Derive(f.Class, ends[0], ends[1])
+		cf.Key = findingkey.Derive(class, ends[0], ends[1])
 		out = append(out, cf)
 	}
 	return out, redacted, nil
@@ -281,6 +300,202 @@ func consistencyFindings(data []byte, material map[string]string, red redactor) 
 func inert(s string, red redactor) (string, int) {
 	s = termsafe.SanitizeLine(strings.Join(strings.Fields(strings.ToValidUTF8(s, "?")), " "))
 	return red.redact(s)
+}
+
+// checkRedactor is what a check copy's text is read through: the review's
+// redactor for where the copy ran, then the model scrub for who it is.
+type checkRedactor struct {
+	place redactor
+	model modelScrub
+}
+
+// text withholds both from s, and says how many mentions it withheld.
+func (r checkRedactor) text(s string) (string, int) {
+	s, n := r.place.redact(s)
+	s, m := r.model.scrub(s)
+	return s, n + m
+}
+
+// inert is s made one inert line with both withheld.
+func (r checkRedactor) inert(s string) (string, int) {
+	s, n := inert(s, r.place)
+	s, m := r.model.scrub(s)
+	return s, n + m
+}
+
+// path refuses a finding's path unless it is a clean path inside the
+// repository, and, where the frozen material holds no file at it, unless it
+// names no model or maker: a path the material holds is the repository's
+// own, while one it does not is the copy's own words, and a path is the
+// finding's place, never withheld in part.
+func (r checkRedactor) path(p string, material map[string]string) error {
+	if err := checkPath(p); err != nil {
+		return err
+	}
+	if _, ok := material[p]; !ok && r.model.names(p) {
+		return errors.New("a path the frozen material does not hold names a model or its maker")
+	}
+	return nil
+}
+
+// end is one end of a finding: the quote made inert, and where the frozen
+// material at p holds it. A quote the material holds is the material's own
+// words and is kept as they are; one it does not is the copy's own, and has
+// every model and maker it names withheld.
+func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, int) {
+	q, n := inert(quote, r.place)
+	lines := locate(material[p], q)
+	if lines == nil {
+		var m int
+		q, m = r.model.scrub(q)
+		n += m
+	}
+	return FindingEnd{Path: p, Quote: q, Lines: lines}, n
+}
+
+// modelMark stands in for a name of a model or of its maker withheld from a
+// check copy's text.
+const modelMark = "[model]"
+
+// withheldClass is the class a consistency finding takes when its own names a
+// model or its maker.
+const withheldClass = "withheld"
+
+// modelScrub withholds from a check copy's text every name of a model or of
+// its maker, so a copy cannot sign its findings: each model the run's cells
+// pin, whole and by its last segment after a slash, wherever it stands as a
+// word; and every word holding a token of the comparison's model families
+// (modelFamilies, an o-series name among them), of their developers
+// (developers), or of the AI names the attribution gate refuses
+// (identity.IsAIName). The lists are those packages' own; none is copied.
+type modelScrub struct{ pinned []string }
+
+func newModelScrub(models []string) modelScrub {
+	seen := map[string]bool{}
+	var pinned []string
+	for _, m := range models {
+		m = asciiLower(strings.TrimSpace(m))
+		for _, n := range []string{m, m[strings.LastIndexByte(m, '/')+1:]} {
+			// A name this short would withhold ordinary text.
+			if len(n) >= 3 && !seen[n] {
+				seen[n] = true
+				pinned = append(pinned, n)
+			}
+		}
+	}
+	sort.Slice(pinned, func(i, j int) bool { return len(pinned[i]) > len(pinned[j]) })
+	return modelScrub{pinned: pinned}
+}
+
+// asciiLower is s with its ASCII letters lower-cased and every other byte as
+// it is, so offsets into it are offsets into s.
+func asciiLower(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
+func isAlnum(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || isDigit(c) }
+
+// isWordByte is a byte a word of a name is written in: a letter, a digit, or
+// a joiner a model's name carries (`claude-opus-4.8`, `org/model:tag`).
+func isWordByte(c byte) bool { return isAlnum(c) || strings.IndexByte("-._/:+", c) >= 0 }
+
+// scrub is s with every name withheld, and how many it withheld.
+func (m modelScrub) scrub(s string) (string, int) {
+	s, n := m.scrubPinned(s)
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if !isWordByte(s[i]) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		j := i
+		for j < len(s) && isWordByte(s[j]) {
+			j++
+		}
+		// A joiner closing the word is the sentence's, not the name's.
+		k := j
+		for k > i && !isAlnum(s[k-1]) {
+			k--
+		}
+		if word := s[i:k]; word != "" && namesModel(word) {
+			b.WriteString(modelMark)
+			n++
+		} else {
+			b.WriteString(s[i:k])
+		}
+		b.WriteString(s[k:j])
+		i = j
+	}
+	return b.String(), n
+}
+
+// scrubPinned withholds each pinned model wherever it stands as a word,
+// longest first, in one pass, so a mark is never read again.
+func (m modelScrub) scrubPinned(s string) (string, int) {
+	if len(m.pinned) == 0 {
+		return s, 0
+	}
+	low := asciiLower(s)
+	var b strings.Builder
+	n := 0
+	for i := 0; i < len(s); {
+		hit := ""
+		if i == 0 || !isAlnum(s[i-1]) {
+			for _, p := range m.pinned {
+				if strings.HasPrefix(low[i:], p) && (i+len(p) == len(s) || !isAlnum(s[i+len(p)])) {
+					hit = p
+					break
+				}
+			}
+		}
+		if hit == "" {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		b.WriteString(modelMark)
+		n++
+		i += len(hit)
+	}
+	return b.String(), n
+}
+
+// names reports whether s names a model or its maker: a pinned model, or a
+// word holding a listed token.
+func (m modelScrub) names(s string) bool {
+	_, n := m.scrub(s)
+	return n > 0
+}
+
+// namesModel reports whether word holds a token naming a model family, a
+// family's developer, or an AI vendor or tool.
+func namesModel(word string) bool {
+	toks := tokens(asciiLower(word))
+	for i, t := range toks {
+		switch {
+		case t.text == oSeries && t.glued && i+1 < len(toks) && isDigits(toks[i+1].text):
+			return true
+		case slices.Contains(modelFamilies, t.text), isDeveloper(t.text), identity.IsAIName(t.text):
+			return true
+		}
+	}
+	return false
+}
+
+func isDeveloper(s string) bool {
+	for _, d := range developers {
+		if d == s {
+			return true
+		}
+	}
+	return false
 }
 
 // checkPath refuses a finding's path unless it is a clean, slash-separated
@@ -487,10 +702,14 @@ func encodeCheck(v any) ([]byte, error) {
 }
 
 // collectCheckCopy reads copy in.Key's answer into its run's record in lab
-// labID, and only then deletes the copy's clone. A copy whose findings cannot
-// be recorded (the screen refuses them, or a record of the copy is already
-// written) keeps its clone, and so does a run that finds the release gates'
-// receipts, the review flags or the ledger changed while it read the copy.
+// labID, and only then deletes the copy's clone. A copy whose findings the
+// secret screen refuses is recorded as failed, with nothing of its answer
+// kept. A copy whose findings cannot be recorded (another record of the copy
+// is already written) keeps its clone, and so does a run that finds the
+// release gates' receipts, the review flags or the ledger changed since
+// in.Gates was snapshotted, before the copy started. A record already written
+// with the same bytes counts as written, so a collection that failed after
+// writing it can be tried again, and the retry deletes the clone.
 func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	if !runIDRe.MatchString(in.Run) {
 		return CheckCopy{}, fmt.Errorf("%q is not a run id", clip(in.Run))
@@ -504,38 +723,68 @@ func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	if in.Form != CheckDocFidelity && in.Form != CheckConsistency {
 		return CheckCopy{}, fmt.Errorf("%q is not a check form abcd reads", clip(string(in.Form)))
 	}
-	before, err := snapshotGates(in.RepoRoot)
-	if err != nil {
-		return CheckCopy{}, err
+	if in.Gates == nil {
+		return CheckCopy{}, errors.New("the copy is not collected: what the release gates read was not snapshotted before it ran")
 	}
 	proc, err := lab.OpenProcedure(in.RepoRoot, labID)
 	if err != nil {
 		return CheckCopy{}, err
 	}
 	defer proc.Close()
-	if _, err := proc.ReadState(in.Run + "/run.json"); err != nil {
+	raw, err := proc.ReadState(in.Run + "/run.json")
+	if err != nil {
 		return CheckCopy{}, fmt.Errorf("the copy is not collected: its run's record is not written: %w", err)
 	}
-	c := readCheckCopy(in)
-	data, err := encodeCheck(c)
+	var rec RunRecord
+	if err := jsonstrict.Decode(raw, &rec); err != nil || rec.RunID != in.Run {
+		return CheckCopy{}, errors.New("the copy is not collected: its run's record does not read as the run's")
+	}
+	in.Models = nil
+	for _, pin := range rec.Cells {
+		in.Models = append(in.Models, pin.Model)
+	}
+	rel := checkCopyRel(in.Run, in.Key)
+	c, data, err := screenedCheckCopy(in, rel)
 	if err != nil {
 		return CheckCopy{}, err
 	}
-	rel := checkCopyRel(in.Run, in.Key)
-	if err := screen(in.RepoRoot, []screened{{lab.StateFile{Rel: rel, Data: data}, data}}); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
-	}
-	if err := proc.WriteState(rel, data); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, err)
-	}
+	werr := proc.WriteState(rel, data)
 	if back, err := proc.ReadState(rel); err != nil || !bytes.Equal(back, data) {
+		if werr != nil {
+			return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
+		}
 		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key)
 	}
-	if err := before.unchanged(in.RepoRoot); err != nil {
+	if err := in.Gates.unchanged(in.RepoRoot); err != nil {
 		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
 	}
 	if err := os.RemoveAll(cloneDir(in.Store, in.Run, in.Key)); err != nil {
 		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
 	}
 	return c, nil
+}
+
+// screenRefusedReason is a copy's failure when the secret screen refuses its
+// findings: fixed, so nothing of what it refused is kept.
+const screenRefusedReason = "the copy's findings carry what the secret screen refuses, so the copy failed and nothing of its answer is kept"
+
+// screenedCheckCopy reads copy in.Key and encodes its record at rel, passed
+// through the secret screen. A record the screen refuses becomes the copy's
+// failure; one the screen refuses even so (the screen cannot run) is refused.
+func screenedCheckCopy(in checkCopyInputs, rel string) (CheckCopy, []byte, error) {
+	c := readCheckCopy(in)
+	for {
+		data, err := encodeCheck(c)
+		if err != nil {
+			return CheckCopy{}, nil, err
+		}
+		serr := screen(in.RepoRoot, []screened{{lab.StateFile{Rel: rel, Data: data}, data}})
+		if serr == nil {
+			return c, data, nil
+		}
+		if !c.Answered && c.Reason == screenRefusedReason {
+			return CheckCopy{}, nil, fmt.Errorf("copy %s keeps its clone: %w", in.Key, serr)
+		}
+		c = CheckCopy{SchemaVersion: CheckCopySchema, Run: in.Run, Key: in.Key, Form: in.Form, Findings: []CheckFinding{}, Reason: screenRefusedReason}
+	}
 }
