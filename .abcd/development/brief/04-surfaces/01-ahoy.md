@@ -1333,7 +1333,10 @@ version, or the copy is removed again. The copy is recorded, path and digest, in
 same condition. A copy installed some other way is used when its version lies in
 the tool's compatible range, and is never changed: when the bin folder already
 holds a program of that name abcd did not install, it installs nothing and says
-why.
+why. The record is read only from a home the home rule admits
+(`gitutil.HomeInsideWorkingTree`): under a `HOME` inside a git working tree that
+is not the account's own, abcd reads no record there, runs no copy it names, and
+installs nothing there.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the

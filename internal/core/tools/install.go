@@ -18,6 +18,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -350,6 +351,12 @@ func (in *Installer) Plan(name string) Plan {
 	if !ok {
 		p.Action = Unavailable
 		p.Why = "abcd's release holds no download of " + name + " for " + in.GOOS + "/" + in.GOARCH + "; see " + tool.Homepage
+		return p
+	}
+	if filepath.IsAbs(in.Home) && gitutil.HomeInsideWorkingTree(in.Home) != "" {
+		// abcd runs only a copy it has recorded, and records nothing there.
+		p.Action = Unavailable
+		p.Why = errHomeInTree.Error()
 		return p
 	}
 	dir := userBinDir(in.getenv, in.Home)

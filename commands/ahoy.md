@@ -882,7 +882,10 @@ copy it did not install: when the bin folder already holds one of that name, it
 installs nothing and says so. No step it shows or runs needs admin rights.
 `--yes` never installs a tool, and a run with `CI` set to any value, or with
 `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool
-`ahoy install` checks for is refused, naming the ones it does.
+`ahoy install` checks for is refused, naming the ones it does. Under a `HOME`
+inside a git working tree that is not the account's own,
+`~/.abcd.noindex/tools.json` is not read, no copy it names is run, and nothing
+is installed there.
 
 **The seeded documentation check.** A repository with no
 `.abcd/docs-lint.json` gets one. Its `roots` list `docs` when that folder
