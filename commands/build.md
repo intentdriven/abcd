@@ -533,7 +533,10 @@ signed where your git configuration signs every commit; one still waiting after 
 minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
-rebase or an amend. No existing entry changes, the checkout you run in is not written but
+rebase or an amend. The verifier, and the stage that finds the commit again
+after a restart, read each commit by the parents and content it stores: a
+replace ref, a graft file or a commit-graph in the repository changes neither
+answer. No existing entry changes, the checkout you run in is not written but
 for the run state, and `intent ready` keeps reporting the person's entry as the
 most recent conjecture.
 
@@ -1066,7 +1069,11 @@ A lane's stages run in order:
    the repoint of the landing's own moves writes over the head's record, and it commits
    such a record added, removed or moved only when it is resolved from `open/` to
    `resolved/` and an intent the close ships names it in `related_issues` at the judged
-   head, as the close's check on what it ships lets a person settle it. The landing reads what it judges as the objects store it.
+   head, as the close's check on what it ships lets a person settle it. Such a resolved
+   record must be what a resolve writes over the record it took out of `open/`: the same
+   frontmatter but for the fields a resolve sets (`resolution`, `impact`, `shipped_in`,
+   `resolved_by`, `production_mode`), and the same body after the repoint, with at most
+   the one grounds entry a resolve appends; any other text is refused. The landing reads what it judges as the objects store it.
    It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
@@ -1106,7 +1113,8 @@ A lane's stages run in order:
    names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
-   pushed head is an ancestor of the default branch on `origin`; stop driving
+   pushed head is an ancestor of the default branch on `origin`, by the parents
+   the commits store; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the
    next lane. In a repository abcd manages, that step then sweeps on its own

@@ -77,7 +77,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/landings"
@@ -1432,14 +1434,18 @@ func parseRawDiff(raw string) ([]rawEntry, error) {
 // landing's gives it, or an issue record the landing does not resolve that is added,
 // removed or moved, unless it moves from open/ to resolved/ and named lists it: the issues
 // an intent the close ships names in related_issues at the judged head, which the close's
-// check on what it ships lets the lane's worktree resolve for the landing to commit.
-func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move, []rawEntry, string, error) {
+// check on what it ships lets the lane's worktree resolve for the landing to commit. Each
+// such resolution is returned as its pair of entries, the record leaving open/ and the
+// record standing in resolved/, for the caller to hold to what a resolve writes
+// (resolvedAsWritten).
+func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move, []rawEntry, [][2]rawEntry, string, error) {
 	entries, err := parseRawDiff(raw)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, "", err
 	}
 	from, to, left := map[string]string{}, map[string]string{}, map[string]string{}
-	resolvedFrom, resolvedTo := map[string]string{}, map[string]string{}
+	resolvedFrom, resolvedTo := map[string]rawEntry{}, map[string]rawEntry{}
+	var resolutions [][2]rawEntry
 	var outside []rawEntry
 	for _, e := range entries {
 		store, bucket, name, ok := storeRecord(e.path)
@@ -1459,11 +1465,11 @@ func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move
 			case e.status == "M":
 				outside = append(outside, e)
 			case e.status == "D" && bucket == string(capture.StateOpen) && namesIssueRecord(named, name):
-				resolvedFrom[key] = e.path
+				resolvedFrom[key] = e
 			case e.status == "A" && bucket == string(capture.StateResolved) && namesIssueRecord(named, name):
-				resolvedTo[key] = e.path
+				resolvedTo[key] = e
 			default:
-				return nil, nil, e.path, nil
+				return nil, nil, nil, e.path, nil
 			}
 			continue
 		}
@@ -1489,9 +1495,12 @@ func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move
 		case !gone && !came:
 			continue
 		case !gone || !came:
-			return nil, nil, e.path, nil
+			return nil, nil, nil, e.path, nil
 		}
-		from[key], to[key] = was, reached
+		if _, seen := from[key]; !seen {
+			resolutions = append(resolutions, [2]rawEntry{was, reached})
+		}
+		from[key], to[key] = was.path, reached.path
 	}
 	for _, e := range entries {
 		store, _, name, ok := storeRecord(e.path)
@@ -1503,7 +1512,7 @@ func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move
 			had = left[store.rel+"/"+name]
 		}
 		if !recordModeHolds(e.newMode, had) {
-			return nil, nil, e.path, nil
+			return nil, nil, nil, e.path, nil
 		}
 	}
 	var moves []relink.Move
@@ -1512,7 +1521,66 @@ func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move
 			moves = append(moves, relink.Move{From: was, To: reached})
 		}
 	}
-	return moves, outside, "", nil
+	return moves, outside, resolutions, "", nil
+}
+
+// resolveFields are the frontmatter keys a resolve sets (capture.Resolve): its note, the
+// impact, the release that already carried the work, its provenance, and the production
+// mode it restamps.
+var resolveFields = map[string]bool{"resolution": true, "impact": true, "shipped_in": true, "resolved_by": true, "production_mode": true}
+
+// resolvedAsWritten reports whether added, the record a resolution stands at addedRel in
+// resolved/, is what a resolve writes over removed, the record it took out of open/ at
+// removedRel, with the repoint of moves replayed over it: a record valid for resolved/
+// whose frontmatter is the open record's line for line but for the keys a resolve sets,
+// and whose body is the open record's, or that body with one grounds entry appended as a
+// resolve appends its grounds.
+func resolvedAsWritten(removedRel, removed, addedRel, added string, moves []relink.Move) bool {
+	fm, _, err := issuerecord.Parse(added)
+	if err != nil || issuerecord.ValidateStrict(fm) != nil ||
+		issuerecord.ValidateInvariants(fm, string(capture.StateResolved), addedRel) != nil {
+		return false
+	}
+	want := relink.Rewritten(removedRel, removed, moves)
+	wantHead, wantBody := frontmatter.Split(want)
+	head, body := frontmatter.Split(added)
+	if wantHead == "" || !slices.Equal(unresolvedLines(wantHead), unresolvedLines(head)) {
+		return false
+	}
+	if body == wantBody {
+		return true
+	}
+	entries := grounds.ParseSection(added)
+	if len(entries) != len(grounds.ParseSection(want))+1 {
+		return false
+	}
+	appended, err := grounds.AppendToRecord(want, entries[len(entries)-1])
+	if err != nil {
+		return false
+	}
+	_, appendedBody := frontmatter.Split(appended)
+	return body == appendedBody
+}
+
+// unresolvedLines are a record's frontmatter lines less each top-level key a resolve sets
+// (resolveFields) and the indented lines that continue it.
+func unresolvedLines(head string) []string {
+	var out []string
+	skipping := false
+	for _, ln := range strings.SplitAfter(head, "\n") {
+		if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
+			if !skipping {
+				out = append(out, ln)
+			}
+			continue
+		}
+		key, _, found := strings.Cut(ln, ":")
+		skipping = found && resolveFields[strings.TrimSpace(key)]
+		if !skipping {
+			out = append(out, ln)
+		}
+	}
+	return out
 }
 
 // recordModeHolds reports whether a record's mode is one a store's write gives it: an
@@ -1601,14 +1669,14 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 	if err != nil {
 		return "", err
 	}
-	moves, outside, odd, err := landingDiff(st, lane, raw, named)
+	moves, outside, resolutions, odd, err := landingDiff(st, lane, raw, named)
 	if err != nil {
 		return "", err
 	}
 	if odd != "" {
 		return strconv.Quote(termsafe.Sanitize(odd)), nil
 	}
-	if len(outside) > 0 {
+	if len(outside) > 0 || len(resolutions) > 0 {
 		standing, err := standingMoves(repo, st, lane)
 		if err != nil {
 			return "", err
@@ -1625,6 +1693,18 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 			return says, nil
 		}
 		if blobs[1].Content != relink.Rewritten(e.path, blobs[0].Content, moves) {
+			return says, nil
+		}
+	}
+	// A resolution the lane's worktree made of an issue a shipped intent names is held to
+	// what a resolve writes over the record it took out of open/.
+	for _, r := range resolutions {
+		says := strconv.Quote(termsafe.Sanitize(r[1].path))
+		blobs, err := gitutil.CatFileBatch(repo, []string{r[0].oldObject, r[1].newObject}, 2*(maxRepointedBytes+256))
+		if err != nil || len(blobs) != 2 || blobs[0].Missing || blobs[1].Missing {
+			return says, nil
+		}
+		if !resolvedAsWritten(r[0].path, blobs[0].Content, r[1].path, blobs[1].Content, moves) {
 			return says, nil
 		}
 	}
