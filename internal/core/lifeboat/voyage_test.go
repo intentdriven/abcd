@@ -63,6 +63,47 @@ func TestPackAppendsVoyageForGitSource(t *testing.T) {
 	}
 }
 
+// TestPackVoyageRecordsTheResolvedDest: a pack given a relative destination logs
+// the destination resolved to an absolute path, never the relative spelling the
+// caller typed (iss-2611060809546274; the embark chapter's example is held to it
+// by TestBriefEmbarkHistoryExampleShowsTheResolvedDest).
+func TestPackVoyageRecordsTheResolvedDest(t *testing.T) {
+	repo := packFixture(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	t.Chdir(work)
+	if _, err := Pack(repo, filepath.Join("..", filepath.Base(work)+"-lb"), okScan); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.Abs(filepath.Join("..", filepath.Base(work)+"-lb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(want) })
+	var ledger string
+	_ = filepath.Walk(abcdhome.Path(home, "voyage"), func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && filepath.Base(p) == "history.jsonl" {
+			ledger = p
+		}
+		return nil
+	})
+	if ledger == "" {
+		t.Fatal("voyage ledger not found")
+	}
+	data, err := os.ReadFile(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e voyageEntry
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &e); err != nil {
+		t.Fatalf("ledger line is not a voyage entry: %v", err)
+	}
+	if !filepath.IsAbs(e.Dest) || e.Dest != want {
+		t.Errorf("ledger dest = %q, want the resolved destination %q", e.Dest, want)
+	}
+}
+
 // TestPackVoyageAppendsNotRewrites: a second pack appends a second line rather
 // than rewriting the ledger.
 func TestPackVoyageAppendsNotRewrites(t *testing.T) {

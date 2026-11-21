@@ -10,6 +10,14 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md"
 remedy: "Change the example's `dest` to an absolute path and say the field holds the resolved destination."
+resolution: "The embark chapter's packing-history example now shows an absolute dest (/srv/lifeboats/abcd-lifeboat), and the chapter says the field holds the destination resolved to an absolute path, which matches Pack logging filepath.Abs of the destination."
+impact: internal
+resolved_by:
+  commit: "2ddd632586824632bcb3e8db3c14698b8627ee53"
 ---
 
 The packing-history example at `03-embark.md:329` shows `"dest": "../abcd-lifeboat"`. Packing with a relative destination records the resolved absolute path, so the example shows a value the field does not hold.
+
+## Grounds
+
+- pursued: the history example's dest is absolute and the prose names it the resolved destination, as TestBriefEmbarkHistoryExampleShowsTheResolvedDest checks; TestPackVoyageRecordsTheResolvedDest failing, i.e. a relative destination logged as typed, would show the new wording wrong
