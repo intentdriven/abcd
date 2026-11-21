@@ -659,8 +659,8 @@ func TestARecordOfNoPushesSettlesNothing(t *testing.T) {
 }
 
 // TestTheLaunchReadingExemptsNoAdmissionPastTheWalk: commits of another
-// login's filling the whole walk leave the reader's newest push past it,
-// unread, so no admission is exempt.
+// login's filling all the walk reads on to leave the reader's newest push past
+// it, unread, so no admission is exempt.
 func TestTheLaunchReadingExemptsNoAdmissionPastTheWalk(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -672,15 +672,15 @@ func TestTheLaunchReadingExemptsNoAdmissionPastTheWalk(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
-	tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain)
-	for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChain), tip)) {
+	tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChainRead)
+	for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChainRead), tip)) {
 		f.pusherOf[c] = "mal"
 	}
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
 	}
 	a, err := ArmedMergesForCut(p.dir, p.opts())
-	if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 1 || !strings.Contains(a.UnverifiedWhy, "is not within the 64 commits read") {
+	if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 1 || !strings.Contains(a.UnverifiedWhy, fmt.Sprintf("is not within the %d commits read", maxChainRead)) {
 		t.Fatalf("reading = %+v, %v; want #11 not exempt", a, err)
 	}
 }

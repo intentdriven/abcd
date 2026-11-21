@@ -300,14 +300,20 @@ it cannot re-arm, drop, admit or change any of yours. The act that finds such
 commits names them once for each tip, counted by who pushed them (`not_read`
 in a settle and on `/abcd:peers`), and a renewal, `--admit` or `--release`
 over them works from your own newest push, so your admissions are kept and
-nothing is withdrawn or commented on twice. When your newest push cannot be
-found or placed (an app pushed a commit above it, which says nothing of which
-person sent it; the record has not caught up with the tip, does not answer,
-or has a push missing; or your push lies past the 64 commits read), abcd does
-nothing for you on that release: nothing is re-armed, withdrawn, admitted or
-commented on, the reason is named (`unplaced`, once for each tip on an act,
-and on every `/abcd:peers`), and a later act asks again. A renewal, an
-`--admit` or a `--release` is refused then, with nothing pushed. A copy that
+nothing is withdrawn or commented on twice. abcd reads the branch down from
+its tip 64 commits at a time: when the commits above your newest push fill
+the first 64, it reads on, a page of 64 at a time, until it finds your push,
+up to 512 commits. When your newest push cannot be found or placed (an app
+pushed a commit above it, which says nothing of which person sent it; the
+record has not caught up with the tip, does not answer, or has a push
+missing; or your push lies past the 512 commits read), abcd does nothing for
+you on that release: nothing is re-armed, withdrawn, admitted or commented
+on, the reason is named (`unplaced`, once for each tip on an act, and on
+every `/abcd:peers`), and a later act asks again. A renewal, an `--admit` or
+a `--release` is refused then, with nothing pushed. Past the 512 commits,
+the refusal names the one step left to you: once the release is tagged,
+re-arm each pull request withdrawn for it by hand (`gh pr merge <number>
+--auto`). A copy that
 pushes through an app (a hosted session's installation token, say) has no
 newest push of its own, so abcd acts on none of its withdrawals: re-arm them
 by hand after the cut. What the record placed on each commit is kept for the
