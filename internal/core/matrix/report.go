@@ -325,15 +325,13 @@ func encodeTrial(t TrialRecord) (data, network []byte, err error) {
 	return data, network, nil
 }
 
-// withoutVersions is the trial with its harness version and the field names
-// its unpinned list carries emptied and nothing else changed, so it encodes
-// to the trial's own lines, as withoutVersionsAndDigests is a run's record.
+// withoutVersions is the trial as the network screen reads it, as
+// withoutVersionsAndDigests is a run's record: its harness version's leading
+// dotted number withheld (asVersion) and nothing else changed, so it encodes
+// to the trial's own lines and a harness version a host reports is screened
+// past that number.
 func (t TrialRecord) withoutVersions() TrialRecord {
-	t.HarnessVersion = ""
-	t.Unpinned = slices.Clone(t.Unpinned)
-	for i := range t.Unpinned {
-		t.Unpinned[i].Field = ""
-	}
+	t.HarnessVersion = asVersion(t.HarnessVersion)
 	return t
 }
 

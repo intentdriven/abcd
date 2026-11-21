@@ -699,57 +699,107 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	return p.WriteStates(files...)
 }
 
-// withoutVersionsAndDigests is the record with every version and digest
-// emptied and nothing else changed, so it encodes to the record's own lines:
-// the commits, the binary's digest, version and revision, every content
-// reference's and hash map's digest, each cell's harness version and local
-// runtime version and weights digest, and each unpinned field's name, which
-// abcd builds from a validated id (cell.<id>.<field>) and which a cell id such
-// as local-rev would otherwise make read as a host name. It changes nothing in
+// withoutVersionsAndDigests is the record as the network screen reads it,
+// encoding to the record's own lines with nothing else changed: each value
+// that has a version's, a digest's or abcd's own field name's shape is
+// withheld, and only that part of it. A version keeps all but its leading
+// dotted number (asVersion), a value is emptied as a digest only when it is
+// hex (asDigest), and an unpinned field's name only when it is one abcd
+// builds for this record (asFieldName), where a cell id such as local-rev
+// would otherwise read as a host name. A value of any other shape is read as
+// it stands, so an address, a MAC or a host name a record carries from a
+// host's receipt or a carried folder is still screened. It changes nothing in
 // rec.
 func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 	r := rec
-	r.RootSHA, r.FrozenCommit = "", ""
-	r.Binary.SHA256, r.Binary.Version, r.Binary.Revision = "", "", ""
-	r.Declaration.SHA256 = ""
-	emptied := func(m map[string]string) map[string]string {
+	r.RootSHA, r.FrozenCommit = asDigest(rec.RootSHA), asDigest(rec.FrozenCommit)
+	r.Binary.SHA256, r.Binary.Version, r.Binary.Revision = asDigest(rec.Binary.SHA256), asVersion(rec.Binary.Version), asDigest(rec.Binary.Revision)
+	r.Declaration.SHA256 = asDigest(rec.Declaration.SHA256)
+	digests := func(m map[string]string) map[string]string {
 		if m == nil {
 			return nil
 		}
 		out := make(map[string]string, len(m))
-		for k := range m {
-			out[k] = ""
+		for k, v := range m {
+			out[k] = asDigest(v)
 		}
 		return out
 	}
-	r.PromptSHA256, r.ToolDefinitionsSHA256 = emptied(rec.PromptSHA256), emptied(rec.ToolDefinitionsSHA256)
+	r.PromptSHA256, r.ToolDefinitionsSHA256 = digests(rec.PromptSHA256), digests(rec.ToolDefinitionsSHA256)
 	if rec.RenderTemplate != nil {
 		t := *rec.RenderTemplate
-		t.SHA256 = ""
+		t.SHA256 = asDigest(t.SHA256)
 		r.RenderTemplate = &t
 	}
-	undigested := func(in []ContentRef) []ContentRef {
+	refs := func(in []ContentRef) []ContentRef {
 		out := slices.Clone(in)
 		for i := range out {
-			out[i].SHA256 = ""
+			out[i].SHA256 = asDigest(out[i].SHA256)
 		}
 		return out
 	}
-	r.HiddenTests, r.SeededMaterial = undigested(rec.HiddenTests), undigested(rec.SeededMaterial)
+	r.HiddenTests, r.SeededMaterial = refs(rec.HiddenTests), refs(rec.SeededMaterial)
 	r.Cells = slices.Clone(rec.Cells)
 	for i := range r.Cells {
-		r.Cells[i].HarnessVersion = ""
+		r.Cells[i].HarnessVersion = asVersion(rec.Cells[i].HarnessVersion)
 		if lp := rec.Cells[i].LocalPin; lp != nil {
 			l := *lp
-			l.RuntimeVersion, l.WeightsSHA256 = "", ""
+			l.RuntimeVersion, l.WeightsSHA256 = asVersion(l.RuntimeVersion), asDigest(l.WeightsSHA256)
 			r.Cells[i].LocalPin = &l
 		}
 	}
 	r.Unpinned = slices.Clone(rec.Unpinned)
 	for i := range r.Unpinned {
-		r.Unpinned[i].Field = ""
+		r.Unpinned[i].Field = rec.asFieldName(rec.Unpinned[i].Field)
 	}
 	return r
+}
+
+var (
+	// versionCoreRe is a version's leading dotted number, which a four-part
+	// version shares with an IPv4 address.
+	versionCoreRe = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)+`)
+	// hexDigestRe is a digest or a commit: lower-case hex, an abbreviated
+	// commit's length at least.
+	hexDigestRe = regexp.MustCompile(`^[0-9a-f]{7,128}$`)
+	// settingNameRe is a setting's name as a cell's unpinned field names it.
+	settingNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
+
+// asVersion is v as the network screen reads a version: its leading dotted
+// number withheld and the rest of it kept, so 2.10.3.4 reads as nothing and
+// 2.1-buildbox.local still reads as a host name.
+func asVersion(v string) string { return versionCoreRe.ReplaceAllLiteralString(v, "") }
+
+// asDigest is v as the network screen reads a digest: emptied when it is hex,
+// read as it stands otherwise.
+func asDigest(v string) string {
+	if hexDigestRe.MatchString(v) {
+		return ""
+	}
+	return v
+}
+
+// asFieldName is f as the network screen reads an unpinned field's name:
+// emptied when it is a name abcd builds for this record (the machine's two,
+// or cell.<id>.<field> for one of its cells, with a field abcd names), read
+// as it stands otherwise.
+func (rec RunRecord) asFieldName(f oracle.Field) oracle.Field {
+	if f == RunMachineCPU || f == RunMachineMemory {
+		return ""
+	}
+	for _, c := range rec.Cells {
+		tail, ok := strings.CutPrefix(string(f), "cell."+c.Cell+".")
+		if !ok || !idRe.MatchString(c.Cell) {
+			continue
+		}
+		switch name, setting := strings.CutPrefix(tail, "settings."); {
+		case setting && settingNameRe.MatchString(name),
+			tail == "model", tail == "harness_version", tail == "local_pin":
+			return ""
+		}
+	}
+	return f
 }
 
 // screened is a file to screen: what is written, and the same file as the

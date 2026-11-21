@@ -2,6 +2,7 @@ package matrix
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,4 +215,109 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 	if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "net:ipv4") {
 		t.Fatalf("writeTrial with an address in its reason = %v; want it refused", err)
 	}
+	// A harness version a host reports is withheld only as far as its
+	// leading dotted number: a MAC, or a host name after the number, is
+	// still screened.
+	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local"} {
+		tr = codeTrial(t, rec, "host-big", 3+i, StatusPassed)
+		tr.HarnessVersion = v
+		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
+			t.Fatalf("writeTrial with the harness version %q = %v; want it refused by the network screen", v, err)
+		}
+	}
+}
+
+// carriedRun is the report lab's first run carried to a folder of its own,
+// with edit applied to its record, which is written back as abcd encodes it.
+func carriedRun(t *testing.T, edit func(dir string, rec *RunRecord)) (*gittest.Repo, lab.Minted, string) {
+	t.Helper()
+	r, home, m, first := reportLab(t)
+	dir := filepath.Join(t.TempDir(), "carried")
+	if err := os.CopyFS(dir, os.DirFS(runDir(home, m, first.RunID))); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "run.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec RunRecord
+	if err := strictRun(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	edit(dir, &rec)
+	js, err := encodeRun(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run.json"), js, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return r, m, dir
+}
+
+// A carried run's record is screened for network kinds past its versions'
+// leading numbers alone: a MAC in a version field refuses it.
+func TestARerunOfACarriedRunWithAnAddressInAVersionFieldIsRefused(t *testing.T) {
+	r, m, dir := carriedRun(t, func(_ string, rec *RunRecord) { rec.Binary.Version = "3c:22:fb:4a:9e:01" })
+	if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "carries a net:") {
+		t.Fatalf("a re-run of a carried run with a MAC as its binary's version = %v; want it refused by the network screen", err)
+	}
+}
+
+// A carried run's record and declaration are screened as the text they
+// decode to: the secret scanner reads JSON escapes, so a credential spelled
+// with every character escaped is refused.
+func TestARerunOfACarriedRunWithAnEscapedCredentialIsRefused(t *testing.T) {
+	token := "ghp_" + testsecret.Synthetic(52, 36)
+	escaped := escapeAll(token)
+	t.Run("record", func(t *testing.T) {
+		r, m, dir := carriedRun(t, func(string, *RunRecord) {})
+		raw, err := os.ReadFile(filepath.Join(dir, "run.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, _, ok := strings.Cut(string(raw), `"version": "`)
+		if !ok {
+			t.Fatal("fixture: the record names no version")
+		}
+		_, rest, _ := strings.Cut(string(raw)[len(first)+len(`"version": "`):], `"`)
+		edited := first + `"version": "` + escaped + `"` + rest
+		if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(edited), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "not copied") || strings.Contains(err.Error(), token) {
+			t.Fatalf("a re-run of a carried record with an escaped credential = %v; want it refused, the value never shown", err)
+		}
+	})
+	t.Run("declaration", func(t *testing.T) {
+		r, m, dir := carriedRun(t, func(dir string, rec *RunRecord) {
+			decl, err := os.ReadFile(filepath.Join(dir, "declaration.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var d struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(decl, &d); err != nil || d.Name == "" {
+				t.Fatalf("fixture: the declaration names nothing: %v", err)
+			}
+			edited := strings.Replace(string(decl), `"`+d.Name+`"`, `"`+escaped+`"`, 1)
+			if err := os.WriteFile(filepath.Join(dir, "declaration.json"), []byte(edited), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rec.Declaration = contentOf("declaration.json", []byte(edited))
+		})
+		if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "not copied") || strings.Contains(err.Error(), token) {
+			t.Fatalf("a re-run of a carried declaration with an escaped credential = %v; want it refused, the value never shown", err)
+		}
+	})
+}
+
+// escapeAll is v with every character written as a JSON escape.
+func escapeAll(v string) string {
+	var b strings.Builder
+	for _, r := range v {
+		fmt.Fprintf(&b, `\u%04x`, r)
+	}
+	return b.String()
 }
