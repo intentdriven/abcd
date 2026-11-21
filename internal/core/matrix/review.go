@@ -98,6 +98,9 @@ const (
 	withheldNotText    = "not text: it holds a NUL byte or is not valid UTF-8"
 	withheldUnreadable = "could not be read"
 	withheldOverBound  = "past the request's size bound"
+	// withheldLineEndings: the diff reads CRLF as LF, so a change of line
+	// endings alone shows nothing.
+	withheldLineEndings = "a change of line endings alone, which the diff reads as none"
 )
 
 // redactedMark stands in the request's text where the copy wrote where it
@@ -260,6 +263,12 @@ func assembleReview(ctx context.Context, in reviewInputs) (ReviewRequest, Review
 			withhold(p, ce.withheld)
 			continue
 		}
+		if !inCopy && underUnreadable(copied, p) {
+			// Not seen, not shown deleted: what is under the directory is
+			// unknown.
+			withhold(p, withheldUnreadable)
+			continue
+		}
 		kind, ok := reading.ReviewKind(p)
 		if !ok {
 			withhold(p, withheldByTable)
@@ -311,8 +320,17 @@ func assembleReview(ctx context.Context, in reviewInputs) (ReviewRequest, Review
 			text = "old mode " + fe.mode + "\nnew mode " + ce.mode + "\n" + text
 		}
 		if text == "" {
-			// The same text once line endings are normalised: no change.
-			continue
+			switch change {
+			case changeAdded:
+				// An empty file added: its header is the whole of its diff.
+				text = "--- /dev/null\n+++ b/" + p + "\n"
+			case changeDeleted:
+				text = "--- a/" + p + "\n+++ /dev/null\n"
+			default:
+				// The same text once line endings are normalised.
+				withhold(p, withheldLineEndings)
+				continue
+			}
 		}
 		text, n := red.redact(text)
 		if total+len(text) > maxReviewRequestBytes {
@@ -628,6 +646,17 @@ func changedPaths(frozen, copied map[string]treeEntry) []string {
 	return out
 }
 
+// underUnreadable reports whether p lies under a directory of the copy's tree
+// that could not be listed.
+func underUnreadable(copied map[string]treeEntry, p string) bool {
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		if e, ok := copied[d]; ok && e.withheld == withheldUnreadable {
+			return true
+		}
+	}
+	return false
+}
+
 // diffable reports whether data is text a diff can show: valid UTF-8 holding
 // no NUL byte. No file (nil) is diffable.
 func diffable(data []byte) bool {
@@ -686,8 +715,8 @@ func (r redactor) redact(s string) (string, int) {
 // reviewGitTimeout, reading at most limit bytes of its output. Its refusal
 // names the subcommand and how it failed, never git's own words, which can
 // name a path on this machine.
-func reviewGit(ctx context.Context, dir string, limit int, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, reviewGitTimeout)
+func reviewGit(parent context.Context, dir string, limit int, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(parent, reviewGitTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitutil.IsolatedEnv()
@@ -696,6 +725,8 @@ func reviewGit(ctx context.Context, dir string, limit int, args ...string) ([]by
 	cmd.Stdout = out
 	err := cmd.Run()
 	switch {
+	case parent.Err() != nil:
+		return nil, fmt.Errorf("the review's deadline passed while git %s ran", args[0])
 	case ctx.Err() != nil:
 		return nil, fmt.Errorf("git %s did not answer within %s", args[0], reviewGitTimeout)
 	case out.over:

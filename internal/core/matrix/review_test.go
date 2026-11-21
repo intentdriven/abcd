@@ -257,6 +257,75 @@ func TestAHugeFlatDirectoryIsRefusedAtTheBoundMidListing(t *testing.T) {
 	}
 }
 
+// TestEveryChangedPathTravelsOrIsWithheldWithAReason: no changed path leaves
+// both the request and the manifest's withheld list. An empty file added or
+// deleted travels as its header, and a change of line endings alone, which a
+// review reads as no change, is withheld and says so.
+func TestEveryChangedPathTravelsOrIsWithheldWithAReason(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Write("widget.go", "package widget\n")
+	src.Write("gone.go", "")
+	src.Write("crlf.go", "package widget\n\nconst A = 1\n")
+	src.Commit("frozen")
+	frozen := src.Git("rev-parse", "HEAD")
+	store := filepath.Join(t.TempDir(), "matrix-store")
+	clone, err := makeClone(src.Root(), store, reviewRun, frozen, TrialKey{Task: "widget", Cell: "a", Repeat: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"widget.go": "package widget\n\nconst B = 2\n",
+		"empty.go":  "",
+		"crlf.go":   "package widget\r\n\r\nconst A = 1\r\n",
+	} {
+		if err := os.WriteFile(filepath.Join(clone, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(clone, "gone.go")); err != nil {
+		t.Fatal(err)
+	}
+	req, man := assembleFor(t, src, frozen, store, clone)
+	travelled := map[string]string{}
+	for i, it := range man.Items {
+		travelled[it.Path] = it.Change
+		if it.Path == "empty.go" && req.Items[i].Text != "--- /dev/null\n+++ b/empty.go\n" {
+			t.Errorf("an empty file added travels as its header: %q", req.Items[i].Text)
+		}
+		if it.Path == "gone.go" && req.Items[i].Text != "--- a/gone.go\n+++ /dev/null\n" {
+			t.Errorf("an empty file deleted travels as its header: %q", req.Items[i].Text)
+		}
+	}
+	withheld := map[string]string{}
+	for _, w := range man.Withheld {
+		withheld[w.Path] = w.Reason
+	}
+	if travelled["empty.go"] != changeAdded || travelled["gone.go"] != changeDeleted {
+		t.Errorf("the empty files travel as added and deleted: %v", travelled)
+	}
+	if withheld["crlf.go"] != withheldLineEndings {
+		t.Errorf("a change of line endings alone is withheld and says so: %v", man.Withheld)
+	}
+	for _, p := range []string{"widget.go", "empty.go", "gone.go", "crlf.go"} {
+		_, t1 := travelled[p]
+		_, t2 := withheld[p]
+		if t1 == t2 {
+			t.Errorf("%s is in the request %v and withheld %v: a changed path is in exactly one", p, t1, t2)
+		}
+	}
+}
+
+// TestAReviewGitCutOffByTheCallersDeadlineSaysSo: git cut off by the
+// caller's deadline is not git failing to answer within its own.
+func TestAReviewGitCutOffByTheCallersDeadlineSaysSo(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := reviewGit(ctx, t.TempDir(), 1<<10, "version")
+	if err == nil || strings.Contains(err.Error(), reviewGitTimeout.String()) || !strings.Contains(err.Error(), "review's deadline") {
+		t.Fatalf("git cut off by the caller's deadline: %v", err)
+	}
+}
+
 func TestReviewLabelsAreOpaqueAndDistinct(t *testing.T) {
 	re := regexp.MustCompile(`^copy-[0-9a-f]{8}$`)
 	seen := map[string]bool{}
