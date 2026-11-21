@@ -6,8 +6,9 @@ package site
 // on the person's word and each on its own. Both off, the site builds exactly
 // what it built before. Forward on, each of the record's addresses here
 // answers with a 301 to the same path at the address. Narrow on, the build
-// writes none of the record's pages and no record.json, and every link into
-// the record names the address; the contributors and references pages stay,
+// writes none of the record's pages, no record.json and no record.js, its
+// `_headers` keeps no record block, and every link into the record names the
+// address; the contributors and references pages stay,
 // since the record's own site, the project route, builds neither
 // (dcn-2611201438402486).
 
@@ -15,6 +16,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -243,16 +246,61 @@ func TestARecordAddressIsAnHTTPSDirectory(t *testing.T) {
 }
 
 // abcd's documentation site names its record at the Pages address the
-// project route builds it onto (spc-2610142146250176 step 3). The two
-// switches are step 4's, turned on in the cut-over's order on the person's
-// word, so this test holds the address and leaves them alone.
+// project route builds it onto (spc-2610142146250176 step 3), and is
+// narrowed to its documentation without forwarding the record's old
+// addresses, as the person ruled for the cut-over (dcn-2611211021237477,
+// dcn-2611211223308175).
 func TestAbcdsDocumentationSiteNamesItsRecordAtItsPagesAddress(t *testing.T) {
 	m, err := LoadManifest(repoRoot())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Record.Elsewhere == nil || m.Record.Elsewhere.Address != abcdRecordAddress {
-		t.Fatalf("%s names its record elsewhere as %+v, want at %s", ManifestRelPath, m.Record.Elsewhere, abcdRecordAddress)
+	e := m.Record.Elsewhere
+	if e == nil || e.Address != abcdRecordAddress {
+		t.Fatalf("%s names its record elsewhere as %+v, want at %s", ManifestRelPath, e, abcdRecordAddress)
+	}
+	if !e.Narrow {
+		t.Errorf("%s does not narrow abcdev.app to its documentation: record.elsewhere.narrow is off", ManifestRelPath)
+	}
+	if e.Forward {
+		t.Errorf("%s forwards the record's old addresses, which the person ruled against: record.elsewhere.forward is on", ManifestRelPath)
+	}
+}
+
+// abcd's own composed build, the one site.yml deploys to abcdev.app, built
+// from this tree as committed, ships none of the record: no export, no record
+// page, no chart script and no record header block. It keeps the landing
+// page and the contributors and references pages, and every file it writes
+// carries its headers. The deploy itself is seen only at the next release;
+// this is what that deploy will upload.
+func TestAbcdsComposedBuildShipsTheDocumentationAndNoneOfTheRecord(t *testing.T) {
+	out := t.TempDir()
+	res, err := Build(Request{RepoRoot: repoRoot(), OutDir: out, Stamp: fixtureStamp, LeaveUI: true})
+	if err != nil {
+		t.Fatalf("abcd's composed site does not build: %v", err)
+	}
+	written := map[string]bool{}
+	for _, name := range res.Files {
+		written[name] = true
+		if name == "record.json" || name == recordScriptOutRel || strings.HasPrefix(name, "record/") {
+			t.Errorf("abcd's composed build wrote %s, but its record is built at %s", name, abcdRecordAddress)
+		}
+	}
+	for _, page := range []string{"index.html", "contributors/index.html", "references/index.html"} {
+		if !written[page] {
+			t.Errorf("abcd's composed build wrote no %s", page)
+		}
+	}
+	blocks := parseHeaders(outFile(t, out, headersOutRel))
+	for _, b := range blocks {
+		if strings.HasPrefix(b.pattern, "/record") {
+			t.Errorf("abcd's composed _headers keeps a block for %s, a record path it does not serve", b.pattern)
+		}
+	}
+	for _, name := range res.Files {
+		if route, required, served := servedRoute(name); served {
+			assertHeaderCoverage(t, "abcd's composed _headers", blocks, route, required)
+		}
 	}
 }
 
@@ -282,5 +330,121 @@ func TestABrokenRedirectIsReportedAtItsLineInTheCommittedMapWhenForwarding(t *te
 	}
 	if found[0].Where != redirectsSourceRel || !strings.HasPrefix(found[0].Detail, "line 4 redirects /nowhere/ ") {
 		t.Errorf("the broken rule is on line 4 of %s, but the finding reads %s: %s", redirectsSourceRel, found[0].Where, found[0].Detail)
+	}
+}
+
+// Narrowed, the documentation site ships none of the record's surface: no
+// chart script, which only a record page loads, and no header block for a
+// record path, where the host now serves nothing. Every file the narrowed
+// build does write keeps its block. The un-narrowed build of the same tree
+// keeps both, so the record is dropped only where it is built elsewhere.
+func TestTheNarrowSwitchShipsNoRecordScriptAndNoRecordHeaderBlock(t *testing.T) {
+	isRecord := func(pattern string) bool { return strings.HasPrefix(pattern, "/record") }
+
+	whole := newFixture(t)
+	whole.write("site-src/record.js", "/* fixture chart */\n")
+	wholeOut := t.TempDir()
+	wholeRes := buildFixture(t, whole, wholeOut)
+	if !strings.Contains(strings.Join(wholeRes.Files, "\n")+"\n", "\nrecord.js\n") {
+		t.Fatalf("the un-narrowed build wrote no record.js: %v", wholeRes.Files)
+	}
+	recordBlocks := 0
+	for _, b := range parseHeaders(outFile(t, wholeOut, "_headers")) {
+		if isRecord(b.pattern) {
+			recordBlocks++
+		}
+	}
+	if recordBlocks == 0 {
+		t.Fatal("the un-narrowed build's _headers holds no record block, so this proves nothing")
+	}
+
+	f := newFixture(t)
+	f.write("site-src/record.js", "/* fixture chart */\n")
+	declareRecordElsewhere(t, f, false, true)
+	out := t.TempDir()
+	res := buildFixture(t, f, out)
+	for _, name := range res.Files {
+		if name == "record.js" {
+			t.Errorf("the narrowed build wrote record.js, but the record is built at %s", elsewhereAddress)
+		}
+	}
+	blocks := parseHeaders(outFile(t, out, "_headers"))
+	if len(blocks) == 0 {
+		t.Fatal("the narrowed build emitted no _headers blocks")
+	}
+	for _, b := range blocks {
+		if isRecord(b.pattern) {
+			t.Errorf("the narrowed build's _headers keeps a block for %s, a record path it does not serve", b.pattern)
+		}
+	}
+	for _, name := range res.Files {
+		if route, required, served := servedRoute(name); served {
+			assertHeaderCoverage(t, "the narrowed _headers", blocks, route, required)
+		}
+	}
+}
+
+// The header map abcd ships, narrowed, loses the record's blocks and the
+// comments that describe them, and keeps every other block with its headers
+// as they were.
+func TestTheShippedHeaderMapNarrowsToItsNonRecordBlocks(t *testing.T) {
+	shipped, err := os.ReadFile(filepath.FromSlash("../../../site-src/headers"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrowed := string(withoutRecordHeaders(shipped))
+	var want []headerBlock
+	for _, b := range parseHeaders(string(shipped)) {
+		if !strings.HasPrefix(b.pattern, "/record") {
+			want = append(want, b)
+		}
+	}
+	got := parseHeaders(narrowed)
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the narrowed map's blocks are\n%v\nwant the shipped map's non-record blocks\n%v", got, want)
+	}
+	if strings.Contains(narrowed, "# The record explorer.") || strings.Contains(narrowed, "# The export the chart reads.") {
+		t.Errorf("the narrowed map keeps a comment for a record block it dropped:\n%s", narrowed)
+	}
+	if !strings.HasPrefix(narrowed, "# Source of the Cloudflare _headers file.") {
+		t.Errorf("the narrowed map lost its opening comment:\n%s", narrowed)
+	}
+}
+
+// The filter holds for header maps shaped unlike the shipped one: a record
+// block whose own lines carry an indented comment loses every one of its
+// header lines, a CRLF map is read in paragraphs as an LF one is, and a map
+// whose last paragraph was a record block keeps its final newline. A record
+// block runs to the next path line, not the next blank line, so its lines
+// continued after a blank line go with it rather than staying behind for the
+// host to read as the kept path's above them.
+func TestTheNarrowedHeaderMapHoldsForOtherShapes(t *testing.T) {
+	for name, c := range map[string]struct{ in, want string }{
+		"a record block continued after a blank line": {
+			in:   "/site.css\n  A: 1\n\n/record/*\n  B: 2\n\n  C: 3\n\n/site.js\n  D: 4\n",
+			want: "/site.css\n  A: 1\n\n/site.js\n  D: 4\n",
+		},
+		"a record block continued past a blank line and a column-0 comment": {
+			in:   "# The map.\n/site.css\n  A: 1\n\n/record.json\n  B: 2\n\n# still the export\n  C: 3\n\n  E: 5\n\n# The script.\n/site.js\n  D: 4\n",
+			want: "# The map.\n/site.css\n  A: 1\n\n# The script.\n/site.js\n  D: 4\n",
+		},
+		"an indented comment inside a record block": {
+			in:   "/site.css\n  A: 1\n/record/*\n  B: 2\n  # a note\n  C: 3\n/site.js\n  D: 4\n",
+			want: "/site.css\n  A: 1\n/site.js\n  D: 4\n",
+		},
+		"a CRLF map": {
+			in:   "# The map.\r\n/site.css\r\n  A: 1\r\n\r\n# The record explorer.\r\n/record/*\r\n  B: 2\r\n",
+			want: "# The map.\n/site.css\n  A: 1\n",
+		},
+		"a record block as the last paragraph": {
+			in:   "/site.css\n  A: 1\n\n/record.json\n  B: 2\n",
+			want: "/site.css\n  A: 1\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := string(withoutRecordHeaders([]byte(c.in))); got != c.want {
+				t.Errorf("narrowed\n%q\nto\n%q\nwant\n%q", c.in, got, c.want)
+			}
+		})
 	}
 }
