@@ -53,6 +53,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 const (
@@ -284,9 +285,10 @@ func readLandings(root, ref string, n int) ([]landing, error) {
 // named outright is a directory, whose .log files directly inside it are read,
 // or a regular file; anything else, or a named file that cannot be read, is
 // refused. A log in a directory that cannot be read, or a .log entry there that
-// is no regular file (never followed), is named in unread and the rest are read. Every run that minted a receipt reports, and a head with more
-// than one report takes the one that prints its time, then the later: the later
-// name, or the later run in one log.
+// is no regular file (never followed), is named in unread by its base name, and
+// the rest are read. Every run that minted a receipt reports, and a head with
+// more than one report takes the one that prints its time, then the later: the
+// later name, or the later run in one log.
 func readReports(paths []string) (reports map[string]report, unread []string, err error) {
 	type logFile struct {
 		path  string
@@ -329,7 +331,11 @@ func readReports(paths []string) (reports map[string]report, unread []string, er
 			if f.named {
 				return nil, nil, err
 			}
-			unread = append(unread, fmt.Sprintf("%s (%s)", filepath.Base(f.path), strings.TrimPrefix(err.Error(), f.path+": ")))
+			// The reason names the log by its base name too, as an open or read
+			// error's text holds the path as it was typed.
+			base := filepath.Base(f.path)
+			reason := strings.ReplaceAll(strings.TrimPrefix(err.Error(), f.path+": "), f.path, base)
+			unread = append(unread, fmt.Sprintf("%s (%s)", base, reason))
 			continue
 		}
 		for _, r := range runs {
@@ -506,8 +512,11 @@ func write(w io.Writer, ref string, n int, ls []landing, reports map[string]repo
 // output: a | ends a table cell, and a line break ends the row or the line.
 var cellText = strings.NewReplacer(`\`, `\\`, "|", `\|`, "\n", `\n`, "\r", `\r`)
 
-// cell is s made safe to print in a table cell or a line of the output.
-func cell(s string) string { return cellText.Replace(s) }
+// cell is s made safe to print in a table cell or a line of the output: the
+// Markdown escapes above, then termsafe's mask, so an escape, any other C0 or
+// C1 control, a bidi control or a line separator left in a file name prints as
+// a '?' and never reaches the terminal raw.
+func cell(s string) string { return termsafe.SanitizeLine(cellText.Replace(s)) }
 
 // less says how much shorter got is than want, or longer.
 func less(want, got time.Duration) string {

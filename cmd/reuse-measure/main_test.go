@@ -576,6 +576,23 @@ func TestReadsAreBounded(t *testing.T) {
 			t.Errorf("run exited %d, want %d with #61 read and the link named as not read; stderr: %s\n%s", code, exitIncomplete, stderr, out)
 		}
 	})
+	t.Run("a log in a directory that cannot be opened", func(t *testing.T) {
+		dir := t.TempDir()
+		writeLog(t, dir, "preflight-61.log", fullTail, short)
+		locked := writeLog(t, dir, "preflight-locked.log", fullTail, "bbbbbbbbbbbb")
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(locked, 0o644) })
+		if f, err := os.Open(locked); err == nil {
+			f.Close()
+			t.Skip("this account opens a file of mode 000")
+		}
+		code, out, stderr := runWithin(t, repo.Root(), "-ref", "main", "-n", "1", dir)
+		if code != exitIncomplete || !strings.Contains(out, "Not read: preflight-locked.log (") || strings.Contains(out, dir) {
+			t.Errorf("run exited %d, want %d with the locked log named by its base name alone and the directory named nowhere; stderr: %s\n%s", code, exitIncomplete, stderr, out)
+		}
+	})
 	t.Run("a line over the line cap", func(t *testing.T) {
 		old := maxLine
 		maxLine = 256
@@ -605,6 +622,35 @@ func TestALogNameCannotBreakTheTable(t *testing.T) {
 	run([]string{"-ref", "main", "-n", "1", logs}, repo.Root(), &out, &errb)
 	if want := "| #81 | " + short + ` | preflight\|81\n.log | 5 of 16 | 91 of 133 |`; !strings.Contains(out.String(), want) {
 		t.Errorf("output lacks %q:\n%s%s", want, out.String(), errb.String())
+	}
+}
+
+// TestALogNameCannotRewriteTheTerminal: a log's name reaches the terminal in the
+// Report column and on the "Not read:" line, so an escape, any other C0 or C1
+// control and a bidi control in it are masked, never printed raw.
+func TestALogNameCannotRewriteTheTerminal(t *testing.T) {
+	repo, heads := fixture(t, "82")
+	short := heads["82"][:12]
+	logs := t.TempDir()
+	good := writeLog(t, logs, "preflight-\x1b[2J\u202e\u009b82.log", fullTail, short)
+	if err := os.Symlink(good, filepath.Join(logs, "link-\x1b]0;x\a.log")); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	run([]string{"-ref", "main", "-n", "1", logs}, repo.Root(), &out, &errb)
+	got := out.String()
+	for _, r := range []rune{0x1b, 0x07, 0x9b, 0x202e} {
+		if strings.ContainsRune(got, r) {
+			t.Errorf("output holds %U raw:\n%q", r, got)
+		}
+	}
+	for _, want := range []string{
+		"| #82 | " + short + " | preflight-?[2J??82.log | 5 of 16 |",
+		"Not read: link-?]0;x?.log (not a regular file).",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output lacks %q:\n%s%s", want, got, errb.String())
+		}
 	}
 }
 
