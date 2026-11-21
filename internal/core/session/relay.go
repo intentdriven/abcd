@@ -1079,7 +1079,9 @@ func (c *Conn) verify(ctx context.Context, token, repo string) {
 		c.fail("verify-failed", "GitHub did not accept the sign-in")
 		return
 	}
-	c.login = login
+	// The login and its grant are this verify's alone: a login that may not
+	// push replaces an earlier one that could, and takes its grant with it.
+	c.login, c.memberOf = login, ""
 	if push {
 		c.memberOf = strings.ToLower(repo)
 	}

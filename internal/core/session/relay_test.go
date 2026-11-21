@@ -1801,3 +1801,44 @@ func TestTokenExchangesAreLimitedPerAddress(t *testing.T) {
 		t.Fatal("after the window the address is still refused")
 	}
 }
+
+// TestAVerifyWithoutPushReplacesAnEarlierGrant: what a connection may do
+// follows the login it verified last. A second verify whose login may not
+// push leaves the connection unable to host, a guest when it joins, and
+// held up by the relay-wide pause like any other guest.
+func TestAVerifyWithoutPushReplacesAnEarlierGrant(t *testing.T) {
+	h := newHarness(t, func(l *Limits) {
+		l.RelayFailedJoins = 2
+		l.MaxFailedJoins = 100
+	})
+	p := &fakePeer{}
+	c := h.connect(t, p, "192.0.2.9")
+	send(t, c, msg{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	if v := p.last(t, "verified"); v == nil || v["member"] != true {
+		t.Fatalf("ada: verified = %v, want a member", v)
+	}
+	send(t, c, msg{"type": "verify", "token": "tok-cy", "repo": "acme/brief"})
+	if v := p.last(t, "verified"); v == nil || v["login"] != "cy" || v["member"] != false {
+		t.Fatalf("cy: verified = %v, want not a member", v)
+	}
+	send(t, c, msg{"type": "host", "repo": "acme/brief"})
+	if e := p.last(t, "error"); e == nil || e["code"] != "not-a-member" || p.last(t, "hosted") != nil {
+		t.Fatalf("hosting after cy's verify: %v, want not-a-member", p.texts(t))
+	}
+
+	_, _, code := h.host(t, "tok-bea")
+	for i := 0; i < 2; i++ {
+		h.join(t, "ZZZZZZ", "Mal", "203.0.113."+strconv.Itoa(i+1))
+	}
+	p.reset()
+	send(t, c, msg{"type": "join", "code": code})
+	if e := p.last(t, "error"); e == nil || e["code"] != "paused" || p.last(t, "joined") != nil {
+		t.Fatalf("joining during the pause after cy's verify: %v, want paused", p.texts(t))
+	}
+	h.clock.advance(defaultLimits().FailedJoinWindow)
+	p.reset()
+	send(t, c, msg{"type": "join", "code": code, "name": "Cy"})
+	if j := p.last(t, "joined"); j == nil || j["role"] != "guest" {
+		t.Fatalf("joining after cy's verify: %v, want a guest", p.texts(t))
+	}
+}

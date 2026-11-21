@@ -80,6 +80,9 @@ opens; the relay answers with a six-character join code drawn from a
 cryptographic source over 31 symbols with the look-alike characters left out.
 The host can draw a new code at any time, and the old one stops working. A
 host whose page reloads keeps the role by signing in as the same login.
+What a connection may do follows the login it verified last: a later sign-in
+on the same connection whose login may not push leaves it unable to host, and
+a guest when it joins.
 
 Anyone with the code joins as a guest and receives the session's update log
 replayed, then every update as it arrives. A guest's update frame is refused,
