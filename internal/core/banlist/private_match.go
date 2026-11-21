@@ -63,7 +63,7 @@ func matchPrivateWith(repoRoot string, names []string, grep string) ([]bool, err
 		return out, nil
 	}
 	if grep == "" {
-		return nil, ErrNoEngine
+		return nil, noEngine()
 	}
 	for _, n := range names {
 		if strings.ContainsAny(n, "\r\n") {

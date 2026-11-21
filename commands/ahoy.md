@@ -1903,7 +1903,9 @@ those alone exceed the limit they stay and the line says so. A cache under its l
 loses nothing, however old its entries. The limit counts entries alone, so the fuzz
 corpora are neither removed nor counted.
 
-It acts only on the directory `go env GOCACHE` reports, and only when that is a real
+It acts only on the directory `go env GOCACHE` reports, asked of a go `PATH` finds
+outside the working tree the prune runs from (a go inside it is never run, and
+nothing is trimmed), and only when that is a real
 directory this account owns, has a Go build cache's shape and is not the home or
 above it; inside, only regular files named `<hex>-a` or `<hex>-d` in a subdirectory
 named by two hex digits. A build that looks up an entry already gone finds a miss

@@ -2,6 +2,7 @@ package banlist
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -94,13 +95,24 @@ func checkPattern(pattern string) (fault patternFault, byEngine bool) {
 var (
 	grepBinOnce sync.Once
 	grepBin     string
+	grepErr     error
 )
 
 // lookGrep finds the engine once, through the PATH lookup every program abcd
 // runs by name goes through (tools.LookPath): a grep inside the working tree
-// abcd runs from is no engine.
+// abcd runs from is no engine, and grepErr keeps why.
 func lookGrep() {
-	grepBinOnce.Do(func() { grepBin, _ = tools.LookPath("grep", "") })
+	grepBinOnce.Do(func() { grepBin, grepErr = tools.LookPath("grep", "") })
+}
+
+// noEngine is the error for a lookup that found no grep: ErrNoEngine, naming the
+// in-checkout refusal (tools.ErrInsideWorkingTree) when that is why, so the
+// person is told which grep was not run and why rather than that none can be.
+func noEngine() error {
+	if errors.Is(grepErr, tools.ErrInsideWorkingTree) {
+		return fmt.Errorf("%w: the grep PATH finds is never run: %w", ErrNoEngine, tools.ErrInsideWorkingTree)
+	}
+	return ErrNoEngine
 }
 
 // grepAccepts asks the enforcement engine itself whether pattern is a usable

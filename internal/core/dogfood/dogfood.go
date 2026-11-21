@@ -1030,11 +1030,19 @@ func verifiedTree(ctx context.Context, repo, commit string) (map[string]treeEntr
 }
 
 // export writes the tree of commit, read from the repository at repo, into
-// dst: `git archive` piped into `tar`, under the builder's git environment
+// dst: `git archive` piped into `tar` (the tar PATH finds, held to the
+// in-checkout rule for repo by tools.LookPath), under the builder's git environment
 // (isolated, replacement objects off), with every content filter the
 // repository configures blanked (gitutil.FilterOverrides), so no program the
 // repository names runs.
 func export(ctx context.Context, repo, commit, dst string, log io.Writer) error {
+	tarBin, err := tools.LookPath("tar", repo)
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return fmt.Errorf("the tar PATH finds is never run: %w", tools.ErrInsideWorkingTree)
+	}
+	if err != nil {
+		return errors.New("no tar is on PATH")
+	}
 	filters, err := gitutil.FilterOverrides(repo)
 	if err != nil {
 		return fmt.Errorf("reading the repository's content filters: %w", err)
@@ -1043,7 +1051,7 @@ func export(ctx context.Context, repo, commit, dst string, log io.Writer) error 
 	git := exec.CommandContext(ctx, "git", args...)
 	git.Env = builderEnv()
 	git.Stderr = log
-	tar := exec.CommandContext(ctx, "tar", "-x", "-f", "-", "-C", dst)
+	tar := exec.CommandContext(ctx, tarBin, "-x", "-f", "-", "-C", dst)
 	tar.Stdout, tar.Stderr = log, log
 	pipe, err := git.StdoutPipe()
 	if err != nil {

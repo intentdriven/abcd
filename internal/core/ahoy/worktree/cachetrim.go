@@ -32,6 +32,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -200,6 +201,8 @@ func goCachePath() (dir, skip string) {
 	switch {
 	case errors.Is(err, exec.ErrNotFound):
 		return "", "no go command to say where the cache is"
+	case errors.Is(err, tools.ErrInsideWorkingTree):
+		return "", "the go command PATH finds is never run: " + tools.ErrInsideWorkingTree.Error()
 	case err != nil:
 		return "", "`go env GOCACHE` failed: " + shownPath(causeOf(err))
 	case got == "" || got == "off":

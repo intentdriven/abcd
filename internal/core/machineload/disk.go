@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Free disk is the load gate's other resource (iss-2610281502581386): on 28
@@ -132,11 +134,18 @@ func goCacheDir(goEnv func() (string, error), getenv func(string) string, userCa
 // about to delete files from the path asks this, never a guess at it.
 func GoEnvCache() (string, error) { return goEnvGOCACHE() }
 
-// goEnvGOCACHE runs `go env GOCACHE`.
+// goEnvGOCACHE runs `go env GOCACHE`, with the go PATH finds held to the
+// in-checkout rule (tools.LookPath, from the working directory): a go inside the
+// working tree abcd runs from is refused with tools.ErrInsideWorkingTree and
+// never run.
 func goEnvGOCACHE() (string, error) {
+	goBin, err := tools.LookPath("go", "")
+	if err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), goEnvTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "env", "GOCACHE")
+	cmd := exec.CommandContext(ctx, goBin, "env", "GOCACHE")
 	cmd.Dir = os.TempDir()
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local")
 	out, err := cmd.Output()
