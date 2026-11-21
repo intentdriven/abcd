@@ -49,18 +49,25 @@ func unifiedDiff(path string, old, new []byte) string {
 		return ""
 	}
 	var w strings.Builder
-	from, to := "a/"+path, "b/"+path
-	if old == nil {
-		from = "/dev/null"
-	}
-	if new == nil {
-		to = "/dev/null"
-	}
-	w.WriteString("--- " + from + "\n+++ " + to + "\n")
+	w.WriteString(diffHeader(path, old == nil, new == nil))
 	for _, h := range hunks {
 		writeHunk(&w, ops[h[0]:h[1]], a, b)
 	}
 	return w.String()
+}
+
+// diffHeader is a unified diff's two file header lines for the file at path,
+// the old side /dev/null where the file was added and the new side where it
+// was deleted.
+func diffHeader(path string, added, deleted bool) string {
+	from, to := "a/"+path, "b/"+path
+	if added {
+		from = "/dev/null"
+	}
+	if deleted {
+		to = "/dev/null"
+	}
+	return "--- " + from + "\n+++ " + to + "\n"
 }
 
 // diffLines splits data into lines, each keeping its "\n", with CRLF read as

@@ -318,7 +318,7 @@ func assembleReview(ctx context.Context, in reviewInputs) (ReviewRequest, Review
 		text := unifiedDiff(p, old, now)
 		if inFrozen && inCopy && fe.mode != ce.mode {
 			if text == "" {
-				text = "--- a/" + p + "\n+++ b/" + p + "\n"
+				text = diffHeader(p, false, false)
 			}
 			text = "old mode " + fe.mode + "\nnew mode " + ce.mode + "\n" + text
 		}
@@ -326,9 +326,9 @@ func assembleReview(ctx context.Context, in reviewInputs) (ReviewRequest, Review
 			switch change {
 			case changeAdded:
 				// An empty file added: its header is the whole of its diff.
-				text = "--- /dev/null\n+++ b/" + p + "\n"
+				text = diffHeader(p, true, false)
 			case changeDeleted:
-				text = "--- a/" + p + "\n+++ /dev/null\n"
+				text = diffHeader(p, false, true)
 			default:
 				// The same text once line endings are normalised.
 				withhold(p, withheldLineEndings)
