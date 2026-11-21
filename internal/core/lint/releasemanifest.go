@@ -70,7 +70,9 @@ func missingManifestRefusal(repoRoot string, root *os.Root) string {
 // version is newer than every release tag, or the release is a re-gate: its
 // version is already tagged at the commit gated, and every newer release tag
 // descends from that commit. A version tagged at another commit is never
-// released again. "" admits; a repository whose releases never carried the
+// released again. The tags, the trees and the ancestry are read as stored, so
+// no refs/replace entry, graft file or commit-graph changes the commit a tag
+// peels to, what a tree holds, or which commits descend from which. "" admits; a repository whose releases never carried the
 // manifest keeps its own versioning; tags that cannot be listed inside a
 // checkout fail closed, and a tree outside git is left to the
 // missing-manifest refusal, which fails closed on it.
@@ -130,7 +132,7 @@ func backdatedReleaseRefusal(repoRoot string, root *os.Root, manifestPresent boo
 			"; a release's version is newer than every release tag, so the manifest-era refusals cannot be stepped around with an older version" + tail
 	}
 	for _, tag := range newer {
-		_, notAncestor, err := gitutil.RunCappedExitOne(repoRoot, 4096, "merge-base", "--is-ancestor", head, tag.commit)
+		_, notAncestor, err := gitutil.RunCappedExitOneAsStored(repoRoot, maxGitAnswerBytes, "merge-base", "--is-ancestor", head, tag.commit)
 		if err != nil {
 			return "receipt_gate cannot tell whether release v" + tag.version.String() + " descends from the commit gated (" + bareCause(err) + ")" + tail
 		}
@@ -158,9 +160,11 @@ var listReleaseTags = releaseTags
 // the v prefix, a pre-release or a build tag is not a release, as
 // launch.GitExistingTags reads them — that peels to a commit. A tag naming a blob or a tree, or a tag of a tag, is not a
 // release: the tag rules forbid deleting it, so reading it as one would let a
-// single stray tag refuse every later release for good.
+// single stray tag refuse every later release for good. A tag object is
+// peeled as stored, so no refs/replace entry stands another tag, naming
+// another commit, in for it.
 func releaseTags(repoRoot string) ([]releaseTag, error) {
-	out, err := gitutil.Run(repoRoot, "for-each-ref",
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxReleaseTagListing, "for-each-ref",
 		"--format=%(refname:strip=2)%09%(objecttype)%09%(objectname)%09%(*objecttype)%09%(*objectname)", "refs/tags/v*")
 	if err != nil {
 		return nil, err
@@ -189,10 +193,15 @@ func releaseTags(repoRoot string) ([]releaseTag, error) {
 	return tags, nil
 }
 
-// commitCarriesManifest reports whether commit's tree carries the release-gate
-// manifest. A git failure is an error, never an absence.
+// maxReleaseTagListing bounds the release tags' listing: far past any
+// repository's releases, and an error past it, never a partial list.
+const maxReleaseTagListing = 16 << 20
+
+// commitCarriesManifest reports whether commit's tree, read as stored,
+// carries the release-gate manifest. A git failure is an error, never an
+// absence.
 func commitCarriesManifest(repoRoot, commit string) (bool, error) {
-	out, err := gitutil.Run(repoRoot, "ls-tree", "--name-only", commit, "--", releaseGateManifestPath)
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxGitAnswerBytes, "ls-tree", "--name-only", commit, "--", releaseGateManifestPath)
 	if err != nil {
 		return false, err
 	}

@@ -15,6 +15,14 @@ import (
 // (.abcd/work/reviews/<content-sha>/<gate>.json).
 const reviewsSubdir = ".abcd/work/reviews"
 
+// Bounds on the derivation's git reads: a short answer (an object type, a
+// count, an ancestry verdict) and the receipts directory's listing. Output
+// past either is an error, never a truncated answer.
+const (
+	maxGitAnswerBytes  = 4096
+	maxReceiptsListing = 4 << 20
+)
+
 // DeriveReleaseContentSha resolves the reviewed CONTENT commit a release's
 // semantic gate must be armed against, by reading the RECEIPTS DIRECTORY of the
 // released tree rather than by walking commit ancestry (HEAD^2^ / HEAD^).
@@ -40,6 +48,11 @@ const reviewsSubdir = ".abcd/work/reviews"
 // It fails closed: an unreadable listing, no receipt directory on the released
 // lineage, or two equidistant candidates all return an error rather than a guess,
 // so an armed gate never resolves to the wrong commit or to nothing.
+//
+// Every read of history and of a tree is made as stored: no refs/replace
+// entry, graft file or commit-graph changes which receipts the released tree
+// holds, which commits are its ancestors, or what a CHANGELOG.md says, from
+// the objects a push sends.
 func DeriveReleaseContentSha(root, released string) (string, error) {
 	if !receiptShaRe.MatchString(released) {
 		return "", fmt.Errorf("release-gate: released commit %q is not a resolved commit sha", released)
@@ -59,11 +72,11 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 		if !receiptShaRe.MatchString(name) {
 			continue
 		}
-		typ, err := gitutil.Run(root, "cat-file", "-t", name)
+		typ, err := gitutil.RunCappedAsStored(root, maxGitAnswerBytes, "cat-file", "-t", name)
 		if err != nil || typ != "commit" {
 			continue
 		}
-		anc, err := gitutil.IsAncestor(root, name, released)
+		anc, err := gitutil.IsAncestorAsStored(root, name, released)
 		if err != nil {
 			return "", fmt.Errorf("release-gate: ancestry check for receipt commit %s: %w", name, err)
 		}
@@ -100,7 +113,7 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 	best, bestCount, tie := "", -1, false
 	nearest, nearestCount, nearestVersion := "", -1, ""
 	for _, c := range candidates {
-		out, err := gitutil.Run(root, "rev-list", "--count", c+".."+released)
+		out, err := gitutil.RunCappedAsStored(root, maxGitAnswerBytes, "rev-list", "--count", c+".."+released)
 		if err != nil {
 			return "", fmt.Errorf("release-gate: distance from receipt commit %s to released: %w", c, err)
 		}
@@ -153,7 +166,7 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 // state. An absent receipts directory yields no names and no error (the caller
 // fails closed on the empty candidate set); only a git failure is returned.
 func receiptDirNames(root, released string) ([]string, error) {
-	out, err := gitutil.Run(root, "ls-tree", released, reviewsSubdir+"/")
+	out, err := gitutil.RunCappedAsStored(root, maxReceiptsListing, "ls-tree", released, reviewsSubdir+"/")
 	if err != nil {
 		return nil, fmt.Errorf("release-gate: listing %s in the released tree: %w", reviewsSubdir, err)
 	}
@@ -232,12 +245,12 @@ func candidateVersionAt(root, rev string) (string, error) {
 // carries no such file; an unreadable blob is an error, and so is one past
 // maxChangelogBytes, the cap every other CHANGELOG read holds to: the blob is
 // never held whole in memory, and a truncated one is never parsed as if it were
-// the file (iss-2609261726015043).
+// the file (iss-2609261726015043). Both reads are made as stored.
 func changelogAt(root, rev string) (string, bool, error) {
-	if _, err := gitutil.Run(root, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
+	if _, err := gitutil.RunCappedAsStored(root, maxGitAnswerBytes, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
 		return "", false, nil
 	}
-	blob, err := gitutil.RunCapped(root, maxChangelogBytes, "cat-file", "blob", rev+":CHANGELOG.md")
+	blob, err := gitutil.RunCappedAsStored(root, maxChangelogBytes, "cat-file", "blob", rev+":CHANGELOG.md")
 	if err != nil {
 		return "", false, fmt.Errorf("release-gate: reading CHANGELOG.md at %s: %w", rev, err)
 	}
