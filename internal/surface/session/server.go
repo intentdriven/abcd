@@ -46,8 +46,9 @@ import (
 	"github.com/intentdriven/abcd/internal/surface/session/web"
 )
 
-// DefaultOrigin is the page's own origin. With loopback pages, for a page run
-// locally, it is the default allowlist, which Config.Origins replaces.
+// DefaultOrigin is the page's own origin. It alone is the default allowlist,
+// which Config.Origins replaces; a page run locally is admitted only through
+// an entry naming its exact origin.
 const DefaultOrigin = "https://abcdesign.app"
 
 // AppTypeGitHubApp is the one kind of GitHub sign-in app the relay takes. A
@@ -103,7 +104,7 @@ const (
 // Config is what the front door needs.
 type Config struct {
 	// Origins, each an exact scheme://host[:port], replace the default
-	// allowlist (DefaultOrigin and any loopback page) when given: a relay
+	// allowlist (DefaultOrigin alone) when given: a relay
 	// serving a page from its own origin admits nothing else. An entry may
 	// go on to name the page's base path, as `abcd session page --base-path`
 	// writes it (https://host/abcdesign/): the web sign-in's callback then
@@ -387,9 +388,11 @@ func (s *Server) pageBases(origin string) []string {
 }
 
 // originAllowed judges a request's Origin: one of the given origins exactly,
-// or, when none was given, DefaultOrigin or a loopback page. A request with
-// no Origin is refused: every browser sends one on a WebSocket and on a
-// cross-origin POST.
+// or, when none was given, DefaultOrigin alone. A page on a loopback address,
+// on any port, is admitted only when an entry names it: the web sign-in's
+// callback sends GitHub's code to an admitted page. A request with no Origin
+// is refused: every browser sends one on a WebSocket and on a cross-origin
+// POST.
 func (s *Server) originAllowed(origin string) bool {
 	n, ok := normalizeOrigin(origin)
 	if !ok {
@@ -398,15 +401,7 @@ func (s *Server) originAllowed(origin string) bool {
 	if s.origins != nil {
 		return s.origins[n]
 	}
-	if n == DefaultOrigin {
-		return true
-	}
-	u, _ := url.Parse(n)
-	switch u.Hostname() {
-	case "localhost", "127.0.0.1", "::1":
-		return true
-	}
-	return false
+	return n == DefaultOrigin
 }
 
 // clientAddress is the address the failed-join limit counts.

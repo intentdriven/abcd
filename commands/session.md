@@ -168,10 +168,12 @@ the proxy's `X-Forwarded-For` entry as each visitor's address, and belongs to
 the team's relay behind its host's proxy. On loopback without it, a visitor
 is counted by the tailnet address Tailscale Serve forwards, and only when the
 connection itself comes from loopback. By default it admits a page from
-`https://abcdesign.app` or loopback; `--origin` (repeatable) replaces that
-list, so the relay then admits exactly the origins named, and without
-`--origin` so does `ABCD_SESSION_ORIGINS`, a comma list of origins, which the
-blueprint sets on the team's relay. An entry for a page served below a base
+`https://abcdesign.app` alone, and no loopback page; `--origin` (repeatable)
+replaces that list, so the relay then admits exactly the origins named, and
+without `--origin` so does `ABCD_SESSION_ORIGINS`, a comma list of origins,
+which the blueprint sets on the team's relay. A session page served on this
+computer, while working on it, is admitted only by naming its exact origin,
+as `--origin http://127.0.0.1:<port>`. An entry for a page served below a base
 path names it after the origin, as `page --base-path` wrote it
 (`https://<host>/<base>/`); the sign-in's callback forwards only to the
 page's own base path, the root for an entry that names none. `--json` prints the

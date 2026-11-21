@@ -6734,9 +6734,11 @@ checkout's origin repository, or any repository outside a GitHub checkout.
 It serves the session WebSocket at /session, the sign-in's callback at
 /auth/callback (the callback URL the team's GitHub App lists) and its exchange
 at /auth/token, the GitHub App's public client id at /config and a health check
-at /healthz. It admits a browser only from https://abcdesign.app or a loopback
-page, or, when --origin is given, from exactly the origins it names, and otherwise, when
+at /healthz. It admits a browser only from https://abcdesign.app, or, when
+--origin is given, from exactly the origins it names, and otherwise, when
 ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
+A page served on this computer is admitted only when an entry names its exact
+origin, as http://127.0.0.1:<port>; no loopback page is admitted by default.
 An entry for a page served below a base path names it, as abcd session page
 --base-path wrote it (https://host/base/); the callback forwards a sign-in only
 to the page's own base path, the root for an entry that names none.
@@ -6758,7 +6760,7 @@ Exit 2 on a refusal, with nothing started.
       --behind-proxy[=true|false]   trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
       --client-id string            the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
       --listen string               the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
-      --origin stringArray          a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
+      --origin stringArray          a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app, and a page on this computer is admitted only when named, as http://127.0.0.1:<port>
       --owner stringArray           a GitHub user or organisation whose every repository to serve sessions for (repeatable)
       --repo stringArray            a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```

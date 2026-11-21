@@ -59,9 +59,11 @@ exchange at `/auth/token`, the device-flow sign-in at `/auth/device`,
 `/auth/device/token` and `/auth/device/cancel` (a local session only), the sign-in app's public
 client id and flow at `/config`, a health check at `/healthz`, and, for a
 local session only, the page's embedded files from a fixed route table. A browser is admitted only from
-`https://abcdesign.app`, a loopback page or another origin the host names, each
-an exact origin; a WebSocket or exchange with no origin, or another one, is
-refused with 403.
+`https://abcdesign.app` or another origin the host names, each an exact
+origin; a page on a loopback address is admitted only when the host names its
+origin, and a WebSocket or exchange with no origin, or another one, is refused
+with 403. The web sign-in's callback sends GitHub's code only to a session
+page on an admitted origin.
 
 ## Who may do what
 

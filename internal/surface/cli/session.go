@@ -335,9 +335,11 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"It serves the session WebSocket at /session, the sign-in's callback at\n" +
 			"/auth/callback (the callback URL the team's GitHub App lists) and its exchange\n" +
 			"at /auth/token, the GitHub App's public client id at /config and a health check\n" +
-			"at /healthz. It admits a browser only from https://abcdesign.app or a loopback\n" +
-			"page, or, when --origin is given, from exactly the origins it names, and otherwise, when\n" +
+			"at /healthz. It admits a browser only from https://abcdesign.app, or, when\n" +
+			"--origin is given, from exactly the origins it names, and otherwise, when\n" +
 			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
+			"A page served on this computer is admitted only when an entry names its exact\n" +
+			"origin, as http://127.0.0.1:<port>; no loopback page is admitted by default.\n" +
 			"An entry for a page served below a base path names it, as abcd session page\n" +
 			"--base-path wrote it (https://host/base/); the callback forwards a sign-in only\n" +
 			"to the page's own base path, the root for an entry that names none.\n" +
@@ -439,7 +441,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&listen, "listen", session.DefaultListen, "the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer")
 	c.Flags().BoolVar(&behindProxy, "behind-proxy", false, "trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy")
-	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also "+sessionOriginsEnv+"); given, it replaces the default of https://abcdesign.app and loopback pages")
+	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also "+sessionOriginsEnv+"); given, it replaces the default of https://abcdesign.app, and a page on this computer is admitted only when named, as http://127.0.0.1:<port>")
 	c.Flags().StringArrayVar(&repos, "repo", nil, "a repository to serve sessions for, as owner/name (repeatable; also "+sessionReposEnv+")")
 	c.Flags().StringArrayVar(&owners, "owner", nil, "a GitHub user or organisation whose every repository to serve sessions for (repeatable)")
 	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub sign-in app's public client id (default: "+sessionClientIDEnv+")")

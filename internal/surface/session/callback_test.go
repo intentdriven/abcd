@@ -194,3 +194,44 @@ func TestTheExchangeTakesOnlyItsOwnCallback(t *testing.T) {
 		t.Errorf("GitHub was sent redirect_uri %q, want %q", sent, own)
 	}
 }
+
+// TestTheCallbackSendsNothingToALoopbackPageUnlessNamed: with no origins
+// given, the callback sends a code to https://abcdesign.app alone. A page on
+// a loopback address, on any port, the relay's own included, is sent
+// nothing, and its exchange is refused, until an origin entry names it.
+func TestTheCallbackSendsNothingToALoopbackPageUnlessNamed(t *testing.T) {
+	f := newFixture(t, nil)
+	pages := []string{
+		"http://127.0.0.1:8000/acme/brief/brief/",
+		"http://localhost:5173/acme/brief/brief/",
+		"http://[::1]:3000/acme/brief/brief/",
+		"http://localhost/acme/brief/brief/",
+		f.http.URL + "/acme/brief/brief/",
+	}
+	for _, page := range pages {
+		resp, body := callback(t, f, url.Values{"code": {"good-code"}, "state": {signInState(page)}})
+		if resp.StatusCode != http.StatusBadRequest || resp.Header.Get("Location") != "" || strings.Contains(body, "good-code") {
+			t.Errorf("%s: %d %q %s, want 400 with nothing sent on", page, resp.StatusCode, resp.Header.Get("Location"), body)
+		}
+	}
+	if resp, _ := callback(t, f, url.Values{"code": {"good-code"}, "state": {signInState("https://abcdesign.app/acme/brief/brief/")}}); resp.StatusCode != http.StatusSeeOther ||
+		!strings.Contains(resp.Header.Get("Location"), "code=good-code") {
+		t.Errorf("the default page: %d %s, want 303 carrying the code", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	own := f.http.URL + CallbackPath
+	body := `{"code":"good-code","code_verifier":"` + verifier + `","redirect_uri":` + strconv.Quote(own) + `}`
+	for _, o := range []string{"http://127.0.0.1:8000", "http://localhost:5173", f.http.URL} {
+		if resp, got := post(t, f.http.URL+"/auth/token", o, body); resp.StatusCode != http.StatusForbidden || strings.Contains(got, "ghu_") {
+			t.Errorf("an exchange from %s: %d %s, want 403", o, resp.StatusCode, got)
+		}
+	}
+
+	// A local page is admitted once an entry names its exact origin.
+	g := newFixture(t, func(c *Config) { c.Origins = []string{"http://127.0.0.1:8000"} })
+	if resp, _ := callback(t, g, url.Values{"code": {"good-code"}, "state": {signInState("http://127.0.0.1:8000/acme/brief/brief/")}}); resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("a named loopback page: %d, want 303", resp.StatusCode)
+	}
+	if resp, _ := callback(t, g, url.Values{"code": {"good-code"}, "state": {signInState("http://127.0.0.1:8001/acme/brief/brief/")}}); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("a loopback page on another port: %d, want 400", resp.StatusCode)
+	}
+}

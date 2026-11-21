@@ -268,7 +268,7 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 		}
 	}
 
-	guest := f.dial(t, "http://localhost:5173")
+	guest := f.dial(t, origin)
 	guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
 	if j, _ := guest.until("joined"); j["role"] != "guest" {
 		t.Fatalf("joined = %v", j)
@@ -321,8 +321,8 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 }
 
 // TestDisallowedOriginIsRefused: by default the relay admits
-// https://abcdesign.app and loopback pages; given origins replace that list,
-// so then only they are admitted.
+// https://abcdesign.app alone, and no loopback page; given origins replace
+// that list, so then only they are admitted, a loopback page among them.
 func TestDisallowedOriginIsRefused(t *testing.T) {
 	refused := func(f *fixture, o string) {
 		t.Helper()
@@ -338,10 +338,9 @@ func TestDisallowedOriginIsRefused(t *testing.T) {
 		}
 	}
 	def := newFixture(t, nil)
-	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
-		def.dial(t, o)
-	}
-	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null"} {
+	def.dial(t, "https://abcdesign.app")
+	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null",
+		"http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost", "http://localhost:5173", def.http.URL} {
 		refused(def, o)
 	}
 	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org", "http://localhost:5173"} })
