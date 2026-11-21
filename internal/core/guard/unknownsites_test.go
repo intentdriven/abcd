@@ -80,9 +80,10 @@ var wordReaders = map[string]string{
 	// match.go
 	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
 	"exportStep":           "commandSites: a bare assignment is a command with no site",
+	"envSetBefore":         "isUnknown and couldSetName: a word the line does not fix among env's or sudo's operands, or one that writes an `=`, can set any name its lead allows",
 	"exportOperands":       "nameCouldBe, and clusterCouldCarry on every unknown option word",
 	"optionAfter":          "commandSites and nameCouldBe: a name a substitution prints can be set, setopt, unsetopt, emulate or shopt",
-	"setOption":            "isUnknown and clusterCouldCarry: an option word the line does not fix can be the option's letter or -o",
+	"setOption":            "isUnknown, knownLead and clusterCouldCarry: an option word the line does not fix can be any option of a set the line names, and the option's letter or -o otherwise",
 	"setoptOption":         "isUnknown: a word the line does not fix can name an option that sets it",
 	"emulateOption":        "isUnknown: a word the line does not fix is read as the mode, and set's reading takes the words after it",
 	"shoptOption":          "isUnknown and clusterCouldCarry: an option word the line does not fix can be -s or -o",
@@ -172,6 +173,7 @@ var wordReaders = map[string]string{
 	// the files it writes (adr-2610091150447054).
 	"after":                "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
 	"targetsOf":            "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"startOf":              "commandSites: every place the command that runs the file can sit is read for the assignments and options it hands the file",
 	"settingsFileReadings": "sitesNamed and isUnknown: a settings value the line does not fix names no file to read",
 	"actReadings":          "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
 	"adjacentFrom":         "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",

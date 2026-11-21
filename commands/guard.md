@@ -1243,15 +1243,31 @@ a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
 after the program's name while bash's `set -k` holds, an export inside an
 `eval` that stands before it, or an export in a file the line sources before
 it — is a **block** too (`agent-launch-opencode-permission-env`), and one that
-starts opencode without setting it is not. While allexport holds, every
-assignment exports: a bare one, a declaration builtin's, a name `read`,
-`printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or `select` loop's
-variable, and a `${NAME:=…}` expansion anywhere on the line. allexport is
-turned on by `set -a` and `set -o allexport`, zsh's `setopt allexport` in any
-spelling, `setopt -a` and `unsetopt +a`, a `setopt -m` pattern (read as turning
-it on, since the guard does not match patterns), `emulate MODE -o allexport`,
-bash's `shopt -so allexport`, and a shell started with `-a`, `-o allexport` or
-zsh's `--allexport`, or with a `SHELLOPTS` that names it. So is a line that sets
+starts opencode without setting it is not. The assignment's value may be one
+the line does not fix (`OPENCODE_PERMISSION="$(cat p.json)"`), and its name
+may be too where a program reads the word after the shell expands it: an
+operand of `env` or `sudo` before the command, or of `export` or a declaration
+builtin, whose name a substitution prints (`env "$(true)"NAME=…`, `env
+"$N"=…`, `env "$PAIR"`, `export "$N"`) is read as naming every variable an
+entry names. A script the line runs is judged with the environment the line
+hands it, so an export before `bash run.sh`, or an assignment before it,
+reaches the harness the script starts, and a file the line sources runs under
+the exports and options in force where the source stands. While allexport
+holds, every assignment exports: a bare one, a declaration builtin's, a name
+`read`, `printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or
+`select` loop's variable, and a `${NAME:=…}` expansion anywhere on the line.
+allexport is turned on by `set -a` and `set -o allexport`, a `set` whose
+option words the line does not fix (`set "$X"`, `set -o "$X"`), and a command
+whose name a substitution prints with an option word that can be `-a` or
+`-o`; zsh's `setopt allexport` in any spelling, `setopt -a` and `unsetopt
++a`, a `setopt -m` pattern (read as turning it on, since the guard does not
+match patterns), `emulate MODE -o allexport`, bash's `shopt -so allexport`,
+and a shell started with `-a`, `-o allexport` or zsh's `--allexport`, or with
+a `SHELLOPTS` that names it or that the line does not fix, whether assigned
+before the shell or exported earlier in the line (`export
+SHELLOPTS=allexport`, or bash's own `export SHELLOPTS` while allexport
+holds). A script such a shell runs starts with allexport on; a script run by a
+shell started without it starts with it off, as bash and zsh start it. So is a line that sets
 `OPENCODE_CONFIG`, a configuration file opencode loads,
 `OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
@@ -1348,7 +1364,11 @@ line is read from the default IFS), an export the walk does not place before
 the command it reaches, because the walk follows commands in the order they
 stand on the line and does not follow control flow (an export in a loop body
 that the loop's next pass reaches, or an export after a function or a `trap`
-action is defined and before it runs), a hazard inside a non-shell interpreter's payload (`python -c`,
+action is defined and before it runs), a `set` or an `export` whose own name a
+substitution prints and whose operands the line does not fix either (`$S
+"$X"`, `$E "$N"`), which is read by the option words and names it spells,
+because reading every such command as one would turn allexport on after
+ordinary commands, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

@@ -1606,7 +1606,8 @@
           "OPENCODE_CONFIG_CONTENT='{\"permission\":\"allow\"}' opencode run x",
           "export OPENCODE_CONFIG=/tmp/open.json; opencode run x",
           "OPENCODE_CONFIG_DIR='/tmp/oc' opencode run x",
-          "export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x"
+          "export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x",
+          "env OPENCODE_CONFIG=/tmp/open.json opencode run x"
         ],
         "known_good": [
           "opencode run \"fix the tests\"",
@@ -1629,7 +1630,8 @@
       "fixtures": {
         "known_bad": [
           "CLAUDE_CONFIG_DIR='/tmp/c' claude -p x",
-          "export CLAUDE_CONFIG_DIR=/tmp/c; claude -p x"
+          "export CLAUDE_CONFIG_DIR=/tmp/c; claude -p x",
+          "env CLAUDE_CONFIG_DIR=/tmp/c claude -p x"
         ],
         "known_good": [
           "claude -p \"fix the tests\"",

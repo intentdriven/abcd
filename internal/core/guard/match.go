@@ -382,33 +382,76 @@ func precededByCD(before []segment, chain int) bool {
 
 // envSetBefore reports whether a word before the command at site sets one
 // of names in its environment: an assignment word, which the walk steps as
-// the shell's own prefix or as an operand of env or sudo (envAssigns).
+// the shell's own prefix or as an operand of env or sudo (envAssigns). A
+// word the line does not fix counts where it writes an `=` its name can
+// stand before (`env "$(true)"NAME=…`, `env "$N"=…`), or, with no `=`
+// written, where it stands among env's or sudo's operands, which a
+// substitution can print whole (`env "$PAIR" opencode`); a word that is an
+// option's value (`sudo -u "$U"`) is no assignment.
 func envSetBefore(s segment, site int, names []string) bool {
+	operands := "" // the envAssigns wrapper whose operands the words since it are
 	for i := 0; i < site && i < len(s.tokens); i++ {
-		if setsName(s.tokens[i], names) {
+		tok := s.tokens[i]
+		if setsName(tok, names) || couldSetName(tok, names) && (strings.IndexByte(tok, '=') >= 0 || operands != "") {
+			return true
+		}
+		switch w := strings.ToLower(path.Base(tok)); {
+		case !isUnknown(tok) && envAssigns[w]:
+			operands = w
+		case operands == "env" && strings.HasPrefix(tok, "-"):
+		case operands != "" && (isUnknown(tok) || isWrapperAssignment(tok)):
+		default:
+			operands = ""
+		}
+	}
+	return false
+}
+
+// setsName reports whether the word tok sets one of names: `NAME=…`,
+// `NAME+=…`, which appends to it, or `NAME[SUB]=…` (splitAssignment),
+// whatever its value, a value the line does not fix among them.
+func setsName(tok string, names []string) bool {
+	name, _, _, _, ok := splitAssignment(tok)
+	return ok && containsString(names, name)
+}
+
+// couldSetName is setsName for an operand a program reads as an assignment
+// after the shell has expanded it: env's and sudo's operands before their
+// command, and export's and the declaration builtins'. A word whose name a
+// substitution prints can set any name its known lead allows
+// (assignmentCouldName), so `env "$(true)"NAME=…`, `env "$X"=…` and `export
+// "$PAIR"` can each set NAME.
+func couldSetName(tok string, names []string) bool {
+	if setsName(tok, names) {
+		return true
+	}
+	for _, n := range names {
+		if assignmentCouldName(tok, n) {
 			return true
 		}
 	}
 	return false
 }
 
-// setsName reports whether the known word tok sets one of names: `NAME=…`,
-// or `NAME+=…`, which appends to it.
-func setsName(tok string, names []string) bool {
-	if isUnknown(tok) {
+// assignmentCouldName reports whether a word the line does not fix can print
+// an assignment to name: the part of it before its first written `=` (the
+// whole word where it has none, the `=` then being one a substitution
+// prints) holds a substitution, and the text before that substitution is
+// the start of name, or name followed by the `+` or `[` that can stand
+// between a name and its `=`.
+func assignmentCouldName(tok, name string) bool {
+	head := tok
+	if eq := strings.IndexByte(tok, '='); eq >= 0 {
+		head = tok[:eq]
+	}
+	if !isUnknown(head) {
 		return false
 	}
-	eq := strings.IndexByte(tok, '=')
-	if eq <= 0 {
-		return false
+	lead := knownLead(head)
+	if strings.HasPrefix(name, lead) {
+		return true
 	}
-	name := strings.TrimSuffix(tok[:eq], "+")
-	for _, n := range names {
-		if name == n {
-			return true
-		}
-	}
-	return false
+	return strings.HasPrefix(lead, name) && (lead[len(name)] == '+' || lead[len(name)] == '[')
 }
 
 // exportState is what the export walk (exportsBefore) carries from one
@@ -416,10 +459,52 @@ func setsName(tok string, names []string) bool {
 // option holds (`set -k`: an assignment word anywhere among a command's
 // words is in that command's environment), and the names the walk reads an
 // export of, the entry's own and each nameref the line points at one of
-// them (namerefsTo).
+// them (namerefsTo). shellopts is the SHELLOPTS the shell hands the
+// programs it starts, "" where it hands none: bash starts with every option
+// an inherited SHELLOPTS names (shellStartsWith). optsAssigned is a value the
+// line assigned SHELLOPTS without exporting it, which an `export SHELLOPTS`
+// after it hands on.
 type exportState struct {
-	allexport, keyword bool
-	names              []string
+	allexport, keyword      bool
+	names                   []string
+	shellopts, optsAssigned string
+}
+
+// shelloptsName is the variable whose value bash reads its options from when
+// it starts.
+const shelloptsName = "SHELLOPTS"
+
+// shelloptsValue reads tok as an assignment to SHELLOPTS: its value, which
+// is unknownText where the word's name is not fixed and expanded is set, the
+// word being an operand a program reads after expansion (couldSetName).
+func shelloptsValue(tok string, expanded bool) (string, bool) {
+	if name, eq, _, _, ok := splitAssignment(tok); ok {
+		return tok[eq+1:], name == shelloptsName
+	}
+	if expanded && assignmentCouldName(tok, shelloptsName) {
+		return unknownText, true
+	}
+	return "", false
+}
+
+// shelloptsNames reports whether a SHELLOPTS value turns opt on: it names
+// it among its colon-separated options, or the line does not fix it.
+func shelloptsNames(v string, opt shellOption) bool {
+	return v != "" && (isUnknown(v) || containsString(strings.Split(v, ":"), opt.name))
+}
+
+// ownShellopts is the SHELLOPTS bash holds for its own options in st, which
+// `export SHELLOPTS` hands on where the line assigned it no value: the
+// options the walk follows that hold, and one that always does.
+func ownShellopts(st exportState) string {
+	opts := []string{"braceexpand"}
+	if st.allexport {
+		opts = append(opts, optAllexport.name)
+	}
+	if st.keyword {
+		opts = append(opts, optKeyword.name)
+	}
+	return strings.Join(opts, ":")
 }
 
 // The options the export walk follows, by the letter `set` takes and the
@@ -444,14 +529,22 @@ type shellOption struct {
 // declaration builtin makes, and a name a builtin assigns by its operands
 // (assignsOperand) or a `for` or `select` loop takes (loopNames) export too.
 // A file s sources runs in the same shell, so a variable it exports counts.
-// A name a substitution prints can be any of them (nameCouldBe).
+// A name a substitution prints can be any of them (nameCouldBe). The same
+// reading follows SHELLOPTS: assigned, and exported (exportState.shellopts).
 func exportStep(s segment, st exportState) (exports bool, after exportState) {
 	names := st.names
+	shellopts, assigned := st.shellopts, st.optsAssigned
 	sites := commandSites(s)
-	if st.allexport && len(sites) == 0 {
+	if len(sites) == 0 {
 		for _, tok := range s.tokens {
-			if setsName(tok, names) {
+			if st.allexport && setsName(tok, names) {
 				exports = true
+			}
+			if v, ok := shelloptsValue(tok, false); ok {
+				assigned = v
+				if st.allexport {
+					shellopts = v
+				}
 			}
 		}
 	}
@@ -463,21 +556,38 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 		if !ok || !(explicit || st.allexport && !unexports) {
 			continue
 		}
+		// A builtin the line names reads each operand after expansion, so
+		// one whose name a substitution prints can be any of the names
+		// (couldSetName); one whose own name the line does not fix is read
+		// by the operands it spells, or every command it ran would export.
+		fixed := !isUnknown(s.tokens[a.idx])
+		named := func(tok, n string) bool { return tok == n || fixed && wordCouldBe(tok, n) }
 		for _, tok := range s.tokens[first:] {
-			if setsName(tok, names) {
+			if setsName(tok, names) || fixed && couldSetName(tok, names) {
 				exports = true
 			}
 			for _, n := range names {
-				if explicit && tok == n {
+				if explicit && named(tok, n) {
 					exports = true
 				}
+			}
+			if explicit && named(tok, shelloptsName) {
+				shellopts = assigned
+				if shellopts == "" {
+					shellopts = ownShellopts(st)
+				}
+			}
+			if v, ok := shelloptsValue(tok, fixed); ok {
+				shellopts = v
 			}
 		}
 	}
 	after = exportState{
-		allexport: optionAfter(s, st.allexport, optAllexport),
-		keyword:   optionAfter(s, st.keyword, optKeyword),
-		names:     namerefsTo(s, names),
+		allexport:    optionAfter(s, st.allexport, optAllexport, st.shellopts),
+		keyword:      optionAfter(s, st.keyword, optKeyword, st.shellopts),
+		names:        namerefsTo(s, names),
+		shellopts:    shellopts,
+		optsAssigned: assigned,
 	}
 	// Each file s sources is read as its own walk, from the state the source
 	// runs under; where s sources several files (one per way the line can be
@@ -489,6 +599,9 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 			exports = exports || e
 			out.allexport = out.allexport || end.allexport
 			out.keyword = out.keyword || end.keyword
+			if end.shellopts != in.shellopts {
+				out.shellopts = end.shellopts
+			}
 		}
 		after = out
 	}
@@ -508,6 +621,12 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 // allexport holds such an assignment of one of the names counts as an
 // export from the first command allexport holds at.
 func exportsBefore(segs []segment, st exportState) (before []bool, exported bool, end exportState) {
+	before, _, exported, end = exportWalk(segs, st)
+	return before, exported, end
+}
+
+// exportWalk is exportsBefore, and the state before each command of segs.
+func exportWalk(segs []segment, st exportState) (before []bool, states []exportState, exported bool, end exportState) {
 	expands := false
 	for _, s := range segs {
 		for _, n := range s.assignsInText {
@@ -515,7 +634,9 @@ func exportsBefore(segs []segment, st exportState) (before []bool, exported bool
 		}
 	}
 	before = make([]bool, len(segs))
+	states = make([]exportState, len(segs))
 	for _, i := range runSequence(segs) {
+		states[i] = st
 		before[i] = exported || st.keyword && assignsAfterCommand(segs[i], st.names)
 		e, next := exportStep(segs[i], st)
 		if expands && (st.allexport || next.allexport) {
@@ -523,7 +644,7 @@ func exportsBefore(segs []segment, st exportState) (before []bool, exported bool
 		}
 		exported, st = exported || e, next
 	}
-	return before, exported, st
+	return before, states, exported, st
 }
 
 // assignsAfterCommand reports whether an assignment word to one of names
@@ -675,46 +796,73 @@ func runSequence(segs []segment) []int {
 // where the shell stands (runOrder), so an option the shell starts with
 // holds for the commands after it on the line too, a reading that counts
 // more exports, never fewer. A word a substitution prints can be an option
-// that sets it.
-func optionAfter(s segment, on bool, opt shellOption) bool {
-	for _, a := range commandSites(s) {
+// that sets it. shellopts is the SHELLOPTS the shell hands the shells it
+// starts (exportState.shellopts).
+func optionAfter(s segment, on bool, opt shellOption, shellopts string) bool {
+	sites := commandSites(s)
+	if len(sites) == 0 {
+		return on
+	}
+	// Each place the command can sit, and each builtin a name the line does
+	// not fix can be, is one way the command runs: opt holds after it where
+	// any of them leaves it on (`$S -a` is set's -a and also unsetopt's).
+	after := false
+	for _, a := range sites {
 		tok := s.tokens[a.idx]
 		args := s.tokens[a.idx+1:]
+		var ways []bool
 		if nameCouldBe(tok, "set") {
-			on = setOption(args, on, opt)
+			ways = append(ways, setOption(args, on, opt, !isUnknown(tok)))
 		}
 		if nameCouldBe(tok, "setopt") {
-			on = setoptOption(args, on, opt, true)
+			ways = append(ways, setoptOption(args, on, opt, true))
 		}
 		if nameCouldBe(tok, "unsetopt") {
-			on = setoptOption(args, on, opt, false)
+			ways = append(ways, setoptOption(args, on, opt, false))
 		}
 		if nameCouldBe(tok, "emulate") {
-			on = emulateOption(args, on, opt)
+			ways = append(ways, emulateOption(args, on, opt, !isUnknown(tok)))
 		}
 		if nameCouldBe(tok, "shopt") {
-			on = shoptOption(args, on, opt)
+			ways = append(ways, shoptOption(args, on, opt))
 		}
-		if shellStartsWith(s, a.idx, opt) {
-			on = true
+		if len(ways) == 0 {
+			ways = append(ways, on)
+		}
+		if shellStartsWith(s, a.idx, opt, shellopts) {
+			ways = append(ways, true)
+		}
+		for _, w := range ways {
+			after = after || w
 		}
 	}
-	return on
+	return after
 }
 
 // setOption is opt after set's arguments args, given on before them: `-X`
 // sets the option whose letter is X and `+X` unsets it, alone or in a
 // cluster, and `-o NAME` and `+o NAME` name it, zsh also reading the name
 // from the rest of the word (`-oallexport`). Options end at `--`, `-`, or the
-// first word that is not one, which starts the positional parameters.
-func setOption(args []string, on bool, opt shellOption) bool {
+// first word that is not one, which starts the positional parameters. A word
+// the line does not fix whose known lead is empty or a dash can be any
+// option, opt among them, so it sets opt where named records that the line
+// spells set's own name: `set "$X"` and `set -e$X` turn allexport on, while
+// `set x"$X"` starts the positional parameters. A command whose name a
+// substitution prints is read by the option words it can be
+// (clusterCouldCarry), or every such command with an argument it does not
+// fix would turn the option on.
+func setOption(args []string, on bool, opt shellOption, named bool) bool {
 	for i := 0; i < len(args); i++ {
 		w := args[i]
 		if w == "--" || w == "-" {
 			break
 		}
 		if isUnknown(w) {
-			on = on || clusterCouldCarry(w, opt.letter) || clusterCouldCarry(w, 'o')
+			lead := knownLead(w)
+			if named && lead != "" && lead[0] != '-' && lead[0] != '+' {
+				break
+			}
+			on = on || named && (lead == "" || lead[0] == '-') || clusterCouldCarry(w, opt.letter) || clusterCouldCarry(w, 'o')
 			continue
 		}
 		if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
@@ -797,12 +945,12 @@ func setoptOption(args []string, on bool, opt shellOption, sets bool) bool {
 
 // emulateOption is opt after the arguments of zsh's `emulate [-lLR] MODE
 // [OPTIONS]`, given on before them: the options after the mode are set's.
-func emulateOption(args []string, on bool, opt shellOption) bool {
+func emulateOption(args []string, on bool, opt shellOption, named bool) bool {
 	for i, w := range args {
 		if !isUnknown(w) && strings.HasPrefix(w, "-") {
 			continue
 		}
-		return setOption(args[i+1:], on, opt)
+		return setOption(args[i+1:], on, opt, named)
 	}
 	return on
 }
@@ -845,19 +993,20 @@ func shoptOption(args []string, on bool, opt shellOption) bool {
 // (isShellFamily) with opt on: its letter in a cluster of options, its name
 // after `-o`, in the rest of an `-o` word or as zsh's `--NAME`, among the
 // options before the shell's first operand; or a SHELLOPTS among the
-// assignments before the shell, through env too, that names it. A word the
-// line does not fix among the options, or as SHELLOPTS's value, can set it.
-func shellStartsWith(s segment, site int, opt shellOption) bool {
+// assignments before the shell, through env too, or in shellopts, the
+// SHELLOPTS the line exported before it, that names it. A word the line
+// does not fix among the options, or as SHELLOPTS's value or name, can set
+// it.
+func shellStartsWith(s segment, site int, opt shellOption, shellopts string) bool {
 	tok := s.tokens[site]
 	if isUnknown(tok) || strings.ContainsRune(tok, varMark) || !isShellFamily(path.Base(tok)) {
 		return false
 	}
+	if shelloptsNames(shellopts, opt) {
+		return true
+	}
 	for _, w := range s.tokens[:site] {
-		name, eq, _, _, ok := splitAssignment(w)
-		if !ok || name != "SHELLOPTS" {
-			continue
-		}
-		if isUnknown(w) || containsString(strings.Split(w[eq+1:], ":"), opt.name) {
+		if v, ok := shelloptsValue(w, true); ok && shelloptsNames(v, opt) {
 			return true
 		}
 	}

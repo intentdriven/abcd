@@ -822,7 +822,11 @@ launchers the registry steps, so a harness started under another name, a copied
 or linked binary run by that name, is not recognisable at this layer
 (iss-2610162027075062). An agent-launch entry that names a harness's
 environment reads every way the line exports a variable to it, allexport and
-the assignments it turns into exports included, and the `claude --settings`
+the assignments it turns into exports included, with an assignment whose name
+or value the line does not fix read as setting the variable, a `set` whose
+option words it does not fix and a `SHELLOPTS` exported before a shell read as
+turning allexport on, and a script the line runs judged with the environment
+and the allexport state its shell starts with, and the `claude --settings`
 entry reads the settings JSON on the line and in the file it names, refusing
 settings that turn the permission checks off, grant permission rules or
 declare hooks, and settings it cannot read now (text that does not parse, a

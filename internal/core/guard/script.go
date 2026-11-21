@@ -385,10 +385,25 @@ func (rc *readCtx) note(format string, args ...any) {
 func (rc *readCtx) onStack(real string) bool { return containsString(rc.stack, real) }
 
 // scriptRun is how a script the line runs is read: the depth its commands
-// start at, and the shell state they start in.
+// start at, the shell state they start in, and what the export walk knows
+// of that shell when it starts (scriptStart).
 type scriptRun struct {
 	depth int
 	state *shellState
+	start scriptStart
+}
+
+// scriptStart is what the export walk (exportsBefore) carries into a script
+// the line runs: the options it follows as they hold when the script starts,
+// the SHELLOPTS its environment holds, and the variables an entry names
+// (Pattern.Env) that its environment holds. A sourced file starts in the
+// shell the source stands in, under its options; a child shell starts with
+// the options it is started with or an inherited SHELLOPTS names, and with
+// what the line exported or assigned for it.
+type scriptStart struct {
+	allexport, keyword bool
+	shellopts          string
+	env                []string
 }
 
 // shellState is what the guard knows of the shell a command runs in: its
@@ -1170,12 +1185,77 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) ([]pa
 			}
 		}
 		var sourced [][]segment
+		p.t.start = r.startOf(segs, p.seg, p.t.sourced, run)
 		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before, &sourced)...)
 		// A sourced file runs in the line's own shell, so the export walk
 		// reads its commands where the source stands (exportStep).
 		segs[p.seg].sourced = append(segs[p.seg].sourced, sourced...)
 	}
 	return signals, readings
+}
+
+// startOf is what the export walk carries into a file segment i of segs
+// points a shell at (scriptStart), sourced where the file runs in the
+// segment's own shell. The walk runs from the state run starts the text in,
+// and reads, for each variable an entry names, whether a command before
+// segment i exports it or an assignment before one of the segment's commands
+// sets it for that command (envSetBefore). Each target walks the line
+// afresh, so a file an earlier target sourced counts (exportStep).
+func (r Registry) startOf(segs []segment, i int, sourced bool, run *scriptRun) scriptStart {
+	var in scriptStart
+	if run != nil {
+		in = run.start
+	}
+	names := r.envNames()
+	if len(names) == 0 {
+		return scriptStart{}
+	}
+	s := segs[i]
+	sites := commandSites(s)
+	out := scriptStart{env: append([]string(nil), in.env...)}
+	var st exportState
+	for _, n := range names {
+		before, states, _, _ := exportWalk(segs, exportState{names: []string{n}, allexport: in.allexport, keyword: in.keyword, shellopts: in.shellopts})
+		st = states[i]
+		set := before[i]
+		for _, a := range sites {
+			set = set || envSetBefore(s, a.idx, []string{n})
+		}
+		if set && !containsString(out.env, n) {
+			out.env = append(out.env, n)
+		}
+	}
+	if sourced {
+		out.allexport, out.keyword, out.shellopts = st.allexport, st.keyword, st.shellopts
+		return out
+	}
+	out.shellopts = st.shellopts
+	for _, a := range sites {
+		for _, w := range s.tokens[:a.idx] {
+			if v, ok := shelloptsValue(w, true); ok {
+				out.shellopts = v
+			}
+		}
+		out.allexport = out.allexport || shellStartsWith(s, a.idx, optAllexport, st.shellopts)
+		out.keyword = out.keyword || shellStartsWith(s, a.idx, optKeyword, st.shellopts)
+	}
+	out.allexport = out.allexport || shelloptsNames(out.shellopts, optAllexport)
+	out.keyword = out.keyword || shelloptsNames(out.shellopts, optKeyword)
+	return out
+}
+
+// envNames is every variable an entry of r names (Pattern.Env), sorted.
+func (r Registry) envNames() []string {
+	var out []string
+	for _, e := range r.Entries {
+		for _, n := range e.Pattern.Env {
+			if !containsString(out, n) {
+				out = append(out, n)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // settingsFileReadings is, for each command of segs that hands a program a
@@ -2049,6 +2129,8 @@ type readTarget struct {
 	// write on the search can supply (iss-2610120953449511).
 	shadows []string
 	missing string
+	// start is what the export walk carries into the file (scriptStart).
+	start scriptStart
 	// blind records a file named relative to a working directory the line
 	// leaves unknown, or a search that looked in one: the file that runs is
 	// not one the guard can name, so a write before it may be that file.
@@ -3045,13 +3127,13 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
 			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
-					kind: targetStartup, env: t.env}, before, nil)...)
+					kind: targetStartup, env: t.env, start: t.start}, before, nil)...)
 			}
 		}
 	}
 	text := string(fr.data)
 	rc.stack = append(rc.stack, real)
-	v, err := r.judge(text, rc, &scriptRun{depth: s.depth + 1, state: state})
+	v, err := r.judge(text, rc, &scriptRun{depth: s.depth + 1, state: state, start: t.start})
 	rc.stack = rc.stack[:len(rc.stack)-1]
 	if err != nil {
 		sig := unparsableSignal(err)

@@ -785,10 +785,23 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		// exported records, per command, whether a command that runs before
 		// it exports a variable the entry names (Pattern.Env): an export
 		// holds for the rest of the shell, so it is carried along the line in
-		// the order the commands run (exportsBefore).
+		// the order the commands run (exportsBefore). A script the line runs
+		// starts with what the walk carried into it (scriptStart): a variable
+		// its environment already holds is in every command's.
 		var exported []bool
 		if len(p.Env) > 0 {
-			exported, _, _ = exportsBefore(segs, exportState{names: p.Env})
+			st := exportState{names: p.Env}
+			inherited := false
+			if run != nil {
+				st.allexport, st.keyword, st.shellopts = run.start.allexport, run.start.keyword, run.start.shellopts
+				for _, n := range p.Env {
+					inherited = inherited || containsString(run.start.env, n)
+				}
+			}
+			exported, _, _ = exportsBefore(segs, st)
+			for i := range exported {
+				exported[i] = exported[i] || inherited
+			}
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
