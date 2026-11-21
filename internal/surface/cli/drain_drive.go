@@ -498,7 +498,7 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	f.reached, f.said, f.stopped = &reached, &said, &stopped
 	if f.resuming() {
 		f.startedOn = driveFileDigest(f.self.Path)
-		runner.PinPrograms(drivePrograms...)
+		runner.PinPrograms(repoRoot, drivePrograms...)
 		roots, _ := layered.RootsFor(repoRoot)
 		f.began = runner.PinStart(roots.Home)
 	}
@@ -683,7 +683,7 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 	stopAsking()
 	// What a program name means is fixed now, hooks the driver's git runs get only
 	// what a stage carries, and only the push keeps the person's credentials.
-	runner.PinPrograms(drivePrograms...)
+	runner.PinPrograms(repoRoot, drivePrograms...)
 	gitutil.SetHookedEnv(runner.HookedEnv(p))
 	defer gitutil.SetHookedEnv(nil)
 	// The signal handling says what each signal did while the drive writes.

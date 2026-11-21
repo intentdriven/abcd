@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
@@ -58,11 +59,14 @@ const (
 // PinPrograms fixes what each program name means for the rest of this process and
 // what it starts: the directory each resolves into goes first on PATH, in PATH's
 // own order, so each name keeps its first match and one placed earlier on PATH
-// later is not what runs. A name not on PATH is left.
-func PinPrograms(names ...string) {
+// later is not what runs. A name not on PATH is left, and so is a name PATH finds
+// inside dir or the process's working directory, or any working tree either lies
+// in (tools.LookPath): its directory is never moved ahead, and the program is
+// left to each caller's own lookup, which refuses it.
+func PinPrograms(dir string, names ...string) {
 	var dirs []string
 	for _, name := range names {
-		if p, err := exec.LookPath(name); err == nil && filepath.IsAbs(p) && !slices.Contains(dirs, filepath.Dir(p)) {
+		if p, err := tools.LookPath(name, dir); err == nil && !slices.Contains(dirs, filepath.Dir(p)) {
 			dirs = append(dirs, filepath.Dir(p))
 		}
 	}
