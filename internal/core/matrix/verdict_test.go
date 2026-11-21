@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 var t0 = time.Date(2026, 11, 21, 10, 0, 0, 0, time.UTC)
@@ -207,7 +208,7 @@ func TestVerdictsAreRecordedAgainstTheRunsOwnPacketOrNotAtAll(t *testing.T) {
 	if err := writeJudging(root, m.ID, p, k); !errors.Is(err, lab.ErrRefused) {
 		t.Fatalf("a second writeJudging = %v; want a refusal, never an overwrite", err)
 	}
-	dir := filepath.Join(runDir(home, m, rec.RunID), "judging", p.Task)
+	dir := filepath.Join(runDir(home, m, rec.RunID), "judging", k.Task)
 	for _, f := range []string{"packet.json", "key.json"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Fatalf("%s: %v", f, err)
@@ -216,7 +217,7 @@ func TestVerdictsAreRecordedAgainstTheRunsOwnPacketOrNotAtAll(t *testing.T) {
 	verdicts := filepath.Join(dir, "verdicts.json")
 
 	bad := verdictFile(t, k.Packet, verdictOn(p.Slots[0], JudgeID{GitHub: "member-one"}, t0), Verdict{Slot: p.Slots[1].ID})
-	if _, err := recordVerdicts(root, m.ID, rec.RunID, p.Task, bad, ""); err == nil {
+	if _, err := recordVerdicts(root, m.ID, rec.RunID, k.Task, bad, ""); err == nil {
 		t.Fatal("a malformed verdict file was recorded")
 	}
 	if _, err := os.Stat(verdicts); !errors.Is(err, os.ErrNotExist) {
@@ -224,7 +225,7 @@ func TestVerdictsAreRecordedAgainstTheRunsOwnPacketOrNotAtAll(t *testing.T) {
 	}
 
 	good := verdictFile(t, k.Packet, verdictOn(p.Slots[0], JudgeID{GitHub: "member-one"}, t0))
-	r, err := recordVerdicts(root, m.ID, rec.RunID, p.Task, good, "")
+	r, err := recordVerdicts(root, m.ID, rec.RunID, k.Task, good, "")
 	if err != nil || len(r.Members) != 1 {
 		t.Fatalf("recordVerdicts = %+v, %v", r, err)
 	}
@@ -236,10 +237,46 @@ func TestVerdictsAreRecordedAgainstTheRunsOwnPacketOrNotAtAll(t *testing.T) {
 	if err := json.Unmarshal(data, &back); err != nil || back.Packet != k.Packet || len(back.Members) != 1 {
 		t.Fatalf("verdicts.json = %s, %v", data, err)
 	}
-	if _, err := recordVerdicts(root, m.ID, rec.RunID, p.Task, good, ""); !errors.Is(err, lab.ErrRefused) {
+	if _, err := recordVerdicts(root, m.ID, rec.RunID, k.Task, good, ""); !errors.Is(err, lab.ErrRefused) {
 		t.Fatalf("a second recordVerdicts = %v; want a refusal, never an overwrite", err)
 	}
 	if _, err := recordVerdicts(root, m.ID, rec.RunID, "other-page", good, ""); err == nil {
 		t.Fatal("verdicts for a task the run drew no judging for were recorded")
+	}
+}
+
+// A refusal that echoes what the verdict file said masks its terminal and
+// direction controls with '?', the way every other abcd echo of untrusted
+// text does (termsafe), never relying on the quoting alone.
+func TestAVerdictRefusalEchoesNoControlCharacter(t *testing.T) {
+	p, k := judged(t, false)
+	s := p.Slots[0]
+	const hostile = "Z\x1b[31mZ\u202e\u0085"
+	const masked = "Z?[31mZ??"
+	mutated := func(f func(*Verdict)) []byte {
+		v := verdictOn(s, JudgeID{GitHub: "member-one"}, t0)
+		f(&v)
+		return verdictFile(t, k.Packet, v)
+	}
+	cases := map[string][]byte{
+		"slot":        mutated(func(v *Verdict) { v.Slot = hostile }),
+		"ranking":     mutated(func(v *Verdict) { v.Ranking[0] = hostile }),
+		"good enough": mutated(func(v *Verdict) { v.GoodEnough[hostile] = true }),
+		"login":       mutated(func(v *Verdict) { v.Judge = JudgeID{GitHub: hostile} }),
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ingestVerdicts(p, k, data, "")
+			if err == nil {
+				t.Fatal("ingested; want a refusal")
+			}
+			if msg := err.Error(); !strings.Contains(msg, masked) || termsafe.SanitizeLine(msg) != msg {
+				t.Fatalf("refusal %q; want the echo masked as %q", msg, masked)
+			}
+		})
+	}
+	_, err := ingestVerdicts(p, k, verdictFile(t, k.Packet, verdictOn(s, JudgeID{GitHub: "member-one"}, t0)), hostile)
+	if err == nil || !strings.Contains(err.Error(), masked) {
+		t.Fatalf("a hostile host login = %v; want the echo masked as %q", err, masked)
 	}
 }

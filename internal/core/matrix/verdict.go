@@ -30,6 +30,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // VerdictSchema is the verdict file's schema version.
@@ -114,6 +115,11 @@ var guestRe = regexp.MustCompile(`^[A-Za-z0-9_-]{22,128}$`)
 
 func validLogin(s string) bool { return len(s) <= loginMax && loginRe.MatchString(s) }
 
+// echo is untrusted text as a refusal quotes it: its terminal and direction
+// controls masked with '?' (termsafe), then bounded (clip), so a verdict file
+// cannot write a control into the line that refuses it.
+func echo(s string) string { return clip(termsafe.SanitizeLine(s)) }
+
 // identity is a judge's identity as one key: a login compared without case, as
 // GitHub compares it.
 func (j JudgeID) identity() string {
@@ -138,7 +144,7 @@ func ingest(p JudgingPacket, k JudgingKey, data []byte, host string) (JudgingRes
 		return JudgingResult{}, err
 	}
 	if host != "" && !validLogin(host) {
-		return JudgingResult{}, fmt.Errorf("the host %q is not a GitHub login", clip(host))
+		return JudgingResult{}, fmt.Errorf("the host %q is not a GitHub login", echo(host))
 	}
 	if len(data) > maxVerdictFileBytes {
 		return JudgingResult{}, fmt.Errorf("it is %d bytes, past its bound of %d", len(data), maxVerdictFileBytes)
@@ -186,7 +192,7 @@ func ingest(p JudgingPacket, k JudgingKey, data []byte, host string) (JudgingRes
 	slices.SortFunc(ids, func(a, b string) int {
 		return cmp.Or(f.Verdicts[last[a]].GivenAt.Compare(f.Verdicts[last[b]].GivenAt), strings.Compare(a, b))
 	})
-	r := JudgingResult{SchemaVersion: JudgingSchema, Run: p.Run, Task: p.Task, Packet: k.Packet, Superseded: superseded}
+	r := JudgingResult{SchemaVersion: JudgingSchema, Run: k.Run, Task: k.Task, Packet: k.Packet, Superseded: superseded}
 	for n, id := range ids {
 		v := f.Verdicts[last[id]]
 		jr := JudgeRanking{Judge: fmt.Sprintf("j%d", n+1), Slot: v.Slot, GivenAt: v.GivenAt.UTC()}
@@ -218,7 +224,7 @@ func (v Verdict) validate(slots map[string]JudgeSlot, guests bool) error {
 	case (j.GitHub == "") == (j.Guest == ""):
 		return errors.New("it names no judge, or both a login and a guest token")
 	case j.GitHub != "" && !validLogin(j.GitHub):
-		return fmt.Errorf("the judge %q is not a GitHub login", clip(j.GitHub))
+		return fmt.Errorf("the judge %q is not a GitHub login", echo(j.GitHub))
 	case j.Guest != "" && !guestRe.MatchString(j.Guest):
 		return errors.New("the guest token is not one a session issues")
 	case j.Guest != "" && !guests:
@@ -226,7 +232,7 @@ func (v Verdict) validate(slots map[string]JudgeSlot, guests bool) error {
 	}
 	s, ok := slots[v.Slot]
 	if !ok {
-		return fmt.Errorf("it judges the subset %q, which the packet does not draw", clip(v.Slot))
+		return fmt.Errorf("it judges the subset %q, which the packet does not draw", echo(v.Slot))
 	}
 	if !v.Calibrated {
 		return errors.New("its judge did not calibrate on the good and the bad example first")
@@ -241,7 +247,7 @@ func (v Verdict) validate(slots map[string]JudgeSlot, guests bool) error {
 	ranked := map[string]bool{}
 	for _, c := range v.Ranking {
 		if !codes[c] || ranked[c] {
-			return fmt.Errorf("its ranking names %q, not a code of its subset or named twice", clip(c))
+			return fmt.Errorf("its ranking names %q, not a code of its subset or named twice", echo(c))
 		}
 		ranked[c] = true
 	}
@@ -250,7 +256,7 @@ func (v Verdict) validate(slots map[string]JudgeSlot, guests bool) error {
 	}
 	for c := range v.GoodEnough {
 		if !codes[c] {
-			return fmt.Errorf("it marks %q, not a code of its subset", clip(c))
+			return fmt.Errorf("it marks %q, not a code of its subset", echo(c))
 		}
 	}
 	if len(v.GoodEnough) != len(codes) {
@@ -264,14 +270,15 @@ func sameVerdict(a, b Verdict) bool {
 	return a.Slot == b.Slot && a.Calibrated == b.Calibrated && slices.Equal(a.Ranking, b.Ranking) && maps.Equal(a.GoodEnough, b.GoodEnough)
 }
 
-// keyed holds a packet and its key to one another: one run and task, the key
-// naming the packet's digest, and every document a subset shows keyed.
+// keyed holds a packet and its key to one another: the key naming a run and
+// task and the packet's digest, and every document a subset shows keyed. The
+// packet names no run or task of its own; its digest binds it to the key.
 func keyed(p JudgingPacket, k JudgingKey) error {
 	if p.SchemaVersion != JudgingSchema || k.SchemaVersion != JudgingSchema {
 		return fmt.Errorf("the judging's schema_version is %d and its key's %d; this abcd reads %d", p.SchemaVersion, k.SchemaVersion, JudgingSchema)
 	}
-	if p.Run != k.Run || p.Task != k.Task {
-		return errors.New("the judging's key is another run's or task's")
+	if !runIDRe.MatchString(k.Run) || !validID(k.Task) {
+		return fmt.Errorf("the judging's key names no run and task (%q, %q)", echo(k.Run), echo(k.Task))
 	}
 	d, err := p.digest()
 	if err != nil {
@@ -296,9 +303,6 @@ func judgingRel(run, task, name string) string { return run + "/judging/" + task
 // writeJudging writes a writing task's packet and key into its run's
 // directory, together and once, beside a run record already written there.
 func writeJudging(repoRoot, labID string, p JudgingPacket, k JudgingKey) error {
-	if !runIDRe.MatchString(p.Run) || !validID(p.Task) {
-		return fmt.Errorf("the judging names no run and task (%q, %q)", clip(p.Run), clip(p.Task))
-	}
 	if err := keyed(p, k); err != nil {
 		return err
 	}
@@ -307,7 +311,7 @@ func writeJudging(repoRoot, labID string, p JudgingPacket, k JudgingKey) error {
 		return err
 	}
 	defer proc.Close()
-	if _, err := proc.ReadState(p.Run + "/run.json"); err != nil {
+	if _, err := proc.ReadState(k.Run + "/run.json"); err != nil {
 		return fmt.Errorf("the judging is not written: its run's record is not: %w", err)
 	}
 	pd, err := json.Marshal(p)
@@ -319,8 +323,8 @@ func writeJudging(repoRoot, labID string, p JudgingPacket, k JudgingKey) error {
 		return err
 	}
 	return proc.WriteStates(
-		lab.StateFile{Rel: judgingRel(p.Run, p.Task, "packet.json"), Data: pd},
-		lab.StateFile{Rel: judgingRel(p.Run, p.Task, "key.json"), Data: kd},
+		lab.StateFile{Rel: judgingRel(k.Run, k.Task, "packet.json"), Data: pd},
+		lab.StateFile{Rel: judgingRel(k.Run, k.Task, "key.json"), Data: kd},
 	)
 }
 
@@ -329,7 +333,7 @@ func writeJudging(repoRoot, labID string, p JudgingPacket, k JudgingKey) error {
 // does not validate records nothing.
 func recordVerdicts(repoRoot, labID, run, task string, data []byte, host string) (JudgingResult, error) {
 	if !runIDRe.MatchString(run) || !validID(task) {
-		return JudgingResult{}, fmt.Errorf("%q and %q are not a run and a task", clip(run), clip(task))
+		return JudgingResult{}, fmt.Errorf("%q and %q are not a run and a task", echo(run), echo(task))
 	}
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
@@ -347,7 +351,7 @@ func recordVerdicts(repoRoot, labID, run, task string, data []byte, host string)
 			return JudgingResult{}, fmt.Errorf("the judging's %s does not parse: %w", name, err)
 		}
 	}
-	if p.Run != run || p.Task != task {
+	if k.Run != run || k.Task != task {
 		return JudgingResult{}, errors.New("the judging written is another run's or task's")
 	}
 	r, err := ingestVerdicts(p, k, data, host)

@@ -9,9 +9,12 @@ package matrix
 //     copy once under an opaque document id, and the judges' subsets, each at
 //     most eight copies in an order and under random codes drawn for that
 //     subset. It names no cell, model, route, repeat or trial, so the
-//     copy-to-model mapping never reaches the session or the relay;
-//   - the key, which never leaves the host's machine: each document's trial,
-//     its length, the packet's digest and the seed the draw was made from.
+//     copy-to-model mapping never reaches the session or the relay, and no
+//     run, task or repository path either: a source is titled by its place
+//     in the task (Source 1, Source 2, ...), never by the path it is read from;
+//   - the key, which never leaves the host's machine: the run and task, each
+//     document's trial, its length, the packet's digest and the seed the
+//     draw was made from.
 //
 // Every document the packet carries is rendered as inert text through one
 // template (renderInert): the text is escaped, never parsed as markup, and the
@@ -110,11 +113,11 @@ type JudgeSlot struct {
 	Copies []SlotCopy `json:"copies"`
 }
 
-// JudgingPacket is what the judging session is given.
+// JudgingPacket is what the judging session is given. It names no run, task
+// or path: the session knows it by its digest, and the key, on the host's
+// machine, holds the run and task it is of.
 type JudgingPacket struct {
 	SchemaVersion  int          `json:"schema_version"`
-	Run            string       `json:"run"`
-	Task           string       `json:"task"`
 	Criteria       string       `json:"criteria"`
 	GuestsMayJudge bool         `json:"guests_may_judge"`
 	Template       ContentRef   `json:"template"`
@@ -206,7 +209,7 @@ func drawJudging(in judgingInputs, seed [32]byte) (JudgingPacket, JudgingKey, er
 	rng.Shuffle(len(shown), func(i, j int) { shown[i], shown[j] = shown[j], shown[i] })
 	docOf := map[TrialKey]string{}
 	p := JudgingPacket{
-		SchemaVersion: JudgingSchema, Run: in.Run, Task: in.Task.ID, Criteria: in.Task.Criteria,
+		SchemaVersion: JudgingSchema, Criteria: in.Task.Criteria,
 		GuestsMayJudge: in.GuestsMayJudge, Template: renderTemplate(),
 		Calibration: Calibration{
 			Good: JudgingDoc{ID: "good", HTML: renderInert("A good example", in.Good)},
@@ -214,8 +217,10 @@ func drawJudging(in judgingInputs, seed [32]byte) (JudgingPacket, JudgingKey, er
 		},
 	}
 	k := JudgingKey{SchemaVersion: JudgingSchema, Run: in.Run, Task: in.Task.ID, Seed: hex.EncodeToString(seed[:]), Documents: map[string]KeyedCopy{}}
+	// A source is titled by its place: the path it is read from is the
+	// repository's, and no path reaches a judge.
 	for i, s := range in.Sources {
-		p.Sources = append(p.Sources, JudgingDoc{ID: fmt.Sprintf("source-%d", i+1), HTML: renderInert(s.Name, s.Text)})
+		p.Sources = append(p.Sources, JudgingDoc{ID: fmt.Sprintf("source-%d", i+1), HTML: renderInert(fmt.Sprintf("Source %d", i+1), s.Text)})
 	}
 	for i, c := range shown {
 		id := fmt.Sprintf("d%d", i+1)
@@ -242,7 +247,7 @@ func drawJudging(in judgingInputs, seed [32]byte) (JudgingPacket, JudgingKey, er
 
 func (in judgingInputs) validate() error {
 	if !runIDRe.MatchString(in.Run) {
-		return fmt.Errorf("%q is not a run id", clip(in.Run))
+		return fmt.Errorf("%q is not a run id", echo(in.Run))
 	}
 	if in.Task.Kind != KindWriting {
 		return fmt.Errorf("the task %s is a %s task; people judge a writing task's copies", in.Task.ID, in.Task.Kind)
@@ -277,7 +282,7 @@ func (in judgingInputs) validate() error {
 	}
 	for i, s := range in.Sources {
 		if s.Name != in.Task.Source[i] {
-			return fmt.Errorf("source %d is %q; the task names %q", i+1, clip(s.Name), in.Task.Source[i])
+			return fmt.Errorf("source %d is %q; the task names %q", i+1, echo(s.Name), in.Task.Source[i])
 		}
 		if err := readable("the source "+s.Name, s.Text); err != nil {
 			return err

@@ -41,8 +41,8 @@
 //     each judge's subset at most eight copies, in an order and under codes
 //     drawn for it, so that every pair of models meets in some subset, every
 //     document rendered as inert text through one template, and no cell,
-//     model or trial named; the copy-to-model mapping kept in a key on the
-//     host's machine; and the session's verdict file read back as untrusted
+//     model, trial, run, task or path named; the copy-to-model mapping kept
+//     in a key on the host's machine; and the session's verdict file read back as untrusted
 //     input against both, refused whole when any part fails, one ranking
 //     kept per judge identity, and the guests' and the host's self-blinded
 //     rankings set apart from the members'.

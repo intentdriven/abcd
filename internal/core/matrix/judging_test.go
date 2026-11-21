@@ -256,3 +256,39 @@ func TestCopiesRenderAsInertText(t *testing.T) {
 		}
 	}
 }
+
+// The packet a judging session is given carries no repository path, run or
+// task id: a source is titled by its place in the task ("Source 1"), and the
+// path the declaration names it by stays in the host's own inputs. Every field
+// the packet carries is swept, the rendered documents included.
+func TestThePacketCarriesNoSourcePathRunOrTaskID(t *testing.T) {
+	const path = "docs/leaksource-guide.md"
+	in := writingInputs(3, 3, 3)
+	in.Task.ID = "leaktask-page"
+	for i := range in.Copies {
+		in.Copies[i].Key.Task = in.Task.ID
+	}
+	in.Task.Source = []string{path, "notes/leaksource-two.txt"}
+	in.Sources = []namedText{
+		{Name: path, Text: "# Guide\n\nWhat the page explains.\n"},
+		{Name: "notes/leaksource-two.txt", Text: "More of what it explains.\n"},
+	}
+	p, k := draw(t, in, seedA)
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, leak := range []string{path, "leaksource", ".md", ".txt", "docs/", "notes/", in.Run, in.Task.ID, "leaktask"} {
+		if strings.Contains(string(data), leak) {
+			t.Fatalf("the packet carries %q:\n%s", leak, data)
+		}
+	}
+	for i, s := range p.Sources {
+		if want := fmt.Sprintf("<title>Source %d</title>", i+1); !strings.Contains(s.HTML, want) {
+			t.Fatalf("source %s is not titled by its place (%s):\n%s", s.ID, want, s.HTML)
+		}
+	}
+	if k.Run != in.Run || k.Task != in.Task.ID {
+		t.Fatalf("key = %+v; the host's half still names the run and task", k)
+	}
+}
