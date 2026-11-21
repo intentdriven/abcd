@@ -84,21 +84,26 @@ func placeHiddenTests(store, run, task string, tests []hiddenTest) ([]ContentRef
 	}
 	dir := hiddenDir(store, run, task)
 	if err := outsideWorkingTrees(filepath.Dir(dir)); err != nil {
-		return nil, err
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			return nil, fmt.Errorf("the clone store could not be read: %w", storeRelative(err, store, "<clone store>"))
+		}
+		return nil, errors.New("hidden tests are never placed inside a working tree or a repository, and the clone store is inside one; " +
+			"it lives outside every checkout")
 	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
-		return nil, fmt.Errorf("the hidden tests' directory could not be made: %w", err)
+		return nil, fmt.Errorf("the hidden tests' directory could not be made: %w", storeRelative(err, store, "<clone store>"))
 	}
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("task %s of run %s already has its hidden tests; they are placed once", task, run)
 		}
-		return nil, fmt.Errorf("the hidden tests' directory could not be made: %w", err)
+		return nil, fmt.Errorf("the hidden tests' directory could not be made: %w", storeRelative(err, store, "<clone store>"))
 	}
 	for _, h := range tests {
 		if err := writeHidden(dir, h); err != nil {
 			_ = removeHidden(dir)
-			return nil, fmt.Errorf("the hidden test %s was not placed: %w", h.Path, err)
+			return nil, fmt.Errorf("the hidden test %s was not placed: %w", h.Path, storeRelative(err, store, "<clone store>"))
 		}
 	}
 	return refs, nil
@@ -114,7 +119,9 @@ func hiddenPath(p string) error {
 		return fmt.Errorf("the hidden test path %q is not a clean relative path", clip(p))
 	}
 	for _, seg := range strings.Split(p, "/") {
-		if seg == ".." || seg == "." || seg == ".git" {
+		// A git directory in any letter case: on a case-insensitive
+		// filesystem .GIT is .git.
+		if seg == ".." || seg == "." || strings.EqualFold(seg, ".git") {
 			return fmt.Errorf("the hidden test path %q climbs out of its tree or enters a git directory", clip(p))
 		}
 	}
@@ -159,11 +166,11 @@ func removeHidden(dir string) error {
 func hiddenOutsideClone(clone, dir string, refs []ContentRef) error {
 	rc, err := filepath.EvalSymlinks(clone)
 	if err != nil {
-		return fmt.Errorf("the copy's clone cannot be read: %w", err)
+		return fmt.Errorf("the copy's clone cannot be read: %w", storeRelative(err, clone, "<clone>"))
 	}
 	rd, err := resolved(dir)
 	if err != nil {
-		return fmt.Errorf("the hidden tests' directory cannot be resolved: %w", err)
+		return fmt.Errorf("the hidden tests' directory cannot be resolved: %w", storeRelative(err, dir, "<hidden tests>"))
 	}
 	if within(rd, rc) || within(rc, rd) {
 		return errors.New("the hidden tests sit inside the copy's clone, or the clone inside them; they are kept beside the copies, never in one")
@@ -207,7 +214,7 @@ func hiddenOutsideClone(clone, dir string, refs []ContentRef) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("the copy's clone could not be read for its hidden tests: %w", err)
+		return fmt.Errorf("the copy's clone could not be read for its hidden tests: %w", storeRelative(err, rc, "<clone>"))
 	}
 	if len(leaks) > 0 {
 		slices.Sort(leaks)
@@ -216,6 +223,44 @@ func hiddenOutsideClone(clone, dir string, refs []ContentRef) error {
 	}
 	return nil
 }
+
+// storeRelative is err with the path a filesystem error names given relative
+// to base, under label ("<clone store>/hidden/..."), and a path outside base
+// named by label alone, so an error names no place on this machine. An error
+// that is no filesystem error is named by its cause alone.
+func storeRelative(err error, base, label string) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return &fs.PathError{Op: pe.Op, Path: labelled(pe.Path, base, label), Err: pe.Err}
+	}
+	var le *os.LinkError
+	if errors.As(err, &le) {
+		return &os.LinkError{Op: le.Op, Old: labelled(le.Old, base, label), New: labelled(le.New, base, label), Err: le.Err}
+	}
+	if errors.Is(err, errNoAncestor) {
+		return errNoAncestor
+	}
+	return errors.New("a filesystem error naming no path abcd can show")
+}
+
+// labelled is p relative to base, under label, or label alone when p is not
+// beneath base.
+func labelled(p, base, label string) string {
+	if real, err := filepath.EvalSymlinks(base); err == nil && within(p, real) {
+		base = real
+	}
+	if !within(p, base) {
+		return label
+	}
+	rel, err := filepath.Rel(base, p)
+	if err != nil || rel == "." {
+		return label
+	}
+	return label + "/" + filepath.ToSlash(rel)
+}
+
+// errNoAncestor is resolved finding no directory above a path.
+var errNoAncestor = errors.New("no directory above the path exists")
 
 // resolved is p with the links of its nearest existing ancestor resolved,
 // and the rest of p, which does not exist yet, joined back on.
@@ -230,7 +275,7 @@ func resolved(p string) (string, error) {
 		}
 		up := filepath.Dir(at)
 		if up == at {
-			return "", fmt.Errorf("no directory above %s exists", p)
+			return "", errNoAncestor
 		}
 		rest = filepath.Join(filepath.Base(at), rest)
 		at = up

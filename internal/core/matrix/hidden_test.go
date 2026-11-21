@@ -117,18 +117,20 @@ func TestAHiddenTestTheCloneHoldsIsRefused(t *testing.T) {
 func TestHiddenTestsArePlacedOnceByRelativePath(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	for name, tests := range map[string][]hiddenTest{
-		"none":           nil,
-		"a climb":        {{Path: "../escape_test.go", Data: []byte("x")}},
-		"an inner climb": {{Path: "a/../../b_test.go", Data: []byte("x")}},
-		"absolute":       {{Path: "/tmp/a_test.go", Data: []byte("x")}},
-		"unclean":        {{Path: "a//b_test.go", Data: []byte("x")}},
-		"a git dir":      {{Path: ".git/hooks/pre-commit", Data: []byte("x")}},
-		"a nested git":   {{Path: "a/.git/config", Data: []byte("x")}},
-		"a space":        {{Path: "a b_test.go", Data: []byte("x")}},
-		"empty path":     {{Path: "", Data: []byte("x")}},
-		"empty content":  {{Path: "a_test.go", Data: nil}},
-		"twice":          {{Path: "a_test.go", Data: []byte("x")}, {Path: "a_test.go", Data: []byte("y")}},
-		"file and dir":   {{Path: "a", Data: []byte("x")}, {Path: "a/b_test.go", Data: []byte("y")}},
+		"none":                       nil,
+		"a climb":                    {{Path: "../escape_test.go", Data: []byte("x")}},
+		"an inner climb":             {{Path: "a/../../b_test.go", Data: []byte("x")}},
+		"absolute":                   {{Path: "/tmp/a_test.go", Data: []byte("x")}},
+		"unclean":                    {{Path: "a//b_test.go", Data: []byte("x")}},
+		"a git dir":                  {{Path: ".git/hooks/pre-commit", Data: []byte("x")}},
+		"a nested git":               {{Path: "a/.git/config", Data: []byte("x")}},
+		"a git dir in other case":    {{Path: ".GIT/hooks/pre-commit", Data: []byte("x")}},
+		"a nested git in other case": {{Path: "a/.Git/config", Data: []byte("x")}},
+		"a space":                    {{Path: "a b_test.go", Data: []byte("x")}},
+		"empty path":                 {{Path: "", Data: []byte("x")}},
+		"empty content":              {{Path: "a_test.go", Data: nil}},
+		"twice":                      {{Path: "a_test.go", Data: []byte("x")}, {Path: "a_test.go", Data: []byte("y")}},
+		"file and dir":               {{Path: "a", Data: []byte("x")}, {Path: "a/b_test.go", Data: []byte("y")}},
 	} {
 		if _, err := placeHiddenTests(store, cloneRun, "widget", tests); err == nil {
 			t.Errorf("%s: placed", name)
@@ -160,4 +162,59 @@ func TestHiddenTestsArePlacedOnceByRelativePath(t *testing.T) {
 	if _, err := os.Stat(inside); !os.IsNotExist(err) {
 		t.Fatalf("nothing is made inside a working tree: %v", err)
 	}
+}
+
+// A refusal names where a path sits relative to the clone store or the clone,
+// never where either sits on this machine.
+func TestHiddenTestErrorsNameNoPlaceOnThisMachine(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes and reads whatever a mode says")
+	}
+	store := filepath.Join(t.TempDir(), "matrix-store")
+	parent := filepath.Dir(hiddenDir(store, cloneRun, "widget"))
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+	_, err := placeHiddenTests(store, cloneRun, "widget", widgetHidden)
+	if err == nil || namesPlace(err, store) || !strings.Contains(err.Error(), "<clone store>/hidden/") {
+		t.Fatalf("a placement that could not be made: %v; want it named relative to the clone store", err)
+	}
+
+	src, frozen := cloneSource(t)
+	store = filepath.Join(t.TempDir(), "matrix-store")
+	clone, err := makeClone(src.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := placeHiddenTests(store, cloneRun, "widget", widgetHidden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := hiddenDir(store, cloneRun, "widget")
+	locked := filepath.Join(clone, "locked")
+	if err := os.Mkdir(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	for name, err := range map[string]error{
+		"an unreadable folder": hiddenOutsideClone(clone, dir, refs),
+		"no clone":             hiddenOutsideClone(filepath.Join(store, "gone"), dir, refs),
+	} {
+		if err == nil || namesPlace(err, store) {
+			t.Errorf("%s: %v; want a refusal naming no place on this machine", name, err)
+		}
+	}
+}
+
+// namesPlace reports whether err names dir, or dir as its links resolve.
+func namesPlace(err error, dir string) bool {
+	real, _ := filepath.EvalSymlinks(dir)
+	return strings.Contains(err.Error(), dir) || real != "" && strings.Contains(err.Error(), real)
 }
