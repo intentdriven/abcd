@@ -457,12 +457,16 @@ it can, each on one line
    exits 2 with one message naming what is missing. Relay that message as it
    stands. Every other missing basic goes on the report's checklist at the end.
 2. **The plan screen.** At a terminal, and through an answers file, setup shows
-   one plan: every change it would make, grouped by where it lands (this
-   repository, this machine), every default it would take with where to change
-   it (the visibility, the docs target, deep scanning, the house-style rule,
-   the artefact kind, the model routing tables, the drain rule, the README
-   parts, and the status line's parts, all on), and the questions it asks
-   whatever the answer. It asks once: `proceed`, `customise` or `cancel`; a
+   one plan, quoted in one sentence of counts: how many changes it would make
+   in each place they land (this repository, this machine, your home folder),
+   whether it adopts the repository, how many defaults it would take, and how
+   many questions it asks whatever the answer. The counts keep the screen
+   within abcd's rows limit, at the 24-row floor too. Answering `?` lists every
+   item the counts count: each change under where it lands, each default with
+   its value and where to change it (the visibility, the docs target, deep
+   scanning, the house-style rule, the artefact kind, the model routing tables,
+   the drain rule, the README parts, and the status line's parts, all on), and
+   each question that follows; then the plan is asked again. It asks once: `proceed`, `customise` or `cancel`; a
    bare Enter is no answer, so it asks again, and end of input cancels.
    Proceed makes every change and takes every default listed; customise asks
    each kind of change and each value in turn before anything is written;
@@ -474,8 +478,8 @@ it can, each on one line
    `.git/config`), the status line (one entry in the assistant's settings),
    the commit identity and each tool abcd offers to install are each their own
    question, naming the value and where it is written, whatever the answer to
-   the plan, in that order, and the plan lists exactly the ones the run will
-   ask. None is ever asked behind the plan or behind an approval of a kind of
+   the plan, in that order, and the plan counts exactly the ones the run will
+   ask, which its full list names. None is ever asked behind the plan or behind an approval of a kind of
    change: at a terminal a tool's question is its own consent, so no
    `dependency` approval is asked there, and customising never drops it.
 4. **The abcd download.** Where abcd is not on the `PATH` and the plugin's
@@ -694,9 +698,9 @@ EVERY question, so only reach for it once they have agreed to all of them.
 **At a terminal the questions are drawn; through this page they are relayed
 in an answers file.** When stdin, stdout and stderr are all terminals, the
 install draws each question itself on its one line with its answers' labels
-(the plan screen with its plan), answered by the arrow keys or by its number;
+(the plan screen with its counts), answered by the arrow keys or by its number;
 `?` draws the whole question (the material, each answer with its meaning, and
-decide later last) and asks it again, and Ctrl-C ends the run with exit 130,
+decide later last), at the plan screen after the plan in full, and asks it again, and Ctrl-C ends the run with exit 130,
 keeping the answers given before it. Every answer is recorded, with the question as it was asked and
 where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
 and the answers that change the machine (the status line, the machine's
@@ -704,10 +708,14 @@ routing table) in `~/.abcd.noindex/interviews/`; a run that ends aborted or
 refused changed nothing and records nothing. Through this page, put each
 question to the user with the host's question tool, quoting the question
 exactly as the install writes it, then pass their answers in an answers file
-and say where they were given. The plan screen is the first: relay its plan
-(the changes, each default with where to change it, and the questions that
-follow) as its material, and its three answers, `proceed`, `customise` and
-`cancel`, as options. Then relay each person-only question the run reaches
+and say where they were given. The plan screen is the first: relay its
+sentence of counts as its material, exactly as the install writes it, and its
+three answers, `proceed`, `customise` and `cancel`, as options. The install
+writes the plan in full on stderr just before the question, under `The plan
+in full:` (each change under where it lands, each default with where to
+change it, and the questions that follow); keep it out of the question, and
+when the user types `?` in the free-text row or asks what the plan holds,
+show that list as it stands and put the plan screen again. Then relay each person-only question the run reaches
 (the download, the shell settings, the commit checks, the status line, the
 commit identity, a tool) as its own question, never folded into the plan's
 answer:
@@ -750,7 +758,7 @@ replaces the piped answer stream for that run.
 **A value flag needs the settings approval.** `--visibility`, `--docs-target`,
 `--oracle-backend` and `--scan-deep` are held to the config-change approval
 like any other settings change: a flag that would change a saved setting is
-listed on the plan, and only `proceed`, a yes to the config-change question
+listed in the plan's full list, and only `proceed`, a yes to the config-change question
 under `customise`, `approve.plan` in the answers file, or `--yes` saves it. `later`, a no or end of input drops the flag: nothing it would change
 is saved or moved, and the run names each dropped flag in a note.
 

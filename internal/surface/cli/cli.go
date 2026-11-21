@@ -5430,8 +5430,9 @@ func (p *stdinPrompter) echo(answer string) {
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 // Plan puts the plan screen to a person typing at a terminal, which makes
-// the stdin door an ahoy.PlanPrompter there: the plan, then its one line,
-// and ? shows what each answer does before asking again. Off a terminal the
+// the stdin door an ahoy.PlanPrompter there: the plan in counts, then its one
+// line, and ? lists every item the counts count and what each answer does
+// before asking again. Off a terminal the
 // plan is not put (asked false): a piped stream answers the approvals one
 // by one, in their fixed order, as before.
 func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
@@ -5453,6 +5454,7 @@ func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 		line, err := p.r.ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line == "?" {
+			writePlanInFull(p.w, ahoy.PlanInFull(plan))
 			for _, o := range q.Options {
 				fmt.Fprintf(p.w, "  %s — %s\n", strings.ToLower(o.Label), o.Meaning)
 			}
