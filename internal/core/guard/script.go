@@ -1402,16 +1402,16 @@ func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i
 	return texts, false
 }
 
-// settingsWritten reports whether a write before the command lands on the
+// settingsWritten reports whether a write before the command can land on the
 // settings file p: one the guard places on it, or one it does not place
-// whose last component is p's, or that names a path relative to a directory
-// the line leaves unknown.
+// whose last component is p's or is not fixed by the line, or that names a
+// path relative to a directory the line leaves unknown.
 func settingsWritten(p string, before []writeTarget) bool {
 	if written, _ := writtenBefore(p, before); written {
 		return true
 	}
 	for _, w := range before {
-		if !w.ok && (w.rel || w.base != "" && sameName(w.base, filepath.Base(p))) {
+		if !w.ok && (w.rel || w.base == "" || sameName(w.base, filepath.Base(p))) {
 			return true
 		}
 	}

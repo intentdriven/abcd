@@ -1237,8 +1237,11 @@ not parse, JSON holding a part the line does not fix (a value spliced into the
 text can add any key), a value or file name the line does not wholly fix
 (`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
 glob that does not match exactly one file, and a file the line writes before
-the launch, one that is not a regular file, one over 256 KiB, or one that does
-not hold a JSON object. A settings file that does not exist is not refused,
+the launch or may write there by a name it does not fix (`> "$F"`), one that
+is not a regular file, one over 256 KiB, or one that does not hold a JSON
+object. A write the guard does not read as one (an interpreter's payload, a
+program that rewrites the file in place by its own reading, such as `perl -pi`
+or `sponge`, or `git stash pop`) leaves the file read as it stands now. A settings file that does not exist is not refused,
 since claude does not start on it, and other permission modes are left to the
 permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`

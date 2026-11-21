@@ -126,7 +126,8 @@ func TestGuardReadsClaudeSettingsTextAsClaudeDoes(t *testing.T) {
 
 // TestGuardRefusesClaudeSettingsFileItCannotRead: a settings file the guard
 // cannot read now is refused, since what claude would read from it is not
-// known: a file the line writes before the claude, one past the size the
+// known: a file the line writes before the claude, or may write there by a
+// name the line does not fix, one past the size the
 // guard reads, a glob that does not name exactly one file, a name or a
 // directory the line does not fix, and text that does not parse. A glob
 // naming one readable file is read as that file, and a missing file stays
@@ -156,6 +157,8 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		{`claude -p x --settings notjson.json`, VerdictBlock, id, ""},
 		{`claude -p x --settings "/tmp/$X.json"`, VerdictBlock, id, ""},
 		{`cd "$D" && claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`cat bad/bypass.json > "$(echo plain.json)"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`echo '{}' > "$F"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 
 		{`claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings one/s*.json`, VerdictAllow, "", ""},
