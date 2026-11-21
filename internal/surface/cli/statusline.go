@@ -368,9 +368,16 @@ func readStatusPayload(stdin io.Reader) ([]byte, statusline.Payload, []string) {
 	return raw, p, nil
 }
 
+// systemShell is the shell a command line the person wrote runs under (the
+// previous status command, the report editor): the system's own, by its
+// absolute path, which every supported platform has, so the sh first on PATH
+// is never what runs it. The command line itself still finds its programs on
+// the PATH it is given.
+const systemShell = "/bin/sh"
+
 // runPreviousStatusCommand is the ac-5/ac-6 fallback: the user's own status
 // command, recorded at install from the harness's configuration, runs through
-// `sh -c` exactly as the harness would have run it, with the payload abcd
+// `/bin/sh -c` exactly as the harness would have run it, with the payload abcd
 // received on its stdin, and its streams and exit code are passed through
 // unchanged. The command is the caller's own word — the setting is a
 // trust-boundary read that refuses a file the caller does not own or that
@@ -401,7 +408,7 @@ func runPreviousStatusCommand(cmd *cobra.Command, previous string, stdin []byte,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), previousCommandBudget)
 	defer cancel()
-	sh := exec.CommandContext(ctx, "sh", "-c", previous)
+	sh := exec.CommandContext(ctx, systemShell, "-c", previous)
 	sh.Env = append(os.Environ(), statuslineFallbackEnv+"=1")
 	sh.Stdin = bytes.NewReader(stdin)
 	// The command leads its own process group, and the bound kills the group
