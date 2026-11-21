@@ -82,8 +82,10 @@ func allRearmed(f *fakeForge) bool {
 // --release re-arms all three of octo's withdrawals from octo's own newest
 // push, posts one re-armed comment for each, and names the commits above it,
 // counted, once; peers lists the same count beforehand, and octo's three as
-// held. A shape that buries octo's newest push past the walk acts on
-// nothing, and says so, on the act and on peers.
+// held. Commits enough to fill the first page of the walk leave octo's newest
+// push beneath it, read on to; a shape that buries it past all the walk reads
+// on to acts on nothing, and says so, with the step left to octo, on the act
+// and on peers.
 func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *testing.T) {
 	for name, c := range map[string]struct {
 		seed   func(w *world, f *fakeForge)
@@ -127,7 +129,15 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain+1)
-			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", "65", tip)) {
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChain+1), tip)) {
+				f.pusherOf[c] = "mal"
+			}
+		}, above: maxChain + 1},
+		"a change beneath more commits than the walk reads on to": {seed: func(w *world, f *fakeForge) {
+			m, ws := w.tipWithdrawals("rel-v0.16.0")
+			m.Withdrawn = withState(ws, 11, WithdrawnKept)
+			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChainRead+1)
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChainRead+1), tip)) {
 				f.pusherOf[c] = "mal"
 			}
 		}, buried: true},
@@ -148,7 +158,8 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			f.reset()
 			res, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
 			if c.buried {
-				const why = "64 commits"
+				why := fmt.Sprintf("(%d is as far down as abcd reads a release branch, a page of %d at a time); once v0.16.0 is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)",
+					maxChainRead, maxChain)
 				if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 || !strings.Contains(strings.Join(rw.Lines(), "\n"), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") {
 					t.Fatalf("listing = %+v; want octo's newest push named as not found, and nothing held", rw)
 				}

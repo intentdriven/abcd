@@ -666,7 +666,12 @@ withdrawing nothing, and an admission or a release is refused.
   commit the forge's activity record of pushes to the branch (the record `abcd
   status` holds announcements to, C17) shows that person's login pushed (the
   login the holder resolver yields, compared there and never pushed), walking
-  the first-parent line from the tip, at most 64 commits. The record must
+  the first-parent line from the tip, 64 commits at a time: a reading that
+  has not found what it looks for within the first 64 (the person's newest
+  push, the newest reservation its holder pushed, or the first record of a
+  withdrawal beneath it) reads on, a page of 64 at a time, up to 512 commits,
+  and the record of pushes is placed again over the longer line from the
+  forge's one answer. The record must
   place every push it holds on that line, run unbroken down to the push that
   made the branch, and end at the tip read (the activity record passes over an
   entry without a pusher or a commit name, and a record with a push missing
@@ -694,11 +699,13 @@ withdrawing nothing, and an admission or a release is refused.
   or placed (an app's push above it, which says nothing of which person sent
   it; the record read short, not caught up with the tip, broken or not
   answering; a commit the record places several accounts on; or the push past
-  the 64 commits read), abcd does nothing for that person on the release: no
+  the 512 commits read), abcd does nothing for that person on the release: no
   re-arm, no withdrawal, no admission, no comment. It says so, once for each
   tip on an act and on every `abcd peers` (`unplaced`), and a later act asks
   again; a renewal, an admission or a release over it is refused with nothing
-  pushed. A copy that pushes through an app therefore has no newest push of
+  pushed. Past the 512 commits the refusal stays, and its reason names the
+  one step left to the person: once the release is tagged, re-arm each pull
+  request withdrawn for it by hand (`gh pr merge <number> --auto`). A copy that pushes through an app therefore has no newest push of
   its own, and abcd acts on none of its withdrawals: its person re-arms them
   by hand. A renewal or a release over a later commit is judged from the
   holder's own newest push, so a tombstone another login pushed neither ends
@@ -850,7 +857,7 @@ withdrawing nothing, and an admission or a release is refused.
   committer fields, which any writer can set. Where that record cannot say (a
   page read short, a record not caught up with the tip, a push missing from it,
   an app's push, which names no person, a commit several accounts' pushes are
-  placed on, or a push past the 64 commits read), nothing is read as anyone's
+  placed on, or a push past the 512 commits read), nothing is read as anyone's
   push and nothing is acted on for that person. What a listing reads of the
   record is kept for one tip in the checkout's local tier and read by listings
   alone; an act always asks the forge again. So a take-over carries a paired
