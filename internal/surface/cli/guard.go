@@ -602,8 +602,9 @@ func guardHookDecide(cmd *cobra.Command) error {
 // calls on its route: the roots of the session directory and of the call's
 // workdir for a shell command, and the checkout of the session directory for
 // a question. git answers them in milliseconds; one that has not answered in
-// this time is waiting on something that may never come. It sits well under
-// the timeout hooks/hooks.json gives the hook (TestTheGuardHooksGitBudgetSitsUnderItsTimeout).
+// this time is waiting on something that may never come. hooks/hooks.json
+// gives the hook no timeout of its own, so this budget, not the host's
+// default, is what bounds the wait on a configuration git cannot read.
 var guardGitBudget = 5 * time.Second
 
 // guardGitTimeout is the reason the hook gives when git did not answer within

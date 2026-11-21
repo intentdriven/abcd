@@ -306,11 +306,11 @@ deadline, naming the directory and the usual cause: a repository configuration
 that includes a file which never finishes reading, such as a named pipe. The
 call then runs on the loud exit 1, as any call the guard cannot judge does,
 except a shell command inside a stage, which is refused, as every unchecked
-shell command there is. The
-plugin's hook manifest gives the hook a 240-second timeout of its own, the
-worst case of a first download with room to spare, so a git that hangs later
-in the check holds the call four minutes at most before the host lets it run,
-rather than the host's ten-minute default. A command line is never in that
+shell command there is. The plugin's hook manifest gives the hook no timeout
+of its own, so this deadline is what bounds the wait on a configuration git
+cannot read; a git that hangs later in the check, on a call not yet bound, is
+bounded only by the host's default timeout for the hook, after which the host
+lets the call run. A command line is never in that
 set: one the guard cannot split is a **block** (`command-unparsable`), because a
 line the guard misreads may be one bash runs, and letting it through would pass
 every hazard in it; a trailing backslash and an unterminated here-document are

@@ -929,11 +929,8 @@ resolving shim rather than a plain binary call. Six of them self-provision.
 try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
 window. `UserPromptSubmit`, the hook that runs on every message, declares a
 120-second `timeout`, the time a salvage on a slow link has before the host
-cancels it; `PreToolUse` declares 240 seconds, the script's worst case with
-room to spare, so a slow first download finishes there while a guard that
-hangs holds a call 240 seconds at most rather than the host's 600; `PostToolUse`,
-`PermissionRequest` and `PreCompact` declare none and take the host's
-ten-minute default, so a slow first download finishes there too. `SessionStart`
+cancels it; `PreToolUse`, `PostToolUse`, `PermissionRequest` and `PreCompact`
+declare none and take the host's ten-minute default, so a slow first download finishes there. `SessionStart`
 declares 240 seconds, the script's worst case with room to spare,
 `SessionEnd`, `SubagentStop` and `StopFailure` declare none, and `Stop` declares
 30 seconds, room for the away mode's stop check to make its one forge listing

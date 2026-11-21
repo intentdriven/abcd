@@ -9,13 +9,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/core/landing"
 )
-
-// guardHookLimit is the timeout hooks/hooks.json gives the PreToolUse hook,
-// which runs the guard. The host lets the call run unjudged when it passes.
-const guardHookLimit = 240 * time.Second
 
 // pipeIncludedRepo is a git checkout with a .abcd directory whose repository
 // configuration includes a named pipe nothing writes to, so every git call in
@@ -150,34 +144,5 @@ func TestTheGuardHookSaysItCouldNotGateAQuestionWhenGitDoesNotAnswer(t *testing.
 		if !strings.Contains(a.stderr, want) {
 			t.Errorf("stderr must say %q; stderr = %q", want, a.stderr)
 		}
-	}
-}
-
-// TestTheGuardHooksGitBudgetSitsUnderItsTimeout: hooks/hooks.json gives the
-// PreToolUse hook guardHookLimit, and the hook's git budget for its two root
-// lookups, with the fetched facilitator.mode read a merge command adds, leaves
-// most of it, so the hook gives its own answer before the host gives up on it.
-func TestTheGuardHooksGitBudgetSitsUnderItsTimeout(t *testing.T) {
-	data, err := os.ReadFile(hooksManifest(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc sessionStartHooks
-	if err := json.Unmarshal(data, &doc); err != nil {
-		t.Fatal(err)
-	}
-	groups := doc.Hooks["PreToolUse"]
-	if len(groups) != 1 || len(groups[0].Hooks) != 1 {
-		t.Fatalf("hooks.json: want one PreToolUse hook, got %d group(s)", len(groups))
-	}
-	got := groups[0].Hooks[0].Timeout
-	if got == nil {
-		t.Fatal("hooks.json gives the PreToolUse hook no timeout, so the host's default applies")
-	}
-	if limit := time.Duration(*got) * time.Second; limit != guardHookLimit {
-		t.Errorf("hooks.json gives the PreToolUse hook %s; the test holds it to %s", limit, guardHookLimit)
-	}
-	if spent := 2*guardGitBudget + landing.FetchedReadTimeout; 2*spent > guardHookLimit {
-		t.Errorf("the hook's bounded reads take up to %s, more than half its %s timeout", spent, guardHookLimit)
 	}
 }

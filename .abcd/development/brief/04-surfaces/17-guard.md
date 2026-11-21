@@ -551,12 +551,10 @@ lookups read, so a configuration git cannot finish reading, such as one that
 includes a named pipe, is caught there: git is killed, and the hook fails open
 loudly with a line naming git, the deadline, the directory and that cause,
 where it would otherwise have held every call until the host's timeout and
-then let it run with nothing said. The manifest gives the pre-tool-use hook a
-240-second timeout, well above the deadline and the 15-second fetched
-`facilitator.mode` read a merge command adds, and the worst case of the first
-download the hook's salvage may make, so a git that hangs later in the check,
-past calls not yet bound (iss-2611100548341325), holds a call four minutes at
-most rather than the host's ten.
+then let it run with nothing said. The manifest gives the pre-tool-use hook
+no timeout of its own, so a slow first download always finishes there
+(iss-323); a git that hangs later in the check, on a call not yet bound
+(iss-2611100548341325), is bounded only by the host's default for the hook.
 
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it
