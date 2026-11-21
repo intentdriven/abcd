@@ -190,7 +190,11 @@ for reads outside the clone (without it that rule is unexamined and the copy is
 reported apart). A writing copy names its document with `--answer`; a check
 copy its answer with `--answer` and `--form`. The copy is checked for
 compliance first, and the trial (`status`, `reason`, `score`, `compliance`) is
-written once; the trial says the host, not abcd, ran the hidden tests. A check
+written once; the trial says the host, not abcd, ran the hidden tests, and its
+`unpinned` marks the score, the model served, the harness version and the times
+as `self_reported` where the receipt gives them and `trial.calls` as
+`not_reported`, since a host copy carries no call receipts. A writing copy's
+document is kept only once its trial passes the secret screen. A check
 copy's clone is deleted only once its trial is written. Refused, exit 2, with
 nothing written: a runner cell's copy, a copy already handed back, a receipt,
 score or answer that does not validate, and a trial the secret screen refuses.
@@ -241,14 +245,17 @@ whose rankings are reported apart).
 ```
 
 `code` gives, per task, each builder cell's `pass_at_1` (passes of the attempts
-that count, the rate and its 95% `interval`), `pass_hat_k`, the copies set
+that count, the rate and its 95% `interval`), `host_reported` (how many of
+those rest on the host's own report of its hidden tests), `pass_hat_k`, the copies set
 apart (`not_started`, `unexamined`, `excluded`, in no rate), `reviews`
 (`confirmed` findings on failing copies, `unconfirmed` flags on passing ones),
 `costs` by unit with `per_pass` and what the figure is `comparable` with, and
 `model_time_ms` apart from `gate_wait_ms`; and `comparisons`, each `ranked` only
 at the repeats its power estimate asks for (`needed`, from the declaration's
 `repeats.min_difference`), otherwise stating `min_detectable`, the smallest
-difference it could have detected, in its `note`. `writing` gives each model's
+difference it could have detected, in its `note`; one resting on host-reported
+results says so in its `note`, with `host_reported` set, and a limitation names
+those copies. `writing` gives each model's
 `ratings` (a regularised Bradley–Terry rating, its `interval` and whether it is
 `separable`), `agreement` (alpha with an interval, or `not_estimable` saying
 why), `good_enough` and each copy's length; with fewer than three judges,
