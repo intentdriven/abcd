@@ -60,6 +60,7 @@ Turning `narrow` on breaks the screenshots audit's record sampling. `site-src/au
 3. abcdev.app's deploy narrows to the documentation and forwards the record's addresses, with the decision record amending adr-48
    - packages: internal/core/site, site-src, .github/workflows, docs/
    - tests: internal/core/site
+   - landed: 6ea40932aea4
 4. The cut-over, each outward act confirmed by the person: the first Pages release, then the forwarding, then dropping the record from abcdev.app's build
    - packages: .github/workflows, site-src
    - tests: internal/core/site
