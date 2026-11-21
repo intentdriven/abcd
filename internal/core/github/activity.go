@@ -39,7 +39,8 @@ const ActivityPage = 100
 // Pushers is the forge's record of who pushed to ref (a full ref under
 // refs/heads/) on the repository origin names, its newest page alone
 // (PushersPage), and whether older activities may lie past it, unread
-// (partial: the page came back full or names a page past it), so a commit no
+// (partial: the page came back full or names a page past it, whether or not
+// abcd reads the cursor it names it by), so a commit no
 // push on it covers is one the record was not read far enough to say about.
 func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool, err error) {
 	page, err := PushersPage(ctx, cwd, ref, "")
@@ -51,16 +52,20 @@ func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool,
 
 // PushPage is one page of the forge's activity record of pushes to a ref:
 // its pushes, newest first; the cursor the page names for the activities
-// past it ("" when it names none); and whether the page came back full.
+// past it ("" when it names none or one abcd does not read); whether the
+// page names a page past it by a link whose cursor abcd does not read
+// (NextUnread); and whether the page came back full.
 type PushPage struct {
-	Pushes []Push
-	Next   string
-	Full   bool
+	Pushes     []Push
+	Next       string
+	NextUnread bool
+	Full       bool
 }
 
 // More reports whether older activities may lie past the page: it came back
-// full, or it names a page past it.
-func (p PushPage) More() bool { return p.Full || p.Next != "" }
+// full, or it names a page past it, by a cursor abcd reads or by one it does
+// not.
+func (p PushPage) More() bool { return p.Full || p.Next != "" || p.NextUnread }
 
 // PushersPage is one page of the forge's record of who pushed to ref (a full
 // ref under refs/heads/) on the repository origin names: its activity
@@ -69,7 +74,8 @@ func (p PushPage) More() bool { return p.Full || p.Next != "" }
 // (itd-2609151838312703 C17), from the cursor after ("" for the newest page).
 // The cursor of the page past it is read from the answer's Link header (its
 // rel="next" link's after parameter, and nothing else of that link), so a
-// caller reads on by asking again with it.
+// caller reads on by asking again with it; a rel="next" link whose cursor
+// abcd does not read sets NextUnread, so the page still says more lie past it.
 // The query names no type, since it takes only one and a first push or a
 // forced one would then never be answered. An entry with no actor, or a
 // commit name that is not one, says nothing and is passed over; every login is the forge's
@@ -125,7 +131,8 @@ func PushersPage(ctx context.Context, cwd, ref, after string) (PushPage, error) 
 		// of who sent it: marked, so the caller judges no commit by it.
 		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login, App: appActor(a.Actor.Type, a.Actor.Login)})
 	}
-	return PushPage{Pushes: pushed, Next: nextCursor(header), Full: len(acts) >= ActivityPage}, nil
+	next, named := nextCursor(header)
+	return PushPage{Pushes: pushed, Next: next, NextUnread: named && next == "", Full: len(acts) >= ActivityPage}, nil
 }
 
 // cursorRe is the text a cursor of the forge's activity record may hold: the
@@ -155,9 +162,12 @@ func splitIncluded(out []byte) (header []string, body []byte, ok bool) {
 
 // nextCursor is the after parameter of the rel="next" link the answer's Link
 // header names, or "" when it names none or one abcd does not read
-// (cursorRe). Only that parameter is taken: the link's host and path are the
-// forge's text and are never asked.
-func nextCursor(header []string) string {
+// (cursorRe), and whether the header names a rel="next" link at all: a link
+// whose target is not in angle brackets, does not parse, holds a comma or
+// carries no after parameter abcd reads is still named. Only that parameter
+// is taken: the link's host and path are the forge's text and are never
+// asked.
+func nextCursor(header []string) (cursor string, named bool) {
 	for _, line := range header {
 		name, value, ok := strings.Cut(line, ":")
 		if !ok || !strings.EqualFold(strings.TrimSpace(name), "Link") {
@@ -170,6 +180,7 @@ func nextCursor(header []string) string {
 			}) {
 				continue
 			}
+			named = true
 			target = strings.TrimSpace(target)
 			if !strings.HasPrefix(target, "<") || !strings.HasSuffix(target, ">") {
 				continue
@@ -179,11 +190,11 @@ func nextCursor(header []string) string {
 				continue
 			}
 			if c := u.Query().Get("after"); cursorRe.MatchString(c) {
-				return c
+				return c, true
 			}
 		}
 	}
-	return ""
+	return "", named
 }
 
 // originURLBytes bounds the read of origin's URL: a URL longer than this is

@@ -344,17 +344,55 @@ func TestNextCursorTakesOnlyTheNextLinksAfterParameter(t *testing.T) {
 	for _, c := range []struct {
 		header []string
 		want   string
+		named  bool
 	}{
-		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?before=p>; rel="prev", <https://elsewhere.example/y?after=Y3Vy_c29y-MQ%3D%3D>; rel="next"`}, "Y3Vy_c29y-MQ=="},
-		{[]string{"HTTP/2.0 200 OK", `link: <https://api.github.com/x?after=abc>; rel="next"`}, "abc"},
-		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=abc>; rel="prev"`}, ""},
-		{[]string{"HTTP/2.0 200 OK", `X-Link: <https://api.github.com/x?after=abc>; rel="next"`}, ""},
-		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=a%26b>; rel="next"`}, ""},
-		{[]string{"HTTP/2.0 200 OK", `Link: https://api.github.com/x?after=abc; rel="next"`}, ""},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?before=p>; rel="prev", <https://elsewhere.example/y?after=Y3Vy_c29y-MQ%3D%3D>; rel="next"`}, "Y3Vy_c29y-MQ==", true},
+		{[]string{"HTTP/2.0 200 OK", `link: <https://api.github.com/x?after=abc>; rel="next"`}, "abc", true},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=abc>; rel="prev"`}, "", false},
+		{[]string{"HTTP/2.0 200 OK", `X-Link: <https://api.github.com/x?after=abc>; rel="next"`}, "", false},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=a%26b>; rel="next"`}, "", true},
+		{[]string{"HTTP/2.0 200 OK", `Link: https://api.github.com/x?after=abc; rel="next"`}, "", true},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=a,b>; rel="next"`}, "", true},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?page=2>; rel="next"`}, "", true},
+		{[]string{"HTTP/2.0 200 OK", `Link: <%zz>; rel="next"`}, "", true},
 	} {
-		if got := nextCursor(c.header); got != c.want {
-			t.Fatalf("nextCursor(%q) = %q; want %q", c.header, got, c.want)
+		if got, named := nextCursor(c.header); got != c.want || named != c.named {
+			t.Fatalf("nextCursor(%q) = %q, %v; want %q, %v", c.header, got, named, c.want, c.named)
 		}
+	}
+}
+
+// TestAShortPageNamingAPagePastItByACursorAbcdDoesNotReadIsPartial: a page of
+// fewer than ActivityPage activities whose Link header names a next page by a
+// cursor outside the alphabet is not the record's end: the page says more lie
+// past it, and Pushers reports the record partial.
+func TestAShortPageNamingAPagePastItByACursorAbcdDoesNotReadIsPartial(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 40)
+	dir := t.TempDir()
+	body := `[{"before":"` + b + `","after":"` + a + `","activity_type":"push","actor":{"login":"maya"}}]`
+	script := "#!/usr/bin/env bash\n" +
+		"printf 'HTTP/2.0 200 OK\\n'\n" +
+		"printf 'Link: <https://api.github.com/repositories/1/activity?per_page=100&after=a%%26b>; rel=\"next\"\\r\\n'\n" +
+		"printf 'Content-Type: application/json\\r\\n\\r\\n'\n" +
+		"printf '%s\\n' '" + body + "'\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	repo := originAt(t, "https://github.com/intentdriven/abcd.git")
+	page, err := PushersPage(context.Background(), repo, "refs/heads/abcd-reserved/rel-v1.0.0", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Full || page.Next != "" || !page.More() || len(page.Pushes) != 1 {
+		t.Fatalf("page = %+v; want one push, no cursor, and more past it", page)
+	}
+	if _, partial, err := Pushers(context.Background(), repo, "refs/heads/abcd-reserved/rel-v1.0.0"); err != nil || !partial {
+		t.Fatalf("Pushers partial = %v, %v; want the record reported partial", partial, err)
 	}
 }
 
