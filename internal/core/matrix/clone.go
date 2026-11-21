@@ -8,6 +8,8 @@ package matrix
 // it makes is its model's work from the one starting point every copy shares.
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,9 +18,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // cloneStore is where a repository's matrix copies are cloned: the account's
@@ -158,18 +162,41 @@ func outsideWorkingTrees(dir string) error {
 	return nil
 }
 
+// gitBound bounds one git command a clone is made with: a fetch of the frozen
+// commit and its checkout scale with the tree, so the bound is there only so a
+// git that waits never holds the run forever.
+const gitBound = 30 * time.Minute
+
 // git runs git isolated from the person's configuration and from any
 // repository-selecting variable, returning its trimmed output.
 func git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	out, err := gitRaw(args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// gitRaw is git returning its output as git wrote it, for a NUL-separated
+// listing whose names trimming would change.
+func gitRaw(args ...string) ([]byte, error) { return gitRawWithin(gitBound, args...) }
+
+// gitRawWithin is gitRaw bounded by limit: past it git is killed, its output
+// read to its end before the wait (procgroup.RunToEOF), and the call refused,
+// naming the bound, never answered with what git wrote before it stopped.
+func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return "", fmt.Errorf("git %s: %w: %s", args[0], err, clip(strings.TrimSpace(string(ee.Stderr))))
-		}
-		return "", fmt.Errorf("git %s: %w", args[0], err)
+	cmd.WaitDelay = time.Second
+	var stdout, stderr bytes.Buffer
+	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("git %s did not finish within %s, so it was stopped", args[0], limit)
 	}
-	return strings.TrimSpace(string(out)), nil
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, clip(msg))
+		}
+		return nil, fmt.Errorf("git %s: %w", args[0], err)
+	}
+	return stdout.Bytes(), nil
 }

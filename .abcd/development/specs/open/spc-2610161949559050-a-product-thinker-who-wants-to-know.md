@@ -104,6 +104,7 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - packages: internal/core/matrix
    - tests: hidden tests sit outside the clone; the compliance check excludes a copy that edited tests or read another copy, and marks an unexaminable copy unexamined; host-harness isolation is reported as asserted
    - needs: 1, 3
+   - landed: 9bcb22fba47d
 5. Blinded reviewer models
    - packages: internal/core/matrix, internal/core/reading, internal/core/oracle
    - tests: a reviewer request is assembled through the include table with no trailer, author, branch or run metadata; recall and true-negative rate on known-good and seeded-defect copies; the author-guess score; same-family verdicts reported apart

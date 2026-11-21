@@ -28,6 +28,14 @@
 //     server at a time, as an owned process group. The build loop's trial
 //     mode (loop.Options.Trial) runs a copy's stages taking no reservation
 //     and landing nothing.
+//   - the code task's judging (hidden.go, compliance.go; step 4): the hidden
+//     tests kept read-only beside the copies and never in one, a copy refused
+//     whose clone holds one; and the compliance check every copy passes
+//     before it is ranked, reading the copy as data: a copy that edited the
+//     tests it was given or read another copy is excluded and named, one the
+//     check could not examine is unexamined and reported apart, and what no
+//     check can read (the network policy, a host copy's isolation) is
+//     recorded as asserted, not proven.
 //
 // A run is a lab procedure (decision 4): its records live under the lab's
 // state/matrix/ and reach it only through lab.Procedure, so a run obeys the

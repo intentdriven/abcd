@@ -333,3 +333,53 @@ func TestCaseSensitiveKeepsExactMatch(t *testing.T) {
 		t.Fatalf("case-distinct sibling refused on a case-sensitive host: %v", err)
 	}
 }
+
+// TestRefusesRepositoryLinkReachedThroughOutsideDirectoryLink pins
+// iss-2611202034242491: PATH holds ~/alias -> R/scripts, and R/scripts/gitleaks
+// is a committed link to a real executable outside the repository. The
+// lookup's written path and its final target both lie outside R, but the link
+// it is reached through really lies inside, so the repository chose what runs.
+func TestRefusesRepositoryLinkReachedThroughOutsideDirectoryLink(t *testing.T) {
+	repo := t.TempDir()
+	outside := writeExecutable(t, filepath.Join(t.TempDir(), "bin", "gitleaks"))
+	scripts := filepath.Join(repo, "scripts")
+	if err := os.MkdirAll(scripts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(scripts, "gitleaks")); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(scripts, alias); err != nil {
+		t.Fatal(err)
+	}
+	assertRefused(t, newTrustProbe(filepath.Join(alias, "gitleaks")), repo, Config{Enabled: true})
+}
+
+// TestRefusesADotDotTargetReadAcrossADirectoryLink: /out/gitleaks links to
+// d/../x and /out/d links to R/sub, so the system resolves the candidate
+// through R/x, a committed link to an executable outside R. Read lexically
+// the target is /out/x, which does not exist, so the steps never show R/x;
+// the walk ending somewhere other than the system's resolution is refused.
+func TestRefusesADotDotTargetReadAcrossADirectoryLink(t *testing.T) {
+	repo := t.TempDir()
+	outside := writeExecutable(t, filepath.Join(t.TempDir(), "usr", "bin", "real"))
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "x")); err != nil {
+		t.Fatal(err)
+	}
+	out := t.TempDir()
+	if err := os.Symlink(filepath.Join(repo, "sub"), filepath.Join(out, "d")); err != nil {
+		t.Fatal(err)
+	}
+	cand := filepath.Join(out, "gitleaks")
+	if err := os.Symlink("d/../x", cand); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := filepath.EvalSymlinks(cand); err != nil {
+		t.Fatalf("the layout does not resolve: %v", err)
+	}
+	assertRefused(t, newTrustProbe(cand), repo, Config{Enabled: true})
+}
