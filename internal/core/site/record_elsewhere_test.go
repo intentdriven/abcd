@@ -373,3 +373,30 @@ func TestTheShippedHeaderMapNarrowsToItsNonRecordBlocks(t *testing.T) {
 		t.Errorf("the narrowed map lost its opening comment:\n%s", narrowed)
 	}
 }
+
+// The filter holds for header maps shaped unlike the shipped one: a record
+// block whose own lines carry an indented comment loses every one of its
+// header lines, a CRLF map is read in paragraphs as an LF one is, and a map
+// whose last paragraph was a record block keeps its final newline.
+func TestTheNarrowedHeaderMapHoldsForOtherShapes(t *testing.T) {
+	for name, c := range map[string]struct{ in, want string }{
+		"an indented comment inside a record block": {
+			in:   "/site.css\n  A: 1\n/record/*\n  B: 2\n  # a note\n  C: 3\n/site.js\n  D: 4\n",
+			want: "/site.css\n  A: 1\n/site.js\n  D: 4\n",
+		},
+		"a CRLF map": {
+			in:   "# The map.\r\n/site.css\r\n  A: 1\r\n\r\n# The record explorer.\r\n/record/*\r\n  B: 2\r\n",
+			want: "# The map.\n/site.css\n  A: 1\n",
+		},
+		"a record block as the last paragraph": {
+			in:   "/site.css\n  A: 1\n\n/record.json\n  B: 2\n",
+			want: "/site.css\n  A: 1\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := string(withoutRecordHeaders([]byte(c.in))); got != c.want {
+				t.Errorf("narrowed\n%q\nto\n%q\nwant\n%q", c.in, got, c.want)
+			}
+		})
+	}
+}

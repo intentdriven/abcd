@@ -835,18 +835,23 @@ const (
 // paragraphs, blank-line separated, so a block's own comment goes with it: a
 // paragraph that held a record block and is left with no path at all is
 // dropped whole. Every other paragraph is kept byte for byte, the file's
-// opening comment included.
+// opening comment included. As the host reads the map, an indented line
+// belongs to the path above it whatever comes between, so a record block
+// runs to the next path line and every indented line in it goes, an indented
+// comment included. A CRLF map is read as LF, and the map keeps its final
+// newline when its last paragraph was a record block's.
 func withoutRecordHeaders(committed []byte) []byte {
+	text := strings.ReplaceAll(string(committed), "\r\n", "\n")
 	var kept []string
-	for _, para := range strings.Split(string(committed), "\n\n") {
+	for _, para := range strings.Split(text, "\n\n") {
 		var lines []string
 		paths, dropped, inRecord := 0, 0, false
 		for _, line := range strings.Split(para, "\n") {
 			trimmed := strings.TrimSpace(line)
+			indented := trimmed != "" && (line[0] == ' ' || line[0] == '\t')
 			switch {
-			case trimmed == "" || strings.HasPrefix(trimmed, "#"):
-				inRecord = false
-			case line[0] != ' ' && line[0] != '\t':
+			case trimmed == "" || (!indented && strings.HasPrefix(trimmed, "#")):
+			case !indented:
 				inRecord = isRecordPath(trimmed)
 				if inRecord {
 					dropped++
@@ -863,7 +868,11 @@ func withoutRecordHeaders(committed []byte) []byte {
 		}
 		kept = append(kept, strings.Join(lines, "\n"))
 	}
-	return []byte(strings.Join(kept, "\n\n"))
+	out := strings.Join(kept, "\n\n")
+	if strings.HasSuffix(text, "\n") && !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return []byte(out)
 }
 
 // isRecordPath reports whether a header block's path is one of the record's.
