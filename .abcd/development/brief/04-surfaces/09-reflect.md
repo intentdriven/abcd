@@ -118,9 +118,17 @@ checkout's own entry under `worktrees/` (its `HEAD`, `commondir`, `gitdir`,
 the repository's common git directory and where a link there leads, any
 hooks directory `core.hooksPath` names outside the tree, read where its links
 lead, and the push receipts in this checkout's own local tier, read where a
-link there leads, each hashed; another worktree's `HEAD`, lock and push
-receipts, and a worktree added or removed beside this one, are that
-worktree's own work and are not read; left out are only the run's own turn
+link there leads, each hashed; whether the pre-push gate lets a push of this
+checkout's HEAD through with no new preflight (a receipt for it in the local
+tier of any worktree the gate reads, or a remote-tracking ref outside the
+gate's receipt-less prefixes holding it), which stops the interview when a
+dispatch opens it, saying in plain words what opened it; another worktree's
+`HEAD` and lock, its push receipts for its own commits, and a worktree added
+or removed beside this one as `git worktree add` makes it, are that
+worktree's own work and are not read, but an entry that appears carrying its
+own `config.worktree` or a `commondir` leading to another common directory
+is, and a worktree added with upstream tracking writes the shared
+configuration, which is read; left out are only the run's own turn
 directory, where the role writes its receipt, a checkout's local transcript
 store, a file named `.DS_Store` anywhere and `.claude/scheduled_tasks.lock` at
 the root, which execute nothing, every other `.claude/` path watched) before

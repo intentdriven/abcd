@@ -607,10 +607,21 @@ HEAD, common directory, working-tree path, own configuration and lock; and,
 of another worktree's entry, its common directory, working-tree path and own
 configuration), and whatever wrote it, since abcd cannot tell the role's
 writes from another program's: a second interview run in the same checkout
-stops this one. Work in another worktree of the repository is that
-worktree's own and does not stop the interview: a commit, a branch switch or
-a rebase there, a worktree added or removed beside it, and a push receipt its
-preflight mints in its own local tier. Only the run's own turn directory is
+stops this one. A change that lets the person's next push of this checkout's
+HEAD skip the preflight stops it too, saying so in plain words: a push
+receipt for HEAD written in the local tier of any worktree the pre-push gate
+reads (a worktree registered during the turn among them), or a
+remote-tracking ref outside the gate's receipt-less prefixes made to hold
+HEAD. Work in another worktree of the repository is that worktree's own and
+does not stop the interview: a commit, a branch switch, a rebase or a fetch
+there, a worktree added or removed beside it with no upstream tracking set,
+and a push receipt its preflight mints in its own local tier for its own
+commit. A worktree entry that appears carrying its own configuration
+(`config.worktree`) or a `commondir` leading to another common directory
+stops it, and so does any write to the shared git configuration: a worktree
+added with upstream tracking (`git worktree add -b <branch> <path>
+origin/main`), a `git push -u` and a `git branch --set-upstream-to` each
+write the branch's tracking there. Only the run's own turn directory is
 the role's to write, and two paths that execute nothing are not watched: a
 file named `.DS_Store`, and `.claude/scheduled_tasks.lock` (every other path
 under `.claude/` is). A link where git follows one (a hook, the hooks
