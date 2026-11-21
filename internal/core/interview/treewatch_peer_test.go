@@ -144,19 +144,18 @@ func TestAChangeTheInterviewMustNotIgnoreStillStopsIt(t *testing.T) {
 
 // TestASiblingWorktreesOwnWorkDoesNotStopTheInterview: a sibling worktree's
 // per-worktree state (its HEAD, its rebase's files, its entry made or
-// removed) and every push receipt are not the interview's: a peer switching
-// branch, rebasing or running the preflight (which mints a push receipt in
-// its own local tier) in another worktree, or adding one, while the role
-// writes the first question, leaves the interview running to its outcome,
-// from the checkout's main worktree and from a linked one. So does a receipt
-// minted in the checkout's own local tier: the interview's contract reads no
-// receipt.
+// removed) and the push receipts in its local tier are not the interview's:
+// a peer switching branch, rebasing or running the preflight (which mints a
+// push receipt in its own local tier) in another worktree, or adding one,
+// while the role writes the first question, leaves the interview running to
+// its outcome, from the checkout's main worktree and from a linked one. A
+// receipt in the checkout's own local tier is watched
+// (TestAPushReceiptInThisCheckoutsOwnTierStopsTheInterview).
 func TestASiblingWorktreesOwnWorkDoesNotStopTheInterview(t *testing.T) {
 	// commitFile commits a file named n in the peer's worktree.
 	commitFile := func(n string) string {
 		return "printf '" + n + "\\n' > " + n + ".txt && git add " + n + ".txt && " + fixtureGit + " commit -q -m " + n
 	}
-	receipt := "mkdir -p .abcd/.work.local/preflight-receipts && h=$(git rev-parse HEAD) && printf 'commit %s\\n' \"$h\" > .abcd/.work.local/preflight-receipts/\"$h\""
 	for _, c := range []struct {
 		name string
 		// peer is what runs while the role runs, given the interview's
@@ -173,13 +172,10 @@ func TestASiblingWorktreesOwnWorkDoesNotStopTheInterview(t *testing.T) {
 			return []stubCmd{{Dir: peer, Script: commitFile("a") + " && " + commitFile("b") + " && { " + fixtureGit + " rebase -q --force-rebase --exec false HEAD~2 >/dev/null 2>&1; test -d \"$(git rev-parse --git-path rebase-merge)\"; }"}}
 		}},
 		{name: "a push receipt minted in a sibling worktree's local tier", peer: func(_, peer string) []stubCmd {
-			return []stubCmd{{Dir: peer, Script: receipt}}
+			return []stubCmd{{Dir: peer, Script: mintReceipt}}
 		}},
 		{name: "a worktree added beside the checkout", peer: func(_, peer string) []stubCmd {
 			return []stubCmd{{Dir: peer, Script: "git worktree add -q -b added ../added"}}
-		}},
-		{name: "a push receipt minted in the checkout's own local tier", peer: func(mine, _ string) []stubCmd {
-			return []stubCmd{{Dir: mine, Script: receipt}}
 		}},
 	} {
 		for _, linked := range []bool{false, true} {
@@ -206,6 +202,70 @@ func TestASiblingWorktreesOwnWorkDoesNotStopTheInterview(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// mintReceipt mints a push receipt for HEAD in the local tier of the
+// worktree it runs in, as scripts/preflight-receipt.sh does.
+const mintReceipt = "mkdir -p .abcd/.work.local/preflight-receipts && h=$(git rev-parse HEAD) && printf 'commit %s\\n' \"$h\" > .abcd/.work.local/preflight-receipts/\"$h\""
+
+// TestAPushReceiptInThisCheckoutsOwnTierStopsTheInterview: the pre-push gate
+// lets a commit through on a receipt in the pushing checkout's local tier, so
+// a receipt written there while the role runs would let a push skip the
+// preflight. It stops the interview, from the main worktree and from a
+// linked one, naming the receipt, with nothing more drawn and the answer
+// given before it kept. A receipts directory that is a link is read where it
+// leads, so a receipt written there stops it too, named in full.
+func TestAPushReceiptInThisCheckoutsOwnTierStopsTheInterview(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		linked bool
+		// outside, when set, makes the checkout's receipts directory a link
+		// to a directory outside the tree before the run.
+		outside bool
+	}{
+		{name: "a receipt in the main worktree's own tier"},
+		{name: "a receipt in a linked worktree's own tier", linked: true},
+		{name: "a receipt where the own tier's receipts directory leads", outside: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
+			r := newWrittenRun(t, routedToClaude)
+			ignoring(".abcd/.work.local/\n")(r)
+			mine := r.repo
+			laneFor(t, r, "lane")
+			if c.linked {
+				mine = laneFor(t, r, "mine")
+				r.w.Repo = mine
+			}
+			head := r.git.Git("rev-parse", "HEAD")
+			named := ".abcd/.work.local/preflight-receipts/" + head
+			if c.outside {
+				dir, err := filepath.EvalSymlinks(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(filepath.Join(mine, ".abcd", ".work.local"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(dir, filepath.Join(mine, filepath.FromSlash(".abcd/.work.local/preflight-receipts"))); err != nil {
+					t.Fatal(err)
+				}
+				named = filepath.ToSlash(filepath.Join(dir, head))
+			}
+			stubPeer(t, script, 2, r.git.Env(), stubCmd{Dir: mine, Script: mintReceipt})
+			res, err := r.w.Run(context.Background())
+			var uc *UnexpectedChangesError
+			if !errors.As(err, &uc) || !slices.Contains(uc.Paths, named) || !strings.Contains(err.Error(), named) {
+				t.Fatalf("err = %v, want the interview stopped naming %s", err, named)
+			}
+			if len(r.asked) != 1 || len(r.finished) != 0 {
+				t.Fatalf("asked %d, finished %d; nothing is drawn or finished after the change", len(r.asked), len(r.finished))
+			}
+			if rec := readRecord(t, res.Record); len(rec.Answers) != 1 {
+				t.Fatalf("record %+v", rec)
+			}
+		})
 	}
 }
 

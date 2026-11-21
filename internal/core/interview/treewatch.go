@@ -11,7 +11,7 @@ package interview
 // stops it too (a second interview in the same checkout among them: one
 // checkout is one session).
 //
-// Four places are read:
+// Five places are read:
 //
 //   - What differs from HEAD, as git lists it (gitutil.Status, the one reader
 //     of `git status --porcelain=v1 -z --untracked-files=all`): each path
@@ -22,7 +22,7 @@ package interview
 //     walked the same way: each file by its mode, size and modification time,
 //     never its content, since an ignored tree (a build's output, the local
 //     tier's scratch) can be large. The local tier is watched like any other
-//     path, the handover among them, but for the push receipts (below).
+//     path, the handover among them; its push receipts are read as below.
 //   - git's own directory, which no status lists: every entry of hooks/ and
 //     info/, the configuration (config, and config.worktree), HEAD, the
 //     branch HEAD names, each submodule's git directory under modules/ (read
@@ -57,6 +57,13 @@ package interview
 //     reached through a link (a dotfiles-managed one, or an in-tree link to a
 //     directory elsewhere) is read where git runs its hooks from, held to
 //     the budget maxFollowedEntries and maxFollowedBytes set.
+//   - The push receipts in this checkout's own local tier (receiptsRel), by
+//     mode, size and content hash: the pre-push gate lets a commit through on
+//     a receipt there, so one written while the role runs would let a push
+//     skip the preflight. A receipts directory that is a link is read where
+//     it leads, held to the same budget. A sibling worktree's receipts are
+//     not read: a peer's preflight mints one in its own worktree at any time,
+//     and that is a peer's own work.
 //
 // git's own directory and common directory are placed by the run's first
 // reading, taken before any role ran, and every later reading reads those
@@ -78,12 +85,7 @@ package interview
 // Two places are left out because abcd itself writes them while a role runs:
 // the run's own turn directory, where abcd writes each brief and the role its
 // receipt, and the local transcript store a checkout can pull its runners'
-// transcripts into. Every other run's turn directory is watched. The push
-// receipts (receiptsRel), in this checkout's local tier or any other
-// worktree's, are left out too: the interview's contract reads none, a
-// peer's preflight mints one in its own worktree at any time, and a receipt
-// is a local convenience gate CI stands behind, not a security boundary
-// (scripts/preflight-receipt.sh). Two paths are
+// transcripts into. Every other run's turn directory is watched. Two paths are
 // left out because something else on the machine writes them while a role
 // runs and neither executes anything: a file named .DS_Store anywhere
 // (Finder's metadata), and the host scheduler's lock at the repository's root,
@@ -128,19 +130,22 @@ const maxStatusBytes = 8 << 20
 var maxWatched = 500_000
 
 // maxFollowedEntries and maxFollowedBytes bound what one reading reads
-// outside what it owns: what the links it follows lead to, and every hooks
-// directory core.hooksPath names outside the tree. Every entry read there (a
-// directory included) and every byte of the files hashed there is counted. A
-// reading past either is refused, naming the link or the core.hooksPath
-// value, before the entry past it is read, rather than walking toward
-// maxWatched: a role can plant a link to a large tree in one write where the
-// guard follows links, or point core.hooksPath at one, and hashing that whole
-// would hold the turn for minutes before the guard refused. What the guard
-// legitimately reads there is small: git's sample hooks are 14 files and
-// 26 KiB, and a dotfiles-managed hooks directory holds tens of scripts. The
-// budget holds a compiled hook binary, and reading all of it takes tens of
-// milliseconds. It is shared by everything one reading reads there, so
-// planting many links or hooks directories does not multiply it.
+// outside what it owns: what the links it follows lead to, every hooks
+// directory core.hooksPath names outside the tree, and this checkout's push
+// receipts. Every entry read there (a directory included) and every byte of
+// the files hashed there is counted. A reading past either is refused, naming
+// the link, the core.hooksPath value or the receipts directory, before the
+// entry past it is read, rather than walking toward maxWatched: a role can
+// plant a link to a large tree in one write where the guard follows links
+// (this checkout's receipts directory among them), or point core.hooksPath
+// at one, and hashing that whole would hold the turn for minutes before the
+// guard refused. What the guard legitimately reads there is small: git's
+// sample hooks are 14 files and 26 KiB, a checkout keeps at most 50 push
+// receipts of 76 bytes each (scripts/preflight-receipt.sh), and a
+// dotfiles-managed hooks directory holds tens of scripts. The budget holds a
+// compiled hook binary, and reading all of it takes tens of milliseconds. It
+// is shared by everything one reading reads there, so planting many links or
+// hooks directories does not multiply it.
 var (
 	maxFollowedEntries       = 1024
 	maxFollowedBytes   int64 = 64 << 20
@@ -257,7 +262,8 @@ func (e *redirectedError) Error() string {
 }
 
 // reach is what took a reading outside what it owns, and so to the budget: a
-// followed link, or a hooks directory core.hooksPath names outside the tree.
+// followed link, a hooks directory core.hooksPath names outside the tree, or
+// this checkout's push receipts.
 type reach struct {
 	// what names it in a refusal, and fix says how to clear it.
 	what, fix string
@@ -712,7 +718,7 @@ func (r *treeReader) charge(via *reach, fi fs.FileInfo) error {
 	}
 	if r.followedEntries > maxFollowedEntries || r.followedBytes > maxFollowedBytes {
 		return fmt.Errorf("%s leads past what one reading follows links to (%d entries and %d MiB in all), "+
-			"more than git's own directory or a hooks directory holds, so it is not read; "+
+			"more than git's own directory, a hooks directory or the push receipts hold, so it is not read; "+
 			"%s, and run the interview again", via.what, maxFollowedEntries, maxFollowedBytes>>20, via.fix)
 	}
 	return nil
@@ -857,7 +863,7 @@ func (r *treeReader) readGitDirs() error {
 			return err
 		}
 	}
-	return nil
+	return r.readReceipts()
 }
 
 // worktreeFiles are the files of the checkout's own entry under the common
@@ -964,8 +970,25 @@ func (r *treeReader) readWorktrees(common string) error {
 }
 
 // receiptsRel is where a checkout's push receipts stand, under each worktree
-// (scripts/preflight-receipt.sh); the reading leaves them out.
+// (scripts/preflight-receipt.sh). The walk of what git ignores leaves them
+// to readReceipts.
 const receiptsRel = ".abcd/.work.local/preflight-receipts"
+
+// readReceipts records the push receipts in this checkout's own local tier by
+// mode, size and content hash: the pre-push gate lets a commit through on a
+// receipt there, so one written during a turn would pass a push the gates
+// never read. A receipts directory that is a link is read where it leads.
+// Everything is held to the budget, since the directory may lead anywhere on
+// the machine. A sibling worktree's receipts are its own work and are not
+// read.
+func (r *treeReader) readReceipts() error {
+	dir := filepath.Join(r.repo, filepath.FromSlash(receiptsRel))
+	via := &reach{
+		what: "the push receipts directory " + filepath.ToSlash(dir),
+		fix:  "remove what is not a push receipt from it, or the link it is if you did not make it",
+	}
+	return r.hashAt(filepath.Dir(dir), filepath.Base(dir), true, via)
+}
 
 // gitDirEntries are the entries of each submodule's git directory read by
 // mode, size and content hash.
