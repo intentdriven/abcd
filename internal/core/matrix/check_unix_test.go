@@ -29,7 +29,7 @@ func TestACheckCopysCollectionCanBeRetriedOnceItsFindingsAreRecorded(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	clone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestACheckCopysCollectionCanBeRetriedOnceItsFindingsAreRecorded(t *testing.
 	// clone is deleted, and the credential is nowhere in the record.
 	token := "ghp_" + testsecret.Synthetic(11, 36)
 	sKey := TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}
-	sClone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, sKey)
+	sClone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, sKey)
 	if err != nil {
 		t.Fatal(err)
 	}

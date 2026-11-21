@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,6 +43,12 @@ var checkSeed = [32]byte{7, 7, 7}
 // of the guard chapter, and each public sentence as "public:<path>:<text>".
 func dfAnswer(t *testing.T, sentences ...string) []byte {
 	t.Helper()
+	return dfAnswerIn(t, "17-guard.md", sentences...)
+}
+
+// dfAnswerIn is dfAnswer with each brief sentence in chapter.
+func dfAnswerIn(t *testing.T, chapter string, sentences ...string) []byte {
+	t.Helper()
 	type failing struct {
 		Disposition string `json:"disposition"`
 		Doc         string `json:"doc"`
@@ -52,7 +59,7 @@ func dfAnswer(t *testing.T, sentences ...string) []byte {
 	}
 	var fs []failing
 	for _, s := range sentences {
-		f := failing{Disposition: "confirmed", Doc: "brief", Chapter: "17-guard.md", Sentence: s,
+		f := failing{Disposition: "confirmed", Doc: "brief", Chapter: chapter, Sentence: s,
 			Evidence: "internal/core/guard/registry.go:40 reads it elsewhere", Replacement: s + " (corrected)"}
 		if rest, ok := strings.CutPrefix(s, "public:"); ok {
 			p, text, _ := strings.Cut(rest, ":")
@@ -233,7 +240,7 @@ func collectForm(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	clone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +285,7 @@ func TestACheckCopysFindingsAreReadBeforeItsCloneIsDeleted(t *testing.T) {
 	// A second collection of the same copy cannot be recorded, so its clone
 	// stays where it is.
 	key2 := TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}
-	clone2, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
+	clone2, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -825,7 +832,7 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		clone, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -842,7 +849,7 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		}
 	}
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
-	if _, err := makeClone(r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
+	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, nil, dfAnswer(t, "It refuses a hazard"))); err == nil ||
@@ -864,9 +871,11 @@ func TestACheckCopyCannotNameItsOwnModelToItsJudges(t *testing.T) {
 		ownID  = "claude-opus-4-8"
 		pinned = "zephyrine-7"
 	)
+	// Each name fused to a letter or a digit, or in another case, too.
+	const fused = " xclaude Claudex OPUSx xopus anthropicx gpt5x xzephyrine-7 ZEPHYRINE-72"
 	cons := `{"schema_version":1,"findings":[` +
-		`{"class":"` + ownID + `","summary":"found by ` + ownID + ` (Claude, Anthropic)","ends":[` +
-		`{"path":"` + guardChapter + `","quote":"It refuses a hazard"},{"path":"docs/guide.md","quote":"signed ` + ownID + `"}]},` +
+		`{"class":"x` + ownID + `","summary":"found by ` + ownID + ` (Claude, Anthropic)` + fused + `","ends":[` +
+		`{"path":"` + guardChapter + `","quote":"It refuses a hazard"},{"path":"docs/guide.md","quote":"signed ` + ownID + fused + `"}]},` +
 		`{"class":"` + pinned + `","summary":"cell or-cheap on openrouter/acme/` + pinned + ` says so","ends":[` +
 		`{"path":"` + guardChapter + `","quote":"The guard never logs a refusal."},{"path":"docs/guide.md","quote":"by ` + pinned + `"}]}]}`
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
@@ -906,7 +915,7 @@ func TestACheckCopyCannotNameItsOwnModelToItsJudges(t *testing.T) {
 	dj, _ := json.Marshal(dc)
 	for what, js := range map[string][]byte{"the record": record, "the packet": pj, "the matcher's request": mj, "the doc-fidelity copy": dj} {
 		low := strings.ToLower(string(js))
-		for _, leak := range []string{"claude", "opus", "anthropic", "zephyrine", "gpt-5"} {
+		for _, leak := range []string{"claude", "opus", "anthropic", "zephyrine", "gpt-5", "gpt5"} {
 			if strings.Contains(low, leak) {
 				t.Errorf("%s names %q: %s", what, leak, js)
 			}
@@ -966,17 +975,18 @@ func TestTheMatcherIsShownNoFullPath(t *testing.T) {
 	}
 }
 
-// The run's own chapter of the frozen material: it names the run's cells, its
-// task and a runner, so a quote of it that the material holds carries them.
+// The run's own chapter of the frozen material: it names the grammar's words
+// (host, local, provider, openrouter), a harness version and a cell, so a
+// quote of it that the material holds carries them, the same for every copy.
 const (
 	routesChapter = docfidelity.ChaptersDir + "/18-routes.md"
-	routesLine    = "The or-cheap cell runs opencode on openrouter for the fidelity task."
+	routesLine    = "The host reads the local registry before a provider or openrouter route runs, as harness 1.2.3 does for or-cheap."
 	routesText    = "# Routes\n\n" + routesLine + "\n"
 )
 
 // identityLab is a run of three cells, two of them named for their routes
-// (host-big, or-cheap) and one by an id too short to withhold as a word (lr),
-// over the guard and routes chapters.
+// (host-big, or-cheap) and one by a two-byte id (lr), over the guard and
+// routes chapters.
 func identityLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, string) {
 	t.Helper()
 	return checkLabWith(t, map[string]string{routesChapter: routesText}, func(in *runInputs) {
@@ -985,32 +995,73 @@ func identityLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, st
 	})
 }
 
-// signedBy is text a copy writes to sign what it found: every cell's id, the
-// task's, the other tasks', the routes' runner and provider, the pins'
-// names, and partial clone paths, the copy's own among them.
-func signedBy(rec RunRecord) string {
-	return "cell or-cheap of task fidelity (doc-page, feature-a; host-big and lr too) on the host route " +
-		"via opencode on openrouter, provider-a, llama-server Q4_K_M b6000, wrote fidelity/or-cheap/1/docs/guide.md, " +
-		rec.RunID + "/fidelity/host-big/2/notes.md, fidelity/lr/3/x.md and copies/or-cheap/1.json"
+// cloneAlias is the alias copy key's clone was made under, read from the
+// run's state as the test's own reading.
+func cloneAlias(t *testing.T, home string, m lab.Minted, rec RunRecord, key TrialKey) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "check", key.Task, "aliases", key.Cell, strconv.Itoa(key.Repeat)+".json"))
+	if err != nil {
+		t.Fatalf("copy %s's alias is not in the run's state: %v", key, err)
+	}
+	var a struct {
+		Alias string `json:"alias"`
+	}
+	if err := json.Unmarshal(data, &a); err != nil || a.Alias == "" {
+		t.Fatalf("copy %s's alias record = %s (%v)", key, data, err)
+	}
+	return a.Alias
 }
 
-// noIdentity fails t where js names anything signedBy does.
-func noIdentity(t *testing.T, what string, js []byte) {
+// shownPath is each segment of the path a copy's clone is at under the
+// store: what the copy is shown of where it runs, past the store every copy
+// of the run shares.
+func shownPath(t *testing.T, store, clone string) []string {
+	t.Helper()
+	rel, err := filepath.Rel(store, clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(filepath.ToSlash(rel), "/")
+}
+
+// leakShapes is name in every shape an ordinary id is joined in: fused to a
+// digit or a letter on either side, joined by -, ., :, + or _, and in upper
+// case.
+func leakShapes(name string) []string {
+	return []string{name + "1", "x" + name, name + "-2", name + "2", name + ".x", name + ":3", "+" + name, "_" + name + "_", strings.ToUpper(name)}
+}
+
+// signedWith is text a copy writes to sign what it found with each name, in
+// every leak shape.
+func signedWith(names ...string) string {
+	var b strings.Builder
+	for _, n := range names {
+		for _, s := range leakShapes(n) {
+			b.WriteString(s)
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
+
+// runNames is every name of the run a copy could hold of three bytes or
+// more: the long cell ids, the task's and the other tasks', the run's, the
+// routes' runner and provider, the pins' names, the cells' sources and the
+// harness version.
+var runNames = []string{"host-big", "or-cheap", "fidelity", "doc-page", "feature-a", "mx-261023012949-ab12",
+	"opencode", "openrouter", "provider-a", "llama-server", "q4_k_m", "b6000", "host", "local", "qwen", "1.2.3"}
+
+// noIdentity fails t where js names, in any case, any of the run's names or
+// any of extra.
+func noIdentity(t *testing.T, what string, js []byte, extra ...string) {
 	t.Helper()
 	low := strings.ToLower(string(js))
-	for _, leak := range []string{"mx-261023012949-ab12", "fidelity", "feature-a", "doc-page", "host", "or-cheap",
-		"opencode", "openrouter", "provider-a", "llama-server", "q4_k_m", "b6000", "/1/", "/2/", "/3/", "/1.json"} {
-		if strings.Contains(low, leak) {
+	for _, leak := range append(slices.Clone(runNames), extra...) {
+		if strings.Contains(low, strings.ToLower(leak)) {
 			t.Errorf("%s names %q: %s", what, leak, js)
 		}
 	}
-	// The short cell id, as a word or a path's segment.
-	if shortID.MatchString(low) {
-		t.Errorf("%s names the cell lr: %s", what, js)
-	}
 }
-
-var shortID = regexp.MustCompile(`(^|[^a-z0-9])lr([^a-z0-9]|$)`)
 
 // consistencyJSON is a consistency answer of the given findings.
 func consistencyJSON(t *testing.T, findings ...map[string]any) []byte {
@@ -1030,46 +1081,116 @@ func consistencyRow(class, summary string, ends ...[2]string) map[string]any {
 	return map[string]any{"class": class, "summary": summary, "ends": es}
 }
 
-// A copy cannot sign what it found with where it ran: no cell's id, no task's,
-// no route, runner, provider or pinned name of the run, and no partial clone
-// path (<task>/<cell>/<n>/...), in a consistency finding's class, summary or
-// quotes, located or not, reaches the person's packet or the matcher's request.
-// A class naming one is withheld; a path the frozen material does not hold
-// that names one refuses the answer.
-func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
-	r, _, m, rec, store := identityLab(t)
-	sign := signedBy(rec)
-	cons := consistencyJSON(t,
-		consistencyRow("or-cheap", sign, [2]string{guardChapter, "It refuses a hazard"}, [2]string{"docs/guide.md", "signed " + sign}),
-		consistencyRow("fidelity", "the routes chapter disagrees: "+sign,
-			[2]string{routesChapter, routesLine}, [2]string{guardChapter, "The guard never logs a refusal."}),
-		consistencyRow("drift-host-big", "it drifts", [2]string{guardChapter, "The guard reads its registry from the plugin root."},
-			[2]string{"docs/guide.md", "copies/or-cheap/1.json and fidelity/lr/3/x.md say so"}),
-	)
-	_, c, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, CheckConsistency, cons)
-	if err != nil {
-		t.Fatalf("collectCheckCopy: %v", err)
-	}
-	if !c.Answered || len(c.Findings) != 3 {
-		t.Fatalf("copy = %+v; want its three findings answered", c)
-	}
-	for i, f := range c.Findings {
-		if f.Class == "or-cheap" || f.Class == "fidelity" || f.Class == "drift-host-big" {
-			t.Errorf("finding %d's class is %q; want it withheld", i+1, f.Class)
+// A check copy is never shown its cell's or its task's id: its clone is made
+// under an alias minted for it at random when it starts and recorded in the
+// run's state, so the path it works in, past the store every copy of the run
+// shares, is the run's id and the alias alone. The alias is never derived
+// from the copy's key, so echoing it tells a judge nothing; a copy whose
+// clone was not made takes the alias recorded for it again.
+func TestACheckCopyIsShownNoCellOrTaskID(t *testing.T) {
+	r, home, m, rec, store := identityLab(t)
+	seen := map[string]TrialKey{}
+	for _, cell := range []string{"or-cheap", "lr", "host-big"} {
+		for repeat := 1; repeat <= 2; repeat++ {
+			key := TrialKey{Task: checkTask, Cell: cell, Repeat: repeat}
+			clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+			if err != nil {
+				t.Fatalf("makeCheckClone(%s): %v", key, err)
+			}
+			alias := cloneAlias(t, home, m, rec, key)
+			if !regexp.MustCompile(`^copy_[0-9a-f]{32}$`).MatchString(alias) {
+				t.Errorf("copy %s's alias is %q; want an opaque token", key, alias)
+			}
+			if got := shownPath(t, store, clone); !slices.Equal(got, []string{rec.RunID, alias}) {
+				t.Errorf("copy %s works at %v under the store; want the run's id and its alias alone", key, got)
+			}
+			for _, id := range []string{cell, checkTask, strconv.Itoa(repeat) + "/"} {
+				if strings.Contains(alias, id) {
+					t.Errorf("copy %s's alias %q holds %q", key, alias, id)
+				}
+			}
+			if other, dup := seen[alias]; dup {
+				t.Errorf("copies %s and %s share the alias %q", other, key, alias)
+			}
+			seen[alias] = key
 		}
 	}
-	// A quote the material holds keeps its position in the material, which is
-	// read before anything is withheld.
-	if e := c.Findings[1].Ends[0]; e.Lines == nil || e.Path != routesChapter {
-		t.Errorf("the routes chapter's quote = %+v; want its lines in the frozen material", e)
+
+	// A clone that was not made is made again under the alias its copy was
+	// given; one that is there is never made twice.
+	key := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
+	alias := cloneAlias(t, home, m, rec, key)
+	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err == nil {
+		t.Error("a copy's clone was made twice")
 	}
-	other := consistencyJSON(t, consistencyRow("contradiction", "host-big says "+sign,
-		[2]string{guardChapter, "It refuses a hazard"}, [2]string{"docs/reference/x.md", "lr wrote " + sign}))
-	_, c2, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, CheckConsistency, other)
-	if err != nil || !c2.Answered {
-		t.Fatalf("collectCheckCopy = %+v, %v", c2, err)
+	if err := os.RemoveAll(filepath.Join(store, rec.RunID, alias)); err != nil {
+		t.Fatal(err)
 	}
-	copies := []CheckCopy{c, c2}
+	again, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	if err != nil || again != filepath.Join(store, rec.RunID, alias) {
+		t.Errorf("the clone made again = %q, %v; want it under the alias %s", again, err, alias)
+	}
+}
+
+// A copy cannot sign what it found with where it runs or what it is: neither
+// what it is shown of its clone's path (the run's id and its alias, whole, in
+// part or in another case) nor any long name of the run that could still
+// reach it (a cell's id, a task's, a route's runner or provider, a pin's
+// name), fused to a letter or a digit or joined by a punctuation mark, in a
+// consistency finding's class, summary or quote the frozen material does not
+// hold, reaches the record, the person's packet or the matcher's request. A
+// class naming one is withheld; a path the frozen material does not hold that
+// names one refuses the answer.
+func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
+	r, _, m, rec, store := identityLab(t)
+	gates, err := snapshotGates(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copies []CheckCopy
+	var shown []string
+	for i, cell := range []string{"or-cheap", "lr", "host-big"} {
+		key := TrialKey{Task: checkTask, Cell: cell, Repeat: 1}
+		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := shownPath(t, store, clone)
+		// Each copy words its quotes its own way, so the matcher is shown
+		// them.
+		own := []string{"first", "second", "third"}[i]
+		rel := strings.Join(parts, "/")
+		last := parts[len(parts)-1]
+		shown = append(shown, parts...)
+		sign := signedWith(append(slices.Clone(runNames), parts...)...) +
+			"wrote " + rel + "/docs/x.md, " + last + "/docs, " + strings.ToUpper(rel) + " and " + clone + "/notes.md"
+		// A quote is bounded tighter than a summary, so it is signed with the
+		// clone's path and the cells' ids alone.
+		quote := own + " signed " + signedWith(append(slices.Clone(parts), "or-cheap", "host-big")...) + rel
+		ans := consistencyJSON(t,
+			consistencyRow("xor-cheap1", sign, [2]string{guardChapter, "It refuses a hazard"}, [2]string{"docs/guide.md", quote}),
+			consistencyRow("x"+asciiLower(last)+"-2", "it drifts: "+sign,
+				[2]string{guardChapter, "The guard reads its registry from the plugin root."}, [2]string{"docs/guide.md", own + " " + rel + "/docs/x.md says so"}),
+			consistencyRow("fidelity2", "it disagrees", [2]string{guardChapter, "The guard never logs a refusal."},
+				[2]string{guardChapter, "before the command runs."}),
+		)
+		c, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckConsistency, gates, ans))
+		if err != nil {
+			t.Fatalf("collectCheckCopy(%s): %v", key, err)
+		}
+		if !c.Answered || len(c.Findings) != 3 {
+			t.Fatalf("copy %s = %+v; want its three findings answered", key, c)
+		}
+		for i, f := range c.Findings {
+			if f.Class != withheldClass {
+				t.Errorf("copy %s's finding %d's class is %q; want it withheld", key, i+1, f.Class)
+			}
+		}
+		if c.Redacted == 0 {
+			t.Errorf("copy %s withheld nothing", key)
+		}
+		copies = append(copies, c)
+	}
 	p, _, err := drawCheckPacket(rec.RunID, checkTask, copies, matchExact(copies).rows(), checkSeed)
 	if err != nil {
 		t.Fatal(err)
@@ -1083,43 +1204,140 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 	}
 	pj, _ := json.Marshal(p)
 	mj, _ := json.Marshal(req)
-	noIdentity(t, "the packet", pj)
-	noIdentity(t, "the matcher's request", mj)
+	noIdentity(t, "the packet", pj, shown...)
+	noIdentity(t, "the matcher's request", mj, shown...)
 	for _, cc := range copies {
 		fj, _ := json.Marshal(cc.Findings)
-		noIdentity(t, "copy "+cc.Key.String()+"'s findings", fj)
+		noIdentity(t, "copy "+cc.Key.String()+"'s findings", fj, shown...)
 	}
 
-	// A path the frozen material does not hold that names the run's layout or
-	// one of its ids refuses the answer, and the refusal names none of them.
-	for i, signed := range []string{"fidelity/or-cheap/1/docs/x.md", "notes/host-big.md", "docs/lr/3/x.md"} {
+	// A path the frozen material does not hold that names the copy's clone,
+	// one of the run's ids or a pin, fused or not, refuses the answer, and the
+	// refusal names none of them.
+	for i, sign := range []func(run, alias string) string{
+		func(run, alias string) string { return run + "/" + alias + "/docs/x.md" },
+		func(_, alias string) string { return "docs/" + strings.ToUpper(alias) + ".md" },
+		func(string, string) string { return "notes/xhost-big2.md" },
+		func(string, string) string { return "docs/opencode1.md" },
+	} {
+		key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2 + i}
+		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := shownPath(t, store, clone)
+		signed := sign(parts[0], parts[len(parts)-1])
+		shown = append(shown, parts...)
 		ans := consistencyJSON(t, consistencyRow("contradiction", "the two disagree",
 			[2]string{guardChapter, "It refuses a hazard"}, [2]string{signed, "It never refuses."}))
-		_, sc, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2 + i}, CheckConsistency, ans)
+		sc, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckConsistency, gates, ans))
 		if err != nil {
 			t.Fatalf("collectCheckCopy: %v", err)
 		}
 		if sc.Answered || len(sc.Findings) != 0 {
 			t.Errorf("a copy naming %s = %+v; want it the copy's failure", signed, sc)
 		}
-		noIdentity(t, "the refusal of "+signed, []byte(sc.Reason))
+		noIdentity(t, "the refusal of "+signed, []byte(sc.Reason), shown...)
+	}
+}
+
+// A quote the frozen material holds is the material's own words, the same for
+// every copy that quotes it, so it signs no copy and is kept whole: the
+// grammar's words (host, local, provider, openrouter), a harness version and
+// even a cell's id stay in it, in the record, the person's packet and the
+// matcher's request, at the lines the material holds it.
+func TestALocatedQuoteIsKeptWholeThoughItNamesTheRunsWords(t *testing.T) {
+	r, _, m, rec, store := identityLab(t)
+	var copies []CheckCopy
+	for _, x := range []struct{ cell, class string }{{"or-cheap", "contradiction"}, {"lr", "drift"}} {
+		cons := consistencyJSON(t, consistencyRow(x.class, "the routes chapter disagrees with the guard",
+			[2]string{routesChapter, routesLine}, [2]string{guardChapter, "The guard never logs a refusal."}))
+		_, c, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: x.cell, Repeat: 1}, CheckConsistency, cons)
+		if err != nil || !c.Answered {
+			t.Fatalf("collectCheckCopy = %+v, %v", c, err)
+		}
+		copies = append(copies, c)
+	}
+	_, dc, err := collect(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1},
+		dfAnswerIn(t, path.Base(routesChapter), routesLine))
+	if err != nil || !dc.Answered {
+		t.Fatalf("collectCheckCopy = %+v, %v", dc, err)
+	}
+	whole := func(what string, quote string, lines *LineSpan) {
+		t.Helper()
+		if quote != routesLine {
+			t.Errorf("%s quotes %q; want the material's line whole, %q", what, quote, routesLine)
+		}
+		if lines != nil && (lines.Start != 3 || lines.End != 3) {
+			t.Errorf("%s is at %+v; want line 3", what, lines)
+		}
+	}
+	for _, c := range append(slices.Clone(copies), dc) {
+		e := c.Findings[0].Ends[0]
+		if e.Lines == nil {
+			t.Errorf("copy %s's quote of the routes chapter is not located", c.Key)
+		}
+		whole("copy "+c.Key.String()+"'s record", e.Quote, e.Lines)
+	}
+	for _, set := range [][]CheckCopy{copies, {dc}} {
+		p, _, err := drawCheckPacket(rec.RunID, checkTask, set, matchExact(set).rows(), checkSeed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _, err := matchExact(set).matcherRequest(checkSeed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shown := 0
+		for _, it := range p.Items {
+			for _, e := range it.Ends {
+				if e.Document == path.Base(routesChapter) {
+					whole("the packet", e.Quote, e.Lines)
+					shown++
+				}
+			}
+		}
+		for _, it := range req.Items {
+			for _, e := range it.Ends {
+				if e.Document == path.Base(routesChapter) {
+					whole("the matcher's request", e.Quote, nil)
+					shown++
+				}
+			}
+		}
+		if shown < 2 {
+			t.Errorf("the routes chapter's quote is shown %d times in the packet and the matcher's request; want both", shown)
+		}
 	}
 }
 
 // The same holds for every other field of a copy's output: a doc-fidelity
-// copy's quoted sentence and its evidence, the chapter it names, and the
-// reason a copy failed.
+// copy's quoted sentence the material does not hold and its evidence, the
+// chapter it names, and the reason a copy failed.
 func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T) {
 	r, _, m, rec, store := identityLab(t)
-	sign := signedBy(rec)
-	df := strings.Replace(string(dfAnswer(t, "It refuses a hazard", sign, routesLine)),
+	gates, err := snapshotGates(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
+	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := shownPath(t, store, clone)
+	sign := signedWith(append(slices.Clone(runNames), parts...)...) + "at " + strings.Join(parts, "/") + "/docs/guide.md"
+	// A quoted sentence is bounded tighter than evidence, so it is signed with
+	// the clone's path and the cells' ids alone.
+	sentence := signedWith(append(slices.Clone(parts), "or-cheap", "host-big")...) + strings.Join(parts, "/")
+	df := strings.Replace(string(dfAnswer(t, "It refuses a hazard", sentence)),
 		"internal/core/guard/registry.go:40 reads it elsewhere", sign, -1)
-	_, dc, err := collect(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, []byte(df))
+	dc, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, gates, []byte(df)))
 	if err != nil {
 		t.Fatalf("collectCheckCopy: %v", err)
 	}
-	if !dc.Answered || len(dc.Findings) != 3 {
-		t.Fatalf("copy = %+v; want its three findings answered", dc)
+	if !dc.Answered || len(dc.Findings) != 2 {
+		t.Fatalf("copy = %+v; want its two findings answered", dc)
 	}
 	_, dc2, err := collect(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1},
 		dfAnswer(t, "The guard never logs a refusal."))
@@ -1141,12 +1359,12 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	pj, _ := json.Marshal(p)
 	mj, _ := json.Marshal(req)
 	fj, _ := json.Marshal(dc.Findings)
-	noIdentity(t, "the packet", pj)
-	noIdentity(t, "the matcher's request", mj)
-	noIdentity(t, "the copy's findings", fj)
+	noIdentity(t, "the packet", pj, parts...)
+	noIdentity(t, "the matcher's request", mj, parts...)
+	noIdentity(t, "the copy's findings", fj, parts...)
 
-	// A chapter the material does not hold, named for the copy's place.
-	public := dfAnswer(t, "It refuses a hazard", "public:fidelity/or-cheap/1/docs/guide.md:Run ahoy first.")
+	// A chapter the material does not hold, named for the copy's clone.
+	public := dfAnswer(t, "It refuses a hazard", "public:"+strings.Join(parts, "/")+"/docs/guide.md:Run ahoy first.")
 	_, pc, err := collect(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, public)
 	if err != nil {
 		t.Fatal(err)
@@ -1154,16 +1372,18 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	if pc.Answered || !strings.Contains(pc.Reason, "does not hold names") {
 		t.Errorf("a copy naming its clone's path as a chapter = %+v; want it the copy's failure", pc)
 	}
-	noIdentity(t, "the refusal of a chapter", []byte(pc.Reason))
+	noIdentity(t, "the refusal of a chapter", []byte(pc.Reason), parts...)
 
 	// A copy whose runner failed is recorded with the runner's words, which
 	// name nothing of the run either.
-	gates, err := snapshotGates(r.Root())
+	fkey := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
+	fclone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, fkey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := checkInputs(t, r, rec, store, TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}, CheckDocFidelity, gates, nil)
-	in.Failure = sign
+	fparts := shownPath(t, store, fclone)
+	in := checkInputs(t, r, rec, store, fkey, CheckDocFidelity, gates, nil)
+	in.Failure = signedWith(append(slices.Clone(runNames), fparts...)...) + " in " + fclone
 	fc, err := collectCheckCopy(m.ID, in)
 	if err != nil {
 		t.Fatal(err)
@@ -1171,5 +1391,5 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	if fc.Answered || fc.Reason == "" {
 		t.Fatalf("failed copy = %+v; want its failure's reason", fc)
 	}
-	noIdentity(t, "a failed copy's reason", []byte(fc.Reason))
+	noIdentity(t, "a failed copy's reason", []byte(fc.Reason), fparts...)
 }

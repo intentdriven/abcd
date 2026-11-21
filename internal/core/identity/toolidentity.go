@@ -52,12 +52,31 @@ func IsToolIdentity(role Role, name, email string) bool {
 		machineNameWord.MatchString(name) || machineLocalWord.MatchString(email)
 }
 
-// IsAIName reports whether name, standing alone, is an AI vendor's or tool's
-// name on the list the attribution gate refuses as an author (`claude`,
-// `codex` and the rest, case-insensitively). A reader that must withhold such
-// a name from text, such as the model matrix keeping a check copy from
-// signing its findings, asks of each word, so the list keeps its one home.
-func IsAIName(name string) bool { return aiNameRe.MatchString(name) }
+// AINameSpans is where s holds a name on the list the attribution gate refuses
+// as an author (`claude`, `codex` and the rest), case-insensitively and
+// wherever it stands, inside a longer word too (`xclaude`, `Codex2`): each
+// span's start and end, leftmost first, none overlapping. A reader that must
+// withhold such a name from text, such as the model matrix keeping a check
+// copy from signing its findings, reads the list through it, so the list
+// keeps its one home.
+func AINameSpans(s string) [][]int { return aiNameInRe.FindAllStringIndex(s, -1) }
+
+// aiNameInRe is the ai_name pattern without the anchors that make it match a
+// whole name: its list of names alone, matched anywhere.
+var aiNameInRe = unanchored("ai_name")
+
+// unanchored is key's pattern with its whole-name anchors cut off. A pattern
+// not written between them is a build defect, as a malformed list is.
+func unanchored(key string) *regexp.Regexp {
+	const open, closing = "^[[:space:]]*", "[[:space:]]*$"
+	pat := toolPatternSource[key]
+	core, ok := strings.CutPrefix(pat, open)
+	core, ok2 := strings.CutSuffix(core, closing)
+	if !ok || !ok2 || core == "" {
+		panic(fmt.Sprintf("identity: %s's %s pattern is not one list between %q and %q", toolIdentitiesFile, key, open, closing))
+	}
+	return regexp.MustCompile("(?i)" + core)
+}
 
 // IsMachineName reports the STRUCTURAL name signal alone: the `[bot]` suffix the
 // forge stamps on an app's account name. It names no vendor, so a reader that
