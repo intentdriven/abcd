@@ -124,3 +124,47 @@ func TestApplyRefusesAnAmbiguousOrAbsentSentenceAndWritesNothing(t *testing.T) {
 		}
 	})
 }
+
+// TestApplyWritesNothingThroughALinkedDirectory: with the shared working tier
+// a symlink to a directory outside the repository, the apply refuses before
+// any write, so neither the flag ledger lands there nor the chapter is edited
+// without its flag; with the chapters directory linked out, the chapter there
+// is neither read nor rewritten.
+func TestApplyWritesNothingThroughALinkedDirectory(t *testing.T) {
+	edits := []Edit{{Chapter: "06-capture.md", Sentence: falseLine, Replacement: "Capture prints JSON.", Evidence: "cli.go:1"}}
+	body := "### `abcd capture`\n\n" + falseLine + " It lists.\n"
+
+	t.Run("the working tier", func(t *testing.T) {
+		root, outside := armedRepo(t), t.TempDir()
+		write(t, root, ChaptersDir+"/06-capture.md", body)
+		if err := os.Symlink(outside, filepath.Join(root, ".abcd", "work")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := Apply(root, edits, "c1", at); err == nil {
+			t.Fatal("the apply wrote its flag through a linked working tier")
+		}
+		if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+			t.Fatalf("the apply created %d entries outside the repository", len(entries))
+		}
+		if data, _ := os.ReadFile(filepath.Join(root, ChaptersDir, "06-capture.md")); string(data) != body {
+			t.Fatalf("the chapter was edited without its flag:\n%s", data)
+		}
+	})
+	t.Run("the chapters directory", func(t *testing.T) {
+		root, outside := armedRepo(t), t.TempDir()
+		write(t, outside, "06-capture.md", body)
+		chapters := filepath.Join(root, filepath.FromSlash(ChaptersDir))
+		if err := os.RemoveAll(chapters); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, chapters); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := Apply(root, edits, "c1", at); err == nil {
+			t.Fatal("the apply edited a chapter through a linked chapters directory")
+		}
+		if data, _ := os.ReadFile(filepath.Join(outside, "06-capture.md")); string(data) != body {
+			t.Fatalf("the chapter outside the repository was rewritten:\n%s", data)
+		}
+	})
+}
