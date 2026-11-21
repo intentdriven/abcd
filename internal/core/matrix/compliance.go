@@ -24,6 +24,7 @@ package matrix
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"crypto/sha256"
 	"errors"
@@ -158,7 +159,7 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 	if !in.Source.valid() {
 		return Compliance{}, fmt.Errorf("%q is not a cell's source", clip(string(in.Source)))
 	}
-	tree, treeErr := readFrozenTree(in.RepoRoot, in.Frozen)
+	tree, treeErr := readFrozenTree(context.Background(), in.RepoRoot, in.Frozen)
 	scan, scanErr := scanClone(cloneDir(in.Store, in.Run, in.Key))
 	isolation := ComplianceCheck{Rule: RuleIsolation, State: StateKept,
 		Detail: "abcd launches the copy's runner in the copy's own clone"}
@@ -301,12 +302,15 @@ type frozenTest struct {
 	size            int64
 }
 
-// frozenTree is what the check reads of the frozen commit's tree: its test
+// frozenTree is what the package reads of the frozen commit's tree: its test
 // files, its attribute files (.gitattributes), the links it holds by their
-// blob ids, and the hash the checkout names its objects with.
+// blob ids, and the hash the checkout names its objects with, which the
+// compliance check reads; and every file it holds by path, which the review's
+// assembly reads.
 type frozenTree struct {
 	tests, attrs []frozenTest
 	links        map[string]string
+	files        map[string]treeEntry
 	newHash      func() hash.Hash
 }
 
@@ -384,14 +388,21 @@ func testsKept(in complianceInputs, tree frozenTree, treeErr error) ComplianceCh
 // safeList is names as one line of plain text.
 func safeList(names []string) string { return termsafe.Sanitize(strings.Join(names, ", ")) }
 
-// readFrozenTree reads the frozen commit's tree from the run's own checkout.
-func readFrozenTree(repoRoot, frozen string) (frozenTree, error) {
-	format, err := checkGit("-C", repoRoot, "rev-parse", "--show-object-format")
+// readFrozenTree reads the frozen commit's tree from the run's own checkout,
+// once, for every reader of it in the package: the compliance check (its test
+// files, attribute files and links) and the review's assembly (every file).
+// Each git call runs through reviewGit: under the caller's deadline and
+// reviewGitTimeout, the listing within maxFrozenTreeBytes, and a refusal that
+// names the subcommand and never git's own words, which can name a path on
+// this machine. A gitlink holds no file and is left out; an entry whose object
+// is not a full id is refused with the listing.
+func readFrozenTree(ctx context.Context, repoRoot, frozen string) (frozenTree, error) {
+	out, err := reviewGit(ctx, repoRoot, maxObjectFormatBytes, "rev-parse", "--show-object-format")
 	if err != nil {
-		return frozenTree{}, err
+		return frozenTree{}, fmt.Errorf("the frozen commit's tree cannot be read: %w", err)
 	}
-	tree := frozenTree{links: map[string]string{}}
-	switch format {
+	tree := frozenTree{links: map[string]string{}, files: map[string]treeEntry{}}
+	switch format := strings.TrimSpace(string(out)); format {
 	case "sha1":
 		tree.newHash = sha1.New
 	case "sha256":
@@ -399,27 +410,29 @@ func readFrozenTree(repoRoot, frozen string) (frozenTree, error) {
 	default:
 		return frozenTree{}, fmt.Errorf("the checkout names its objects by %q", clip(format))
 	}
-	out, err := gitRawWithin(checkGitBound, "-C", repoRoot, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
+	out, err = reviewGit(ctx, repoRoot, maxFrozenTreeBytes, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen+"^{tree}")
 	if err != nil {
-		return frozenTree{}, err
+		return frozenTree{}, fmt.Errorf("the frozen commit's tree cannot be read: %w", err)
 	}
-	for _, entry := range strings.Split(string(out), "\x00") {
-		if entry == "" {
+	for _, rec := range bytes.Split(out, []byte{0}) {
+		if len(rec) == 0 {
 			continue
 		}
-		meta, p, ok := strings.Cut(entry, "\t")
-		f := strings.Fields(meta)
+		meta, raw, ok := bytes.Cut(rec, []byte{'\t'})
+		f := strings.Fields(string(meta))
 		if !ok || len(f) != 4 {
-			return frozenTree{}, fmt.Errorf("the frozen tree lists an entry git does not write")
+			return frozenTree{}, errors.New("the frozen commit's tree listing is not in the shape git documents")
 		}
 		if f[1] != "blob" {
 			continue
 		}
 		size, err := strconv.ParseInt(f[3], 10, 64)
-		if err != nil || size < 0 {
-			return frozenTree{}, fmt.Errorf("the frozen tree lists a blob with no size")
+		if err != nil || size < 0 || !gitutil.IsFullSHA(f[2]) {
+			return frozenTree{}, errors.New("the frozen commit's tree listing is not in the shape git documents")
 		}
+		p := string(raw)
 		ft := frozenTest{mode: f[0], oid: f[2], path: p, size: size}
+		tree.files[p] = treeEntry{mode: ft.mode, oid: ft.oid, size: size}
 		if ft.mode == "120000" {
 			tree.links[p] = ft.oid
 		}

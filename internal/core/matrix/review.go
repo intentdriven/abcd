@@ -30,7 +30,8 @@ package matrix
 // or waited on (fsutil.ReadGuardedInRoot opens without blocking and judges the
 // descriptor again), every read bounded, and the walk bounded in entries,
 // bytes and by the caller's deadline. No git runs in the clone: the only git
-// is the run checkout's ls-tree and cat-file, each under its own deadline. No
+// is the run checkout's rev-parse, ls-tree (compliance.go's readFrozenTree,
+// shared with step 4) and cat-file, each under its own deadline. No
 // refusal names a place on this machine.
 
 import (
@@ -52,7 +53,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -129,8 +129,10 @@ const (
 	maxWithheld = 1000
 	// maxWithheldPath bounds a withheld path as the manifest writes it.
 	maxWithheldPath = 512
-	// maxFrozenTreeBytes bounds the frozen tree's listing.
-	maxFrozenTreeBytes = 64 << 20
+	// maxFrozenTreeBytes bounds the frozen tree's listing, and
+	// maxObjectFormatBytes git's answer naming the checkout's object format.
+	maxFrozenTreeBytes   = 64 << 20
+	maxObjectFormatBytes = 64
 	// reviewGitTimeout bounds each git call the assembly makes.
 	reviewGitTimeout = 2 * time.Minute
 )
@@ -235,10 +237,11 @@ func assembleReview(ctx context.Context, in reviewInputs) (ReviewRequest, Review
 	if err := in.validate(); err != nil {
 		return ReviewRequest{}, ReviewManifest{}, err
 	}
-	frozen, err := readFrozenTree(ctx, in.RepoRoot, in.Frozen)
+	tree, err := readFrozenTree(ctx, in.RepoRoot, in.Frozen)
 	if err != nil {
 		return ReviewRequest{}, ReviewManifest{}, err
 	}
+	frozen := tree.files
 	copied, err := readCopyTree(ctx, in.Dir, frozen)
 	if err != nil {
 		return ReviewRequest{}, ReviewManifest{}, err
@@ -383,36 +386,6 @@ type treeEntry struct {
 	size     int64
 	data     []byte
 	withheld string
-}
-
-// readFrozenTree lists the frozen commit's files from the run's own checkout:
-// regular files and links, each with its mode, object and size. A gitlink
-// holds no file and is left out.
-func readFrozenTree(ctx context.Context, repoRoot, frozen string) (map[string]treeEntry, error) {
-	out, err := reviewGit(ctx, repoRoot, maxFrozenTreeBytes, "ls-tree", "-r", "-z", "-l", "--full-tree", frozen)
-	if err != nil {
-		return nil, fmt.Errorf("the frozen commit's tree cannot be read: %w", err)
-	}
-	tree := map[string]treeEntry{}
-	for _, rec := range bytes.Split(out, []byte{0}) {
-		if len(rec) == 0 {
-			continue
-		}
-		meta, p, ok := bytes.Cut(rec, []byte{'\t'})
-		f := strings.Fields(string(meta))
-		if !ok || len(f) != 4 {
-			return nil, errors.New("the frozen commit's tree listing is not in the shape git documents")
-		}
-		if f[1] != "blob" {
-			continue
-		}
-		size, err := strconv.ParseInt(f[3], 10, 64)
-		if err != nil || size < 0 || !gitutil.IsFullSHA(f[2]) {
-			return nil, errors.New("the frozen commit's tree listing is not in the shape git documents")
-		}
-		tree[string(p)] = treeEntry{mode: f[0], oid: f[2], size: size}
-	}
-	return tree, nil
 }
 
 // readBlob reads one blob of the frozen tree, of the size its listing named.
