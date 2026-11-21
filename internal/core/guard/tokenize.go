@@ -125,6 +125,11 @@ type segment struct {
 	// qualifiers or modifiers, which can change the path the word names. The
 	// tokenizer splits the word there, so the segment holds the record.
 	parenWord bool
+	// qualifierCode holds the shell code zsh glob qualifiers in such a `(`
+	// run: an `e` qualifier's string (`*(e:'…':)`, `*(e{…})`) and a `+name`
+	// qualifier's function or command (zshQualifierCode). The payload reading
+	// reads each as the string an eval runs.
+	qualifierCode []string
 	// leadFrom records, per token index, a spelled word holding a value a
 	// guard keeps from being empty or a site whose empty text leaves a `/`
 	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
@@ -217,6 +222,11 @@ type segment struct {
 	// deep it sits, counted from the text the reading began at.
 	carrier int
 	depth   int
+	// sourced holds the commands of each file this command sources, as the
+	// script reading judged them (readTarget), one list per file, so an
+	// export a file makes holds for the commands after this one
+	// (exportStep). nil where the command sources nothing the guard read.
+	sourced [][]segment
 	// arrayOf names the variable whose array assignment (`fpath=(a b)`) this
 	// command's words are elements of, and arrayAppend records `+=`; "" for
 	// any other command. The words are still read as a command, as before;
@@ -588,8 +598,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// reads.
 		keywords map[int]bool
 		// parenNext rides with the segment the next flushSegment ends
-		// (segment.parenWord).
+		// (segment.parenWord), and qualNext with it (segment.qualifierCode).
 		parenNext bool
+		qualNext  []string
 		// curQuoted records that the word being built took a quote or an
 		// escape, an empty quote pair included, which leaves no byte in cur.
 		curQuoted bool
@@ -1036,7 +1047,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1059,10 +1070,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A command of redirections alone still opens its files: `> f`
 			// truncates f. It is kept, with no words, for the files it writes.
 			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
-				redirects: curRedirs, parenWord: parenNext, afterAnd: andNext, end: pos})
+				redirects: curRedirs, parenWord: parenNext, qualifierCode: qualNext, afterAnd: andNext, end: pos})
 			curRedirs, andNext = nil, false
 		}
-		curStdin, curDocs, parenNext = false, nil, false
+		curStdin, curDocs, parenNext, qualNext = false, nil, false, nil
 	}
 	// follow reads the text of a command substitution the scan found whole —
 	// inside double quotes, or inside an arithmetic expansion — as commands of
@@ -1887,6 +1898,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			if c == '(' && arrayName == "" && !funcParens(line, i, toks, cur, hasCur) && !bashParens(line, i, toks, keywords, string(cur), hasCur, curBare) {
 				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
+				if parenNext {
+					qualNext = append(qualNext, zshQualifierCode(line, i)...)
+				}
 			}
 			flushSegment()
 			if c == '&' && !(i+1 < len(line) && line[i+1] == '&') && len(segs) > 0 {
@@ -3561,4 +3575,174 @@ func oddTrailingBackslashes(text string) bool {
 		n++
 	}
 	return n%2 == 1
+}
+
+// zshQualifierCode is the shell code the zsh glob qualifiers opening at
+// line[open] run: each `e` qualifier's string, delimited by the character
+// after the e (`e:…:`, `e|…|`, or a bracket pair, `e{…}`, `e[…]`, `e(…)`,
+// `e<…>`), and each `+name` qualifier's name, which zsh runs as a command, as
+// `o` and `O` read their `e` and `+` sort keys. The qualifiers are read after
+// quote removal, as zsh reads them once the word is split. `(#q…)` is read
+// the same way; a list of modifiers (from a `:`) or a list that does not
+// close on its line runs no code here. The other qualifiers that take an
+// argument (`u`, `g`, `f`, `P`, a size, a time or a count, `[…]`) are stepped
+// over, so their argument is not read as a qualifier.
+func zshQualifierCode(line string, open int) []string {
+	var q []byte
+	depth := 1
+	i := open + 1
+scan:
+	for ; i < len(line); i++ {
+		c := line[i]
+		switch c {
+		case '\n':
+			return nil
+		case '\\':
+			if i+1 < len(line) {
+				i++
+				q = append(q, line[i])
+			}
+		case '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				return nil
+			}
+			q = append(q, line[i+1:i+1+end]...)
+			i += end + 1
+		case '"':
+			j := i + 1
+			for ; j < len(line) && line[j] != '"'; j++ {
+				if line[j] == '\\' && j+1 < len(line) && strings.IndexByte("\"\\$`", line[j+1]) >= 0 {
+					j++
+				}
+				q = append(q, line[j])
+			}
+			if j >= len(line) {
+				return nil
+			}
+			i = j
+		case '(':
+			depth++
+			q = append(q, c)
+		case ')':
+			depth--
+			if depth == 0 {
+				break scan
+			}
+			q = append(q, c)
+		default:
+			q = append(q, c)
+		}
+	}
+	if depth != 0 {
+		return nil
+	}
+	list := string(q)
+	if strings.HasPrefix(list, "#") {
+		var ok bool
+		if list, ok = strings.CutPrefix(list, "#q"); !ok {
+			return nil
+		}
+	}
+	closer := map[byte]byte{'(': ')', '[': ']', '{': '}', '<': '>'}
+	// delimited returns the argument delimited from list[at] and the index
+	// after it, or ok false where it does not close.
+	delimited := func(at int) (arg string, next int, ok bool) {
+		if at >= len(list) {
+			return "", at, false
+		}
+		end := list[at]
+		if c, ok := closer[end]; ok {
+			end = c
+		}
+		j := strings.IndexByte(list[at+1:], end)
+		if j < 0 {
+			return "", len(list), false
+		}
+		return list[at+1 : at+1+j], at + 2 + j, true
+	}
+	digits := func(at int) int {
+		for at < len(list) && list[at] >= '0' && list[at] <= '9' {
+			at++
+		}
+		return at
+	}
+	isName := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+	}
+	var out []string
+	for k := 0; k < len(list); {
+		c := list[k]
+		switch {
+		case c == ':':
+			// Modifiers from here on (`:e` is the extension, not code).
+			return out
+		case c == 'e':
+			code, next, ok := delimited(k + 1)
+			if !ok {
+				return out
+			}
+			if strings.TrimSpace(code) != "" {
+				out = append(out, code)
+			}
+			k = next
+		case c == '+':
+			j := k + 1
+			for j < len(list) && isName(list[j]) {
+				j++
+			}
+			if j > k+1 {
+				out = append(out, list[k+1:j])
+			}
+			k = j
+		case c == 'o' || c == 'O':
+			// A sort key: one letter, or an `e` or `+` key read above.
+			if k+1 < len(list) && list[k+1] != 'e' && list[k+1] != '+' {
+				k++
+			}
+			k++
+		case c == 'u' || c == 'g' || c == 'P':
+			if k+1 < len(list) && list[k+1] >= '0' && list[k+1] <= '9' {
+				k = digits(k + 1)
+				continue
+			}
+			_, next, ok := delimited(k + 1)
+			if !ok {
+				return out
+			}
+			k = next
+		case c == 'f':
+			j := k + 1
+			if j < len(list) && strings.IndexByte("=+-", list[j]) >= 0 {
+				j++
+			}
+			if j < len(list) && list[j] >= '0' && list[j] <= '9' {
+				k = digits(j)
+				continue
+			}
+			_, next, ok := delimited(k + 1)
+			if !ok {
+				return out
+			}
+			k = next
+		case c == 'a' || c == 'm' || c == 'c' || c == 'L' || c == 'l' || c == 'd' || c == 'Y':
+			j := k + 1
+			if j < len(list) && (c == 'L' && strings.IndexByte("kKmMpPgGtT", list[j]) >= 0 || c != 'L' && c != 'l' && strings.IndexByte("Mwhms", list[j]) >= 0) {
+				j++
+			}
+			if j < len(list) && (list[j] == '+' || list[j] == '-') {
+				j++
+			}
+			k = digits(j)
+		case c == '[':
+			j := strings.IndexByte(list[k:], ']')
+			if j < 0 {
+				return out
+			}
+			k += j + 1
+		default:
+			k++
+		}
+	}
+	return out
 }

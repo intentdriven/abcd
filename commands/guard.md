@@ -1050,7 +1050,8 @@ which file a bare name finds; the files a shell loads from the account's real
 read like any other; file text substituted into a command string (`eval "$(cat
 f)"`, `bash -c "$(<f)"`), which keeps its warn; a file changed between the
 check and the run; a writer missing from the list above; a variable a sourced
-file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
+file sets, for the files the line reads after it (an entry that names the
+variable counts the file's export, below); a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
 the current directory; `INPUTRC` (key bindings, not commands); a
@@ -1068,7 +1069,12 @@ carries `=` before the command as an assignment, and so does the guard; the body
 of a function they export (`BASH_FUNC_<name>%%=() { …; }`) is judged. A `trap`
 action, and the callback of `mapfile -C` or `readarray -C`, is read the way an
 `eval` string is: the reset and list forms (`trap - EXIT`, `trap -p`) carry no
-command, and text the guard cannot read keeps the verdict `eval` gives it.
+command, and text the guard cannot read keeps the verdict `eval` gives it. So is
+the code a zsh glob qualifier runs for each file its pattern matches: an `e`
+qualifier's string, with any delimiter (`ls *(e:'…':)`, `echo *(e{…})`), and a
+`+name` qualifier's name, as a command, behind `(#q…)` too. A modifier list
+(`x(:e)`) and the qualifiers whose argument is not code (`*(u:eve:)`,
+`*(f+644)`) run nothing, and stay allowed.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
@@ -1153,11 +1159,14 @@ line, so `pgrep -l make > search.log; echo "$pid" | xargs kill` stays allowed,
 though such a word still reads a file the line wrote under a name it does not
 fix (`pgrep make > "$f"; kill $(cat "$f")`). One written under another
 spelling of the path, or by a command that names it as an operand (`tee p`),
-is not followed. A `ps` listing filtered by a name — through `grep`, or an
-`awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs
-kill`, `ps aux | awk '/make/ {print $2}'`) — is a search as `pgrep` is, and a
-**block** under `kill-by-search`; a `ps` that reports the pid you name (`ps -o
-pid= -p 4242 | xargs kill`) is not.
+is not followed. A `ps` listing that reaches a kill is a search as `pgrep`
+is, through any filter or none (`ps aux | sed -n '/make/s/ .*//p' | xargs
+kill`, `ps -C make -o pid= | xargs kill`), and a **block** under
+`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`,
+`--ppid`) with no other selection beside them: `ps -o pid= -p 4242 | xargs
+kill` is not. A `ps` listing filtered by a name through `grep`, or an `awk`
+program that matches, is a search whatever the `ps` lists (`ps aux | grep make
+| awk '{print $2}' | xargs kill`, `ps aux | awk '/make/ {print $2}'`).
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
@@ -1176,7 +1185,10 @@ Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
 none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
-(`agent-launch-claude-unchecked-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
+(`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
+`permissions.defaultMode` to `bypassPermissions` or grants `permissions.allow`
+rules, written on the line or in the file it names where the guard can read
+that file now (`agent-launch-claude-unchecked-settings`), `codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
@@ -1190,11 +1202,15 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x` or `typeset -x` earlier in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
+`declare -x`, `typeset -x` or `local -x` earlier in the line, a bare assignment
+while `set -a`, `set -o allexport` or zsh's `setopt allexport` holds, an export
+inside an `eval` that stands before it, or an export in a file the line sources
+before it — is a **block** too (`agent-launch-opencode-permission-env`), and
 one that starts opencode without setting it is not. So is a line that sets
-`OPENCODE_CONFIG`, a configuration file opencode loads, or
+`OPENCODE_CONFIG`, a configuration file opencode loads,
+`OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
-it starts (`agent-launch-opencode-config-env`), since either can carry
+it starts (`agent-launch-opencode-config-env`), since each can carry
 permission rules over opencode's own configuration. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents

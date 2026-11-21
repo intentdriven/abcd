@@ -1017,8 +1017,10 @@ func earlier(a, b []int) bool {
 }
 
 // readScripts reads every file the segments point a shell at and returns the
-// verdicts on them. segs are the text's segments after the payload expansion.
-func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []payloadSignal {
+// verdicts on them, and the readings of commands that take a settings file
+// with the file's text in its place (settingsFileReadings). segs are the
+// text's segments after the payload expansion.
+func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) ([]payloadSignal, []segment) {
 	n := len(segs)
 	recs := make([]scriptSeg, n)
 	rc.readings++
@@ -1042,6 +1044,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		}
 	}
 
+	order := runOrder(segs)
 	var top *shellState
 	if run != nil {
 		top = run.state
@@ -1091,11 +1094,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			here = []*shellState{here[0].unresolved()}
 		}
 		recs[i].states = here
-		if s.carrier > 0 && s.carrier-1 < i {
-			recs[i].order = append(append([]int(nil), recs[s.carrier-1].order...), i)
-		} else {
-			recs[i].order = []int{i}
-		}
+		recs[i].order = order[i]
 		next := make([]*shellState, len(here))
 		for j, st := range here {
 			next[j] = r.after(rc, st, s, dirChangeBelow[i])
@@ -1116,6 +1115,8 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			}
 		}
 	}
+
+	readings := r.settingsFileReadings(rc, segs, recs)
 
 	// The targets each segment points a shell at, in every state it can run
 	// in, and only then the writes: most lines run no script, and pay for
@@ -1147,7 +1148,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		signals = append(signals, raised...)
 	}
 	if len(targets) == 0 {
-		return signals
+		return signals, readings
 	}
 	for i, s := range segs {
 		for _, st := range recs[i].states {
@@ -1168,9 +1169,128 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				before = append(before, recs[j].writes...)
 			}
 		}
-		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before)...)
+		var sourced [][]segment
+		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before, &sourced)...)
+		// A sourced file runs in the line's own shell, so the export walk
+		// reads its commands where the source stands (exportStep).
+		segs[p.seg].sourced = append(segs[p.seg].sourced, sourced...)
 	}
-	return signals
+	return signals, readings
+}
+
+// settingsFileReadings is, for each command of segs that hands a program a
+// settings file by a flag an entry reads for ShapeSettingsUnchecked, another
+// reading of the command with the file's text in place of its name, so the
+// entry matches the settings the file holds as it matches them written on the
+// line. Only a file the guard can read now is read: a name the line does not
+// fix, one relative to a directory it leaves unknown, a file it writes
+// earlier on the line, and one past the reading budget stay unread, and the
+// guard reads no file a command would have to run to produce. Text on the
+// line itself (a JSON object) is the entry's to read, not a file's name.
+func (r Registry) settingsFileReadings(rc *readCtx, segs []segment, recs []scriptSeg) []segment {
+	type flagOf struct{ command, flag string }
+	var flags []flagOf
+	for _, e := range r.Entries {
+		for _, fv := range e.Pattern.FlagValues {
+			if fv.Shape != ShapeSettingsUnchecked {
+				continue
+			}
+			for _, alt := range strings.Split(fv.Flag, "|") {
+				if alt != "" {
+					flags = append(flags, flagOf{e.Pattern.Command, alt})
+				}
+			}
+		}
+	}
+	if len(flags) == 0 {
+		return nil
+	}
+	var out []segment
+	for i, s := range segs {
+		for _, f := range flags {
+			for _, a := range sitesNamed(s, f.command) {
+				for j := a.idx + 1; j < len(s.tokens); j++ {
+					tok := s.tokens[j]
+					if tok == "--" {
+						break
+					}
+					at, prefix := -1, ""
+					switch {
+					case tok == f.flag && j+1 < len(s.tokens):
+						at = j + 1
+					case strings.HasPrefix(tok, f.flag+"="):
+						at, prefix = j, f.flag+"="
+					default:
+						continue
+					}
+					word := strings.TrimPrefix(s.tokens[at], prefix)
+					if isUnknown(word) || strings.ContainsRune(word, varMark) || strings.HasPrefix(strings.TrimSpace(word), "{") || word == "" {
+						continue
+					}
+					if prefix == "" && s.globAt(at) {
+						continue
+					}
+					for _, text := range r.settingsTexts(rc, segs, recs, i, word) {
+						d := s
+						d.tokens = append([]string(nil), s.tokens...)
+						d.tokens[at] = prefix + text
+						if len(s.spelled) > 0 {
+							d.spelled = map[int][]string{}
+							for k, v := range s.spelled {
+								if k != at {
+									d.spelled[k] = v
+								}
+							}
+						}
+						d.home, d.at, d.sourced = nil, 0, nil
+						d.carrier = i + 1
+						out = append(out, d)
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// settingsTexts is the text of the settings file word names for the command
+// at segs[i], read in every directory the command can run in, where the guard
+// can read it now (settingsFileReadings).
+func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i int, word string) []string {
+	var before []writeTarget
+	beforeRead := false
+	var texts []string
+	for _, st := range recs[i].states {
+		p, ok := st.resolve(rc, word, strings.HasPrefix(word, "~"))
+		if !ok {
+			continue
+		}
+		if !beforeRead {
+			for j := range segs {
+				if j != i && earlier(recs[j].order, recs[i].order) {
+					for _, bst := range recs[j].states {
+						before = append(before, writesOf(rc, segs[j], bst)...)
+					}
+				}
+			}
+			beforeRead = true
+		}
+		if written, _ := writtenBefore(p, before); written {
+			continue
+		}
+		real, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			continue
+		}
+		fr, ok := rc.take(real)
+		if !ok || fr.err != nil || fr.tooBig {
+			continue
+		}
+		if text := string(fr.data); !containsString(texts, text) {
+			texts = append(texts, text)
+		}
+	}
+	return texts
 }
 
 // containsSignal reports whether sigs holds sig, so a verdict two states of
@@ -1281,8 +1401,8 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			out = out.unresolved()
 		case (name == "source" || name == ".") && sourcedChangesDir(rc, out, s, a.idx):
 			out = out.unresolved()
-		case name == "export" || name == "declare" || name == "typeset":
-			// `declare -x`/`typeset -x` export as `export` does; `export -n`
+		case name == "export" || name == "declare" || name == "typeset" || name == "local":
+			// `declare -x`/`typeset -x`/`local -x` export as `export` does; `export -n`
 			// and `declare +x` take the export away. A declare without -x sets
 			// the value and leaves the export attribute as it was, as bash does.
 			exports, unexports := name == "export", false
@@ -2730,8 +2850,9 @@ func shellExpandsStartup(value string) bool {
 }
 
 // readTarget reads one file a command points a shell at and judges it.
-// before are the files written before the command runs.
-func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget) []payloadSignal {
+// before are the files written before the command runs. The commands of a
+// file the shell sources are added to sourced, where it is not nil.
+func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget, sourced *[][]segment) []payloadSignal {
 	if t.path == os.DevNull {
 		return nil
 	}
@@ -2854,7 +2975,7 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
 			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
-					kind: targetStartup, env: t.env}, before)...)
+					kind: targetStartup, env: t.env}, before, nil)...)
 			}
 		}
 	}
@@ -2865,6 +2986,9 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 	if err != nil {
 		sig := unparsableSignal(err)
 		return append(sigs, carriedOut(sig, t.shown))
+	}
+	if t.sourced && sourced != nil {
+		*sourced = append(*sourced, v.segs)
 	}
 	return append(sigs, r.scriptSignals(v, text, t.shown)...)
 }

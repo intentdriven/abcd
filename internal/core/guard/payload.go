@@ -1427,6 +1427,11 @@ func payloadsOf(s segment) []payloadRef {
 	for _, p := range promptPayloads(s.tokens) {
 		add(kindShell, familyShell, p, nil, false)
 	}
+	// A zsh glob qualifier that runs code runs it as eval runs a string
+	// (segment.qualifierCode).
+	for _, p := range s.qualifierCode {
+		add(kindShell, familyShell, p, nil, false)
+	}
 	for _, w := range []string{"env", "sudo"} {
 		known, guessed := starts(arrivals, w)
 		for _, group := range []struct {

@@ -79,8 +79,10 @@ var wordReaders = map[string]string{
 
 	// match.go
 	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
-	"exportsAny":           "commandSites and nameCouldBe",
+	"exportStep":           "commandSites: a bare assignment is a command with no site",
 	"exportOperands":       "nameCouldBe, and clusterCouldCarry on every unknown option word",
+	"allexportAfter":       "commandSites, nameCouldBe and isUnknown: an option word the line does not fix can turn allexport on",
+	"setAllexport":         "isUnknown and clusterCouldCarry: an option word the line does not fix can be -a or -o",
 	"runnersAt":            "readWord on every word before the subcommand",
 	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",
 	"newEntryMatcher":      "operandAcceptance over readWord",
@@ -160,24 +162,26 @@ var wordReaders = map[string]string{
 
 	// script.go, scriptwrites.go: the files a command points a shell at, and
 	// the files it writes (adr-2610091150447054).
-	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
-	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
-	"actReadings":    "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
-	"adjacentFrom":   "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
-	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
-	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
-	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
-	"isEvalCarrier":  "commandSites and nameCouldBe",
-	"segChangesDir":  "commandSites and nameCouldBeAny",
-	"lastSite":       "commandSites",
-	"carrierShell":   "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
-	"needsShell":     "commandSites and isUnknown: a name the line does not fix is not read as a `source`, as targetsOf does not read one",
-	"unset":          "isUnknown on every operand: a word the line does not fix may be `-f`, so it unsets nothing the reading follows",
+	"after":                "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
+	"targetsOf":            "commandSites and isUnknown: no file is read for a program name the line does not fix",
+	"settingsFileReadings": "sitesNamed and isUnknown: a settings value the line does not fix names no file to read",
+	"actReadings":          "isUnknown, varMark and parseShellCall: a program the line does not fix is read as one, and a shell's call the line leaves open is read for the first word naming abcd",
+	"adjacentFrom":         "isUnknown through actWordsOf and unknownCouldBe: a word the line does not fix is read as the flag or verb it can print",
+	"parseShellCall":       "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
+	"optionName":           "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
+	"bashLongOption":       "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
+	"isEvalCarrier":        "commandSites and nameCouldBe",
+	"segChangesDir":        "commandSites and nameCouldBeAny",
+	"lastSite":             "commandSites",
+	"carrierShell":         "isUnknown and nameCouldBe: a carrier whose name the line does not fix runs a shell the guard cannot place, so its string is read both ways",
+	"needsShell":           "commandSites and isUnknown: a name the line does not fix is not read as a `source`, as targetsOf does not read one",
+	"unset":                "isUnknown on every operand: a word the line does not fix may be `-f`, so it unsets nothing the reading follows",
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).
 	"packageName":        "unknownMark: an `@` before a substitution's output is no version the line fixes",
-	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep, awk or ps",
+	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep or awk; a ps is read only by the name the line fixes",
+	"psPinned":           "isUnknown on every word: a word the line does not fix can be any selection, so the listing is not pinned",
 	"awkMatches":         "isUnknown on every word: an option or program the line does not fix is read as one that matches",
 	"namesAssigned":      "commandSites, isUnknown and nameCouldBeAny: a command whose name the line does not fix, or one a substitution can print as an assigning builtin, assigns every name-shaped operand",
 	"fetches":            "commandSites and nameCouldBeAny: a name a substitution prints can be curl or wget",
@@ -222,6 +226,7 @@ var wordReaders = map[string]string{
 	"spellParameterAt": "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
 	"validatePattern":  "exempt: reads registry patterns, not command words",
 	"validEntryID":     "exempt: reads a registry id, not a command word",
+	"zshQualifierCode": "exempt: reads the raw text of a glob qualifier list the tokenizer stands at, before any word or substitution output exists",
 
 	// approve.go: the approver refuses a word holding an unknown mark at every
 	// place it reads one, so an unknown word never reads as a clearance.
