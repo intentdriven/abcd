@@ -90,6 +90,7 @@ var wordReaders = map[string]string{
 	"assignsOperand":       "nameCouldBeAny: a name a substitution prints can be a builtin that assigns its operands",
 	"assignsAfterCommand":  "commandSites: every place a command can sit",
 	"namerefsTo":           "commandSites, nameCouldBeAny, isUnknown and clusterCouldCarry: an option word the line does not fix can be -n",
+	"positionalsSet":       "commandSites, nameCouldBe and isUnknown: only a set the line names is read, and an operand it does not fix sets the parameters",
 	"runnersAt":            "readWord on every word before the subcommand",
 	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",
 	"newEntryMatcher":      "operandAcceptance over readWord",
@@ -234,6 +235,7 @@ var wordReaders = map[string]string{
 	"validatePattern":  "exempt: reads registry patterns, not command words",
 	"validEntryID":     "exempt: reads a registry id, not a command word",
 	"zshQualifierCode": "exempt: reads the raw text of a glob qualifier list the tokenizer stands at, before any word or substitution output exists",
+	"testsWords":       "exempt: compares the words before a ( with [[, a keyword the tokenizer saw, which no substitution prints",
 
 	// approve.go: the approver refuses a word holding an unknown mark at every
 	// place it reads one, so an unknown word never reads as a clearance.

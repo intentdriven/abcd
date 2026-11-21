@@ -1091,7 +1091,14 @@ the code a zsh glob qualifier runs for each file its pattern matches: an `e`
 qualifier's string, with any delimiter (`ls *(e:'…':)`, `echo *(e{…})`), and a
 `+name` qualifier's name, as a command, behind `(#q…)` too. A modifier list
 (`x(:e)`) and the qualifiers whose argument is not code (`*(u:eve:)`,
-`*(f+644)`) run nothing, and stay allowed.
+`*(f+644)`) run nothing, and stay allowed. A qualifier list glued to a word
+that holds an expansion, unquoted or in double quotes (`*($q)`, `*(${~q})`,
+`*(e:"$q":)`), is a **block** (`execute-string-uninspectable`): zsh reads the
+qualifiers from the expanded text, so the code they run is not on the line. A
+positional or special parameter there (`*($1)`, `x($0)`) is a block only where
+the line can set it: a `set` with operands, a function, or a string a shell is
+handed with its arguments. A `$` inside single quotes or escaped is text, so
+`ls *(e:'[[ -d $REPLY ]]':)` stays allowed.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin

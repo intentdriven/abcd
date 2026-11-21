@@ -77,7 +77,7 @@ func TestZshQualifierCodeReadsEachQualifierThatRunsCode(t *testing.T) {
 		`*(e:"a \"b\"":)`:    {`a "b"`},
 		`*(e:a:,e:b:)`:       {"a", "b"},
 	} {
-		got := zshQualifierCode(in, 1)
+		got, _ := zshQualifierCode(in, 1)
 		if len(got) != len(want) {
 			t.Errorf("%s: got %q, want %q", in, got, want)
 			continue
@@ -86,6 +86,60 @@ func TestZshQualifierCodeReadsEachQualifierThatRunsCode(t *testing.T) {
 			if got[i] != want[i] {
 				t.Errorf("%s: got %q, want %q", in, got, want)
 			}
+		}
+	}
+}
+
+// TestGuardRefusesAZshGlobQualifierListItCannotRead: a qualifier list that
+// holds an expansion — a variable's value, a substitution's output, unquoted
+// or in double quotes — is text zsh reads as qualifiers only once it has
+// expanded the word, so the code it runs is not on the line and the command
+// is refused. A positional or special parameter is refused only where the
+// line can set it: a `set` with operands, a function's call, or a shell's
+// arguments. A `$` inside single quotes, or escaped, is text, and stays
+// allowed.
+func TestGuardRefusesAZshGlobQualifierListItCannotRead(t *testing.T) {
+	r := Defaults()
+	for _, line := range []string{
+		`q='e:echo RAN:'; : *($q)`,
+		`: *(${~q})`,
+		`ls *($(cat q))`,
+		"ls *(`cat q`)",
+		`ls *("$q")`,
+		`ls *(e:"$q":)`,
+		`ls *(.$q)`,
+		`sh -c "ls *($q)"`,
+		`set -- 'e:echo RAN:'; : *($1)`,
+		`sh -c ': *($1)' _ 'e:echo RAN:'`,
+		`g() { : *($1); }; g 'e:echo RAN:'`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != syntheticEntryID {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, syntheticEntryID)
+		}
+	}
+	for _, line := range []string{
+		`ls *(.)`,
+		`ls *(e:'[[ -d $REPLY ]]':)`,
+		`ls *(e:"[[ -d \$REPLY ]]":)`,
+		`ls *(e:'$q':)`,
+		`echo $(date)`,
+		`f() { echo "$1"; }; f x`,
+		`arr=($a $b); echo "${arr[@]}"`,
+		`( cd "$d" && ls )`,
+		`time ( cd "$d" && ls )`,
+		`[[ $x =~ ^($y)$ ]] && echo ok`,
+		`(( n = ($a + 1) * 2 ))`,
+		`x=$(( ($a + 1) * 2 ))`,
+		`index($0, root) == 1 {`,
+		`json_view($0)`,
+		`set -e; ls *($1)`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
 		}
 	}
 }

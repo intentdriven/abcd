@@ -2270,3 +2270,34 @@ func containsString(xs []string, want string) bool {
 	}
 	return false
 }
+
+// positionalsSet reports whether the text command, read as segs, can set
+// the positional parameters for a command of its own: a `set` with an
+// operand or `--`, or a function, whose body takes its call's arguments
+// (a `()` or the word `function` anywhere in the text). A string a shell
+// is handed takes the shell's arguments, which the caller reads by the
+// segment's carrier. Only a `set` the line names is read: a program name
+// the line does not fix is not taken as one, so a positional parameter
+// standing as a command does not count.
+func positionalsSet(command string, segs []segment) bool {
+	if strings.Contains(command, "()") || strings.Contains(command, "function") {
+		return true
+	}
+	for _, s := range segs {
+		for _, a := range commandSites(s) {
+			if tok := s.tokens[a.idx]; isUnknown(tok) || !nameCouldBe(tok, "set") {
+				continue
+			}
+			for _, w := range s.tokens[a.idx+1:] {
+				if isUnknown(w) || w == "--" || w == "-" || len(w) < 2 || w[0] != '-' && w[0] != '+' {
+					return true
+				}
+				if strings.ContainsAny(w[1:], "oO") {
+					// `set -o NAME`: the next word is the option's name.
+					break
+				}
+			}
+		}
+	}
+	return false
+}
