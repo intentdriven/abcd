@@ -1108,8 +1108,7 @@ the line, or an operator the line does not write: a value built from
 expansions or a command's output that an arithmetic context evaluates, as in
 `x=$(cmd); : $((x))`, or a decrement written as its own word in such a
 string, as in `n="1 + --$x"` for an integer `n`),
-since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
-grep` chain;
+since every line is read from the default IFS; a pid list a kill reads through a variable or a file;
 a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; another interpreter's file, a
 program, the account's own startup files, file text substituted into a command

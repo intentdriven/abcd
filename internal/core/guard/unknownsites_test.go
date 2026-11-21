@@ -180,7 +180,8 @@ var wordReaders = map[string]string{
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).
 	"packageName":        "unknownMark: an `@` before a substitution's output is no version the line fixes",
-	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep, awk or ps",
+	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep or awk; a ps is read only by the name the line fixes",
+	"psPinned":           "isUnknown on every word: a word the line does not fix can be any selection, so the listing is not pinned",
 	"awkMatches":         "isUnknown on every word: an option or program the line does not fix is read as one that matches",
 	"namesAssigned":      "commandSites, isUnknown and nameCouldBeAny: a command whose name the line does not fix, or one a substitution can print as an assigning builtin, assigns every name-shaped operand",
 	"fetches":            "commandSites and nameCouldBeAny: a name a substitution prints can be curl or wget",

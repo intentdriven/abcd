@@ -968,12 +968,20 @@ var (
 	awkNames  = []string{"awk", "gawk", "mawk", "nawk"}
 )
 
-// filtersProcessList reports whether s is a grep, or an awk whose program
-// matches (awkMatches), reading a ps listing: a search by name, as pgrep is.
+// filtersProcessList reports whether s searches the process table as pgrep
+// does: a ps, by a name the line fixes, listing any processes but the ones
+// the caller names (psPinned), whose output reaches a kill through whatever
+// filters it passes, or a grep, or an awk whose program matches
+// (awkMatches), reading a ps listing, pinned or not.
 func filtersProcessList(s segment) bool {
 	filter := false
 	for _, a := range commandSites(s) {
 		tok := s.tokens[a.idx]
+		// The ps rule reads a name the line fixes: an unfixed name that can
+		// be ps would make every pipeline of two such commands a search.
+		if !isUnknown(tok) && !strings.ContainsRune(tok, varMark) && nameCouldBe(tok, "ps") && !psPinned(s.tokens[a.idx+1:]) {
+			return true
+		}
 		if nameCouldBeAny(tok, grepNames) || nameCouldBeAny(tok, awkNames) && awkMatches(s.tokens[a.idx+1:]) {
 			filter = true
 			break
@@ -998,6 +1006,86 @@ func filtersProcessList(s segment) bool {
 		}
 	}
 	return false
+}
+
+// psPinned reports whether a ps command with arguments args lists only the
+// processes the caller names by pid: a `-p`, `--pid`, `-q`, `--quick-pid` or
+// `--ppid` selection (attached, `=`-joined or in the next word, in a cluster
+// of short options too, and a BSD-style `p` word), and no other selection
+// beside it, since ps lists every process any selection names. With no
+// selection at all ps lists the processes of its terminal, which is no pid
+// the caller named. A word the line does not fix can be any selection.
+func psPinned(args []string) bool {
+	pinned := false
+	// valueShort are short options that take a value; of them, pidShort select
+	// by pid and selectShort by anything else. otherSelect select without a
+	// value.
+	const valueShort, pidShort, selectShort, otherSelect = "oOpqkCGgstUu", "pq", "CGgstUu", "AeadNTrx"
+	for i := 0; i < len(args); i++ {
+		w := args[i]
+		if isUnknown(w) {
+			return false
+		}
+		if strings.HasPrefix(w, "--") {
+			name, _, joined := strings.Cut(w[2:], "=")
+			switch name {
+			case "pid", "quick-pid", "ppid":
+				pinned = true
+			case "format", "sort", "cols", "columns", "rows", "width", "context":
+			case "":
+				continue
+			case "deselect", "user", "User", "group", "Group", "sid", "tty", "pgroup":
+				return false
+			default:
+				continue
+			}
+			if !joined {
+				i++
+			}
+			continue
+		}
+		bsd := !strings.HasPrefix(w, "-")
+		letters := strings.TrimPrefix(w, "-")
+		if bsd && strings.Trim(letters, "0123456789,") == "" {
+			// A BSD-style pid list (`ps 4242`).
+			pinned = true
+			continue
+		}
+		for j := 0; j < len(letters); j++ {
+			c := letters[j]
+			if bsd {
+				// BSD options: `p` takes pids, `U` and `t` a user or terminal,
+				// and `a`, `x`, `g` and `r` widen the listing.
+				switch {
+				case c == 'p':
+					pinned = true
+				case strings.IndexByte("Utaxgr", c) >= 0:
+					return false
+				}
+				if c == 'p' || c == 'U' || c == 't' || c == 'o' || c == 'O' {
+					if j+1 == len(letters) {
+						i++
+					}
+					break
+				}
+				continue
+			}
+			switch {
+			case strings.IndexByte(pidShort, c) >= 0:
+				pinned = true
+			case strings.IndexByte(selectShort, c) >= 0, strings.IndexByte(otherSelect, c) >= 0:
+				return false
+			}
+			if strings.IndexByte(valueShort, c) >= 0 {
+				// The rest of the word, or the next word, is the value.
+				if j+1 == len(letters) {
+					i++
+				}
+				break
+			}
+		}
+	}
+	return pinned
 }
 
 // awkMatches reports whether an awk command's program selects lines by what

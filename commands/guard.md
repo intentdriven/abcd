@@ -1154,11 +1154,14 @@ line, so `pgrep -l make > search.log; echo "$pid" | xargs kill` stays allowed,
 though such a word still reads a file the line wrote under a name it does not
 fix (`pgrep make > "$f"; kill $(cat "$f")`). One written under another
 spelling of the path, or by a command that names it as an operand (`tee p`),
-is not followed. A `ps` listing filtered by a name — through `grep`, or an
-`awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs
-kill`, `ps aux | awk '/make/ {print $2}'`) — is a search as `pgrep` is, and a
-**block** under `kill-by-search`; a `ps` that reports the pid you name (`ps -o
-pid= -p 4242 | xargs kill`) is not.
+is not followed. A `ps` listing that reaches a kill is a search as `pgrep`
+is, through any filter or none (`ps aux | sed -n '/make/s/ .*//p' | xargs
+kill`, `ps -C make -o pid= | xargs kill`), and a **block** under
+`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`,
+`--ppid`) with no other selection beside them: `ps -o pid= -p 4242 | xargs
+kill` is not. A `ps` listing filtered by a name through `grep`, or an `awk`
+program that matches, is a search whatever the `ps` lists (`ps aux | grep make
+| awk '{print $2}' | xargs kill`, `ps aux | awk '/make/ {print $2}'`).
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
