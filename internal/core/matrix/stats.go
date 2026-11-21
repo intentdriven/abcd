@@ -109,7 +109,14 @@ func minDetectable(n1, n2 int, p float64) float64 {
 // to detect a difference of delta in pass rate by the same test.
 func repeatsNeeded(delta, p float64) int {
 	z := zAlpha + zBeta
-	return int(math.Ceil(z * z * 2 * spread(p) / (delta * delta)))
+	n := math.Ceil(z * z * 2 * spread(p) / (delta * delta))
+	// A difference so small that no run could reach it asks for more than
+	// any cell may be sized to: past MaxRepeats the count is held there plus
+	// one, never converted from a figure an int cannot hold.
+	if math.IsNaN(n) || n > MaxRepeats {
+		return MaxRepeats + 1
+	}
+	return int(n)
 }
 
 // BTRating is one model's rating: the log of its Bradley–Terry strength, its

@@ -16,16 +16,22 @@ func cellName(m int) string { return fmt.Sprintf("leakcell-%02d", m) }
 // each, drawn for judges.
 func writingInputs(models, repeats, judges int) judgingInputs {
 	var copies []writingCopy
+	var cells []CellPin
 	for m := range models {
+		cells = append(cells, CellPin{Cell: cellName(m), Role: RoleBuilder, Source: SourceHost, Runner: "host"})
 		for r := 1; r <= repeats; r++ {
 			copies = append(copies, writingCopy{
-				Key:  TrialKey{Task: "doc-page", Cell: cellName(m), Repeat: r},
-				Text: fmt.Sprintf("# Guide\n\nThe page, draft %d of writer %d.\n", r, m),
+				Key:   TrialKey{Task: "doc-page", Cell: cellName(m), Repeat: r},
+				Alias: fmt.Sprintf("copy_%032x", m*1000+r),
+				Text:  fmt.Sprintf("# Guide\n\nThe page, draft %d of writer %d.\n", r, m),
 			})
 		}
 	}
 	return judgingInputs{
 		Run:     "mx-261023012949-ab12",
+		Tasks:   []string{"doc-page"},
+		Cells:   cells,
+		Store:   "/nonexistent/matrix-store",
 		Task:    Task{ID: "doc-page", Kind: KindWriting, Source: []string{"docs/guide.md"}, Criteria: "accurate against the source first"},
 		Copies:  copies,
 		Sources: []namedText{{Name: "docs/guide.md", Text: "# Guide\n\nWhat the page explains.\n"}},
@@ -189,6 +195,10 @@ func TestJudgingIsRefusedWhatItCannotStandOn(t *testing.T) {
 		"a source not named": func(in *judgingInputs) { in.Sources[0].Name = "docs/other.md" },
 		"no judge":           func(in *judgingInputs) { in.Judges = 0 },
 		"a bad run id":       func(in *judgingInputs) { in.Run = "run-1" },
+		"no tasks":           func(in *judgingInputs) { in.Tasks = nil },
+		"no cells":           func(in *judgingInputs) { in.Cells = nil },
+		"no store":           func(in *judgingInputs) { in.Store = "" },
+		"a copy's alias":     func(in *judgingInputs) { in.Copies[0].Alias = "" },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

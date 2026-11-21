@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"html"
 	"math/rand/v2"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -292,6 +293,14 @@ func (in judgingInputs) validate() error {
 	if len(in.Copies) == 0 {
 		return fmt.Errorf("the task %s has no copy to judge", in.Task.ID)
 	}
+	// What the scrub withholds is required, so a caller that leaves it out
+	// is refused rather than handing judges an unscrubbed copy.
+	if len(in.Tasks) == 0 || len(in.Cells) == 0 {
+		return errors.New("the run's tasks and cells, which the scrub withholds from every copy, are not given")
+	}
+	if !filepath.IsAbs(in.Store) {
+		return errors.New("the run's clone store, which the scrub withholds from every copy, is not given as an absolute path")
+	}
 	if in.Judges < 1 || in.Judges > maxJudgeSlots {
 		return fmt.Errorf("%d judges asked for; from 1 to %d", in.Judges, maxJudgeSlots)
 	}
@@ -305,6 +314,9 @@ func (in judgingInputs) validate() error {
 		}
 		if seen[c.Key] {
 			return fmt.Errorf("the copy %s is given twice", c.Key)
+		}
+		if !aliasRe.MatchString(c.Alias) {
+			return fmt.Errorf("the copy %s comes with no alias, which the scrub withholds from it", c.Key)
 		}
 		seen[c.Key] = true
 		if err := readable("the copy "+c.Key.String(), c.Text); err != nil {

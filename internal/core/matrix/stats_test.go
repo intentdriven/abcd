@@ -49,6 +49,13 @@ func TestThePowerEstimateGivesRepeatsNeededAndTheSmallestDetectableDifference(t 
 	if n := repeatsNeeded(0.2, 0.5); n != 99 {
 		t.Fatalf("repeats for a difference of 0.2 at 0.5 = %d; want 99", n)
 	}
+	// A difference too small for any run asks for one past the most a cell
+	// may be sized to, never a count an int cannot hold.
+	for _, tiny := range []float64{1e-6, 1e-200, 5e-324} {
+		if n := repeatsNeeded(tiny, 0.5); n != MaxRepeats+1 {
+			t.Fatalf("repeats for a difference of %v = %d; want %d", tiny, n, MaxRepeats+1)
+		}
+	}
 	if d := minDetectable(99, 99, 0.5); !near(d, 0.199, 2e-3) {
 		t.Fatalf("the smallest difference at 99 each = %v; want about 0.2", d)
 	}

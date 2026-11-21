@@ -61,6 +61,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // The request's and the manifest's type tags and shape version.
@@ -696,7 +697,8 @@ func reviewGit(parent context.Context, dir string, limit int, args ...string) ([
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitutil.IsolatedEnv()
-	cmd.WaitDelay = time.Second
+	// Past the bound the whole process group git leads is killed.
+	procgroup.Bound(cmd, time.Second)
 	out := &boundedBuffer{limit: limit}
 	cmd.Stdout = out
 	err := cmd.Run()

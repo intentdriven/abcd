@@ -289,9 +289,10 @@ func git(args ...string) (string, error) {
 // listing whose names trimming would change.
 func gitRaw(args ...string) ([]byte, error) { return gitRawWithin(gitBound, args...) }
 
-// gitRawWithin is gitRaw bounded by limit: past it git is killed, its output
-// read to its end before the wait (procgroup.RunToEOF), and the call refused,
-// naming the bound, never answered with what git wrote before it stopped.
+// gitRawWithin is gitRaw bounded by limit: past it git's process group is
+// killed, its output read to its end before the wait (procgroup.RunToEOF), and
+// the call refused, naming the bound, never answered with what git wrote
+// before it stopped.
 func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
 	return gitRawCtx(context.Background(), limit, args...)
 }
@@ -303,7 +304,9 @@ func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]b
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitutil.IsolatedEnv()
-	cmd.WaitDelay = time.Second
+	// git leads its own group and the bound kills the whole of it, so a
+	// helper git started (a remote helper, a pager) ends with it.
+	procgroup.Bound(cmd, time.Second)
 	var stdout, stderr bytes.Buffer
 	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
 	if parent.Err() != nil {

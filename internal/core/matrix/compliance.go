@@ -222,9 +222,20 @@ func complianceRead(in complianceInputs) [2]ComplianceCheck {
 	defer cancel()
 	done := make(chan [2]ComplianceCheck, 1)
 	go func() {
+		// Each phase starts only while the deadline holds, so a check past
+		// it stops at the next phase rather than reading on.
+		var got [2]ComplianceCheck
 		tree, treeErr := readFrozenTree(ctx, in.RepoRoot, in.Frozen)
-		scan, scanErr := scanClone(ctx, cloneDir(in.Store, in.Run, in.Alias))
-		done <- [2]ComplianceCheck{testsKept(ctx, in, tree, treeErr), ownCopyOnly(ctx, in, tree, treeErr, scan, scanErr)}
+		if ctx.Err() == nil {
+			scan, scanErr := scanClone(ctx, cloneDir(in.Store, in.Run, in.Alias))
+			if ctx.Err() == nil {
+				got[0] = testsKept(ctx, in, tree, treeErr)
+			}
+			if ctx.Err() == nil {
+				got[1] = ownCopyOnly(ctx, in, tree, treeErr, scan, scanErr)
+			}
+		}
+		done <- got
 	}()
 	var got [2]ComplianceCheck
 	select {
