@@ -10,11 +10,12 @@ committed record, its history stays on the local ledger side
 A passage describing an intention rather than a commitment opens with the
 not-yet-real marker: a blockquote line holding exactly `**Status: NOT YET
 REAL.**`, a blank line, then the statement as the first paragraph. The
-construal below is the ledger's — the frame the ledger's own design reasons
-inside; its provenance is recorded by role in the decision log.
+construal below is the provenance ledger's — the frame the provenance ledger
+work's own design reasons inside; its provenance is recorded by role in the
+decision log.
 
 ## Construal
 
 > **Status: NOT YET REAL.**
 
-We are treating this as a gap in what the repository records: abcd captures what was built and whether it was delivered, but not who originated a choice or on what grounds, so a reader cannot tell from the repository where the human judgement went. The ledger work therefore adds the missing record rather than restricting what agents are allowed to do.
+We are treating this as a gap in what the repository records: abcd captures what was built and whether it was delivered, but not who originated a choice or on what grounds, so a reader cannot tell from the repository where the human judgement went. The provenance ledger work therefore adds the missing record rather than restricting what agents are allowed to do.
