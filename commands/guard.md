@@ -1098,7 +1098,11 @@ qualifiers from the expanded text, so the code they run is not on the line. A
 positional or special parameter there (`*($1)`, `x($0)`) is a block only where
 the line can set it: a `set` with operands, a function, or a string a shell is
 handed with its arguments. A `$` inside single quotes or escaped is text, so
-`ls *(e:'[[ -d $REPLY ]]':)` stays allowed.
+`ls *(e:'[[ -d $REPLY ]]':)` stays allowed. A `(` inside a `[[ … ]]` test
+groups a pattern or a regular expression, and a `|` there is an alternation,
+not a pipe, in every part of the test that `&&`, `||` or a group divides, so
+`[[ -n "$a" && "$b" =~ ^(foo|$c)$ ]]` is allowed; after the test's `]]` both
+are read as anywhere else.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin

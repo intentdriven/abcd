@@ -617,6 +617,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// qualUnfixedNext and qualPositionalNext ride with it as
 		// segment.qualifierUnfixed and segment.qualifierPositional.
 		qualUnfixedNext, qualPositionalNext bool
+		// inTest records that a `[[ … ]]` test opened in a command an `&&`,
+		// an `||` or a group's paren ended before its `]]`, so the words read
+		// next are still the test's (testsWords).
+		inTest bool
 		// curQuoted records that the word being built took a quote or an
 		// escape, an empty quote pair included, which leaves no byte in cur.
 		curQuoted bool
@@ -1052,6 +1056,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
+			inTest = (inTest || testsWords(toks)) && !containsString(toks, "]]")
 			for _, k := range curDocs {
 				docOwners[k] = len(segs)
 			}
@@ -1231,8 +1236,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext,
+			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext, inTest: inTest,
 		}
+		inTest = false
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curQuoted = false
 		curRedirs, andNext = nil, false
@@ -1312,6 +1318,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
+		inTest = e.inTest
 		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
@@ -1338,6 +1345,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
+		inTest = e.inTest
 		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
@@ -1918,7 +1926,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if parenNext {
 					code, expands := zshQualifierCode(line, i)
 					qualNext = append(qualNext, code...)
-					if glued && !testsWords(toks) {
+					if glued && !inTest && !testsWords(toks) {
 						qualUnfixedNext = qualUnfixedNext || expands == qualifierUnfixed
 						qualPositionalNext = qualPositionalNext || expands == qualifierPositional
 					}
@@ -2012,10 +2020,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i += 2
 				continue
 			}
-			switch c {
-			case '|':
+			switch {
+			case c == '|' && inTest:
+				// A `|` inside a `[[ … ]]` test is a pattern's or a regular
+				// expression's alternation, which pipes nothing.
+				pipeNext = false
+				pipeFrom = len(segs)
+			case c == '|':
 				pipeNext = true
-			case ';', '&':
+			case c == ';' || c == '&':
 				pipeNext = false
 				pipeFrom = len(segs)
 			}
@@ -2839,6 +2852,9 @@ type enclosing struct {
 	// procSub records that the substitution is a process substitution, which
 	// leaves one /dev/fd operand in the word it sat in.
 	procSub bool
+	// inTest is the enclosing command's record of an open `[[ … ]]` test
+	// (tokenizeAt).
+	inTest bool
 	// curStdin and pipeNext are the enclosing command's own standard-input
 	// record (tokenizeAt), suspended with the rest of it.
 	curStdin bool
