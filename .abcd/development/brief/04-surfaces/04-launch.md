@@ -112,7 +112,9 @@ scanner (a token, a key, the caller's own home or identity) refuses the cut,
 named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
 release digest, then the changelog heading; a failure rolls the earlier writes
-back. A fixes-only cut writes no page.
+back. Each write and each rollback resolves inside the repository, so a
+directory that links out of it fails the step rather than receiving the file.
+A fixes-only cut writes no page.
 
 **A repository that declares a digest gets the cut appended to it.** The
 repository's own `.abcd/config.json` (the repository layer alone) may declare
