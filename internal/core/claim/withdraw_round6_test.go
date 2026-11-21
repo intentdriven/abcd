@@ -133,6 +133,14 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 				f.pusherOf[c] = "mal"
 			}
 		}, above: maxChain + 1},
+		"a change beneath more commits than one page of the forge's record": {seed: func(w *world, f *fakeForge) {
+			m, ws := w.tipWithdrawals("rel-v0.16.0")
+			m.Withdrawn = withState(ws, 11, WithdrawnKept)
+			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, forgeActivityPage+50)
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(forgeActivityPage+50), tip)) {
+				f.pusherOf[c] = "mal"
+			}
+		}, above: forgeActivityPage + 50},
 		"a change beneath more commits than the walk reads on to": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
@@ -196,6 +204,35 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 				t.Fatalf("next act = %+v, %v; want nothing named again", again.Settles, err)
 			}
 		})
+	}
+}
+
+// TestARecordOfPushesPastItsReadBoundNamesTheStepLeft: the forge's record
+// of pushes to a release branch is read a page at a time up to its bound; a
+// record holding more activities than that is read short, so octo's release
+// acts on nothing and is refused with nothing pushed, and the reason, on the
+// act and on peers, names the step left to octo.
+func TestARecordOfPushesPastItsReadBoundNamesTheStepLeft(t *testing.T) {
+	w, f, octo := heldOver(t)
+	f.edit = func(ps []Push) []Push {
+		for i := range maxPushPages * forgeActivityPage {
+			ps = append(ps, Push{Before: fmt.Sprintf("%040x", i+2), After: fmt.Sprintf("%040x", i+1), Pusher: "mal"})
+		}
+		return ps
+	}
+	w.set(t0.Add(time.Minute))
+	rw := listingOf(t, w, octo, "rel-v0.16.0")
+	commented, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
+	f.reset()
+	_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
+	why := fmt.Sprintf("the forge's record of who pushed to rel-v0.16.0's branch was not read in full (%d activities is as far back as abcd reads it, a page of %d at a time); "+
+		"once v0.16.0 is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)", maxPushPages*forgeActivityPage, forgeActivityPage)
+	if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 {
+		t.Fatalf("listing = %+v; want the record named as read short, with the step left, and nothing held", rw)
+	}
+	if err == nil || !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), why) || len(f.mutations()) != 0 ||
+		w.remoteTip("rel-v0.16.0") != tip || len(f.posted()) != commented || f.pr(11).method != "" {
+		t.Fatalf("release = %v, mutations %v; want it refused with nothing pushed, re-armed or commented on", err, f.mutations())
 	}
 }
 

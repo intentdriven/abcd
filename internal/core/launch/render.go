@@ -161,8 +161,6 @@ type PayloadPrecheck struct {
 	Root string
 	// Dest is the symlink-resolved staging directory. Nothing is created here.
 	Dest string
-	// VersionLocationPath is the absolute path to the adr-19 contract.
-	VersionLocationPath string
 	// PrimaryPath and PrimaryPointer are the pinned primary version location the
 	// contract selected, repo-relative and RFC-6901.
 	PrimaryPath, PrimaryPointer string
@@ -299,7 +297,6 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 			ErrNotAPlugin, art.Kind, ArtefactRelPath)
 	}
 
-	pre.VersionLocationPath = filepath.Join(pre.Root, versionLocationRelPath)
 	decision, err := loadRepoJSON(pre.Root, versionLocationRelPath)
 	if err != nil {
 		return pre, fmt.Errorf("version-location.json not readable: %w", err)

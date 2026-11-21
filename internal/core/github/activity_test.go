@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,16 +83,41 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 // body.
 func fakeActivity(t *testing.T, body string) (logPath string) {
 	t.Helper()
+	return fakePages(t, body)
+}
+
+// fakePages puts a stand-in `gh` on PATH that logs its argv and answers one
+// page of pages: the first when the path names no cursor, page n when it
+// names after=cursor<n>. Asked with --include, as the forge's activity record
+// is, it writes the status line and headers first, as gh does, with a Link
+// header naming the next page's cursor while one is left.
+func fakePages(t *testing.T, pages ...string) (logPath string) {
+	t.Helper()
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash unavailable")
 	}
 	dir := t.TempDir()
 	logPath = filepath.Join(dir, "argv.log")
-	answer := filepath.Join(dir, "answer.json")
-	if err := os.WriteFile(answer, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
+	for i, body := range pages {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("page%d.json", i)), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	script := "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" >>\"" + logPath + "\"\ncat \"" + answer + "\"\n"
+	script := `#!/usr/bin/env bash
+printf '%s\n' "$@" >>"` + logPath + `"
+inc=0; path=""
+for a in "$@"; do [ "$a" = --include ] && inc=1; path="$a"; done
+n=0
+if [[ "$path" =~ after=cursor([0-9]+) ]]; then n="${BASH_REMATCH[1]}"; fi
+if [ "$inc" = 1 ]; then
+  printf 'HTTP/2.0 200 OK\n'
+  if [ -f "` + dir + `/page$((n+1)).json" ]; then
+    printf 'Link: <https://api.github.com/repositories/1/activity?per_page=100&ref=x&after=cursor%d>; rel="next", <https://api.github.com/repositories/1/activity?per_page=100&ref=x&before=cursor0>; rel="prev"\r\n' $((n+1))
+  fi
+  printf 'Content-Type: application/json; charset=utf-8\r\n\r\n'
+fi
+cat "` + dir + `/page$n.json"
+`
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +164,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv := "api\n--hostname\ngithub.com\nrepos/intentdriven/abcd/activity?per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
+	argv := "api\n--hostname\ngithub.com\n--include\nrepos/intentdriven/abcd/activity?per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
 	if string(data) != argv {
 		t.Fatalf("argv = %q, want %q", data, argv)
 	}
@@ -260,5 +286,91 @@ func TestPushersEndsAtItsCallersDeadline(t *testing.T) {
 	}
 	if took > 3*time.Second {
 		t.Fatalf("a silent forge held the call %s past a 300 ms deadline", took)
+	}
+}
+
+// TestPushersPageReadsOnByTheCursorThePageNames: a page of the forge's
+// activity record names the page past it in its Link header; the next ask
+// sends that cursor back as after, and the last page names none.
+func TestPushersPageReadsOnByTheCursorThePageNames(t *testing.T) {
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 40)
+	zero := strings.Repeat("0", 40)
+	logPath := fakePages(t,
+		`[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"maya"}}]`,
+		`[{"before":"`+zero+`","after":"`+b+`","activity_type":"branch_creation","actor":{"login":"maya"}}]`)
+	dir := originAt(t, "https://github.com/intentdriven/abcd.git")
+	first, err := PushersPage(context.Background(), dir, "refs/heads/abcd-reserved/rel-v1.0.0", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Next != "cursor1" || !first.More() || len(first.Pushes) != 1 || first.Pushes[0].After != a {
+		t.Fatalf("first page = %+v; want maya's push and the cursor of the page past it", first)
+	}
+	second, err := PushersPage(context.Background(), dir, "refs/heads/abcd-reserved/rel-v1.0.0", first.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Next != "" || second.More() || len(second.Pushes) != 1 || second.Pushes[0].Before != zero {
+		t.Fatalf("second page = %+v; want the push that made the branch, and no page past it", second)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "activity?after=cursor1&per_page=100&ref=refs%2Fheads%2Fabcd-reserved%2Frel-v1.0.0\n") {
+		t.Fatalf("argv = %q; want the second ask to send the cursor back", data)
+	}
+}
+
+// TestPushersPageRefusesACursorItDoesNotRead: a cursor outside the forge's
+// token alphabet is never sent, and gh is not run for it.
+func TestPushersPageRefusesACursorItDoesNotRead(t *testing.T) {
+	logPath := fakePages(t, `[]`)
+	dir := originAt(t, "https://github.com/intentdriven/abcd.git")
+	if _, err := PushersPage(context.Background(), dir, "refs/heads/abcd-reserved/rel-v1.0.0", "x&ref=refs/heads/main"); err == nil {
+		t.Fatal("a cursor outside the token alphabet was sent")
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("gh ran for a cursor it does not read: %v", err)
+	}
+}
+
+// TestNextCursorTakesOnlyTheNextLinksAfterParameter: of the Link header,
+// only the rel="next" link's after parameter is read; a link of another
+// relation, a header of another name, or a cursor outside the alphabet names
+// no page past it.
+func TestNextCursorTakesOnlyTheNextLinksAfterParameter(t *testing.T) {
+	for _, c := range []struct {
+		header []string
+		want   string
+	}{
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?before=p>; rel="prev", <https://elsewhere.example/y?after=Y3Vy_c29y-MQ%3D%3D>; rel="next"`}, "Y3Vy_c29y-MQ=="},
+		{[]string{"HTTP/2.0 200 OK", `link: <https://api.github.com/x?after=abc>; rel="next"`}, "abc"},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=abc>; rel="prev"`}, ""},
+		{[]string{"HTTP/2.0 200 OK", `X-Link: <https://api.github.com/x?after=abc>; rel="next"`}, ""},
+		{[]string{"HTTP/2.0 200 OK", `Link: <https://api.github.com/x?after=a%26b>; rel="next"`}, ""},
+		{[]string{"HTTP/2.0 200 OK", `Link: https://api.github.com/x?after=abc; rel="next"`}, ""},
+	} {
+		if got := nextCursor(c.header); got != c.want {
+			t.Fatalf("nextCursor(%q) = %q; want %q", c.header, got, c.want)
+		}
+	}
+}
+
+// TestPushersPageRefusesAnAnswerWithoutHeaders: an answer that does not
+// open with gh's status line and headers names no page past it, so it is
+// refused rather than read as a whole record.
+func TestPushersPageRefusesAnAnswerWithoutHeaders(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/usr/bin/env bash\nprintf '[]\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if _, err := PushersPage(context.Background(), originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-reserved/rel-v1.0.0", ""); err == nil {
+		t.Fatal("an answer with no headers was read")
 	}
 }

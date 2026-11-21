@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/github"
 )
 
 // TestAReleaseReArmsWhileTheRecordLagsItsOwnTombstone: the forge's record of
@@ -313,5 +315,17 @@ func TestAPersonsOwnPushOfSeveralCommitsVouchesForEach(t *testing.T) {
 func TestTheWalkReadsTheSixtyFourCommitsTheBriefNames(t *testing.T) {
 	if maxChain != 64 || maxChainRead != 512 {
 		t.Fatalf("maxChain = %d, maxChainRead = %d; brief 37 and the reserve page say 64 and 512", maxChain, maxChainRead)
+	}
+}
+
+// TestTheRecordOfPushesIsReadToTheSixHundredActivitiesTheBriefNames: brief
+// 37 and the reserve page name how far the forge's record of pushes to a
+// release branch is read, a page of 100 activities at a time up to 600; this
+// pins the bound, and that the forge's page the fake answers is the one the
+// reader counts by.
+func TestTheRecordOfPushesIsReadToTheSixHundredActivitiesTheBriefNames(t *testing.T) {
+	if github.ActivityPage != forgeActivityPage || maxPushPages != 6 || maxPushPages*github.ActivityPage < maxChainRead {
+		t.Fatalf("a page of %d, %d pages; brief 37 and the reserve page say six pages of 100, at least the %d commits the walk reads",
+			github.ActivityPage, maxPushPages, maxChainRead)
 	}
 }
