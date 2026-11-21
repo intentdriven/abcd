@@ -1332,7 +1332,9 @@ mode is `auto`, back at `validate`, and a sync.
    refusal names what the checkout can say: the files a merge of the default
    branch and the pushed head conflicts in with every merge driver switched to
    git's built-in text merge (`merge-tree`, which writes no ref, index or
-   worktree), and the driver each carries at the pushed head ("GitHub reports a
+   worktree, from the merge base the commits' stored parents give, with no
+   replace ref, graft file or commit-graph in force, since the forge sees
+   none of them), and the driver each carries at the pushed head ("GitHub reports a
    conflict; locally these files carry merge drivers the forge ignores: …"), or
    that no local merge reproduces it ("GitHub reports a conflict this checkout
    cannot reproduce", a stale verdict that pushing a merge of the default
