@@ -26,6 +26,15 @@
 #                      "full run: <reason>" and exit 1; a records-only reason
 #                      names the merge base's full commit id, so a later reader
 #                      can redo the check
+#
+# ABCD_RECORDS_ONLY_BASE: a caller that has read origin's default branch tip
+# itself passes it, and the merge base is taken with that commit in place of
+# origin/HEAD or origin/main, so the verdict does not rest on a local
+# remote-tracking ref. It must be a full commit id (40 lowercase hex digits, or
+# 64 in a SHA-256 repository) naming a commit present here. Any other value, a
+# commit not present included, is the full run, so a caller that could not read
+# the tip passes a value such as `unverified` to say so. Unset or empty, the
+# local ref is read as below.
 set -uo pipefail
 
 # Every git here reads with replace refs, graft files and the commit-graph
@@ -70,7 +79,7 @@ in_tier() {
 }
 
 classify() {
-	local top base full ref changed count path name id status flags
+	local top base full ref changed count path name id status flags given
 	top="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 		reason='this is not a git checkout'
 		return 1
@@ -92,22 +101,37 @@ classify() {
 		reason='the working tree differs from HEAD, and the change is judged by its commits'
 		return 1
 	fi
-	# Origin's default branch as last fetched: origin/HEAD when it is set,
-	# else origin/main. It is named by its full ref throughout, so a local
-	# branch that happens to be called origin/main never stands in for it.
-	full="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)" || full=''
-	[ -n "$full" ] || full='refs/remotes/origin/main'
-	ref="${full#refs/remotes/}"
-	case "$full" in
-	refs/remotes/origin/?*) ;;
-	*)
-		reason="origin/HEAD names ${full}, which is not a branch of origin"
-		return 1
-		;;
-	esac
-	if ! git rev-parse -q --verify "${full}^{commit}" >/dev/null 2>&1; then
-		reason="there is no ${ref} to diff against"
-		return 1
+	given="${ABCD_RECORDS_ONLY_BASE:-}"
+	if [ -n "$given" ]; then
+		# The tip a caller passes, read from origin itself, stands in for the
+		# local ref, and only as a full commit id naming a commit present here.
+		if ! [[ "$given" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+			reason='the given base (ABCD_RECORDS_ONLY_BASE) could not be used: it is not a full commit id'
+			return 1
+		fi
+		if ! full="$(git rev-parse -q --verify "${given}^{commit}" 2>/dev/null)" || [ "$full" != "$given" ]; then
+			reason="the given base (ABCD_RECORDS_ONLY_BASE) could not be used: ${given} names no commit here"
+			return 1
+		fi
+		ref="the given base ${given}"
+	else
+		# Origin's default branch as last fetched: origin/HEAD when it is set,
+		# else origin/main. It is named by its full ref throughout, so a local
+		# branch that happens to be called origin/main never stands in for it.
+		full="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)" || full=''
+		[ -n "$full" ] || full='refs/remotes/origin/main'
+		ref="${full#refs/remotes/}"
+		case "$full" in
+		refs/remotes/origin/?*) ;;
+		*)
+			reason="origin/HEAD names ${full}, which is not a branch of origin"
+			return 1
+			;;
+		esac
+		if ! git rev-parse -q --verify "${full}^{commit}" >/dev/null 2>&1; then
+			reason="there is no ${ref} to diff against"
+			return 1
+		fi
 	fi
 	if ! base="$(git merge-base HEAD "$full" 2>/dev/null)"; then
 		reason="HEAD shares no history with ${ref}"

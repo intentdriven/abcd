@@ -184,6 +184,75 @@ func TestAPreflightRunsInTheStagesEnvironment(t *testing.T) {
 	}
 }
 
+// TestAPreflightIsHandedTheTipOriginReports: a lane's preflight is handed, in
+// ABCD_RECORDS_ONLY_BASE, the tip origin reports for its default branch, read
+// by the drive itself in the checkout, and `unverified` when that read fails or
+// names no full commit id; a value the drive's own environment carries never
+// reaches the preflight.
+func TestAPreflightIsHandedTheTipOriginReports(t *testing.T) {
+	const tip = "0123456789abcdef0123456789abcdef01234567"
+	w := newDriveWorld(t)
+	p, err := runner.DriveProfile(w.home, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Repo = w.repo
+	if _, err := runner.WriteWallSettings(p, runner.SelfBinary()); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ABCD_RECORDS_ONLY_BASE", "a-value-never-passed")
+	wasProgram, wasGit := drivePreflightProgram, driveOriginGit
+	t.Cleanup(func() { drivePreflightProgram, driveOriginGit = wasProgram, wasGit })
+	for _, c := range []struct {
+		name   string
+		answer string
+		err    error
+		want   string
+	}{
+		{"origin answers", "ref: refs/heads/main\tHEAD\n" + tip + "\tHEAD\n", nil, tip},
+		{"the ask fails", "", errors.New("origin cannot be reached"), "unverified"},
+		{"no full commit id", "ref: refs/heads/main\tHEAD\n0123456\tHEAD\n", nil, "unverified"},
+		{"no HEAD line", tip + "\trefs/heads/main\n", nil, "unverified"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			out := filepath.Join(dir, "env")
+			drivePreflightProgram = func() (string, []string, error) {
+				return "/bin/sh", []string{"-c", "/usr/bin/env > '" + out + "'"}, nil
+			}
+			var asked []string
+			driveOriginGit = func(d string, args ...string) (string, error) {
+				asked = append([]string{d}, args...)
+				return c.answer, c.err
+			}
+			if err := drivePreflight(os.Stderr, p)(context.Background(), dir, ""); err != nil {
+				t.Fatal(err)
+			}
+			if want := []string{dir, "ls-remote", "--symref", "origin", "HEAD"}; !slices.Equal(asked, want) {
+				t.Errorf("the drive asked %q of origin, want %q", asked, want)
+			}
+			raw, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := slices.DeleteFunc(strings.Split(string(raw), "\n"), func(l string) bool { return !strings.HasPrefix(l, "ABCD_RECORDS_ONLY_BASE=") })
+			if want := []string{"ABCD_RECORDS_ONLY_BASE=" + c.want}; !slices.Equal(got, want) {
+				t.Errorf("the preflight's environment states %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestTheRecordsOnlyBaseReplacesOneTheEnvironmentCarries: whatever the
+// environment a preflight is built from carries, the tip the drive read is
+// the one value stated, and last.
+func TestTheRecordsOnlyBaseReplacesOneTheEnvironmentCarries(t *testing.T) {
+	got := withRecordsOnlyBase([]string{"ABCD_RECORDS_ONLY_BASE=inherited", "HOME=/h", "ABCD_RECORDS_ONLY_BASE="}, "unverified")
+	if want := []string{"HOME=/h", "ABCD_RECORDS_ONLY_BASE=unverified"}; !slices.Equal(got, want) {
+		t.Fatalf("%q, want %q", got, want)
+	}
+}
+
 // TestADriveSaysWhenAStagesGoCachesAreNotKept: an unattended run whose stages keep Go's
 // caches in a home emptied at each launch says so at its start. Both programs stand where others
 // can write, so neither is run.
