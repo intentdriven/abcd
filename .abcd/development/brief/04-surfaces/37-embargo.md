@@ -94,8 +94,10 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   advisories. GitHub is asked only when such an id is found, an answer that
   cannot be had leaves each refused, and an id of the placeholder form, each
   four-character group one character repeated (`GHSA-xxxx-xxxx-xxxx`), is not
-  refused as unlisted. A paraphrase or a count is beyond it and stays the
-  author's to avoid.
+  refused as unlisted. A range's commits, and the history publish reads, are
+  read as git stores them, with no replace ref, graft file or commit-graph
+  standing in. A paraphrase or a count is beyond it and stays the author's to
+  avoid.
 - **publish** shows the plan with each patched version taken from the first
   published release containing the fix, leaving out, with the reason, an
   advisory not resolved or released, one with no package, and one whose text would disclose
