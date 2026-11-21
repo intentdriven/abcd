@@ -71,6 +71,17 @@ func TestARouteThatLetsAPushSkipThePreflightStopsTheInterview(t *testing.T) {
 			}
 			return map[string]string{filepath.Join(common, "packed-refs"): string(packed) + head + " refs/remotes/origin/packed\n"}, "refs/remotes/origin/packed"
 		}},
+		{name: "a remote-tracking ref planted at a commit above HEAD, a replace ref standing a parentless commit in for it", write: func(r *writtenRun, head, common, _ string) (map[string]string, string) {
+			// The hook reads history as stored, so the planted ref holds
+			// HEAD there whatever the replace ref says.
+			tree := r.git.Git("rev-parse", "HEAD^{tree}")
+			above := r.git.Git("commit-tree", tree, "-p", head, "-m", "above")
+			parentless := r.git.Git("commit-tree", tree, "-m", "parentless")
+			return map[string]string{
+				filepath.Join(common, "refs", "remotes", "origin", "planted"): above + "\n",
+				filepath.Join(common, "refs", "replace", above):               parentless + "\n",
+			}, "refs/remotes/origin/planted"
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubAsk("Product Q2", "Is the second answer complete?"), stubDone)
