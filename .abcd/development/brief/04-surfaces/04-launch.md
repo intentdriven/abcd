@@ -188,7 +188,9 @@ It reads the required gates from the committed `release.yml`, derives the
 content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it — one reader, which a test holds to the
 release job's verdict and reasons on the same repository state by running the
-workflow's step beside it. It names each missing or non-PROMOTE receipt and the
+workflow's step beside it. The derivation and the release tags' reads take
+history as git stores it, with no replace ref, graft file or commit-graph in
+force. It names each missing or non-PROMOTE receipt and the
 commit the receipt must name, and each finding the gate's closed disposition
 vocabulary refuses: from release-gate manifest schemaVersion 2 a finding is
 exactly `fixed`, `invalid` or `deferred`, and a deferred one names, in a

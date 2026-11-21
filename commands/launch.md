@@ -596,7 +596,10 @@ that entered `shipped/` since the base tag; never an issue, an `impact: internal
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: the `cut` in
-`abcd launch --dry-run --json`.
+`abcd launch --dry-run --json`. Every git read behind the cut and both
+guardrails reads objects as git stores them, with no replace ref, graft file or
+commit-graph in force, so a record, a tree or which tags lie behind the base
+tag reads as the push and the tag send it.
 
 **The cut is read from HEAD, so an uncommitted record move refuses it.** The
 record set comes out of git at HEAD, never the working tree, so a spec close or
@@ -1105,7 +1108,9 @@ over, so an earlier release's receipts never stand in for this one's and a
 batch-mate's receipts never shadow them. The released tree's newest release
 heading must be a dated `## [X.Y.Z] - <date>` heading: a pre-release or undated
 head, or a tree with no dated release, refuses, because there is no version to
-bind the receipts to.
+bind the receipts to. The derivation, and the release gate's reads of the
+release tags, their trees and their ancestry, read history as git stores it,
+with no replace ref, graft file or commit-graph in force.
 A one-commit branch breaks this: no receipt can name the commit that carries it,
 so the release has no receipts for its content and the gate refuses.
 

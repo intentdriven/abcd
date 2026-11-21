@@ -74,6 +74,13 @@ func RunCappedAsStored(root string, maxBytes int, args ...string) (string, error
 	return strings.TrimRight(string(out), " \t\r\n"), nil
 }
 
+// IsAncestorAsStored is IsAncestor reading history as stored (asStored): for
+// an ancestry verdict a gate acts on, which a graft, a refs/replace entry or
+// a commit-graph could otherwise give parents the commits do not store.
+func IsAncestorAsStored(root, ancestor, descendant string) (bool, error) {
+	return isAncestor(root, true, ancestor, descendant)
+}
+
 // RunCappedExitOneAsStored is RunCappedExitOne reading history as stored
 // (asStored).
 func RunCappedExitOneAsStored(root string, maxBytes int, args ...string) ([]byte, bool, error) {
