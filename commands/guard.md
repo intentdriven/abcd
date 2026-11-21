@@ -1280,8 +1280,11 @@ operand of `env` or `sudo` before the command, or of `export` or a declaration
 builtin, whose name a substitution prints (`env "$(true)"NAME=…`, `env
 "$N"=…`, `env "$PAIR"`, `export "$N"`) is read as naming every variable an
 entry names. The value of one of env's own options that take one (`env -u
-"$V"`, `env -C "$D"`, `-P`, `-a` and their long forms) is that option's value,
-not an assignment, while the string `env -S` splits is read as env's operands.
+"$V"`, `env -C "$D"`, `-P`, `-a` and their long forms), or of sudo's (`sudo -u
+"$U"`), is that option's value, not an assignment, unless an unquoted
+expansion stands in it (`env -u $V`), whose value the shell can split into
+several words, the ones after the first operands of their own; the string
+`env -S` splits is read as env's operands.
 A script the line runs is judged with the environment the line
 hands it, so an export before `bash run.sh`, or an assignment before it,
 reaches the harness the script starts, and a file the line sources runs under

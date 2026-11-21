@@ -382,6 +382,7 @@ func carriedCopy(s segment) segment {
 	d.spelled = copyMap(s.spelled)
 	d.feeds = copyMap(s.feeds)
 	d.ifsSplit = copyMap(s.ifsSplit)
+	d.fieldSplit = copyMap(s.fieldSplit)
 	d.varLead = copyMap(s.varLead)
 	d.leadFrom = copyMap(s.leadFrom)
 	d.arrivals, d.walked, d.walkCapped = nil, false, false
@@ -447,6 +448,7 @@ func placeValues(d *segment, i int, tmpl string, names []string, vs []carriedVal
 	}
 	d.tokens[i] = tok.String()
 	delete(d.ifsSplit, i)
+	delete(d.fieldSplit, i)
 	delete(d.varLead, i)
 	delete(d.leadFrom, i)
 	if isUnknown(d.tokens[i]) {

@@ -118,6 +118,11 @@ type segment struct {
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
 	ifsSplit map[int]bool
+	// fieldSplit records, per token index, a word in which an unquoted
+	// parameter expansion or command substitution stands, whose value the
+	// shell splits into fields, so the word can stand for several words.
+	// nil when no word does. Only envSetBefore reads it.
+	fieldSplit map[int]bool
 	// varLead records, per token index, a word that opens with a variable
 	// whose value can be empty directly followed by `/` (opensUnguardedPath
 	// in varpath.go), which empty names a path from the filesystem root. Only
@@ -595,6 +600,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
+		// curSplit records, for the word being built, that an unquoted
+		// command substitution left its mark in it; fieldSplits rides with
+		// the segment (segment.fieldSplit).
+		curSplit    bool
+		fieldSplits map[int]bool
 		// spells rides with the segment (segment.spelled); curVarAt records,
 		// for the word being built, where in cur each variable's mark stands
 		// and the expansion's text, "" where it is not known.
@@ -908,6 +918,25 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		splits[len(toks)] = true
 	}
+	// markFieldSplit files the word being built, or each word a brace
+	// expansion made of it, under segment.fieldSplit when an unquoted
+	// parameter expansion or command substitution stands in it. n is how
+	// many words it became.
+	markFieldSplit := func(n int) {
+		split := curSplit
+		for _, site := range curVarAt {
+			split = split || site.split
+		}
+		if !split {
+			return
+		}
+		if fieldSplits == nil {
+			fieldSplits = map[int]bool{}
+		}
+		for k := range n {
+			fieldSplits[len(toks)+k] = true
+		}
+	}
 	// markVarLead files the word being built under segment.varLead when it
 	// opens with a variable that can be empty, directly followed by `/`
 	// (opensUnguardedPath in varpath.go).
@@ -1000,6 +1029,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 			}
 			if words, ok := expandBraces(in, &braceLim); ok {
+				markFieldSplit(len(words))
 				for _, w := range words {
 					recordFeeds()
 					recordVar(false)
@@ -1009,7 +1039,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace, curQuoted = nil, nil, false, false, false, false
-				curPieces, curFeeds, curVar, curSub, curVarAt = nil, nil, false, false, nil
+				curPieces, curFeeds, curVar, curSub, curSplit, curVarAt = nil, nil, false, false, false, nil
 				return
 			}
 			braceGroup = true
@@ -1028,7 +1058,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordFeeds()
 		recordVar(true)
 		recordSpelling(tok, tok == string(cur))
-		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
+		markFieldSplit(1)
+		curFeeds, curVar, curSub, curSplit, curVarAt = nil, false, false, false, nil
 		bare := !curQuoted && tok == string(cur) && allStruct(curMask)
 		if bare && (parenKeywords[tok] || tok == "[[") {
 			if keywords == nil {
@@ -1068,7 +1099,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1081,6 +1112,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			vars = nil
 			spells = nil
 			splits = nil
+			fieldSplits = nil
 			leads = nil
 			leadFrom = nil
 			keywords = nil
@@ -1230,8 +1262,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
-			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom, keywords: keywords,
+			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub, curSplit: curSplit,
+			spells: spells, curVarAt: curVarAt, splits: splits, fieldSplits: fieldSplits, leads: leads, leadFrom: leadFrom, keywords: keywords,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -1242,8 +1274,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curQuoted = false
 		curRedirs, andNext = nil, false
-		curPieces, vars, curVar, curSub = nil, nil, false, false
-		spells, curVarAt, splits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil
+		curPieces, vars, curVar, curSub, curSplit = nil, nil, false, false, false
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -1314,8 +1346,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
+		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		inTest = e.inTest
@@ -1341,8 +1373,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
+		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		inTest = e.inTest
@@ -1351,7 +1383,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			addCur([]byte(procSubOperand), 0)
 		} else {
 			addCur([]byte{unknownMark}, 0)
-			curSub = true
+			curSub, curSplit = true, true
 		}
 		lastList = false
 	}
@@ -2831,26 +2863,29 @@ type groupOpen struct {
 // inside it: its tokens so far, the word in progress, and the chain it belongs
 // to, which a newline inside the substitution must not change.
 type enclosing struct {
-	toks       []string
-	globs      []bool
-	lits       map[int]wordLiteral
-	vars       map[int]string
-	curVar     bool
-	curSub     bool
-	spells     map[int][]string
-	curVarAt   []varSite
-	splits     map[int]bool
-	leads      map[int]bool
-	leadFrom   map[int]leadSource
-	keywords   map[int]bool
-	cur        []byte
-	curMask    []byte
-	hasCur     bool
-	curQuoted  bool
-	curGlob    bool
-	curBrace   bool
-	braceGroup bool
-	chain      int
+	toks     []string
+	globs    []bool
+	lits     map[int]wordLiteral
+	vars     map[int]string
+	curVar   bool
+	curSub   bool
+	curSplit bool
+	spells   map[int][]string
+	curVarAt []varSite
+	splits   map[int]bool
+	// fieldSplits is the enclosing command's segment.fieldSplit so far.
+	fieldSplits map[int]bool
+	leads       map[int]bool
+	leadFrom    map[int]leadSource
+	keywords    map[int]bool
+	cur         []byte
+	curMask     []byte
+	hasCur      bool
+	curQuoted   bool
+	curGlob     bool
+	curBrace    bool
+	braceGroup  bool
+	chain       int
 	// procSub records that the substitution is a process substitution, which
 	// leaves one /dev/fd operand in the word it sat in.
 	procSub bool

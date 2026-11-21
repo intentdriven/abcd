@@ -387,16 +387,18 @@ func precededByCD(before []segment, chain int) bool {
 // stand before (`env "$(true)"NAME=…`, `env "$N"=…`), or, with no `=`
 // written, where it stands among env's or sudo's operands, which a
 // substitution can print whole (`env "$PAIR" opencode`); a word that is an
-// option's value (`sudo -u "$U"`, `env -C "$D"`, envOptionValueNext) is no
-// assignment.
+// option's value (`sudo -u "$U"`, `env -C "$D"`, envOptionValueNext,
+// sudoOptionValueNext) is no assignment, unless an unquoted expansion stands
+// in it (segment.fieldSplit): the shell splits its value into fields, and a
+// field after the first is an operand of its own (`env -u $V opencode`).
 func envSetBefore(s segment, site int, names []string) bool {
 	operands := ""       // the envAssigns wrapper whose operands the words since it are
-	optionValue := false // the word is the value of the env option before it
+	optionValue := false // the word is the value of the wrapper's option before it
 	for i := 0; i < site && i < len(s.tokens); i++ {
 		tok := s.tokens[i]
 		if optionValue {
 			optionValue = false
-			if operands == "env" {
+			if !s.fieldSplit[i] {
 				continue
 			}
 		}
@@ -408,12 +410,25 @@ func envSetBefore(s segment, site int, names []string) bool {
 			operands = w
 		case operands == "env" && strings.HasPrefix(tok, "-"):
 			optionValue = envOptionValueNext(tok)
+		case operands == "sudo" && !isUnknown(tok) && strings.HasPrefix(tok, "-"):
+			optionValue = sudoOptionValueNext(tok)
 		case operands != "" && (isUnknown(tok) || isWrapperAssignment(tok)):
 		default:
 			operands = ""
 		}
 	}
 	return false
+}
+
+// sudoOptionValueNext reports whether the sudo option tok takes the next word
+// as its value: one of sudo's value flags (wrapperValueFlags) standing alone,
+// or a short one standing last in a cluster of short options (`-nu`).
+func sudoOptionValueNext(tok string) bool {
+	flags := wrapperValueFlags["sudo"]
+	if strings.HasPrefix(tok, "--") {
+		return containsString(flags, tok)
+	}
+	return len(tok) >= 2 && containsString(flags, "-"+tok[len(tok)-1:])
 }
 
 // envOptionValueNext reports whether the env option tok takes the next word

@@ -353,7 +353,10 @@ func TestGuardReadsTheOtherAssignmentsAllexportExports(t *testing.T) {
 // `-C`, `-P`, `-a`, `--unset`, `--chdir`, `--argv0`) is that option's value,
 // not an assignment, so it sets none of an entry's variables. A bare word
 // the line does not fix among env's operands still can, and so can the
-// string `-S` splits, which env reads as its operands.
+// string `-S` splits, which env reads as its operands. sudo's value options
+// are read the same way. A value an unquoted expansion stands in can split
+// into several words, the ones after the first operands of their own, so it
+// can set a variable.
 func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 	r := Defaults()
 	for _, line := range []string{
@@ -364,6 +367,10 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 		`env --unset "$v" opencode run x`,
 		`env -P "$p" opencode run x`,
 		`env -C "$wt" -u "$v" opencode run x`,
+		`env -u x"$v" opencode run x`,
+		`sudo -u "$u" opencode run x`,
+		`sudo -nu "$u" opencode run x`,
+		`sudo --user "$u" opencode run x`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
@@ -375,6 +382,11 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 		`env -u "$v" "$PAIR" claude -p x`:               "agent-launch-claude-config-env",
 		`env -S "$s" opencode run x`:                    "agent-launch-opencode-config-env",
 		`env -C "$wt" OPENCODE_CONFIG=x opencode run x`: "agent-launch-opencode-config-env",
+		`env -u $V opencode run x`:                      "agent-launch-opencode-config-env",
+		`env -C $(cat d) opencode run x`:                "agent-launch-opencode-config-env",
+		`env --unset ${V} opencode run x`:               "agent-launch-opencode-config-env",
+		`sudo -u $U opencode run x`:                     "agent-launch-opencode-config-env",
+		`sudo -u "$u" "$PAIR" opencode run x`:           "agent-launch-opencode-config-env",
 	} {
 		d, err := r.Check(line)
 		if err != nil {
