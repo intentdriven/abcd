@@ -77,9 +77,10 @@ func (p PushPage) More() bool { return p.Full || p.Next != "" }
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
 // push made by an app (appActor) is answered with App set: the forge cannot
 // say which person it acted for, so it judges no commit, but it still names
-// the tip the record has reached. gh is killed when ctx ends (runContext).
+// the tip the record has reached. The read of origin's URL and gh are both
+// ended when ctx ends (runContext).
 func PushersPage(ctx context.Context, cwd, ref, after string) (PushPage, error) {
-	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
+	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return PushPage{}, fmt.Errorf("this checkout has no origin remote to ask about")
 	}
@@ -184,6 +185,10 @@ func nextCursor(header []string) string {
 	}
 	return ""
 }
+
+// originURLBytes bounds the read of origin's URL: a URL longer than this is
+// refused rather than cut.
+const originURLBytes = 4096
 
 // zeroSHA is the forge's name for no commit: the tip a deletion leaves.
 var zeroSHA = strings.Repeat("0", 40)

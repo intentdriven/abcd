@@ -91,7 +91,6 @@ darwin internal/core/embargo/storepath.liveWorktree -> gitutil.EachWorktree x1
 darwin internal/core/embargo/storepath.liveWorktree -> gitutil.Toplevel x1
 darwin internal/core/embargo/storepath.registeredStore -> gitutil.EachWorktree x1
 darwin internal/core/github.API -> internal/core/github.apiContext(Background) x1
-darwin internal/core/github.Pushers -> gitutil.Run x1
 darwin internal/core/github.Run -> internal/core/github.runContext(Background) x1
 darwin internal/core/guard.FileAtCommit -> gitutil.RunCappedAsStored x2
 darwin internal/core/guard.LoadRepoAt -> gitutil.ResolveCommit x1
@@ -262,7 +261,6 @@ linux internal/core/embargo/storepath.liveWorktree -> gitutil.EachWorktree x1
 linux internal/core/embargo/storepath.liveWorktree -> gitutil.Toplevel x1
 linux internal/core/embargo/storepath.registeredStore -> gitutil.EachWorktree x1
 linux internal/core/github.API -> internal/core/github.apiContext(Background) x1
-linux internal/core/github.Pushers -> gitutil.Run x1
 linux internal/core/github.Run -> internal/core/github.runContext(Background) x1
 linux internal/core/guard.FileAtCommit -> gitutil.RunCappedAsStored x2
 linux internal/core/guard.LoadRepoAt -> gitutil.ResolveCommit x1
