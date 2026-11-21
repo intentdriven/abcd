@@ -46,8 +46,10 @@ thinker ruled on 2026-09-29 to plan metering and size classes as one intent
   local-only: never committed, never rendered on any site.
 - **Size classes** a spec declares before it is built, checked against the
   measured cost in the same report. The notes' finding binds the scheme: depth
-  does not track volume, and the roadmap forbids time estimates, so a class is
-  not denominated in days.
+  does not track volume, and the
+  [size-class note](../../research/notes/2026-08-30-spec-size-classification-gap.md)
+  rules out time estimates, because the press-release intent format carries
+  priority rather than dates, so a class is not denominated in days.
 - **Prices on explicit ask only**: a user-level price table; a report meeting a
   model with no recorded price offers an explicit refresh and never fetches on
   its own (adr-38). Money figures are labelled as API-equivalent estimates.

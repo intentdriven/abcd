@@ -1,0 +1,6 @@
+---
+id: dcn-2611201515431955
+slug: in-a-drain-run-with-members-for
+date: 2026-11-20
+---
+2026-11-20 — In a drain run with members, for itd-2611201450052326: the step that hands the lane back as a whole, its fix rounds spent or stuck, releases the lead's and every member's reservation plainly, with no tombstone, and only an issue its receipt names in handbacks is released with its tombstone; each reservation line in the run's record names the issue it is for, so one member's release is never read as another's or the lead's. A member handed back in a later fix round has its resolution taken off the lane and its resolution commit made unreachable from the lane's head, and the run's widening is kept on the first issue of the run still held, moved there before a handed-back issue's hold is tombstoned. Grounds: the hand-back step itself publishes the tombstone today (releaseOnHandBack in reservation.go, reached from stuck.go, schedule.go and loop.go) before any drain move reads the lane, so a split made by the drain alone would come too late; the receipt record only adds or replaces resolutions (recordReceipt), and the widening reads its hold by the run's key (unheldPaths). Refines dcn-2611201453512021 and dcn-2611201453528321. Decided by the technical facilitator on delegation, 20 Nov 2026.

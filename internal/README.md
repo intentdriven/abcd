@@ -148,12 +148,21 @@ plugin surface, and a future MCP server share one engine.
   machine and the caps, and lists every field it could not pin with
   `core/oracle`'s reasons; and the trial record, which carries the runners' and
   routes' receipts unchanged — plus the export that maps a trial onto a Harbor
-  trial result and an Inspect eval sample and back. A run is a lab procedure:
+  trial result and an Inspect eval sample and back. A check task's copies are
+  compared, never filed: each copy's verdict is validated by the doc-fidelity
+  recorder's own decoder (`docfidelity.ReportFindings`) without being saved
+  where the release gates read, its findings are keyed by the one derivation
+  (`record/findingkey`) and matched by exact key before a matcher model sees
+  the rest, and the person judges them before any model's name or overlap is
+  shown. A run is a lab procedure:
   it writes only under its lab's `state/matrix/`, through `lab.Procedure`, so
   it obeys the lab's halts and pins its binary through the lab's one hashing
   path (`lab.BinaryIdentity`). The run record and its declaration pass the
   repository's secret scanner (`adapter/scanner`) before they are written, and
-  are written together or not at all (`lab.Procedure.WriteStates`).
+  are written together or not at all (`lab.Procedure.WriteStates`). A writing
+  task's copies are judged by people from a packet that names no model, its
+  documents rendered as inert text, and the judging session's verdicts are read
+  back as an untrusted file, refused whole when any part fails.
 - **`core/sweep/`** — one sweep over everything a repository leaves lying
   around (itd-2610222214476887): its worktrees, local branches, merged branches
   on origin, reservation branches and waiting inbox reports, one row each with

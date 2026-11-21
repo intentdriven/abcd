@@ -106,7 +106,7 @@ func newWrittenRun(t *testing.T, machine string) *writtenRun {
 			return out, nil
 		},
 		Now:     func() time.Time { return time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC) },
-		Timeout: 20 * time.Second,
+		Timeout: budget(t),
 	}
 	return r
 }

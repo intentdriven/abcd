@@ -35,8 +35,9 @@ Solo vs. duo is a key axis on which abcd itself will be tested (maintainer
 direction, 2026-07-25): the framework is designed while being built, and the
 claim "the facilitator can be a mode" (itd-97) is only credible with a
 measured comparison behind it. The measurement substrate has recorded homes —
-the CLI eval harness (itd-75), effectiveness tracking (itd-17), and
-benchmark-driven configuration (itd-64) — and the judging discipline already
+the CLI eval harness (itd-75), benchmark-driven configuration (itd-64), and
+the decision adapter's shadow runs of typed judgements against the host
+(itd-2609221009495079) — and the judging discipline already
 exists: itd-81 (judge calibration) encodes the correlated-errors and
 effective-votes findings any outcome panel must respect. What is missing is
 the experiment itself: a paired-run protocol, a metric set, and a comparison
@@ -65,8 +66,9 @@ dogfooding.
 - **Statistical machinery beyond honest counts** in v1 — no significance
   claims from n=1 paired runs; the report says what happened, not what
   generalises.
-- **Host/model benchmarking** — itd-17 and itd-64 own model-level
-  effectiveness; this intent compares *modes*, holding the rest fixed.
+- **Host/model benchmarking** — itd-64 owns model-level benchmarking, and
+  itd-2609221009495079 the shadow runs that measure a typed judgement against
+  the host; this intent compares *modes*, holding the rest fixed.
 
 ## Acceptance Criteria
 
@@ -172,7 +174,9 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 - itd-97 (the mode this measures), itd-99 (plural thinkers — a later
   experiment axis).
-- itd-75 (CLI eval harness), itd-17 (model-effectiveness tracking), itd-64
-  (benchmark-driven config) — the measurement substrate.
+- itd-75 (CLI eval harness), itd-64 (benchmark-driven config),
+  itd-2609221009495079 (typed judgements measured in shadow runs, which
+  superseded itd-17's model-effectiveness tracking) — the measurement
+  substrate.
 - `.abcd/development/intents/disciplines/itd-81-judge-calibration.md` — the
   panel discipline the outcome judges must follow.

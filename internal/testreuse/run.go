@@ -86,6 +86,12 @@ type Config struct {
 	AfterWait func() (p, timeout string, err error)
 	// RaceGate is the race gate, which a race stage that waited passes again.
 	RaceGate func() error
+	// Clock is the preflight's clock file (clock.go), on which the stage notes
+	// its checking time and, apart from it, its waits for the lock and the race
+	// gate. Empty notes nothing.
+	Clock string
+
+	clock *stageClock
 }
 
 // goTestArgs is a recipe's go test command, read closely: a flag the check does
@@ -152,6 +158,7 @@ func (g goTestArgs) flags(timeout string, extra ...string) []string {
 
 // Run runs the stage and returns its exit code.
 func Run(ctx context.Context, cfg Config) int {
+	cfg.clock = &stageClock{began: time.Now()}
 	g, err := parseGoTest(cfg.Args)
 	if err != nil {
 		fmt.Fprintf(cfg.Stderr, "check-tests: %v\n", err)
@@ -216,13 +223,17 @@ func Run(ctx context.Context, cfg Config) int {
 	lock := filepath.Join(dir, lockName)
 	deadline := time.Now().Add(cfg.LockWait)
 	for {
+		tried := time.Now()
 		err = fsutil.WithFileLock(lock, lockSlice, locked)
 		// The race gate can wait for hours, so a stage passes it holding nothing,
 		// and every other stage of the repository stays free to run. Losing the
 		// lock to one meanwhile means the gate again.
 		if atGate {
 			atGate, toGate = false, false
-			if err := cfg.RaceGate(); err != nil {
+			gated := time.Now()
+			err := cfg.RaceGate()
+			cfg.clock.gate += time.Since(gated)
+			if err != nil {
 				fmt.Fprintf(cfg.Stderr, "check-tests: after the wait: %v. Nothing ran.\n", err)
 				return 1
 			}
@@ -231,6 +242,7 @@ func Run(ctx context.Context, cfg Config) int {
 		if !errors.Is(err, fsutil.ErrLockContention) {
 			break
 		}
+		cfg.clock.lock += time.Since(tried)
 		if !waited {
 			waited = true
 			fmt.Fprintf(cfg.Stdout, "check-tests: waiting for another check of this repository on this account to finish: %s\n", holder(dir))
@@ -597,6 +609,7 @@ func finish(cfg Config, g goTestArgs, tally *Tally, mode, why, head, tree string
 	for _, name := range c.Ran {
 		fmt.Fprintf(cfg.Stdout, "check-tests:   ran %s: %s\n", name, ranWhy(plan, name, mode))
 	}
+	cfg.clock.report(cfg, g.race && cfg.RaceGate != nil)
 	if head != "" {
 		report := StageReport{Commit: head, Tree: tree, Stage: cfg.Stage, Mode: mode, Why: why, Counts: c, Passed: !failed}
 		if err := report.write(cfg.Worktree, append([]string{g.run, fmt.Sprint(g.race)}, g.patterns...)); err != nil {

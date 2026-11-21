@@ -28,8 +28,9 @@ package loop
 //     (keepLatestFindings); an earlier round's are dropped when the state is
 //     written. A state that would still outgrow what its read accepts has
 //     its findings dropped a round at a time, the oldest first, its counts
-//     kept (trimOldestFindings), and is not written when that is not enough,
-//     so the loop never writes a state its own read refuses.
+//     kept, then the strikes its judges keep, their counts kept
+//     (trimOldestFindings), and is not written when that is not enough, so
+//     the loop never writes a state its own read refuses.
 //
 // A location is a path of at most 255 bytes relative to the lane's worktree:
 // a path the reviewer wrote under the worktree, in any of its spellings
@@ -569,22 +570,36 @@ func (st *State) keepLatestFindings() {
 // trimOldestFindings drops the located findings of the oldest round still
 // carrying any, by round number and then lane order, keeping its counts, and
 // reports whether there was one. A round's findings go whole, so the
-// reviewers left citing a location are the ones markCitedBy marks.
+// reviewers left citing a location are the ones markCitedBy marks. Once no
+// round carries findings, it drops the strikes the oldest round's judge keeps
+// instead, keeping the count it struck.
 func (st *State) trimOldestFindings() bool {
+	if r := st.oldestRound(ValidationRound.carriesFindings); r != nil {
+		dropFindings(r)
+		return true
+	}
+	if r := st.oldestRound(func(r ValidationRound) bool { return r.Judge != nil && len(r.Judge.Strikes) > 0 }); r != nil {
+		j := *r.Judge
+		j.Strikes = nil
+		r.Judge = &j
+		return true
+	}
+	return false
+}
+
+// oldestRound is the oldest round, by round number and then lane order, that
+// has, or nil.
+func (st *State) oldestRound(has func(ValidationRound) bool) *ValidationRound {
 	var oldest *ValidationRound
 	for i := range st.Lanes {
 		for j := range st.Lanes[i].Validation {
 			r := &st.Lanes[i].Validation[j]
-			if r.carriesFindings() && (oldest == nil || r.Round < oldest.Round) {
+			if has(*r) && (oldest == nil || r.Round < oldest.Round) {
 				oldest = r
 			}
 		}
 	}
-	if oldest == nil {
-		return false
-	}
-	dropFindings(oldest)
-	return true
+	return oldest
 }
 
 // carriesFindings reports whether any reviewer of r keeps a located finding.

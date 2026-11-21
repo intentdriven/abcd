@@ -28,11 +28,23 @@ var foundAtExtension = regexp.MustCompile(`\.[A-Za-z][A-Za-z0-9_-]*$`)
 var foundAtLocator = regexp.MustCompile(`:[A-Za-z0-9_,-]+$`)
 
 // foundAtPath reports the repo-relative path a found_at value names, and
-// whether it names one at all. It is a path when, with any locator suffix
-// removed, it is a single path token that either contains a separator or ends
-// in a file extension. Absolute and home-relative values are not repo-relative
-// and are left alone, as is anything carrying a URL scheme.
+// whether it names one at all, by its shape alone. It is a path when, with any
+// locator suffix removed, it is a single path token that either contains a
+// separator or ends in a file extension. Absolute and home-relative values are
+// not repo-relative and are left alone, as is anything carrying a URL scheme.
+// foundAtPathIn also asks the checkout, for a lone name with neither.
 func foundAtPath(value string) (string, bool) {
+	v, ok := foundAtToken(value)
+	if !ok || (!strings.Contains(v, "/") && !foundAtExtension.MatchString(v)) {
+		return "", false
+	}
+	return v, true
+}
+
+// foundAtToken is a found_at value trimmed and with any locator suffix
+// dropped, and whether what is left is one repo-relative path token: not
+// empty, not absolute, carrying no URL scheme.
+func foundAtToken(value string) (string, bool) {
 	v := strings.TrimSpace(value)
 	if v == "" || strings.Contains(v, "://") {
 		return "", false
@@ -43,16 +55,57 @@ func foundAtPath(value string) (string, bool) {
 	if v == "" || strings.HasPrefix(v, "/") || !foundAtPathToken.MatchString(v) {
 		return "", false
 	}
-	if !strings.Contains(v, "/") && !foundAtExtension.MatchString(v) {
+	return v, true
+}
+
+// foundAtPathIn is foundAtPath judged against the checkout at repoRoot
+// (iss-2611190625535337): a lone name with no separator and no extension,
+// such as Makefile, LICENSE or Dockerfile, names a path too when a regular
+// file of exactly that name is at the checkout's root. A word naming no file
+// there, a directory, and a name differing from the file only in case (which
+// a case-insensitive filesystem would otherwise stat) stay a place in words,
+// as does every lone name when the root cannot be read. This is the one
+// verdict capture's check, the drain's ordering and every reservation read.
+func foundAtPathIn(repoRoot, value string) (string, bool) {
+	if p, ok := foundAtPath(value); ok {
+		return p, true
+	}
+	v, ok := foundAtToken(value)
+	if !ok || strings.Contains(v, "/") || !rootFile(repoRoot, v) {
 		return "", false
 	}
 	return v, true
 }
 
-// FoundAtPath is the repo-relative path a found_at value names, with any
-// locator suffix dropped, and whether it names one: the file a drain reserves
-// an issue with.
+// rootFile reports whether a regular file named exactly name is an entry of
+// the directory repoRoot. The entries are listed rather than the name stated,
+// so the match is exact on a case-insensitive filesystem too.
+func rootFile(repoRoot, name string) bool {
+	if repoRoot == "" {
+		return false
+	}
+	entries, err := os.ReadDir(repoRoot)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Name() == name {
+			return e.Type().IsRegular()
+		}
+	}
+	return false
+}
+
+// FoundAtPath is the repo-relative path a found_at value names by its shape,
+// with any locator suffix dropped, and whether it names one. A caller with a
+// checkout to hand asks FoundAtPathIn, which also knows a lone root file.
 func FoundAtPath(value string) (string, bool) { return foundAtPath(value) }
+
+// FoundAtPathIn is the repo-relative path a found_at value names in the
+// checkout at repoRoot, a lone name included when it is a file at the root,
+// and whether it names one: the file the build and the drain reserve an issue
+// with.
+func FoundAtPathIn(repoRoot, value string) (string, bool) { return foundAtPathIn(repoRoot, value) }
 
 // checkFoundAt refuses a found_at that names a repo-relative path which does
 // not resolve in the checkout being written to (iss-2609120511058115). The
@@ -70,7 +123,7 @@ func FoundAtPath(value string) (string, bool) { return foundAtPath(value) }
 // that cannot be searched, an I/O error — says nothing about the input: the
 // checkout could not be read, so that one stays a fault.
 func checkFoundAt(repoRoot, value string) error {
-	rel, ok := foundAtPath(value)
+	rel, ok := foundAtPathIn(repoRoot, value)
 	if !ok {
 		return nil
 	}

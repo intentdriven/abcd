@@ -43,6 +43,7 @@ var delimiterSites = map[string]delimiterSite{
 	"internal/gittest/repo.go":                   {2, "a WRITER: a test-fixture record's block's two delimiters"},
 	"internal/surface/cli/history.go":            {1, "a WRITER: a separator line between rendered transcripts; not frontmatter"},
 	"internal/core/positioning/render.go":        {1, "a WRITER: a unified diff's `--- a/` header; not frontmatter"},
+	"internal/core/matrix/udiff.go":              {1, "a WRITER: a unified diff's `--- ` file header; not frontmatter"},
 	"internal/core/lint/subverbs.go":             {1, "a markdown TABLE's separator row (`|---|`), not a frontmatter delimiter"},
 	"internal/core/implement/loop/brief.go":      {1, "a WRITER: the lane brief's thematic break above the intent section, in the body; not frontmatter"},
 	"internal/core/implement/loop/issuebrief.go": {1, "a WRITER: the issue lane brief's thematic break above the issue section, in the body; not frontmatter"},

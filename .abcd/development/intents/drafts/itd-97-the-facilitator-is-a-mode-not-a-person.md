@@ -52,7 +52,9 @@ sign-off, irreversible actions) stay human in both modes
 
 ## What's In Scope
 
-- **A per-repo mode declaration** (duo | solo) with duo the default; the
+- **A per-repo mode declaration**, the key `facilitator.mode` with the
+  values `human` (duo) and `auto` (solo), `human` the default
+  (itd-2610150602547271); duo and solo stay the press release's words. The
   status board and every run surface name the active mode — no ambient
   ambiguity about who the facilitator is.
 - **Solo = the composed "when"**: scheduled sync, self-firing reviews,

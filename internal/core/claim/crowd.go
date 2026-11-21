@@ -148,7 +148,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 		// This copy's own reservations on other records are no overlap: the
 		// work they name is this copy's, as a drain's next issue beside its
 		// own open lane.
-		if r.Copy == CopyThis && mine {
+		if r.OwnHere(p.self) {
 			continue
 		}
 		for _, want := range res.Footprint {
@@ -431,21 +431,35 @@ func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string,
 	return OwnOverlap{}, false
 }
 
+// OwnHere reports whether r is this copy's own reservation as the reservation
+// act reads one: made from this copy under a holder self owns (Self.Owns). One
+// this copy made under a holder id that is no longer the reader's (a home
+// emptied, so the id was minted again) is another holder's to the act, which
+// backs off over it (iss-2611190011141331), so it is not this copy's own.
+// crowding and Contention judge by it alike.
+func (r Reservation) OwnHere(self Self) bool {
+	return r.Copy == CopyThis && self.Owns(r.Holder)
+}
+
 // Contention is why a reservation of id with footprint would back off on the
-// view s at now, as crowding and the record's own tip would judge it: id
-// reserved by another copy (live, or unreadable within its hold), or a path of
-// footprint shared with another copy's live reservation of another record
-// (overlap: a generated file is shared, as crowding shares it), this person's
-// other copy included, as a drain's reservation judges it. "" when nothing in
-// the view holds it off; this copy's own reservations never do. It reads the view alone, so a caller passes over held work with no
-// fetch and no push; the reservation act itself, whose push is the
-// compare-and-swap, still judges what origin holds by then.
+// view s at now, as crowding and the record's own tip would judge it for
+// reader, the person the act reserves as: id reserved by anyone but this
+// copy's own (OwnHere: live, or unreadable within its hold), or a path of
+// footprint shared with a live reservation of another record that is not this
+// copy's own (overlap: a generated file is shared, as crowding shares it), this
+// person's other copy included, as a drain's reservation judges it, and this
+// copy's under a holder id the reader no longer owns. "" when nothing in the
+// view holds it off. A reader who cannot be told (the zero Self) owns nothing,
+// so every reservation holds off what it shares. It reads the view alone, so
+// a caller passes over held work with no fetch and no push; the reservation
+// act itself, whose push is the compare-and-swap, still judges what origin
+// holds by then.
 //
-// takeOver is whose holds are the person's own for an act with --take-over,
-// the zero Self for any other act: that person's own live reservation of id
-// from another copy does not hold it off, since the act takes it over (spc-2610161044461448 step 15).
-func (s Snapshot) Contention(id string, footprint []string, now time.Time, takeOver Self) string {
-	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis && !(r.State == StateLive && takeOver.Owns(r.Holder)) {
+// takeOver is true for an act with --take-over: the reader's own live
+// reservation of id from another copy does not hold it off, since the act
+// takes it over (spc-2610161044461448 step 15).
+func (s Snapshot) Contention(id string, footprint []string, now time.Time, reader Self, takeOver bool) string {
+	if r, ok := s.Lookup(id); ok && !r.OwnHere(reader) && !(takeOver && r.State == StateLive && reader.Owns(r.Holder)) {
 		switch {
 		case r.State == StateLive:
 			return fmt.Sprintf("%s is reserved by %s until %s, %s", id, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))
@@ -454,7 +468,7 @@ func (s Snapshot) Contention(id string, footprint []string, now time.Time, takeO
 		}
 	}
 	for _, r := range s.Reservations {
-		if r.State != StateLive || r.Record == id || r.Copy == CopyThis {
+		if r.State != StateLive || r.Record == id || r.OwnHere(reader) {
 			continue
 		}
 		for _, want := range footprint {

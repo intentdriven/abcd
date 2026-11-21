@@ -78,8 +78,7 @@ auditor a canary for its consistency role, and the release changelog composer a
 canary for its release page and a no-forecast fixture. The composer's three carry
 expected payloads that `internal/core/release/fixtures_test.go` runs through the
 real ingest, with no model in the loop. The harness lands with
-the first Pass-A agent's spec (the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds),
-the point at which a second agent exists to generalise the runner over.
+the first Pass-A agent's spec (the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds).
 
 This is the layer that would catch a regression when a model changes, and it is
 also what would **run** an injection canary rather than merely require one.

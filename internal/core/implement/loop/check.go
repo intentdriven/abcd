@@ -199,6 +199,57 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 	return res, nil
 }
 
+// checkMembers is check for a run with members (itd-2611201450052326,
+// spc-2611201455051897 step 1): the lead's rows as check gives them, then, for
+// each member, the open-issue and peers checks an issue key takes
+// (issueCheck), each row naming the member, so a member that is not eligible,
+// or that a peer holds, refuses the start as the lead would. The ledger and
+// the peers are read once for them all. With no members it is check.
+func checkMembers(repoRoot, key string, members []string, session string, snap *peerSnapshot) (CheckResult, error) {
+	res, err := check(repoRoot, key, session, snap)
+	if err != nil || len(members) == 0 || !validIssueKey(key) {
+		return res, err
+	}
+	shared := snap
+	if shared == nil {
+		if shared, err = readPeers(repoRoot, time.Now()); err != nil {
+			return res, err
+		}
+	}
+	if shared.plan == nil {
+		plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+		if err != nil && !drainRuleRefusal(err) {
+			return res, err
+		}
+		if err == nil {
+			copied := *shared
+			copied.plan = &plan
+			shared = &copied
+		}
+	}
+	for _, m := range members {
+		row, ok := keyCheck(m)
+		if !ok || !validIssueKey(m) {
+			row.OK = false
+			row.Detail = "a member of the run is not an issue id; it is not repeated here"
+			res.Checks = append(res.Checks, row)
+			continue
+		}
+		one, err := issueCheck(repoRoot, CheckResult{Key: m}, session, shared)
+		if err != nil {
+			return res, err
+		}
+		res.Checks = append(res.Checks, one.Checks...)
+	}
+	res.OK = true
+	for _, c := range res.Checks {
+		if !c.OK {
+			res.OK = false
+		}
+	}
+	return res, nil
+}
+
 // validIssueKey reports whether key is an issue id by shape (`iss-` and
 // digits): the only issue key a run is built from, so no path is ever made of
 // anything else.
@@ -382,9 +433,10 @@ type peerSnapshot struct {
 	// fails closed on every intent, as it does on a peer it cannot read.
 	reservedErr string
 	// reader is whose holds are the person's own (claim.ReaderSelf), read
-	// only when a reservation another copy holds is in the view; the zero
-	// Self when it cannot be told, and every other copy's reservation is
-	// then named by its holder.
+	// only when a live reservation is in the view; the zero Self when it
+	// cannot be told, and every other copy's reservation is then named by
+	// its holder, and every one of this copy's holds off what it shares
+	// (claim.Reservation.OwnHere), as the start's reservation backs off.
 	reader claim.Self
 	// now is when the reservations are judged.
 	now time.Time
@@ -440,8 +492,11 @@ func (snap *peerSnapshot) readReservations(repoRoot string) error {
 		return nil
 	}
 	snap.reserved = &view
+	// The reader is read for this copy's live reservations too: one made
+	// under a holder id the reader no longer owns holds the start off
+	// (overlapHeld, iss-2611190011141331).
 	for _, r := range view.Reservations {
-		if r.State == claim.StateLive && r.Copy != claim.CopyThis {
+		if r.State == claim.StateLive {
 			snap.reader = claim.ReaderSelf(repoRoot, claim.Options{})
 			break
 		}

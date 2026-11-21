@@ -740,23 +740,35 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 	}
 	rec.Released = noReservationHeld
 	if st.ReservedAt != nil {
-		clause, failed := releaseReservation(repoRoot, st.Key, "", now)
-		stage := StageReservationReleased
-		if failed {
-			tail, _, _ := lapseTail(repoRoot, *st, now)
-			clause += tail
-			stage = StageReservationReleaseFailed
+		// A run with members releases every issue it holds, each plainly, each line
+		// naming its issue, and clears every member's reserved_at with the run's.
+		released := ""
+		letGo := letGoByDrive(*st)
+		for _, id := range st.reservedIssues() {
+			clause, failed := releaseReservation(repoRoot, id, "", now)
+			stage := StageReservationReleased
+			if failed {
+				tail, _, _ := lapseTail(repoRoot, st.forIssue(id), now)
+				clause += tail
+				stage = StageReservationReleaseFailed
+			}
+			// A run a drive already let go keeps the note made then, which is what its lane
+			// was working to.
+			if !letGo {
+				noteRecordReleasedFor(repoRoot, st, id, failed, now)
+			}
+			released = joinNext(released, clause)
+			st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause, Issue: st.issueOn(id)})
 		}
-		// A run a drive already let go keeps the note made then, which is what its lane
-		// was working to.
-		if !letGoByDrive(*st) {
-			noteRecordReleased(repoRoot, st, failed, now)
-		}
-		// Failed or not the run no longer holds it: a renewal now would keep the
+		// Failed or not the run no longer holds them: a renewal now would keep the
 		// claim the stop let go.
 		st.ReservedAt = nil
-		rec.Released = clause
-		st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
+		for i := range st.Bundle {
+			st.Bundle[i].ReservedAt = nil
+		}
+		if released != "" {
+			rec.Released = released
+		}
 	}
 	rec.HaltedAt = &now
 	st.Record = append(st.Record, Entry{At: now, Stage: StageStop, Note: "halted: every lane has settled and the run's claims are let go"})

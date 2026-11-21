@@ -816,11 +816,16 @@ on origin's default branch backs off, with a tip or without one
    waits rather than ending. It is then asked again, on a new reservation,
    only after the drain's other eligible work, and the lapse is forgotten once
    it is asked again or answered (dcn-2610161315385888, refined by
-   dcn-2610161420314313). An issue whose `found_at` names no repository-relative path is
+   dcn-2610161420314313). An issue whose `found_at` names no repository-relative path (a lone
+   name such as `Makefile` counts when that file is at the checkout's root,
+   iss-2611190625535337) is
    handed back before any judgement over it, `from` `reservation`, with the
    reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
    the drain moves on. An issue another copy holds in the move's view, or whose
-   footprint shares a path with another copy's live reservation, is passed over
+   footprint shares a path with another copy's live reservation, or with one
+   this copy made under a holder id the reader no longer owns (which the
+   reservation act backs off over as over another's, iss-2611190011141331),
+   is passed over
    with the check `reservation`, naming the holder, before anything is pushed
    or asked, so passing over held work adds no fetch to the move's one; one
    the reservation push itself finds held (a race since the fetch) is passed

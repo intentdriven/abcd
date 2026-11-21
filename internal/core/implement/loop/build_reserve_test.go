@@ -397,6 +397,32 @@ func TestBuildReservesAnIssueWithItsFoundAt(t *testing.T) {
 	}
 }
 
+// TestBuildReservesAnIssueFoundAtAnExtensionlessRootFile is
+// iss-2611190625535337: `build <iss-N>` of an issue whose found_at is
+// Makefile, a file at the checkout's root with no extension, reserves the
+// issue with that path; where no such file is there the name stays a place in
+// words, and the build is refused at the reservation, starting nothing.
+func TestBuildReservesAnIssueFoundAtAnExtensionlessRootFile(t *testing.T) {
+	repo, bare := reservingDrainRepoWith(t, "Makefile", "Makefile")
+	if _, err := Start(repo.Root(), secondIssue, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"Makefile"}) {
+		t.Fatalf("the issue is reserved with Makefile: %v", fp)
+	}
+
+	repo, bare = reservingDrainRepo(t, "Makefile")
+	_, err := Start(repo.Root(), secondIssue, Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageReservation || !strings.Contains(r.Reason, secondIssue+" has no found_at path to reserve it with") {
+		t.Fatalf("a Makefile that is not there names no path: %+v", r)
+	}
+	runTierAbsent(t, repo.Root())
+	if fp := footprintOf(t, bare, secondIssue); fp != nil {
+		t.Fatalf("nothing is reserved: %v", fp)
+	}
+}
+
 // TestAHandedBackBuildLaneReleasesItsReservation is iss-2610142247197128: a
 // run `build <iss-N>` started, which no drain routes, releases its
 // reservation when its lane is handed back, and its record says so.

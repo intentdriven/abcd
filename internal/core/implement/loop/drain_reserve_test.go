@@ -24,10 +24,24 @@ import (
 // docFoundAt is not "".
 func reservingDrainRepo(t *testing.T, docFoundAt string) (*gittest.Repo, string) {
 	t.Helper()
-	_, w := builtOnce(t, worldKey("reservingDrainRepo", docFoundAt), func(w *fixtureWorld) struct{} {
+	return reservingDrainRepoWith(t, docFoundAt)
+}
+
+// reservingDrainRepoWith is reservingDrainRepo with each of files also
+// written and committed, before the issues are filed.
+func reservingDrainRepoWith(t *testing.T, docFoundAt string, files ...string) (*gittest.Repo, string) {
+	t.Helper()
+	key := worldKey("reservingDrainRepo", docFoundAt)
+	if len(files) > 0 {
+		key = worldKey(key, strings.Join(files, "\x00"))
+	}
+	_, w := builtOnce(t, key, func(w *fixtureWorld) struct{} {
 		repo := briefRepo(t, agentsMarked)
 		issueRepoRule(t, repo)
 		repo.Write("commands/drain.md", "# drain\n")
+		for _, f := range files {
+			repo.Write(f, "x\n")
+		}
 		fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
 		fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", docFoundAt)
 		repo.Commit("the ledger")
@@ -97,6 +111,26 @@ func TestDrainReservesEachIssueWithItsFoundAt(t *testing.T) {
 	}
 	if fp := footprintOf(t, bare, eligibleIssue); !slices.Equal(fp, []string{"AGENTS.md"}) {
 		t.Fatalf("the footprint is found_at's path without its locator: %v", fp)
+	}
+}
+
+// TestADrainReservesAnIssueFoundAtAnExtensionlessRootFile is
+// iss-2611190625535337: an issue whose found_at is Makefile, a file at the
+// checkout's root, is reserved with that path when the drain opens its lane,
+// not handed back as naming none.
+func TestADrainReservesAnIssueFoundAtAnExtensionlessRootFile(t *testing.T) {
+	repo, bare := reservingDrainRepoWith(t, "Makefile", "Makefile")
+	res := drainedToLaneOnce(t, repo, DrainOptions{})
+	for _, r := range res.HandBacks {
+		if r.Issue == secondIssue {
+			t.Fatalf("the issue found at Makefile is handed back: %+v", r)
+		}
+	}
+	if res.Lane == nil || res.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the lane of the issue found at Makefile: %+v", res)
+	}
+	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"Makefile"}) {
+		t.Fatalf("the reservation's footprint is Makefile: %v", fp)
 	}
 }
 

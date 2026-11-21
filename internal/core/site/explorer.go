@@ -96,7 +96,7 @@ type explorer struct {
 	bib *Bibliography
 	// pages is the page set the manifest's switches leave on.
 	pages pageSet
-	// status is the Now / Next / Later block the Status page opens with, or
+	// status is the Now / Next / Later block the record health page opens with, or
 	// nil where the page is switched off.
 	status *statusblock.Block
 }
@@ -213,6 +213,21 @@ func (e *explorer) Pages() (map[string]string, error) {
 		}
 		pages[route+"index.html"] = html
 		return nil
+	}
+	// A site narrowed to its documentation keeps the two explorer pages the
+	// record's own site does not build, and none of the record's.
+	if e.c.manifest.recordElsewhere() != "" {
+		if e.hasContributors() {
+			if err := add(routeContributors, e.contributorsPage); err != nil {
+				return nil, err
+			}
+		}
+		if e.hasReferences() {
+			if err := add(routeReferences, e.referencesPage); err != nil {
+				return nil, err
+			}
+		}
+		return pages, nil
 	}
 	if err := add(routeDashboard, e.dashboard); err != nil {
 		return nil, err
@@ -349,7 +364,11 @@ func (e *explorer) subnav(active string) string {
 		if t.route == active {
 			cls, cur = ` class="on"`, ` aria-current="page"`
 		}
-		b.WriteString(`<a href="` + escapeAttr(e.c.at("/"+t.route)) + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
+		href := e.c.recordAt("/" + t.route)
+		if t.route == routeContributors || t.route == routeReferences {
+			href = e.c.at("/" + t.route)
+		}
+		b.WriteString(`<a href="` + escapeAttr(href) + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
 	}
 	b.WriteString(`</div></nav>`)
 	return b.String()
@@ -949,7 +968,7 @@ func (e *explorer) href(fromPath, target string) string {
 	rel := path.Clean(path.Join(path.Dir(fromPath), file))
 	if strings.HasSuffix(file, ".md") {
 		if n, ok := e.byPath[rel]; ok {
-			out := e.c.at("/" + RecordRoute(n))
+			out := e.c.recordAt("/" + RecordRoute(n))
 			if frag != "" {
 				out += "#" + frag
 			}
@@ -960,7 +979,7 @@ func (e *explorer) href(fromPath, target string) string {
 		// which is the one place a reader who followed a term link did not mean
 		// to end up.
 		if en, ok := e.glossaryByPath[rel]; ok {
-			out := e.c.at("/" + en.Route)
+			out := e.c.recordAt("/" + en.Route)
 			if frag != "" {
 				out += "#" + frag
 			}

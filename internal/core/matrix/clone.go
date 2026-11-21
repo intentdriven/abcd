@@ -2,12 +2,15 @@ package matrix
 
 // clone.go makes each copy's isolated clone of the frozen commit (decision 4,
 // spc-2610161949559050 step 3): one clone per copy in the machine-scoped
-// store, keyed by run, task, cell and repeat, outside every working tree,
+// store, keyed by run, task, cell and repeat (a check copy's by run and its
+// alias alone, makeCheckClone), outside every working tree,
 // holding no local-tier file and no other copy's refs. A copy never sees the
 // person's checkout, another copy, or anything past the frozen commit, so what
 // it makes is its model's work from the one starting point every copy shares.
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,9 +19,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // cloneStore is where a repository's matrix copies are cloned: the account's
@@ -48,24 +53,38 @@ const localTier = ".abcd/.work.local"
 // local-tier file is refused and its clone removed. A failure past the clone's
 // directory removes it.
 func makeClone(repoRoot, store, run, frozen string, key TrialKey) (string, error) {
-	if !runIDRe.MatchString(run) {
-		return "", fmt.Errorf("%q is not a run id", clip(run))
-	}
-	if err := key.validate(); err != nil {
+	if err := cloneArgs(repoRoot, run, frozen, key); err != nil {
 		return "", err
 	}
+	return makeCloneAt(repoRoot, store, cloneDir(store, run, key), frozen, "copy "+key.String())
+}
+
+// cloneArgs refuses what no clone is made from: a run id, a key, a frozen
+// commit or a source that is not one.
+func cloneArgs(repoRoot, run, frozen string, key TrialKey) error {
+	if !runIDRe.MatchString(run) {
+		return fmt.Errorf("%q is not a run id", clip(run))
+	}
+	if err := key.validate(); err != nil {
+		return err
+	}
 	if !gitutil.IsFullSHA(frozen) {
-		return "", fmt.Errorf("%q is not a full commit id, so it is no frozen commit", clip(frozen))
+		return fmt.Errorf("%q is not a full commit id, so it is no frozen commit", clip(frozen))
 	}
 	if !filepath.IsAbs(repoRoot) {
 		// The source is handed to git fetch by path: an absolute one can never
 		// be read as an option.
-		return "", fmt.Errorf("the clone's source %q is not an absolute path", clip(repoRoot))
+		return fmt.Errorf("the clone's source %q is not an absolute path", clip(repoRoot))
 	}
+	return nil
+}
+
+// makeCloneAt is makeClone at dir, a directory under store, for the copy
+// named what, its arguments already checked (cloneArgs).
+func makeCloneAt(repoRoot, store, dir, frozen, what string) (string, error) {
 	if !filepath.IsAbs(store) {
 		return "", fmt.Errorf("the clone store %q is not an absolute path", clip(store))
 	}
-	dir := cloneDir(store, run, key)
 	// Asked of the directory the clone goes in: the clone itself, once made, is
 	// a repository of its own, and one already there is refused below.
 	if err := outsideWorkingTrees(filepath.Dir(dir)); err != nil {
@@ -76,13 +95,13 @@ func makeClone(repoRoot, store, run, frozen string, key TrialKey) (string, error
 	}
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return "", fmt.Errorf("copy %s already has a clone; a copy is made once, from the frozen commit", key)
+			return "", fmt.Errorf("%s already has a clone; a copy is made once, from the frozen commit", what)
 		}
-		return "", fmt.Errorf("copy %s's clone could not be made: %w", key, err)
+		return "", fmt.Errorf("%s's clone could not be made: %w", what, err)
 	}
 	if err := fillClone(repoRoot, dir, frozen); err != nil {
 		_ = os.RemoveAll(dir)
-		return "", fmt.Errorf("copy %s's clone was not made: %w", key, err)
+		return "", fmt.Errorf("%s's clone was not made: %w", what, err)
 	}
 	return dir, nil
 }
@@ -158,18 +177,41 @@ func outsideWorkingTrees(dir string) error {
 	return nil
 }
 
+// gitBound bounds one git command a clone is made with: a fetch of the frozen
+// commit and its checkout scale with the tree, so the bound is there only so a
+// git that waits never holds the run forever.
+const gitBound = 30 * time.Minute
+
 // git runs git isolated from the person's configuration and from any
 // repository-selecting variable, returning its trimmed output.
 func git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	out, err := gitRaw(args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// gitRaw is git returning its output as git wrote it, for a NUL-separated
+// listing whose names trimming would change.
+func gitRaw(args ...string) ([]byte, error) { return gitRawWithin(gitBound, args...) }
+
+// gitRawWithin is gitRaw bounded by limit: past it git is killed, its output
+// read to its end before the wait (procgroup.RunToEOF), and the call refused,
+// naming the bound, never answered with what git wrote before it stopped.
+func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return "", fmt.Errorf("git %s: %w: %s", args[0], err, clip(strings.TrimSpace(string(ee.Stderr))))
-		}
-		return "", fmt.Errorf("git %s: %w", args[0], err)
+	cmd.WaitDelay = time.Second
+	var stdout, stderr bytes.Buffer
+	err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr)
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("git %s did not finish within %s, so it was stopped", args[0], limit)
 	}
-	return strings.TrimSpace(string(out)), nil
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, clip(msg))
+		}
+		return nil, fmt.Errorf("git %s: %w", args[0], err)
+	}
+	return stdout.Bytes(), nil
 }

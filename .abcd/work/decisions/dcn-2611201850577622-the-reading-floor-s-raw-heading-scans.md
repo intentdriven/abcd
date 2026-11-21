@@ -1,0 +1,6 @@
+---
+id: dcn-2611201850577622
+slug: the-reading-floor-s-raw-heading-scans
+date: 2026-11-20
+---
+2026-11-20 — The reading floor's raw heading scans trust an inline code span only in a plain paragraph: one whose bytes outside the page's spans, over every line up to the blank line, hold none of <, >, [, ], |, backslash or & and neither :// nor www., and that touches no HTML block (iss-2611040555367558). Why: each round of deny-listing the markup that can hold a backtick before a code span is read found a new admission route, and the reviews of the heading-spans lane named tag attributes, autolinks, processing instructions and CDATA, table cells, inline-link destinations and titles, email autolinks with a digit or punctuation local part, and GFM bare autolinks in turn; an allow-list closes the class rather than the next instance, and the scope is the paragraph because a link title can run over a line break. What still over-refuses: a backticked opener such as <h1> in a paragraph that also holds a link, a tag, a table cell, an entity, an escape or a URL is refused as a raw heading, as it was before the floor skipped code at all. The complete fix, trusting such a span, needs a real Markdown parser and waits on the dependency ruling in iss-2608220750025153.

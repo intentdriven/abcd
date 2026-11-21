@@ -100,6 +100,16 @@ type composer struct {
 // root-absolute URL a page carries is written through it.
 func (c *composer) at(p string) string { return sitePath(c.base, p) }
 
+// recordAt is where the root-absolute record path p ("/record/…") is served:
+// under the build's base path, or at the record's own address where the site
+// has narrowed to its documentation (RecordElsewhere.Narrow).
+func (c *composer) recordAt(p string) string {
+	if addr := c.manifest.recordElsewhere(); addr != "" {
+		return addr + strings.TrimPrefix(p, "/")
+	}
+	return c.at(p)
+}
+
 // docPage is one loaded source page.
 type docPage struct {
 	Rel      string
@@ -399,8 +409,8 @@ func (c *composer) headerFor(active string) string {
 	if c.rendersDocs() {
 		b.WriteString(`<a href="` + escapeAttr(c.at("/docs/")) + `">` + escapeText(c.ui.NavDocs) + `</a>`)
 	}
-	if c.manifest.Pages.resolve().explorer {
-		b.WriteString(`<a href="` + escapeAttr(c.at("/record/")) + `"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
+	if c.manifest.Pages.resolve().explorer || c.manifest.recordElsewhere() != "" {
+		b.WriteString(`<a href="` + escapeAttr(c.recordAt("/record/")) + `"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
 	}
 	if c.repo.Repository != "" {
 		b.WriteString(`<a class="gh" href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + ` ↗</a>`)

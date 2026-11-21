@@ -328,6 +328,15 @@ command-facts-sync:
 command-facts-sync-check:
 	@go run ./cmd/command-facts-sync -check
 
+# The run's clock (iss-2611190439574731): named first, as make preflight starts
+# and before the records-only classifier below, so the run's time counts from
+# here. Either rule's last lines give each stage's time and the whole run's
+# checked time beside the reuse counts, with every wait for a turn left out
+# (scripts/preflight-receipt.sh, clock and clock_report).
+ifneq ($(filter preflight,$(MAKECMDGOALS)),)
+PREFLIGHT_CLOCK := $(shell scripts/preflight-receipt.sh clock new)
+endif
+
 # A records-only change (iss-2610251555094324) takes a shorter preflight: when
 # every path HEAD changes against the merge base with origin's default branch
 # lies in .abcd/development/ or .abcd/work/, no test names one of them (by its
@@ -517,7 +526,8 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
 	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) unit go test -p "$$p" -timeout "$$t" ./cmd/... && \
 	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) unit go test -p "$$p" -timeout "$$t" $(PLAIN_ONLY_GUARDS)
-	go run ./cmd/abcd implement load --race-gate --timeout 2h
+	@scripts/preflight-receipt.sh clock mark race
+	go run ./cmd/abcd implement load --race-gate --timeout 2h && scripts/preflight-receipt.sh clock since race
 	p=$$(go run ./cmd/test-parallelism) && \
 	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
 	go run ./cmd/check-tests $(CHECK_TESTS_FLAGS) race go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
@@ -592,6 +602,18 @@ endif
 # prerequisite run on its own; this one and the ones below reach preflight's
 # stages through the environment of the make the load gate starts.
 preflight: export ABCD_LOAD_CHECKED := preflight
+
+# The run's clock, named above, reaches the gate's command and every stage
+# through the environment, and no test (internal/testreuse strips it from every
+# go test line it runs). The stages' make, run by the load gate once it opens,
+# notes the gate's wait as it reads this Makefile, before its first stage: the
+# time from the run's start to then went on the gate's compile, its queue and
+# its settling, not on checking. The race gate's wait is marked and noted around
+# it in preflight-stages, and each test stage notes its own (cmd/check-tests).
+preflight: export ABCD_PREFLIGHT_CLOCK := $(PREFLIGHT_CLOCK)
+ifneq ($(filter preflight-stages,$(MAKECMDGOALS)),)
+PREFLIGHT_GATE_OPENED := $(shell scripts/preflight-receipt.sh clock opened)
+endif
 
 # The three longest packages (internal/core/implement/loop, internal/core/claim
 # and internal/surface/cli) run their tests as three processes each in the

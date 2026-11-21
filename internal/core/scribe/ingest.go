@@ -378,6 +378,17 @@ func refuseKeys(repoRoot, where string, obj map[string]json.RawMessage, allowed 
 	return nil
 }
 
+// contextLimit and manifestLimit are the ceilings the scribe's assembler parks
+// its two artefacts under and this ingest reads them back under: the context
+// under reading.ParkedArtefactLimit, the one limit a parked assembled input
+// takes, and the manifest under reading.MaxFileBytes, the limit a manifest is
+// read under wherever it is read. Behind a seam so a test can hold a session to
+// a limit it can reach.
+var (
+	contextLimit  int64 = reading.ParkedArtefactLimit
+	manifestLimit int64 = reading.MaxFileBytes
+)
+
 // proveContext reads the parked manifest beside the context and proves the
 // context against it, and the payload against both.
 func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
@@ -396,7 +407,7 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 			return Context{}, Manifest{}, fmt.Errorf("scribe: the parked session for %s: %w", out.Run, err)
 		}
 	}
-	mRaw, err := fsutil.ReadGuarded(manifestPath, reading.MaxFileBytes)
+	mRaw, err := fsutil.ReadGuarded(manifestPath, manifestLimit)
 	if err != nil {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: reading the parked manifest for %s: %w; assemble the "+
 			"session first, and ingest against the context it parked", out.Run, err)
@@ -405,7 +416,7 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 	if err != nil {
 		return Context{}, Manifest{}, err
 	}
-	cRaw, err := fsutil.ReadGuarded(ctxPath, reading.MaxFileBytes)
+	cRaw, err := fsutil.ReadGuarded(ctxPath, contextLimit)
 	if err != nil {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: reading the context: %w", err)
 	}

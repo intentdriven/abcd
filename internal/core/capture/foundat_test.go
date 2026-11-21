@@ -72,6 +72,8 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 		{"existing directory", "internal/core"},
 		{"existing directory with a trailing slash", "internal/core/"},
 		{"existing root file", "README.md"},
+		{"existing root file with no extension", "Makefile"},
+		{"missing root name with no extension", "Dockerfile"},
 		{"conceptual phrase", "git history"},
 		{"conceptual single word", "conventions"},
 		{"path with a parenthetical", "internal/core/lint (the <!-- marker scan)"},
@@ -86,7 +88,7 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 			if err := os.MkdirAll(filepath.Join(repo, "internal", "core"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			for _, f := range []string{"internal/core/x.go", "README.md"} {
+			for _, f := range []string{"internal/core/x.go", "README.md", "Makefile"} {
 				if err := os.WriteFile(filepath.Join(repo, f), []byte("x\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -144,5 +146,50 @@ func TestCaptureFoundAtThatCannotBeCheckedIsAFault(t *testing.T) {
 	}
 	if _, serr := os.Stat(ir); !os.IsNotExist(serr) {
 		t.Fatalf("a refused capture touched the ledger root %s (stat err=%v)", ir, serr)
+	}
+}
+
+// TestFoundAtPathInTheCheckout is iss-2611190625535337: a found_at naming a
+// file at the checkout's root with no extension, such as Makefile, names a
+// path, so the build and the drain reserve the issue with it. A lone name is
+// taken as a path only when a regular file of exactly that name is at the
+// root: a word that names no file, a name that is missing, a directory and a
+// name differing in case all stay a place in words, and a path-shaped value
+// keeps its verdict whether or not it is there.
+func TestFoundAtPathInTheCheckout(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "Makefile"), []byte("all:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(repo, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name, foundAt, want string
+		ok                  bool
+	}{
+		{"extensionless root file", "Makefile", "Makefile", true},
+		{"extensionless root file with a line locator", "Makefile:12", "Makefile", true},
+		{"padded extensionless root file", "  Makefile ", "Makefile", true},
+		{"a word that names no file", "conventions", "", false},
+		{"a missing extensionless name", "Dockerfile", "", false},
+		{"a root directory named alone", "scripts", "", false},
+		{"a name differing in case from the file", "makefile", "", false},
+		{"a phrase", "the Makefile", "", false},
+		{"a path-shaped value that is missing", "internal/core/x.go", "internal/core/x.go", true},
+		{"a root file with an extension that is missing", "README.md", "README.md", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := FoundAtPathIn(repo, tc.foundAt)
+			if got != tc.want || ok != tc.ok {
+				t.Errorf("FoundAtPathIn(%q) = %q, %v; want %q, %v", tc.foundAt, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+	// An unreadable root reads as no file there: the lone name stays a place
+	// in words rather than failing the verdict.
+	if got, ok := FoundAtPathIn(filepath.Join(repo, "absent"), "Makefile"); ok {
+		t.Errorf("a lone name under a root that cannot be read is taken as the path %q", got)
 	}
 }

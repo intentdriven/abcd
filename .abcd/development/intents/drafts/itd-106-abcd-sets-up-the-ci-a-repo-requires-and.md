@@ -27,7 +27,7 @@ impact: additive
 > closing report names each gate included, each gate excluded and why, and
 > each gap it could not close.
 >
-> "I think in products, not in workflow YAML," said Alice, a product thinker.
+> "I think in products, not in workflow YAML," said Iris, a product thinker.
 > "abcd set up the checks, told me my private repo cannot carry a branch
 > ruleset on my plan, and told me my format gate would fail on 681 files if it
 > were switched on. That last sentence is the one I could never have written

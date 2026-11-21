@@ -32,8 +32,8 @@ committed:
 
 It is keyed on the source repository's root-commit SHA, matching the convention the history store
 already uses. It sits outside the tree because a voyage records absolute source paths, and abcd's
-own `privacy-hygiene` audit rule flags those in committed files — an in-tree voyage would have
-made abcd fail its own audit. It also keeps [`disembark`](disembark.md) honest: the source repo is
+own `privacy-hygiene` lint rule flags those in committed files — an in-tree voyage would have
+made abcd fail its own lint. It also keeps [`disembark`](disembark.md) honest: the source repo is
 read-only, so the only place a run *can* be recorded is here.
 
 The log accumulates; the lifeboat does not. A lifeboat is the latest snapshot, regenerated in

@@ -1138,11 +1138,11 @@ func TestADrainsWideningBacksOffAReservationOverAHandBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	wider := []string{"commands/drain.md", "commands/wider.md"}
-	_, err = reserveAgain(root, run.Key, wider, false, true, false, "", c.t)
+	_, err = reserveAgain(root, run.Key, wider, false, true, false, "", c.t, nil)
 	if r, ok := AsRefusal(err); !ok || !r.Contention || !strings.Contains(r.Reason, "made over a hand-back") {
 		t.Fatalf("the drain's widening backs off: %v", err)
 	}
-	if _, err := reserveAgain(root, run.Key, wider, false, false, false, "", c.t); err != nil {
+	if _, err := reserveAgain(root, run.Key, wider, false, false, false, "", c.t, nil); err != nil {
 		t.Fatalf("a person's own widening goes ahead: %v", err)
 	}
 }

@@ -630,14 +630,30 @@ plain text; it may strike only a located finding of a failing reviewer of the
 role that disagreed, and a strike of any other, or with no reason, is refused
 and the judge handed out again. A struck finding carries `status` `struck` and
 the judge's `reason`, and leaves the fix brief, which names it as struck and not
-handed on; the round's `judge` records the roles, whether it `ruled` and how
-many it `struck`, and `implement record --json` lists it under the lane's
-`judges`. The judge never passes a round: nothing its return says is read as a
+handed on; the round's `judge` records the roles, whether it `ruled`, how many
+it `struck`, and its `strikes`, each location it struck with its `file`, `line`
+and `reason`. The strikes stay on the judge once the next round opens and the
+round's findings are dropped, so a finished run keeps each reason, short of
+the two cases below that keep only the count (a state trimmed to its size
+limit, and a version-28 run whose findings were already dropped): `implement
+record --json` lists the judge under the lane's `judges`, the text record prints
+a line for each round's judge with each strike's location and reason beneath
+it, and the judge's line in the run record says each reason is kept on the
+round's judge. The judge never passes a round: nothing its return says is read as a
 verdict, the round goes to its fix round as the stricter verdict decides, and a
 round whose every failing finding was struck goes to one whose brief hands on no
 finding. A round's judge and a struck finding are state schema version 28's: a
 version-27 file carrying either is refused naming it, and an abcd that writes
-version 27 refuses a version-28 file as a newer abcd's.
+version 27 refuses a version-28 file as a newer abcd's. A judge's `strikes` are
+version 29's: a version-28 file reads as the current version, its judges taking
+their strikes from their rounds' findings where those are still kept and
+keeping their count alone where they were dropped, and a version-28 file
+carrying `strikes` is refused naming them. A file whose kept strikes are not the
+ones its round's findings carry as struck, or that number other than the count
+struck, or name no plain location or reason, is refused as one the loop never
+writes. A state still past its bound once every round's findings are dropped
+drops the oldest judge's strikes next, its count kept, and the text record says
+that judge's strikes were not kept.
 
 A model other than every writer's reviews each change a code reviewer judges.
 The writers of a lane are every model that wrote into it up to the round: each

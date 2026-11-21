@@ -660,8 +660,8 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	// record-lint's prose_citation_resolves reads, so they are held to that gate
 	// here, before the sweep and the stage (iss-2609261835118276). An item
 	// citing a record id that names no record refuses the whole ingest
-	// UNRECORDED — the one refusal past the identity point that writes no
-	// refusal record, and no sweep runs — as the verdict ingest refuses: a
+	// UNRECORDED — with refuseARerun's, one of the two refusals past the
+	// identity point that write no refusal record, and no sweep runs — as the verdict ingest refuses: a
 	// recorded refusal would give the run an outcome, and refuseARerun would
 	// then turn away the same run re-worded, where the run left parked is
 	// ingested again once the prose describes the record rather than citing
@@ -1103,7 +1103,9 @@ func runOutcome(root *os.Root, runID string) (string, error) {
 // refuse records a list-level refusal and returns it. It is the ONE writer of a
 // refusal record: every list-level refusal past the identity point routes
 // through here, and a refusal that returns bare instead is the defect
-// iss-2608311518250688 names. The one deliberate exception is the
+// iss-2608311518250688 names. There are two deliberate exceptions. One is
+// refuseARerun's: a run that already has an outcome must not be given a
+// second one, so its refusal writes no record. The other is the
 // prose-citation refusal, returned unrecorded so the run stays parked for its
 // re-worded ingest; it still performs this function's rollback.
 //

@@ -3,7 +3,12 @@ package loop
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -211,6 +216,9 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 	if !strings.Contains(log, "commits/"+group+"/check-runs") || strings.Contains(log, "commits/"+older) {
 		t.Fatalf("the checks read are the newest group's of this pull request:\n%s", log)
 	}
+	if sent, err := os.ReadFile(filepath.Join(f.gh, "runs.jq")); err != nil || string(sent) != mergeGroupRunsFilter {
+		t.Fatalf("the runs are listed through the projection (iss-2611201352116252): sent %q, %v; want %q", sent, err, mergeGroupRunsFilter)
+	}
 	if strings.Contains(log, "enqueuePullRequest") || strings.Contains(log, "pr merge") {
 		t.Fatalf("a dropped pull request is neither queued nor armed again:\n%s", log)
 	}
@@ -300,6 +308,76 @@ func TestTheQueueWatchAsksTheForgeOnlyForPinnedFields(t *testing.T) {
 		if !ghcontract.RESTField(c.resource, c.field) {
 			t.Errorf("the watch decodes %s.%s, which is not pinned", c.resource, c.field)
 		}
+	}
+}
+
+// The runs listing's projection (iss-2611201352116252) keeps exactly the
+// fields groupRun decodes, so a field added to one and not the other is
+// caught, and run through a jq where one is installed (gh's own is built in,
+// and go.mod carries none) it keeps the listing's shape, decodes as the whole
+// listing does, and brings a listing past the forge client's bound far under it.
+func TestTheMergeGroupRunsAreListedThroughAProjectionOfTheDecodedFields(t *testing.T) {
+	var tags []string
+	rt := reflect.TypeOf(groupRun{})
+	for i := 0; i < rt.NumField(); i++ {
+		tags = append(tags, strings.Split(rt.Field(i).Tag.Get("json"), ",")[0])
+	}
+	m := regexp.MustCompile(`^\{workflow_runs: \[\.workflow_runs\[\] \| \{([a-z_, ]+)\}\]\}$`).FindStringSubmatch(mergeGroupRunsFilter)
+	if m == nil {
+		t.Fatalf("the filter keeps the listing's shape, projecting each run: %q", mergeGroupRunsFilter)
+	}
+	kept := strings.Split(m[1], ", ")
+	slices.Sort(kept)
+	slices.Sort(tags)
+	if !slices.Equal(kept, tags) {
+		t.Fatalf("the filter keeps %v, groupRun decodes %v", kept, tags)
+	}
+
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Skip("no jq to run the filter through")
+	}
+	var full []map[string]any
+	var want []groupRun
+	for i := 0; i < 100; i++ {
+		r := groupRun{Name: "ci", HeadBranch: "gh-readonly-queue/main/pr-" + strconv.Itoa(i) + "-" + strings.Repeat("0", 40),
+			HeadSHA: strings.Repeat("ab", 20), Conclusion: "failure", CreatedAt: "2026-11-20T07:10:00Z"}
+		want = append(want, r)
+		full = append(full, map[string]any{"id": i, "name": r.Name, "head_branch": r.HeadBranch, "head_sha": r.HeadSHA,
+			"conclusion": r.Conclusion, "created_at": r.CreatedAt, "status": "completed",
+			"head_commit": map[string]any{"message": strings.Repeat("x", 12000)},
+			"repository":  map[string]any{"description": strings.Repeat("y", 12000)}})
+	}
+	in, err := json.Marshal(map[string]any{"total_count": 100, "workflow_runs": full})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in) <= landing.MaxOutput {
+		t.Fatalf("the whole listing is past the bound, as the forge's is: %d bytes", len(in))
+	}
+	cmd := exec.Command(jq, "-c", mergeGroupRunsFilter)
+	cmd.Stdin = strings.NewReader(string(in))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("jq runs the filter: %v", err)
+	}
+	if len(out) > landing.MaxOutput/10 {
+		t.Fatalf("the projected listing is far under the bound: %d bytes", len(out))
+	}
+	var shape map[string][]map[string]any
+	if err := json.Unmarshal(out, &shape); err != nil || len(shape) != 1 || len(shape["workflow_runs"]) != 100 {
+		t.Fatalf("the projection is the listing's shape, every run kept: %v, %s", err, out)
+	}
+	for _, r := range shape["workflow_runs"] {
+		if len(r) != len(tags) {
+			t.Fatalf("each run keeps the decoded fields alone: %v", r)
+		}
+	}
+	var listed struct {
+		WorkflowRuns []groupRun `json:"workflow_runs"`
+	}
+	if err := json.Unmarshal(out, &listed); err != nil || !slices.Equal(listed.WorkflowRuns, want) {
+		t.Fatalf("the projected listing decodes as the whole one does: %v\n%+v", err, listed.WorkflowRuns)
 	}
 }
 

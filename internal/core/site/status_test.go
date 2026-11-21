@@ -12,7 +12,7 @@ import (
 )
 
 // TestStatusPageRendersTheBlockFromTheSameRead is criterion 2: the built
-// Status page carries Now, Next and Later, and every row statusblock.Read
+// record health page carries Now, Next and Later, and every row statusblock.Read
 // returns for the same repository and the same lane reader is on it, with its
 // id and title; the lane row carries its lane state, and the intent in a lane
 // is on the block once, under Now (ruling BV2 of 2026-09-29).
@@ -40,13 +40,13 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	for _, heading := range []string{">Now<span>", ">Next<span>", ">Later<span>"} {
 		if !strings.Contains(page, heading) {
-			t.Errorf("the Status page has no %s panel", heading)
+			t.Errorf("the record health page has no %s panel", heading)
 		}
 	}
 	for _, rows := range [][]statusblock.Row{want.Now, want.Next, want.Later} {
 		for _, r := range rows {
 			if !strings.Contains(page, ">"+r.ID+"<") || !strings.Contains(page, ">"+html.EscapeString(r.Title)+"<") {
-				t.Errorf("the Status page lacks the row %s %q", r.ID, r.Title)
+				t.Errorf("the record health page lacks the row %s %q", r.ID, r.Title)
 			}
 		}
 	}
@@ -62,7 +62,7 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	// The block opens the page, before the checks.
 	if strings.Index(page, ">Now<span>") > strings.Index(page, "References a record the tree does not hold") {
-		t.Error("the block does not open the Status page")
+		t.Error("the block does not open the record health page")
 	}
 }
 
@@ -101,12 +101,12 @@ func TestStatusSurfacesNeverSayRoadmap(t *testing.T) {
 	out := t.TempDir()
 	buildFixture(t, f, out)
 	if page := outFile(t, out, "record/health/index.html"); strings.Contains(strings.ToLower(page), "roadmap") {
-		t.Error("the Status page says roadmap")
+		t.Error("the record health page says roadmap")
 	}
 }
 
 // TestStatusPageCarriesNoOrderNote: the head and Next are read in the pick
-// order, the one order the block has, so the built Status page leads the block
+// order, the one order the block has, so the built record health page leads the block
 // with no note about its order — not the record-id note the interface strings
 // still declare for a managed repository's ui.json, nor any other.
 func TestStatusPageCarriesNoOrderNote(t *testing.T) {
@@ -123,7 +123,7 @@ func TestStatusPageCarriesNoOrderNote(t *testing.T) {
 		t.Fatal("precondition: the fixture declares the retired order note")
 	}
 	if strings.Contains(page, note) {
-		t.Errorf("the Status page names an interim order %q", ui.Status.OrderRecordID)
+		t.Errorf("the record health page names an interim order %q", ui.Status.OrderRecordID)
 	}
 	block := (&explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: statusblock.OrderPick}}).statusSection()
 	if !strings.HasPrefix(block, `<div class="dash reading status-block">`) {
@@ -132,7 +132,7 @@ func TestStatusPageCarriesNoOrderNote(t *testing.T) {
 }
 
 // TestStatusSectionShowsEachRowsTarget is itd-2609212103572513 criterion 4 on
-// the site's Status page: a row whose intent names a release shows the target
+// the site's record health page: a row whose intent names a release shows the target
 // after what places it there, under the ui.json label, in Now, Next and
 // Later alike; a row with none shows none.
 func TestStatusSectionShowsEachRowsTarget(t *testing.T) {
@@ -161,7 +161,7 @@ func TestStatusSectionShowsEachRowsTarget(t *testing.T) {
 
 // TestStatusPageCarriesNoReservation (spc-2610031753359849 step 11): the
 // board names the reservation another copy holds on a record, but the site's
-// Status page is published and shows no checkout's local view, so a live
+// record health page is published and shows no checkout's local view, so a live
 // reservation this checkout fetched for a record on the page never reaches it.
 func TestStatusPageCarriesNoReservation(t *testing.T) {
 	f := newFixture(t)
@@ -189,11 +189,11 @@ func TestStatusPageCarriesNoReservation(t *testing.T) {
 	}
 	page := outFile(t, out, "record/health/index.html")
 	if !strings.Contains(page, ">itd-1<") {
-		t.Fatal("precondition: itd-1 is on the Status page")
+		t.Fatal("precondition: itd-1 is on the record health page")
 	}
 	for _, leak := range []string{"reserved by", "octo", "as of the last fetch"} {
 		if strings.Contains(page, leak) {
-			t.Errorf("the published Status page carries %q, a checkout's local view of the reservations", leak)
+			t.Errorf("the published record health page carries %q, a checkout's local view of the reservations", leak)
 		}
 	}
 }

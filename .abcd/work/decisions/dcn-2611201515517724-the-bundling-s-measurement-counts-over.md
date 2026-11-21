@@ -1,0 +1,8 @@
+---
+id: dcn-2611201515517724
+slug: the-bundling-s-measurement-counts-over
+date: 2026-11-20
+---
+2026-11-20 — The bundling's measurement counts over merged lanes only, for itd-2611201450052326: pull requests per resolved issue is the pull requests of lanes that merged over the issues those lanes resolved, and a pull request closed unmerged is given as its own count beside it, so a lane still in progress is in neither figure. The totals across drains are kept in one append-only file beside the drain's state, .abcd/.work.local/run/drain-figures.jsonl, one line per lane once its outcome is final, keyed by its run, the line a later drain writes for an earlier drain's lane included. The hand-back share is the issues whose lane ended in a hand-back over the issues whose lane ended, and its baseline is the forty issues the drain resolved before bundling, read from the default branch's merged lane pull requests and the spot-check store's lane hand-backs. Grounds: a new drain replaces the drain's state, and its finish marks only its own lanes, so counts read from one drain's state alone cannot cover forty issues. Refines dcn-2611201453538972. Decided by the technical facilitator on delegation, 20 Nov 2026.
+
+Superseded by dcn-2611201533566242, 20 Nov 2026: the totals are no longer kept in a worktree's local tier, and the hand-back share is defined per issue.

@@ -21,14 +21,14 @@ severity: minor
 
 [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md) made the **phase** abcd's sequencing layer — an ordered stretch of work, bundling intents and plumbing, ending in a milestone, with a product-authored `## Expectation` and `## Phase Acceptance`. But adr-9 gave sequencing a *home*, not a *negotiator*. Which intent goes in which phase, and in what order phases run, stays the product thinker's unchallenged judgement.
 
-The product thinker holds the whole product in their head — and so they want everything, soon. abcd has adversarial readers at every other grain: `/abcd:intent grill` interrogates an intent before it is planned; dual-backend review stress-tests a spec; `intent-fidelity-reviewer` checks delivered reality against acceptance. The phase-planning grain has none. This intent adds it.
+The product thinker holds the whole product in their head — and so they want everything, soon. abcd has adversarial readers at every other grain: the planning interview (itd-94, `abcd intent interview`) questions an intent before it is planned; dual-backend review stress-tests a spec; `intent-fidelity-reviewer` checks delivered reality against acceptance. The phase-planning grain has none. This intent adds it.
 
-The danger is a fluent fake. An agent asked "what are the trade-offs?" will invent plausible ones, and a hallucinated trade-off spends the product thinker's trust on a fiction. So this intent's negotiator works the way `intent-fidelity-reviewer` and the grill skill work — **Socratic where it questions, grounded where it asserts** (per [adr-10](../../decisions/adrs/0010-phase-negotiator-grounded-tradeoffs.md)). It surfaces costs the product thinker can verify, and asks — rather than asserts — wherever it cannot ground the claim.
+The danger is a fluent fake. An agent asked "what are the trade-offs?" will invent plausible ones, and a hallucinated trade-off spends the product thinker's trust on a fiction. So this intent's negotiator works the way `intent-fidelity-reviewer` and the planning interview work — **Socratic where it questions, grounded where it asserts** (per [adr-10](../../decisions/adrs/0010-phase-negotiator-grounded-tradeoffs.md)). It surfaces costs the product thinker can verify, and asks — rather than asserts — wherever it cannot ground the claim.
 
 ## What's In Scope
 
 - **Phase proposal** — given a set of intents (and the relevant brief plumbing-phases), the negotiator works backwards from candidate `## Expectation`s and proposes an ordered set of phases, each with a draft `## Expectation`, `## Milestone`, and `## Phase Acceptance` for the product thinker to take, edit, or reject.
-- **Trade-off discussion — Socratic interface.** The negotiator interrogates the proposed (or product-thinker-edited) phasing with questions, each tagged with a named Socratic move, the same taxonomy `/abcd:intent grill` uses. The product thinker's answers surface the trade-offs.
+- **Trade-off discussion — Socratic interface.** The negotiator interrogates the proposed (or product-thinker-edited) phasing with questions, each tagged with a named Socratic move (per adr-10); the planning interview that superseded the grill (itd-94, `abcd intent interview`) carries no move taxonomy to share, so the negotiator names its own. The product thinker's answers surface the trade-offs.
 - **Grounded assertions only.** Where the negotiator states a cost rather than asking, the statement MUST cite a real anchor: a named edge in the dependency DAG (`brief/06-delivery/01-build-sequence.md` + intent/spec dependency declarations), a named `## Phase Acceptance` bullet, or a named `## Expectation` clause. A concern with no such anchor is raised as a question, never as an asserted trade-off.
 - **Re-sequencing analysis** — the negotiator can take an existing phase plan and a proposed change (pull intent forward / defer / split a phase) and report, grounded in the DAG, what the change ripples into.
 - **Advisory output** — the deliverable is a proposal plus a recorded discussion, not a decision. The product thinker owns the final `## Expectation` and `## Phase Acceptance` per adr-9.
@@ -37,7 +37,7 @@ The danger is a fluent fake. An agent asked "what are the trade-offs?" will inve
 
 - **Deciding the phase plan** — the negotiator never commits a phasing. It proposes and discusses; the product thinker decides and authors the canonical phase docs.
 - **Ungrounded trade-offs** — if a cost cannot be tied to a DAG edge or an acceptance/expectation clause, it is not asserted. "Sounds thorough" is not a licence to invent.
-- **Replacing the grill skill** — grill operates on a single intent pre-plan; the negotiator operates on phases and their ordering. Shared Socratic lineage, different surface (per adr-10 alternative 4).
+- **Replacing the planning interview** — the planning interview (itd-94, `abcd intent interview`) operates on a single intent pre-plan; the negotiator operates on phases and their ordering. Shared Socratic lineage, different surface (per adr-10 alternative 4).
 - **Estimating effort or dates** — the negotiator reasons about dependencies and acceptance, not durations. No time estimates (per the workspace no-estimates rule).
 - **Auto-authoring phase docs** — it drafts proposals; writing the canonical `roadmap/phases/phase-N-*.md` files is the product thinker's act.
 
@@ -66,10 +66,10 @@ The independent fit-challenge runs at plan time.
 
 ## Open Questions
 
-- Surface shape — is this a sub-verb of a phase-oriented command, a sub-verb under `/abcd:intent` (alongside `grill`), or its own command? adr-10 leaves the surface to this intent; it needs deciding at plan time.
-- Should the negotiator's discussion be persisted (a logbook artefact, like grill reports) so a phase doc can cite the negotiation that shaped it?
+- Surface shape — is this a sub-verb of a phase-oriented command, a sub-verb under `/abcd:intent` (alongside `interview`), or its own command? adr-10 leaves the surface to this intent; it needs deciding at plan time.
+- Should the negotiator's discussion be persisted (a logbook artefact, like the planning interview's answers record) so a phase doc can cite the negotiation that shaped it?
 - How does the negotiator behave when the dependency DAG is prose-only for some area — degrade to pure Socratic questioning (adr-10's stated limit), or prompt the product thinker to formalise that DAG slice first?
-- Does the negotiator share a Socratic-move taxonomy module with the grill skill, or keep its own copy until the two demonstrably converge?
+- Does the negotiator's Socratic-move taxonomy stay its own, or move to a module the planning interview (itd-94, `abcd intent interview`) shares once the two demonstrably converge?
 - (SOTA 2026-10-23) With phases retired (adr-2609212115255771), what the negotiator negotiates: a proposed move in the product thinker's order, a revisit mark, or a hold; and whether the draft is re-scoped, superseded by a narrower one, or folded into itd-78's report.
 - (SOTA 2026-10-23) Whether the retired words (phase, milestone, roadmap) are replaced throughout the draft at plan time or the draft is rewritten against the rendered Now/Next/Later.
 

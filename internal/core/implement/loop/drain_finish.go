@@ -286,7 +286,8 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			if run.ReservedAt == nil {
 				continue
 			}
-			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" {
+			// A run with members is due when any issue it holds is (renewalDueAny).
+			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" && !(run.hasMembers() && renewalDueAny(run, snap, now)) {
 				continue
 			}
 			// The save is the reservation's alone (mutateReservation): a parked run in this

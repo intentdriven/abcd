@@ -135,6 +135,10 @@ type TrialRecord struct {
 	// at most maxReasonBytes.
 	Reason string `json:"reason"`
 	Score  *Score `json:"score"`
+	// Compliance is the compliance check's result (compliance.go), run before
+	// the copy is ranked: nil for a copy that was never made, so has nothing
+	// to check. A ranked copy, and one the check set apart, carries it.
+	Compliance *Compliance `json:"compliance"`
 	// The receipts of every role the copy ran and every routed call, both
 	// sides each (itd-166), and every fallback (which excludes the copy).
 	Roles     []runner.RoleReceipt     `json:"roles"`
@@ -210,6 +214,9 @@ func (t TrialRecord) validate() error {
 	}
 	if len(t.Fallbacks) > 0 && t.Status != StatusExcluded {
 		return fmt.Errorf("the trial %s carries a fallback receipt, so it is excluded, never %s", t.Key, t.Status)
+	}
+	if err := t.compliance(); err != nil {
+		return err
 	}
 	if s := t.Score; s != nil {
 		if s.Total < 0 || s.Passed < 0 || s.Passed > s.Total || s.Total > maxTests {

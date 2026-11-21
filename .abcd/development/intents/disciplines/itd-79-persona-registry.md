@@ -15,9 +15,9 @@ builds_on: []
 
 ## Rule
 
-Every persona in a user story, press-release quote, worked example, or scenario comes from the registry at `.abcd/development/personas.json` — the single source of truth for the roster. Selection is **by role, never by name**: the scenario's audience determines the role, and the role's registered name is used. Names form a fixed alphabetical sequence (Alice, Bob, Carol, Dave, …); when the roster grows, new personas continue the sequence. No invented names, no real people's names as stand-ins. Every persona is referred to as **they/them**; the real user, when referred to at all, is also they/them.
+Every persona in a user story, press-release quote, worked example, or scenario comes from the registry at `.abcd/development/personas.json` — the single source of truth for the roster. Selection is **by role, never by name**: the scenario's audience determines the role, and a quote attributed to a named persona uses the role's registered name. A quote may instead be attributed to a role alone, with no name ("said an AI/agent researcher who runs cold readings"): a nameless role invents no name, so it needs no registry entry, and any name that is used must be registered and match the role. Names form a fixed alphabetical sequence (Alice, Bob, Carol, Dave, …); when the roster grows, new personas continue the sequence. No invented names, no real people's names as stand-ins. Every persona is referred to as **they/them**; the real user, when referred to at all, is also they/them.
 
-The name half of the rule is mechanically enforced: the `persona_registry` record-lint rule (blocker) flags any quote attribution of the form `said <Name>,` — Unicode-wide, including compound names — whose name is not in the registry. Attributions phrased any other way, the role-match, and the pronoun halves are review-enforced.
+The name half of the rule is mechanically enforced: the `persona_registry` record-lint rule (blocker) flags any quote attribution of the form `said <Name>,` — Unicode-wide, including compound names — whose name is not in the registry. An attribution to a role alone carries no name, so the rule leaves it alone by design. Attributions phrased any other way, the role-match, and the pronoun halves are review-enforced.
 
 ## Why
 
@@ -43,6 +43,7 @@ The 2026-07-08 dependency sweep demonstrated the failure mode this kills: twenty
 
 - **Given** an intent whose press-release quote is attributed to a name not in `personas.json`, **when** record-lint runs, **then** a `persona_registry` blocker finding names the file, line, and offending name.
 - **Given** a quote attributed to a registry persona, **when** record-lint runs, **then** no persona finding is raised for that line.
+- **Given** a quote attributed to a role alone, with no name (`said an AI/agent researcher who runs cold readings`), **when** record-lint runs, **then** no persona finding is raised for that line.
 - **Given** a file under an exempt path (historical record), **when** record-lint runs, **then** persona attributions in it are not flagged.
 - **Given** the registry gains a persona (continuing the alphabetical sequence), **when** a new intent quotes that persona, **then** the lint passes without any lint-config change — the roster file is the only thing edited.
 
@@ -50,5 +51,5 @@ The 2026-07-08 dependency sweep demonstrated the failure mode this kills: twenty
 
 - Registry: `.abcd/development/personas.json` (schema_version 2 — role-first selection convention).
 - Gate: `persona_registry` rule in `.abcd/record-lint.json`, implemented in `internal/core/lint/persona.go`.
-- Lineage: promoted from the `principles/` layer per the promotion path recorded in `principles/README.md`; decision lines of 2026-07-08: [dcn-2607080000000002](../../../work/decisions/dcn-2607080000000002-personas-in-any-scenario-are-always.md), [dcn-2607080000000003](../../../work/decisions/dcn-2607080000000003-consume-model-interview-spec-id-is.md), [dcn-2607080000000004](../../../work/decisions/dcn-2607080000000004-persona-registry-lint-shipped.md), [dcn-2607080000000005](../../../work/decisions/dcn-2607080000000005-persona-ssots-reconciled-personas-json.md).
+- Lineage: promoted from the `principles/` layer per the promotion path recorded in `principles/README.md`; decision lines of 2026-07-08: [dcn-2607080000000002](../../../work/decisions/dcn-2607080000000002-personas-in-any-scenario-are-always.md), [dcn-2607080000000003](../../../work/decisions/dcn-2607080000000003-consume-model-interview-spec-id-is.md), [dcn-2607080000000004](../../../work/decisions/dcn-2607080000000004-persona-registry-lint-shipped.md), [dcn-2607080000000005](../../../work/decisions/dcn-2607080000000005-persona-ssots-reconciled-personas-json.md). Attribution to a role alone allowed by the ruling of 2026-10-27 ([dcn-2610271112330536](../../../work/decisions/dcn-2610271112330536-the-product-thinker-accepted-on.md)).
 - Convention prior art: controlled-vocabulary field binding (DITA subject-scheme pattern) — see `ACKNOWLEDGEMENTS.md`.
