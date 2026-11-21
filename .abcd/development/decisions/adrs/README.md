@@ -249,4 +249,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2611062149324491](2611062149324491-an-unattended-process-replaces-its-own.md) | An unattended process replaces its own binary only after verification and a passing proof | proposed | 2026-11-06 |
 | [adr-2611151105306366](2611151105306366-the-drive-s-own-preflight-runs-in-a.md) | The drive's own preflight runs in a fresh checkout of the lane's stored head | proposed | 2026-11-15 |
 | [adr-2611210848450372](2611210848450372-abcdev-app-s-deploy-narrows-to-the.md) | abcdev.app's deploy narrows to the documentation, and both sites deploy on release from released bytes | accepted | 2026-11-21 |
+| [adr-2611211251039198](2611211251039198-abcdev-app-narrows-to-the-documentation.md) | abcdev.app narrows to the documentation without forwarding the record's old addresses | accepted | 2026-11-21 |
 <!-- /index -->
