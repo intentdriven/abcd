@@ -36,6 +36,16 @@
 //     check could not examine is unexamined and reported apart, and what no
 //     check can read (the network policy, a host copy's isolation) is
 //     recorded as asserted, not proven.
+//   - the writing task's judging (judging.go, verdict.go; step 6): the
+//     copies laid out for people in a packet the judging session is given,
+//     each judge's subset at most eight copies, in an order and under codes
+//     drawn for it, so that every pair of models meets in some subset, every
+//     document rendered as inert text through one template, and no cell,
+//     model, trial, run, task or path named; the copy-to-model mapping kept
+//     in a key on the host's machine; and the session's verdict file read back as untrusted
+//     input against both, refused whole when any part fails, one ranking
+//     kept per judge identity, and the guests' and the host's self-blinded
+//     rankings set apart from the members'.
 //
 // A run is a lab procedure (decision 4): its records live under the lab's
 // state/matrix/ and reach it only through lab.Procedure, so a run obeys the
