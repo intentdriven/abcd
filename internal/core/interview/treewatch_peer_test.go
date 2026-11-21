@@ -144,13 +144,16 @@ func TestAChangeTheInterviewMustNotIgnoreStillStopsIt(t *testing.T) {
 
 // TestASiblingWorktreesOwnWorkDoesNotStopTheInterview: a sibling worktree's
 // per-worktree state (its HEAD, its rebase's files, its entry made or
-// removed) and the push receipts in its local tier are not the interview's:
-// a peer switching branch, rebasing or running the preflight (which mints a
-// push receipt in its own local tier) in another worktree, or adding one,
-// while the role writes the first question, leaves the interview running to
-// its outcome, from the checkout's main worktree and from a linked one. A
-// receipt in the checkout's own local tier is watched
-// (TestAPushReceiptInThisCheckoutsOwnTierStopsTheInterview).
+// removed as `git worktree add` makes one) and the push receipts in its local
+// tier for its own commits are not the interview's: a peer switching branch,
+// rebasing or committing and running the preflight (which mints a push
+// receipt for its HEAD in its own local tier) in another worktree, or adding
+// one, while the role writes the first question, leaves the interview
+// running to its outcome, from the checkout's main worktree and from a linked
+// one. A receipt in the checkout's own local tier is watched
+// (TestAPushReceiptInThisCheckoutsOwnTierStopsTheInterview), and so is any
+// receipt that lets a push of this checkout's HEAD through
+// (TestARouteThatLetsAPushSkipThePreflightStopsTheInterview).
 func TestASiblingWorktreesOwnWorkDoesNotStopTheInterview(t *testing.T) {
 	// commitFile commits a file named n in the peer's worktree.
 	commitFile := func(n string) string {
@@ -171,8 +174,10 @@ func TestASiblingWorktreesOwnWorkDoesNotStopTheInterview(t *testing.T) {
 		{name: "a sibling worktree's branch being rebased", peer: func(_, peer string) []stubCmd {
 			return []stubCmd{{Dir: peer, Script: commitFile("a") + " && " + commitFile("b") + " && { " + fixtureGit + " rebase -q --force-rebase --exec false HEAD~2 >/dev/null 2>&1; test -d \"$(git rev-parse --git-path rebase-merge)\"; }"}}
 		}},
+		// A peer's preflight judges the peer's own commit: the receipt it
+		// mints names that commit, not this checkout's HEAD.
 		{name: "a push receipt minted in a sibling worktree's local tier", peer: func(_, peer string) []stubCmd {
-			return []stubCmd{{Dir: peer, Script: mintReceipt}}
+			return []stubCmd{{Dir: peer, Script: commitFile("p") + " && " + mintReceipt}}
 		}},
 		{name: "a worktree added beside the checkout", peer: func(_, peer string) []stubCmd {
 			return []stubCmd{{Dir: peer, Script: "git worktree add -q -b added ../added"}}
