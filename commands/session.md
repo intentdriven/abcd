@@ -167,9 +167,11 @@ relay; pass it only when the user names the address. `--behind-proxy` trusts
 the proxy's `X-Forwarded-For` entry as each visitor's address, and belongs to
 the team's relay behind its host's proxy. On loopback without it, a visitor
 is counted by the tailnet address Tailscale Serve forwards, and only when the
-connection itself comes from loopback. A client that connects to the
-loopback listener directly, with no address Serve forwards, is counted by its
-own connection, so one local client's wrong codes hold up no other. A process
+connection itself comes from loopback. Every client that connects to the
+loopback listener directly, with no address Serve forwards, is counted under
+one shared key, whatever loopback address and port it connects from, so a
+client that reconnects keeps the wrong-code count and connection count it
+had. A process
 on this computer can write the header Serve writes, so the address it
 forwards cannot tell such a process from a tailnet visitor. By default it
 admits a page from `https://abcdesign.app` alone, and no loopback page;
@@ -219,7 +221,7 @@ that is not an origin, `ABCD_SESSION_GITHUB_APP_TYPE` set to anything but
 address it cannot listen on.
 
 The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
-address, an IPv6 /48, a tailnet address by itself, or, on loopback, a direct client's own connection), past which a new one is refused with 503; 30 seconds
+address, an IPv6 /48, a tailnet address by itself, or, on loopback, every direct client together), past which a new one is refused with 503; 30 seconds
 for a connection to host, join or rejoin; 1,024 queued items and 8 MiB per
 connection, past which that connection is dropped; a member's updates to 60 a
 second in bursts of 200; an awareness message to 8 KiB, one connection's

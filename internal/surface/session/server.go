@@ -420,7 +420,13 @@ func (s *Server) originAllowed(origin string) bool {
 //     Tailscale Serve proxies to it, so every tailnet visitor's socket address
 //     is loopback and one visitor's wrong codes would shut out everyone. There,
 //     and only when the socket's peer is itself loopback, it is the address
-//     Serve forwards (tailnetForwarded).
+//     Serve forwards (tailnetForwarded). A loopback peer with no address Serve
+//     forwards connects to the listener directly from the same computer, and
+//     every such client is counted under one key, directLoopbackKey, whatever
+//     loopback address and port its socket has: a client that reconnects, or
+//     binds another loopback address, is counted with the connections before
+//     it. A process on that computer can still write the header Serve writes,
+//     so the address Serve forwards is not proof of a tailnet visitor.
 //   - Otherwise, and whenever the header is missing or malformed, it is the
 //     socket's peer.
 func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
@@ -442,32 +448,18 @@ func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
 			if fwd, ok := tailnetForwarded(r); ok {
 				return fwd
 			}
+			return directLoopbackKey
 		}
 	}
 	return host
 }
 
-// connectionAddress is the address a session connection is counted by, for
-// the connection caps and the failed-join limit: the client's address
-// (clientAddress), except on a relay bound to loopback alone for a client
-// that connects to the listener directly, with no address Tailscale Serve
-// forwards. Every such client's socket host is the same loopback address, so
-// it is counted by its own socket address, host and port, which no request
-// header changes, and one direct client's wrong codes hold up no other. A
-// process on the same computer can still write the header Serve writes, so
-// the address Serve forwards is not proof of a tailnet visitor.
-func connectionAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
-	if !behindProxy && loopbackOnly {
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			if peer, err := netip.ParseAddr(host); err == nil && peer.Unmap().IsLoopback() {
-				if _, forwarded := tailnetForwarded(r); !forwarded {
-					return r.RemoteAddr
-				}
-			}
-		}
-	}
-	return clientAddress(r, behindProxy, loopbackOnly)
-}
+// directLoopbackKey is the one address every direct loopback client of a relay
+// bound to loopback alone is counted by (clientAddress), for the connection
+// caps, the failed-join limit and the sign-in exchange window alike. It is not
+// an IP address, so no forwarded header and no other client can be counted
+// under it.
+const directLoopbackKey = "loopback"
 
 // tailnetForwarded reads the visitor's address as Tailscale Serve forwards
 // it. Serve's reverse proxy sets X-Forwarded-For to the tailnet address of the
@@ -507,7 +499,7 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	p := newPeer(cancel, preRoomQueue, s.relay.Limits().MaxQueuedBytes)
 	p.grace, p.replayWithin = s.cfg.CloseGrace, s.cfg.ReplayWithin
-	conn, err := s.relay.Connect(p, connectionAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
+	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	if err != nil {
 		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
 		return
