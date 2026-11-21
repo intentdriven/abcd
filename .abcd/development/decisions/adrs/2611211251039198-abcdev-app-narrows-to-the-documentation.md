@@ -27,6 +27,8 @@ This record amends adr-2611210848450372. It replaces that record's points 2 and 
 1. **The record's old addresses on abcdev.app are not forwarded** (replaces point 2). `record.elsewhere.forward` stays off. Once a release deploys the narrowed build, abcdev.app serves nothing at `/record`, `/record/`, any page below it or `/record.json`, and sends none of them to the Pages site. The documentation's own 301s for the paths moved under `/docs/` stay. The forwarding code stays in `abcd site build`, so a later decision can still turn the switch on.
 2. **`narrow` is turned on without `forward`** (replaces point 3). The narrowing is one committed change of its own, on the person's word, and no forward goes before it. With `narrow` on, abcdev.app's build also ships no `record.js` and no `_headers` block for a record path, since it serves none of the record.
 
+Read as one decision, the chain says: abcdev.app's deploy builds the documentation only (adr-2611210848450372 point 1), the record's old addresses are not forwarded (point 1 here), and both sites deploy on release from released bytes (adr-2611210848450372 point 4, adr-48).
+
 ## Alternatives Considered
 
 - **Keep adr-2611210848450372's points 2 and 3: forward, then narrow.** Every link to the record shared before the move would still land on its page. The person ruled against forwarding, so this is not taken.
