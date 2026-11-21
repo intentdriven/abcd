@@ -25,16 +25,19 @@ package interview
 //     path: a push receipt under preflight-receipts/ or the handover changed
 //     by the role stops the interview.
 //   - git's own directory, which no status lists: every entry of hooks/ and
-//     info/, the configuration (config, and config.worktree), HEAD, the refs
-//     (refs/ and packed-refs), each submodule's git directory under modules/
-//     (read as the common directory is: git status runs status inside a
-//     populated submodule), and a linked worktree's .git file, by mode, size
-//     and content hash. A hook runs on the person's next git command, the
-//     configuration can name a hooks directory, an alias or a credential
-//     helper, and HEAD and the refs decide what the next commit or push
-//     carries. In a linked worktree these live in the repository's common
-//     directory and are read there, besides the worktree's own HEAD and
-//     config.worktree. Every
+//     info/, the configuration (config, and config.worktree), HEAD, the
+//     branch HEAD names, each submodule's git directory under modules/ (read
+//     as the common directory is, its refs included: git status runs status
+//     inside a populated submodule), and a linked worktree's .git file, by
+//     mode, size and content hash. A hook runs on the person's next git
+//     command, the configuration can name a hooks directory, an alias or a
+//     credential helper, and HEAD and the branch it names decide what the
+//     next commit or push carries. Of the checkout's refs only that branch
+//     is read, by the value it holds (readOwnBranch): every worktree shares
+//     the common directory's refs, and a peer's commit in its own worktree
+//     is not the interview's concern (iss-2611012144422634). In a linked
+//     worktree these live in the repository's common directory and are read
+//     there, besides the worktree's own HEAD and config.worktree. Every
 //     worktree's entry under the common directory's worktrees/ is read too:
 //     the entry itself, so one made or removed is noticed, and its HEAD,
 //     commondir, gitdir, config.worktree and locked, which decide where git
@@ -87,6 +90,7 @@ package interview
 // worktree's common directory, a hooks directory elsewhere) is named in full.
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -99,6 +103,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -184,10 +189,17 @@ type UnexpectedChangesError struct {
 	Role string
 	// Paths are the paths changed, relative to the repository's root.
 	Paths []string
+	// said is what moved of the checkout's own branch, in plain words
+	// (branchSaid), leading the refusal.
+	said []string
 }
 
 func (e *UnexpectedChangesError) Error() string {
-	return fmt.Sprintf("%d path(s) changed while the %s ran that this interview does not let it change, so the interview stopped: %s; "+
+	lead := ""
+	if len(e.said) > 0 {
+		lead = strings.Join(e.said, "; ") + ". "
+	}
+	return lead + fmt.Sprintf("%d path(s) changed while the %s ran that this interview does not let it change, so the interview stopped: %s; "+
 		"read each (git status, git diff) and restore what you did not ask for",
 		len(e.Paths), e.Role, strings.Join(e.Paths, ", "))
 }
@@ -800,10 +812,13 @@ func (r *treeReader) readGitDirs() error {
 			return err
 		}
 	}
-	for _, rel := range gitDirEntries {
+	for _, rel := range commonEntries {
 		if err := r.hashIn(common, rel); err != nil {
 			return err
 		}
+	}
+	if err := r.readOwnBranch(); err != nil {
+		return err
 	}
 	if err := r.readModules(); err != nil {
 		return err
@@ -955,9 +970,197 @@ func (r *treeReader) readReceipts() error {
 	return nil
 }
 
-// gitDirEntries are the entries of a common directory, and of each
-// submodule's git directory, read by mode, size and content hash.
+// gitDirEntries are the entries of each submodule's git directory read by
+// mode, size and content hash.
 var gitDirEntries = []string{"hooks", "info", "config", "config.worktree", "HEAD", "packed-refs", "refs"}
+
+// commonEntries are the entries of the common directory read by mode, size
+// and content hash: gitDirEntries but the refs. Every worktree of the
+// checkout shares the common directory's refs, so a peer committing in its
+// own worktree moves one; the reading holds the checkout's own branch alone
+// (readOwnBranch), the one ref the next commit or push there carries
+// (iss-2611012144422634).
+var commonEntries = slices.DeleteFunc(slices.Clone(gitDirEntries), func(e string) bool { return e == "refs" || e == "packed-refs" })
+
+// branchState leads the state of the checkout's own branch: the ref's name,
+// then the value it holds.
+const branchState = "branch "
+
+// readOwnBranch records the branch the checkout's HEAD names, keyed by its
+// loose ref's path in the common directory, by the value it holds: the loose
+// ref's content, or its line in the packed refs when there is no loose ref,
+// so a peer packing the refs moves nothing while a commit, a reset or a
+// rebase on the branch does. A detached HEAD names no branch: HEAD itself,
+// read above, holds the commit.
+func (r *treeReader) readOwnBranch() error {
+	ref, ok := symbolicHead(r.gitDir)
+	if !ok {
+		return nil
+	}
+	root, err := os.OpenRoot(r.common)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	value, err := r.refValue(root, ref)
+	if err != nil {
+		return err
+	}
+	return r.put(r.keyOf(r.common, ref), branchState+ref+" "+value)
+}
+
+// symbolicHead is the ref the HEAD in gitDir names, when it names one in the
+// shape git writes it.
+func symbolicHead(gitDir string) (string, bool) {
+	root, err := os.OpenRoot(gitDir)
+	if err != nil {
+		return "", false
+	}
+	defer root.Close()
+	fi, err := root.Lstat("HEAD")
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxPointerBytes {
+		return "", false
+	}
+	b, err := readAtMost(root, "HEAD", fi.Size())
+	if err != nil {
+		return "", false
+	}
+	ref, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
+	if !ok || !strings.HasPrefix(ref, "refs/") || path.Clean(ref) != ref || strings.ContainsAny(ref, " \t\r\n\x00\\:?*[~^") || slices.Contains(strings.Split(ref, "/"), "..") {
+		return "", false
+	}
+	return ref, true
+}
+
+// readAtMost is rel under root, read no further than n bytes.
+func readAtMost(root *os.Root, rel string, n int64) ([]byte, error) {
+	f, err := root.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, n))
+}
+
+// refValue is the value ref holds under the common directory root: a loose
+// ref's content, or what stands there when it is not a file, or its line in
+// the packed refs.
+func (r *treeReader) refValue(root *os.Root, ref string) (string, error) {
+	fi, err := root.Lstat(ref)
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR):
+		return r.packedValue(root, ref)
+	case err != nil:
+		return "", err
+	case !fi.Mode().IsRegular():
+		st, _, err := contentState(root, ref, 0)
+		return "not a file: " + st, err
+	case fi.Size() > maxPointerBytes:
+		return fmt.Sprintf("past %d", fi.Size()), nil
+	}
+	b, err := readAtMost(root, ref, fi.Size())
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// packedValue is ref's object name in the common directory's packed refs,
+// "absent" when they hold none. The file is read a line at a time, within
+// what is left of maxHashedBytes, which it then counts; a line longer than
+// any ref's is refused rather than read.
+func (r *treeReader) packedValue(root *os.Root, ref string) (string, error) {
+	fi, err := root.Lstat("packed-refs")
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "absent", nil
+	case err != nil:
+		return "", err
+	case !fi.Mode().IsRegular():
+		st, _, err := contentState(root, "packed-refs", 0)
+		return "packed refs not a file: " + st, err
+	}
+	key := r.keyOf(r.common, "packed-refs")
+	if fi.Size() > maxHashedBytes-r.hashedBytes {
+		return "", fmt.Errorf("%s holds %d MiB, which takes one reading past the %d MiB one reading hashes of the tree and git's own directory, so it is not read; restore it and run the interview again",
+			key, fi.Size()>>20, maxHashedBytes>>20)
+	}
+	f, err := root.Open("packed-refs")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	r.hashedBytes += fi.Size()
+	sc := bufio.NewScanner(io.LimitReader(f, fi.Size()))
+	sc.Buffer(make([]byte, 0, 4096), maxPointerBytes+128)
+	value := "absent"
+	for sc.Scan() {
+		name, packed, ok := strings.Cut(sc.Text(), " ")
+		if ok && packed == ref && value == "absent" {
+			value = name
+		}
+	}
+	if errors.Is(sc.Err(), bufio.ErrTooLong) {
+		return "", fmt.Errorf("%s holds a line longer than any ref's, so it is not read; restore it and run the interview again", key)
+	}
+	return value, sc.Err()
+}
+
+// branchOf is the ref and the value a branch state holds.
+func branchOf(state string) (ref, value string, ok bool) {
+	rest, ok := strings.CutPrefix(state, branchState)
+	if !ok {
+		return "", "", false
+	}
+	ref, value, ok = strings.Cut(rest, " ")
+	return ref, value, ok
+}
+
+// branchSaid is what moved of the checkout's own branch between before and
+// after, in plain words: the branch moved, made or deleted, or the checkout
+// switched to another.
+func branchSaid(before, after treeState, role string) []string {
+	own := func(st treeState) (key, ref, value string) {
+		for k, s := range st {
+			if r, v, ok := branchOf(s); ok {
+				return k, r, v
+			}
+		}
+		return "", "", ""
+	}
+	name := func(ref string) string {
+		if ref == "" {
+			return "a detached commit"
+		}
+		return "the branch " + strings.TrimPrefix(ref, "refs/heads/")
+	}
+	bk, bref, bval := own(before)
+	ak, aref, aval := own(after)
+	switch {
+	case bk != ak:
+		return []string{fmt.Sprintf("this checkout was switched from %s to %s while the %s ran", name(bref), name(aref), role)}
+	case bk == "" || bval == aval:
+		return nil
+	case bval == "absent":
+		return []string{fmt.Sprintf("%s this checkout is on was made, at %s, while the %s ran", name(bref), short(aval), role)}
+	case aval == "absent":
+		return []string{fmt.Sprintf("%s this checkout is on was deleted while the %s ran; it was at %s", name(bref), role, short(bval))}
+	}
+	return []string{fmt.Sprintf("%s this checkout is on moved from %s to %s while the %s ran, as a commit, a reset or a rebase on it does; git log %s shows what it holds now",
+		name(bref), short(bval), short(aval), role, strings.TrimPrefix(bref, "refs/heads/"))}
+}
+
+// short is an object name cut to twelve characters, anything else quoted
+// and cut to 64 bytes.
+func short(v string) string {
+	if len(v) >= 40 && strings.Trim(v, "0123456789abcdef") == "" {
+		return v[:12]
+	}
+	if len(v) > 64 {
+		v = v[:64] + "..."
+	}
+	return strconv.Quote(v)
+}
 
 // moduleEntries are the entries of each submodule's git directory read by
 // mode, size and content hash: the common directory's (gitDirEntries), and
@@ -1193,16 +1396,21 @@ func contentState(root *os.Root, rel string, limit int64) (string, int64, error)
 }
 
 // changedSince is every path whose state differs between before and after,
-// sorted.
+// sorted. The checkout's own branch held by one reading alone is left out:
+// HEAD named another between them, and HEAD's own change names that.
 func changedSince(before, after treeState) []string {
 	var out []string
 	for p, s := range after {
-		if before[p] != s {
+		b, ok := before[p]
+		if !ok && strings.HasPrefix(s, branchState) {
+			continue
+		}
+		if b != s {
 			out = append(out, p)
 		}
 	}
-	for p := range before {
-		if _, ok := after[p]; !ok {
+	for p, s := range before {
+		if _, ok := after[p]; !ok && !strings.HasPrefix(s, branchState) {
 			out = append(out, p)
 		}
 	}

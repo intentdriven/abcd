@@ -22,7 +22,9 @@ import (
 // TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview: the guard
 // watches what git status alone does not show. A role that plants a hook,
 // edits the repository's git configuration or its info files, moves HEAD,
-// adds a ref or rewrites the packed refs, plants a submodule's hook or edits
+// moves the checkout's own branch (its loose ref or its line in the packed
+// refs; a peer's ref is not the interview's, iss-2611012144422634), plants a
+// submodule's hook or edits
 // its configuration, writes into the local tier (a push receipt, the
 // handover), writes a gitignored file or one inside a gitignored directory,
 // rewrites an ignored file at the same size, writes into a hooks directory
@@ -121,11 +123,17 @@ func TestARoleWritingWhereCodeOrAPushRunsFromStopsTheInterview(t *testing.T) {
 		{name: "HEAD pointed at another branch", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(*writtenRun) (string, string, string) {
 			return ".git/HEAD", "ref: refs/heads/other\n", ".git/HEAD"
 		}},
-		{name: "a new ref", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
-			return ".git/refs/heads/planted", r.git.Git("rev-parse", "HEAD") + "\n", ".git/refs/heads/planted"
+		{name: "the checkout's branch moved", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
+			r.git.Commit("second")
+			first := r.git.Git("rev-parse", "HEAD~1")
+			return ".git/refs/heads/main", first + "\n", ".git/refs/heads/main"
 		}},
-		{name: "the packed refs", setup: func(r *writtenRun) { r.git.Commit("base") }, write: func(r *writtenRun) (string, string, string) {
-			return ".git/packed-refs", r.git.Git("rev-parse", "HEAD") + " refs/heads/packed\n", ".git/packed-refs"
+		{name: "the checkout's branch moved in the packed refs", setup: func(r *writtenRun) {
+			r.git.Commit("base")
+			r.git.Commit("second")
+			r.git.Git("pack-refs", "--all")
+		}, write: func(r *writtenRun) (string, string, string) {
+			return ".git/packed-refs", r.git.Git("rev-parse", "HEAD~1") + " refs/heads/main\n", ".git/refs/heads/main"
 		}},
 		{name: "a submodule's hook", setup: gitDirOf("sub"), write: func(*writtenRun) (string, string, string) {
 			return ".git/modules/sub/hooks/pre-commit", "#!/bin/sh\n", ".git/modules/sub/hooks/pre-commit"

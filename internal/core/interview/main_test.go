@@ -12,12 +12,15 @@ package interview
 // directory the runner was started in, and turnDirToken in a file's content
 // is replaced by the turn's directory. A content starting with linkToken
 // makes the path a link to the rest of it, and one starting with sparseToken
-// makes it an unreadable sparse file of the size the rest of it gives. A turn-<n>.sleep
+// makes it an unreadable sparse file of the size the rest of it gives. A
+// turn-<n>.run.json (stubPeer) makes the turn run shell commands, a peer's
+// git commands among them, while the role runs. A turn-<n>.sleep
 // in the script makes the turn mark turn-<n>.started beside the script and
 // sleep for the duration it holds, so a test can stop it mid-run.
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -183,6 +186,12 @@ func stubRunner(dir string) int {
 			}
 		}
 	}
+	if raw, err := os.ReadFile(filepath.Join(dir, turn+".run.json")); err == nil {
+		if err := stubRun(raw); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 3
+		}
+	}
 	if _, err := os.Stat(filepath.Join(dir, turn+".sleep")); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, turn+".started"), nil, 0o600)
 		time.Sleep(stubSleepFor(dir, turn))
@@ -221,6 +230,52 @@ func stubAlso(t *testing.T, script string, turn int, files map[string]string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.also.json", turn)), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// stubCommands is a turn-<n>.run.json: shell commands the turn runs while
+// the role runs, each in its own directory and under the fixture's isolated
+// git environment, as a peer session working another worktree would.
+type stubCommands struct {
+	Env  []string  `json:"env"`
+	Runs []stubCmd `json:"runs"`
+}
+
+type stubCmd struct {
+	Dir    string `json:"dir"`
+	Script string `json:"script"`
+}
+
+// stubRun runs a turn's stubCommands in order, each bounded, failing on the
+// first that fails.
+func stubRun(raw []byte) error {
+	var c stubCommands
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return err
+	}
+	for _, r := range c.Runs {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", r.Script)
+		cmd.Dir, cmd.Env = r.Dir, c.Env
+		out, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("%s in %s: %v: %s", r.Script, r.Dir, err, out)
+		}
+	}
+	return nil
+}
+
+// stubPeer makes the script's turn run script in dir, in order, under env,
+// while the role runs.
+func stubPeer(t *testing.T, script string, turn int, env []string, runs ...stubCmd) {
+	t.Helper()
+	b, err := json.Marshal(stubCommands{Env: env, Runs: runs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(script, fmt.Sprintf("turn-%d.run.json", turn)), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

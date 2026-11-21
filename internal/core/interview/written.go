@@ -515,7 +515,12 @@ func (w *Written) heldToContract(pre treeState, turnDir string, pin *gitPin, res
 	}
 	slices.Sort(res.Changed)
 	if len(unexpected) > 0 {
-		return &UnexpectedChangesError{Role: w.Role, Paths: unexpected}
+		uc := &UnexpectedChangesError{Role: w.Role, Paths: unexpected}
+		if moved == nil {
+			// A redirected reading read nothing after the dispatch to compare.
+			uc.said = branchSaid(pre, post, w.Role)
+		}
+		return uc
 	}
 	if moved != nil {
 		// Granted or not, git's own directories no longer lie where the
