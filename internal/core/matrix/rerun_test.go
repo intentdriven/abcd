@@ -219,7 +219,7 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 	// A harness version a host reports is withheld only as far as its
 	// leading dotted number: a MAC, or a host name after the number, is
 	// still screened.
-	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local", "2.1.buildbox.local"} {
+	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local", "2.1.buildbox.local", "2.1a-kevin-laptop"} {
 		tr = codeTrial(t, rec, "host-big", 3+i, StatusPassed)
 		tr.HarnessVersion = v
 		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
@@ -227,7 +227,7 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 		}
 	}
 	// A trial's unpinned names are screened as written.
-	tr = codeTrial(t, rec, "host-big", 6, StatusPassed)
+	tr = codeTrial(t, rec, "host-big", 9, StatusPassed)
 	tr.Unpinned = append(tr.Unpinned, oracle.Unpinned{Field: "buildbox.local", Reason: oracle.NotReported})
 	if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
 		t.Fatalf("writeTrial with a host name as an unpinned field = %v; want it refused by the network screen", err)
@@ -269,7 +269,10 @@ func carriedRun(t *testing.T, edit func(dir string, rec *RunRecord)) (*gittest.R
 func TestARerunOfACarriedRunWithAnAddressInAVersionFieldIsRefused(t *testing.T) {
 	for name, edit := range map[string]func(*RunRecord){
 		"version": func(rec *RunRecord) { rec.Binary.Version = "3c:22:fb:4a:9e:01" },
-		"digest":  func(rec *RunRecord) { rec.Binary.SHA256 = "buildbox.local" },
+		// A carried record's version is held to no token shape, so a number
+		// running into a phrase still reads as one.
+		"version phrase": func(rec *RunRecord) { rec.Binary.Version = "2.1the kevin-laptop" },
+		"digest":         func(rec *RunRecord) { rec.Binary.SHA256 = "buildbox.local" },
 		"field": func(rec *RunRecord) {
 			rec.Unpinned = append(rec.Unpinned, oracle.Unpinned{Field: "buildbox.local", Reason: oracle.NotReported})
 		},
