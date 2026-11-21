@@ -721,6 +721,15 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 			break
 		}
 	}
+	// And a glob qualifier list that holds an expansion, whose code is the
+	// expansion's text rather than the line's (segment.qualifierUnfixed); a
+	// positional parameter's only where the text can set it.
+	for _, s := range segs {
+		if s.qualifierUnfixed || s.qualifierPositional && (s.carrier > 0 || positionalsSet(command, segs)) {
+			signals = append(signals, qualifierUnfixedSignal())
+			break
+		}
+	}
 	// A shell reading its script from a pipe, a here-document or a here-string
 	// runs text the guard read as data (iss-2609251640462464), and so does one
 	// handed a process substitution or the stdin device as its script. After the
@@ -779,7 +788,7 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		// the order the commands run (exportsBefore).
 		var exported []bool
 		if len(p.Env) > 0 {
-			exported, _, _ = exportsBefore(segs, p.Env, false)
+			exported, _, _ = exportsBefore(segs, exportState{names: p.Env})
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])

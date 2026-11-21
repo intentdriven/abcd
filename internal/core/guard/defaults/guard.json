@@ -1436,18 +1436,21 @@
         "command": "claude",
         "flag_values": [{"flag": "--settings", "values": [], "shape": "claude-settings-unchecked"}]
       },
-      "why": "`--settings` that sets `permissions.defaultMode` to `bypassPermissions`, or grants `permissions.allow` rules, starts another claude agent that runs commands and writes files without asking anyone, whether the settings are written on the line or in the file it names, and none of what it runs passes through this guard.",
-      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` with no `--settings` that sets the permission mode or permission rules).",
+      "why": "`--settings` that sets the bypass mode, grants `permissions.allow` rules or declares `hooks` starts a claude that asks no one, and nothing it runs passes this guard. Settings it cannot read are refused too: unparsable, not fixed by the line, a glob not naming one file, or a file the line writes, cannot open, or that is over 256 KiB.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its checks on (`claude -p \"<task>\"`, with any `--settings` written out on the line or in a file the line does not write).",
       "fixtures": {
         "known_bad": [
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}'",
           "claude --settings='{\"permissions\":{\"allow\":[\"Bash(*)\"]}}' -p x",
-          "claude -p x --settings '{\"permissions\": {\"defaultMode\": \"BYPASSPERMISSIONS\"}}'"
+          "claude -p x --settings '{\"permissions\": {\"defaultMode\": \"BYPASSPERMISSIONS\"}}'",
+          "claude -p x --settings '{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"*\",\"hooks\":[{\"type\":\"command\",\"command\":\"true\"}]}]}}'",
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},}'"
         ],
         "known_good": [
           "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"default\"}}'",
           "claude -p x --settings '{\"permissions\":{\"deny\":[\"Bash(rm:*)\"]}}'",
           "claude -p x --settings '{\"model\":\"sonnet\"}'",
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"acceptEdits\"},\"hooks\":{}}'",
           "abcd capture \"an agent ran claude --settings with bypassPermissions\""
         ]
       }
@@ -1612,6 +1615,28 @@
           "OPENCODE_CONFIG_DIR=/tmp/oc echo hi",
           "export OPENCODE_CONFIG_DIR=/tmp/oc",
           "abcd capture \"an agent ran OPENCODE_CONFIG=x opencode run\""
+        ]
+      }
+    },
+    "agent-launch-claude-config-env": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "env": ["CLAUDE_CONFIG_DIR"]
+      },
+      "why": "`CLAUDE_CONFIG_DIR` (a directory) gives the claude a line starts settings over its own, the permission mode, permission rules and hooks among them, so the agent can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `CLAUDE_CONFIG_DIR`, so claude's own configuration decides what it asks about (`claude -p \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "CLAUDE_CONFIG_DIR='/tmp/c' claude -p x",
+          "export CLAUDE_CONFIG_DIR=/tmp/c; claude -p x"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "CLAUDE_CONFIG_DIR=/tmp/c echo hi",
+          "env -u CLAUDE_CONFIG_DIR claude -p x",
+          "export CLAUDE_CONFIG_DIR=/tmp/c",
+          "abcd capture \"an agent ran CLAUDE_CONFIG_DIR=x claude\""
         ]
       }
     }

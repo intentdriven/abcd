@@ -2527,6 +2527,20 @@ func fetchedScriptSignal() payloadSignal {
 	}
 }
 
+// qualifierUnfixedSignal is the fail-closed verdict for a zsh glob qualifier
+// list that holds an expansion (segment.qualifierUnfixed): zsh reads the
+// qualifiers from the expanded text, so the code an `e` or `+` qualifier in
+// it runs is not text the guard can read.
+func qualifierUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		verdict: VerdictBlock,
+		family:  familyShell,
+		reason: "This command glues a `(` holding a variable, a substitution or a backquote to a word, which zsh reads as glob qualifiers " +
+			"once it has expanded them, so code a qualifier runs (`e:…:`, `+name`) would be text the guard has not read.",
+		successor: "Write the qualifiers out on the line (`*(.)`, `*(e:'…':)`), or list the files another way (`find`), so the guard reads what runs.",
+	}
+}
+
 // depthBlockSignal is the fail-closed verdict for a family member nested past the
 // depth budget.
 func depthBlockSignal(family string) payloadSignal {

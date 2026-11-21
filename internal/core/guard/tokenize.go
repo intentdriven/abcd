@@ -130,6 +130,14 @@ type segment struct {
 	// qualifier's function or command (zshQualifierCode). The payload reading
 	// reads each as the string an eval runs.
 	qualifierCode []string
+	// qualifierUnfixed records a `(` glued to a word whose qualifier list
+	// holds an expansion (`*($q)`, `*(e:"$q":)`): zsh reads the list as
+	// qualifiers once the word is expanded, so the code they run is not
+	// text on the line. Check turns it into a fail-closed block.
+	// qualifierPositional records one whose expansions are all positional
+	// or special parameters (`*($1)`, `x($0)`), which Check refuses only
+	// where the text can set them (positionalsSet).
+	qualifierUnfixed, qualifierPositional bool
 	// leadFrom records, per token index, a spelled word holding a value a
 	// guard keeps from being empty or a site whose empty text leaves a `/`
 	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
@@ -601,6 +609,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// (segment.parenWord), and qualNext with it (segment.qualifierCode).
 		parenNext bool
 		qualNext  []string
+		// qualUnfixedNext and qualPositionalNext ride with it as
+		// segment.qualifierUnfixed and segment.qualifierPositional.
+		qualUnfixedNext, qualPositionalNext bool
 		// curQuoted records that the word being built took a quote or an
 		// escape, an empty quote pair included, which leaves no byte in cur.
 		curQuoted bool
@@ -1047,7 +1058,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1070,10 +1081,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A command of redirections alone still opens its files: `> f`
 			// truncates f. It is kept, with no words, for the files it writes.
 			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
-				redirects: curRedirs, parenWord: parenNext, qualifierCode: qualNext, afterAnd: andNext, end: pos})
+				redirects: curRedirs, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, afterAnd: andNext, end: pos})
 			curRedirs, andNext = nil, false
 		}
 		curStdin, curDocs, parenNext, qualNext = false, nil, false, nil
+		qualUnfixedNext, qualPositionalNext = false, false
 	}
 	// follow reads the text of a command substitution the scan found whole —
 	// inside double quotes, or inside an arithmetic expansion — as commands of
@@ -1899,7 +1911,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
 				if parenNext {
-					qualNext = append(qualNext, zshQualifierCode(line, i)...)
+					code, expands := zshQualifierCode(line, i)
+					qualNext = append(qualNext, code...)
+					if glued && !testsWords(toks) {
+						qualUnfixedNext = qualUnfixedNext || expands == qualifierUnfixed
+						qualPositionalNext = qualPositionalNext || expands == qualifierPositional
+					}
 				}
 			}
 			flushSegment()
@@ -2192,6 +2209,17 @@ func bashParens(line string, i int, toks []string, keywords map[int]bool, cur st
 		return len(words) == 1 && words[0] == "for" && keywords[lead]
 	}
 	return !hasCur && len(words) == 3 && words[0] == "case" && keywords[lead] && words[2] == "in" && keywords[lead+2]
+}
+
+// testsWords reports whether the command being read is a `[[ … ]]` test,
+// past the reserved words before it, where a `(` groups a pattern or a
+// regular expression and names no path.
+func testsWords(toks []string) bool {
+	lead := 0
+	for lead < len(toks) && reserved[toks[lead]] {
+		lead++
+	}
+	return lead < len(toks) && toks[lead] == "[["
 }
 
 // allReserved reports whether every token so far is a reserved word, so the
@@ -3566,6 +3594,55 @@ func literalHeredocOutput(text string) (string, bool) {
 	return strings.TrimRight(body, "\n"), true
 }
 
+// qualifierExpansion is what a glob qualifier list holds that zsh expands
+// before it reads the qualifiers (zshQualifierCode).
+type qualifierExpansion int
+
+const (
+	// qualifierFixed: no expansion; the list is the line's text.
+	qualifierFixed qualifierExpansion = iota
+	// qualifierPositional: only positional or special parameters (`$1`,
+	// `${2}`, `$@`, `$*`, `$0`, `$#`, `$?`, `$$`, `$!`), whose values the
+	// text sets only through `set`, a function's call or a shell's
+	// arguments.
+	qualifierPositional
+	// qualifierUnfixed: any other expansion, a variable's value or a
+	// substitution's output.
+	qualifierUnfixed
+)
+
+// expansionAt is the kind of expansion the `$`, backquote or mark at
+// line[i] opens: a positional or special parameter, a lone `$` that
+// expands nothing, or any other.
+func expansionAt(line string, i int) qualifierExpansion {
+	if line[i] != '$' {
+		return qualifierUnfixed
+	}
+	if i+1 >= len(line) {
+		return qualifierFixed
+	}
+	special := func(name string) bool {
+		if name == "" {
+			return false
+		}
+		if strings.Trim(name, "0123456789") == "" {
+			return true
+		}
+		return len(name) == 1 && strings.Contains("@*#?$!", name)
+	}
+	switch c := line[i+1]; {
+	case c == ' ' || c == '\t' || c == ')' || c == '"':
+		return qualifierFixed
+	case c >= '0' && c <= '9' || strings.IndexByte("@*#?$!", c) >= 0:
+		return qualifierPositional
+	case c == '{':
+		if end := strings.IndexByte(line[i+2:], '}'); end >= 0 && special(line[i+2:i+2+end]) {
+			return qualifierPositional
+		}
+	}
+	return qualifierUnfixed
+}
+
 // oddTrailingBackslashes reports whether text ends in an odd number of
 // backslashes: its last backslash is unescaped, so before a newline it is a
 // line continuation.
@@ -3587,7 +3664,12 @@ func oddTrailingBackslashes(text string) bool {
 // close on its line runs no code here. The other qualifiers that take an
 // argument (`u`, `g`, `f`, `P`, a size, a time or a count, `[…]`) are stepped
 // over, so their argument is not read as a qualifier.
-func zshQualifierCode(line string, open int) []string {
+//
+// expands is the expansions the list holds, which zsh performs before it
+// reads the qualifiers: a `$` or a backquote, unquoted or inside double
+// quotes and not escaped, or, in a string a shell is handed, the mark of a
+// value the enclosing shell already put there (varMark, unknownMark).
+func zshQualifierCode(line string, open int) (code []string, expands qualifierExpansion) {
 	var q []byte
 	depth := 1
 	i := open + 1
@@ -3596,16 +3678,19 @@ scan:
 		c := line[i]
 		switch c {
 		case '\n':
-			return nil
+			return nil, expands
 		case '\\':
 			if i+1 < len(line) {
 				i++
 				q = append(q, line[i])
 			}
+		case '$', '`', varMark, unknownMark:
+			expands = max(expands, expansionAt(line, i))
+			q = append(q, c)
 		case '\'':
 			end := strings.IndexByte(line[i+1:], '\'')
 			if end < 0 {
-				return nil
+				return nil, expands
 			}
 			q = append(q, line[i+1:i+1+end]...)
 			i += end + 1
@@ -3614,11 +3699,13 @@ scan:
 			for ; j < len(line) && line[j] != '"'; j++ {
 				if line[j] == '\\' && j+1 < len(line) && strings.IndexByte("\"\\$`", line[j+1]) >= 0 {
 					j++
+				} else if strings.IndexByte("$`"+varText+unknownText, line[j]) >= 0 {
+					expands = max(expands, expansionAt(line, j))
 				}
 				q = append(q, line[j])
 			}
 			if j >= len(line) {
-				return nil
+				return nil, expands
 			}
 			i = j
 		case '(':
@@ -3635,13 +3722,13 @@ scan:
 		}
 	}
 	if depth != 0 {
-		return nil
+		return nil, expands
 	}
 	list := string(q)
 	if strings.HasPrefix(list, "#") {
 		var ok bool
 		if list, ok = strings.CutPrefix(list, "#q"); !ok {
-			return nil
+			return nil, expands
 		}
 	}
 	closer := map[byte]byte{'(': ')', '[': ']', '{': '}', '<': '>'}
@@ -3676,11 +3763,11 @@ scan:
 		switch {
 		case c == ':':
 			// Modifiers from here on (`:e` is the extension, not code).
-			return out
+			return out, expands
 		case c == 'e':
 			code, next, ok := delimited(k + 1)
 			if !ok {
-				return out
+				return out, expands
 			}
 			if strings.TrimSpace(code) != "" {
 				out = append(out, code)
@@ -3708,7 +3795,7 @@ scan:
 			}
 			_, next, ok := delimited(k + 1)
 			if !ok {
-				return out
+				return out, expands
 			}
 			k = next
 		case c == 'f':
@@ -3722,7 +3809,7 @@ scan:
 			}
 			_, next, ok := delimited(k + 1)
 			if !ok {
-				return out
+				return out, expands
 			}
 			k = next
 		case c == 'a' || c == 'm' || c == 'c' || c == 'L' || c == 'l' || c == 'd' || c == 'Y':
@@ -3737,12 +3824,12 @@ scan:
 		case c == '[':
 			j := strings.IndexByte(list[k:], ']')
 			if j < 0 {
-				return out
+				return out, expands
 			}
 			k += j + 1
 		default:
 			k++
 		}
 	}
-	return out
+	return out, expands
 }

@@ -5,6 +5,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // varpath.go reads the one operand shape an entry's arg_shapes can name
@@ -480,9 +481,9 @@ const (
 )
 
 // ShapeSettingsUnchecked is a claude settings value that turns its permission
-// checks off or grants permission rules (settingsUnchecked). The value is
-// the JSON text `--settings` takes inline, or the text of the file it names
-// where the guard can read the file (settingsFileReadings).
+// checks off, grants permission rules or declares hooks, or that the guard
+// cannot read (settingsUnchecked). The value is the JSON text `--settings`
+// takes inline, or the text of the file it names (settingsFileReadings).
 const ShapeSettingsUnchecked = "claude-settings-unchecked"
 
 // flagValueShapes are the shapes a flag-value constraint may name; Validate
@@ -523,29 +524,43 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 	return false
 }
 
-// settingsUnchecked reports whether a claude settings text turns the
-// permission checks off, with `permissions.defaultMode` set to
-// `bypassPermissions` (compared ignoring case, as the flag's value is), or
-// sets permission rules that let commands run without asking, a
-// `permissions.allow` holding any rule. A text that is not a JSON object is a
-// file's name, which is read where the guard can read the file
-// (settingsFileReadings), not here. An object the line does not wholly fix
-// (a substitution or a variable in it) is read by the text it does fix: one
-// that names the mode, its bypass value or an allow list is taken as setting
-// them, since the part it does not fix can be the rest.
+// settingsUnchecked reports whether a claude settings value is one the
+// entry refuses. A JSON object is read as claude reads it, its string
+// escapes decoded and a repeated key taking its last value, and is refused
+// where it turns the permission checks off, with `permissions.defaultMode`
+// set to `bypassPermissions` (compared ignoring case, as the flag's value
+// is); where it grants permission rules, a `permissions.allow` holding any
+// rule; and where it declares hooks, a non-empty `hooks`, since a hook can
+// answer the permission prompts for every call. Every other mode is the
+// permission-mode flag's to judge, and that entry refuses only the bypass.
+// Text that starts as an object and does not parse is refused, since
+// claude's reader may take what Go's refuses, and so is an object holding a
+// part the line does not fix, since a value spliced into the text can add
+// any key, a value whose start the line does not fix, which can be any
+// object, and a process substitution's output (procSubOperand), which is
+// text a command prints. Any other value is a file's name, which settingsFileReadings
+// reads. Leading and trailing space is trimmed as JavaScript trims it, a
+// byte-order mark included.
 func settingsUnchecked(got string) bool {
-	whole := !isUnknown(got) && !strings.ContainsRune(got, varMark)
-	text := strings.TrimSpace(strings.ReplaceAll(knownText(got), string(varMark), ""))
-	if !strings.HasPrefix(text, "{") {
+	text := trimSettings(got)
+	if text == "" {
 		return false
 	}
-	if !whole {
-		lower := strings.ToLower(text)
-		return strings.Contains(lower, "defaultmode") || strings.Contains(lower, "bypasspermissions") || strings.Contains(lower, `"allow"`)
+	if text[0] == unknownMark || text[0] == varMark || strings.Contains(text, procSubOperand) {
+		return true
+	}
+	if text[0] != '{' {
+		return false
+	}
+	if isUnknown(text) || strings.ContainsRune(text, varMark) {
+		return true
 	}
 	var root map[string]any
 	if json.Unmarshal([]byte(text), &root) != nil {
-		return false
+		return true
+	}
+	if !emptyJSON(root["hooks"]) {
+		return true
 	}
 	perms, _ := root["permissions"].(map[string]any)
 	if mode, _ := perms["defaultMode"].(string); strings.EqualFold(mode, "bypassPermissions") {
@@ -553,6 +568,28 @@ func settingsUnchecked(got string) bool {
 	}
 	allow, _ := perms["allow"].([]any)
 	return len(allow) > 0
+}
+
+// trimSettings is a settings text with leading and trailing space removed as
+// JavaScript's trim removes it, a byte-order mark included.
+func trimSettings(text string) string {
+	return strings.TrimFunc(text, func(r rune) bool { return unicode.IsSpace(r) || r == 0xFEFF })
+}
+
+// emptyJSON reports whether a decoded JSON value holds nothing: absent or
+// null, an empty object, an empty array or an empty string.
+func emptyJSON(v any) bool {
+	switch v := v.(type) {
+	case nil:
+		return true
+	case map[string]any:
+		return len(v) == 0
+	case []any:
+		return len(v) == 0
+	case string:
+		return v == ""
+	}
+	return false
 }
 
 // setsRefForce reports whether a field of a REST call sets force to anything but false, in

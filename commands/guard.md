@@ -1091,7 +1091,14 @@ the code a zsh glob qualifier runs for each file its pattern matches: an `e`
 qualifier's string, with any delimiter (`ls *(e:'…':)`, `echo *(e{…})`), and a
 `+name` qualifier's name, as a command, behind `(#q…)` too. A modifier list
 (`x(:e)`) and the qualifiers whose argument is not code (`*(u:eve:)`,
-`*(f+644)`) run nothing, and stay allowed.
+`*(f+644)`) run nothing, and stay allowed. A qualifier list glued to a word
+that holds an expansion, unquoted or in double quotes (`*($q)`, `*(${~q})`,
+`*(e:"$q":)`), is a **block** (`execute-string-uninspectable`): zsh reads the
+qualifiers from the expanded text, so the code they run is not on the line. A
+positional or special parameter there (`*($1)`, `x($0)`) is a block only where
+the line can set it: a `set` with operands, a function, or a string a shell is
+handed with its arguments. A `$` inside single quotes or escaped is text, so
+`ls *(e:'[[ -d $REPLY ]]':)` stays allowed.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
@@ -1179,9 +1186,10 @@ spelling of the path, or by a command that names it as an operand (`tee p`),
 is not followed. A `ps` listing that reaches a kill is a search as `pgrep`
 is, through any filter or none (`ps aux | sed -n '/make/s/ .*//p' | xargs
 kill`, `ps -C make -o pid= | xargs kill`), and a **block** under
-`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`,
-`--ppid`) with no other selection beside them: `ps -o pid= -p 4242 | xargs
-kill` is not. A `ps` listing filtered by a name through `grep`, or an `awk`
+`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`)
+with no other selection beside them: `ps -o pid= -p 4242 | xargs kill` is not.
+`--ppid`, which lists every child of the pids it names, and BSD `T`, every
+process on the terminal, are selections like any other. A `ps` listing filtered by a name through `grep`, or an `awk`
 program that matches, is a search whatever the `ps` lists (`ps aux | grep make
 | awk '{print $2}' | xargs kill`, `ps aux | awk '/make/ {print $2}'`).
 Every command of a string a shell is handed with such output in its words is
@@ -1203,15 +1211,26 @@ Starting another agent harness with its own permission checks turned off is a
 none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
 (`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
-`permissions.defaultMode` to `bypassPermissions` or grants `permissions.allow`
-rules, written on the line or in the file it names where the guard can read
-that file now (`agent-launch-claude-unchecked-settings`), `codex --dangerously-bypass-approvals-and-sandbox`
+`permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
+rules or declares `hooks`, which can answer the permission prompts, written on
+the line or in the file it names (`agent-launch-claude-unchecked-settings`),
+`codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
 `-c sandbox_mode=danger-full-access` (`agent-launch-codex-config-unchecked`),
 and `opencode run --auto` (`agent-launch-opencode-auto`). The same harness
-started with its checks on is allowed. The entries name each program by
+started with its checks on is allowed. The settings entry reads inline JSON as
+claude reads it, string escapes decoded, and refuses settings it cannot read as
+well as those that turn the checks off: text that starts as an object and does
+not parse, JSON holding a part the line does not fix (a value spliced into the
+text can add any key), a value or file name the line does not wholly fix
+(`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
+glob that does not match exactly one file, and a file the line writes before
+the launch, one that is not a regular file, one over 256 KiB, or one that does
+not hold a JSON object. A settings file that does not exist is not refused,
+since claude does not start on it, and other permission modes are left to the
+permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`
 or `command`, or through a package runner (`npx`, `bunx`, `bun x`, `pnpm dlx`,
 `pnpm exec`, `yarn dlx`, `npm exec`, with or without `--`), by the program's
@@ -1219,16 +1238,27 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x`, `typeset -x` or `local -x` earlier in the line, a bare assignment
-while `set -a`, `set -o allexport` or zsh's `setopt allexport` holds, an export
-inside an `eval` that stands before it, or an export in a file the line sources
-before it — is a **block** too (`agent-launch-opencode-permission-env`), and
-one that starts opencode without setting it is not. So is a line that sets
+`declare -x`, `typeset -x` or `local -x` earlier in the line, an export through
+a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
+after the program's name while bash's `set -k` holds, an export inside an
+`eval` that stands before it, or an export in a file the line sources before
+it — is a **block** too (`agent-launch-opencode-permission-env`), and one that
+starts opencode without setting it is not. While allexport holds, every
+assignment exports: a bare one, a declaration builtin's, a name `read`,
+`printf -v`, `getopts`, `mapfile` or `let` assigns, a `for` or `select` loop's
+variable, and a `${NAME:=…}` expansion anywhere on the line. allexport is
+turned on by `set -a` and `set -o allexport`, zsh's `setopt allexport` in any
+spelling, `setopt -a` and `unsetopt +a`, a `setopt -m` pattern (read as turning
+it on, since the guard does not match patterns), `emulate MODE -o allexport`,
+bash's `shopt -so allexport`, and a shell started with `-a`, `-o allexport` or
+zsh's `--allexport`, or with a `SHELLOPTS` that names it. So is a line that sets
 `OPENCODE_CONFIG`, a configuration file opencode loads,
 `OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
-it starts (`agent-launch-opencode-config-env`), since each can carry
-permission rules over opencode's own configuration. A harness started under
+it starts (`agent-launch-opencode-config-env`), and one that sets
+`CLAUDE_CONFIG_DIR`, the directory claude loads its settings from, for the
+claude it starts (`agent-launch-claude-config-env`), since each can carry
+permission rules over the harness's own configuration. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents
 (spc-2610161751056096) is what bounds what such a run can reach
@@ -1314,7 +1344,11 @@ unquoted, is not), an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (a sourced file, a nameref set before the line, or an operator the line does
 not write, such as a command's output an arithmetic context evaluates; every
-line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+line is read from the default IFS), an export the walk does not place before
+the command it reaches, because the walk follows commands in the order they
+stand on the line and does not follow control flow (an export in a loop body
+that the loop's next pass reaches, or an export after a function or a `trap`
+action is defined and before it runs), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

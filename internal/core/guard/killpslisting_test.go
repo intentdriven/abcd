@@ -6,8 +6,9 @@ import "testing"
 // reaches kill, through any filter or none, is a search as pgrep is, since
 // the pids it hands on are the ones a selection by name, user, terminal or
 // the whole table printed. A ps that reports only the pids the caller names
-// (`-p`, `--pid`, `-q`, `--ppid`) is not, and a grep or a matching awk after
-// it still is.
+// (`-p`, `--pid`, `-q`) is not, and a grep or a matching awk after it still
+// is. `--ppid` lists every child of the pid it names, and BSD `T` every
+// process on the terminal, so neither pins the listing.
 func TestAPsListingReachingKillIsASearchUnlessPinnedToAPid(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
 		{`ps aux | sed -n '/sleep 40000/s/^[^ ]* *\([0-9]*\).*/\1/p' | xargs kill`, VerdictBlock, "kill-by-search"},
@@ -25,11 +26,14 @@ func TestAPsListingReachingKillIsASearchUnlessPinnedToAPid(t *testing.T) {
 		{`ps -o pid= -p 4242 | grep -v grep | xargs kill`, VerdictBlock, "kill-by-search"},
 		{`ps aux | grep make | awk '{print $2}' | xargs kill`, VerdictBlock, "kill-by-search"},
 		{`ps aux | awk '/make/ {print $2}' | xargs kill`, VerdictBlock, "kill-by-search"},
+		{`ps -o pid= --ppid "$pid" | xargs kill`, VerdictBlock, "kill-by-search"},
+		{`ps --ppid 1 -o pid= | xargs kill`, VerdictBlock, "kill-by-search"},
+		{`ps T 4242 | sed -n 's/ sleep$//p' | xargs kill`, VerdictBlock, "kill-by-search"},
+		{`ps -o pid= T -p 4242 | xargs kill`, VerdictBlock, "kill-by-search"},
 
 		{`ps -o pid= -p 4242 | xargs kill`, VerdictAllow, ""},
 		{`ps -o pid= -p4242 | sed 's/ //g' | xargs kill`, VerdictAllow, ""},
 		{`ps -o pid= --pid 4242,4243 | xargs kill`, VerdictAllow, ""},
-		{`ps -o pid= --ppid "$pid" | xargs kill`, VerdictAllow, ""},
 		{`ps -o pid= -q 4242 | xargs kill`, VerdictAllow, ""},
 		{`ps -o pid= -p 4242 | awk '{print $1}' | xargs kill`, VerdictAllow, ""},
 		{`kill -- -$(ps -o pgid= -p $$)`, VerdictAllow, ""},
