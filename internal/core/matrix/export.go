@@ -170,6 +170,7 @@ type harborAbcd struct {
 	Status           TrialStatus              `json:"status"`
 	Reason           string                   `json:"reason"`
 	Score            *Score                   `json:"score"`
+	Compliance       *Compliance              `json:"compliance"`
 	Roles            []runner.RoleReceipt     `json:"roles"`
 	Calls            []oracle.ReceiptRoute    `json:"calls"`
 	Fallbacks        []runner.FallbackReceipt `json:"fallbacks"`
@@ -196,7 +197,7 @@ func (t TrialRecord) Harbor() (HarborTrialResult, error) {
 	}
 	meta := harborAbcd{
 		SchemaVersion: t.SchemaVersion, Run: t.Run, Kind: t.Kind, Intent: t.Intent, Source: t.Source,
-		ServedProvider: t.ServedProvider, Settings: t.Settings, Status: t.Status, Reason: t.Reason, Score: t.Score,
+		ServedProvider: t.ServedProvider, Settings: t.Settings, Status: t.Status, Reason: t.Reason, Score: t.Score, Compliance: t.Compliance,
 		Roles: t.Roles, Calls: t.Calls, Fallbacks: t.Fallbacks,
 		ReasoningTokens: u.ReasoningTokens, CacheWriteTokens: u.CacheWriteTokens,
 		ModelTimeMS: t.ModelTimeMS, GateWaitMS: t.GateWaitMS, Unpinned: t.Unpinned,
@@ -277,7 +278,7 @@ func (h HarborTrialResult) Trial() (TrialRecord, error) {
 	t := TrialRecord{
 		SchemaVersion: meta.SchemaVersion, Run: meta.Run, Key: key, Kind: meta.Kind, Intent: meta.Intent,
 		FrozenCommit: commit, Source: meta.Source, Runner: h.AgentInfo.Name, HarnessVersion: h.AgentInfo.Version,
-		ServedProvider: meta.ServedProvider, Settings: meta.Settings, Status: meta.Status, Reason: meta.Reason, Score: meta.Score,
+		ServedProvider: meta.ServedProvider, Settings: meta.Settings, Status: meta.Status, Reason: meta.Reason, Score: meta.Score, Compliance: meta.Compliance,
 		Roles: meta.Roles, Calls: meta.Calls, Fallbacks: meta.Fallbacks,
 		Usage: oracle.Usage{PromptTokens: int(prompt), CompletionTokens: a.NOutputTokens, ReasoningTokens: meta.ReasoningTokens,
 			CacheReadTokens: a.NCacheTokens, CacheWriteTokens: meta.CacheWriteTokens},
@@ -390,6 +391,7 @@ type inspectAbcd struct {
 	Status         TrialStatus              `json:"status"`
 	Reason         string                   `json:"reason"`
 	Score          *Score                   `json:"score"`
+	Compliance     *Compliance              `json:"compliance"`
 	Roles          []runner.RoleReceipt     `json:"roles"`
 	Calls          []oracle.ReceiptRoute    `json:"calls"`
 	Fallbacks      []runner.FallbackReceipt `json:"fallbacks"`
@@ -411,7 +413,7 @@ func (t TrialRecord) Inspect() (InspectSample, error) {
 		SchemaVersion: t.SchemaVersion, Run: t.Run, Cell: t.Key.Cell, Kind: t.Kind, Intent: t.Intent,
 		FrozenCommit: t.FrozenCommit, Source: t.Source, Runner: t.Runner, HarnessVersion: t.HarnessVersion,
 		ModelAsked: t.ModelAsked, ServedProvider: t.ServedProvider, Settings: t.Settings,
-		Status: t.Status, Reason: t.Reason, Score: t.Score, Roles: t.Roles, Calls: t.Calls, Fallbacks: t.Fallbacks,
+		Status: t.Status, Reason: t.Reason, Score: t.Score, Compliance: t.Compliance, Roles: t.Roles, Calls: t.Calls, Fallbacks: t.Fallbacks,
 		ModelTimeMS: t.ModelTimeMS, GateWaitMS: t.GateWaitMS, Unpinned: t.Unpinned,
 	}
 	s := InspectSample{
@@ -481,7 +483,7 @@ func (s InspectSample) Trial() (TrialRecord, error) {
 		Kind: meta.Kind, Intent: meta.Intent, FrozenCommit: meta.FrozenCommit, Source: meta.Source,
 		Runner: meta.Runner, HarnessVersion: meta.HarnessVersion, ModelAsked: meta.ModelAsked,
 		ServedProvider: meta.ServedProvider, Settings: meta.Settings, Status: meta.Status, Reason: meta.Reason,
-		Score: meta.Score, Roles: meta.Roles, Calls: meta.Calls, Fallbacks: meta.Fallbacks, Cost: meta.Cost,
+		Score: meta.Score, Compliance: meta.Compliance, Roles: meta.Roles, Calls: meta.Calls, Fallbacks: meta.Fallbacks, Cost: meta.Cost,
 		StartedAt: timeOf(s.StartedAt), FinishedAt: timeOf(s.CompletedAt),
 		ModelTimeMS: meta.ModelTimeMS, GateWaitMS: meta.GateWaitMS, Unpinned: meta.Unpinned,
 	}

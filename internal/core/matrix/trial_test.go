@@ -34,6 +34,7 @@ func fullTrial() TrialRecord {
 		Status:         StatusFailed,
 		Reason:         "hidden tests failed",
 		Score:          &Score{Passed: 7, Total: 9, Detail: "two edge cases"},
+		Compliance:     compliantResult(),
 		Roles: []runner.RoleReceipt{{
 			Role: "builder", Brief: "brief.md", Contract: "receipt.json",
 			Route: runner.RouteRecord{Asked: "runner:opencode", Ran: "runner:opencode", Model: "vendor/model-2026-10",
@@ -110,6 +111,28 @@ func TestATrialCarriesTheRoleReceiptsBothSidesUnchanged(t *testing.T) {
 	}
 }
 
+// compliantResult is a compliance result that ranks its copy: every examined
+// rule kept, and the network policy asserted, as for every copy.
+func compliantResult() *Compliance {
+	return &Compliance{Checks: []ComplianceCheck{
+		{Rule: RuleTestsKept, State: StateKept, Detail: "edited none of the 3 test file(s) the frozen commit holds"},
+		{Rule: RuleOwnCopyOnly, State: StateKept, Detail: "the copy's transcript names nothing in the run's clone store outside its own clone"},
+		{Rule: RuleNetworkPolicy, State: StateAsserted, Detail: "no runner reports what a copy reached on the network"},
+		{Rule: RuleIsolation, State: StateKept, Detail: "abcd launches the copy's runner in the copy's own clone"},
+	}}
+}
+
+// resultWith is compliantResult with rule in state.
+func resultWith(rule ComplianceRule, state ComplianceState) *Compliance {
+	c := compliantResult()
+	for i := range c.Checks {
+		if c.Checks[i].Rule == rule {
+			c.Checks[i].State = state
+		}
+	}
+	return c
+}
+
 // Decision 6: an outage before a copy starts is retried on the same pin and
 // never scored as the model's failure.
 func TestAnOutageBeforeStartIsNotStartedNeverFailed(t *testing.T) {
@@ -150,7 +173,7 @@ func TestAnOutageBeforeStartIsNotStartedNeverFailed(t *testing.T) {
 	}
 	// An unexamined copy is reported apart: neither a pass nor a failure.
 	u := fullTrial()
-	u.Status = StatusUnexamined
+	u.Status, u.Compliance = StatusUnexamined, resultWith(RuleOwnCopyOnly, StateUnexamined)
 	if u.validate() != nil || u.Failed() || u.Passed() {
 		t.Fatal("an unexamined trial is ranked")
 	}
@@ -166,7 +189,7 @@ func TestAnOutageBeforeStartIsNotStartedNeverFailed(t *testing.T) {
 // failure (the SOTA line: reject rule-breaking runs before ranking).
 func TestACopyTheComplianceCheckExcludedIsCountedApart(t *testing.T) {
 	c := fullTrial()
-	c.Status, c.Reason = StatusExcluded, "edited the hidden tests"
+	c.Status, c.Reason, c.Compliance = StatusExcluded, "edited the tests it was given", resultWith(RuleTestsKept, StateBroken)
 	if err := c.validate(); err != nil {
 		t.Fatalf("a compliance exclusion is refused: %v", err)
 	}
@@ -286,6 +309,9 @@ func TestAnUnscoredFailureNamesWhyAndWhen(t *testing.T) {
 		} {
 			tr := fullTrial()
 			tr.Status, tr.Score, tr.Reason = status, nil, "the runner answered unparsably"
+			if status == StatusExcluded {
+				tr.Compliance = resultWith(RuleTestsKept, StateBroken)
+			}
 			if err := tr.validate(); err != nil {
 				t.Fatalf("%s, unscored: %v", status, err)
 			}
