@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:874"
 remedy: "In 01-ahoy.md call the setup answers 'the answers file' (and the provenance and path-entry artefacts 'files') where no id or minting command makes them records, as glossary/core/record.md reserves the word; the uses are near lines 819, 961 and 973."
 finding_ref: cfk-d2fa072897f6c63c
+resolution: "01-ahoy.md now calls the setup answers, the path-entry file and the provenance it carries 'files', not 'records', as glossary/core/record.md reserves the word; a test in internal/core/ahoy holds the chapter to it."
+impact: internal
+resolved_by:
+  commit: "e0e311ebfe2f2c5198c7e2c005622c1e34c4cfc2"
 ---
 
 ahoy calls the setup answers file in the local tier an 'answers record'; the record entry says an artefact with no id and no minting command is not a record
@@ -23,3 +27,7 @@ A terminology drift (severity nitpick) found by the cross-document consistency p
 core/record reserves 'record' for an identified, filed document a command mints and a lint gate reads, and says a working-tier note or a local scratch file, having no id and no minting command, is not one. 01-ahoy calls the setup answers written into .abcd/.work.local/interviews/ an answers record, and its path-entry and provenance files records too, though none carries an id.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 310.
+
+## Grounds
+
+- pursued: the ahoy chapter writes no noun 'record' for an artefact with no id or minting command; a noun use of 'answers record', 'provenance record' or 'path-entry record' returning to 01-ahoy.md would show it wrong, and TestTheAhoyChapterCallsItsUnidentifiedArtefactsFiles fails on one.
