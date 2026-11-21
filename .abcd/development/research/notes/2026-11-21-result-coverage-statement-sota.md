@@ -220,8 +220,8 @@ the fit-challenge. Two of its findings bear on what this note says.
 
 ## Corrections from the final review
 
-A final review before landing reported the same day. Two of its findings
-correct the section above.
+Final reviews before landing reported the same day. These of their
+findings bear on this note.
 
 - The depth of model-judged work is read from what a run's state records
   for each judging run, and not from the review set. The set is fixed when a
@@ -230,8 +230,9 @@ correct the section above.
   drain's judge, which is asked for no class and no effort, is not in the
   set.
 - The serializer's package imports the docs lint's core, the outbound
-  scanner and the site's core directly, and reaches the cores of the launch preview and the
-  readiness gate through them. The conclusion stands for all four.
+  scanner and the site's core directly, and reaches the cores of the launch
+  preview and the readiness gate through them. The conclusion stands for
+  all four.
 - What this note calls standing exclusions is what the intent now calls the
   hand-written list of kinds a command is known not to look at. The intent
   keeps the word exclusions for what a command's code leaves out by a rule

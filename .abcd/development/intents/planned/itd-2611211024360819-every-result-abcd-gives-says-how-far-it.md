@@ -21,11 +21,12 @@ impact: additive
 _Drafted by the technical facilitator on 2026-11-21 from the reframing of an
 ideate verdict, and reworded the same day after two reviews. The product
 thinker read the promise in short form at the planning interview that day
-and let it stand. The criteria have since refined one sentence of it:
-where the host's agents did the judging, a result first names what a receipt
-on disk carries, and says abcd was not told for the rest (criterion 20).
-The text above is left as the product thinker read it, and the difference
-is flagged for them with the other refinements._
+and let it stand. The criteria have since refined it, and the introduction
+to the criteria lists each refinement: among them, where the host's agents
+did the judging a result first names what a receipt on disk carries
+(criterion 20), and where abcd starts a model and asks it for no class and
+no effort the result says none was asked (criterion 19). The text above is
+left as the product thinker read it._
 
 ## Why This Matters
 
@@ -141,7 +142,8 @@ explanation can raise trust in an answer whether or not the answer is right._
   the hooks call on their own behalf, is outside it.
 - abcd states only what its own code knows. What a run looked at comes from <!-- cond: cond-2611211659221816 -->
   the lists the command's code works through. What a command is known not to
-  look at is written by people, is never complete, and is labelled as known,
+  look at is in part what its code leaves out by a rule it reads and in part
+  a list written by people; it is never complete, and is labelled as known,
   not as the whole edge.
 - abcd makes no statement about whether an agent tested a claim or reasoned <!-- cond: cond-2611211659223612 -->
   its way to it.
@@ -163,15 +165,34 @@ them as eleven plain lines, six on what a person will see and five on what
 the work leaves alone, and let each stand. A plan review reported after the
 sign-off and found bars that could not be tested as written, and the final
 reviews before landing found more. The technical facilitator, on auto,
-tightened them the same day. Four things the product thinker read or
-answered are refined, none reversed, and each is flagged for them: a command
-that looks at nothing states that in place of a list (their line 4); work
-the host's agents judged shows what a receipt carries before it says abcd
-was not told (line 5); an option may also narrow or redirect what is looked
-at (line 11); and their answer that what a command is known not to look at
-shows only when nothing was found now covers two results, the clear one and
-the one that is clear except for gaps (decision 12). The four are queued
-for the product thinker's return.
+tightened them the same day. Some things the product thinker read or
+answered are refined, none reversed. Each is flagged here for them and
+queued for their return:
+
+- a result in which nothing was checked gives no verdict whatever the
+  reason, where their line 3 said nothing could be checked;
+- a command that looks at nothing states that in place of a list (their
+  line 4);
+- part of what a command is known not to look at is taken from the code,
+  where line 4 said people write that list: what the code leaves out by a
+  rule it reads joins the list written by hand, which is still never empty;
+- work the host's agents judged shows what a receipt carries before it says
+  abcd was not told (line 5);
+- work judged by a model abcd started says none was asked where abcd asked
+  for no class and no effort, as it does for the judge of a drain, where
+  line 5 had every such result name both;
+- an option may also narrow or redirect what is looked at (line 11);
+- their answer that what a command is known not to look at shows only when
+  nothing was found now covers two results, the clear one and the one that
+  is clear except for gaps (decision 12);
+- the promise names three parts of a result, and a fourth is shown beside
+  them: what this run left out of the command's own registry, and why (a
+  check the configuration did not arm, a check the host runs). A kind left
+  out this way does not make a result read as clear except for gaps, which
+  is kept for a check that could not be made. The line shows on every
+  result, so for a command whose configuration seldom changes it reads the
+  same from run to run, which is the cost their answer on decision 12
+  weighed for the other list.
 
 The words the criteria use:
 
@@ -197,8 +218,10 @@ The words the criteria use:
   way of running the command. It is a fact of one run, taken from the code.
 - A command's exclusions are what its code leaves out by a rule the code
   itself reads: a path a lint prunes, a class of finding a scanner filters
-  out. They are not kinds the command can look at, and they stand in every
-  run.
+  out. They are not kinds the command can look at, and each rule stands in
+  every run. Where a repository sets what a rule leaves out (the paths a
+  lint is told to exempt), the exclusion is the rule, named by where its
+  values are read from.
 - What a command is known not to look at is its exclusions, taken from the
   code, and a list written by hand beside the command. Both stand from run
   to run, and both are labelled as known.
@@ -206,16 +229,16 @@ The words the criteria use:
 - A gap is a check that could not be made in this run. The criteria do not
   use the word for a kind a command is known not to look at.
 - Recorded means the result's JSON form, and shown means its text.
-- In the depth line the number of runs is the number of judging runs the
-  drive's state records. Everywhere else a run is one execution of a
-  command.
+- In the depth line the number of runs is the number of judging runs, as a
+  drive's state or a receipt records them. Everywhere else a run is one
+  execution of a command.
 
 What counts as clear differs by command:
 
 | Command | Clear | Findings | Nothing checked |
 | --- | --- | --- | --- |
 | sweep, and the sweep abcd runs on its own | the run would act on nothing | it lists something it would act on | does not arise: a sweep that cannot read the repository refuses |
-| docs lint | no finding, with a check armed and a document read | a finding | no check armed, or no document |
+| docs lint | no finding, and at least one armed rule had something to read | a finding | no rule armed, or no armed rule had anything to read |
 | outbound lint | no finding in the text it scanned | a finding | does not arise: it refuses a text it cannot scan |
 | citation check | no claim rests on a confidential source | one does | the corpus holds no confidential source |
 | readiness gate | the intent is ready: every check that can withhold readiness passes | one of those checks fails | does not arise |
@@ -237,8 +260,9 @@ What a result says:
 - **Given** a declared command, **when** a run finishes on a fixture,
   **then** a test fails unless every kind in the command's registry is
   reported exactly once, as looked at, as left out in this run or as one
-  it could not check, and unless every other entry is one of the
-  command's exclusions or a kind on its hand-written list.
+  it could not check, and unless every other entry of what was not looked
+  at is one of the command's exclusions or a kind on its hand-written
+  list.
 - **Given** a declared command with a clear state, **when** its result is
   clear or clear except for gaps, **then** what is shown to a person names
   what was looked at beside the word for clear.
@@ -246,15 +270,17 @@ What a result says:
   not be read, a forge that did not answer, a program that is missing, a
   check that ran out of time), **when** the command reports, **then** the
   result records it as could not check.
-- **Given** an item listed as could not check, **when** it is recorded,
-  **then** it carries one reason from a closed set of reasons and a line of
-  text.
-- **Given** a result with no finding, in which something was looked at and
-  something could not be checked, **when** it is shown to a person, **then**
-  its summary reads as clear except for the gaps it names.
-- **Given** a result with no finding, in which something was looked at and
-  something could not be checked, **when** it is recorded, **then** the
-  statement marks it as clear except for gaps, apart from clear.
+- **Given** a check recorded as could not check, **when** the result is
+  read, **then** the entry carries one reason from a closed set of reasons
+  and a line of text.
+- **Given** a declared command with a clear state and a result with no
+  finding, in which something was looked at and something could not be
+  checked, **when** it is shown to a person, **then** its summary reads as
+  clear except for the gaps it names.
+- **Given** a declared command with a clear state and a result with no
+  finding, in which something was looked at and something could not be
+  checked, **when** it is recorded, **then** the statement marks it as
+  clear except for gaps, apart from clear.
 - **Given** a run in which nothing was checked, **when** the command
   reports, **then** the statement says nothing was checked and gives no
   verdict.
@@ -294,13 +320,13 @@ How hard a model looked:
 
 - **Given** a declared command that starts models itself to do the judging,
   **when** it reports, **then** for each judging role, by lane or by issue,
-  the result names the class each judging run ran at, the number of judging
-  runs and the effort each was asked for, as the drive's state recorded
-  them, and says so where abcd asked for none.
-- **Given** a declared command whose result includes a check the host's own
-  agents judge, **when** it reports, **then** for the class of model, the
-  number of runs and the effort it names what a receipt on disk carries and
-  says abcd was not told for the rest.
+  the result records and shows the class each judging run ran at, the
+  number of judging runs and the effort each was asked for, as the drive's
+  state recorded them, and says so where abcd asked for none.
+- **Given** a declared command whose result includes work the host's own
+  agents judged, **when** it reports, **then** for the class of model, the
+  number of runs and the effort it records and shows what a receipt on disk
+  carries, and says abcd was not told for the rest.
 
 What the binary says about a command:
 
@@ -349,9 +375,10 @@ other answer. Decisions 12 and 15 and the last sentence of decision 9 are
 the product thinker's, from the interview of 2026-11-21. A plan review
 reported after the intent was planned, and final reviews before landing.
 Decisions 2 to 6, 8, 10 and 12 to 14 were reworded for them and 16 to 19
-added, and the spec lists each major finding with what was done about it. Decision 12 is the product thinker's
-and its rewording is flagged for them: once a result that is clear except
-for gaps became a state of its own, their answer had to name both.
+added, and the spec lists each major finding with what was done about it.
+Decision 12 is the product thinker's and its rewording is flagged for them:
+their answer said when nothing was found, and did not say which of the two
+results with no finding it meant, so it now names both.
 
 1. No general switch for looking harder, and no result or help text claims
    completeness. The verdict's research found certainty unattainable, and both
@@ -495,16 +522,19 @@ for gaps became a state of its own, their answer had to name both.
     the number of judging runs and the effort each was asked for, from the
     records the lane's rounds hold. The number counts records: a reviewer
     handed out again within a round reuses its record and is counted once,
-    and a judge that could not be started is a gap and not a run. The
-    drain's judge is the one judging role the set does not list. It judges
+    and a round's judge that was not launched, or whose record was
+    withdrawn with a reviewer's, is not counted: the line counts what the
+    state holds. The drain's judge is the one judging role the set does
+    not list. It judges
     an issue's remedy before any lane exists, the drain's own state records
     it, and abcd asks it for no class and no effort, so the runner's default
-    applies: its line is keyed by issue, counts each judgement a runner
-    answered as one judging run and says of its class and effort that none
-    was asked. A judgement the host answered is the host's judging, and
-    the line says abcd was not told. A runner that did not give an answer
-    the drain could take, which that state keeps as a fallback, is a gap
-    and not a run. The other answer there was to start launching that
+    applies: its line is keyed by issue, counts each judgement a runner or
+    the decision adapter answered as one judging run and says of its class
+    and effort that none was asked. A judgement the host answered is the
+    host's judging, and the line says abcd was not told. A runner or an
+    adapter that did not give an answer the drain could take, which that
+    state keeps as a fallback, is a gap and not a run. The other answer
+    there was to start launching that
     judge at a class, which would change which model judges and is not this
     intent's to decide. The line gives the class and never the model's
     name. The opening text of a drive shows the set a run started then
@@ -531,9 +561,10 @@ for gaps became a state of its own, their answer had to name both.
     above the criteria. The drive of a drain has no clear state: it reports
     what its lanes did. The lines about a clear result therefore do not bind
     it, and its statement carries what it looked at, what it is known not to
-    look at, the gaps and the depth. A result with no verdict does not show
-    what the command is known not to look at either: it says nothing was
-    checked, and why.
+    look at, the gaps and the depth, and no verdict. Its text does not show
+    what it is known not to look at, which its help and its recorded result
+    carry. A result in which nothing was checked does not show that list
+    either: it says nothing was checked, and why.
 17. Recorded means the result's JSON form and shown means its text. Where a
     command writes files, a JSON file is recorded and a text file is shown:
     the launch report is one of each, and a log a person reads, as the
@@ -642,8 +673,8 @@ when a result shows what its command is known not to look at, in
 decision 12). The plan review that reported after the sign-off raised no
 question for the product thinker, and neither did the final reviews before
 landing. What they changed is in decisions 2 to 6, 8, 10, 12 to 14 and 16
-to 19, and four refinements are flagged in the introduction to the
-criteria._
+to 19, and the refinements of what the product thinker read or answered
+are flagged in the introduction to the criteria._
 
 ## Audit Notes
 
