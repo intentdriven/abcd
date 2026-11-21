@@ -727,8 +727,12 @@ func (k *asker) save() {
 // with the persons this copy found nothing more to do for there.
 const tipCacheDirRel = stateRelDir + "/release-pushes"
 
-// maxTipCacheBytes bounds what readTipCache reads.
-const maxTipCacheBytes = 16 << 10
+// maxTipCacheBytes bounds what readTipCache reads and what save writes. One
+// placement line is at most 81 bytes (a commit, a space, a login of up to 39
+// characters and a newline), so the placements of every commit a reading
+// walks (maxChainRead, 512) come to at most 41,472 bytes, and the rest is
+// room for the marks.
+const maxTipCacheBytes = 64 << 10
 
 // tipCache is what this copy kept for one release tip: what a record read in
 // full placed on each commit beneath it (read only by a reading, never by an
@@ -885,13 +889,40 @@ func (k *tipCache) endGaveUp(now time.Time) bool {
 	return !k.endFailed.IsZero() && now.Sub(k.endFailed) > lostWindow
 }
 
-// save writes what was kept, best effort: a file lost costs only an ask.
+// save writes what was kept, best effort: a file lost costs only an ask. The
+// file is held to maxTipCacheBytes, the bound readTipCache reads within: the
+// marks are written first, then the placements while they fit, and a
+// placement left out costs an ask of the forge as a lost file does.
 func (k *tipCache) save() {
 	if !k.changed || !isRelease(k.id) || !gitutil.IsFullSHA(k.tip) {
 		return
 	}
 	var b strings.Builder
 	b.WriteString(k.tip + "\n")
+	add := func(line string) {
+		if b.Len()+len(line)+1 <= maxTipCacheBytes {
+			b.WriteString(line + "\n")
+		}
+	}
+	logins := make([]string, 0, len(k.done))
+	for l := range k.done {
+		logins = append(logins, l)
+	}
+	slices.Sort(logins)
+	for _, l := range logins {
+		add("done " + l)
+	}
+	failed := make([]string, 0, len(k.failed))
+	for l := range k.failed {
+		failed = append(failed, l)
+	}
+	slices.Sort(failed)
+	for _, l := range failed {
+		add("failed " + l + " " + k.failed[l].Format(time.RFC3339))
+	}
+	if !k.endFailed.IsZero() {
+		add("end-failed " + k.endFailed.Format(time.RFC3339))
+	}
 	commits := make([]string, 0, len(k.kinds))
 	for c := range k.kinds {
 		commits = append(commits, c)
@@ -904,26 +935,7 @@ func (k *tipCache) save() {
 				word = w
 			}
 		}
-		b.WriteString(c + " " + word + "\n")
-	}
-	logins := make([]string, 0, len(k.done))
-	for l := range k.done {
-		logins = append(logins, l)
-	}
-	slices.Sort(logins)
-	for _, l := range logins {
-		b.WriteString("done " + l + "\n")
-	}
-	failed := make([]string, 0, len(k.failed))
-	for l := range k.failed {
-		failed = append(failed, l)
-	}
-	slices.Sort(failed)
-	for _, l := range failed {
-		b.WriteString("failed " + l + " " + k.failed[l].Format(time.RFC3339) + "\n")
-	}
-	if !k.endFailed.IsZero() {
-		b.WriteString("end-failed " + k.endFailed.Format(time.RFC3339) + "\n")
+		add(c + " " + word)
 	}
 	_ = writeUnflushedIn(k.root, tipCacheDirRel, k.id, []byte(b.String()))
 }
