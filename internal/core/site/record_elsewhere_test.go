@@ -377,9 +377,20 @@ func TestTheShippedHeaderMapNarrowsToItsNonRecordBlocks(t *testing.T) {
 // The filter holds for header maps shaped unlike the shipped one: a record
 // block whose own lines carry an indented comment loses every one of its
 // header lines, a CRLF map is read in paragraphs as an LF one is, and a map
-// whose last paragraph was a record block keeps its final newline.
+// whose last paragraph was a record block keeps its final newline. A record
+// block runs to the next path line, not the next blank line, so its lines
+// continued after a blank line go with it rather than staying behind for the
+// host to read as the kept path's above them.
 func TestTheNarrowedHeaderMapHoldsForOtherShapes(t *testing.T) {
 	for name, c := range map[string]struct{ in, want string }{
+		"a record block continued after a blank line": {
+			in:   "/site.css\n  A: 1\n\n/record/*\n  B: 2\n\n  C: 3\n\n/site.js\n  D: 4\n",
+			want: "/site.css\n  A: 1\n\n/site.js\n  D: 4\n",
+		},
+		"a record block continued past a blank line and a column-0 comment": {
+			in:   "# The map.\n/site.css\n  A: 1\n\n/record.json\n  B: 2\n\n# still the export\n  C: 3\n\n  E: 5\n\n# The script.\n/site.js\n  D: 4\n",
+			want: "# The map.\n/site.css\n  A: 1\n\n# The script.\n/site.js\n  D: 4\n",
+		},
 		"an indented comment inside a record block": {
 			in:   "/site.css\n  A: 1\n/record/*\n  B: 2\n  # a note\n  C: 3\n/site.js\n  D: 4\n",
 			want: "/site.css\n  A: 1\n/site.js\n  D: 4\n",

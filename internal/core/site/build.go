@@ -837,15 +837,18 @@ const (
 // dropped whole. Every other paragraph is kept byte for byte, the file's
 // opening comment included. As the host reads the map, an indented line
 // belongs to the path above it whatever comes between, so a record block
-// runs to the next path line and every indented line in it goes, an indented
-// comment included. A CRLF map is read as LF, and the map keeps its final
-// newline when its last paragraph was a record block's.
+// runs to the next path line, across blank lines and column-0 comments, and
+// every indented line in it goes, an indented comment included; a paragraph
+// left holding only such lines is dropped whole, as one holding the block's
+// path is. A CRLF map is read as LF, and the map keeps its final newline when
+// its last paragraph was a record block's.
 func withoutRecordHeaders(committed []byte) []byte {
 	text := strings.ReplaceAll(string(committed), "\r\n", "\n")
 	var kept []string
+	inRecord := false
 	for _, para := range strings.Split(text, "\n\n") {
 		var lines []string
-		paths, dropped, inRecord := 0, 0, false
+		paths, dropped := 0, 0
 		for _, line := range strings.Split(para, "\n") {
 			trimmed := strings.TrimSpace(line)
 			indented := trimmed != "" && (line[0] == ' ' || line[0] == '\t')
@@ -859,6 +862,7 @@ func withoutRecordHeaders(committed []byte) []byte {
 				}
 				paths++
 			case inRecord:
+				dropped++
 				continue
 			}
 			lines = append(lines, line)
