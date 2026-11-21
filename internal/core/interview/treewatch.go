@@ -1761,7 +1761,7 @@ func insideSymref(state string) bool {
 // symrefWhy is why a symbolic ref of each class but symrefInside, made or
 // changed, stops the interview.
 var symrefWhy = map[string]string{
-	symrefOutside:     "the pre-push gate takes a commit it holds as already on a remote, and git resolves it when the gate asks, so it holds whatever the next commit or stash puts there",
+	symrefOutside:     "the pre-push gate takes a commit it holds as already on a remote, and git resolves it when the gate asks, so it holds whatever the ref it names holds, a local branch's next commit or a stash included",
 	symrefReceiptless: "the pre-push gate judges it by its own name, not by the ref it names, so it takes a commit pushed there first, which needs no preflight, as already on a remote",
 	symrefElsewhere:   "the pre-push gate does not read it, but git follows it wherever the ref is read, and the role may make no symbolic ref but a remote's HEAD naming a branch of that remote the gate counts",
 }
@@ -1778,7 +1778,8 @@ func symrefWhat(k, state string) (what, where string) {
 	case kind == "link":
 		what = fmt.Sprintf("the link %s, leading to %s,", k, short(names))
 	case strings.HasPrefix(names, "past "):
-		what = fmt.Sprintf("the symbolic ref %s, %s and so not read,", k, names)
+		// Unread, so what it names is unknown: no class is claimed for it.
+		return fmt.Sprintf("the symbolic ref %s, %s and so not read,", k, names), where
 	default:
 		what = fmt.Sprintf("the symbolic ref %s, naming %s,", k, short(names))
 	}
