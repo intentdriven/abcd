@@ -572,7 +572,10 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   the assessment report of OWASP ASVS 5.0
   (<https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/0x04-Assessment_and_Certification.md>);
   E. W. Dijkstra's "The Humble Programmer" (EWD340,
-  <https://www.cs.utexas.edu/~EWD/transcriptions/EWD03xx/EWD340.html>); the
+  <https://www.cs.utexas.edu/~EWD/transcriptions/EWD03xx/EWD340.html>);
+  Cemri and others, "Why Do Multi-Agent LLM Systems Fail?"
+  (<https://arxiv.org/abs/2503.13657>), for how often agents verify too
+  little or wrongly; the
   skip reporting of pytest (<https://docs.pytest.org/en/stable/how-to/skipping.html>)
   and Semgrep, read from its source
   (<https://raw.githubusercontent.com/semgrep/semgrep/develop/cli/src/semgrep/output.py>);

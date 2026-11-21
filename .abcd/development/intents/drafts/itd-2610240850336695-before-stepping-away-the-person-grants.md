@@ -356,6 +356,14 @@ record of how each change landed instead of this draft's report.
   both were reviewed on 2026-10-24 and their findings are not yet applied.
 - Decision 21 depends on the fence for the person's own sessions, which
   itd-2610161621364075 names as its part B, a draft not yet filed.
+- What the facilitator setting arms with no grant (2026-11-21). A lab
+  (lab-261121170045-71e07e7) found that sessions wait with the technical
+  facilitator on auto, because every check hangs on the away record and
+  none on that setting. Whether the question gate refuses a technical
+  question under auto, when the chips that address the facilitator also
+  carry questions the command pages reserve to the person, is left to
+  this intent by iss-2611211700231699. iss-2611211733065807 builds on the
+  shipped route Decision 14 withdraws, and says so.
 
 ## Audit Notes
 

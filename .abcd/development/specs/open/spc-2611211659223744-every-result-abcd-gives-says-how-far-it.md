@@ -54,7 +54,9 @@ core, so every core can import it.
   (the configuration armed no such check), `nothing_to_read` (the check
   was armed and the run had nothing to read it against), `host_run` (the
   host's agents run it, not this command) and `other_run` (it is left to
-  another way of running the command). `exclusion` entries are the
+  another way of running the command). Where more than one cause applies,
+  the entry carries the first of `host_run`, `other_run`, `not_armed` and
+  `nothing_to_read`. `exclusion` entries are the
   command's exclusions, taken from the code. `listed` entries are the
   command's hand-written list. The last two stand in every run, and
   together they are what the command is known not to look at.
@@ -80,8 +82,9 @@ core, so every core can import it.
   at, the number of judging runs and the effort each was asked for. Each of
   the three is a value with where it came from (`run_state` or `receipt`),
   or is marked `not_told` (the host did the judging and no receipt says) or
-  `none_asked` (abcd started the run and asked for none, so the runner's
-  default applied).
+  `none_asked` (abcd started the run and asked for none). An entry whose
+  role ran no judging run gives the number, zero, and neither of the
+  others.
 
 A kind appears once: in `looked_at`, in `not_looked_at`, or as the kind of
 a `could_not_check` entry whose check stopped the kind being read at all. A
@@ -107,7 +110,9 @@ One renderer in the package produces the lines every command prints:
   every gap follows it in full.
 - `Judged by:` and one line for each depth entry: the role, the lane or the
   issue that keys it, the classes, the number of judging runs and the
-  effort, with not told and none asked said in words.
+  effort, with not told and none asked said in words. An entry with
+  no run says so. A drive's lines end with one more, which says the
+  numbers count the judging runs its state holds.
 - The summary line reads as clear except for the gaps when the verdict is
   `clear_except_gaps`. When the run looked at no kind it says nothing was
   checked, and why: the causes of what was left out, the reasons nothing
@@ -129,7 +134,9 @@ verdict a command records today keeps its value: the launch report's
 stands beside them. Where the two differ, as when a launch gate could not
 be measured and the report judges that as it does today, both are recorded
 and shown, the command's own first, and the statement changes neither the
-command's verdict nor its exit status.
+command's verdict nor its exit status. A command that refuses to run, or
+that ends in an error of its own, gives that as it does today, and no
+statement.
 
 ### The registry and the declaration
 
@@ -174,10 +181,16 @@ paths of their own. A registry a repository names (banned
 tokens, the confidential sources of a corpus) is named in help, explain and
 the generated files by where it is read from.
 
-Each flag a declared command registers itself and shows in its help is
-classified one of three ways (decision 19): it adds named kinds to what is
-looked at, it narrows or redirects what is looked at, or it changes nothing
-looked at. Inherited and hidden flags are not classified.
+Each flag a declared command's help shows is classified one of three ways
+(decision 19): it adds named kinds to what is looked at, it narrows or
+redirects what is looked at, or it changes nothing looked at. A flag the
+command inherits is classified too. One the root command registers is
+classified once, in the surface, and that entry stands in every
+declaration. One from any
+other parent is classified in the declaration of each declared command
+that shows it, as the citation check's corpus option is, which redirects
+what is looked at. A flag hidden from help is not classified, because no
+person is offered it.
 
 Tests:
 
@@ -192,7 +205,9 @@ Tests:
   or named in `internal/surface/cli/testdata/extent_undeclared.txt`, and not
   both. A ceiling in the test equals the length of that file, so a new name
   fails unless the ceiling is raised in the same change, where a reviewer
-  sees it (criteria 25 and 26).
+  sees it (criteria 25 and 26). A change that declares one command and
+  lists a new one keeps the length: the walk still makes it list the new
+  name, and the reviewer of that change sees it.
 - Each field of a declared command's recorded result that restates a member
   of the statement is named in
   `internal/surface/cli/testdata/extent_superseded_fields.txt`, one command
@@ -225,12 +240,18 @@ surface files generated from the command tree
 `docs/reference/cli/commands.md`), which change again whenever a later
 step adds the `--gaps` flag to a command.
 Explain's text names the kinds inside its limit of forty lines, and its
-JSON carries the whole declaration. The long help of a declared command
+JSON carries the whole declaration. Where a command's kinds do not fit,
+the text names as many as fit and says how many more the JSON carries,
+and the test of criterion 22 compares the help with the JSON. The long
+help of a declared command
 ends with a block generated from the same declaration, which labels the
 exclusions and the hand-written list as known. A test asserts that help
 and explain name the same kinds, that the block carries that label, and
 that no help text of a declared command contains the word everything
-(criteria 15, 21 and 22). The generated appendix of a surface chapter stays flags and sub-verbs,
+(criteria 15, 21 and 22). That test is stricter than criterion 21 on
+purpose: it refuses the word anywhere in a declared command's help, since
+a test cannot tell which use is meant. The generated appendix of a
+surface chapter stays flags and sub-verbs,
 as invariant 18 has it; the chapters' prose and the command pages are
 reworded in the same step as each command where they claim everything.
 
@@ -238,14 +259,14 @@ reworded in the same step as each command where they claim everything.
 
 | Command | Core | Registry | Registry kinds a run can leave out | Exclusions |
 | --- | --- | --- | --- | --- |
-| sweep | `internal/core/sweep` | worktrees, local branches, branches on origin, reservations, waiting reports (the five halves in `sweep.go`) | reservations, in a checkout with no origin (`nothing_to_read`) | the embargo store, a row kind the code names and never reads (`rows.go`) |
+| sweep | `internal/core/sweep` | worktrees, local branches, branches on origin, reservations, waiting reports (the five halves in `sweep.go`) | branches on origin and reservations, in a checkout with no origin (`nothing_to_read`) | the embargo store, a row kind the code names and never reads (`rows.go`) |
 | the sweep abcd runs on its own | `internal/core/sweep` (`Automatic`), `internal/core/implement/loop` (`AutoSweeper`) | the same registry | reservations and waiting reports, left to the sweep a person runs (`other_run`) | the same |
-| docs lint | `internal/core/lint` | the rules in `config.go` (`knownRules`), with the banned tokens a repository's configuration names | rules the configuration did not arm (`not_armed`); an armed rule the run gave nothing to read, as every rule fed only by the roots' documents is when the roots hold none (`nothing_to_read`) | the paths it prunes and fenced code; and, each named by where a repository sets it, exempt paths, exempt statuses, each rule's exempt globs and each banned token's allowed contexts |
+| docs lint | `internal/core/lint` | the rules in `config.go` (`knownRules`), with the banned tokens a repository's configuration names | rules the configuration did not arm (`not_armed`); an armed rule the run gave nothing to read, as every rule fed only by the roots' documents is when the roots hold none (`nothing_to_read`) | the paths it prunes and fenced code; and, each named by where a repository sets it, every exemption the configuration carries, among them exempt paths, prefixes and edges, exempt statuses, each rule's exempt globs, ignored steps, allow lists, the commands listed as host-delegated or operator-internal, and the allowed contexts of a rule and of each banned token |
 | outbound lint | `internal/adapter/scanner`, `internal/surface/cli/lint_outbound.go` | the two harness-leak kinds whose findings it keeps | none | every other class of finding its detectors raise, which it discards |
-| citation check | `internal/core/source` (`CiteCheck`) | the confidential sources of the corpus | none | one rule: a source's authors are left out unless its entry opts in (`ban_authors`) |
-| readiness gate | `internal/core/intent` (`ReadyWithQuestions`) | its nine checks, some of them advisory | none | none |
-| launch preview | `internal/core/launch` (`DryRun`) | the rows of its gates, and the lockstep, retention and bundle-rejection checks, which can refuse without a row | gates the repository has not armed (`not_armed`); the deep-smoke gate unless the run asks for it (`other_run`); the parity gate, and the deep-smoke gate when asked for, on an artefact that is not a plugin (`nothing_to_read`); the receipts gate, which the host runs (`host_run`, where the report spells its status `host-run`) | none |
-| drive of a drain | `internal/surface/cli/drain_drive.go`, `internal/core/implement/loop` | two kinds fixed in code: the open issues it read to choose its lanes, and the change each lane made | none | none |
+| citation check | `internal/core/source` (`CiteCheck`) | the confidential sources of the corpus, each named by its key alone, as the command reports them today, and never by title, alias or author | none | one rule: a source's authors are left out unless its entry opts in (`ban_authors`) |
+| readiness gate | `internal/core/intent` (`ReadyWithQuestions`) | its nine checks, some of them advisory | a check that reports unchecked, as two do for an intent with no linked spec, or not applicable, as several do for a record of a bucket they do not apply to (`nothing_to_read`) | none |
+| launch preview | `internal/core/launch` (`DryRun`) | the rows of its gates, and the lockstep, retention and bundle-rejection checks, which can refuse without a row | gates the repository has not armed (`not_armed`); the deep-smoke gate unless the run asks for it (`other_run`); the four gates that judge a plugin's payload (the installability smoke, the deep smoke when asked for, payload parity and hook compliance) on an artefact that is not a plugin (`nothing_to_read`, where the report spells their status `not_armed`); the receipts gate, which the host runs (`host_run`, where the report spells its status `host-run`) | what its scan never reads, because the bundle leaves it out by rule, one entry each: files no include pattern of the repository's names, named by where the patterns are set, files git ignores, and the denied namespaces |
+| drive of a drain | `internal/surface/cli/drain_drive.go`, `internal/core/implement/loop` | two kinds fixed in code: the open issues it read to choose its lanes, and the change each lane made | the change each lane made, when it took no lane (`nothing_to_read`) | none |
 
 The launch preview's citation gate reports the status `not_implemented`
 when the repository has not armed it. That status string stays as it is in
@@ -254,12 +275,14 @@ unbuilt, so the statement has no cause for one. The readiness gate's verdict
 follows its `ready` flag, and an advisory check that does not pass is
 reported as it is today.
 
-Two commands can look at no registry kind. A corpus with no confidential
+Two commands can look at no registry kind with no check failing. A corpus
+with no confidential
 source gives the citation check an empty registry, and its verdict is
 `none`. A docs lint whose roots hold no document, or which has no root,
 leaves out, with the cause `nothing_to_read`, every armed rule the run
 gave nothing to read. A rule that also reads elsewhere (extra roots, name
-roots, the repository's root, the agent prompts, the records) still runs
+roots, the roots' own directories, the repository's root, the agent
+prompts, the records) still runs
 there, as it does today, and is looked at. The verdict then follows the
 order above: `found` when such a rule found something, `none` when no rule
 read anything, and otherwise `clear`, with the left-out line naming the
@@ -274,13 +297,18 @@ The drive's two kinds carry one count each, as every looked-at entry does:
 how many of the open issues it read it took as lanes, and how many lanes
 made a change. A drive that took no lane leaves the second kind out, with
 the cause `nothing_to_read`. What it did with an issue it did not take is
-in its result as today (passed, flagged, held back, passed over or handed
-back), and the statement does not repeat it. How each lane was judged is
+in its result as today (passed, flagged, routed, parked, held back, passed
+over or handed back), and the statement does not repeat it. How each lane
+was judged is
 the depth entry, below.
 
 Sweep already fails closed: a check it could not make holds every item and
 is said once at the top. Those notes stay, and each also becomes a
-`could_not_check` entry.
+`could_not_check` entry. A checkout with no origin leaves the branches on
+origin and the reservations out, with the cause `nothing_to_read`. It
+stamps no fetch of the reservations, so the note that holds every
+worktree stands as one gap beside the worktrees. The waiting reports are
+read from abcd's inbox, with an origin or without.
 
 The sweep abcd runs on its own has no recorded result today:
 `loop.AutoSweeper` returns one line of text, which the loop keeps as
@@ -300,15 +328,23 @@ The set is fixed at the start, and the state holds what ran. For each lane
 the drive reads every round's validator records
 (`ValidationRound.Validators`: the role, and the class and the effort each
 reviewer was handed out at, after any move to another class) and the
-round's judge where one was started (`ValidationRound.Judge`). The number
-of runs counts those records: a reviewer handed out again within a round
-reuses its record and is counted once. A judge marked as not launched
-(its agent did not clear the calibration gate) counts no run, and its
-entry gives zero runs: nothing failed, so it is no gap. A judge whose
-record was dropped when a reviewer was withdrawn is not counted either,
-because the state no longer holds it, and the drive's hand-written list
-says so. A record with no class or effort, as in a run opened with no
-review set, is marked `none_asked`.
+round's judge where one was started (`ValidationRound.Judge`). A round
+writes all its validator records as it opens, from the set, and a
+reviewer is moved to another class only as it is handed out. So a
+validator record is a judging run once it holds a verdict, which is how
+the drain's own count of validators reads it (`drain.go`), and a judge's
+record once it has ruled. A record that holds neither is no run and no
+gap: one never handed out, one still out when the drive ended, one put
+back when its reviewer was withdrawn, and a judge marked as not launched
+because its agent did not clear the calibration gate. The lane's own
+entry in the result says where the lane was left. A reviewer handed out
+again within a round reuses its record and is counted once. A role with
+no run in a lane has an entry that gives zero runs and neither a class
+nor an effort. A judge whose record was dropped when a reviewer was
+withdrawn is not counted either, because the state no longer holds it,
+and the drive's hand-written list says so. A run's record with no class
+or effort, as in a run opened with no review set, is marked
+`none_asked`.
 
 The drain's judge (`RoleDrainJudge`) is recorded in the drain's own state
 and not in a lane's, because it judges an issue's remedy before any lane
@@ -318,11 +354,18 @@ decision adapter, which names a provider's model and no class; abcd asks
 neither for a class nor for an effort, so both are marked `none_asked`.
 A judgement with no route recorded is the host's answer: no receipt is
 kept for it, so all three values are marked `not_told` (criterion 20). A
-runner or an adapter that did not give an answer the drain could take is
-kept as a fallback receipt
+runner or an adapter that did not give an answer the drain could take
+leaves a fallback receipt for most failures
 (`DrainState.JudgeFallbacks`, the latest 32, which name the role and the
 reason and not the issue): each is a `could_not_check` entry and not a
-run. No field is added to any state. The line gives classes and never a model's name, and
+run, and step 6 maps its reason onto one of the five, with `check_failed`
+for one that fits no other. A rate limit, an error that is not a
+runner's failure and a judge stopped with the drain leave no receipt, so
+such an attempt is in no result, and the drive's hand-written list says
+so. Where the drain's state outlives one drive,
+the statement carries the judgements and the receipts recorded since
+this drive started, by their times. No field is added to any state. The
+line gives classes and never a model's name, and
 does not read the call record (itd-166). The drive's opening text shows the
 set a run started then would use; each run reads the set again, so a result
 can differ from that text.
@@ -396,7 +439,7 @@ stands, and the issue keeps the rest.
 | 20 what a receipt carries, not told for the rest | `depth` on the launch preview's receipts gate, and on a drain's judgement the host answered |
 | 21 help names the kinds and never everything | the generated help block and its test |
 | 22 explain names the same kinds | the facts carry the declaration; the same test |
-| 23 every flag is classified three ways | the declaration walk |
+| 23 every flag help shows is classified three ways | the declaration walk, over inherited flags too |
 | 24 identifiers do not change | the two golden files of identifiers |
 | 25 every command is declared or listed, not both | the walk over the command tree |
 | 26 the list cannot grow unseen | the ceiling in that test |
@@ -507,6 +550,32 @@ or was withdrawn; the decision adapter as a way the drain's judge is
 answered; the second spec that shares files with these steps; and the
 order of this spec against the issue on sweep's help.
 
+A fourth pair read the third fix pass. Both said fix first, on four major
+findings between them:
+
+| Finding | Done |
+| --- | --- |
+| 9 only the flags a command registers itself were classified, which narrowed a line the product thinker read without a flag and left the citation check's corpus option unclassified | every flag a declared command's help shows is classified, an inherited one included; a hidden flag stays exempt, and that is flagged in the introduction to the criteria |
+| 10 a round writes its reviewers' records as it opens, so counting records would count judging runs that never ran, at the review set's class | a record is a judging run once it holds a verdict, and a judge's once it has ruled; a role with no run gives zero and neither a class nor an effort; step 6 tests a lane handed back before any hand-out and one left mid-round |
+| 11 the first remedy for sessions that wait would refuse the questions the command pages reserve to the person, with nowhere to send them | the question gate is left as it is, and to the draft itd-2610240850336695, which designs what a session may answer alone; the remedy keeps the line every prompt carries |
+| 12 the decision on those issues said the drain can take them, which the repository's own drain rule refuses | the decision says what the rule takes: a session works the three majors by hand, and a build can take the fourth |
+
+Smaller findings of the fourth pair, each taken up: a confidential source
+named by its key alone; refinements of lines 2, 4, 5 and 10 flagged; the
+drive's rows in both tables; the docs lint's own warning beside the
+statement's verdict; an entry with no run, the reason of a fallback and
+the attempts that leave none; which judgements and receipts belong to one
+drive; the order of causes where two apply; the launch preview's four
+gates for a plugin's payload and what its bundle leaves out; the docs
+lint's exemptions, and its rule that reads the roots' directories; a
+readiness check that reports unchecked or not applicable; a sweep with no
+origin; the soft failure the docs lint's gap test means; the other open
+specs that share packages; step 3's packages and step 6's criteria; and
+the tests of the help's wording, of the list's ceiling and of explain's
+limit. Reading the record for finding 11 also showed that the same draft
+would withdraw the route a second of those remedies builds on, which that
+issue and the decision now say.
+
 ## Open Questions
 
 _All resolved at the spec build of 2026-11-21, by the technical facilitator
@@ -533,27 +602,27 @@ intent names, and is not a build step._
    - criteria: 13, 15, 21, 22, 23, 24, 25, 26, 27
    - needs: 1
    - packages: internal/core/surface, internal/surface/cli, internal/surface/cli/testdata, docs/reference/cli/commands, commands, .abcd/development/brief/04-surfaces/41-explain.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/surface/cli/extent_declaration_test.go: on fixture declarations, an empty hand-written list fails unless the command declares it looks at nothing; a flag with no class fails, and an inherited or hidden flag is not asked for; a way that is a flag on a wider command is a unit of its own. internal/surface/cli/extent_ratchet_test.go: a command path that is neither declared nor in the file fails; one that is both fails; a file longer than the ceiling fails; a retire-list entry that names no field of a declared command's result fails; the golden file of kinds and exclusions refuses a rename and admits an addition. internal/surface/cli/extent_help_test.go: help and explain name the same kinds, a registry a repository names is named by where it is read from, the help block labels the exclusions and the hand-written list as known, explain's text stays inside its line limit, and a help text holding the word everything fails
+   - tests: internal/surface/cli/extent_declaration_test.go: on fixture declarations, an empty hand-written list fails unless the command declares it looks at nothing; a flag with no class fails, an inherited one included; a flag the root command registers is classified once; a hidden flag is not asked for; a way that is a flag on a wider command is a unit of its own. internal/surface/cli/extent_ratchet_test.go: a command path that is neither declared nor in the file fails; one that is both fails; a file longer than the ceiling fails; a retire-list entry that names no field of a declared command's result fails; the golden file of kinds and exclusions refuses a rename and admits an addition. internal/surface/cli/extent_help_test.go: help and explain name the same kinds, a registry a repository names is named by where it is read from, the help block labels the exclusions and the hand-written list as known, explain's text stays inside its line limit, and a help text holding the word everything fails
 3. Sweep, and the sweep abcd runs on its own
    - criteria: 1, 2, 3, 4, 11, 14, 16, 17, 18, 28
    - needs: 1, 2
-   - packages: internal/core/sweep, internal/core/implement/loop, internal/surface/cli/sweep.go, internal/surface/cli/drain_drive.go, internal/surface/cli/extent_ratchet_test.go, internal/surface/cli/testdata, docs/reference/cli/commands, commands/sweep.md, .abcd/development/brief/04-surfaces/40-sweep.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/core/sweep/extent_test.go: on a fixture with no reservation and no waiting report both kinds are still named; a checkout with no origin leaves reservations out with the cause `nothing_to_read`; a failed process check, an unread reservation store, unread build runs and a forge that did not answer each give one gap with its reason: a gap whose check stopped a kind being read at all carries that kind, which is then in neither list, and any other gap stands beside a kind the run read; the embargo store is named as an exclusion; the sweep abcd runs on its own names the lists it worked through as looked at, and reservations and waiting reports as left out with the cause `other_run`; the run reports the registry exactly once. internal/surface/cli/sweep_extent_test.go: a clear run shows `Looked at:` and `Known not looked at:`, and a run that lists something leaves the second out and still records it; `--gaps` lists each gap; the exit statuses are those of today on every fixture. internal/core/implement/loop/autosweep_extent_test.go: the loop records the statement of the sweep abcd runs on its own on the record that holds its line, and the line lists every gap in full
+   - packages: internal/core/sweep, internal/core/implement/loop, internal/surface/cli/sweep.go, internal/surface/cli/sweep_auto_test.go, internal/surface/cli/drain_drive.go, internal/surface/cli/extent_ratchet_test.go, internal/surface/cli/testdata, docs/reference/cli/commands, commands/sweep.md, .abcd/development/brief/04-surfaces/40-sweep.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
+   - tests: internal/core/sweep/extent_test.go: on a fixture with no reservation and no waiting report both kinds are still named; a checkout with no origin leaves the branches on origin and the reservations out with the cause `nothing_to_read`, and carries the note that no fetch of the reservations is stamped as one gap beside the worktrees; a failed process check, an unread reservation store, unread build runs and a forge that did not answer each give one gap with its reason: a gap whose check stopped a kind being read at all carries that kind, which is then in neither list, and any other gap stands beside a kind the run read; the embargo store is named as an exclusion; the sweep abcd runs on its own names the lists it worked through as looked at, and reservations and waiting reports as left out with the cause `other_run`; the run reports the registry exactly once. internal/surface/cli/sweep_extent_test.go: a clear run shows `Looked at:` and `Known not looked at:`, and a run that lists something leaves the second out and still records it; `--gaps` lists each gap; the exit statuses are those of today on every fixture. internal/core/implement/loop/autosweep_extent_test.go: the loop records the statement of the sweep abcd runs on its own on the record that holds its line, and the line lists every gap in full; when it found nothing the line shows what sweep is known not to look at
 4. The two lints and the citation check
    - criteria: 1, 2, 3, 4, 8, 11, 14, 16, 17, 18, 28
    - needs: 1, 2, 3
    - packages: internal/core/lint, internal/adapter/scanner, internal/core/source, internal/surface/cli/cli.go, internal/surface/cli/lint_outbound.go, internal/surface/cli/source.go, internal/surface/cli/extent_ratchet_test.go, internal/surface/cli/testdata, docs/reference/cli/commands, commands/lint.md, commands/library.md, .abcd/development/brief/04-surfaces/16-lint.md, .abcd/development/brief/04-surfaces/07-library.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/core/lint/extent_test.go: a fixture with no rule armed gives the verdict `none` with every rule left out as `not_armed`; a fixture with only per-document rules armed and no document gives the verdict `none` with every armed rule left out as `nothing_to_read`; the same fixture with a rule armed that reads outside the roots names that rule as looked at, with the verdict `clear` when it finds nothing and `found` when it finds something; a fixture with no root behaves as one with no document; `nothing_checked` is unchanged in each; a pruned path is named as an exclusion; a repository's own banned token keeps its name; a check that failed is one gap; the run reports the registry exactly once. internal/surface/cli/lint_extent_test.go: both `none` fixtures exit 0 and say nothing was checked, with what was left out and why; a blocker from a rule that reads outside the roots still fails the run when `nothing_checked` is true; a clear run shows `Looked at:` and `Known not looked at:`, and a run with a finding leaves the second out and still records it; `--gaps` lists the gap. internal/core/source/extent_test.go: a clear check names the confidential sources read; a corpus with none gives the verdict `none`; the rule that leaves a source's authors out unless its entry opts in is named as one exclusion; the run reports the registry exactly once. internal/surface/cli/source_extent_test.go: the citation check's exit statuses are those of today, an unreadable corpus is refused as today with no statement, a corpus with no confidential source says nothing was checked because the registry held no kind, and a clear check shows both lines. internal/surface/cli/lint_outbound_extent_test.go: a clear scan names the two harness-leak kinds exactly once, shows both lines and names every other class of finding, which it discards, as one exclusion; a text it cannot scan is still refused
+   - tests: internal/core/lint/extent_test.go: a fixture with no rule armed gives the verdict `none` with every rule left out as `not_armed`; a fixture with only per-document rules armed and no document gives the verdict `none` with every armed rule left out as `nothing_to_read`; the same fixture with a rule armed that reads outside the roots names that rule as looked at, with the verdict `clear` when it finds nothing and `found` when it finds something; a fixture with no root behaves as one with no document; `nothing_checked` is unchanged in each; a pruned path is named as an exclusion; a repository's own banned token keeps its name; a directory the cross-store rule could not read, which that rule skips, is one gap, and a rule that fails outright ends the run with its error as today and no statement; the run reports the registry exactly once. internal/surface/cli/lint_extent_test.go: both `none` fixtures exit 0 and say nothing was checked, with what was left out and why; a blocker from a rule that reads outside the roots still fails the run when `nothing_checked` is true; a clear run shows `Looked at:` and `Known not looked at:`, and a run with a finding leaves the second out and still records it; `--gaps` lists the gap. internal/core/source/extent_test.go: a clear check names by key alone the confidential sources read; a corpus with none gives the verdict `none`; the rule that leaves a source's authors out unless its entry opts in is named as one exclusion; the run reports the registry exactly once. internal/surface/cli/source_extent_test.go: the corpus option the check inherits is classed as redirecting what is looked at; the citation check's exit statuses are those of today, an unreadable corpus is refused as today with no statement, a corpus with no confidential source says nothing was checked because the registry held no kind, and a clear check shows both lines. internal/surface/cli/lint_outbound_extent_test.go: a clear scan names the two harness-leak kinds exactly once, shows both lines and names every other class of finding, which it discards, as one exclusion; a text it cannot scan is still refused
 5. The readiness gate and the launch preview
    - criteria: 1, 2, 3, 4, 11, 14, 16, 17, 18, 20, 28
    - needs: 1, 2, 4
    - packages: internal/core/intent, internal/core/launch, internal/surface/cli/cli.go, internal/surface/cli/extent_ratchet_test.go, internal/surface/cli/testdata, docs/reference/cli/commands, commands/intent.md, commands/launch.md, .abcd/development/brief/04-surfaces/05-intent.md, .abcd/development/brief/04-surfaces/04-launch.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/core/intent/extent_test.go: a ready intent names each of the nine checks exactly once and `ready` is unchanged; an advisory check that does not pass changes neither `ready` nor the verdict. internal/surface/cli/ready_extent_test.go: a ready intent shows `Looked at:` and `Known not looked at:`; one that is not ready leaves the second out and still records it. internal/core/launch/extent_test.go: a gate the repository has not armed is left out with the cause `not_armed`, the citation gate among them with its status string unchanged; the deep-smoke gate is left out with the cause `other_run` unless the run asks for it, the parity gate with the cause `nothing_to_read` on an artefact that is not a plugin, and the receipts gate with the cause `host_run`; the lockstep, retention and bundle-rejection checks are each named exactly once; a gate that could not be measured is one gap; the receipts gate's depth entry marks all three values `not_told`, since a receipt on disk carries none of them today; the report's `verdict` is that of today; the run reports the registry exactly once. internal/surface/cli/launch_extent_test.go: a preview whose every gate passes shows both lines and the `Judged by:` line; `--gaps` lists the gap; the exit statuses are those of today
+   - tests: internal/core/intent/extent_test.go: a ready intent names each of the nine checks exactly once and `ready` is unchanged; a check that reports unchecked or not applicable is left out with the cause `nothing_to_read`; an advisory check that does not pass changes neither `ready` nor the verdict. internal/surface/cli/ready_extent_test.go: a ready intent shows `Looked at:` and `Known not looked at:`; one that is not ready leaves the second out and still records it. internal/core/launch/extent_test.go: a gate the repository has not armed is left out with the cause `not_armed`, the citation gate among them with its status string unchanged; the deep-smoke gate is left out with the cause `other_run` unless the run asks for it, the four gates that judge a plugin's payload, the deep smoke among them when asked for, with the cause `nothing_to_read` on an artefact that is not a plugin and their status string unchanged, and the receipts gate with the cause `host_run`; what the bundle leaves out by rule is named as three exclusions; the lockstep, retention and bundle-rejection checks are each named exactly once; a gate that could not be measured is one gap; the receipts gate's depth entry marks all three values `not_told`, since a receipt on disk carries none of them today; the report's `verdict` is that of today; the run reports the registry exactly once. internal/surface/cli/launch_extent_test.go: a preview whose every gate passes shows both lines and the `Judged by:` line; `--gaps` lists the gap; the exit statuses are those of today
 6. The drive of a drain
-   - criteria: 1, 2, 4, 11, 18, 19, 20, 28
+   - criteria: 1, 2, 4, 11, 14, 17, 18, 19, 20, 28
    - needs: 1, 2, 5
    - packages: internal/surface/cli/drain_drive.go, internal/surface/cli/drain.go, internal/core/implement/loop, internal/surface/cli/extent_ratchet_test.go, internal/surface/cli/testdata, docs/reference/cli/commands, commands/drain.md, .abcd/development/brief/04-surfaces/35-drain.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
-   - tests: internal/core/implement/loop/extent_test.go: from a drive's state on fake runners, for each lane and each judging role the depth entry gives the class each judging run ran at, the number of judging runs and the effort each was asked for; a reviewer moved to another class is named at the class it ran at; a lane with a fix round counts the runs of both rounds; a reviewer handed out again within a round is counted once; a round's judge is named as a judging role, and one that was not launched gives zero runs and no gap; the drain's judge is named by issue: a judgement a runner or the decision adapter answered is one judging run with class and effort marked `none_asked`, a judgement the host answered has all three values marked `not_told`, and a fallback receipt the drain's state keeps is one gap with its reason and not a run; the statement names both kinds exactly once, with how many open issues were taken as lanes and how many lanes made a change, and a drive that took none leaves the second kind out with the cause `nothing_to_read`; the statement carries no `verdict` member. internal/surface/cli/drain_drive_extent_test.go: the drive's result records the statement the loop returns, with the hand-written list on every run, which names a judging run the state no longer holds; its log follows the rules for what is shown, with one `Judged by:` line for each depth entry; `--gaps` lists each gap. internal/surface/cli/extent_ratchet_test.go: none of the seven first commands is on the undeclared list
+   - tests: internal/core/implement/loop/extent_test.go: from a drive's state on fake runners, for each lane and each judging role the depth entry gives the class each judging run ran at, the number of judging runs and the effort each was asked for; a reviewer moved to another class is named at the class it ran at; a lane with a fix round counts the runs of both rounds; a reviewer handed out again within a round is counted once; a lane whose round was opened and handed back before any reviewer was handed out gives zero runs for each role, with no class and no effort; a lane left mid-round counts only the reviewers that returned a verdict; a round's judge is named as a judging role, counted once it has ruled, and one that was not launched gives zero runs and no gap; the drain's judge is named by issue: a judgement a runner or the decision adapter answered is one judging run with class and effort marked `none_asked`, a judgement the host answered has all three values marked `not_told`, and a fallback receipt the drain's state keeps is one gap with its reason and not a run; the statement names both kinds exactly once, with how many open issues were taken as lanes and how many lanes made a change, and a drive that took none leaves the second kind out with the cause `nothing_to_read`; the statement carries no `verdict` member. internal/surface/cli/drain_drive_extent_test.go: the drive's result records the statement the loop returns, with the hand-written list on every run, which names a judging run the state no longer holds and a failed attempt of the drain's judge that left no receipt; its log follows the rules for what is shown, with one `Judged by:` line for each depth entry; `--gaps` lists each gap. internal/surface/cli/extent_ratchet_test.go: none of the seven first commands is on the undeclared list
 
 ## Size
 
@@ -569,6 +638,10 @@ statement has to be assembled where the core can return it. Another open
 spec, spc-2611141617199772, changes the same loop package,
 `drain_drive.go`, `internal/surface/cli/cli.go`, `commands/drain.md` and
 the drain chapter; whichever of it and steps 3 to 6 lands second is
-rebased on the first. Every step from 2 on also regenerates
+rebased on the first. Four more open specs name packages these steps
+change: spc-2611201455051897, spc-2611051628562376 and
+spc-2611042207343783 the loop package and the drain's surface, and
+spc-2611012047503720 the lint and launch packages. A build reserves its
+footprint as it starts and backs off where another holds a path. Every step from 2 on also regenerates
 `.abcd/development/release/surface.json` and `docs/reference/cli/commands.md`,
 which is one more reason they are built in order.

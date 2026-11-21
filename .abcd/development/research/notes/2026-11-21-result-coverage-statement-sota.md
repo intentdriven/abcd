@@ -233,7 +233,7 @@ findings bear on this note.
   scanner and the site's core directly, and reaches the cores of the launch
   preview and the readiness gate through them. The conclusion stands for
   all four.
-- What this note calls standing exclusions is what the intent now calls the
-  hand-written list of kinds a command is known not to look at. The intent
-  keeps the word exclusions for what a command's code leaves out by a rule
-  the code itself reads.
+- What this note calls standing exclusions is what the intent now calls
+  what a command is known not to look at, in its two parts: what the
+  command's code leaves out by a rule the code itself reads, for which the
+  intent keeps the word exclusions, and a list written by hand.

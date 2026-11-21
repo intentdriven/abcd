@@ -175,16 +175,36 @@ queued for their return:
   line 4);
 - part of what a command is known not to look at is taken from the code,
   where line 4 said people write that list: what the code leaves out by a
-  rule it reads joins the list written by hand, which is still never empty;
+  rule it reads joins the list written by hand, which is still never
+  empty. The line's label is known not looked at, the words of the example
+  they read;
 - work the host's agents judged shows what a receipt carries before it says
   abcd was not told (line 5);
 - work judged by a model abcd started says none was asked where abcd asked
   for no class and no effort, as it does for the judge of a drain, where
   line 5 had every such result name both;
 - an option may also narrow or redirect what is looked at (line 11);
+- an option hidden from help is not classified, where line 11 said each
+  option a command takes;
+- the list of commands not yet declared is held by a test that fails when
+  the list grows longer; a change that declares one command and lists
+  another keeps its length and is left to its reviewer, where line 10 said
+  the list can only get shorter;
 - their answer that what a command is known not to look at shows only when
   nothing was found now covers two results, the clear one and the one that
   is clear except for gaps (decision 12);
+- the drive of a drain has no clear state, so its result never reads as
+  clear or as clear except for gaps, and its text never shows what it is
+  known not to look at, which its help and its recorded result carry
+  (lines 2 and 4 name no exception);
+- the number of judging runs counts the runs that returned a verdict and
+  that the run's state still holds, which can be lower than the number
+  started (line 5);
+- the sweep abcd runs on its own lists every gap without being asked,
+  because no one can pass it a flag (line 2 has the full list on request);
+- where a command already gives a verdict of its own, that verdict is
+  shown first and keeps its meaning, so it can read as a pass above a
+  statement that is clear except for gaps (line 2);
 - the promise names three parts of a result, and a fourth is shown beside
   them: what this run left out of the command's own registry, and why (a
   check the configuration did not arm, a check the host runs). A kind left
@@ -243,14 +263,17 @@ What counts as clear differs by command:
 | citation check | no claim rests on a confidential source | one does | the corpus holds no confidential source |
 | readiness gate | the intent is ready: every check that can withhold readiness passes | one of those checks fails | does not arise |
 | launch preview | every gate it measured passes | a gate fails | does not arise |
-| drive of a drain | none: it reports what its lanes did | none | none |
+| drive of a drain | none: it reports what its lanes did | none | no state of its own: a drive that looked at no kind says so |
 
 A run that looked at no kind in its registry has checked nothing, whatever
 the reason (no check armed, nothing to read, or no kind could be read): it
 gives no verdict and says why, also where the table says the case does not
 arise. The readiness gate has advisory checks that never withhold
 readiness; one that does not pass is reported as it is today and changes
-neither the ready flag nor the verdict.
+neither the ready flag nor the verdict. The docs lint's own warning that
+nothing was checked keeps the narrower meaning it has today, that no rule
+fed by its roots read anything, and can stand beside a statement that is
+clear or lists findings.
 
 What a result says:
 
@@ -337,11 +360,11 @@ What the binary says about a command:
 - **Given** a declared command, **when** an agent asks the binary to
   explain the command, **then** the answer names the same kinds as the
   help.
-- **Given** a flag a declared command registers itself and shows in its
-  help, **when** the command tree is built, **then** a test fails unless the
-  declaration says of that flag what it adds to what is looked at, how it
-  narrows or redirects what is looked at, or that it changes nothing looked
-  at.
+- **Given** a flag a declared command's help shows, one it inherits
+  included, **when** the command tree is built, **then** a test fails unless
+  the declaration says of that flag what it adds to what is looked at, how
+  it narrows or redirects what is looked at, or that it changes nothing
+  looked at.
 - **Given** a kind of thing abcd defines, or a reason a check could not be
   made, **when** it appears in a recorded result, **then** it carries an
   identifier that is the same in every release.
@@ -351,7 +374,7 @@ How it is delivered:
 - **Given** the commands the binary's help lists, **when** the command tree
   is built, **then** a test fails unless each is declared or named in one
   committed list of commands not yet declared, and not both.
-- **Given** that committed list, **when** it gains a name, **then** a test
+- **Given** that committed list, **when** it grows longer, **then** a test
   fails.
 - **Given** a declared command whose recorded result has a field that
   restates a member of the statement (what was looked at, what was left out
@@ -377,8 +400,10 @@ reported after the intent was planned, and final reviews before landing.
 Decisions 2 to 6, 8, 10 and 12 to 14 were reworded for them and 16 to 19
 added, and the spec lists each major finding with what was done about it.
 Decision 12 is the product thinker's and its rewording is flagged for them:
-their answer said when nothing was found, and did not say which of the two
-results with no finding it meant, so it now names both.
+their answer said when nothing was found, and did not say which result
+with no finding it meant. It now names the clear one and the one that is
+clear except for gaps, and decision 16 settles the third, a result in
+which nothing was checked.
 
 1. No general switch for looking harder, and no result or help text claims
    completeness. The verdict's research found certainty unattainable, and both
@@ -520,23 +545,27 @@ results with no finding it meant, so it now names both.
     and a lane with a fix round runs its reviewers again. So for each lane
     and each judging role the line gives the class each judging run ran at,
     the number of judging runs and the effort each was asked for, from the
-    records the lane's rounds hold. The number counts records: a reviewer
-    handed out again within a round reuses its record and is counted once,
-    and a round's judge that was not launched, or whose record was
-    withdrawn with a reviewer's, is not counted: the line counts what the
-    state holds. The drain's judge is the one judging role the set does
-    not list. It judges
-    an issue's remedy before any lane exists, the drain's own state records
-    it, and abcd asks it for no class and no effort, so the runner's default
-    applies: its line is keyed by issue, counts each judgement a runner or
-    the decision adapter answered as one judging run and says of its class
-    and effort that none was asked. A judgement the host answered is the
+    records the lane's rounds hold. A round writes its reviewers' records
+    as it opens, from the set, so a record is a judging run only
+    once it holds a verdict, and a judge's once it has ruled: a reviewer
+    never handed out, one still out when the drive ended and a judge that
+    was not launched are no run. A reviewer handed out again within a
+    round reuses its record and is counted once, and a judge whose record
+    was withdrawn with a reviewer's is not counted: the line counts what
+    the state holds. The drain's judge is the one judging role the set
+    does not list. It judges an issue's remedy before any lane exists,
+    the drain's own state records
+    it, and abcd asks it for no class and no effort: its line is keyed by
+    issue, counts each judgement a runner or the decision adapter answered
+    as one judging run and says of its class and effort that none was
+    asked. A judgement the host answered is the
     host's judging, and the line says abcd was not told. A runner or an
-    adapter that did not give an answer the drain could take, which that
-    state keeps as a fallback, is a gap and not a run. The other answer
-    there was to start launching that
-    judge at a class, which would change which model judges and is not this
-    intent's to decide. The line gives the class and never the model's
+    adapter that did not give an answer the drain could take is a gap and
+    not a run where that state keeps a fallback for it; an attempt that
+    leaves none is in no result, which the drive's hand-written list says.
+    The other answer there was to start launching that judge at a class,
+    which would change which model judges and is not this intent's to
+    decide. The line gives the class and never the model's
     name. The opening text of a drive shows the set a run started then
     would use, and a result can differ from it. The record of what each
     call was asked for and served (itd-166) stays with the technical
@@ -585,10 +614,13 @@ results with no finding it meant, so it now names both.
 19. A flag is classified one of three ways: it adds to what is looked at, it
     narrows or redirects what is looked at, or it changes nothing looked at.
     A dry run that fetches nothing and a flag that points a lint at another
-    root are the second kind. Only the flags a command registers itself and
-    shows in its help are classified. The product thinker read this line
-    with two cases; the technical facilitator added the third, and it is
-    flagged for them.
+    root are the second kind. Every flag a declared command's help shows is
+    classified, one it inherits from a parent command included: the option
+    that points the citation check at another corpus is one. A flag hidden
+    from help is not classified, because no person is offered it. The
+    product thinker read this line with two cases and with every option;
+    the technical facilitator added the third case and the exemption of
+    hidden options, and both are flagged for them.
 
 The questions the pre-pass raised were settled without a question to the
 product thinker, each for the reason given: the exit status (decision 2), the
