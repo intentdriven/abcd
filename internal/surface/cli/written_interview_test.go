@@ -796,21 +796,31 @@ func TestIntentInterviewRoleChangingAnotherFileIsRefused(t *testing.T) {
 
 // TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused: what git
 // status does not list is watched too. A planning role that plants a git
-// hook, edits the git configuration, writes a push receipt into the local
-// tier or a sibling worktree's, repoints a sibling worktree's common
-// directory, or writes a gitignored file stops the interview, exit 1, naming
-// the path, with the answer given before it recorded and no readiness
-// reported.
+// hook, edits the git configuration, writes a push receipt into this
+// checkout's local tier (or where its receipts directory leads), repoints a
+// sibling worktree's common directory, or writes a gitignored file stops the
+// interview, exit 1, naming the path, with the answer given before it
+// recorded and no readiness reported. So does a role that makes the pre-push
+// gate accept this checkout's HEAD with no new preflight
+// (iss-2610040739124513): a receipt for HEAD in a sibling worktree's local
+// tier, or a remote-tracking ref planted at HEAD. A sibling worktree's
+// receipts for its own commits are a peer's own work (the interview
+// package's TestASiblingWorktreesOwnWorkDoesNotStopTheInterview).
 func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T) {
-	// laneToken in a case's path or body is the sibling worktree's path.
-	const laneToken = "{lane}"
+	// laneToken in a case's path or body is the sibling worktree's path;
+	// outsideToken in a case's path makes the checkout's receipts directory a
+	// link to a directory outside the tree, and stands for that directory;
+	// headToken in a case's path or body is HEAD's commit.
+	const laneToken, outsideToken, headToken = "{lane}", "{outside}", "{head}"
 	for _, c := range []struct{ name, path, body string }{
 		{"hook", ".git/hooks/pre-commit", "#!/bin/sh\nexit 0\n"},
 		{"config", ".git/config", "[core]\n\trepositoryformatversion = 0\n[alias]\n\tst = !sh -c true\n"},
 		{"receipt", ".abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
 		{"ignored", "build.log", "planted\n"},
-		{"sibling receipt", laneToken + "/.abcd/.work.local/preflight-receipts/0123456789abcdef0123456789abcdef01234567", "ok\n"},
+		{"receipt where the receipts directory leads", outsideToken + "/0123456789abcdef0123456789abcdef01234567", "ok\n"},
 		{"sibling commondir", ".git/worktrees/lane/commondir", laneToken + "-fake\n"},
+		{"sibling receipt for HEAD", laneToken + "/.abcd/.work.local/preflight-receipts/" + headToken, "commit " + headToken + "\n"},
+		{"remote-tracking ref at HEAD", ".git/refs/remotes/origin/planted", headToken + "\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			routeMachine(t, interview.RolePlanningInterviewer)
@@ -819,9 +829,31 @@ func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T
 			r := planningRepo(t)
 			r.Write(".gitignore", "*.log\n.abcd/.work.local/\n")
 			r.Commit("ignore")
-			lane := filepath.Join(t.TempDir(), "lane")
+			// The lane's path is its real one, as git lists it.
+			tmp, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			lane := filepath.Join(tmp, "lane")
 			r.Git("worktree", "add", "-q", "-b", "lane", lane)
 			c.path = strings.ReplaceAll(c.path, laneToken, filepath.ToSlash(lane))
+			head := r.Git("rev-parse", "HEAD")
+			c.path = strings.ReplaceAll(c.path, headToken, head)
+			c.body = strings.ReplaceAll(c.body, headToken, head)
+			if strings.Contains(c.path, outsideToken) {
+				outside, err := filepath.EvalSymlinks(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				tier := filepath.Join(r.Root(), ".abcd", ".work.local")
+				if err := os.MkdirAll(tier, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, filepath.Join(tier, "preflight-receipts")); err != nil {
+					t.Fatal(err)
+				}
+				c.path = strings.ReplaceAll(c.path, outsideToken, filepath.ToSlash(outside))
+			}
 			c.body = strings.ReplaceAll(c.body, laneToken, filepath.ToSlash(lane))
 			interviewStubAlso(t, script, 2, map[string]string{c.path: c.body})
 			stdout, stderr := tempStream(t, "stdout"), tempStream(t, "stderr")
@@ -832,14 +864,20 @@ func TestIntentInterviewRoleWritingWhereGitOrAPushRunsFromIsRefused(t *testing.T
 			cmd.SetOut(stdout)
 			cmd.SetErr(stderr)
 			cmd.SetArgs([]string{"intent", "interview", "itd-5", "--answers", planningAnswersFileQ1Q2(t)})
-			err := cmd.Execute()
+			err = cmd.Execute()
 			errText, _ := os.ReadFile(stderr.Name())
 			out, _ := os.ReadFile(stdout.Name())
 			if exitCodeOf(err) != 1 {
 				t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, errText)
 			}
-			if !strings.Contains(err.Error(), c.path) {
-				t.Fatalf("the refusal does not name %s: %v", c.path, err)
+			// A remote-tracking ref is named by its ref name, as the gate
+			// reads it, wherever git keeps it.
+			named := c.path
+			if ref, ok := strings.CutPrefix(c.path, ".git/"); ok && strings.HasPrefix(ref, "refs/remotes/") {
+				named = ref
+			}
+			if !strings.Contains(err.Error(), named) {
+				t.Fatalf("the refusal does not name %s: %v", named, err)
 			}
 			if strings.Contains(string(out), "READY") {
 				t.Fatalf("readiness was reported after the refusal:\n%s", out)
