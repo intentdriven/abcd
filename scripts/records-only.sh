@@ -34,7 +34,8 @@
 # 64 in a SHA-256 repository) naming a commit present here. Any other value, a
 # commit not present included, is the full run, so a caller that could not read
 # the tip passes a value such as `unverified` to say so. Unset or empty, the
-# local ref is read as below.
+# local ref is read as below. A value set by hand for a manual run is taken as
+# given: the script checks its shape and presence, not where it came from.
 set -uo pipefail
 
 # Every git here reads with replace refs, graft files and the commit-graph
