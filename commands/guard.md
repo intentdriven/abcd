@@ -1186,9 +1186,10 @@ spelling of the path, or by a command that names it as an operand (`tee p`),
 is not followed. A `ps` listing that reaches a kill is a search as `pgrep`
 is, through any filter or none (`ps aux | sed -n '/make/s/ .*//p' | xargs
 kill`, `ps -C make -o pid= | xargs kill`), and a **block** under
-`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`,
-`--ppid`) with no other selection beside them: `ps -o pid= -p 4242 | xargs
-kill` is not. A `ps` listing filtered by a name through `grep`, or an `awk`
+`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`)
+with no other selection beside them: `ps -o pid= -p 4242 | xargs kill` is not.
+`--ppid`, which lists every child of the pids it names, and BSD `T`, every
+process on the terminal, are selections like any other. A `ps` listing filtered by a name through `grep`, or an `awk`
 program that matches, is a search whatever the `ps` lists (`ps aux | grep make
 | awk '{print $2}' | xargs kill`, `ps aux | awk '/make/ {print $2}'`).
 Every command of a string a shell is handed with such output in its words is

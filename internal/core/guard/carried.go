@@ -1009,10 +1009,12 @@ func filtersProcessList(s segment) bool {
 }
 
 // psPinned reports whether a ps command with arguments args lists only the
-// processes the caller names by pid: a `-p`, `--pid`, `-q`, `--quick-pid` or
-// `--ppid` selection (attached, `=`-joined or in the next word, in a cluster
-// of short options too, and a BSD-style `p` word), and no other selection
-// beside it, since ps lists every process any selection names. With no
+// processes the caller names by pid: a `-p`, `--pid`, `-q` or `--quick-pid`
+// selection (attached, `=`-joined or in the next word, in a cluster of short
+// options too, and a BSD-style `p` word), and no other selection beside it,
+// since ps lists every process any selection names. `--ppid` selects every
+// child of the pids it names, and BSD `T` every process on the terminal, so
+// either is another selection. With no
 // selection at all ps lists the processes of its terminal, which is no pid
 // the caller named. A word the line does not fix can be any selection.
 func psPinned(args []string) bool {
@@ -1029,12 +1031,12 @@ func psPinned(args []string) bool {
 		if strings.HasPrefix(w, "--") {
 			name, _, joined := strings.Cut(w[2:], "=")
 			switch name {
-			case "pid", "quick-pid", "ppid":
+			case "pid", "quick-pid":
 				pinned = true
 			case "format", "sort", "cols", "columns", "rows", "width", "context":
 			case "":
 				continue
-			case "deselect", "user", "User", "group", "Group", "sid", "tty", "pgroup":
+			case "deselect", "user", "User", "group", "Group", "sid", "tty", "pgroup", "ppid":
 				return false
 			default:
 				continue
@@ -1055,11 +1057,11 @@ func psPinned(args []string) bool {
 			c := letters[j]
 			if bsd {
 				// BSD options: `p` takes pids, `U` and `t` a user or terminal,
-				// and `a`, `x`, `g` and `r` widen the listing.
+				// and `a`, `x`, `g`, `r` and `T` widen the listing.
 				switch {
 				case c == 'p':
 					pinned = true
-				case strings.IndexByte("Utaxgr", c) >= 0:
+				case strings.IndexByte("UtaxgrT", c) >= 0:
 					return false
 				}
 				if c == 'p' || c == 'U' || c == 't' || c == 'o' || c == 'O' {
