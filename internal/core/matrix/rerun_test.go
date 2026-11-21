@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
@@ -218,12 +219,18 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 	// A harness version a host reports is withheld only as far as its
 	// leading dotted number: a MAC, or a host name after the number, is
 	// still screened.
-	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local"} {
+	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local", "2.1.buildbox.local"} {
 		tr = codeTrial(t, rec, "host-big", 3+i, StatusPassed)
 		tr.HarnessVersion = v
 		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
 			t.Fatalf("writeTrial with the harness version %q = %v; want it refused by the network screen", v, err)
 		}
+	}
+	// A trial's unpinned names are screened as written.
+	tr = codeTrial(t, rec, "host-big", 6, StatusPassed)
+	tr.Unpinned = append(tr.Unpinned, oracle.Unpinned{Field: "buildbox.local", Reason: oracle.NotReported})
+	if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
+		t.Fatalf("writeTrial with a host name as an unpinned field = %v; want it refused by the network screen", err)
 	}
 }
 
@@ -255,12 +262,24 @@ func carriedRun(t *testing.T, edit func(dir string, rec *RunRecord)) (*gittest.R
 	return r, m, dir
 }
 
-// A carried run's record is screened for network kinds past its versions'
-// leading numbers alone: a MAC in a version field refuses it.
+// A carried run's record is screened for network kinds past what has a
+// version's, a digest's or abcd's own field name's shape alone: a MAC as a
+// version, a host name as a digest and an unpinned name abcd did not build
+// each refuse it.
 func TestARerunOfACarriedRunWithAnAddressInAVersionFieldIsRefused(t *testing.T) {
-	r, m, dir := carriedRun(t, func(_ string, rec *RunRecord) { rec.Binary.Version = "3c:22:fb:4a:9e:01" })
-	if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "carries a net:") {
-		t.Fatalf("a re-run of a carried run with a MAC as its binary's version = %v; want it refused by the network screen", err)
+	for name, edit := range map[string]func(*RunRecord){
+		"version": func(rec *RunRecord) { rec.Binary.Version = "3c:22:fb:4a:9e:01" },
+		"digest":  func(rec *RunRecord) { rec.Binary.SHA256 = "buildbox.local" },
+		"field": func(rec *RunRecord) {
+			rec.Unpinned = append(rec.Unpinned, oracle.Unpinned{Field: "buildbox.local", Reason: oracle.NotReported})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, m, dir := carriedRun(t, func(_ string, rec *RunRecord) { edit(rec) })
+			if _, err := loadRerun(r.Root(), m.ID, dir); err == nil || !strings.Contains(err.Error(), "carries a net:") {
+				t.Fatalf("a re-run of a carried run with an address in its %s = %v; want it refused by the network screen", name, err)
+			}
+		})
 	}
 }
 

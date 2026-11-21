@@ -768,8 +768,17 @@ var (
 
 // asVersion is v as the network screen reads a version: its leading dotted
 // number withheld and the rest of it kept, so 2.10.3.4 reads as nothing and
-// 2.1-buildbox.local still reads as a host name.
-func asVersion(v string) string { return versionCoreRe.ReplaceAllLiteralString(v, "") }
+// 2.1-buildbox.local still reads as a host name. A rest that starts with a
+// dot keeps v whole, since the number then begins a dotted name
+// (2.1.buildbox.local), and a name the scanner meets with a leading dot it
+// reads as a file's, not a host's.
+func asVersion(v string) string {
+	rest := versionCoreRe.ReplaceAllLiteralString(v, "")
+	if strings.HasPrefix(rest, ".") {
+		return v
+	}
+	return rest
+}
 
 // asDigest is v as the network screen reads a digest: emptied when it is hex,
 // read as it stands otherwise.
