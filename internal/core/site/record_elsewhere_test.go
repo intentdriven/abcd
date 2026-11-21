@@ -267,6 +267,43 @@ func TestAbcdsDocumentationSiteNamesItsRecordAtItsPagesAddress(t *testing.T) {
 	}
 }
 
+// abcd's own composed build, the one site.yml deploys to abcdev.app, built
+// from this tree as committed, ships none of the record: no export, no record
+// page, no chart script and no record header block. It keeps the landing
+// page and the contributors and references pages, and every file it writes
+// carries its headers. The deploy itself is seen only at the next release;
+// this is what that deploy will upload.
+func TestAbcdsComposedBuildShipsTheDocumentationAndNoneOfTheRecord(t *testing.T) {
+	out := t.TempDir()
+	res, err := Build(Request{RepoRoot: repoRoot(), OutDir: out, Stamp: fixtureStamp, LeaveUI: true})
+	if err != nil {
+		t.Fatalf("abcd's composed site does not build: %v", err)
+	}
+	written := map[string]bool{}
+	for _, name := range res.Files {
+		written[name] = true
+		if name == "record.json" || name == recordScriptOutRel || strings.HasPrefix(name, "record/") {
+			t.Errorf("abcd's composed build wrote %s, but its record is built at %s", name, abcdRecordAddress)
+		}
+	}
+	for _, page := range []string{"index.html", "contributors/index.html", "references/index.html"} {
+		if !written[page] {
+			t.Errorf("abcd's composed build wrote no %s", page)
+		}
+	}
+	blocks := parseHeaders(outFile(t, out, headersOutRel))
+	for _, b := range blocks {
+		if strings.HasPrefix(b.pattern, "/record") {
+			t.Errorf("abcd's composed _headers keeps a block for %s, a record path it does not serve", b.pattern)
+		}
+	}
+	for _, name := range res.Files {
+		if route, required, served := servedRoute(name); served {
+			assertHeaderCoverage(t, "abcd's composed _headers", blocks, route, required)
+		}
+	}
+}
+
 // With the forward switch on, the build writes its forwards above the
 // committed map, and every committed rule moves down in the built
 // `_redirects`. A link-target failure names site-src/redirects as the place
