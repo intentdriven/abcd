@@ -58,6 +58,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // reconstructSchemaVersion stamps both the artefact header and the telemetry
@@ -301,7 +302,7 @@ type Telemetry struct {
 // that is not there. A session whose MAIN THREAD is missing is not: it renders,
 // labelled, because that is the majority shape of the sub-agent corpus.
 func Reconstruct(repoRoot, rootSHA string, opts ReconstructOptions) (Reconstruction, error) {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return Reconstruction{}, errors.New(rootSHAErrMsg)
 	}
 	// The session id becomes a filename at the front door, so it is held to the

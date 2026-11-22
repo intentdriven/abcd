@@ -15,15 +15,16 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// rootSHARe is the immutable repo key: a lowercase hex commit SHA, 40 chars for
-// git's SHA-1 object format or 64 for SHA-256. Accepting only 40 made every
-// history verb (Capture/List/Read) fail for a SHA-256 repo, whose root SHA the
-// ahoy layer derives at 64 chars — mirrors the voyage-ledger key fix.
-var rootSHARe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+// The immutable repo key is the root commit's full object name, checked by
+// gitutil.IsFullSHA: a lowercase hex commit SHA, 40 chars for git's SHA-1 object
+// format or 64 for SHA-256. Accepting only 40 made every history verb
+// (Capture/List/Read) fail for a SHA-256 repo, whose root SHA the ahoy layer
+// derives at 64 chars, so the package keeps no private copy of the check
+// (iss-2610140813542607).
 
-// rootSHAErrMsg is the diagnostic for a value that fails rootSHARe; it names both
-// accepted widths so it cannot drift from the regex (which accepts SHA-256's 64
-// as well as SHA-1's 40).
+// rootSHAErrMsg is the diagnostic for a value that fails gitutil.IsFullSHA; it
+// names both accepted widths so it cannot drift from the check (which accepts
+// SHA-256's 64 as well as SHA-1's 40).
 const rootSHAErrMsg = "history: rootSHA must be a 40- or 64-character lowercase hex commit SHA"
 
 // sessionIDRe restricts a vendor session id to filesystem-safe characters so it

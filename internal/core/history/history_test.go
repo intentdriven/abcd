@@ -755,7 +755,7 @@ func TestCaptureStoresUnanchoredEntropyVerbatim(t *testing.T) {
 
 // TestCaptureRejectsBadRootSHAMessageNamesBothWidths pins the C3 fix: the
 // diagnostic for an invalid rootSHA names both accepted widths (40 and 64), so it
-// cannot drift from rootSHARe, which accepts SHA-256's 64 as well as SHA-1's 40.
+// cannot drift from gitutil.IsFullSHA, which accepts SHA-256's 64 as well as SHA-1's 40.
 func TestCaptureRejectsBadRootSHAMessageNamesBothWidths(t *testing.T) {
 	_, err := Capture(t.TempDir(), "not-a-sha", []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-x", Kind: "native"})
 	if err == nil {
