@@ -2770,13 +2770,27 @@ func simpleParamEnd(line string, i int) int {
 // plainParam reports whether the unbraced parameter line[j:k] (the `$` at
 // j) is a plain `$NAME` or positional `$1`: a name or a digit, not a special
 // parameter, with no subscript or modifier after it, both of which zsh reads
-// (`$a[@]`, `$v:h`).
+// (`$a[@]`, `$v:h`). A `:` that no modifier letter follows is text in bash
+// and zsh alike (`"$USER: "`).
 func plainParam(line string, j, k int) bool {
 	if name := line[j+1 : k]; !isName(name) && !allDigits(name) {
 		return false
 	}
-	return k >= len(line) || (line[k] != '[' && line[k] != ':')
+	switch {
+	case k >= len(line):
+		return true
+	case line[k] == '[':
+		return false
+	case line[k] == ':':
+		return k+1 >= len(line) || strings.IndexByte(zshModifiers, line[k+1]) < 0
+	}
+	return true
 }
+
+// zshModifiers are the characters that, after a `:` that follows an unbraced
+// parameter, zsh reads as a modifier rather than text (zshexpn(1),
+// Modifiers): `$v:h`, `$v:s/a/b/`, `$v:gs/a/b/`, `$v:&`.
+const zshModifiers = "aAcefFghlpPqQrstuwWx&"
 
 // isLength reports whether the body of a `${…}` is a length, `#` and a name
 // or a positional (`${#NAME}`, `${#1}`), which prints one number.

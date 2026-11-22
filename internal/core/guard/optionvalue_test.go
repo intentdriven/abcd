@@ -90,3 +90,31 @@ func TestGuardReadsAQuotedNumberParameterAsOneOptionValue(t *testing.T) {
 		`env -u "${#u}${a[@]}" opencode run x`: "agent-launch-opencode-config-env",
 	})
 }
+
+// TestGuardReadsAColonAfterAQuotedNameAsText: a `:` after a quoted `"$NAME"`
+// is text unless a zsh modifier letter follows it (zshexpn(1), Modifiers), so
+// `"$USER: "` is one word and, as the value of one of env's or sudo's
+// options, that option's value. A modifier is still read as possibly several
+// words, as the guard does not work out what each prints.
+func TestGuardReadsAColonAfterAQuotedNameAsText(t *testing.T) {
+	checkOptionValues(t, []string{
+		`sudo -p "Password for $USER: " claude -p x`,
+		`env -C "$d:/x" claude -p x`,
+		`env -u "$v:" opencode run x`,
+		`env -u "$v::" opencode run x`,
+		`env -u "$v:1" opencode run x`,
+		`env -u "$1: x" opencode run x`,
+	}, map[string]string{
+		`env -u "$v:h" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:t" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:A" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:Q" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:s/a/b c/" opencode run x`:     "agent-launch-opencode-config-env",
+		`env -u "$v:gs/a/b/" opencode run x`:      "agent-launch-opencode-config-env",
+		`env -u "$v:&" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:W: :u" opencode run x`:        "agent-launch-opencode-config-env",
+		`env -u "$1:h" opencode run x`:            "agent-launch-opencode-config-env",
+		`sudo -p "$USER: "$@ claude -p x`:         "agent-launch-claude-config-env",
+		`sudo -p "Password for $@: " claude -p x`: "agent-launch-claude-config-env",
+	})
+}
