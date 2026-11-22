@@ -69,6 +69,15 @@ the host's cap labelled "possibly forced by the cap"), records who ended it and
 from which working copy, and closes the record, on a record whose time has
 passed as on one that holds.
 
+**Reading it without ending it.** While the record holds, bare `abcd mode`
+prints a second line under the badge's state saying when the away mode ends
+and how many steps are queued, and its JSON carries both under `away`.
+Asking for the queue without naming a step lists the queued steps of a record
+not yet ended, one per line, oldest first, and writes nothing: it takes no
+lock and the away mode holds as before. With no record, or one already ended, it prints nothing. So
+the person, or a session, can read what waits without ending the mode to see
+it (iss-2611220942578412).
+
 **It grants no rights.** The person's own standing instruction stays what
 decides whether a session commits, pushes, or opens or merges a pull request.
 

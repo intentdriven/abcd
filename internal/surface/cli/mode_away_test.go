@@ -302,3 +302,112 @@ func TestModeBackEndsAnUnreadableRecord(t *testing.T) {
 		t.Errorf("after mode back the record holds: %+v", rec)
 	}
 }
+
+// TestBareModeShowsTheAwayRecord — iss-2611220942578412. While an away record
+// holds, bare `abcd mode` prints the badge's state and, on a second line, when
+// the away mode ends and how many steps are queued; --json carries both under
+// "away". With no record holding it prints the state alone, as before.
+func TestBareModeShowsTheAwayRecord(t *testing.T) {
+	root := awayCheckout(t)
+	if out := string(runCLI(t, "mode")); out != "managed\n" {
+		t.Fatalf("mode while present = %q, want %q", out, "managed\n")
+	}
+	if _, err := runCLIErr(t, "mode", "autonomous", "--until", "09:00"); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []string{"push feat/x", "merge #12"} {
+		if _, err := runCLIErr(t, "mode", "queue", step); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ends := readAway(t, root).Ends()
+	out := string(runCLI(t, "mode"))
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 2 || lines[0] != "managed" {
+		t.Fatalf("mode while away printed:\n%s\nwant the state, then the away line", out)
+	}
+	for _, want := range []string{"away until " + ends.Local().Format("2006-01-02 15:04 MST"), "2 queued"} {
+		if !strings.Contains(lines[1], want) {
+			t.Errorf("the away line %q misses %q", lines[1], want)
+		}
+	}
+	var got struct {
+		State string `json:"state"`
+		Away  *struct {
+			Until     time.Time `json:"until"`
+			OpenEnded bool      `json:"open_ended"`
+			Queued    int       `json:"queued"`
+		} `json:"away"`
+	}
+	if err := json.Unmarshal(runCLI(t, "mode", "--json"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.State != "managed" || got.Away == nil || got.Away.Queued != 2 || !got.Away.Until.Equal(ends) || got.Away.OpenEnded {
+		t.Errorf("mode --json while away = %+v (away %+v)", got, got.Away)
+	}
+
+	runCLI(t, "mode", "back")
+	if out := string(runCLI(t, "mode")); out != "managed\n" {
+		t.Errorf("mode after mode back = %q, want %q", out, "managed\n")
+	}
+	var after map[string]json.RawMessage
+	if err := json.Unmarshal(runCLI(t, "mode", "--json"), &after); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := after["away"]; has {
+		t.Errorf("mode --json after mode back carried away: %s", after["away"])
+	}
+}
+
+// TestBareModeQueueListsTheSteps — iss-2611220942578412. Bare `abcd mode
+// queue` prints each step queued in the record, one per line, oldest first,
+// and writes nothing: the record is unchanged and the away mode still holds.
+// With no record it prints nothing and exits 0.
+func TestBareModeQueueListsTheSteps(t *testing.T) {
+	root := awayCheckout(t)
+	stdout, stderr, err := runSplit(t, "", "mode", "queue")
+	if err != nil || stdout != "" {
+		t.Fatalf("mode queue with no record: stdout %q, err %v\n%s", stdout, err, stderr)
+	}
+	if _, err := runCLIErr(t, "mode", "autonomous"); err != nil {
+		t.Fatal(err)
+	}
+	steps := []string{"approve the embargo close", "push feat/x"}
+	for _, step := range steps {
+		if _, err := runCLIErr(t, "mode", "queue", step); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := awayStore(t, root).RecordPath()
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err = runSplit(t, "", "mode", "queue")
+	if err != nil {
+		t.Fatalf("mode queue: %v\n%s", err, stderr)
+	}
+	if want := strings.Join(steps, "\n") + "\n"; stdout != want {
+		t.Errorf("mode queue printed %q, want %q", stdout, want)
+	}
+	var got struct {
+		Queued int      `json:"queued"`
+		Steps  []string `json:"steps"`
+	}
+	if err := json.Unmarshal(runCLI(t, "mode", "queue", "--json"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Queued != 2 || strings.Join(got.Steps, "|") != strings.Join(steps, "|") {
+		t.Errorf("mode queue --json = %+v", got)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Error("bare mode queue changed the away record")
+	}
+	if !readAway(t, root).Holds(time.Now()) {
+		t.Error("bare mode queue ended the away mode")
+	}
+}

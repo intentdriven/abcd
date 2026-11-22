@@ -407,8 +407,8 @@ var sentences = map[string]string{
 		"Writes the away record; refuses an end already past or past seven days.",
 	"abcd mode back": "End the away mode, printing what was queued and recorded one line each: " +
 		"Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
-	"abcd mode queue": "Queue one step for the person's return while they are away: " +
-		"Writes the away record; refuses when no away record holds.",
+	"abcd mode queue": "Queue one step for the person's return while away, or list the queue bare: " +
+		"Writes nothing bare, only the away record; refuses a step when no away record holds.",
 
 	"abcd peers": "List what peers hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",

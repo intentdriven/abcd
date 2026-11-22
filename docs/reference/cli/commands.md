@@ -5740,7 +5740,9 @@ Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody
 is waiting), `facilitator` (the loop is parked on the facilitator, the person
 at the terminal running the agents), or `product-thinker` (the loop is parked
 on the product thinker, who answers on a surface of their own). An absent
-store reads as `managed`.
+store reads as `managed`. While an away record holds, a second line says when
+the away mode ends and how many steps are queued; --json carries both under
+`away`, absent otherwise.
 
 `abcd mode <state>` sets it. Two writers share the verb: the agent runs it
 when it stops for a verdict other than a question, naming whom it is
@@ -5769,8 +5771,9 @@ and nothing is written on any of them.
 
 The away mode sits beside the badge, not as a fourth word: `abcd mode
 autonomous [--until <time>] [--hold-pushes]` records that the person is away,
-`abcd mode queue "<step>"` keeps a step for their return, and `abcd mode back`
-ends it and prints what was queued and recorded. While it holds, setting
+`abcd mode queue "<step>"` keeps a step for their return, bare `abcd mode
+queue` lists what is queued and writes nothing, and `abcd mode back` ends it
+and prints what was queued and recorded. While it holds, setting
 `product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:
 a stop parked on a person who is away is a question nobody answers. The away
 mode grants no rights; the person's standing instruction decides what is pushed.
@@ -5857,17 +5860,23 @@ abcd mode back
 
 #### `abcd mode queue`
 
-Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.
+Queue one step for the person's return while away, or list the queue bare: Writes nothing bare, only the away record; refuses a step when no away record holds.
 
-**Usage:** `abcd mode queue <step>`
+**Usage:** `abcd mode queue [<step>]`
 
 Queue one step for the person's return, while the away mode holds: an act only
 the person may approve, which a session queues instead of asking, then carries on
 with other work. `abcd mode back` prints each queued step on one line.
 
-Exit 2 when no away record holds (ask the person instead), on an empty step or one
-over 500 characters, when the queue is full (it is never cut), and when the record
-or its lock is not safely this account's, with nothing written. No network request.
+Bare `abcd mode queue` lists the steps queued in a record not yet ended, one per
+line, oldest first, and writes nothing: the away mode holds as before. With no
+record, or one already ended, it prints nothing. With --json it carries the count
+and the steps.
+
+Queuing a step exits 2 when no away record holds (ask the person instead), on an
+empty step or one over 500 characters, and when the queue is full (it is never
+cut); either form exits 2 when the record or its lock is not safely this account's.
+Nothing is written on any refusal. No network request.
 
 **Example:**
 

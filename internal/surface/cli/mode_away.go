@@ -41,9 +41,16 @@ type backOutput struct {
 	Notes []string `json:"notes,omitempty"`
 }
 
-// queueOutput is the --json envelope of `abcd mode queue`.
+// queueOutput is the --json envelope of `abcd mode queue "<step>"`.
 type queueOutput struct {
 	Queued int `json:"queued"`
+}
+
+// queueListOutput is the --json envelope of bare `abcd mode queue`, which
+// lists the queue and writes nothing.
+type queueListOutput struct {
+	Queued int      `json:"queued"`
+	Steps  []string `json:"steps"`
 }
 
 // newModeAutonomousCommand builds `abcd mode autonomous`, the front door onto
@@ -162,21 +169,29 @@ func newModeBackCommand(asJSON *bool) *cobra.Command {
 }
 
 // newModeQueueCommand builds `abcd mode queue "<step>"`, the front door onto
-// autonomy.QueueStep.
+// autonomy.QueueStep, and bare `abcd mode queue`, which lists the queue.
 func newModeQueueCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use: "queue <step>",
+		Use: "queue [<step>]",
 		Long: "Queue one step for the person's return, while the away mode holds: an act only\n" +
 			"the person may approve, which a session queues instead of asking, then carries on\n" +
 			"with other work. `abcd mode back` prints each queued step on one line.\n\n" +
-			"Exit 2 when no away record holds (ask the person instead), on an empty step or one\n" +
-			"over 500 characters, when the queue is full (it is never cut), and when the record\n" +
-			"or its lock is not safely this account's, with nothing written. No network request.",
-		Args: cobra.ExactArgs(1),
+			"Bare `abcd mode queue` lists the steps queued in a record not yet ended, one per\n" +
+			"line, oldest first, and writes nothing: the away mode holds as before. With no\n" +
+			"record, or one already ended, it prints nothing. With --json it carries the count\n" +
+			"and the steps.\n\n" +
+			"Queuing a step exits 2 when no away record holds (ask the person instead), on an\n" +
+			"empty step or one over 500 characters, and when the queue is full (it is never\n" +
+			"cut); either form exits 2 when the record or its lock is not safely this account's.\n" +
+			"Nothing is written on any refusal. No network request.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
+			}
+			if len(args) == 0 {
+				return listQueue(cmd.OutOrStdout(), *asJSON, cwd)
 			}
 			rec, err := autonomy.QueueStep(cwd, args[0], autonomy.Options{})
 			if err != nil {
@@ -188,6 +203,32 @@ func newModeQueueCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+}
+
+// listQueue is bare `abcd mode queue`: the steps queued in a record not yet
+// ended (one that holds, or one whose time passed before `abcd mode back`
+// read it), one per line, with nothing written and no lock taken.
+func listQueue(w io.Writer, asJSON bool, cwd string) error {
+	_, st, err := autonomy.Resolve(cwd, autonomy.Options{})
+	if err != nil {
+		return awayRefusal("queue", err)
+	}
+	rec, err := st.Read()
+	if err != nil {
+		return awayRefusal("queue", err)
+	}
+	out := queueListOutput{Steps: []string{}}
+	if rec != nil && rec.Closed == nil {
+		for _, q := range rec.Queue {
+			out.Steps = append(out.Steps, termsafe.CleanProseLine(q.Step, autonomy.MaxStepLen*4))
+		}
+	}
+	out.Queued = len(out.Steps)
+	return render(w, asJSON, out, func(w io.Writer) {
+		for _, s := range out.Steps {
+			fmt.Fprintln(w, s)
+		}
+	})
 }
 
 func whoWords(name string) string {
