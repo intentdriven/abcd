@@ -64,6 +64,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -161,15 +162,89 @@ func landSubject(st State, lane Lane) string {
 }
 
 // recordsMessage is the records commit's message: its subject, one line saying
-// what the landing did, and its trailers, one to a line.
+// what the landing did, and its trailers, one to a line. A run with members
+// (itd-2611201450052326) says it is the landing of a bundle and names its
+// lead and every member, resolved or handed back alone, in prose and never as
+// a trailer (bundleProse); a run without members writes what it wrote before.
 func recordsMessage(st State, lane Lane, done, trailers []string) string {
 	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
 	if iss := st.Issue(); iss != "" {
 		what = iss
 	}
+	if st.hasMembers() {
+		what = "the bundle led by " + st.Key
+	}
 	return landSubject(st, lane) + "\n\n" +
 		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
+		bundleProse(st) +
 		strings.Join(trailers, "\n") + "\n"
+}
+
+// bundleProse is the records commit's paragraph on a run with members: that it
+// is the landing of a bundle, its lead, its members, and each issue handed
+// back alone, which it does not resolve. "" for a run without members.
+func bundleProse(st State) string {
+	if !st.hasMembers() {
+		return ""
+	}
+	members := make([]string, len(st.Bundle))
+	for i, m := range st.Bundle {
+		members[i] = m.Issue
+	}
+	s := fmt.Sprintf("This is the landing of a bundle of %d issues of one kind in one place: its lead is %s, and its members are %s.",
+		len(st.Bundle)+1, st.Key, andList(members))
+	switch alone := aloneIDs(st); {
+	case len(alone) == 1:
+		s += " " + alone[0] + " was handed back alone and is not resolved here."
+	case len(alone) > 1:
+		s += " " + andList(alone) + " were handed back alone and are not resolved here."
+	}
+	return s + "\n\n"
+}
+
+// aloneIDs is each issue of a run with members handed back alone, the lead
+// first, then each member in order.
+func aloneIDs(st State) []string {
+	var out []string
+	if st.LeadHandBack != nil {
+		out = append(out, st.Key)
+	}
+	for _, m := range st.Bundle {
+		if m.HandBack != nil {
+			out = append(out, m.Issue)
+		}
+	}
+	return out
+}
+
+// resolutionTrailers are the records commit's and the pull request's lines
+// after its delivery: a `Resolves:` for each resolution the lane carries, a
+// `Refs:` for each issue of a run with members handed back alone
+// (aloneRefs), and the admission's lines.
+func resolutionTrailers(st State, lane Lane) []string {
+	var out []string
+	for _, r := range lane.Resolves {
+		out = append(out, "Resolves: "+r.Issue)
+	}
+	var admitted []string
+	if st.Admitted != nil {
+		admitted = admittedTrailers(*st.Admitted, lane.Resolves)
+	}
+	return append(append(out, aloneRefs(st, admitted)...), admitted...)
+}
+
+// aloneRefs is a `Refs:` line for each issue of a run with members handed
+// back alone, so every record id the landing's text names carries a trailer,
+// leaving out one the admission's lines (admitted) already declare. A run
+// without members has none.
+func aloneRefs(st State, admitted []string) []string {
+	var out []string
+	for _, id := range aloneIDs(st) {
+		if line := "Refs: " + id; !slices.Contains(admitted, line) {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // composedRecordsMessage is the whole message of a records commit under abcd's
@@ -189,6 +264,7 @@ func composedRecordsMessage(st State, lane Lane) string {
 	if st.Admitted != nil {
 		trailers = admittedTrailers(*st.Admitted, lane.Resolves)
 	}
+	trailers = append(aloneRefs(st, trailers), trailers...)
 	return recordsMessage(st, lane, done, append(trailers, composedAssistedBy()))
 }
 
@@ -606,9 +682,8 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			wrote = true
 			done = append(done, "resolved "+r.Issue+" with "+shortSHA(r.Commit))
 		}
-		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
-	trailers = append(trailers, admittedTrailers(*st.Admitted, lane.Resolves)...)
+	trailers = append(trailers, resolutionTrailers(st, *lane)...)
 	if beforeLandingStage != nil {
 		beforeLandingStage(wt)
 	}
@@ -1806,12 +1881,7 @@ func foundTrailersLack(c Context, lane Lane, tip, raw string, delivers bool) (st
 	if delivers {
 		want = append(want, "Delivers: "+st.Intent)
 	}
-	for _, r := range lane.Resolves {
-		want = append(want, "Resolves: "+r.Issue)
-	}
-	if st.Admitted != nil {
-		want = append(want, admittedTrailers(*st.Admitted, lane.Resolves)...)
-	}
+	want = append(want, resolutionTrailers(st, lane)...)
 	composed := !ld.Closes && len(lane.Resolves) == 0 && !ld.SpecSettled
 	if composed && raw != "" {
 		only, err := rawOnlyTheMark(c.RepoRoot, st.Spec, raw, shortSHA(lane.HeadSHA))
@@ -2390,10 +2460,76 @@ func findPR(c Context, lane Lane) (*openPR, error) {
 // the body describes carries those models' work and a squash merge may adopt
 // the body as its message (ruling R4, the technical facilitator, 2026-10-02).
 func prTitle(st State, lane Lane) string {
+	if st.hasMembers() {
+		return bundleTitle(st, lane)
+	}
 	if iss := st.Issue(); iss != "" {
 		return fmt.Sprintf("fix(%s): %s", iss, lane.StepTitle)
 	}
 	return fmt.Sprintf("build(%s): %s, step %d of %s", st.Intent, lane.StepTitle, lane.SpecStep, st.Spec)
+}
+
+// bundleTitle is the pull request's title for a run with members: its area,
+// then how many issues it resolves and the first of them, for example
+// `fix(.abcd/development/brief/04-surfaces): 4 issues, iss-A and 3 more`.
+func bundleTitle(st State, lane Lane) string {
+	resolved := resolvedIDs(st, lane)
+	switch len(resolved) {
+	case 0:
+		return fmt.Sprintf("fix(%s): the bundle led by %s", bundleArea(st), st.Key)
+	case 1:
+		return fmt.Sprintf("fix(%s): 1 issue, %s", bundleArea(st), resolved[0])
+	}
+	return fmt.Sprintf("fix(%s): %d issues, %s and %d more", bundleArea(st), len(resolved), resolved[0], len(resolved)-1)
+}
+
+// resolvedIDs is each issue of the run the lane resolves, in the run's order:
+// the lead first, then each member.
+func resolvedIDs(st State, lane Lane) []string {
+	var out []string
+	for _, id := range append([]string{st.Key}, memberIDs(st)...) {
+		if slices.ContainsFunc(lane.Resolves, func(r Resolution) bool { return r.Issue == id }) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// memberIDs is each member's issue, in the run's order.
+func memberIDs(st State) []string {
+	out := make([]string, len(st.Bundle))
+	for i, m := range st.Bundle {
+		out[i] = m.Issue
+	}
+	return out
+}
+
+// bundleArea is the place a run with members fixes: the directory holding
+// the paths its members' footprints name, the deepest one they share. The
+// drain bundles issues of one directory (spc-2611201455051897 decision 2),
+// so a member's footprint, the path its found_at names, lies in it.
+func bundleArea(st State) string {
+	var dirs [][]string
+	for _, m := range st.Bundle {
+		for _, p := range m.Footprint {
+			dirs = append(dirs, strings.Split(path.Dir(path.Clean(p)), "/"))
+		}
+	}
+	if len(dirs) == 0 {
+		return st.Key
+	}
+	common := dirs[0]
+	for _, d := range dirs[1:] {
+		n := 0
+		for n < len(common) && n < len(d) && common[n] == d[n] {
+			n++
+		}
+		common = common[:n]
+	}
+	if len(common) == 0 || (len(common) == 1 && common[0] == ".") {
+		return "."
+	}
+	return strings.Join(common, "/")
 }
 
 func prBody(st State, lane Lane, assisted []string) string {
@@ -2405,7 +2541,10 @@ func prBody(st State, lane Lane, assisted []string) string {
 func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
-	if iss := st.Issue(); iss != "" {
+	if st.hasMembers() {
+		p("This pull request fixes the bundle led by %s, %d issues of one kind in %s, each by its own remedy. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
+			st.Key, len(st.Bundle)+1, bundleArea(st), st.RunID, lane.ID)
+	} else if iss := st.Issue(); iss != "" {
 		p("This pull request fixes %s (%q) by its remedy. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
 			iss, lane.StepTitle, st.RunID, lane.ID)
 	} else {
@@ -2440,11 +2579,11 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	}
 	for _, r := range lane.Resolves {
 		p("- It resolves %s, fixed by %s.\n", r.Issue, shortSHA(r.Commit))
-		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
-	if st.Admitted != nil {
-		trailers = append(trailers, admittedTrailers(*st.Admitted, lane.Resolves)...)
+	for _, id := range aloneIDs(st) {
+		p("- %s was handed back alone by the lane, for a person; it is not resolved here.\n", id)
 	}
+	trailers = append(trailers, resolutionTrailers(st, lane)...)
 	trailers = append(append(trailers, composedAssistedBy()), assisted...)
 	p("\n%s\n", strings.Join(trailers, "\n"))
 	return b.String()

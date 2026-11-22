@@ -23,10 +23,12 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -70,8 +72,47 @@ type LaneReceipt struct {
 	// HandBack stops the lane: the implementer found a decision inside the
 	// work and hands it back rather than deciding it (itd-82 scope 5, the
 	// `handback:` of decision 10 on the parent). The loop reads it before the
-	// validators, discards the lane's work and ends the lane with it.
+	// validators, discards the lane's work and ends the lane with it. A run
+	// with members takes none: it hands back each issue in HandBacks.
 	HandBack *LaneHandBack `json:"handback,omitempty"`
+	// HandBacks are the issues of a run with members the implementer hands
+	// back alone, each with its kind, reason and home as a lane's hand-back
+	// carries them (itd-2611201450052326, spc-2611201455051897 step 2): the
+	// loop hands that issue back to a person and lands the others. Every
+	// receipt of a run with members names each issue the run still holds once,
+	// in Resolves or here; a run without members takes none.
+	HandBacks []IssueHandBack `json:"handbacks,omitempty"`
+}
+
+// IssueHandBack is one issue of a run with members handed back alone in a
+// receipt's `handbacks`: the issue, then the kind, reason and home a lane's
+// own hand-back carries (LaneHandBack), each checked as handBackGaps checks
+// that one.
+type IssueHandBack struct {
+	Issue  string `json:"issue"`
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	Home   string `json:"home,omitempty"`
+}
+
+// laneHandBack is hb as a lane's own hand-back.
+func (hb IssueHandBack) laneHandBack() LaneHandBack {
+	return LaneHandBack{Kind: hb.Kind, Reason: hb.Reason, Home: hb.Home}
+}
+
+// taken is hb as the run records it, at now: its reason and home sanitized
+// as a lane's hand-back's are (takeHandBack).
+func (hb IssueHandBack) taken(now time.Time) HandBack {
+	return HandBack{At: now, Kind: hb.Kind, Reason: termsafe.Sanitize(strings.TrimSpace(hb.Reason)),
+		Home: termsafe.Sanitize(strings.TrimSpace(hb.Home))}
+}
+
+// issueHandedBack is one issue a verified receipt of a run with members handed
+// back alone, as the verifier hands it to the step that records it
+// (Context.handedBack): the issue and its hand-back.
+type issueHandedBack struct {
+	issue string
+	hb    HandBack
 }
 
 // LaneHandBack is a lane's own hand-back: the kind of decision it found, the
@@ -218,9 +259,19 @@ func resolutionGaps(rs []Resolution, commits []string) []string {
 
 // recordReceipt records a verified implementer's receipt on the lane: the
 // receipt and its runner's reported model, and the captures it declared fixed,
-// a later receipt's declaration of an issue replacing an earlier one's.
+// a later receipt's declaration of an issue replacing an earlier one's. An
+// issue the receipt hands back alone loses the resolution an earlier receipt
+// declared for it, so the landing writes no `Resolves:` for it.
 func recordReceipt(lane *Lane, receiptRel string, rc LaneReceipt) {
 	lane.Receipts = append(lane.Receipts, ReceiptRecord{Role: RoleImplementer, Receipt: receiptRel, Model: rc.Model})
+	if len(rc.HandBacks) > 0 {
+		lane.Resolves = slices.DeleteFunc(slices.Clone(lane.Resolves), func(r Resolution) bool {
+			return slices.ContainsFunc(rc.HandBacks, func(hb IssueHandBack) bool { return hb.Issue == r.Issue })
+		})
+		if len(lane.Resolves) == 0 {
+			lane.Resolves = nil
+		}
+	}
 	for _, r := range rc.Resolves {
 		i := slices.IndexFunc(lane.Resolves, func(o Resolution) bool { return o.Issue == r.Issue })
 		if i >= 0 {
@@ -236,6 +287,118 @@ func recordReceipt(lane *Lane, receiptRel string, rc LaneReceipt) {
 func resolvesIssue(lane Lane, rc LaneReceipt, issue string) bool {
 	match := func(r Resolution) bool { return r.Issue == issue }
 	return slices.ContainsFunc(rc.Resolves, match) || slices.ContainsFunc(lane.Resolves, match)
+}
+
+// bundleReceiptGaps names what is wrong with a receipt's account of the
+// run's issues (spc-2611201455051897 step 2). A run without members takes no
+// `handbacks`. In a run with members the receipt names each issue the run
+// still holds exactly once, in `resolves` or in `handbacks`, so a fix round's
+// receipt names each resolution's commit afresh; it names no other issue,
+// neither one outside the run nor one handed back in an earlier round; it
+// carries no top-level `handback`; each hand-back holds as a lane's
+// (handBackGaps); and an issue it hands back whose resolution commit from an
+// earlier round is still reachable from the lane's branch is refused naming
+// that commit, so its change is off the branch before the lane goes on. A
+// sync's receipt (sync) names no resolution, so an issue it leaves out stands
+// on the resolution an earlier receipt declared. The values named are the
+// implementer's, so a refused one is described, never quoted.
+func bundleReceiptGaps(repoRoot string, st State, lane Lane, rc LaneReceipt, sync bool) []string {
+	if !st.hasMembers() {
+		if len(rc.HandBacks) > 0 {
+			return []string{"no handbacks in a run without members (hand the lane back with handback)"}
+		}
+		return nil
+	}
+	var gaps []string
+	if rc.HandBack != nil {
+		gaps = append(gaps, "no handback in a run with members (hand back each issue alone in handbacks)")
+	}
+	if len(rc.HandBacks) > maxResolves {
+		return append(gaps, fmt.Sprintf("a list of issues handed back within %d (it names %d)", maxResolves, len(rc.HandBacks)))
+	}
+	resolved, handed := map[string]int{}, map[string]int{}
+	var named []string
+	for _, r := range rc.Resolves {
+		if issueIDRe.MatchString(r.Issue) {
+			if resolved[r.Issue]+handed[r.Issue] == 0 {
+				named = append(named, r.Issue)
+			}
+			resolved[r.Issue]++
+		}
+	}
+	for i, hb := range rc.HandBacks {
+		at := fmt.Sprintf("handbacks[%d]", i)
+		if !issueIDRe.MatchString(hb.Issue) {
+			gaps = append(gaps, at+": an issue id (it names "+termsafe.DescribeRefused(hb.Issue)+")")
+			continue
+		}
+		if handed[hb.Issue] > 0 {
+			gaps = append(gaps, at+": "+hb.Issue+" once (it is named twice)")
+		}
+		for _, g := range handBackGaps(hb.laneHandBack(), 0) {
+			gaps = append(gaps, at+": "+hb.Issue+"'s "+strings.TrimPrefix(g, "handback."))
+		}
+		if resolved[hb.Issue]+handed[hb.Issue] == 0 {
+			named = append(named, hb.Issue)
+		}
+		handed[hb.Issue]++
+	}
+	for _, id := range named {
+		switch {
+		case st.covers(id):
+		case recordid.SameID(id, st.Key) || st.member(id) >= 0:
+			gaps = append(gaps, id+" in neither resolves nor handbacks: it was handed back alone in an earlier round, and is a person's")
+		default:
+			gaps = append(gaps, id+" in neither resolves nor handbacks: it is not an issue of the run (its lead and members), and a run with members resolves only its own")
+		}
+	}
+	for _, id := range st.Issues() {
+		inR, inH := resolved[id] > 0, handed[id] > 0
+		switch {
+		case inR && inH:
+			gaps = append(gaps, id+" in resolves or in handbacks, not both")
+		case !inR && !inH && !(sync && slices.ContainsFunc(lane.Resolves, func(r Resolution) bool { return r.Issue == id })):
+			gaps = append(gaps, id+", an issue of the run, in resolves or in handbacks (every receipt names each issue the run holds once)")
+		}
+	}
+	for _, hb := range rc.HandBacks {
+		i := slices.IndexFunc(lane.Resolves, func(r Resolution) bool { return r.Issue == hb.Issue })
+		if i < 0 || !gitutil.IsFullSHA(lane.Resolves[i].Commit) {
+			continue
+		}
+		c := lane.Resolves[i].Commit
+		if on, err := gitutil.IsAncestorAsStored(repoRoot, c, "refs/heads/"+lane.Branch); err == nil && on {
+			gaps = append(gaps, fmt.Sprintf("%s's change off the lane's branch: it is handed back, and %s, the commit an earlier receipt named as its fix, is still reachable from %s (take it out of the branch, then name the commits that remain)",
+				hb.Issue, shortSHA(c), lane.Branch))
+		}
+	}
+	slices.Sort(gaps)
+	return slices.Compact(gaps)
+}
+
+// everyIssueHandedBack reports whether a receipt of a run with members hands
+// back every issue the run still holds.
+func everyIssueHandedBack(st State, rc LaneReceipt) bool {
+	if !st.hasMembers() || len(rc.HandBacks) == 0 {
+		return false
+	}
+	for _, id := range st.Issues() {
+		if !slices.ContainsFunc(rc.HandBacks, func(hb IssueHandBack) bool { return hb.Issue == id }) {
+			return false
+		}
+	}
+	return true
+}
+
+// handedBackIssues hands each issue rc hands back alone to the step that
+// records it (Context.handedBack), at now.
+func handedBackIssues(c Context, rc LaneReceipt) {
+	if c.handedBack == nil {
+		return
+	}
+	for _, hb := range rc.HandBacks {
+		*c.handedBack = append(*c.handedBack, issueHandedBack{issue: hb.Issue, hb: hb.taken(c.Now)})
+	}
 }
 
 // takeHandBack verifies a receipt carrying a hand-back and, when it holds,
@@ -263,6 +426,41 @@ func takeHandBack(c Context, lane *Lane, receiptRel string, rc LaneReceipt, dir 
 		Home:      termsafe.Sanitize(strings.TrimSpace(rc.HandBack.Home)),
 		Discarded: tip,
 	}
+	return nil
+}
+
+// takeBundleHandBack is takeHandBack for a receipt of a run with members that
+// hands back every issue the run still holds in `handbacks`
+// (spc-2611201455051897 step 2): the lane is handed back as a lane's own
+// hand-back hands it back, its work discarded, carrying the first issue's
+// hand-back in the run's order, and each issue is handed to the step that
+// records it alone, so each is released once, by its own kind, and the
+// lane's hand-back releases nothing more (releaseOnHandBack).
+func takeBundleHandBack(c Context, lane *Lane, receiptRel string, rc LaneReceipt, dir *os.Root, missing []string) error {
+	if gap := laneFileGap(c.RepoRoot, dir, rc.Report, "the report"); gap != "" {
+		missing = append(missing, gap)
+	}
+	if len(missing) > 0 {
+		return refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),
+			"correct the receipt so it carries what is missing, then hand it back to `abcd implement receipt "+receiptRel+"`")
+	}
+	tip, err := discardLane(c, *lane)
+	if err != nil {
+		return err
+	}
+	lane.Receipts = append(lane.Receipts, ReceiptRecord{Role: RoleImplementer, Receipt: receiptRel, Model: rc.Model})
+	first := rc.HandBacks[0]
+	for _, id := range c.State.Issues() {
+		if i := slices.IndexFunc(rc.HandBacks, func(hb IssueHandBack) bool { return hb.Issue == id }); i >= 0 {
+			first = rc.HandBacks[i]
+			break
+		}
+	}
+	hb := first.taken(c.Now)
+	hb.At, hb.Discarded = time.Time{}, tip
+	lane.HandBack = &hb
+	lane.Resolves = nil
+	handedBackIssues(c, rc)
 	return nil
 }
 
@@ -416,9 +614,15 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		return fmt.Errorf("opening the lane's directory %s: %w", dirRel, err)
 	}
 	defer dir.Close()
-	if rc.HandBack != nil {
-		return takeHandBack(c, lane, receiptRel, rc, dir, missing)
+	sync := lane.pendingSync() != nil && receiptRel == lane.pendingSync().Receipt
+	members := bundleReceiptGaps(c.RepoRoot, c.State, *lane, rc, sync)
+	if rc.HandBack != nil && !c.State.hasMembers() {
+		return takeHandBack(c, lane, receiptRel, rc, dir, append(missing, members...))
 	}
+	if everyIssueHandedBack(c.State, rc) && rc.HandBack == nil {
+		return takeBundleHandBack(c, lane, receiptRel, rc, dir, append(missing, members...))
+	}
+	missing = append(missing, members...)
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 	missing = append(missing, resolutionGaps(rc.Resolves, rc.Commits)...)
 	// The landing's Assisted-by: trailer names the model, so a receipt that
@@ -427,7 +631,7 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	if strings.TrimSpace(rc.Model) == "" {
 		missing = append(missing, "the model your harness runs (\"model\"), which the landing's Assisted-by: trailer names")
 	}
-	if iss := c.State.Issue(); iss != "" && !resolvesIssue(*lane, rc, iss) {
+	if iss := c.State.Issue(); iss != "" && !c.State.hasMembers() && !resolvesIssue(*lane, rc, iss) {
 		missing = append(missing, "a resolution of "+iss+", the lane's issue, in resolves (the landing resolves it with the commit named there)")
 	}
 
@@ -456,7 +660,11 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	// receipt is refused on the hold only when that widening could not be made.
 	// It is made last, so a receipt refused on anything else pushes nothing.
 	if len(missing) == 0 {
-		missing = append(missing, receiptHoldGaps(c, *lane)...)
+		held, err := moveWidenedOff(c, *lane, rc)
+		if err != nil {
+			return err
+		}
+		missing = append(missing, receiptHoldGaps(held, *lane)...)
 	}
 	if len(missing) > 0 {
 		rf := refuse("receipt", "", lane.ID, receiptRel+" is missing "+strings.Join(missing, "; "),
@@ -476,7 +684,58 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	}
 	lane.HeadSHA = head
 	recordReceipt(lane, receiptRel, rc)
+	handedBackIssues(c, rc)
 	return nil
+}
+
+// moveWidenedOff moves the paths the run widened onto the hold of each issue
+// rc hands back alone onto the hold of the first issue the run still holds
+// once they are handed back (widenOnto), before any of them is released, so
+// the pinning tests a fix adds stay held (spc-2611201455051897 step 2). It
+// returns c with the run read as it stands once they are handed back, the
+// moves' lines in its record, for the widening of the lane's changes that
+// follows (receiptHoldGaps), which then widens that issue's hold; the
+// moves' lines go to c.widened. A run without members, or a receipt that
+// hands nothing back, is c as it is. A move that cannot be made refuses the
+// receipt, releasing nothing, and is no gap in the work.
+func moveWidenedOff(c Context, lane Lane, rc LaneReceipt) (Context, error) {
+	if !c.State.hasMembers() || len(rc.HandBacks) == 0 {
+		return c, nil
+	}
+	after := c.State
+	after.Bundle = slices.Clone(after.Bundle)
+	after.Record = slices.Clone(after.Record)
+	for _, hb := range rc.HandBacks {
+		taken := hb.taken(c.Now)
+		if m := after.member(hb.Issue); m >= 0 {
+			after.Bundle[m].HandBack = &taken
+		} else if recordid.SameID(hb.Issue, after.Key) {
+			after.LeadHandBack = &taken
+		}
+	}
+	to := widenKey(after)
+	for _, hb := range rc.HandBacks {
+		if len(widenedPathsFor(c.State, hb.Issue)) == 0 || recordid.SameID(to, hb.Issue) {
+			continue
+		}
+		lines, err := widenOnto(c, lane, hb.Issue, to)
+		if err != nil {
+			reason := err.Error()
+			if rf, ok := AsRefusal(err); ok {
+				reason = rf.Reason
+			}
+			return c, refuse("receipt", "", lane.ID,
+				fmt.Sprintf("%s is handed back, and the paths the lane widened onto its hold could not be moved onto %s's first: %s; nothing was released", hb.Issue, to, reason),
+				"settle what it names, then hand the receipt back again")
+		}
+		after.Record = append(after.Record, lines...)
+		if c.widened != nil {
+			*c.widened = append(*c.widened, lines...)
+		}
+	}
+	out := c
+	out.State = after
+	return out, nil
 }
 
 // maxNotedModel bounds a receipt's model the record quotes; a longer one is

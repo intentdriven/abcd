@@ -2,9 +2,11 @@ package loop
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -135,11 +137,87 @@ func releaseAfterWrite(repoRoot string, st *State, lane string, now time.Time) *
 	return out
 }
 
+// aloneRelease is what the release of the issues a receipt handed back alone
+// came to (releaseAloneAfterWrite): the run record's line for each release
+// made, whether any did not reach origin, and the second write's error.
+type aloneRelease struct {
+	clauses   []string
+	failed    bool
+	unwritten error
+}
+
+// releaseAloneAfterWrite registers, on the state a save's callback has just
+// recorded issues handed back alone in (a receipt's `handbacks` in a run with
+// members, spc-2611201455051897 step 2), the step that releases each of them
+// once that save's write has returned without error, under the lock the save
+// took, as releaseAfterWrite releases a lane's: the hand-back is written, then
+// each issue is released on the remote with its own tombstone (releaseAlone),
+// then the release lines are written by a second write under the same hold.
+// An issue whose release the record already holds is not released again. A
+// save refused or failed releases nothing.
+func releaseAloneAfterWrite(repoRoot string, st *State, now time.Time) *aloneRelease {
+	out := &aloneRelease{}
+	st.afterWritten(func(s *State, rewrite func() error) {
+		logged := len(s.Record)
+		releaseAlone(repoRoot, s, now)
+		if len(s.Record) == logged {
+			return
+		}
+		for _, e := range s.Record[logged:] {
+			out.clauses = append(out.clauses, e.Note)
+			out.failed = out.failed || e.Stage == StageReservationReleaseFailed
+		}
+		out.unwritten = rewrite()
+	})
+	return out
+}
+
+// next is what the release of the issues handed back alone adds to a
+// result's next step: each release's line, and the record's second write
+// where it failed; "" where none was made.
+func (r *aloneRelease) next() string {
+	if r == nil || len(r.clauses) == 0 {
+		return ""
+	}
+	s := strings.Join(r.clauses, "; ")
+	if r.unwritten != nil {
+		s += "; the run record could not be written to say so: " + termsafe.Sanitize(fsutil.RedactHome(r.unwritten.Error()))
+	}
+	return s
+}
+
 // releasedThisHold reports whether the run's record holds a
 // reservation_released line since the reservation it holds was last made: the
-// record read from its end back to the last reservation line.
+// record read from its end back to the last reservation line. A run with
+// members judges each issue by the lines naming it (releasedThisHoldFor), and
+// has released this hold once every issue whose reservation it records, held
+// or handed back alone, has (spc-2611201455051897 step 2): a member released
+// alone is never released again, and its line is never read as another
+// issue's release.
 func releasedThisHold(st State) bool {
+	if !st.hasMembers() {
+		return releasedThisHoldFor(st, st.Key)
+	}
+	holds := st.recordedHolds()
+	if len(holds) == 0 {
+		return false
+	}
+	for _, id := range holds {
+		if !releasedThisHoldFor(st, id) {
+			return false
+		}
+	}
+	return true
+}
+
+// releasedThisHoldFor is releasedThisHold for the reservation on id: in a run
+// with members, only the lines for id (lineIssue) are read; in a run without,
+// every line, as before.
+func releasedThisHoldFor(st State, id string) bool {
 	for k := len(st.Record) - 1; k >= 0; k-- {
+		if st.hasMembers() && !recordid.SameID(st.lineIssue(st.Record[k]), id) {
+			continue
+		}
 		switch st.Record[k].Stage {
 		case StageReservationReleased:
 			return true

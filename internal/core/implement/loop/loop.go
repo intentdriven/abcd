@@ -267,6 +267,10 @@ type Context struct {
 	// widening of the lane's hold that an implementer's receipt verifier made
 	// (receiptHoldGaps), which the hand-in writes with the receipt it takes.
 	widened *[]Entry
+	// handedBack, when set, receives each issue a verified receipt of a run
+	// with members handed back alone (receipt.go's `handbacks`), which the
+	// hand-in records on the run and releases (handBackAlone).
+	handedBack *[]issueHandedBack
 	// standingReceipt is the bytes of a receipt a step read itself, which the
 	// verifier decodes in place of reading the file again; nil for a hand-in.
 	standingReceipt []byte
@@ -1602,11 +1606,14 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	renewNote := ""
 	// release is what the release of the reservation of a lane this hand-in
 	// hands back came to: it is made after the save's write, under its lock
-	// (releaseAfterWrite), never before it.
+	// (releaseAfterWrite), never before it; alone is the release of the issues
+	// a receipt of a run with members handed back alone (releaseAloneAfterWrite).
 	var release *handBackRelease
+	var alone *aloneRelease
+	aloneNote := ""
 	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
-		release = nil
+		release, alone, aloneNote = nil, nil, ""
 		i, k := st.findAwait(repoRoot, receipt)
 		if i < 0 {
 			if at, taken, digest, ok := st.collectedAt(repoRoot, receipt); ok {
@@ -1630,8 +1637,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 		}
 		modelNote := ""
 		var widened []Entry
+		var handed []issueHandedBack
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await,
-			Route: route, modelNote: &modelNote, widened: &widened}
+			Route: route, modelNote: &modelNote, widened: &widened, handedBack: &handed}
 		took := ""
 		if stood {
 			// One read: the check here and the verifier work from these bytes,
@@ -1672,6 +1680,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			noted = validatorRoute(lane, await.Receipt)
 			route = noted
 		}
+		// Each issue the receipt handed back alone is recorded first, so the
+		// renewal below renews only the issues the run still holds.
+		aloneNote = handBackAlone(st, lane.ID, handed, now)
 		// An agent may have worked past half the lease with no step between:
 		// the receipt renews the run's reservation as a step would
 		// (reservation.go), and every path below writes the state.
@@ -1697,6 +1708,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			res = laneResult(*st, lane, "", nil)
 			res.HandBack = lane.HandBack
 			return true, nil
+		}
+		if len(handed) > 0 {
+			alone = releaseAloneAfterWrite(repoRoot, st, now)
 		}
 		performed := lane.Stage
 		verified := await.Receipt
@@ -1741,6 +1755,9 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 	if err == nil {
 		if n := release.next(); n != "" {
 			res.Next = joinNext(res.Next, n)
+		}
+		if aloneNote != "" && release == nil {
+			res.Next = joinNext(res.Next, joinNext(aloneNote, alone.next()))
 		}
 	}
 	return res, err

@@ -58,6 +58,50 @@ const (
 	CheckReservation = "reservation"
 )
 
+// holdsAny reports whether the run still holds an issue it carries on the
+// shared remote: the lead's reservation, or, in a run with members, any
+// member's (reservedIssues). A run with no members holds one exactly when its
+// state records a reservation, as the gates that read ReservedAt alone judged
+// it; a run whose lead was handed back alone, or taken up again after it was,
+// holds its members still with the lead's reserved_at cleared or never set
+// again (spc-2611201455051897 step 2).
+func (s State) holdsAny() bool { return len(s.reservedIssues()) > 0 }
+
+// aloneHandBack is one issue of a run with members handed back alone: the
+// lead (LeadHandBack) or a member (Member.HandBack), and its hand-back.
+type aloneHandBack struct {
+	id string
+	hb HandBack
+}
+
+// handedBackAlone is each issue of the run handed back alone whose
+// reservation the run records, the lead first, then each member in order:
+// what the release of a member's hand-back iterates. A run with no members
+// has none.
+func (s State) handedBackAlone() []aloneHandBack {
+	var out []aloneHandBack
+	if s.LeadHandBack != nil && s.ReservedAt != nil {
+		out = append(out, aloneHandBack{id: s.Key, hb: *s.LeadHandBack})
+	}
+	for _, m := range s.Bundle {
+		if m.HandBack != nil && m.ReservedAt != nil {
+			out = append(out, aloneHandBack{id: m.Issue, hb: *m.HandBack})
+		}
+	}
+	return out
+}
+
+// recordedHolds is every issue whose reservation the run records, held or
+// handed back alone: what is left to release once every issue is accounted
+// for. A run with no members is its key while it records a reservation.
+func (s State) recordedHolds() []string {
+	out := s.reservedIssues()
+	for _, a := range s.handedBackAlone() {
+		out = append(out, a.id)
+	}
+	return out
+}
+
 // claimReserve is claim.Reserve, a seam a test replaces to feed the release
 // clause a refusal no git would write.
 var claimReserve = claim.Reserve
@@ -101,9 +145,11 @@ func claimOptions(now time.Time) claim.Options {
 // A run with members renews each member's reservation the same way, at half
 // its lease or lapsed, keeping its term, each line naming its issue
 // (renewMembers); the lead's alone narrows, and a lead handed back alone is
-// renewed no more. A run with no members is renewed exactly as before.
+// renewed no more, while each member it still holds is renewed whether or not
+// the lead's reserved_at is set (holdsAny). A run with no members is renewed
+// exactly as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
-	if st.ReservedAt == nil || stopEndsRenewal(repoRoot, *st, now) {
+	if !st.holdsAny() || stopEndsRenewal(repoRoot, *st, now) {
 		return ""
 	}
 	if snap == nil {
@@ -393,7 +439,7 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, err
 // term, read the same way.
 func pushFence(c Context, lane Lane) (time.Time, string, error) {
 	terms := map[string]time.Duration{}
-	if c.State.ReservedAt != nil {
+	if c.State.holdsAny() {
 		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
 			for _, id := range c.State.reservedIssues() {
 				if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis {
@@ -657,9 +703,11 @@ func completesRun(st State, laneID string) bool {
 // landing note's clause, "" for a run that holds no reservation or a lane that
 // does not complete the run; a failure is named there and never undoes the
 // landing. A run with members tombstones every issue it still holds, the
-// lead's then each member's, and joins their clauses.
+// lead's then each member's, and joins their clauses, whether or not the
+// lead's reserved_at is set: a lead handed back alone was released with its
+// own tombstone then, and its members are still held (holdsAny).
 func tidyReservation(c Context, lane Lane) string {
-	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
+	if !c.State.holdsAny() || !completesRun(c.State, lane.ID) {
 		return ""
 	}
 	out := ""
@@ -1259,7 +1307,10 @@ func widenReservation(repoRoot, key string, fp []string, takeOver, drain bool, o
 // one a resume makes (widenReservation), judged for overlap and against the
 // cap; a refusal of it refuses the step for a person, naming what it met,
 // with nothing merged by the step and nothing pushed, and the lane stays at
-// its landing. note is the run record's line for a widening made.
+// its landing. note is the run record's line for a widening made. In a run
+// with members the hold judged is the one the lane's widened paths sit on
+// (widenKey): the lead's while it is held, and otherwise the member's they
+// were moved onto, whichever of the run's issues' reserved_at is set.
 //
 // A reservation that needs no widening, an intent run's or an issue run's
 // already covering its found_at, is judged again for overlap with the same
@@ -1275,12 +1326,18 @@ func widenReservation(repoRoot, key string, fp []string, takeOver, drain bool, o
 // default branch's fetch does (dcn-2610300615451659), and either way the lane
 // stays at its landing.
 func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now time.Time) (note string, err error) {
-	if st.ReservedAt == nil {
+	if !st.holdsAny() {
 		return "", nil
 	}
 	issue := st.Issue() != ""
+	// key is the hold the lane's widened paths sit on (widenKey): the lead's,
+	// or, once the lead was handed back alone, the member's they were moved
+	// onto (widenOnto), which is judged in its place with its own footprint.
+	key := widenKey(st)
 	var fp []string
-	if issue {
+	if m := st.member(key); issue && m >= 0 {
+		fp = slices.Clone(st.Bundle[m].Footprint)
+	} else if issue {
 		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, st.builtSteps(), "the lane stays at its landing and nothing is pushed"); err != nil {
 			return "", err
 		}
@@ -1288,10 +1345,10 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to judge it again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and its reservation on "+key+" cannot be read to judge it again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
-	own, ok := snap.Lookup(st.Key)
+	own, ok := snap.Lookup(key)
 	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
 		return "", nil
 	}
@@ -1300,7 +1357,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 		// to beyond the found_at among them (widen.go), and the fresh round
 		// still changes those: they are kept beside the found_at.
 		fp = heldWith(fp, own.Footprint)
-		r, err := widenReservation(repoRoot, st.Key, fp, false, false, own, now)
+		r, err := widenReservation(repoRoot, key, fp, false, false, own, now)
 		if err != nil {
 			reason := err.Error()
 			if rf, ok := AsRefusal(err); ok {
@@ -1308,7 +1365,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 			}
 			return "", refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
-					st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
+					key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
 				"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
 		}
 		return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
@@ -1335,15 +1392,15 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 			return "", r
 		}
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(reason)+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+key+"'s again against your other copy: "+fsutil.RedactHome(reason)+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
 	if snap, err = leavingView(repoRoot, now); err != nil {
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and the reservations, fetched, cannot be read to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and the reservations, fetched, cannot be read to judge "+key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
-	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder, claim.ReaderSelf(repoRoot, claimOptions(now))); ok {
+	if o, ok := snap.OtherCopyOverlap(key, own.Footprint, own.Holder, claim.ReaderSelf(repoRoot, claimOptions(now))); ok {
 		// Only an issue run's lane can be handed back here, to be built again.
 		remedy := "wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again"
 		if issue {
@@ -1351,7 +1408,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 		}
 		return "", refuse(string(StageLand), "", lane.ID,
 			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's footprint, but %s is also in the footprint of %s, which you hold from your other copy until %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
-				st.Key, termsafe.Sanitize(o.Path), o.Record, stamp(o.Expiry), shortSHA(lane.HeadSHA)),
+				key, termsafe.Sanitize(o.Path), o.Record, stamp(o.Expiry), shortSHA(lane.HeadSHA)),
 			remedy)
 	}
 	return "", nil
@@ -1734,14 +1791,45 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // A run with members releases every issue it still holds so, the lead's then
 // each member's, each with the hand-back's kind, each line naming its issue;
 // it returns the first lease end a failed release left, and whether it has
-// passed.
+// passed. Each issue handed back alone whose release the record does not hold
+// yet is released first, with its own hand-back's kind (releaseAlone), and an
+// issue whose release the record already holds is not released again
+// (releasedThisHoldFor), so a lane whose every issue was handed back alone
+// releases each once, by its own kind, and nothing more. The lead's
+// reserved_at is not the gate: a lead handed back alone leaves its members
+// held (spc-2611201455051897 step 2).
 func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) (until string, ended bool) {
-	if st.ReservedAt == nil || st.Issue() == "" {
+	if st.Issue() == "" || len(st.recordedHolds()) == 0 {
 		return "", false
 	}
-	first := true
+	until, ended = releaseAlone(repoRoot, st, now)
+	first := until == ""
 	for _, id := range st.reservedIssues() {
+		if st.hasMembers() && releasedThisHoldFor(*st, id) {
+			continue
+		}
 		u, e := releaseIssueOnHandBack(repoRoot, st, id, tombstoneKind(hb), now)
+		if u != "" && first {
+			until, ended, first = u, e, false
+		}
+	}
+	return until, ended
+}
+
+// releaseAlone releases each issue of a run with members handed back alone
+// (handedBackAlone) whose release the run's record does not hold since its
+// last reservation (releasedThisHoldFor), with its own hand-back's kind and
+// a line naming it, through the release a lane's hand-back makes
+// (releaseIssueOnHandBack): the issue is a person's again while the lane
+// lands the rest. It returns the first lease end a failed release left, and
+// whether it has passed. A run with no members releases nothing here.
+func releaseAlone(repoRoot string, st *State, now time.Time) (until string, ended bool) {
+	first := true
+	for _, a := range st.handedBackAlone() {
+		if releasedThisHoldFor(*st, a.id) {
+			continue
+		}
+		u, e := releaseIssueOnHandBack(repoRoot, st, a.id, tombstoneKind(a.hb), now)
 		if u != "" && first {
 			until, ended, first = u, e, false
 		}
