@@ -131,7 +131,10 @@ the error, or else from the usage classifier, which reads the parser's error
 types and, where it has none, the command framework's wording. In the
 machine-readable form the error object keeps `abcd`, `error` and `exit_code` exactly as they were
 and adds `code`, `hint` and `next`; the text form adds one line after the
-refusal's own: `abcd: <hint> — try: <next> (abcd explain <code>)`. The next
+refusal's own: `abcd: <hint> — try: <next> (abcd explain <code>)`. A next
+command holding a word in angle brackets (`<fix>`) is a template whose
+bracketed words the caller fills in, and the text form offers it with `fill
+in and run:` instead of `try:`; any other runs as it stands. The next
 command is filled from the refused command's own path, never from the
 caller's arguments, which the boundary withholds. A refusal not yet coded
 carries none of the three.

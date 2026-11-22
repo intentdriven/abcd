@@ -7799,7 +7799,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // A refusal that carries a code (spc-2610301431108175) adds three keys after
 // those three, which stay exactly as they were: `code`, the registered refusal
 // code; `hint`, its one-line summary; and `next`, the command to try next, or
-// the word `none` where no command can help. `abcd explain <code>` prints the
+// the word `none` where no command can help. A `next` holding a word in angle
+// brackets is a template whose bracketed words the caller fills in
+// (refusal.IsTemplate); any other runs as it stands. `abcd explain <code>` prints the
 // code's explanation. A refusal not yet coded carries none of the three.
 type errorEnvelope struct {
 	// Abcd is always "error". It leads the struct so it leads the encoded

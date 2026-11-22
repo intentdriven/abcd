@@ -330,3 +330,40 @@ func isIdent(e ast.Expr, name string) bool {
 	id, ok := e.(*ast.Ident)
 	return ok && id.Name == name
 }
+
+// TestNextIsACommandATemplateOrNone: every next command is the word none, a
+// command to run as it stands, or a template whose only angle-bracketed words
+// are placeholders the caller fills in. IsTemplate tells the last two apart,
+// and the front door and explain read it.
+func TestNextIsACommandATemplateOrNone(t *testing.T) {
+	sawTemplate, sawCommand := false, false
+	for _, e := range Entries() {
+		if e.Next == NoNext {
+			if IsTemplate(e.Next) {
+				t.Errorf("%s: none is not a template", e.Code)
+			}
+			continue
+		}
+		if !strings.HasPrefix(e.Next, "abcd ") {
+			t.Errorf("%s: next %q is not an abcd command", e.Code, e.Next)
+		}
+		bare := placeholderRe.ReplaceAllString(e.Next, "")
+		if strings.ContainsAny(bare, "<>") {
+			t.Errorf("%s: next %q holds an angle bracket that is not a placeholder", e.Code, e.Next)
+		}
+		if IsTemplate(e.Next) != (bare != e.Next) {
+			t.Errorf("%s: IsTemplate(%q) = %v", e.Code, e.Next, IsTemplate(e.Next))
+		}
+		if IsTemplate(e.Next) {
+			sawTemplate = true
+		} else {
+			sawCommand = true
+		}
+	}
+	if !sawTemplate || !sawCommand {
+		t.Errorf("the registry holds a template: %v, a runnable command: %v; want both, so both forms stay tested", sawTemplate, sawCommand)
+	}
+	if !IsTemplate(`abcd capture "<text>" --remedy "<fix>"`) || IsTemplate("abcd capture list --all") || IsTemplate(NoNext) {
+		t.Error("IsTemplate misreads a known next")
+	}
+}

@@ -455,8 +455,11 @@ func explainCodeLines(e refusal.Entry) []string {
 	out := []string{string(e.Code) + " — " + e.Summary}
 	out = append(out, strings.Split(e.Explanation, "\n")...)
 	next := strings.ReplaceAll(e.Next, refusal.CommandSlot, "<the refused command>")
-	if e.Next == refusal.NoNext {
+	switch {
+	case e.Next == refusal.NoNext:
 		next = "none: no command gets past it; the explanation says what to do"
+	case refusal.IsTemplate(e.Next):
+		next += " (a template: fill in each word in angle brackets)"
 	}
 	out = append(out, "Try next: "+next)
 	if len(e.RaisedBy) == 0 {

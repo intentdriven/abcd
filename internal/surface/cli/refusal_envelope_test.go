@@ -78,12 +78,28 @@ func TestRefusalTextFormAddsOneLine(t *testing.T) {
 	entry, _ := refusal.Lookup(refusal.CaptureRemedyMissing)
 	lines := strings.Split(strings.TrimRight(stderr.String(), "\n"), "\n")
 	last := lines[len(lines)-1]
-	want := "abcd: " + entry.Summary + " — try: " + entry.Next + " (abcd explain capture/remedy-missing)"
+	want := "abcd: " + entry.Summary + " — fill in and run: " + entry.Next + " (abcd explain capture/remedy-missing)"
 	if last != want {
 		t.Fatalf("the refusal's last line is\n%q\nwant\n%q", last, want)
 	}
 	if prev := lines[len(lines)-2]; !strings.HasPrefix(prev, "abcd: abcd capture: --remedy is required") {
 		t.Errorf("the refusal's own line changed: %q", prev)
+	}
+}
+
+// TestRefusalTextFormSaysWhetherNextRunsAsItStands: a next command with no
+// placeholder is one to run as it stands ("try:"), and a template, whose
+// <…> words are values the caller supplies, says to fill them in first.
+func TestRefusalTextFormSaysWhetherNextRunsAsItStands(t *testing.T) {
+	env := newErrorEnvelope("abcd explain: refused", 2)
+	env.withRefusal(refusal.ExplainUnknownPath, nil)
+	if line := env.refusalLine(); !strings.Contains(line, " — try: abcd explain abcd (") {
+		t.Errorf("a runnable next reads %q, want it offered with try:", line)
+	}
+	env = newErrorEnvelope("abcd capture: refused", 2)
+	env.withRefusal(refusal.CaptureRemedyMissing, nil)
+	if line := env.refusalLine(); strings.Contains(line, "try:") || !strings.Contains(line, " — fill in and run: abcd capture ") {
+		t.Errorf("a template next reads %q, want it offered as one to fill in", line)
 	}
 }
 
@@ -141,5 +157,18 @@ func TestRefusalWithNoNextCommandSaysSo(t *testing.T) {
 	}
 	if line := env.refusalLine(); strings.Contains(line, "try:") || !strings.HasSuffix(line, "(abcd explain explain/unknown-code)") {
 		t.Errorf("the text line is %q", line)
+	}
+}
+
+// TestExplainSaysWhenNextIsATemplate: explain's "Try next" line marks a
+// template as one to fill in, and leaves a runnable command unmarked.
+func TestExplainSaysWhenNextIsATemplate(t *testing.T) {
+	out := string(runCLI(t, "explain", string(refusal.CaptureRemedyMissing)))
+	if !strings.Contains(out, `Try next: abcd capture "<text>" --remedy "<fix>" (a template: fill in each word in angle brackets)`) {
+		t.Errorf("explain of a template next:\n%s", out)
+	}
+	out = string(runCLI(t, "explain", string(refusal.CaptureUnknownIssue)))
+	if !strings.Contains(out, "Try next: abcd capture list --all\n") {
+		t.Errorf("explain of a runnable next:\n%s", out)
 	}
 }

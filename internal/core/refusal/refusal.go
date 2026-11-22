@@ -97,8 +97,11 @@ type Entry struct {
 	// Explanation is a few lines `abcd explain <code>` prints: what the
 	// refusal means and how to get past it.
 	Explanation string `json:"explanation"`
-	// Next is the command to try next, a template that may hold
-	// CommandSlot, or NoNext where no command can help.
+	// Next is the command to try next, or NoNext where no command can help.
+	// It may hold CommandSlot, which the front door fills. A next holding a
+	// placeholder (`<fix>`, a word in angle brackets) is a template whose
+	// placeholders the caller fills in before running it (IsTemplate); any
+	// other next runs as it stands.
 	Next string `json:"next"`
 	// RaisedBy names the command paths that raise the code. It is empty for
 	// a usage code, which every command raises.
@@ -307,6 +310,15 @@ var nameRe = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*/[a-z][a-z0-9]*(?
 
 // ValidName reports whether s follows the code grammar.
 func ValidName(s string) bool { return nameRe.MatchString(s) }
+
+// placeholderRe is a placeholder of a next-command template: a word in angle
+// brackets that the caller replaces with a value of their own.
+var placeholderRe = regexp.MustCompile(`<[a-z][a-z0-9-]*>`)
+
+// IsTemplate reports whether next is a template, a command holding
+// placeholders the caller fills in before running it, rather than a command
+// to run as it stands.
+func IsTemplate(next string) bool { return placeholderRe.MatchString(next) }
 
 // FillNext fills a next-command template from the refused call's command
 // path (`abcd capture remedy`): CommandSlot becomes the words below the root,

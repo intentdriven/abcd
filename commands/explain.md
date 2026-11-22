@@ -80,7 +80,8 @@ reason. A word holding a slash is read as a code, and `explain` prints:
 - a few lines saying what the refusal means and how to get past it;
 - the command to try next, or `none` where no command gets past it (a
   refusal that says to wait, say); a next command that names the refused
-  command shows it as `<the refused command>`;
+  command shows it as `<the refused command>`, and a template, whose words in
+  angle brackets such as `<fix>` are values to fill in, says so;
 - the commands that raise the code, or, for a `usage/` code, that every
   command raises it;
 - for a retired code, the release that retired it.
@@ -88,10 +89,13 @@ reason. A word holding a slash is read as a code, and `explain` prints:
 A refusal under `--json` carries the same three facts beside its message:
 the error object every verb prints on stdout keeps `abcd`, `error` and
 `exit_code`, and adds `code`, `hint` (the summary) and `next` (the command to
-try, filled in with the refused command, or `none`). Without `--json`, the
-refusal's line on stderr is followed by one more:
-`abcd: <hint> — try: <next> (abcd explain <code>)`. The next command is built
-from the refused command alone, never from what was typed. A refusal not yet
+try, filled in with the refused command, or `none`). A `next` holding a word
+in angle brackets, such as `abcd capture "<text>" --remedy "<fix>"`, is a
+template: fill in each bracketed word before running it. Any other `next`
+runs as it stands. Without `--json`, the refusal's line on stderr is followed
+by one more: `abcd: <hint> — try: <next> (abcd explain <code>)`, or
+`— fill in and run: <next>` for a template. The next command is built from
+the refused command alone, never from what was typed. A refusal not yet
 given a code carries none of the three, and no second line.
 
 Once a release has carried a code, the code keeps its meaning: it is never

@@ -85,13 +85,19 @@ func (e *errorEnvelope) withRefusal(ref refusal.Code, called *cobra.Command) {
 
 // refusalLine is the text form's second line: the hint, the next command to
 // try and the call that explains the code; empty for a refusal with no
-// registered code.
+// registered code. A next that runs as it stands is offered with "try:", and
+// a template, whose <…> words are values the caller supplies, with "fill in
+// and run:", so neither is mistaken for the other.
 func (e errorEnvelope) refusalLine() string {
 	if e.Code == "" || e.Hint == "" {
 		return ""
 	}
 	line := e.Hint
-	if e.Next != "" && e.Next != refusal.NoNext {
+	switch {
+	case e.Next == "" || e.Next == refusal.NoNext:
+	case refusal.IsTemplate(e.Next):
+		line += " — fill in and run: " + e.Next
+	default:
 		line += " — try: " + e.Next
 	}
 	return line + " (abcd explain " + e.Code + ")"
