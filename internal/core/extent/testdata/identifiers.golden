@@ -1,0 +1,16 @@
+# The reasons a check could not be made and the causes a registry kind was
+# left out in a run, as a recorded result carries them (criterion 24 of
+# itd-2611211024360819). A release may add a line and never rename or remove
+# one: TestIdentifiersOnlyGrow fails on a line the package no longer encodes.
+#
+# One "<set> <identifier>" per line.
+
+reason unreadable
+reason unreachable
+reason tool_missing
+reason timed_out
+reason check_failed
+cause host_run
+cause other_run
+cause not_armed
+cause nothing_to_read
