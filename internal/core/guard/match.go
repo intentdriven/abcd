@@ -819,12 +819,24 @@ func namerefsTo(s segment, names []string) []string {
 
 // tiedArraysTo is names and every array s ties to one of them as zsh's
 // `typeset -T NAME arr` does (with declare, local or export, `-T` in any
-// cluster): the array sets the scalar whenever it is assigned, so under
-// allexport an assignment to it, however long after the tie, is an export
-// of NAME. An option word the line does not fix that can carry T counts as
-// one.
+// cluster), the array given a value or not (`arr=(…)`): the array sets the
+// scalar whenever it is assigned, so under allexport an assignment to it,
+// however long after the tie, is an export of NAME. An option word the line
+// does not fix that can carry T counts as one, and a scalar the line does
+// not fix (`typeset -T "$S" arr`) can be any name, so it ties the array to
+// one of names; such a word read as an option is also read as the scalar.
 func tiedArraysTo(s segment, names []string) []string {
 	out := names
+	add := func(tok string) {
+		array := declaredName(tok)
+		if isUnknown(array) || !isName(array) || containsString(out, array) {
+			return
+		}
+		if len(out) == len(names) {
+			out = append([]string(nil), names...)
+		}
+		out = append(out, array)
+	}
 	for _, a := range commandSites(s) {
 		if !nameCouldBeAny(s.tokens[a.idx], append([]string{"export"}, declarationBuiltins...)) {
 			continue
@@ -838,6 +850,9 @@ func tiedArraysTo(s segment, names []string) []string {
 				break
 			}
 			if isUnknown(w) {
+				if tie && i+1 < len(s.tokens) {
+					add(s.tokens[i+1])
+				}
 				tie = tie || clusterCouldCarry(w, 'T')
 				continue
 			}
@@ -851,19 +866,21 @@ func tiedArraysTo(s segment, names []string) []string {
 		if !tie || i+1 >= len(s.tokens) {
 			continue
 		}
-		scalar, array := s.tokens[i], s.tokens[i+1]
-		if name, _, _, _, ok := splitAssignment(scalar); ok {
-			scalar = name
+		if scalar := s.tokens[i]; isUnknown(scalar) || containsString(out, declaredName(scalar)) {
+			add(s.tokens[i+1])
 		}
-		if isUnknown(scalar) || isUnknown(array) || !isName(array) || !containsString(out, scalar) || containsString(out, array) {
-			continue
-		}
-		if len(out) == len(names) {
-			out = append([]string(nil), names...)
-		}
-		out = append(out, array)
 	}
 	return out
+}
+
+// declaredName is the name a declaration builtin's operand tok declares:
+// the text before its `=` or `+=` where it assigns a value (`arr=(…)`), tok
+// itself where it does not.
+func declaredName(tok string) string {
+	if name, _, _, _, ok := splitAssignment(tok); ok {
+		return name
+	}
+	return tok
 }
 
 // runOrder is, for each command of segs, where it runs on the line: its own

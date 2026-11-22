@@ -523,6 +523,8 @@ func TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport(t *testing.T) {
 // assigned, so under allexport an assignment to the array exports the scalar
 // however long after the tie allexport is turned on: a bare assignment, an
 // append, an element, a declaration's value and a builtin that assigns it.
+// The tie holds where the declaration gives the array a value too, and a
+// scalar whose name the line does not fix can be any name.
 func TestGuardReadsAnAssignmentToATiedArrayAsSettingItsScalar(t *testing.T) {
 	const id = "agent-launch-opencode-config-env"
 	r := Defaults()
@@ -540,6 +542,12 @@ func TestGuardReadsAnAssignmentToATiedArrayAsSettingItsScalar(t *testing.T) {
 		`local -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
 		`declare -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
 		`typeset -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); zsh -c 'opencode run x'`,
+		`typeset -T OPENCODE_CONFIG oc=(/tmp/a); set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc=/tmp/a; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG=/tmp/a oc=(/tmp/b); set -a; oc+=(/tmp/o.json); opencode run x`,
+		`typeset -T "$S" oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T $S oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T "$S" oc=(/tmp/a); set -a; oc=(/tmp/o.json); opencode run x`,
 	} {
 		d, err := r.Check(line)
 		if err != nil {

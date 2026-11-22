@@ -1306,8 +1306,10 @@ holds, every assignment exports: a bare one, a declaration builtin's, a name
 a declaration builtin declares without a value (among them the scalar that
 zsh's `typeset -T` ties to an array, which an assignment to the array sets),
 an assignment to an array the line tied to a variable earlier, whether or not
-allexport held at the tie (`typeset -T OPENCODE_CONFIG oc; set -a; oc=(…)`
-exports `OPENCODE_CONFIG`), a name
+allexport held at the tie and whether or not the tie gave the array a value
+(`typeset -T OPENCODE_CONFIG oc; set -a; oc=(…)` exports `OPENCODE_CONFIG`,
+and `typeset -T "$S" oc`, whose scalar the line does not fix, is read as
+tying `oc` to any variable), a name
 `read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
 `compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
 `sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
