@@ -2500,11 +2500,11 @@ func bundleTitle(st State, lane Lane) string {
 	resolved := resolvedIDs(st, lane)
 	switch len(resolved) {
 	case 0:
-		return fmt.Sprintf("fix(%s): the bundle led by %s", bundleArea(st), st.Key)
+		return fmt.Sprintf("fix(%s): the bundle led by %s", bundleArea(st, lane.Worktree), st.Key)
 	case 1:
-		return fmt.Sprintf("fix(%s): 1 issue, %s", bundleArea(st), resolved[0])
+		return fmt.Sprintf("fix(%s): 1 issue, %s", bundleArea(st, lane.Worktree), resolved[0])
 	}
-	return fmt.Sprintf("fix(%s): %d issues, %s and %d more", bundleArea(st), len(resolved), resolved[0], len(resolved)-1)
+	return fmt.Sprintf("fix(%s): %d issues, %s and %d more", bundleArea(st, lane.Worktree), len(resolved), resolved[0], len(resolved)-1)
 }
 
 // resolvedIDs is each issue of the run the lane resolves, in the run's order:
@@ -2528,15 +2528,16 @@ func memberIDs(st State) []string {
 	return out
 }
 
-// bundleArea is the place a run with members fixes: the directory holding
-// the paths its members' footprints name, the deepest one they share. The
-// drain bundles issues of one directory (spc-2611201455051897 decision 2),
-// so a member's footprint, the path its found_at names, lies in it.
-func bundleArea(st State) string {
+// bundleArea is the place a run with members fixes: the deepest directory
+// the areas of its members' footprints share, each read in the checkout at
+// root as the rule for who joins reads an issue's area (footprintArea): a
+// directory there is its own area, a file's is its directory. The drain
+// bundles issues of one area (spc-2611201455051897 decision 2).
+func bundleArea(st State, root string) string {
 	var dirs [][]string
 	for _, m := range st.Bundle {
 		for _, p := range m.Footprint {
-			dirs = append(dirs, strings.Split(path.Dir(path.Clean(p)), "/"))
+			dirs = append(dirs, strings.Split(footprintArea(root, path.Clean(p)), "/"))
 		}
 	}
 	if len(dirs) == 0 {
@@ -2567,7 +2568,7 @@ func prBodyParked(st State, lane Lane, assisted []string, parked bool) string {
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	if st.hasMembers() {
 		p("This pull request fixes the bundle led by %s, %d issues of one kind in %s, each by its own remedy. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
-			st.Key, len(st.Bundle)+1, bundleArea(st), st.RunID, lane.ID)
+			st.Key, len(st.Bundle)+1, bundleArea(st, lane.Worktree), st.RunID, lane.ID)
 	} else if iss := st.Issue(); iss != "" {
 		p("This pull request fixes %s (%q) by its remedy. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
 			iss, lane.StepTitle, st.RunID, lane.ID)

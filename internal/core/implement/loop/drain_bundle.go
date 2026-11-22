@@ -151,11 +151,18 @@ func issueArea(repoRoot string, iss capture.Issue) string {
 	if !ok {
 		return ""
 	}
-	p := fp[0]
-	// A path the checkout does not hold, or cannot be read, is read as a
-	// file: only a directory there is its own area.
-	if fi, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(p))); err == nil && fi.IsDir() {
-		return p
+	return footprintArea(repoRoot, fp[0])
+}
+
+// footprintArea is the area of one footprint path p in the checkout at root:
+// p itself when it is a directory there, its directory otherwise. A path the
+// checkout does not hold, or cannot be read, is read as a file, as is every
+// path when root is "".
+func footprintArea(root, p string) string {
+	if root != "" {
+		if fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p))); err == nil && fi.IsDir() {
+			return p
+		}
 	}
 	return path.Dir(p)
 }

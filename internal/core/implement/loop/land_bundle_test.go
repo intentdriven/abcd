@@ -2,6 +2,7 @@ package loop
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -132,5 +133,27 @@ func TestABundlesPullRequestNamesItsAreaAndCount(t *testing.T) {
 	lane.Resolves = []Resolution{resolving(bundleTwo, strings.Repeat("d", 40)), resolving(bundleThree, strings.Repeat("e", 40))}
 	if got, want := prTitle(st, lane), "fix(docs): 2 issues, "+bundleTwo+" and 1 more"; got != want {
 		t.Fatalf("with the lead handed back, the title names the first issue resolved:\n got %q\nwant %q", got, want)
+	}
+}
+
+// TestABundlesAreaReadsADirectoryFoundAtAsItsOwnArea: the pull request's area
+// takes a member's found_at that is a directory in the lane's checkout as the
+// area itself, as the rule for who joins does (issueArea), and a file's
+// directory otherwise.
+func TestABundlesAreaReadsADirectoryFoundAtAsItsOwnArea(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "guide"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	st := State{Key: bundleLead, Bundle: []Member{
+		{Issue: bundleTwo, Footprint: []string{"docs/guide"}},
+		{Issue: bundleThree, Footprint: []string{"docs/guide"}},
+	}}
+	if got := bundleArea(st, root); got != "docs/guide" {
+		t.Fatalf("a directory found_at is its own area: %q", got)
+	}
+	st.Bundle[1].Footprint = []string{"docs/guide/start.md"}
+	if got := bundleArea(st, root); got != "docs/guide" {
+		t.Fatalf("a file's area is its directory: %q", got)
 	}
 }
