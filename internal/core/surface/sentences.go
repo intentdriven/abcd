@@ -322,13 +322,15 @@ var sentences = map[string]string{
 		"Writes the removal of its held line; refuses a record not held.",
 
 	"abcd embargo": "Keep private advisories off the public ledger, naming those ready to publish: " +
-		"Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.",
+		"Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
 	"abcd embargo check": "Check a commit range or texts for what would disclose an advisory under embargo: " +
 		"Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
 	"abcd embargo close": "Show an advisory's closing text and digest, or close it on GitHub with it: " +
 		"Writes GitHub and the store only with --approve; refuses a digest for other text.",
 	"abcd embargo fixed": "Record the commits that fix an advisory under embargo: " +
 		"Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
+	"abcd embargo queue": "Queue the publish step of each advisory ready to publish for the person's return: " +
+		"Writes only the away queue, each step once; refuses while the person is not away.",
 	"abcd embargo intake": "Take this repository's private advisories into private records in the embargo store: " +
 		"Writes only the embargo store; refuses a remote that is not on GitHub.",
 	"abcd embargo publish": "Show the publication plan with computed patched versions, or publish it: " +

@@ -45,9 +45,8 @@ func newEmbargoCommand(asJSON *bool) *cobra.Command {
 			"that shows its plan; waiting, with why, when its fix is recorded and not yet\n" +
 			"in one; or with no fix recorded. Which release holds a fix is read from the\n" +
 			"commits as stored; origin's tags and GitHub's release are read only for a\n" +
-			"release tag that holds one. Bare writes nothing in the store and publishes\n" +
-			"nothing: while the person is away (`abcd mode autonomous`) it queues one step\n" +
-			"for their return for each advisory ready to publish, once, and says so.\n\n" +
+			"release tag that holds one. Bare writes nothing and publishes nothing; `abcd\n" +
+			"embargo queue` is the act that queues a step for the person's return.\n\n" +
 			"Exit 2 on a refusal (nothing written) and on a check finding.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -60,23 +59,101 @@ func newEmbargoCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return embargoFailure(verb, err)
 			}
-			out := embargoStatusOutput{StatusResult: res, Queued: []string{}}
-			out.Queued, out.QueueNote = queueEmbargoPublishSteps(root, res.Ready)
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderEmbargoStatus(w, out) })
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoStatus(w, res) })
 		},
 	}
 	cmd.AddCommand(newEmbargoIntakeCommand(asJSON), newEmbargoTriageCommand(asJSON), newEmbargoFixedCommand(asJSON),
-		newEmbargoCloseCommand(asJSON), newEmbargoCheckCommand(asJSON), newEmbargoPublishCommand(asJSON))
+		newEmbargoQueueCommand(asJSON), newEmbargoCloseCommand(asJSON), newEmbargoCheckCommand(asJSON), newEmbargoPublishCommand(asJSON))
 	return cmd
 }
 
-// embargoStatusOutput is bare `abcd embargo`'s output: the status, and the
-// publish steps it queued for the person's return while they are away
-// (Queued, by record id), or why one could not be queued (QueueNote).
-type embargoStatusOutput struct {
-	embargo.StatusResult
-	Queued    []string `json:"queued"`
-	QueueNote string   `json:"queue_note,omitempty"`
+// embargoQueueOutput is `abcd embargo queue`'s output: the record id of each
+// advisory ready to publish (Ready), each whose publish step this call queued
+// for the person's return (Queued), and each whose step was queued already
+// (AlreadyQueued).
+type embargoQueueOutput struct {
+	NoStore       bool     `json:"no_store,omitempty"`
+	Ready         []string `json:"ready"`
+	Queued        []string `json:"queued"`
+	AlreadyQueued []string `json:"already_queued"`
+}
+
+// newEmbargoQueueCommand builds `abcd embargo queue`: while the person is
+// away, the act that queues one step for their return for each advisory
+// ready to publish, at most once each. Bare `abcd embargo` only lists them.
+func newEmbargoQueueCommand(asJSON *bool) *cobra.Command {
+	return &cobra.Command{
+		Use: "queue",
+		Long: "While the person is away (`abcd mode autonomous`), queue one step for their\n" +
+			"return for each advisory bare `abcd embargo` lists as ready to publish, naming\n" +
+			"its private record, the release that holds its fix and the publish command that\n" +
+			"shows its plan, never the advisory's id or title. A step already queued is not\n" +
+			"queued again: the check and the append are one write under the away store's\n" +
+			"lock, so two runs at once queue it once. It writes nothing in the embargo store\n" +
+			"and publishes nothing; `abcd mode back` prints the steps.\n\n" +
+			"Exit 2 when the person is not away or the away record cannot be read, and on a\n" +
+			"refusal; nothing is queued. Exit 1 when a step cannot be queued, naming each\n" +
+			"queued before it.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const verb = "abcd embargo queue"
+			root, home, err := embargoPlace(verb)
+			if err != nil {
+				return err
+			}
+			switch _, away, err := autonomy.AwayAt(root, autonomy.Options{}); {
+			case err != nil:
+				return &exitError{Code: 2, Msg: verb + ": the away record cannot be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); nothing queued"}
+			case !away:
+				return &exitError{Code: 2, Msg: verb + ": the person is not away (`abcd mode autonomous` says they are), so there is no return to queue a step for; nothing queued: tell them instead"}
+			}
+			res, err := embargo.Status(embargo.StatusRequest{Home: home, RepoRoot: root})
+			if err != nil {
+				return embargoFailure(verb, err)
+			}
+			out := embargoQueueOutput{NoStore: res.NoStore, Ready: []string{}, Queued: []string{}, AlreadyQueued: []string{}}
+			for _, r := range res.Ready {
+				out.Ready = append(out.Ready, r.IssueID)
+				queued, _, err := autonomy.QueueStepOnce(root, embargoPublishStep(r), autonomy.Options{})
+				switch {
+				case errors.Is(err, autonomy.ErrNotAway):
+					return &exitError{Code: 2, Msg: verb + ": the person came back before the publish step for " + r.IssueID + " was queued" + queuedSoFar(out.Queued)}
+				case err != nil:
+					return &exitError{Code: 1, Msg: verb + ": the publish step for " + r.IssueID + " could not be queued (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ")" + queuedSoFar(out.Queued)}
+				case queued:
+					out.Queued = append(out.Queued, r.IssueID)
+				default:
+					out.AlreadyQueued = append(out.AlreadyQueued, r.IssueID)
+				}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
+				switch {
+				case out.NoStore:
+					fmt.Fprintln(w, "abcd embargo queue — this repository has no embargo store on this machine; nothing queued")
+					return
+				case len(out.Ready) == 0:
+					fmt.Fprintln(w, "abcd embargo queue — no advisory is ready to publish; nothing queued")
+					return
+				}
+				if len(out.Queued) > 0 {
+					fmt.Fprintf(w, "abcd embargo queue — the person is away: queued the publish step for %s for their return (`abcd mode back` lists it); nothing was published\n",
+						strings.Join(out.Queued, ", "))
+				}
+				if len(out.AlreadyQueued) > 0 {
+					fmt.Fprintf(w, "abcd embargo queue — already queued for their return: %s; nothing queued again\n", strings.Join(out.AlreadyQueued, ", "))
+				}
+			})
+		},
+	}
+}
+
+// queuedSoFar is the clause naming the steps a queue run queued before it
+// stopped, or that it queued none.
+func queuedSoFar(ids []string) string {
+	if len(ids) == 0 {
+		return "; nothing queued"
+	}
+	return "; queued before it: " + strings.Join(ids, ", ")
 }
 
 // embargoPublishStep is the step queued for the person's return for one
@@ -87,34 +164,7 @@ func embargoPublishStep(r embargo.ReadyAdvisory) string {
 		". Run `" + r.PublishWith + "`, read the plan, and approve it if it is right."
 }
 
-// queueEmbargoPublishSteps queues, while the away mode holds for the
-// checkout at root, the publish step of each advisory ready to publish that
-// is not queued already, and returns the record id of each it queued. It
-// fails open: an away record that cannot be read is read as not away, and a
-// step that cannot be queued is named in the note, never failing the status.
-func queueEmbargoPublishSteps(root string, ready []embargo.ReadyAdvisory) (queued []string, note string) {
-	queued = []string{}
-	if len(ready) == 0 {
-		return queued, ""
-	}
-	rec, away, err := autonomy.AwayAt(root, autonomy.Options{})
-	if err != nil || !away || rec == nil {
-		return queued, ""
-	}
-	for _, r := range ready {
-		step := embargoPublishStep(r)
-		if slices.ContainsFunc(rec.Queue, func(q autonomy.QueuedStep) bool { return q.Step == step }) {
-			continue
-		}
-		if _, err := autonomy.QueueStep(root, step, autonomy.Options{}); err != nil {
-			return queued, "the publish step for " + r.IssueID + " could not be queued for the person's return: " + fsutil.RedactHome(err.Error())
-		}
-		queued = append(queued, r.IssueID)
-	}
-	return queued, ""
-}
-
-func renderEmbargoStatus(w io.Writer, out embargoStatusOutput) {
+func renderEmbargoStatus(w io.Writer, out embargo.StatusResult) {
 	if out.NoStore {
 		fmt.Fprintln(w, "abcd embargo — this repository has no embargo store on this machine, so nothing is held under embargo here")
 		fmt.Fprintln(w, "next: abcd embargo intake (reads the advisories GitHub holds in triage and draft)")
@@ -131,13 +181,6 @@ func renderEmbargoStatus(w io.Writer, out embargoStatusOutput) {
 	}
 	for _, r := range out.NoFix {
 		fmt.Fprintf(w, "  no fix recorded: %s (%s); once its fix lands, record it with: abcd embargo fixed %s <commit>\n", r.GHSAID, r.IssueID, r.IssueID)
-	}
-	if len(out.Queued) > 0 {
-		fmt.Fprintf(w, "the person is away: queued the publish step for %s for their return (`abcd mode back` lists it); nothing was published\n",
-			strings.Join(out.Queued, ", "))
-	}
-	if out.QueueNote != "" {
-		fmt.Fprintln(w, termsafe.Sanitize("note: "+out.QueueNote))
 	}
 }
 

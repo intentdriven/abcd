@@ -98,6 +98,7 @@ var examples = map[string]string{
 	"abcd embargo check":   "abcd embargo check --range v0.11.0..HEAD",
 	"abcd embargo close":   "abcd embargo close GHSA-xxxx-xxxx-xxxx",
 	"abcd embargo fixed":   "abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc",
+	"abcd embargo queue":   "abcd embargo queue",
 	"abcd embargo intake":  "abcd embargo intake",
 	"abcd embargo publish": "abcd embargo publish",
 	"abcd embargo triage":  `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`,

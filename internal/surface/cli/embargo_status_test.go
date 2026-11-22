@@ -12,10 +12,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mode"
 )
 
-// embargo_status_test.go: the front door of `abcd embargo fixed` and of bare
+// embargo_status_test.go: the front door of `abcd embargo fixed`, of bare
 // `abcd embargo`, which lists each advisory whose recorded fix is in a
-// published release as ready to publish and, while the person is away, queues
-// their publish step once. The core's judgement is held in
+// published release as ready to publish and writes nothing, and of `abcd
+// embargo queue`, which while the person is away queues their publish step
+// once. The core's judgement is held in
 // internal/core/embargo; these tests hold what the surface adds.
 
 // embargoStatusDoc is bare `abcd embargo --json`, as far as these tests read it.
@@ -51,13 +52,14 @@ func TestBareEmbargoWithoutAStore(t *testing.T) {
 	}
 }
 
-// TestBareEmbargoListsReadyAndQueuesWhileAway: once `abcd embargo fixed`
+// TestBareEmbargoListsReadyAndQueueQueuesWhileAway: once `abcd embargo fixed`
 // records a fix commit a published release holds, bare `abcd embargo` lists
-// the advisory as ready to publish, naming the release; it queues nothing
-// while the person is present, and while they are away it queues their
+// the advisory as ready to publish, naming the release, and writes nothing,
+// while the person is away as while they are present. `abcd embargo queue`
+// refuses while they are present, and while they are away queues their
 // publish step once, naming the record and the release and never the
 // advisory's id, and publishes nothing.
-func TestBareEmbargoListsReadyAndQueuesWhileAway(t *testing.T) {
+func TestBareEmbargoListsReadyAndQueueQueuesWhileAway(t *testing.T) {
 	r := embargoSurfaceRepo(t)
 	seedEmbargo(t)
 	code, out, stderr := runEmbargo(t, "", "embargo", "triage", surfaceGHSA, "vulnerability", "--by", "Alice", "--json")
@@ -101,15 +103,31 @@ func TestBareEmbargoListsReadyAndQueuesWhileAway(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(r.Root(), filepath.FromSlash(mode.TierRelPath)), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	code, out, stderr = runEmbargo(t, "", "embargo", "queue")
+	if code != 2 || !strings.Contains(stderr, "not away") || !strings.Contains(stderr, "nothing queued") {
+		t.Fatalf("embargo queue while present: exit %d, %s%s", code, out, stderr)
+	}
 	if code, out, stderr := runEmbargo(t, "", "mode", "autonomous", "--until", "09:00"); code != 0 {
 		t.Fatalf("mode autonomous: exit %d, %s%s", code, out, stderr)
 	}
 	code, out, _ = runEmbargo(t, "", "embargo")
-	if code != 0 || !strings.Contains(out, "queued the publish step for "+tr.IssueID) || !strings.Contains(out, "nothing was published") {
-		t.Fatalf("bare embargo while away: exit %d, %s", code, out)
+	if doc := bareEmbargo(t); code != 0 || strings.Contains(out, "queued") || len(doc.Queued) != 0 {
+		t.Fatalf("bare embargo while away wrote: exit %d, %s %+v", code, out, doc)
 	}
-	if doc := bareEmbargo(t); len(doc.Queued) != 0 {
-		t.Fatalf("a second bare embargo queued again: %+v", doc)
+	if rec, _, err := autonomy.AwayAt(r.Root(), autonomy.Options{}); err != nil || rec == nil || len(rec.Queue) != 0 {
+		t.Fatalf("bare embargo while away queued a step: %+v, %v", rec, err)
+	}
+	code, out, stderr = runEmbargo(t, "", "embargo", "queue")
+	if code != 0 || !strings.Contains(out, "queued the publish step for "+tr.IssueID) || !strings.Contains(out, "nothing was published") {
+		t.Fatalf("embargo queue while away: exit %d, %s%s", code, out, stderr)
+	}
+	code, out, stderr = runEmbargo(t, "", "embargo", "queue", "--json")
+	var again struct {
+		Queued  []string `json:"queued"`
+		Already []string `json:"already_queued"`
+	}
+	if err := json.Unmarshal([]byte(out), &again); code != 0 || err != nil || len(again.Queued) != 0 || len(again.Already) != 1 {
+		t.Fatalf("a second embargo queue: exit %d, %v, %s%s", code, err, out, stderr)
 	}
 	rec, away, err := autonomy.AwayAt(r.Root(), autonomy.Options{})
 	if err != nil || !away {

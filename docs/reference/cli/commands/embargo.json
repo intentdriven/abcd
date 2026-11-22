@@ -3,7 +3,7 @@
   "commands": [
     {
       "path": "abcd embargo",
-      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.",
+      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
       "usage": "abcd embargo [flags]",
       "flags": [],
       "inputs": [],
@@ -14,6 +14,7 @@
         "fixed",
         "intake",
         "publish",
+        "queue",
         "triage"
       ]
     },
@@ -88,6 +89,14 @@
       ],
       "inputs": [],
       "example": "abcd embargo publish"
+    },
+    {
+      "path": "abcd embargo queue",
+      "sentence": "Queue the publish step of each advisory ready to publish for the person's return: Writes only the away queue, each step once; refuses while the person is not away.",
+      "usage": "abcd embargo queue [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd embargo queue"
     },
     {
       "path": "abcd embargo triage",

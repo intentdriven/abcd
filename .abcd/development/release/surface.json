@@ -1671,7 +1671,7 @@
       "hidden": false,
       "group": "release",
       "block": "people",
-      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.",
+      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1756,6 +1756,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd embargo queue",
+      "hidden": false,
+      "sentence": "Queue the publish step of each advisory ready to publish for the person's return: Writes only the away queue, each step once; refuses while the person is not away.",
+      "flags": []
     },
     {
       "path": "abcd embargo triage",

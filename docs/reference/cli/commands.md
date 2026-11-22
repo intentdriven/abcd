@@ -2008,7 +2008,7 @@ abcd drain --drive
 
 ### `abcd embargo`
 
-Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.
+Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
 
 **Usage:** `abcd embargo`
 
@@ -2032,9 +2032,8 @@ resolved in the store, names), naming that release and the publish command
 that shows its plan; waiting, with why, when its fix is recorded and not yet
 in one; or with no fix recorded. Which release holds a fix is read from the
 commits as stored; origin's tags and GitHub's release are read only for a
-release tag that holds one. Bare writes nothing in the store and publishes
-nothing: while the person is away (`abcd mode autonomous`) it queues one step
-for their return for each advisory ready to publish, once, and says so.
+release tag that holds one. Bare writes nothing and publishes nothing; `abcd
+embargo queue` is the act that queues a step for the person's return.
 
 Exit 2 on a refusal (nothing written) and on a check finding.
 
@@ -2239,6 +2238,30 @@ after the person, in that session, has seen the plan and said yes to it.
 
 ```
 abcd embargo publish
+```
+
+#### `abcd embargo queue`
+
+Queue the publish step of each advisory ready to publish for the person's return: Writes only the away queue, each step once; refuses while the person is not away.
+
+**Usage:** `abcd embargo queue`
+
+While the person is away (`abcd mode autonomous`), queue one step for their
+return for each advisory bare `abcd embargo` lists as ready to publish, naming
+its private record, the release that holds its fix and the publish command that
+shows its plan, never the advisory's id or title. A step already queued is not
+queued again: the check and the append are one write under the away store's
+lock, so two runs at once queue it once. It writes nothing in the embargo store
+and publishes nothing; `abcd mode back` prints the steps.
+
+Exit 2 when the person is not away or the away record cannot be read, and on a
+refusal; nothing is queued. Exit 1 when a step cannot be queued, naming each
+queued before it.
+
+**Example:**
+
+```
+abcd embargo queue
 ```
 
 #### `abcd embargo triage`

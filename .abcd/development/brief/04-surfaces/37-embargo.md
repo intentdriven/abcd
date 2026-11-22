@@ -12,7 +12,8 @@ or publishing an advisory takes one approval per act, bound to exactly what was
 shown.
 
 This chapter describes intake, triage, recording a fix, the bare listing of
-what is ready to publish, closing, the outbound check and publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
+what is ready to publish, queuing its publish step while the person is away,
+closing, the outbound check and publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
 restores no redacted record and has no step for an embargo broken before
 publication; the person handles each of those, and the section below lists the
 ones the command page hands them.
@@ -99,10 +100,16 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   read from the commits as stored, and a tag counts only as a published
   release, as publish holds; origin and GitHub are asked only about a tag that
   holds a fix, and an answer that cannot be had leaves the advisory waiting
-  with the reason. The listing publishes nothing. While the person is away it
-  queues one step for their return for each ready advisory not queued already,
-  naming the private record and the release and never the advisory, so the
-  publish waits for them rather than for someone to remember it.
+  with the reason. The listing writes nothing and publishes nothing, while the
+  person is away as while they are present: a bare verb renders, and the act
+  that changes state has its own sub-verb.
+- **queue** is that act. While the person is away it queues one step for
+  their return for each ready advisory not queued already, naming the private
+  record and the release and never the advisory, so the publish waits for
+  them rather than for someone to remember it. The check for a step already
+  queued and the append are one write under the away store's lock
+  (`autonomy.QueueStepOnce`), so two runs at once queue it once; while the
+  person is present it refuses and queues nothing.
 - **close** shows the closing text and its digest and sends only a read; with
   the approval of that digest it closes the advisory with the text at the head
   of its description (GitHub offers no comment on an advisory), the reporter's
@@ -173,7 +180,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd embargo`
 
-Sub-verbs: `abcd embargo check`, `abcd embargo close`, `abcd embargo fixed`, `abcd embargo intake`, `abcd embargo publish`, `abcd embargo triage`.
+Sub-verbs: `abcd embargo check`, `abcd embargo close`, `abcd embargo fixed`, `abcd embargo intake`, `abcd embargo publish`, `abcd embargo queue`, `abcd embargo triage`.
 
 Flags: none.
 
@@ -217,6 +224,12 @@ Sub-verbs: none.
 |---|---|
 | `--approve` | string |
 | `--release` | string |
+
+### `abcd embargo queue`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd embargo triage`
 

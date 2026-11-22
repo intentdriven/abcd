@@ -1,7 +1,7 @@
 ---
 name: embargo
-description: "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb."
-argument-hint: "[intake | triage <iss-N|GHSA-id> <verdict> --by <who> [--reason <why>] [--exists-without <why> --cannot-help <why>] | fixed <iss-N|GHSA-id> <commit>... [--replace] | close <iss-N|GHSA-id> [--approve <digest>] | check [--range <a>..<b>] [--file <path>|-]... [--allow <GHSA-id>]... | publish [--release <vX.Y.Z>] [--approve <digest>]]"
+description: "Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb."
+argument-hint: "[intake | triage <iss-N|GHSA-id> <verdict> --by <who> [--reason <why>] [--exists-without <why> --cannot-help <why>] | fixed <iss-N|GHSA-id> <commit>... [--replace] | queue | close <iss-N|GHSA-id> [--approve <digest>] | check [--range <a>..<b>] [--file <path>|-]... [--allow <GHSA-id>]... | publish [--release <vX.Y.Z>] [--approve <digest>]]"
 block: people
 ---
 
@@ -61,15 +61,30 @@ had leaves that advisory waiting, with the reason, rather than refusing the
 listing. A repository with no embargo store reports `no_store: true` and makes
 none.
 
-The listing writes nothing in the store and publishes nothing. Ready means the
-person can publish now, never that abcd will: show the user each ready
-advisory and its `publish_with`, and run the publish only as Publish below
-says. While the person is away (`abcd mode autonomous`), the listing queues
-one step for their return for each ready advisory not queued already, naming
-its private record and the release, never the advisory's id or title; `queued`
-lists the records it queued for, and `abcd mode back` prints the steps. A step
-that cannot be queued is named in `queue_note`, and the listing still
-succeeds.
+The listing writes nothing and publishes nothing, while the person is away as
+while they are present. Ready means the person can publish now, never that
+abcd will: show the user each ready advisory and its `publish_with`, and run
+the publish only as Publish below says. While the person is away, queue the
+publish steps for their return with Queue below.
+
+## Queue
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" embargo queue --json
+```
+
+While the person is away (`abcd mode autonomous`), queues one step for their
+return for each advisory the bare listing names ready, naming its private
+record, the release and the publish command that shows its plan, never the
+advisory's id or title. A step already queued is not queued again: the check
+and the append are one write under the away store's lock, so two runs at once
+queue it once. `ready` lists the ready records, `queued` those this call
+queued for, and `already_queued` those queued before; `abcd mode back` prints
+the steps. It writes nothing in the embargo store and publishes nothing.
+
+While the person is present, or when the away record cannot be read, it
+refuses with exit 2 and queues nothing: tell the person instead. A step that
+cannot be queued exits 1, naming each queued before it.
 
 ## Fixed
 
@@ -373,8 +388,9 @@ see. The person then lands the record in a change of its own.
 - fixing each vulnerability, landing the fixes so they are in the release
   that publishes the advisories, and recording each fix with `abcd embargo
   fixed` or resolving each private record in the store with its fix commit;
-- publishing an advisory the bare listing names ready to publish: the listing,
-  and the step it queues while the person is away, only say so;
+- publishing an advisory the bare listing names ready to publish: the
+  listing, and the step `abcd embargo queue` queues while the person is away,
+  only say so;
 - restoring each record into the public ledger once its advisory is
   published, with the command a plan or an intake names, after comparing its
   body with the published advisory;
@@ -411,6 +427,8 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
   - An example call is `abcd embargo intake`.
 - `abcd embargo publish [flags]`
   - An example call is `abcd embargo publish`.
+- `abcd embargo queue [flags]`
+  - An example call is `abcd embargo queue`.
 - `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
   - An example call is `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`.
 <!-- /generated -->
