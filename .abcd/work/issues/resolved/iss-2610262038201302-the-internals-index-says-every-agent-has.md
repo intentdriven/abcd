@@ -12,6 +12,10 @@ found_at: ".abcd/development/brief/05-internals/README.md:7"
 remedy: "In the index row for 01-agents.md say fourteen of the eighteen prompts declare JSON inputs and outputs and the four repo-workflow reviewer and researcher prompts do not, as 01-agents.md does."
 finding_ref: cfk-beb5d2b696a02d00
 duplicates: [iss-2610160608434377]
+resolution: "The internals index row for 01-agents.md now says fourteen of the eighteen prompts declare JSON inputs and outputs and the four repo-workflow reviewer and researcher prompts do not, as 01-agents.md does; a lint test holds the row to the catalog's split."
+impact: internal
+resolved_by:
+  commit: "2c280aac1ce6b28b1a901cda6bd0f99943d42fe5"
 ---
 
 The internals index says every agent has declared JSON inputs and outputs; the agent catalog says four agents declare no JSON contract.
@@ -24,3 +28,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 05-internals/README describes 01-agents as covering the eighteen agents, each with declared JSON inputs/outputs. 01-agents says only fourteen return JSON: `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer` and `sota-researcher` return a table, prose or a ranked list.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 788.
+
+## Grounds
+
+- pursued: the index row and the agent catalog agree on which prompts declare JSON; TestInternalsIndexAgentsRowStatesTheCatalogsJSONSplit failing, or the row again claiming every prompt declares JSON, would show it wrong
