@@ -232,7 +232,8 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 
 // originViewOf is the view v at now, whose ledger is the one read out of
 // its commit: when it was fetched, how many commits this checkout is behind
-// it, and the issues open here that it holds finished.
+// it, counted in history as stored (gitutil.RunCappedAsStored), and the
+// issues open here that it holds finished.
 func originViewOf(repoRoot string, v originView, ledger *capture.TreeLedger, now time.Time) *DrainOrigin {
 	o := &DrainOrigin{Ref: gitutil.ShortRef(v.ref), Commit: v.commit, Finished: []string{}}
 	if at := claim.LastFetched(repoRoot); !at.IsZero() {
@@ -241,7 +242,7 @@ func originViewOf(repoRoot string, v originView, ledger *capture.TreeLedger, now
 			o.AgeMinutes = int(age / time.Minute)
 		}
 	}
-	if out, err := gitutil.Run(repoRoot, "rev-list", "--count", "HEAD.."+v.commit, "--"); err == nil {
+	if out, err := gitutil.RunCappedAsStored(repoRoot, 64, "rev-list", "--count", "HEAD.."+v.commit, "--"); err == nil {
 		o.Behind, _ = strconv.Atoi(strings.TrimSpace(out))
 	}
 	terminal := ledger.Terminal()

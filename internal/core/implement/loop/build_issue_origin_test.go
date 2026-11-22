@@ -90,8 +90,8 @@ func TestABuildOfAnIssueOnOriginAloneIsJudgedFromOrigin(t *testing.T) {
 // branch holds an issue whose found_at an earlier commit named otherwise, and
 // this checkout holds a refs/replace entry standing a tag of that earlier
 // commit in for origin's tip. The build judges the issue from the tip as
-// stored: it reserves the tip's found_at, and a walled stage of the run
-// declares it.
+// stored: it reserves the tip's found_at, a walled stage of the run declares
+// it, and the eligible row counts the commits behind the tip as stored.
 func TestABuildOfAnIssueOnOriginIsJudgedFromItsTipAsStored(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	pushFromOtherCopy(t, bare, "file "+originIssue, func(dir string) {
@@ -132,8 +132,12 @@ func TestABuildOfAnIssueOnOriginIsJudgedFromItsTipAsStored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a build of an issue origin holds open is refused: %v", err)
 	}
-	if row := eligibleRow(t, start.Checks); !row.OK || !strings.Contains(row.Detail, "read from origin/main at "+shortSHA(tip)) {
+	row := eligibleRow(t, start.Checks)
+	if !row.OK || !strings.Contains(row.Detail, "read from origin/main at "+shortSHA(tip)) {
 		t.Fatalf("the eligible row = %+v; want it read from origin's tip %s", row, shortSHA(tip))
+	}
+	if want := "this checkout is 2 commit(s) behind origin/main"; !strings.Contains(row.Detail, want) {
+		t.Fatalf("the eligible row = %+v; want it to count the tip's stored history: %q", row, want)
 	}
 	if fp := footprintOf(t, bare, originIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
 		t.Fatalf("the reservation's footprint is the tip's found_at: %v", fp)
