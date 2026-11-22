@@ -400,6 +400,59 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 	}
 }
 
+// TestGuardReadsAQuotedExpansionOfSeveralWordsAsAnOptionValueOfSeveral: a
+// double-quoted expansion that yields one word per element — `"$@"`,
+// `"${@:2}"`, `"${a[@]}"`, bash's `"${!a[@]}"`, zsh's `"$a[@]"`, `"${(@)a}"`,
+// and zsh's splitting forms `"${=V}"`, `"${(f)V}"`, `"${(s: :)V}"` — can
+// stand for several words, the ones after the first operands of env or sudo
+// of their own, so as the value of one of their options it can set a
+// variable. `"$*"`, `"${a[*]}"`, `"${#a[@]}"` and `"$V"` are one word.
+func TestGuardReadsAQuotedExpansionOfSeveralWordsAsAnOptionValueOfSeveral(t *testing.T) {
+	r := Defaults()
+	for line, id := range map[string]string{
+		`env -u "$@" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "${@}" opencode run x`:        "agent-launch-opencode-config-env",
+		`env -u "${@:2}" opencode run x`:      "agent-launch-opencode-config-env",
+		`env -u "${a[@]}" claude -p x`:        "agent-launch-claude-config-env",
+		`env -u "${a[@]:1}" claude -p x`:      "agent-launch-claude-config-env",
+		`env -u "${!a[@]}" claude -p x`:       "agent-launch-claude-config-env",
+		`env -u "$a[@]" opencode run x`:       "agent-launch-opencode-config-env",
+		`env -u "${(@)a}" opencode run x`:     "agent-launch-opencode-config-env",
+		`env -u "${=V}" opencode run x`:       "agent-launch-opencode-config-env",
+		`env -u "${(f)V}" opencode run x`:     "agent-launch-opencode-config-env",
+		`env -u "${(s: :)V}" opencode run x`:  "agent-launch-opencode-config-env",
+		`env -u x"$@" opencode run x`:         "agent-launch-opencode-config-env",
+		`env -C "$wt" -u "$@" claude -p x`:    "agent-launch-claude-config-env",
+		`sudo -u "$@" opencode run x`:         "agent-launch-opencode-config-env",
+		`sudo -u "${a[@]}" opencode run x`:    "agent-launch-opencode-config-env",
+		`sudo --user "${=U}" opencode run x`:  "agent-launch-opencode-config-env",
+		`env --unset "${(f)V}" claude -p x`:   "agent-launch-claude-config-env",
+		`env --chdir "${arr[@]}" claude -p x`: "agent-launch-claude-config-env",
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, line := range []string{
+		`env -u "$*" opencode run x`,
+		`env -u "${a[*]}" opencode run x`,
+		`env -u "${#a[@]}" opencode run x`,
+		`env -u "${#@}" opencode run x`,
+		`env -u "$v" opencode run x`,
+		`env -u "${v:-x}" opencode run x`,
+		`sudo -u "$u" opencode run x`,
+		`sudo -u "${u}" opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}
+
 // TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport: zsh turns
 // allexport on by an assignment to its options array, by the option's name in
 // any of zsh's spellings; a value other than the one zsh reads as off is read

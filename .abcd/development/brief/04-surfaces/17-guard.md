@@ -825,7 +825,9 @@ environment reads every way the line exports a variable to it, allexport and
 the assignments it turns into exports included (an arithmetic assignment, a
 descriptor a redirection names and zsh's `${NAME::=…}` among them), with an
 assignment whose name or value the line does not fix read as setting the
-variable and the value of one of env's own options read as no assignment, a
+variable and the value of one of env's or sudo's own options read as no
+assignment unless an expansion that can yield several words stands in it
+(an unquoted one, or a quoted `"$@"` or `"${a[@]}"`), a
 `set` whose option words it does not fix and a `SHELLOPTS` exported before a
 shell read as turning allexport on, an element of zsh's `options` array read
 as turning it off only for the exact value zsh accepts (`off`, or `on` for the

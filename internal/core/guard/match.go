@@ -388,9 +388,11 @@ func precededByCD(before []segment, chain int) bool {
 // written, where it stands among env's or sudo's operands, which a
 // substitution can print whole (`env "$PAIR" opencode`); a word that is an
 // option's value (`sudo -u "$U"`, `env -C "$D"`, envOptionValueNext,
-// sudoOptionValueNext) is no assignment, unless an unquoted expansion stands
-// in it (segment.fieldSplit): the shell splits its value into fields, and a
-// field after the first is an operand of its own (`env -u $V opencode`).
+// sudoOptionValueNext) is no assignment, unless an expansion that can yield
+// several words stands in it (segment.fieldSplit: an unquoted one, or a
+// quoted `"$@"` or `"${a[@]}"`): a word after the first is an operand of its
+// own, which the expansion prints whole whatever text the line writes
+// before it (`env -u $V opencode`, `env -u x"$@" opencode`).
 func envSetBefore(s segment, site int, names []string) bool {
 	operands := ""       // the envAssigns wrapper whose operands the words since it are
 	optionValue := false // the word is the value of the wrapper's option before it
@@ -401,6 +403,7 @@ func envSetBefore(s segment, site int, names []string) bool {
 			if !s.fieldSplit[i] {
 				continue
 			}
+			return true
 		}
 		if setsName(tok, names) || couldSetName(tok, names) && (strings.IndexByte(tok, '=') >= 0 || operands != "") {
 			return true

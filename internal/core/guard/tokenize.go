@@ -1400,6 +1400,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// (segment.variable); one that ran a substitution may print its output.
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
+	//
+	// A quoted one that yields one word per element (quotedYieldsSeveral)
+	// marks its word as one an unquoted substitution stands in (curSplit),
+	// since it too can stand for several words.
 	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
@@ -1411,6 +1415,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		site.transform = transformsValue(body)
 		if len(segs) > start {
 			curSub = true
+		}
+		if !split && quotedYieldsSeveral(body) {
+			curSplit = true
 		}
 	}
 
@@ -1539,6 +1546,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
+					// `"$@"`, and zsh's `"$a[@]"`, yield one word per
+					// element, as an unquoted substitution can.
+					if line[j+1] == '@' || strings.HasPrefix(line[k:], "[@]") {
+						curSplit = true
+					}
 					j = k
 					continue
 				}
@@ -2721,6 +2733,28 @@ func simpleParamEnd(line string, i int) int {
 		return i + 1
 	}
 	return -1
+}
+
+// quotedYieldsSeveral reports whether a double-quoted `${…}` whose text
+// between the braces is body can yield several words, one per element:
+// the positional parameters (`"${@}"`, `"${@:2}"`), an array's elements
+// (`"${a[@]}"`, `"${a[@]:1}"`), bash's keys and names (`"${!a[@]}"`,
+// `"${!pre@}"`), and zsh's splitting forms, `=` (`"${=V}"`, behind `^` or
+// `~` too) and any flag group (`"${(f)V}"`, `"${(s: :)V}"`, `"${(@)a}"`),
+// read as one that can split since the guard does not read each flag. A
+// length (`"${#a[@]}"`) is one word, and so are `"${*}"` and `"${a[*]}"`.
+func quotedYieldsSeveral(body string) bool {
+	if strings.HasPrefix(body, "#") {
+		return false
+	}
+	if rest, ok := strings.CutPrefix(body, "!"); ok {
+		return strings.Contains(rest, "[@]") || strings.HasSuffix(rest, "@")
+	}
+	if strings.HasPrefix(body, "@") || strings.Contains(body, "[@]") {
+		return true
+	}
+	lead := strings.TrimLeft(body, "^~")
+	return strings.HasPrefix(lead, "=") || strings.HasPrefix(lead, "(")
 }
 
 // closingDolBrace returns the index of the `}` that closes a `${` standing
