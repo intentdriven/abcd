@@ -459,9 +459,11 @@ payload's `order` states the rule. Every other open issue follows, by id.
 ## Bundles
 
 `drain.bundle_max` is the most issues one lane may take: a whole number from 1
-to 10, set in the repository's `.abcd/config.json` over the machine's
-`~/.abcd.noindex/config.json`, and 1 by default for now, so a lane takes one
-issue unless a person sets the key. The `drain` namespace is claimed: 0, 11, a
+to 10, set in the machine's `~/.abcd.noindex/config.json`, and 1 by default for
+now, so a lane takes one issue unless a person sets the key. The repository's
+`.abcd/config.json` may lower the cap and never raise it: a figure there above
+the machine's, or above 1 where the machine sets none, is ignored, and the dry
+run (in `bundle_max_ignored`) and the move that starts a drain say so. The `drain` namespace is claimed: 0, 11, a
 value that is not a whole number and a misspelt key are each refused, naming
 the file that holds them. A drain reads the cap once, when it starts, and
 keeps it with the layer and the file it came from; a running drain keeps it

@@ -88,8 +88,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"last fetched, and says how old that view is, how many commits the checkout is\n" +
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
-			"back. Under drain.bundle_max above 1 (1 by default; 1 to 10, from .abcd/config.json\n" +
-			"or " + abcdhome.Display("config.json") + "), it shows under each issue that would lead the members of its\n" +
+			"back. Under drain.bundle_max above 1 (1 by default; 1 to 10, set in " + abcdhome.Display("config.json") + ",\n" +
+			"which a repository's .abcd/config.json may lower and never raise), it shows under each issue that would lead the members of its\n" +
 			"category and directory its next lane would take, which the judgements, the\n" +
 			"reservations and reservation.max_live may make fewer.\n\n" +
 			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
@@ -694,6 +694,9 @@ func renderDrainPlanBundled(w io.Writer, plan capture.DrainPlan, bundles []loop.
 // smaller; nothing under a cap of 1, where every lane takes one issue as
 // before.
 func renderDrainBundles(w io.Writer, pv loop.DrainPreview) {
+	if pv.BundleMaxIgnored != "" {
+		fmt.Fprintf(w, "  bundle cap: %s\n", termsafe.Sanitize(pv.BundleMaxIgnored))
+	}
 	if pv.BundleMax.Value <= 1 {
 		return
 	}

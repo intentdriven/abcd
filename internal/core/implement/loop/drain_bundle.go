@@ -15,11 +15,13 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -54,29 +56,68 @@ func bundledBundleMax() PaceValue {
 }
 
 // resolveBundleMax reads drain.bundle_max through the layered configuration:
-// the repository's file, then the machine's, then the bundled default. It
-// claims the `drain` namespace, so a misspelt key is refused naming the file
-// it sits in rather than letting the default apply unannounced, and a value
-// outside 1 to 10 is refused naming its origin, never replaced by a lower
-// layer.
-func resolveBundleMax(roots layered.Roots) (PaceValue, error) {
+// the machine's file over the bundled default sets the cap, and the
+// repository's file may lower it and never raise it. The repository's file is
+// whatever its last committer wrote, while the cap bounds how many of the
+// person's own reservations one lane holds, so a repository figure above the
+// machine's, or above the bundled default where the machine sets none, is
+// ignored and named in the returned note, as a repository's launch ledger
+// retention below the machine's is (runner.readLedger). It claims the `drain`
+// namespace, so a misspelt key is refused naming the file it sits in rather
+// than letting the default apply unannounced, and a value outside 1 to 10 in
+// any layer is refused naming its origin, never replaced by another layer.
+func resolveBundleMax(roots layered.Roots) (PaceValue, string, error) {
 	s, err := layered.Load(layered.Config, roots)
 	if err != nil {
-		return PaceValue{}, bundleMaxRefusal(err.Error())
+		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
 	if err := s.Claim(drainNamespace, keyBundleMax); err != nil {
-		return PaceValue{}, bundleMaxRefusal(err.Error())
+		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
-	v, err := layered.Get(s, drainNamespace+"."+keyBundleMax, BundledBundleMax, func(n int) error {
-		if n < 1 || n > maxBundleMax {
-			return fmt.Errorf("want a whole number of issues from 1 to %d", maxBundleMax)
-		}
-		return nil
-	})
+	key := drainNamespace + "." + keyBundleMax
+	found, err := s.Lookup(key)
 	if err != nil {
-		return PaceValue{}, bundleMaxRefusal(err.Error())
+		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
-	return PaceValue{Value: v.V, Layer: v.Layer.String(), Origin: v.Origin}, nil
+	v, ignored := bundledBundleMax(), ""
+	// Lowest precedence first: the machine's figure is what a repository's
+	// is held against.
+	for _, f := range slices.Backward(found) {
+		n, err := layered.Decode[int](f.Raw)
+		if err == nil && (n < 1 || n > maxBundleMax) {
+			err = fmt.Errorf("want a whole number of issues from 1 to %d", maxBundleMax)
+		}
+		if err != nil {
+			return PaceValue{}, "", bundleMaxRefusal(fmt.Sprintf("%s (%s layer): %s is %s: %v", f.Origin, f.Layer, key, compactRaw(f.Raw), err))
+		}
+		if f.Layer == layered.Repo && n > v.Value {
+			ignored = fmt.Sprintf("%s (%s) is %d, above the %d %s; a repository's %s may only lower the cap, so it is ignored",
+				f.Origin, key, n, v.Value, capSource(v), key)
+			continue
+		}
+		v = PaceValue{Value: n, Layer: f.Layer.String(), Origin: f.Origin}
+	}
+	return v, termsafe.Sanitize(fsutil.RedactHome(ignored)), nil
+}
+
+// capSource names where the cap a repository figure is held against came
+// from.
+func capSource(v PaceValue) string {
+	if v.Layer == layered.Bundled.String() {
+		return "abcd bundles when this machine sets none"
+	}
+	return "this machine sets in " + v.Origin
+}
+
+// compactRaw is a configuration value for a refusal, bounded so a file cannot
+// flood it.
+func compactRaw(raw []byte) string {
+	const most = 64
+	t := strings.TrimSpace(string(raw))
+	if len(t) > most {
+		t = t[:most] + "..."
+	}
+	return t
 }
 
 func bundleMaxRefusal(reason string) error {

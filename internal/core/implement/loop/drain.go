@@ -579,6 +579,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// state is written, and stillPace the pace the drain ran on before it,
 	// which a refused move puts back.
 	repaced := ""
+	// bundleIgnored names a repository's drain.bundle_max above the cap
+	// it may only lower, when a new drain ignored one (drain_bundle.go).
+	bundleIgnored := ""
 	var repace *drainRepace
 	stillPace := st.Pace
 	if !live {
@@ -588,8 +591,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		// The cap on a bundle is read once, as the pace is, and kept: a
 		// running drain takes no new one from the files (drain_bundle.go).
-		bundleMax, err := resolveBundleMax(o.roots(repoRoot))
-		if err != nil {
+		var bundleMax PaceValue
+		if bundleMax, bundleIgnored, err = resolveBundleMax(o.roots(repoRoot)); err != nil {
 			return DrainResult{}, err
 		}
 		// A hand-back an ended drain could not publish is still a person's,
@@ -666,6 +669,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if repaced != "" {
 			res.Next = joinNext(repaced, res.Next)
 			write = true
+		}
+		if bundleIgnored != "" {
+			res.Next = joinNext(res.Next, bundleIgnored)
 		}
 		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, clauses...)...)

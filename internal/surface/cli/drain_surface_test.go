@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
@@ -832,7 +833,8 @@ func TestDrainSkipHoldsAnIssueBackWithItsReason(t *testing.T) {
 // setting it shows none, its text as before.
 func TestDrainDryRunShowsTheMembersEachLeadWouldTake(t *testing.T) {
 	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	for _, f := range []string{"internal/a/one.go", "internal/a/two.go", "internal/a/three.go", "internal/b/four.go"} {
 		p := filepath.Join(repo, filepath.FromSlash(f))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -879,9 +881,23 @@ func TestDrainDryRunShowsTheMembersEachLeadWouldTake(t *testing.T) {
 		t.Fatalf("with no setting the text shows no bundle:\n%s", text)
 	}
 
+	// The machine sets the cap; the repository may lower it, never raise it.
+	machine := abcdhome.Path(home, "config.json")
 	cfg := filepath.Join(repo, ".abcd", "config.json")
-	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+	for _, f := range []string{machine, cfg} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(machine, []byte(`{"drain":{"bundle_max":3}}`), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"drain":{"bundle_max":8}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text, pv, out = read()
+	if pv.BundleMax.Value != 3 || pv.BundleMax.Layer != "machine" || !strings.Contains(text, "may only lower the cap, so it is ignored") {
+		t.Fatalf("a repository figure above the machine's is ignored and named:\n%s\n%s", text, out)
 	}
 	if err := os.WriteFile(cfg, []byte(`{"drain":{"bundle_max":3}}`), 0o644); err != nil {
 		t.Fatal(err)

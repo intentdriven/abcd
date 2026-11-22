@@ -176,8 +176,13 @@ A lane may take several issues of one kind in one place, one branch and one
 pull request for all of them (itd-2611201450052326). `drain.bundle_max` caps
 it: the most issues one lane takes, a whole number from 1 to 10, under a
 `drain` namespace read through the layered configuration as the pace's keys
-are, the repository's `.abcd/config.json` over the machine's
-`~/.abcd.noindex/config.json` over the bundled default. The default is 1 for
+are, except that a repository may only lower it: the machine's
+`~/.abcd.noindex/config.json` over the bundled default sets the cap, and the
+repository's `.abcd/config.json` may lower it and never raise it, since the
+repository's file is whatever its last committer wrote and the cap bounds how
+many of the person's own reservations one lane holds. A repository figure
+above the cap is ignored and named, in the dry run's `bundle_max_ignored` and
+in the move that starts a drain. The default is 1 for
 now, so a drain bundles only where a person sets the key; it rises once a
 failed bundle can be split and the drain's figures exist. The namespace is
 claimed, so a misspelt key is refused naming the file that holds it, as 0 and

@@ -260,14 +260,19 @@ layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
-The `drain.bundle_max` key is read through the same reader, in the ordinary
-precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`, then
-the bundled 1 (itd-2611201450052326). It is the most issues one drain lane
+The `drain.bundle_max` key is read through the same reader, and a repository
+may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the
+cap, and `.abcd/config.json` may lower it and never raise it
+(itd-2611201450052326). The repository's file is whatever its last committer
+wrote, and the cap bounds how many of the person's own reservations one lane
+holds, so a repository figure above the machine's, or above the bundled 1
+where the machine sets none, is ignored and named, as a repository's
+`ledger.retention_days` below the machine's is. It is the most issues one drain lane
 takes, a whole number from 1 to 10; the default stays 1 for now, so a drain
 bundles only where a person sets the key, until a failed bundle can be split
 and the drain's figures exist. The reader claims the `drain` namespace, so a
 misspelt key under it is refused naming the file, and a value outside 1 to 10
-is refused naming its origin, never replaced by a lower layer. A drain reads
+in any layer is refused naming its origin, never replaced by another layer. A drain reads
 it once, when it starts, and keeps it on its state with the layer and origin
 it came from, so a running drain keeps its cap whatever the files say later.
 An issue joins a lead's lane when it comes after the lead in the drain order,

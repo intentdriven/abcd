@@ -1758,8 +1758,8 @@ says the copy's own order is drawn at its first move. It fetches nothing either:
 last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
-back. Under drain.bundle_max above 1 (1 by default; 1 to 10, from .abcd/config.json
-or ~/.abcd.noindex/config.json), it shows under each issue that would lead the members of its
+back. Under drain.bundle_max above 1 (1 by default; 1 to 10, set in ~/.abcd.noindex/config.json,
+which a repository's .abcd/config.json may lower and never raise), it shows under each issue that would lead the members of its
 category and directory its next lane would take, which the judgements, the
 reservations and reservation.max_live may make fewer.
 

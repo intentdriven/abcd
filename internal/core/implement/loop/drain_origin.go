@@ -122,15 +122,18 @@ type DrainPreview struct {
 	BundleMax  PaceValue            `json:"bundle_max"`
 	Bundles    []DrainBundlePreview `json:"bundles,omitempty"`
 	BundleNote string               `json:"bundle_note,omitempty"`
+	// BundleMaxIgnored names a repository's drain.bundle_max above the cap
+	// it may only lower, which the files' cap ignored; "" when none was.
+	BundleMaxIgnored string `json:"bundle_max_ignored,omitempty"`
 }
 
 // previewBundleCap is the cap the next move bundles under: a running drain's,
 // which it keeps, or the files' for a drain the move would start. A drain
 // state that cannot be read is the move's to refuse; the preview reads the
 // files then, as it plans without the state.
-func previewBundleCap(repoRoot string) (PaceValue, error) {
+func previewBundleCap(repoRoot string) (PaceValue, string, error) {
 	if st, live, err := readDrain(repoRoot); err == nil && live && st.BundleMax != nil {
-		return *st.BundleMax, nil
+		return *st.BundleMax, "", nil
 	}
 	roots, _ := layered.RootsFor(repoRoot)
 	return resolveBundleMax(roots)
@@ -138,11 +141,11 @@ func previewBundleCap(repoRoot string) (PaceValue, error) {
 
 // withBundles is pv with the bundles its plan would open.
 func withBundles(repoRoot string, pv DrainPreview) (DrainPreview, error) {
-	limit, err := previewBundleCap(repoRoot)
+	limit, ignored, err := previewBundleCap(repoRoot)
 	if err != nil {
 		return DrainPreview{}, err
 	}
-	pv.BundleMax = limit
+	pv.BundleMax, pv.BundleMaxIgnored = limit, ignored
 	pv.Bundles = previewBundles(pv.DrainPlan, limit.Value, planArea(repoRoot, pv.DrainPlan))
 	if len(pv.Bundles) > 0 {
 		pv.BundleNote = bundleSmallerNote

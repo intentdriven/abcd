@@ -48,16 +48,19 @@ func TestTheBundleCapIsReadThroughTheLayers(t *testing.T) {
 		value               int
 		layer, origin       string
 	}{
-		{"repository", `{"drain":{"bundle_max":3}}`, "", 3, "repo", ".abcd/config.json"},
 		{"machine", "", `{"drain":{"bundle_max":4}}`, 4, "machine", "config.json"},
-		{"both", `{"drain":{"bundle_max":3}}`, `{"drain":{"bundle_max":4}}`, 3, "repo", ".abcd/config.json"},
+		{"both, the repository lower", `{"drain":{"bundle_max":3}}`, `{"drain":{"bundle_max":4}}`, 3, "repo", ".abcd/config.json"},
+		{"both, the repository equal", `{"drain":{"bundle_max":4}}`, `{"drain":{"bundle_max":4}}`, 4, "repo", ".abcd/config.json"},
 		{"neither", "", "", 1, "bundled", "bundled"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			v, err := resolveBundleMax(bundleRoots(t, c.repo, c.machine))
+			v, ignored, err := resolveBundleMax(bundleRoots(t, c.repo, c.machine))
 			if err != nil {
 				t.Fatal(err)
+			}
+			if ignored != "" {
+				t.Fatalf("nothing is ignored: %q", ignored)
 			}
 			if v.Value != c.value || v.Layer != c.layer || !strings.Contains(v.Origin, c.origin) {
 				t.Fatalf("drain.bundle_max = %+v, want %d from the %s layer (%s)", v, c.value, c.layer, c.origin)
@@ -66,6 +69,38 @@ func TestTheBundleCapIsReadThroughTheLayers(t *testing.T) {
 	}
 	if BundledBundleMax != 1 {
 		t.Fatalf("the bundled cap is %d, want 1 until the split and the figures exist", BundledBundleMax)
+	}
+}
+
+// TestARepositoryMayOnlyLowerTheBundleCap: the repository's committed file
+// may lower the cap below the machine's, or below the bundled default where the
+// machine sets none, and never raise it: a higher figure is ignored and named,
+// and the cap stays the machine's or the bundled one.
+func TestARepositoryMayOnlyLowerTheBundleCap(t *testing.T) {
+	cases := []struct {
+		name, repo, machine string
+		value               int
+		layer               string
+		above               string
+	}{
+		{"above the machine's", `{"drain":{"bundle_max":8}}`, `{"drain":{"bundle_max":3}}`, 3, "machine", "above the 3"},
+		{"above the bundled default", `{"drain":{"bundle_max":5}}`, "", 1, "bundled", "above the 1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			v, ignored, err := resolveBundleMax(bundleRoots(t, c.repo, c.machine))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Value != c.value || v.Layer != c.layer {
+				t.Fatalf("the repository cannot raise the cap: %+v, want %d from the %s layer", v, c.value, c.layer)
+			}
+			for _, w := range []string{".abcd/config.json", "drain.bundle_max", c.above, "may only lower", "ignored"} {
+				if !strings.Contains(ignored, w) {
+					t.Fatalf("the ignored figure is named, saying %q: %q", w, ignored)
+				}
+			}
+		})
 	}
 }
 
@@ -81,7 +116,7 @@ func TestABundleCapOutOfRangeOrMisspeltIsRefusedNamingTheFile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := resolveBundleMax(bundleRoots(t, c.repo, c.machine))
+			_, _, err := resolveBundleMax(bundleRoots(t, c.repo, c.machine))
 			rf := mustRefusal(t, err)
 			if rf.Stage != StageDrain || !strings.Contains(rf.Reason, c.file) || !strings.Contains(rf.Reason, c.says) {
 				t.Fatalf("refused at %s, naming %s and %q: %+v", StageDrain, c.file, c.says, rf)
