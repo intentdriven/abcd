@@ -664,7 +664,7 @@ binary whose placement or sentence disagrees with the snapshot committed at
 reworded sentence.
 
 **Refusal-code guardrail.** A refusal code is a promise once a release has
-carried it ([adr-2610301638558260](../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)).
+carried it ([adr-2610301638558260](../../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)).
 The cut reads the ledger of codes (`.abcd/development/release/refusal-codes.json`)
 at the previous release's tag, the way it reads the surface snapshot, and
 compares it with the ledger committed at `HEAD`. A code the tag's ledger lists

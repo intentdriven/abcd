@@ -114,7 +114,7 @@ code and never repeating the word.
 
 The codes live in one table held in code (`internal/core/refusal`). A code is
 a short name, the verb, a slash and the reason in lower-case kebab-case, never
-a number ([adr-2610301638558260](../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)):
+a number ([adr-2610301638558260](../../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)):
 `usage/` names the command framework's own refusals (an unknown command or
 flag, too few or too many positional arguments, two flags that cannot go
 together, a required flag left out, a flag value that is missing or does not
