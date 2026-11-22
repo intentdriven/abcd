@@ -492,7 +492,9 @@ type WaitResult struct {
 	// it on stderr.
 	DiskNote string `json:"disk_note,omitempty"`
 	// DiskTrim is what the trim the waiter ran at the disk floor did, its
-	// lines joined (WaitRequest.OnDiskTrim); "" when it ran none.
+	// lines joined (WaitRequest.OnDiskTrim), or why it started none with
+	// less than DiskTrimMinLeft of its timeout left; "" when it reached no
+	// trim.
 	DiskTrim string `json:"disk_trim,omitempty"`
 	// Memory is the last memory reading, judged against the floor
 	// (load_memory.go); nil when no reading could be taken.
@@ -661,7 +663,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	var firstFloor uint64
 	// The first look that finds the volume holding the Go build cache under
 	// the floor runs the trim once before it refuses (floorTrim.at).
-	trim := &floorTrim{home: home, dir: req.Dir, now: now, say: req.OnDiskTrim}
+	trim := &floorTrim{home: home, dir: req.Dir, now: now, deadline: start.Add(req.Timeout), say: req.OnDiskTrim}
 	if trim.say == nil {
 		trim.say = func(string) {}
 	}

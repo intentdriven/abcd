@@ -283,6 +283,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"its root for Go, whose build cache is the one abcd trims), paced to once an hour\n" +
 			"across the account as `abcd ahoy worktree trim-cache` is, says on stderr what each\n" +
 			"trim freed or why it did not run, and refuses only if the volume is still low.\n" +
+			"With less than five minutes of --timeout left it starts no trim, says so, and\n" +
+			"refuses at once, since a trim cannot be stopped part way.\n" +
 			"The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
 			"is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to\n" +

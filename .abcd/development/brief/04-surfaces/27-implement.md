@@ -385,7 +385,11 @@ person's size limit and paced by the same hourly record, so two waiters at the
 floor never both run it. It says on stderr that it is trimming, what each trim
 freed or why it did not run (paced out, a pacing record it could not claim, a
 cache it skipped, or no known toolchain), and the free space after, and refuses
-only if the volume is still under the floor, naming what the trim did.
+only if the volume is still under the floor, naming what the trim did. The
+trim takes no deadline and walks a large cache for minutes, so a waiter with
+less than `implement.DiskTrimMinLeft` (five minutes) of its timeout left starts
+none, says why, and refuses at once: a lane's two-minute wait never runs over
+its timeout for a trim.
 Both gates also wait, never refuse, while the system reports memory
 pressure at or above the person's floor (itd-2611012048006057): macOS's own
 pressure level against `load.memory_floor_macos` (`warn` by default, or

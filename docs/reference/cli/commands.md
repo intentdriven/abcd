@@ -3482,6 +3482,8 @@ the cache trim of each toolchain its checkout uses once (`go.mod` or `go.work` a
 its root for Go, whose build cache is the one abcd trims), paced to once an hour
 across the account as `abcd ahoy worktree trim-cache` is, says on stderr what each
 trim freed or why it did not run, and refuses only if the volume is still low.
+With less than five minutes of --timeout left it starts no trim, says so, and
+refuses at once, since a trim cannot be stopped part way.
 The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to

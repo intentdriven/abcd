@@ -2052,8 +2052,12 @@ finished; a pacing record it could not claim; a cache the trim skipped; or a
 checkout with no toolchain abcd trims a cache for), and the free space after.
 It reads the disk again only when the trim freed something, and refuses only
 if the volume is still under the floor, the refusal naming what the trim did;
-`disk_trim` in `--json` carries the same lines. A waiter trims once: a disk
-that falls below the floor again while it waits is refused at the open look.
+`disk_trim` in `--json` carries the same lines. A trim walks a large cache
+for minutes and cannot be stopped part way, so a waiter with less than five
+minutes of its `--timeout` left starts none: it says so on stderr and in
+`disk_trim`, and refuses at the floor at once, so a lane's two-minute wait
+never runs over for a trim. A waiter trims once: a disk that falls below the
+floor again while it waits is refused at the open look.
 Only the Go build cache's volume is trimmed for, so a low worktree store on a
 volume of its own is refused without a trim. A cache under its limit loses
 nothing here; lower the limit to let the trim free more. abcd also keeps the

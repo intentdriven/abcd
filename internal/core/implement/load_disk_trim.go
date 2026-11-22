@@ -23,6 +23,16 @@ import (
 // space, so a cache already under its limit loses nothing here, and the
 // person's lever is load.go_cache_limit_gib.
 
+// DiskTrimMinLeft is the least of a waiter's --timeout that must be left for
+// it to start the trim at the floor. The trim walks a large cache for minutes
+// and cannot be stopped part way (worktree.TrimForFloor takes no deadline), so
+// a waiter with less left starts none: it says so on stderr and in the
+// report's disk_trim, and refuses at the floor at once, as it did before the
+// trim existed. Five minutes keeps a lane's two-minute wait from ever running
+// over its timeout, or its harness's ten-minute command cap, for a trim. A
+// longer wait still has its trim bounded only by this much of its time.
+const DiskTrimMinLeft = 5 * time.Minute
+
 // TrimAtFloor runs, as of now, the paced cache trim of each toolchain the
 // checkout whose root is dir uses, for the account whose home is home
 // (worktree.TrimForFloor). It is a variable only so tests stand in for it: the
@@ -33,6 +43,9 @@ var TrimAtFloor = worktree.TrimForFloor
 type floorTrim struct {
 	home, dir string
 	now       func() time.Time
+	// deadline is when the wait's --timeout runs out: no trim starts with
+	// less than DiskTrimMinLeft before it.
+	deadline time.Time
 	say       func(string)
 	tried     bool
 	// said is what the trim did, one sentence a step, for the report
@@ -58,6 +71,13 @@ func (f *floorTrim) at(disk DiskCheck, floor uint64) DiskCheck {
 		return disk
 	}
 	f.tried = true
+	if left := f.deadline.Sub(f.now()); left < DiskTrimMinLeft {
+		f.said = fmt.Sprintf("no cache was trimmed: the wait had %s of its --timeout left, under the %s a trim needs to start, since a trim walks a large cache for minutes and cannot be stopped part way",
+			max(left, 0).Round(time.Second), DiskTrimMinLeft)
+		f.say(f.said)
+		disk.trimNote = "N" + f.said[1:] + "."
+		return disk
+	}
 	f.say(fmt.Sprintf("%s free on the volume holding the Go build cache, under the floor of %s: trimming the caches this checkout's toolchains fill before refusing",
 		bytesText(vol.FreeBytes), bytesText(floor)))
 	got := TrimAtFloor(f.home, f.dir, f.now(), func(cache string) {

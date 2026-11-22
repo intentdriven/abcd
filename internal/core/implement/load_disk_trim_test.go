@@ -230,3 +230,43 @@ func TestWaitTrimsOnceAWait(t *testing.T) {
 		t.Fatalf("the refusal says the disk fell and that this wait trimmed once:\n%v", err)
 	}
 }
+
+// TestWaitStartsNoTrimItsTimeoutCannotHold (the review of
+// iss-2611220942266387): a trim walks a large cache for minutes and cannot be
+// stopped part way, so a waiter with less of its --timeout left than
+// DiskTrimMinLeft starts none. A lane's two-minute wait at the floor refuses
+// at once, as it did before the trim existed, and says on stderr, in the
+// report and in the refusal that the trim was skipped for want of time.
+func TestWaitStartsNoTrimItsTimeoutCannotHold(t *testing.T) {
+	home := t.TempDir()
+	free := 3 * gib
+	trimmingDisk(t, home, &free)
+	ran := 0
+	withTrimAtFloor(t, func(string, string, time.Time, func(string)) worktree.FloorTrim {
+		ran++
+		free = 63 * gib
+		return goStepTrim(60 * gib)
+	})
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 51000, clock, poll{load: 1})
+	req.Timeout = 2 * time.Minute
+	var said []string
+	req.OnDiskTrim = func(line string) { said = append(said, line) }
+
+	res, err := WaitLoad(req)
+
+	if err == nil || res.Status == WaitOpen || res.Hold != nil {
+		t.Fatalf("under the floor with no time to trim, so refused with no hold: %+v, %v", res, err)
+	}
+	if ran != 0 {
+		t.Fatalf("a trim was started with 2m of the wait left: ran %d", ran)
+	}
+	if got := clock.Now().Sub(waitT0); got != 0 {
+		t.Fatalf("the refusal came %s into the wait, want at once", got)
+	}
+	for name, text := range map[string]string{"stderr": strings.Join(said, "\n"), "the report": res.DiskTrim, "the refusal": err.Error()} {
+		if !strings.Contains(text, "o cache was trimmed: the wait had 2m0s of its --timeout left") || !strings.Contains(text, "5m0s") {
+			t.Errorf("%s does not say the trim was skipped for want of time: %q", name, text)
+		}
+	}
+}
