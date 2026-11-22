@@ -103,7 +103,7 @@ func (s Statement) Lines(o RenderOptions) []string {
 		lines = append(lines, line)
 		if o.AllGaps {
 			for _, g := range s.CouldNotCheck {
-				lines = append(lines, "  - "+s.gapLine(g))
+				lines = append(lines, "  - "+gapLine(g))
 			}
 		}
 	}
@@ -146,28 +146,17 @@ func (s Statement) gapCounts() string {
 	return strings.Join(parts, ", ")
 }
 
-// gapLine is one gap in full: the check, the kind it bears on by its label
-// where the statement names one, the reason and the text.
-func (s Statement) gapLine(g Gap) string {
+// gapLine is one gap in full: the check, the identifier of the kind it bears
+// on where it names one, the reason and the text. The kind is named by its
+// identifier and not its label, so the text of many gaps grows with the gaps
+// and not with the label of the one kind they share; a gap whose check
+// stopped its kind being read names a kind no list labels in any case.
+func gapLine(g Gap) string {
 	line := termsafe.SanitizeLine(g.Check)
 	if g.Kind != "" {
-		line += " (" + termsafe.SanitizeLine(s.labelOf(g.Kind)) + ")"
+		line += " (" + termsafe.SanitizeLine(g.Kind) + ")"
 	}
 	return line + ": " + words(reasonWords, g.Reason) + ": " + termsafe.SanitizeLine(g.Text)
-}
-
-func (s Statement) labelOf(id string) string {
-	for _, l := range s.LookedAt {
-		if l.ID == id {
-			return l.Label
-		}
-	}
-	for _, n := range s.NotLookedAt {
-		if n.ID == id {
-			return n.Label
-		}
-	}
-	return id
 }
 
 // whyNothing says why a statement that looked at no kind checked nothing: the

@@ -1,6 +1,7 @@
 package extent
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -262,5 +263,37 @@ func TestRenderMasksControlRunes(t *testing.T) {
 		if strings.ContainsAny(l, "\n\x1b") {
 			t.Errorf("line %q carries a control rune", l)
 		}
+	}
+}
+
+// TestRenderGrowsWithItsInput: the text of a decoded statement grows with the
+// statement and no faster, so many gaps naming one kind do not each repeat
+// that kind's label. A gap names its kind by its identifier.
+func TestRenderGrowsWithItsInput(t *testing.T) {
+	label := strings.Repeat("l", 50_000)
+	var b strings.Builder
+	b.WriteString(`{"looked_at":[{"id":"k","label":"` + label + `","count":0}],"not_looked_at":[],"could_not_check":[`)
+	for i := range 900 {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(`{"check":"c","kind":"k","reason":"unreadable","text":"t"}`)
+	}
+	b.WriteString(`],"verdict":"clear_except_gaps"}`)
+	input := b.String()
+	var s Statement
+	if err := json.Unmarshal([]byte(input), &s); err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, l := range s.Lines(RenderOptions{AllGaps: true}) {
+		total += len(l) + 1
+	}
+	if bound := 2 * len(input); total > bound {
+		t.Fatalf("%d bytes of statement rendered to %d bytes of text, over %d", len(input), total, bound)
+	}
+	lines := s.Lines(RenderOptions{AllGaps: true})
+	if got := lines[len(lines)-2]; got != "  - c (k): unreadable: t" {
+		t.Errorf("gap line = %q, want the kind named by its identifier", got)
 	}
 }

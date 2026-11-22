@@ -342,3 +342,34 @@ func TestTheGoldenCheckRefusesARenameAndAdmitsAnAddition(t *testing.T) {
 		}
 	}
 }
+
+// TestDecodeRefusesUnknownFields: a recorded statement is read strictly, so a
+// member the type does not name is refused at every level, the depth entry's
+// number of runs included.
+func TestDecodeRefusesUnknownFields(t *testing.T) {
+	cases := map[string]string{
+		"top level":     `{"looked_at":[],"not_looked_at":[],"could_not_check":[],"verdict":"none","extra":1}`,
+		"looked-at":     `{"looked_at":[{"id":"k","label":"k","count":0,"extra":1}],"not_looked_at":[],"could_not_check":[],"verdict":"clear"}`,
+		"not-looked-at": `{"looked_at":[],"not_looked_at":[{"id":"k","label":"k","source":"listed","extra":1}],"could_not_check":[],"verdict":"none"}`,
+		"gap":           `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[{"check":"c","reason":"unreadable","text":"t","extra":1}],"verdict":"clear_except_gaps"}`,
+		"depth":         `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"extra":1}]}`,
+		"told":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"class":{"mark":"not_told","extra":1}}]}`,
+		"runs":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state","extra":1}}]}`,
+	}
+	for name, doc := range cases {
+		var s Statement
+		if err := json.Unmarshal([]byte(doc), &s); err == nil {
+			t.Errorf("%s: decoded a statement with an unknown field", name)
+		} else if !strings.Contains(err.Error(), "extra") {
+			t.Errorf("%s: error %q does not name the field", name, err)
+		}
+	}
+	// The same documents without the unknown field read.
+	for name, doc := range cases {
+		var s Statement
+		clean := strings.ReplaceAll(strings.ReplaceAll(doc, `,"extra":1`, ""), `"extra":1,`, "")
+		if err := json.Unmarshal([]byte(clean), &s); err != nil {
+			t.Errorf("%s: refused the document without its unknown field: %v", name, err)
+		}
+	}
+}

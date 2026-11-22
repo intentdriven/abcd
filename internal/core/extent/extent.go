@@ -16,8 +16,11 @@
 package extent
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 )
 
@@ -237,10 +240,10 @@ func (r Runs) MarshalJSON() ([]byte, error) {
 	return json.Marshal(w)
 }
 
-// UnmarshalJSON reads what MarshalJSON writes.
+// UnmarshalJSON reads what MarshalJSON writes, strictly (decodeStrict).
 func (r *Runs) UnmarshalJSON(b []byte) error {
 	var w runsWire
-	if err := json.Unmarshal(b, &w); err != nil {
+	if err := decodeStrict(b, &w); err != nil {
 		return err
 	}
 	*r = Runs{From: w.From, Mark: w.Mark}
@@ -465,11 +468,18 @@ func (s Statement) MarshalJSON() ([]byte, error) {
 	return json.Marshal(w)
 }
 
-// UnmarshalJSON reads what MarshalJSON writes. An absent verdict reads as no
-// clear state, and a verdict the entries do not derive is refused.
+// UnmarshalJSON reads what MarshalJSON writes, strictly (decodeStrict), and
+// then as Validate judges it. An absent verdict reads as no clear state, and a
+// verdict the entries do not derive is refused.
+//
+// A depth value's origin is read as recorded, and the renderer marks only a
+// receipt's value as the host's account. A caller that decodes a statement a
+// host or any other party could have written must set each depth value's
+// origin itself rather than trust the recorded one, or a value a host wrote
+// would read as one abcd's own state recorded.
 func (s *Statement) UnmarshalJSON(b []byte) error {
 	var w statementWire
-	if err := json.Unmarshal(b, &w); err != nil {
+	if err := decodeStrict(b, &w); err != nil {
 		return err
 	}
 	got := Statement{
@@ -488,6 +498,23 @@ func (s *Statement) UnmarshalJSON(b []byte) error {
 		}
 	}
 	*s = got
+	return nil
+}
+
+// decodeStrict decodes exactly one JSON value from b into v and refuses a
+// member v's type does not name, at every level: encoding/json applies the
+// refusal to nested structs, and each type here that decodes itself (Runs)
+// calls back into this. It does not judge key case or a repeated key; the
+// unknown-field refusal is the one it adds.
+func decodeStrict(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("extent: %w", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("extent: content after the one JSON value")
+	}
 	return nil
 }
 
