@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Package is what the check reads of one package from go list.
@@ -34,14 +36,20 @@ type Package struct {
 const goListFields = "ImportPath,Dir,GoFiles,IgnoredGoFiles,Imports,TestGoFiles,XTestGoFiles,TestImports,XTestImports"
 
 // listPackages reads the packages patterns name, under the race build's file
-// set when race is set, since a test file can be built for one stage alone.
+// set when race is set, since a test file can be built for one stage alone. The
+// go it runs is the one PATH finds, held to the in-checkout rule for dir
+// (tools.LookPath).
 func listPackages(ctx context.Context, dir string, env []string, race bool, patterns ...string) ([]Package, error) {
 	args := []string{"list", "-json=" + goListFields}
 	if race {
 		args = append(args, "-race")
 	}
 	args = append(args, patterns...)
-	cmd := exec.CommandContext(ctx, "go", args...)
+	goBin, err := tools.LookPath("go", dir)
+	if err != nil {
+		return nil, fmt.Errorf("go list: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, goBin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	var stderr bytes.Buffer

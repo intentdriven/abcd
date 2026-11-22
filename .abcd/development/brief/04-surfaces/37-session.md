@@ -59,9 +59,11 @@ exchange at `/auth/token`, the device-flow sign-in at `/auth/device`,
 `/auth/device/token` and `/auth/device/cancel` (a local session only), the sign-in app's public
 client id and flow at `/config`, a health check at `/healthz`, and, for a
 local session only, the page's embedded files from a fixed route table. A browser is admitted only from
-`https://abcdesign.app`, a loopback page or another origin the host names, each
-an exact origin; a WebSocket or exchange with no origin, or another one, is
-refused with 403.
+`https://abcdesign.app` or another origin the host names, each an exact
+origin; a page on a loopback address is admitted only when the host names its
+origin, and a WebSocket or exchange with no origin, or another one, is refused
+with 403. The web sign-in's callback sends GitHub's code only to a session
+page on an admitted origin.
 
 ## Who may do what
 
@@ -78,6 +80,9 @@ opens; the relay answers with a six-character join code drawn from a
 cryptographic source over 31 symbols with the look-alike characters left out.
 The host can draw a new code at any time, and the old one stops working. A
 host whose page reloads keeps the role by signing in as the same login.
+What a connection may do follows the login it verified last: a later sign-in
+on the same connection whose login may not push leaves it unable to host, and
+a guest when it joins.
 
 Anyone with the code joins as a guest and receives the session's update log
 replayed, then every update as it arrives. A guest's update frame is refused,
@@ -95,7 +100,7 @@ ids their page edits under, which the roster carries for credit.
 
 Twenty wrong codes from one address within ten minutes shut that address out
 of joining until the window passes; an IPv6 visitor is counted by its /48 (a tailnet address by itself, since a tailnet's devices share one /48), and
-the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.
+the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer. On a relay bound to loopback, every client that connects to the listener directly, with no address Serve forwards, is counted under one shared key, whatever loopback address and port it connects from, so a client that reconnects keeps its wrong-code count and its connection count; a process on that computer can write the header Serve writes, so the forwarded address does not tell it from a tailnet visitor. A verified team member's wrong codes and rejoin tokens are counted against its login instead of its address, so wrong codes from others at its address do not keep it out of a session.
 
 ## What it holds, and for how long
 

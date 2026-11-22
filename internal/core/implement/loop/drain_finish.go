@@ -351,7 +351,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			reads = append(reads, p)
 			continue
 		}
-		on, err := gitutil.IsAncestor(repoRoot, lane.Landing.Pushed, tracking)
+		on, err := gitutil.IsAncestorAsStored(repoRoot, lane.Landing.Pushed, tracking)
 		if err != nil {
 			// git could not answer, which is not a no: the lane is named, so
 			// an unreadable pushed head does not drop it from finished.

@@ -182,6 +182,9 @@ func runContext(parent context.Context, cwd string, stdin []byte, args ...string
 	// abcd's own recorded copy runs whatever comes first on PATH
 	// (itd-2610240918594138); otherwise PATH finds gh, as before.
 	bin, err := tools.Resolve("gh")
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return nil, fmt.Errorf("the GitHub CLI (gh) that PATH finds is never run: %w", tools.ErrInsideWorkingTree)
+	}
 	if err != nil {
 		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
 			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)

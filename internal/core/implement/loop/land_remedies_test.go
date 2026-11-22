@@ -973,7 +973,7 @@ func TestARecordsCommitIsLabelledFromWhatItHolds(t *testing.T) {
 		}, false},
 		"a record beside the mark": {func(t *testing.T, f *landFixture, l Lane) {
 			t.Helper()
-			f.fileAnotherIssue(t, l)
+			editIntentProse(t, l)
 		}, false},
 	} {
 		t.Run(name, func(t *testing.T) {

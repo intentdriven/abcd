@@ -569,12 +569,13 @@ func decodeReceipt(repoRoot string, data []byte, rel, laneID string) (LaneReceip
 // pick's record-only commit (itd-2609211116005482, decision 6): the pick's
 // reason reaches the default branch with the work only while that commit stays
 // the branch's first past its base, and a rebase or an amend of it drops the
-// reason silently. A lane without a pick commit has nothing to keep.
+// reason silently. The branch is read as stored. A lane without a pick commit
+// has nothing to keep.
 func pickKept(repoRoot string, lane *Lane, receiptRel string) error {
 	if !gitutil.IsFullSHA(lane.PickSHA) {
 		return nil
 	}
-	kept, err := gitutil.IsAncestor(repoRoot, lane.PickSHA, "refs/heads/"+lane.Branch)
+	kept, err := gitutil.IsAncestorAsStored(repoRoot, lane.PickSHA, "refs/heads/"+lane.Branch)
 	if err != nil {
 		return fmt.Errorf("placing the pick's commit %s on %s: %v", shortSHA(lane.PickSHA), lane.Branch, err)
 	}
@@ -590,6 +591,7 @@ func pickKept(repoRoot string, lane *Lane, receiptRel string) error {
 
 // commitGaps names what is wrong with the commits a receipt names: none named,
 // a malformed name, or a commit that is not on the lane's branch past its base.
+// Each commit is placed by the history as stored (gitutil.IsAncestorAsStored).
 func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 	if len(commits) == 0 {
 		return []string{"commits on the lane's branch (it names none)"}
@@ -607,12 +609,12 @@ func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 			off = append(off, termsafe.DescribeRefused(sha)+" (not a full object name)")
 			continue
 		}
-		onBranch, err := gitutil.IsAncestor(repoRoot, sha, branch)
+		onBranch, err := gitutil.IsAncestorAsStored(repoRoot, sha, branch)
 		if err != nil {
 			off = append(off, shortSHA(sha)+" (no such commit)")
 			continue
 		}
-		inBase, err := gitutil.IsAncestor(repoRoot, sha, lane.BaseSHA)
+		inBase, err := gitutil.IsAncestorAsStored(repoRoot, sha, lane.BaseSHA)
 		if err != nil {
 			off = append(off, shortSHA(sha)+" (git could not place it)")
 			continue
@@ -621,7 +623,7 @@ func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 		// branch past its base, and is not the implementer's work.
 		var inPick bool
 		if !inBase && gitutil.IsFullSHA(lane.PickSHA) {
-			if inPick, err = gitutil.IsAncestor(repoRoot, sha, lane.PickSHA); err != nil {
+			if inPick, err = gitutil.IsAncestorAsStored(repoRoot, sha, lane.PickSHA); err != nil {
 				off = append(off, shortSHA(sha)+" (git could not place it)")
 				continue
 			}

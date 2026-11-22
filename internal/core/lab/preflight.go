@@ -206,7 +206,7 @@ var errTooMany = errors.New("too many entries")
 // checkSnapshot proves the snapshot is a standalone clone descending from the
 // pin: its .git is a real directory (a linked worktree shares the operator's
 // repository, hooks and config), it borrows no object store, and the pin is its
-// HEAD or an ancestor of it.
+// HEAD or an ancestor of it as the commits store their parents.
 func (l *lab) checkSnapshot() Check {
 	c := Check{ID: "isolation.snapshot", Group: GroupIsolation}
 	snap := filepath.Join(l.dir, snapshotDir)
@@ -227,7 +227,7 @@ func (l *lab) checkSnapshot() Check {
 		c.Detail = "git cannot read the snapshot's HEAD: " + redact(err, l.store.home)
 		return c
 	}
-	ok, err := gitutil.IsAncestor(snap, l.entry.Pin, "HEAD")
+	ok, err := gitutil.IsAncestorAsStored(snap, l.entry.Pin, "HEAD")
 	if err != nil || !ok {
 		c.Detail = fmt.Sprintf("the snapshot's HEAD %s does not descend from the pin %s", short(head), short(l.entry.Pin))
 		return c

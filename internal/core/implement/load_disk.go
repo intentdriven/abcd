@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -163,13 +164,22 @@ type diskProbe struct {
 // realDiskProbe reads the machine, judging against floor.
 func realDiskProbe(floor uint64) diskProbe {
 	return diskProbe{
-		goCache: machineload.GoCacheDir,
+		goCache: goCacheDir,
 		volume:  machineload.ReadVolume,
 		cacheSize: func(dir string) (machineload.CacheSize, error) {
 			return machineload.GoCacheSize(dir, machineload.GoCacheBudget)
 		},
 		floor: floor,
 	}
+}
+
+// goCacheDir is the Go build cache's directory (machineload.GoCacheDir), asked
+// of the go PATH finds held to the in-checkout rule (tools.LookPath, from the
+// working directory); a go that rule refuses is not asked, and the cache is
+// then where go would put it.
+func goCacheDir() string {
+	goBin, _ := tools.LookPath("go", "")
+	return machineload.GoCacheDir(goBin)
 }
 
 // checkDisk reads the volumes holding the Go build cache and the worktree

@@ -161,8 +161,6 @@ type PayloadPrecheck struct {
 	Root string
 	// Dest is the symlink-resolved staging directory. Nothing is created here.
 	Dest string
-	// VersionLocationPath is the absolute path to the adr-19 contract.
-	VersionLocationPath string
 	// PrimaryPath and PrimaryPointer are the pinned primary version location the
 	// contract selected, repo-relative and RFC-6901.
 	PrimaryPath, PrimaryPointer string
@@ -299,8 +297,7 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 			ErrNotAPlugin, art.Kind, ArtefactRelPath)
 	}
 
-	pre.VersionLocationPath = filepath.Join(pre.Root, versionLocationRelPath)
-	decision, err := loadJSON(pre.VersionLocationPath)
+	decision, err := loadRepoJSON(pre.Root, versionLocationRelPath)
 	if err != nil {
 		return pre, fmt.Errorf("version-location.json not readable: %w", err)
 	}
@@ -446,7 +443,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	if err != nil {
 		return res, err
 	}
-	dest, vlPath := pre.Dest, pre.VersionLocationPath
+	dest := pre.Dest
 	primaryPath, primaryPtr := pre.PrimaryPath, pre.PrimaryPointer
 	bundle := pre.Bundle
 	res.Dest = dest
@@ -472,7 +469,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	}
 	res.Manifests = []string{primaryPath, marketplaceFile}
 
-	res.Lockstep = payloadLockstep(TreePublic, dest, vlPath)
+	res.Lockstep = payloadLockstep(TreePublic, dest, pre.Root)
 	if !res.Lockstep.OK {
 		return res, fmt.Errorf("%w: %s", ErrPayloadDrift, strings.Join(lockstepDetail(res.Lockstep), "; "))
 	}

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -124,6 +126,63 @@ var drivePreflightProgram = func() (string, []string, error) {
 		return "", nil, errors.New("abcd cannot name its own binary")
 	}
 	return self, []string{"implement", "load", "--wait", "--", "make", "preflight"}, nil
+}
+
+// driveOriginGit runs a lane preflight's ask of origin, the networked git the
+// loop's asks of origin run through; a variable so a test can say what origin
+// answers.
+var driveOriginGit landing.GitFunc = gitutil.Net
+
+// recordsOnlyBaseEnv names, for scripts/records-only.sh, the commit a lane's
+// preflight takes its merge base with: the tip origin reports for its default
+// branch, read by the drive itself.
+const recordsOnlyBaseEnv = "ABCD_RECORDS_ONLY_BASE"
+
+// recordsOnlyUnverified is what the drive passes in recordsOnlyBaseEnv when it
+// could not read origin's tip: not a commit id, so the preflight takes its full
+// rule rather than a local remote-tracking ref.
+const recordsOnlyUnverified = "unverified"
+
+// originDefaultTip is the commit origin's default branch is at, as origin
+// reports it to `git ls-remote --symref origin HEAD` run in repoRoot, the
+// drive's own checkout, or
+// recordsOnlyUnverified when the ask fails, or its answer names no branch as
+// origin's HEAD (a detached HEAD) or no full commit id as its tip. The answer
+// is read as the facilitator mode's read of the same ask reads it
+// (landing.readFetchedFacilitator).
+//
+// The ask goes through gitutil.Net, which in a drive first compares what the
+// drive holds, origin's identity and every URL rewrite among it, with what the
+// repository's settings say now (gitutil.SetBeforeHookedGitAt, set by the
+// drive's terminal to its heldBeforeGitIn): a lane that pointed origin
+// elsewhere has the ask refused, and the preflight is passed
+// recordsOnlyUnverified. The ask runs in the drive's own checkout rather than
+// in the preflight's: every scope of settings git reads there is one the
+// comparison reads, while a linked checkout's own worktree scope
+// (config.worktree, where extensions.worktreeConfig is on) is one it does not.
+func originDefaultTip(repoRoot string) string {
+	out, err := driveOriginGit(repoRoot, "ls-remote", "--symref", landing.Remote, "HEAD")
+	if err != nil {
+		return recordsOnlyUnverified
+	}
+	branch, tip := "", ""
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimRight(l, "\r")
+		if rest, ok := strings.CutPrefix(l, "ref: "); ok {
+			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				branch, _ = strings.CutPrefix(target, "refs/heads/")
+				if branch == target {
+					branch = ""
+				}
+			}
+		} else if sha, name, ok := strings.Cut(l, "\t"); ok && name == "HEAD" {
+			tip = sha
+		}
+	}
+	if branch == "" || branch == "HEAD" || !gitutil.IsFullSHA(tip) {
+		return recordsOnlyUnverified
+	}
+	return tip
 }
 
 // hooksPathRemedy is what a person does about a hooks path that cannot be
@@ -443,7 +502,7 @@ func runDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) er
 	f.reached, f.said, f.stopped = &reached, &said, &stopped
 	if f.resuming() {
 		f.startedOn = driveFileDigest(f.self.Path)
-		runner.PinPrograms(drivePrograms...)
+		runner.PinPrograms(repoRoot, drivePrograms...)
 		roots, _ := layered.RootsFor(repoRoot)
 		f.began = runner.PinStart(roots.Home)
 	}
@@ -628,7 +687,7 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 	stopAsking()
 	// What a program name means is fixed now, hooks the driver's git runs get only
 	// what a stage carries, and only the push keeps the person's credentials.
-	runner.PinPrograms(drivePrograms...)
+	runner.PinPrograms(repoRoot, drivePrograms...)
 	gitutil.SetHookedEnv(runner.HookedEnv(p))
 	defer gitutil.SetHookedEnv(nil)
 	// The signal handling says what each signal did while the drive writes.
@@ -808,7 +867,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Drain:            d,
 		Runners:          loop.Runners{Config: o.Runners, Transcripts: d.Transcripts},
 		Review:           review,
-		Preflight:        drivePreflight(detail, p),
+		Preflight:        drivePreflight(detail, p, repoRoot),
 		PreflightAllowed: driveGateCheck(repoRoot),
 		Say:              say,
 		Stop:             sig.stop,
@@ -898,8 +957,12 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 // checkout of a lane's head, whose full commit id is head, behind the load gate, as a process group of its
 // own, so the terminal's interrupt does not reach it, and with only what a
 // stage carries of the environment, since the lane's own files decide what it
-// runs (preflightGoEnv).
-func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, checkout, head string) error {
+// runs (preflightGoEnv). The records-only check takes its merge base with the
+// tip origin reports for its default branch, read by the drive itself in its
+// own checkout at repoRoot (originDefaultTip) just before the preflight
+// starts, so it does not rest on a local remote-tracking ref; a tip it could
+// not read is passed as not a commit, which is the full run.
+func drivePreflight(w io.Writer, p runner.Profile, repoRoot string) func(ctx context.Context, checkout, head string) error {
 	return func(ctx context.Context, checkout, head string) error {
 		program, args, err := drivePreflightProgram()
 		if err != nil {
@@ -908,10 +971,11 @@ func drivePreflight(w io.Writer, p runner.Profile) func(ctx context.Context, che
 		if err := runner.ResetStageHome(p); err != nil {
 			return err
 		}
+		tip := originDefaultTip(repoRoot)
 		// #nosec G204 -- program is the running binary; the arguments are fixed.
 		cmd := exec.CommandContext(ctx, program, args...)
 		cmd.Dir = checkout
-		cmd.Env = preflightGoEnv(runner.PreflightEnv(p), checkout, head)
+		cmd.Env = withRecordsOnlyBase(preflightGoEnv(runner.PreflightEnv(p), checkout, head), tip)
 		cmd.Stdout, cmd.Stderr = w, w
 		procgroup.Lead(cmd)
 		cmd.Cancel = func() error { return procgroup.Kill(cmd) }
@@ -950,6 +1014,17 @@ func preflightGoEnv(env []string, checkout, head string) []string {
 		out = append(out, "GOFLAGS=")
 	}
 	return out
+}
+
+// withRecordsOnlyBase is env with every recordsOnlyBaseEnv it carries taken
+// out and tip passed in it last, so the value the drive read is the one the
+// preflight sees.
+func withRecordsOnlyBase(env []string, tip string) []string {
+	out := slices.DeleteFunc(slices.Clone(env), func(kv string) bool {
+		k, _, _ := strings.Cut(kv, "=")
+		return k == recordsOnlyBaseEnv
+	})
+	return append(out, recordsOnlyBaseEnv+"="+tip)
 }
 
 // headTracksRootGoWork says whether head, a full commit id, tracks go.work at

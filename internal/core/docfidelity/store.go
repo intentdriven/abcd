@@ -474,12 +474,16 @@ func PlanRecord(root string, raw []byte, at time.Time) (RecordPlan, error) {
 }
 
 // Apply saves the planned receipt and returns its path and the review as the
-// gate's own reader now reads it.
+// gate's own reader now reads it. The receipt and its directories are created
+// inside an os.Root on the repository, so a local tier that links out of it
+// receives nothing.
 func (p RecordPlan) Apply() (string, Review, error) {
-	if err := os.MkdirAll(filepath.Join(p.root, ReceiptsDir, p.head), 0o755); err != nil {
+	r, err := os.OpenRoot(p.root)
+	if err != nil {
 		return "", Review{}, err
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(p.root, filepath.FromSlash(p.Receipt)), p.data, 0o644); err != nil {
+	defer r.Close()
+	if err := fsutil.WriteFileAtomicInRoot(r, p.Receipt, p.data, 0o644); err != nil {
 		return "", Review{}, err
 	}
 	return p.Receipt, SavedReview{Root: p.root, Commit: p.head}.Review(), nil

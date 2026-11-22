@@ -2,6 +2,7 @@ package embargo
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -236,9 +237,10 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	return p, nil
 }
 
-// resolvedRecords lists the record files in the release's resolved/ folder.
+// resolvedRecords lists the record files in the release's resolved/ folder,
+// read from the tag's tree as stored.
 func resolvedRecords(checkout, release string) ([]string, error) {
-	out, err := gitutil.RunCappedBytes(checkout, maxTagListing, "ls-tree", "-z", "--name-only", "refs/tags/"+release, "--", resolvedRel+"/")
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), checkout, "", maxTagListing, "ls-tree", "-z", "--name-only", "refs/tags/"+release, "--", resolvedRel+"/")
 	if err != nil {
 		return nil, refuse("git could not list the resolved records of "+release, "settle what git reports, then run it again")
 	}
@@ -542,9 +544,10 @@ func recordForgeEnd(a *Advisory, state string, at time.Time) {
 
 // fixCommit reads the resolved_by.commit of the record at rec in the
 // release's tree and resolves it to a commit of this repository. The blob
-// is read with cat-file, which runs no text conversion.
+// is read as stored with cat-file, which runs no text conversion, so no
+// refs/replace entry stands another record in for it.
 func fixCommit(checkout, release, rec string) (string, string) {
-	data, err := gitutil.RunCappedBytes(checkout, maxRecordBytes, "cat-file", "blob", "refs/tags/"+release+":"+rec)
+	data, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), checkout, "", maxRecordBytes, "cat-file", "blob", "refs/tags/"+release+":"+rec)
 	if err != nil {
 		return "", "its record in " + release + " could not be read"
 	}
@@ -572,8 +575,10 @@ func fixCommit(checkout, release, rec string) (string, string) {
 // released in, which may be older than the release being published. A tag
 // that is not a published release is passed over for the next one. A fix in
 // no release tag, or in no published release up to the release, is left out.
+// Which tags hold the fix is read from the commits as stored, so no graft or
+// refs/replace entry gives a tag's commit the fix as an ancestor.
 func firstReleaseTag(rt *releaseTags, fix, release string) (string, string, error) {
-	out, err := gitutil.RunCappedBytes(rt.checkout, maxTagListing, "tag", "--contains", fix, "--list", "v*")
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), rt.checkout, "", maxTagListing, "tag", "--contains", fix, "--list", "v*")
 	if err != nil {
 		return "", "", refuse("git could not list the tags holding a fix commit", "settle what git reports, then run it again")
 	}

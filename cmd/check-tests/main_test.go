@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/testreuse"
 )
 
@@ -30,6 +34,33 @@ func TestARecipeThatIsNotAGoTestIsRefused(t *testing.T) {
 		if !strings.Contains(errb.String(), "check-tests") && !strings.Contains(errb.String(), "flag") {
 			t.Errorf("%q says nothing useful: %s", args, errb.String())
 		}
+	}
+}
+
+// TestTheRaceGateDoesNotRunAGoFromTheCheckout: the race gate finds go as the
+// stage's go lines do, so a go first on PATH inside the checkout is not run
+// and the gate says why.
+func TestTheRaceGateDoesNotRunAGoFromTheCheckout(t *testing.T) {
+	wd := t.TempDir()
+	bin := filepath.Join(wd, "bin")
+	if err := os.MkdirAll(filepath.Join(wd, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "ran")
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var out, errb bytes.Buffer
+	err := passRaceGate(context.Background(), wd, &out, &errb)
+	if !errors.Is(err, tools.ErrInsideWorkingTree) {
+		t.Errorf("the race gate = %v, want the in-checkout refusal", err)
+	}
+	if _, serr := os.Stat(marker); !os.IsNotExist(serr) {
+		t.Fatalf("the go inside the checkout ran (%v)", serr)
 	}
 }
 

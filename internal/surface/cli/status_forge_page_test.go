@@ -42,7 +42,7 @@ func TestAFullPageOfTheForgesRecordKeepsNoMarkForWhatItDidNotCover(t *testing.T)
 	if err := os.WriteFile(answer, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	script := "#!/bin/sh\necho call >>" + shellquote.Single(calls) + "\ncat " + shellquote.Single(answer) + "\n"
+	script := "#!/bin/sh\necho call >>" + shellquote.Single(calls) + "\n" + ghIncludedHeaders + "cat " + shellquote.Single(answer) + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

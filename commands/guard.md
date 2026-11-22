@@ -294,8 +294,23 @@ only where it would otherwise admit the question silently.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not
-load — allows the command and warns loudly. A guard that cannot answer never
-stops a session, and is never silently absent. A command line is never in that
+load, a git that does not answer — allows the command and warns loudly. A guard
+that cannot answer never stops a session, and is never silently absent. The
+hook's first git calls run under a five-second deadline: for a shell command,
+the lookups of the checkout holding the session directory and the one holding
+the call's `workdir`, and for a question, the lookup of the checkout holding
+the session directory. git answers them in milliseconds, and every later git
+call reads the same configuration, so a git that has not answered by then is
+killed and the hook says on stderr that git did not answer within the
+deadline, naming the directory and the usual cause: a repository configuration
+that includes a file which never finishes reading, such as a named pipe. The
+call then runs on the loud exit 1, as any call the guard cannot judge does,
+except a shell command inside a stage, which is refused, as every unchecked
+shell command there is. The plugin's hook manifest gives the hook no timeout
+of its own, so this deadline is what bounds the wait on a configuration git
+cannot read; a git that hangs later in the check, on a call not yet bound, is
+bounded only by the host's default timeout for the hook, after which the host
+lets the call run. A command line is never in that
 set: one the guard cannot split is a **block** (`command-unparsable`), because a
 line the guard misreads may be one bash runs, and letting it through would pass
 every hazard in it; a trailing backslash and an unterminated here-document are
@@ -738,7 +753,9 @@ reviews. Two things follow, and both must be said plainly if a user asks. An
 edit that weakens the guard — `"disabled": true`, or a blocker retiered or its
 pattern changed — takes effect only once it is **committed**: until `HEAD`
 carries it, the edit is refused, the committed registry stays in force, the hook
-says so on every command, and the check exits `2` naming the edit. An edit that
+says so on every command, and the check exits `2` naming the edit. `HEAD`'s
+file is read as git stores it, with no replace ref, graft file or commit-graph
+in force. An edit that
 only adds or tightens a hazard takes effect at once. And a repo whose guard is
 switched off is an unguarded session: every command it lets through carries an
 UNGUARDED warning naming the file, so the state cannot pass unnoticed.
@@ -1027,8 +1044,11 @@ a child it starts. The verdicts:
   **block** (`script-written-then-run`): the file the guard reads now is not the
   file that runs. A file the line writes and then runs by path is a **block**
   the same way, whatever the file is (`curl -o x … && ./x`). Write it in one
-  command and run it in the next. A write the guard cannot place (`> "$LOG"`)
-  before a script a shell is pointed at is a **warn**;
+  command and run it in the next. A write the guard cannot place (`> "$LOG"`,
+  or any `git -C <dir>`, which works in a directory the guard does not follow,
+  where a subcommand, its options, a configuration value on the line or an
+  alias can change files) before a script a shell is pointed at is a
+  **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
 - a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
@@ -1050,7 +1070,8 @@ which file a bare name finds; the files a shell loads from the account's real
 read like any other; file text substituted into a command string (`eval "$(cat
 f)"`, `bash -c "$(<f)"`), which keeps its warn; a file changed between the
 check and the run; a writer missing from the list above; a variable a sourced
-file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
+file sets, for the files the line reads after it (an entry that names the
+variable counts the file's export, below); a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
 the current directory; `INPUTRC` (key bindings, not commands); a
@@ -1068,7 +1089,23 @@ carries `=` before the command as an assignment, and so does the guard; the body
 of a function they export (`BASH_FUNC_<name>%%=() { …; }`) is judged. A `trap`
 action, and the callback of `mapfile -C` or `readarray -C`, is read the way an
 `eval` string is: the reset and list forms (`trap - EXIT`, `trap -p`) carry no
-command, and text the guard cannot read keeps the verdict `eval` gives it.
+command, and text the guard cannot read keeps the verdict `eval` gives it. So is
+the code a zsh glob qualifier runs for each file its pattern matches: an `e`
+qualifier's string, with any delimiter (`ls *(e:'…':)`, `echo *(e{…})`), and a
+`+name` qualifier's name, as a command, behind `(#q…)` too. A modifier list
+(`x(:e)`) and the qualifiers whose argument is not code (`*(u:eve:)`,
+`*(f+644)`) run nothing, and stay allowed. A qualifier list glued to a word
+that holds an expansion, unquoted or in double quotes (`*($q)`, `*(${~q})`,
+`*(e:"$q":)`), is a **block** (`execute-string-uninspectable`): zsh reads the
+qualifiers from the expanded text, so the code they run is not on the line. A
+positional or special parameter there (`*($1)`, `x($0)`) is a block only where
+the line can set it: a `set` with operands, a function, or a string a shell is
+handed with its arguments. A `$` inside single quotes or escaped is text, so
+`ls *(e:'[[ -d $REPLY ]]':)` stays allowed. A `(` inside a `[[ … ]]` test
+groups a pattern or a regular expression, and a `|` there is an alternation,
+not a pipe, in every part of the test that `&&`, `||` or a group divides, so
+`[[ -n "$a" && "$b" =~ ^(foo|$c)$ ]]` is allowed; after the test's `]]` both
+are read as anywhere else.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
@@ -1153,11 +1190,15 @@ line, so `pgrep -l make > search.log; echo "$pid" | xargs kill` stays allowed,
 though such a word still reads a file the line wrote under a name it does not
 fix (`pgrep make > "$f"; kill $(cat "$f")`). One written under another
 spelling of the path, or by a command that names it as an operand (`tee p`),
-is not followed. A `ps` listing filtered by a name — through `grep`, or an
-`awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs
-kill`, `ps aux | awk '/make/ {print $2}'`) — is a search as `pgrep` is, and a
-**block** under `kill-by-search`; a `ps` that reports the pid you name (`ps -o
-pid= -p 4242 | xargs kill`) is not.
+is not followed. A `ps` listing that reaches a kill is a search as `pgrep`
+is, through any filter or none (`ps aux | sed -n '/make/s/ .*//p' | xargs
+kill`, `ps -C make -o pid= | xargs kill`), and a **block** under
+`kill-by-search`, unless it lists only the pids you name (`-p`, `--pid`, `-q`)
+with no other selection beside them: `ps -o pid= -p 4242 | xargs kill` is not.
+`--ppid`, which lists every child of the pids it names, and BSD `T`, every
+process on the terminal, are selections like any other. A `ps` listing filtered by a name through `grep`, or an `awk`
+program that matches, is a search whatever the `ps` lists (`ps aux | grep make
+| awk '{print $2}' | xargs kill`, `ps aux | awk '/make/ {print $2}'`).
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
@@ -1174,15 +1215,60 @@ or `abcd-source-ledger-flip-retired-any-program` in the retired spelling.
 
 Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
-none of its commands reach this guard: `claude --dangerously-skip-permissions`
-(`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
-(`agent-launch-claude-unchecked-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
+none of its commands reach this guard: `claude --dangerously-skip-permissions`,
+and `--allow-dangerously-skip-permissions`, which lets the agent turn its checks
+off itself (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
+(`agent-launch-claude-unchecked-mode`), `claude --settings` that sets
+`permissions.defaultMode` to `bypassPermissions`, grants `permissions.allow`
+rules or `permissions.additionalDirectories`, declares `hooks`, which can
+answer the permission prompts, or another key whose value is a command claude
+runs (`apiKeyHelper`, `awsAuthRefresh`, `awsCredentialExport`,
+`gcpAuthRefresh`, `otelHeadersHelper`, `statusLine`, `fileSuggestion`,
+`processWrapper`, `sshHostCommands`), or sets `disableAllHooks` to anything but
+`false` or `null`, which starts a claude without the hooks that send its
+commands here, or whose `env` block sets `CLAUDE_CODE_SHELL_PREFIX`, a command
+every shell command claude runs is run behind, `CLAUDE_CODE_SHELL`, the shell
+that runs them, `BASH_ENV` or `ENV`, a file that shell sources as it starts,
+`CLAUDE_CONFIG_DIR`, any `OPENCODE_` variable or another variable a bundled
+agent-launch entry watches (a repository's own entries are not read here), or
+is not an object (other `env` variables are allowed), written on the line or
+in the file it names
+(`agent-launch-claude-unchecked-settings`), `claude --allowedTools` or
+`--allowed-tools` on the line, the flag form of an allow list
+(`agent-launch-claude-allowed-tools`), `claude --add-dir`, the flag form of
+`permissions.additionalDirectories` (`agent-launch-claude-add-dir`), `claude
+--permission-prompt-tool` with
+`--mcp-config`, a tool from a server the line configures that answers the
+permission prompts as a hook can (`agent-launch-claude-prompt-tool`),
+`codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
 `-c sandbox_mode=danger-full-access` (`agent-launch-codex-config-unchecked`),
 and `opencode run --auto` (`agent-launch-opencode-auto`). The same harness
-started with its checks on is allowed. The entries name each program by
+started with its checks on is allowed. The settings entry reads inline JSON as
+claude reads it, string escapes decoded, and refuses settings it cannot read as
+well as those that turn the checks off: text that starts as an object and does
+not parse, JSON holding a part the line does not fix (a value spliced into the
+text can add any key), a value or file name the line does not wholly fix
+(`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
+glob that does not match exactly one file or that holds a pattern character
+besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a backslash,
+or zsh's ranges, groups and operators) or `**` (which zsh reads as any number
+of directories, none among them, and Go's matcher as one), whose files the
+guard cannot name as the shell does, and a file the line writes before
+the launch or may write there by a name it does not fix (`> "$F"`, or any
+`git -C <dir>`), one that
+is not a regular file, one over 256 KiB, or one that does not hold a JSON
+object. A write the guard does not read as one (an interpreter's payload, a
+program that rewrites the file in place by its own reading, such as `perl -pi`
+or `sponge`, or `git stash pop`) leaves the file read as it stands now. Every
+`git -C` counts as such a write whatever its subcommand, so a line that only
+reads in another directory before the launch (`git -C ../other status; claude
+-p x --settings plain.json`) is refused too, a known over-refusal: run the git
+command on a line of its own. A settings file that does not exist is not refused,
+since claude does not start on it, and other permission modes are left to the
+permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`
 or `command`, or through a package runner (`npx`, `bunx`, `bun x`, `pnpm dlx`,
 `pnpm exec`, `yarn dlx`, `npm exec`, with or without `--`), by the program's
@@ -1190,12 +1276,78 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 @openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
-`declare -x` or `typeset -x` earlier in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
-one that starts opencode without setting it is not. So is a line that sets
-`OPENCODE_CONFIG`, a configuration file opencode loads, or
+`declare -x`, `typeset -x`, `local -x` or zsh's `integer -x` or `float -x`
+earlier in the line, an export through
+a nameref (`declare -n r=OPENCODE_PERMISSION; export r=…`), an assignment word
+after the program's name while bash's `set -k` holds, an export inside an
+`eval` that stands before it, or an export in a file the line sources before
+it — is a **block** too (`agent-launch-opencode-permission-env`), and one that
+starts opencode without setting it is not. The assignment's value may be one
+the line does not fix (`OPENCODE_PERMISSION="$(cat p.json)"`), and its name
+may be too where a program reads the word after the shell expands it: an
+operand of `env` or `sudo` before the command, or of `export` or a declaration
+builtin, whose name a substitution prints (`env "$(true)"NAME=…`, `env
+"$N"=…`, `env "$PAIR"`, `export "$N"`) is read as naming every variable an
+entry names. The value of one of env's own options that take one (`env -u
+"$V"`, `env -C "$D"`, `-P`, `-a` and their long forms), or of sudo's (`sudo -u
+"$U"`), is that option's value, not an assignment, only where every
+expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"`, with no
+operator, flag, modifier, subscript or nesting. Any other expansion can yield
+several words, the ones after the first operands of their own, so the value
+is read as possibly several: an unquoted one (`env -u $V`, zsh's `$=V`), `"$@"`
+and `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `"$=V"`
+and `"${(f)V}"`, and, without the guard working out which of them yield
+several, `"$*"`, `"${V:-x}"`, `"$v:h"` and a substitution; the string
+`env -S` splits is read as env's operands.
+A script the line runs is judged with the environment the line
+hands it, so an export before `bash run.sh`, or an assignment before it,
+reaches the harness the script starts, and a file the line sources runs under
+the exports and options in force where the source stands. While allexport
+holds, every assignment exports: a bare one, a declaration builtin's, a name
+a declaration builtin declares without a value (among them the scalar that
+zsh's `typeset -T` ties to an array, which an assignment to the array sets),
+an assignment to an array the line tied to a variable earlier, whether or not
+allexport held at the tie and whether or not the tie gave the array a value
+(`typeset -T OPENCODE_CONFIG oc; set -a; oc=(…)` exports `OPENCODE_CONFIG`,
+and `typeset -T "$S" oc`, whose scalar the line does not fix, is read as
+tying `oc` to any variable), a name
+`read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
+`compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
+`sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
+line, a `${NAME:=…}` or zsh's `${NAME::=…}` expansion, behind zsh's flags too
+(`${(q)NAME:=…}`, `${=NAME:=…}`), an arithmetic assignment (`((NAME=1))`,
+`$((NAME+=1))`, `$[NAME=1]`, `((NAME++))`, a `for (( … ))` header's, and one
+whose target a variable names, `(($N=1))`, read as any name), and a
+redirection that names its descriptor (`exec {NAME}<file`). A comparison in an
+arithmetic expression (`==`, `<=`) assigns nothing.
+allexport is turned on by `set -a` and `set -o allexport`, a `set` whose
+option words the line does not fix (`set "$X"`, `set -o "$X"`), and a command
+whose name a substitution prints with an option word that can be `-a` or
+`-o`; zsh's `setopt allexport` in any spelling, `setopt -a` and `unsetopt
++a`, a `setopt -m` pattern (read as turning it on, since the guard does not
+match patterns), an assignment to zsh's `options` array
+(`options[allexport]=on`, the option in any spelling, read as turning it on
+unless the value is exactly `off`, or exactly `on` for `options[noallexport]`,
+the only values zsh accepts for turning it off, since zsh keeps the option as
+it was for `OFF`, `0` or any other value; and the whole array assigned),
+`emulate MODE -o allexport`, bash's `shopt -so allexport`,
+and a shell started with `-a`, `-o allexport` or zsh's `--allexport`, or with
+a `SHELLOPTS` that names it or that the line does not fix, whether assigned
+before the shell or exported earlier in the line (`export
+SHELLOPTS=allexport`, or bash's own `export SHELLOPTS` while allexport
+holds). A script such a shell runs starts with allexport on; a script run by a
+shell started without it starts with it off, as bash and zsh start it. So is a line that sets
+`OPENCODE_CONFIG`, a configuration file opencode loads,
+`OPENCODE_CONFIG_DIR`, a directory it loads configuration from, or
 `OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
-it starts (`agent-launch-opencode-config-env`), since either can carry
-permission rules over opencode's own configuration. A harness started under
+it starts (`agent-launch-opencode-config-env`), and one that sets
+`CLAUDE_CONFIG_DIR`, the directory claude loads its settings from, for the
+claude it starts (`agent-launch-claude-config-env`), since each can carry
+permission rules over the harness's own configuration. The same entry refuses
+a line that sets `CLAUDE_CODE_SHELL_PREFIX`, `CLAUDE_CODE_SHELL`, `BASH_ENV`
+or `ENV` for the claude it starts, which change what each of its shell
+commands runs, as its settings `env` block may not set them; the settings
+reading refuses every variable a bundled entry watches, from the same list. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents
 (spc-2610161751056096) is what bounds what such a run can reach
@@ -1281,7 +1433,15 @@ unquoted, is not), an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (a sourced file, a nameref set before the line, or an operator the line does
 not write, such as a command's output an arithmetic context evaluates; every
-line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+line is read from the default IFS), an export the walk does not place before
+the command it reaches, because the walk follows commands in the order they
+stand on the line and does not follow control flow (an export in a loop body
+that the loop's next pass reaches, or an export after a function or a `trap`
+action is defined and before it runs), a `set` or an `export` whose own name a
+substitution prints and whose operands the line does not fix either (`$S
+"$X"`, `$E "$N"`), which is read by the option words and names it spells,
+because reading every such command as one would turn allexport on after
+ordinary commands, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

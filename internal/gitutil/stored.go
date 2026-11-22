@@ -74,10 +74,25 @@ func RunCappedAsStored(root string, maxBytes int, args ...string) (string, error
 	return strings.TrimRight(string(out), " \t\r\n"), nil
 }
 
+// IsAncestorAsStored is IsAncestor reading history as stored (asStored): for
+// an ancestry verdict a gate acts on, which a graft, a refs/replace entry or
+// a commit-graph could otherwise give parents the commits do not store.
+func IsAncestorAsStored(root, ancestor, descendant string) (bool, error) {
+	return isAncestor(root, true, ancestor, descendant)
+}
+
 // RunCappedExitOneAsStored is RunCappedExitOne reading history as stored
 // (asStored).
 func RunCappedExitOneAsStored(root string, maxBytes int, args ...string) ([]byte, bool, error) {
 	return runCappedExitOneCmd(asStored(isolatedGit(root, args...)), maxBytes, args)
+}
+
+// RunCappedExitOneAsStoredContext is RunCappedExitOneContext reading history
+// as stored (asStored): for a deadline-bound ancestry verdict
+// (`merge-base --is-ancestor`, which answers no with exit 1) that a removal
+// or a landing acts on.
+func RunCappedExitOneAsStoredContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	return runCappedExitOneContextCmd(ctx, func() *exec.Cmd { return asStored(isolatedGitContext(ctx, root, args...)) }, maxBytes, args)
 }
 
 // RunCappedBytesAsStoredContext is RunCappedAsStored bound to ctx, with stdin

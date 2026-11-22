@@ -253,6 +253,10 @@ func refuseGuard(g SurfaceGuard, reason string) SurfaceGuard {
 // a blob that is not one must not stream unbounded input into a release gate.
 const maxSnapshotBytes = 4 << 20
 
+// maxSnapshotListing bounds the listing that probes for the snapshot: one
+// path's entry, so anything near it is not that listing.
+const maxSnapshotListing = 64 << 10
+
 // surfaceSnapshotAt reads the committed surface snapshot out of ref's tree.
 //
 // Presence is probed with ls-tree rather than inferred from `cat-file` failing,
@@ -261,8 +265,12 @@ const maxSnapshotBytes = 4 << 20
 // repository into a silent "no baseline" refusal. A missing path returns
 // found=false with no error, which the caller turns into the fail-closed
 // refusal; anything git could not answer at all is returned as an error.
+//
+// Both reads are made as stored (RunCappedAsStored), so no refs/replace entry
+// or commit-graph stands another tree or snapshot in for the one ref holds,
+// and a blob past maxSnapshotBytes is an error, never a truncated snapshot.
 func surfaceSnapshotAt(root string, ref string) (surface.Snapshot, bool, error) {
-	listed, err := gitutil.Run(root, "ls-tree", "-z", "--name-only", ref, "--", surface.SnapshotPath)
+	listed, err := gitutil.RunCappedAsStored(root, maxSnapshotListing, "ls-tree", "-z", "--name-only", ref, "--", surface.SnapshotPath)
 	if err != nil {
 		return surface.Snapshot{}, false, fmt.Errorf("looking for %s at %s: %w", surface.SnapshotPath, ref, err)
 	}
@@ -270,7 +278,7 @@ func surfaceSnapshotAt(root string, ref string) (surface.Snapshot, bool, error) 
 		return surface.Snapshot{}, false, nil
 	}
 
-	blob, err := gitutil.RunLimited(root, maxSnapshotBytes, "cat-file", "blob", ref+":"+surface.SnapshotPath)
+	blob, err := gitutil.RunCappedAsStored(root, maxSnapshotBytes, "cat-file", "blob", ref+":"+surface.SnapshotPath)
 	if err != nil {
 		return surface.Snapshot{}, false, fmt.Errorf("reading %s at %s: %w", surface.SnapshotPath, ref, err)
 	}

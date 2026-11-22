@@ -1390,16 +1390,17 @@
       "tier": "blocker",
       "pattern": {
         "command": "claude",
-        "flags": ["--dangerously-skip-permissions"]
+        "flags": ["--dangerously-skip-permissions|--allow-dangerously-skip-permissions"]
       },
-      "why": "`--dangerously-skip-permissions` starts another claude agent that runs every command and writes every file without asking anyone, and none of what it runs passes through this guard.",
+      "why": "`--dangerously-skip-permissions` starts another claude agent that runs every command and writes every file without asking anyone, and `--allow-dangerously-skip-permissions` lets that agent turn its checks off itself; none of what it runs passes through this guard.",
       "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without the flag).",
       "fixtures": {
         "known_bad": [
           "claude --dangerously-skip-permissions",
           "claude -p \"fix the tests\" --dangerously-skip-permissions",
           "cd sub && claude -p x --dangerously-skip-permissions",
-          "sh -c 'claude -p x --dangerously-skip-permissions'"
+          "sh -c 'claude -p x --dangerously-skip-permissions'",
+          "claude -p x --allow-dangerously-skip-permissions"
         ],
         "known_good": [
           "claude -p \"fix the tests\"",
@@ -1427,6 +1428,100 @@
           "claude -p x --permission-mode default",
           "claude -p x --permission-mode plan",
           "abcd capture \"an agent ran claude --permission-mode bypassPermissions\""
+        ]
+      }
+    },
+    "agent-launch-claude-unchecked-settings": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flag_values": [{"flag": "--settings", "values": [], "shape": "claude-settings-unchecked"}]
+      },
+      "why": "`--settings` that turns the checks off, grants rules or directories, runs a command (`hooks`, `apiKeyHelper` and the like), or sets `disableAllHooks` or an `env` variable that changes what claude runs starts a claude this guard never sees. Settings it cannot read are refused too: unparsable, unfixed, or a file the line writes or too large.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its checks on (`claude -p \"<task>\"`, with any `--settings` written out on the line or in a file the line does not write).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}'",
+          "claude --settings='{\"permissions\":{\"allow\":[\"Bash(*)\"]}}' -p x",
+          "claude -p x --settings '{\"permissions\": {\"defaultMode\": \"BYPASSPERMISSIONS\"}}'",
+          "claude -p x --settings '{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"*\",\"hooks\":[{\"type\":\"command\",\"command\":\"true\"}]}]}}'",
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"},}'",
+          "claude -p x --settings '{\"apiKeyHelper\":\"./key.sh\"}'",
+          "claude -p x --settings '{\"statusLine\":{\"type\":\"command\",\"command\":\"./line.sh\"}}'",
+          "claude -p x --settings '{\"disableAllHooks\":true}'",
+          "claude -p x --settings '{\"permissions\":{\"additionalDirectories\":[\"/\"]}}'",
+          "claude -p x --settings '{\"env\":{\"CLAUDE_CODE_SHELL_PREFIX\":\"/tmp/wrap\"}}'"
+        ],
+        "known_good": [
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"default\"}}'",
+          "claude -p x --settings '{\"permissions\":{\"deny\":[\"Bash(rm:*)\"]}}'",
+          "claude -p x --settings '{\"model\":\"sonnet\"}'",
+          "claude -p x --settings '{\"permissions\":{\"defaultMode\":\"acceptEdits\"},\"hooks\":{}}'",
+          "claude -p x --settings '{\"disableAllHooks\":false}'",
+          "claude -p x --settings '{\"env\":{\"DEBUG\":\"1\"}}'",
+          "abcd capture \"an agent ran claude --settings with bypassPermissions\""
+        ]
+      }
+    },
+    "agent-launch-claude-allowed-tools": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--allowedTools|--allowed-tools"]
+      },
+      "why": "`--allowedTools` (also spelled `--allowed-tools`) starts another claude agent that runs the tools it names without asking anyone, as a `permissions.allow` list does, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without the flag).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --allowedTools Bash",
+          "claude -p x --allowedTools=Bash",
+          "claude --allowed-tools 'Bash(*)' -p x"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "claude --model x",
+          "claude -p x --disallowedTools Bash",
+          "abcd capture \"an agent ran claude --allowedTools Bash\""
+        ]
+      }
+    },
+    "agent-launch-claude-add-dir": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--add-dir"]
+      },
+      "why": "`--add-dir` starts another claude agent with directories outside the one it starts in among those its file tools reach, as `permissions.additionalDirectories` does in settings, and none of what it does there passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it in the directory it needs (`cd <dir> && claude -p \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --add-dir /",
+          "claude -p x --add-dir=../other"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "claude --model x -p x",
+          "abcd capture \"an agent ran claude --add-dir /\""
+        ]
+      }
+    },
+    "agent-launch-claude-prompt-tool": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--permission-prompt-tool", "--mcp-config"]
+      },
+      "why": "`--permission-prompt-tool` with `--mcp-config` starts another claude agent whose permission prompts a tool from a server the line configures answers, as a hook can, so it can run every command without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without `--permission-prompt-tool`).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --mcp-config m.json --permission-prompt-tool mcp__a__b",
+          "claude --permission-prompt-tool=mcp__a__b -p x --mcp-config=m.json"
+        ],
+        "known_good": [
+          "claude -p x --mcp-config m.json",
+          "claude --model x",
+          "abcd capture \"an agent ran claude --permission-prompt-tool x --mcp-config m.json\""
         ]
       }
     },
@@ -1571,21 +1666,51 @@
       "tier": "blocker",
       "pattern": {
         "command": "opencode",
-        "env": ["OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"]
+        "env": ["OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT"]
       },
-      "why": "`OPENCODE_CONFIG` (a file to load) and `OPENCODE_CONFIG_CONTENT` (text merged last) give the opencode a line starts settings over its own configuration, permission rules among them, so the agent it starts can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
-      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `OPENCODE_CONFIG` and `OPENCODE_CONFIG_CONTENT`, so opencode's own configuration decides what it asks about (`opencode run \"<task>\"`).",
+      "why": "`OPENCODE_CONFIG` (a file), `OPENCODE_CONFIG_DIR` (a directory) and `OPENCODE_CONFIG_CONTENT` (text merged last) give the opencode a line starts settings over its own, permission rules among them, so the agent can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` and `OPENCODE_CONFIG_CONTENT`, so opencode's own configuration decides what it asks about (`opencode run \"<task>\"`).",
       "fixtures": {
         "known_bad": [
           "OPENCODE_CONFIG='/tmp/open.json' opencode run x",
           "OPENCODE_CONFIG_CONTENT='{\"permission\":\"allow\"}' opencode run x",
-          "export OPENCODE_CONFIG=/tmp/open.json; opencode run x"
+          "export OPENCODE_CONFIG=/tmp/open.json; opencode run x",
+          "OPENCODE_CONFIG_DIR='/tmp/oc' opencode run x",
+          "export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x",
+          "env OPENCODE_CONFIG=/tmp/open.json opencode run x"
         ],
         "known_good": [
           "opencode run \"fix the tests\"",
           "OPENCODE_CONFIG=/tmp/open.json echo hi",
           "env -u OPENCODE_CONFIG opencode run x",
+          "OPENCODE_CONFIG_DIR=/tmp/oc echo hi",
+          "export OPENCODE_CONFIG_DIR=/tmp/oc",
           "abcd capture \"an agent ran OPENCODE_CONFIG=x opencode run\""
+        ]
+      }
+    },
+    "agent-launch-claude-config-env": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "env": ["CLAUDE_CONFIG_DIR", "CLAUDE_CODE_SHELL_PREFIX", "CLAUDE_CODE_SHELL", "BASH_ENV", "ENV"]
+      },
+      "why": "`CLAUDE_CONFIG_DIR` gives the claude a line starts settings over its own, permission rules and hooks among them, and `CLAUDE_CODE_SHELL_PREFIX`, `CLAUDE_CODE_SHELL`, `BASH_ENV` and `ENV` change what its shell commands run, so the agent can run commands without asking anyone, unseen by this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without these variables, so claude's own configuration decides what it asks about and its shell commands run as written (`claude -p \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "CLAUDE_CONFIG_DIR='/tmp/c' claude -p x",
+          "export CLAUDE_CONFIG_DIR=/tmp/c; claude -p x",
+          "env CLAUDE_CONFIG_DIR=/tmp/c claude -p x",
+          "CLAUDE_CODE_SHELL_PREFIX=/tmp/wrap claude -p x",
+          "BASH_ENV=/tmp/rc claude -p x"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "CLAUDE_CONFIG_DIR=/tmp/c echo hi",
+          "env -u CLAUDE_CONFIG_DIR claude -p x",
+          "export CLAUDE_CONFIG_DIR=/tmp/c",
+          "abcd capture \"an agent ran CLAUDE_CONFIG_DIR=x claude\""
         ]
       }
     }
