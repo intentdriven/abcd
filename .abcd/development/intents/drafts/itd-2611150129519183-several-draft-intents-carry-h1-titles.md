@@ -1,0 +1,43 @@
+---
+id: itd-2611150129519183
+slug: several-draft-intents-carry-h1-titles
+spec_id: null
+kind: null
+suggested_kind: null
+reclassification_history: []
+builds_on: []
+severity: minor
+related_issues: [iss-2610150749053362]
+origin: extracted-from-record
+production_mode: hand-written
+---
+
+# Several draft intents carry H1 titles that read badly now that the out-of-scope drafts index is generated from each record's H1: itd-70's H1 is the placeholder 'Drawn-out intent', itd-2610070544145422's H1 is cut off mid-sentence ('…and it just works: the'), and eleven drafts have paragraph-length H1s of 300 to 1,093 characters (for example itd-2609150819440345 and itd-149).
+
+## Press Release
+
+> _Seeded by promotion from iss-2610150749053362. Expand into the full press-release narrative before planning._
+
+## Why This Matters
+
+Graduated from `iss-2610150749053362`: Several draft intents carry H1 titles that read badly now that the out-of-scope drafts index is generated from each record's H1: itd-70's H1 is the placeholder 'Drawn-out intent', itd-2610070544145422's H1 is cut off mid-sentence ('…and it just works: the'), and eleven drafts have paragraph-length H1s of 300 to 1,093 characters (for example itd-2609150819440345 and itd-149).. Read that issue record for the source observation.
+
+## Mechanism
+
+> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+
+## Scope Conditions
+
+> _Required (the claim-recording gradient): the population, platform, scale, or assumptions this claim holds under, one per top-level bullet — `abcd intent plan` stamps each with a persistent identity. Replace this line with those bullets, or with the exact token `None stated.` alone on its line._
+
+## Acceptance Criteria
+
+> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+
+## Open Questions
+
+_None recorded yet._
+
+## Audit Notes
+
+_Empty. Populated by intent-auditor when intent moves to shipped/._
