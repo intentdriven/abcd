@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/config/dependency-reauthor.conf"
 remedy: "Add a command that relands a bot's dependency pull request as the person's own commit: it checks the pull request against the re-authoring bound in .abcd/config/dependency-reauthor.conf (bot, branch prefix, one commit, only the named manifests), applies the bot commit's change onto a fresh branch from origin's default branch, commits it under the checkout's git identity with the disclosure trailer when an agent runs it, and names the superseded pull request; and have the reauthor workflow's refusal and abcd's status name that command and the open bumps waiting on it."
+resolution: "abcd launch reland relands a bot's dependency pull request as the person's commit inside the workflow's own bound; the workflow's refusal names it, and the bare listing and the board show the bumps waiting"
+impact: additive
 ---
 
 With the dependency re-authoring opt-in present but its owner unset (and no app secrets), every Dependabot pull request fails the reauthor and attribution checks and stays open indefinitely: #1618 and #1619 sat for five days. Nothing reports the stuck bumps, and the only way to land one is by hand: redo the bump on the current default branch as the person's commit, within the bound the config declares, and let the bot close its pull request. A run on 22 Nov 2026 did exactly that, ad hoc.

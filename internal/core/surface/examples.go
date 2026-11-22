@@ -194,6 +194,7 @@ var examples = map[string]string{
 	"abcd launch archive":   "abcd launch archive --out dist",
 	"abcd launch manifests": "abcd launch manifests --tree public",
 	"abcd launch receipts":  "abcd launch receipts",
+	"abcd launch reland":    "abcd launch reland 1618",
 	"abcd launch scaffold":  "abcd launch scaffold",
 	"abcd launch ship":      "abcd launch ship --dry-run",
 
