@@ -193,8 +193,10 @@ one who has. It writes nothing except that render, and reaches no network.
   because it has neither an identity block abcd wrote nor a GitHub origin to
   name it, fails here too. A gate whose `--project` and `.abcd/site.json`
   disagree is refused, both ways.
-- `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
-  block, read through the same parser the positioning surfaces use.
+- `hero` — the rendered hero's eyebrow (the headline: the name and its
+  descriptor, or the title where the block has no descriptor), tagline,
+  purpose and pitch equal the Identity block, read through the same parser the
+  positioning surfaces use.
 - `banned-tokens` — the documentation lint's banned tokens, over the text every
   composed surface publishes, whichever tree the span came from. The escape is
   read source-side: a token is exempt where the source line it was selected from

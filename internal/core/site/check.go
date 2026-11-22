@@ -756,12 +756,13 @@ const titleSeparator = " · "
 // it names. The second arm is what lets a record page be titled by its own
 // heading without that heading becoming a sentence written for the website.
 func (c *checker) titleWhy(title string, allow generatorWords, sourced map[string]bool) string {
-	if title == c.identity.Title {
+	headline := c.identity.Headline()
+	if title == headline {
 		return ""
 	}
-	suffix := titleSeparator + c.identity.Title
+	suffix := titleSeparator + headline
 	if !strings.HasSuffix(title, suffix) {
-		return "the Identity block's title is " + quote(c.identity.Title) +
+		return "the Identity block's headline is " + quote(headline) +
 			", and this is neither that nor a page name followed by it"
 	}
 	head := strings.TrimSpace(strings.TrimSuffix(title, suffix))
@@ -893,10 +894,10 @@ func (c *checker) generatorWords() generatorWords {
 	if c.repo.Repository != "" {
 		addName(repoHandle(c.repo.Repository))
 	}
-	// The brand is the first word of the canonical title.
+	// The brand is the block's name, or the first word of its title.
 	if c.hasBlock {
-		if f := strings.Fields(c.identity.Title); len(f) > 0 {
-			addName(f[0])
+		if b := c.identity.Brand(); b != "" {
+			addName(b)
 		}
 	}
 	// A chapter's letter, from `.abcd/site.json`.
@@ -1140,14 +1141,15 @@ func collapseSpaces(s string) string { return strings.Join(strings.Fields(s), " 
 // 2. Hero-vs-Identity
 // ---------------------------------------------------------------------------
 
-// heroSpans are the three hero paragraphs and the Identity field each renders.
+// heroSpans are the hero paragraphs and the Identity field each renders.
 var heroSpans = []struct {
 	class string
 	field func(positioning.Block) string
 	name  string
 }{
-	{"eyebrow", func(b positioning.Block) string { return b.Title }, "title"},
+	{"eyebrow", positioning.Block.Headline, "headline"},
 	{"tagline", func(b positioning.Block) string { return b.Tagline }, "tagline"},
+	{"purpose", func(b positioning.Block) string { return b.Purpose }, "purpose"},
 	{"pitch", func(b positioning.Block) string { return b.Pitch }, "pitch"},
 }
 

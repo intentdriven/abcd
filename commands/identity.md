@@ -70,6 +70,13 @@ render from it — by default the README strapline, the plugin or package manife
 description, and the conventions file's opening. Further surfaces are registrable
 in that same file; none are ever registered silently.
 
+The block may also carry a **Name** (what the project is called, apart from a
+title that expands it), a **Descriptor** (a noun phrase that completes
+"<name> is …") and a **Purpose** (why it exists). `init` does not ask for them:
+add them to the block by hand. Once present, a surface may require and template
+them (`{name}`, `{descriptor}`, `{purpose}`), and the site's hero leads with the
+name and its descriptor and sets the purpose under the tagline.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails

@@ -459,11 +459,18 @@ func (c *composer) aboutHero() string {
 	src := c.identitySrc()
 	var b strings.Builder
 	b.WriteString(`<section class="hero"><div class="wrap"><div class="grid"><div>`)
-	b.WriteString(`<p class="eyebrow"` + src + `>` + escapeText(blk.Title) + `</p>`)
+	b.WriteString(`<p class="eyebrow"` + src + `>` + escapeText(blk.Headline()) + `</p>`)
 	b.WriteString(`<h1 class="tagline"` + src + `>` + escapeText(blk.Tagline) + `</h1>`)
 	b.WriteString(`</div>`)
-	if blk.Pitch != "" {
-		b.WriteString(`<div class="hero-aside"><p class="pitch"` + src + `>` + escapeText(blk.Pitch) + `</p></div>`)
+	if blk.Purpose != "" || blk.Pitch != "" {
+		b.WriteString(`<div class="hero-aside">`)
+		if blk.Purpose != "" {
+			b.WriteString(`<p class="purpose"` + src + `>` + escapeText(blk.Purpose) + `</p>`)
+		}
+		if blk.Pitch != "" {
+			b.WriteString(`<p class="pitch"` + src + `>` + escapeText(blk.Pitch) + `</p>`)
+		}
+		b.WriteString(`</div>`)
 	}
 	b.WriteString(`</div></div></section>`)
 	return b.String()
@@ -563,7 +570,7 @@ func (c *composer) metIntents() []lint.RecordNode {
 func (c *checker) checkProjectTitle() {
 	title := c.repo.Name
 	if c.hasBlock {
-		title = c.identity.Title
+		title = c.identity.Headline()
 	}
 	if strings.TrimSpace(title) != "" {
 		return

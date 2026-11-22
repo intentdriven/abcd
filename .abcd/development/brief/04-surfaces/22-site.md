@@ -405,7 +405,11 @@ version's major is 0. The footer's version and commit are the build stamp.
 
 Graceful absence throughout: no changelog omits the release badge, the release pill
 and the releases list, and the build succeeds; no identity block omits the hero's
-eyebrow, tagline and pitch, and the headline and lede that carry the page stay.
+eyebrow, tagline, purpose and pitch, and the headline and lede that carry the page
+stay. Where the block is there, the eyebrow and the page title are the block's
+headline (its name and descriptor, or its title where it has no descriptor), the
+purpose sits under the tagline where the block has one, and the header's brand is
+the block's name, or the title's first word where it has none.
 
 ## The markdown subset
 

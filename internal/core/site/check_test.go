@@ -319,7 +319,7 @@ func TestCheckAccountsForAPageThatNamesItself(t *testing.T) {
 	// sources fails, and so does a tail that is not the Identity title.
 	for _, bad := range []struct{ title, want string }{
 		{"<title>The best tool ever · Probe — the fixture project</title>", "The best tool ever"},
-		{"<title>Contributors · Probe, the fastest tool alive</title>", "Identity block's title"},
+		{"<title>Contributors · Probe, the fastest tool alive</title>", "Identity block's headline"},
 	} {
 		broken := strings.Replace(string(data),
 			"<title>Contributors · Probe — the fixture project</title>", bad.title, 1)
