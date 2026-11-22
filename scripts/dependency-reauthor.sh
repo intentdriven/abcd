@@ -133,11 +133,10 @@ if [ "$mode" = rows ]; then
 	else
 		echo "owner unset"
 	fi
-	while IFS= read -r row; do
+	# Every row ends in a newline, so the pipe hands read whole lines.
+	printf '%s' "$rows" | while IFS= read -r row; do
 		[ -z "$row" ] || printf 'row %s\n' "$row"
-	done <<EOF
-$rows
-EOF
+	done
 	exit 0
 fi
 
