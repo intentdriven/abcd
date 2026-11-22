@@ -495,6 +495,49 @@ func TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport(t *testing.T) {
 	}
 }
 
+// TestGuardReadsAnAssignmentToATiedArrayAsSettingItsScalar: the array zsh's
+// `typeset -T NAME arr` ties to a scalar sets the scalar whenever it is
+// assigned, so under allexport an assignment to the array exports the scalar
+// however long after the tie allexport is turned on: a bare assignment, an
+// append, an element, a declaration's value and a builtin that assigns it.
+func TestGuardReadsAnAssignmentToATiedArrayAsSettingItsScalar(t *testing.T) {
+	const id = "agent-launch-opencode-config-env"
+	r := Defaults()
+	for _, line := range []string{
+		`typeset -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; setopt allexport; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; oc+=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; oc[1]=/tmp/o.json; opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; typeset oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; read -A oc <<< /tmp/o.json; opencode run x`,
+		`typeset -UT OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -g -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T -- OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG=a oc ,; set -a; oc=(/tmp/o.json); opencode run x`,
+		`local -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`declare -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); zsh -c 'opencode run x'`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, line := range []string{
+		`typeset -T OPENCODE_CONFIG oc; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OTHER oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset OPENCODE_CONFIG oc; set -a; oc=(/tmp/o.json); opencode run x`,
+		`typeset -T OPENCODE_CONFIG oc; set -a; other=(/tmp/o.json); opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}
+
 // TestGuardTurnsAllexportOffOnlyByTheOptionsArrayValueZshAccepts: zsh accepts
 // only the exact values `on` and `off` for an element of its options array
 // and keeps the option as it was for any other value, reporting it invalid;

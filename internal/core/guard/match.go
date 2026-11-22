@@ -512,8 +512,8 @@ func assignmentCouldName(tok, name string) bool {
 // command to the next: whether allexport holds, whether bash's keyword
 // option holds (`set -k`: an assignment word anywhere among a command's
 // words is in that command's environment), and the names the walk reads an
-// export of, the entry's own and each nameref the line points at one of
-// them (namerefsTo). shellopts is the SHELLOPTS the shell hands the
+// export of, the entry's own, each nameref the line points at one of them
+// (namerefsTo) and each array it ties to one of them (tiedArraysTo). shellopts is the SHELLOPTS the shell hands the
 // programs it starts, "" where it hands none: bash starts with every option
 // an inherited SHELLOPTS names (shellStartsWith). optsAssigned is a value the
 // line assigned SHELLOPTS without exporting it, which an `export SHELLOPTS`
@@ -643,7 +643,7 @@ func exportStep(s segment, st exportState) (exports bool, after exportState) {
 	after = exportState{
 		allexport:    optionAfter(s, st.allexport, optAllexport, st.shellopts),
 		keyword:      optionAfter(s, st.keyword, optKeyword, st.shellopts),
-		names:        namerefsTo(s, names),
+		names:        tiedArraysTo(s, namerefsTo(s, names)),
 		shellopts:    shellopts,
 		optsAssigned: assigned,
 	}
@@ -813,6 +813,55 @@ func namerefsTo(s segment, names []string) []string {
 			}
 			out = append(out, name)
 		}
+	}
+	return out
+}
+
+// tiedArraysTo is names and every array s ties to one of them as zsh's
+// `typeset -T NAME arr` does (with declare, local or export, `-T` in any
+// cluster): the array sets the scalar whenever it is assigned, so under
+// allexport an assignment to it, however long after the tie, is an export
+// of NAME. An option word the line does not fix that can carry T counts as
+// one.
+func tiedArraysTo(s segment, names []string) []string {
+	out := names
+	for _, a := range commandSites(s) {
+		if !nameCouldBeAny(s.tokens[a.idx], append([]string{"export"}, declarationBuiltins...)) {
+			continue
+		}
+		tie := false
+		i := a.idx + 1
+		for ; i < len(s.tokens); i++ {
+			w := s.tokens[i]
+			if w == "--" {
+				i++
+				break
+			}
+			if isUnknown(w) {
+				tie = tie || clusterCouldCarry(w, 'T')
+				continue
+			}
+			if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
+				break
+			}
+			if w[0] == '-' && strings.ContainsRune(w[1:], 'T') {
+				tie = true
+			}
+		}
+		if !tie || i+1 >= len(s.tokens) {
+			continue
+		}
+		scalar, array := s.tokens[i], s.tokens[i+1]
+		if name, _, _, _, ok := splitAssignment(scalar); ok {
+			scalar = name
+		}
+		if isUnknown(scalar) || isUnknown(array) || !isName(array) || !containsString(out, scalar) || containsString(out, array) {
+			continue
+		}
+		if len(out) == len(names) {
+			out = append([]string(nil), names...)
+		}
+		out = append(out, array)
 	}
 	return out
 }

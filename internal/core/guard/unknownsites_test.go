@@ -95,6 +95,7 @@ var wordReaders = map[string]string{
 	"arithmeticAssignsAt":  "exempt: reads the raw operator text after a name in an arithmetic expression, not a word",
 	"assignsAfterCommand":  "commandSites: every place a command can sit",
 	"namerefsTo":           "commandSites, nameCouldBeAny, isUnknown and clusterCouldCarry: an option word the line does not fix can be -n",
+	"tiedArraysTo":         "commandSites, nameCouldBeAny, isUnknown and clusterCouldCarry: an option word the line does not fix can be -T",
 	"positionalsSet":       "commandSites, nameCouldBe and isUnknown: only a set the line names is read, and an operand it does not fix sets the parameters",
 	"runnersAt":            "readWord on every word before the subcommand",
 	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",

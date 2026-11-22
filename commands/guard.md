@@ -1295,8 +1295,10 @@ reaches the harness the script starts, and a file the line sources runs under
 the exports and options in force where the source stands. While allexport
 holds, every assignment exports: a bare one, a declaration builtin's, a name
 a declaration builtin declares without a value (among them the scalar that
-zsh's `typeset -T` ties to an array, which an assignment to the array sets), a
-name
+zsh's `typeset -T` ties to an array, which an assignment to the array sets),
+an assignment to an array the line tied to a variable earlier, whether or not
+allexport held at the tie (`typeset -T OPENCODE_CONFIG oc; set -a; oc=(…)`
+exports `OPENCODE_CONFIG`), a name
 `read`, `printf -v`, `getopts`, `mapfile`, `let`, bash's `wait -p` and
 `compgen -V`, or zsh's `strftime -s`, `zstyle`, `zformat`, `getln` and
 `sysread` assigns, a `for` or `select` loop's variable, and, anywhere on the
