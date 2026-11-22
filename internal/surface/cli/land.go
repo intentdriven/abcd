@@ -31,12 +31,13 @@ var landSeams landing.Options
 func newLandCommand(asJSON *bool) *cobra.Command {
 	var noPush, noEnqueue, approve bool
 	var reviews []string
-	var restsOn string
+	var restsOn, reviewBrief string
 	cmd := &cobra.Command{
 		Use: "land [<branch>]",
 		Long: "abcd land [<branch>] [--no-push] [--no-enqueue]\n" +
 			"abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]\n" +
-			"abcd land [<branch>] --approve\n\n" +
+			"abcd land [<branch>] --approve\n" +
+			"abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]\n\n" +
 			"Land a branch whose work is committed: the checkout's current branch, or the one\n" +
 			"named, from the worktree that has it checked out. Each step can be resumed by\n" +
 			"running abcd land again.\n\n" +
@@ -175,10 +176,22 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"name does, every file keeps its frontmatter byte for byte, and no file is added,\n" +
 			"removed or moved. Any other path needs a full pair, as code, open issues, decisions,\n" +
 			"intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge\n" +
-			"of a default-branch commit counts for nothing when it is exactly\n" +
-			"the merge git makes of its parents with no conflict; any other merge is\n" +
-			"refused. The merge gate asks all of this again at landing. Without --rests-on, a\n" +
+			"of a commit on origin's default branch, as last fetched, counts for nothing when it\n" +
+			"is exactly the merge git makes of its parents with no conflict (an empty\n" +
+			"remerge-diff), its parents have one merge base, and what its second parent changes\n" +
+			"since that base touches no file the branch's own commits change since the base;\n" +
+			"any other merge is refused, an octopus or one from a local default branch\n" +
+			"included. The merge gate asks all of this again at landing. Without --rests-on, a\n" +
 			"return carrying a Reviewed delta line is refused.\n\n" +
+			"--review-brief prints the return a reviewer writes for the branch's head, or for\n" +
+			"the commit given as --review-brief=<commit>, ready to paste into the reviewer's\n" +
+			"brief: the Reviewed head line naming it in full, a place for the findings, the\n" +
+			"### Verdict heading and the verdict line naming it in full, its word left to the\n" +
+			"reviewer. With --rests-on <base> the first line is the delta's, Reviewed delta:\n" +
+			"<base>..<head>. It is built from the rule --record-review reads a return by, so a\n" +
+			"brief filled in with a passing verdict is recorded. It writes and lands nothing, and\n" +
+			"takes no --no-push, --no-enqueue, --approve or --record-review; --json carries the\n" +
+			"commit, rests_on and the brief.\n\n" +
 			"--approve records the technical facilitator's approval of the branch's head and\n" +
 			"lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge\n" +
 			"gate counts as an approval of that commit, and of no other. It is the\n" +
@@ -195,8 +208,14 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if cmd.Flags().Changed("review-brief") {
+				if noPush || noEnqueue || approve || len(reviews) > 0 {
+					return &exitError{Code: 2, Msg: "abcd land: --review-brief writes and lands nothing, so it takes no --no-push, --no-enqueue, --approve or --record-review; nothing was written"}
+				}
+				return printReviewBrief(cmd, *asJSON, cwd, args, reviewBrief, restsOn)
+			}
 			if cmd.Flags().Changed("rests-on") && len(reviews) == 0 {
-				return &exitError{Code: 2, Msg: "abcd land: --rests-on names the full pair a delta review rests on, so it takes --record-review; nothing was written"}
+				return &exitError{Code: 2, Msg: "abcd land: --rests-on names the full pair a delta review rests on, so it takes --record-review or --review-brief; nothing was written"}
 			}
 			if approve {
 				if noPush || noEnqueue || len(reviews) > 0 {
@@ -234,6 +253,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&noEnqueue, "no-enqueue", false, "do not arm or queue the pull request this run")
 	cmd.Flags().BoolVar(&approve, "approve", false, "record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing")
 	cmd.Flags().StringArrayVar(&reviews, "record-review", nil, "record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing")
+	cmd.Flags().StringVar(&reviewBrief, "review-brief", "", "print the return a reviewer writes for the branch's head, or for the commit given as --review-brief=<commit>, a delta's with --rests-on; writes nothing")
+	cmd.Flags().Lookup("review-brief").NoOptDefVal = reviewBriefOfBranch
 	cmd.Flags().StringVar(&restsOn, "rests-on", "", "make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>")
 	return cmd
 }
@@ -284,6 +305,49 @@ func recordReview(cmd *cobra.Command, asJSON bool, cwd string, args, paths []str
 		}
 		fmt.Fprintf(w, "abcd land: recorded the review receipt for %s (%s)\n", sha, termsafe.Sanitize(fsutil.RedactHome(receipt)))
 	})
+}
+
+// reviewBriefOfBranch is --review-brief given bare: the brief is for the head of
+// the branch named, or the checkout's current branch.
+const reviewBriefOfBranch = "HEAD"
+
+// printReviewBrief is `abcd land --review-brief`: it prints the return a
+// reviewer writes for the head of the branch named (or the checkout's current
+// branch), or for the commit given, a delta's resting on restsOn when given
+// (landing.ReviewBrief), and writes nothing.
+func printReviewBrief(cmd *cobra.Command, asJSON bool, cwd string, args []string, commit, restsOn string) error {
+	const none = "; no brief was printed"
+	rev := "HEAD"
+	if len(args) == 1 {
+		rev = "refs/heads/" + args[0]
+	}
+	if commit != reviewBriefOfBranch {
+		if len(args) == 1 {
+			return &exitError{Code: 2, Msg: "abcd land: --review-brief=<commit> names the commit, so it takes no branch" + none}
+		}
+		if commit == "" || strings.HasPrefix(commit, "-") {
+			return &exitError{Code: 2, Msg: "abcd land: --review-brief=<commit> names no commit" + none}
+		}
+		rev = commit
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the review brief")
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(err.Error()) + none}
+	}
+	sha, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+	if err != nil || sha == "" {
+		return &exitError{Code: 2, Msg: "abcd land: the commit to review cannot be resolved" + none}
+	}
+	brief, err := landing.ReviewBrief(root, sha, restsOn)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + none}
+	}
+	view := struct {
+		Commit  string `json:"commit"`
+		RestsOn string `json:"rests_on,omitempty"`
+		Brief   string `json:"brief"`
+	}{sha, restsOn, brief}
+	return render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) { fmt.Fprint(w, brief) })
 }
 
 // approveHead is `abcd land --approve`: it records the technical

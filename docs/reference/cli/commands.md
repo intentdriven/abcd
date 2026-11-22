@@ -4886,6 +4886,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 abcd land [<branch>] [--no-push] [--no-enqueue]
 abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
+abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -5036,10 +5037,23 @@ record's grounds. No part of such a path may start with a dot or begin as an ins
 name does, every file keeps its frontmatter byte for byte, and no file is added,
 removed or moved. Any other path needs a full pair, as code, open issues, decisions,
 intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
-of a default-branch commit counts for nothing when it is exactly
-the merge git makes of its parents with no conflict; any other merge is
-refused. The merge gate asks all of this again at landing. Without --rests-on, a
+of a commit on origin's default branch, as last fetched, counts for nothing when it
+is exactly the merge git makes of its parents with no conflict (an empty
+remerge-diff), its parents have one merge base, and what its second parent changes
+since that base touches no file the branch's own commits change since the base;
+any other merge is refused, an octopus or one from a local default branch
+included. The merge gate asks all of this again at landing. Without --rests-on, a
 return carrying a Reviewed delta line is refused.
+
+--review-brief prints the return a reviewer writes for the branch's head, or for
+the commit given as --review-brief=<commit>, ready to paste into the reviewer's
+brief: the Reviewed head line naming it in full, a place for the findings, the
+### Verdict heading and the verdict line naming it in full, its word left to the
+reviewer. With --rests-on <base> the first line is the delta's, Reviewed delta:
+<base>..<head>. It is built from the rule --record-review reads a return by, so a
+brief filled in with a passing verdict is recorded. It writes and lands nothing, and
+takes no --no-push, --no-enqueue, --approve or --record-review; --json carries the
+commit, rests_on and the brief.
 
 --approve records the technical facilitator's approval of the branch's head and
 lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
@@ -5050,11 +5064,12 @@ author's approval of their own): the shell guard refuses it to an agent.
 **Flags:**
 
 ```
-      --approve[=true|false]        record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
-      --no-enqueue[=true|false]     do not arm or queue the pull request this run
-      --no-push[=true|false]        do not push the branch this run; print the push command instead
-      --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
-      --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
+      --approve[=true|false]           record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
+      --no-enqueue[=true|false]        do not arm or queue the pull request this run
+      --no-push[=true|false]           do not push the branch this run; print the push command instead
+      --record-review stringArray      record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
+      --rests-on string                make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
+      --review-brief string[="HEAD"]   print the return a reviewer writes for the branch's head, or for the commit given as --review-brief=<commit>, a delta's with --rests-on; writes nothing
 ```
 
 **Example:**

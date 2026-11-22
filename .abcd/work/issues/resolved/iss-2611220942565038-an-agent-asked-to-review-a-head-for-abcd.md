@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/landing"
 remedy: "Add abcd land --review-brief <head> that prints the return shape a reviewer must write for that head, ready to paste into the reviewer's prompt, from the same parser --record-review uses."
+resolution: "abcd land --review-brief prints the return a reviewer writes for a head, a delta's with --rests-on, built from the labels and verdict words --record-review reads a return by."
+impact: additive
 ---
 
 An agent asked to review a head for abcd land --record-review has to be told the return's exact shape (the first line naming the head, one Verdict heading, the verdict line naming the head in full) in every prompt, and a shape mistake is found only when the receipt is refused.
