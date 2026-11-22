@@ -880,10 +880,11 @@ func fetchPinned(ctx context.Context, repoRoot, def string) (string, error) {
 	return pinned, nil
 }
 
-// onCommit reports whether sha is commit or an ancestor of it, bound to ctx; a
-// check git cannot make is an error, never a no.
+// onCommit reports whether sha is commit or an ancestor of it as the commits
+// store their parents, bound to ctx; a check git cannot make is an error, never
+// a no.
 func onCommit(ctx context.Context, repoRoot, sha, commit string) (bool, error) {
-	_, notOn, err := gitutil.RunCappedExitOneContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", sha, commit)
+	_, notOn, err := gitutil.RunCappedExitOneAsStoredContext(ctx, repoRoot, 4096, "merge-base", "--is-ancestor", sha, commit)
 	return err == nil && !notOn, err
 }
 

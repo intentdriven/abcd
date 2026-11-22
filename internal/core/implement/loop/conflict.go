@@ -119,7 +119,10 @@ type conflictFinding struct {
 // renormalise either (MergeDriverOverrides pins merge.renormalize=false),
 // whatever the checkout sets: renormalising runs each side of a conflicted
 // path through the content filters an attribute in either tree names, and
-// the forge's merge does neither. That is the merge the forge computes. The probe is a read-only
+// the forge's merge does neither. The merge base is the one the commits'
+// stored parents give (gitutil.RunCappedExitOneAsStored): no replace ref,
+// graft file or commit-graph of this checkout's moves it, and the forge sees
+// none of them. That is the merge the forge computes. The probe is a read-only
 // prediction of it, writing nothing and changing nothing about how the
 // repository's own merges behave, so the pin is fidelity to the forge rather
 // than a setting switched off; syncMerge, a real merge in the lane's worktree,
@@ -133,7 +136,7 @@ func localConflict(root, tracking, head string) conflictFinding {
 	}
 	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(),
 		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", tracking, head)
-	out, conflicted, err := gitutil.RunCappedExitOne(root, maxGitOutput, args...)
+	out, conflicted, err := gitutil.RunCappedExitOneAsStored(root, maxGitOutput, args...)
 	if err != nil {
 		return conflictFinding{err: err}
 	}

@@ -79,10 +79,10 @@ func TestLaunchShipRendersTheVersionedPayload(t *testing.T) {
 	if string(after) != string(before) {
 		t.Error("adr-19: the working tree's plugin.json was mutated by the ship")
 	}
-	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), filepath.Join(r.Root(), ".abcd/config/version-location.json")); !res.OK {
+	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), r.Root()); !res.OK {
 		t.Errorf("the working tree must stay version-absent after a ship, got %+v", res)
 	}
-	if res := launch.CheckLockstep(launch.TreePublic, dest, filepath.Join(r.Root(), ".abcd/config/version-location.json")); !res.OK {
+	if res := launch.CheckLockstep(launch.TreePublic, dest, r.Root()); !res.OK {
 		t.Errorf("the staged payload must satisfy the public polarity, got %+v", res)
 	}
 }

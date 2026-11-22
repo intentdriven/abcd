@@ -97,7 +97,8 @@ research recommends, and is the divergence justified? Findings would land in the
 local ephemeral tier and be treated as RFC input, never auto-applied.
 
 Nothing of this ships: no template, no adapter entry point, no invocation. It is
-gated on the research files besides, which do not exist for any shipped agent.
+gated on the research files besides, and no shipped prompt has a research file
+it can find by name (see "Research-driven prompts" below).
 
 ## The itd-5 additions
 

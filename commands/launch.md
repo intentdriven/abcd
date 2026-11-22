@@ -560,6 +560,12 @@ declaring its kind as `binary` or `application`, `launch scaffold`, `launch ship
 writing the dated CHANGELOG heading, and the auto-release workflow. Relay that;
 it is not a misconfiguration.
 
+The include set and the pinned scripts closure
+(`.abcd/config/scripts-closure.json`) are read only as regular files inside the
+repository: a symlink, a FIFO or device, a file reached through a directory that
+links out of the repository, or an include set over 64 KiB is refused as
+unreadable before anything is read from it.
+
 ## Ship — the release cut
 
 A release cut is **three steps over two Go entry points**, with a host-run agent in
@@ -590,7 +596,10 @@ that entered `shipped/` since the base tag; never an issue, an `impact: internal
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: the `cut` in
-`abcd launch --dry-run --json`.
+`abcd launch --dry-run --json`. Every git read behind the cut and both
+guardrails reads objects as git stores them, with no replace ref, graft file or
+commit-graph in force, so a record, a tree or which tags lie behind the base
+tag reads as the push and the tag send it.
 
 **The cut is read from HEAD, so an uncommitted record move refuses it.** The
 record set comes out of git at HEAD, never the working tree, so a spec close or
@@ -921,7 +930,9 @@ has not admitted), the installability smoke at both tiers (the deep tier always 
 the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
 rejected stops it at once; otherwise it refuses with every finding from every
 gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
-`preflight_report`. The hosted release run reuses no test result. A working tree with uncommitted changes refuses unless the
+`preflight_report`. The hosted release run reuses no test result. A working
+tree with uncommitted changes, compared with `HEAD` as git stores it (no replace
+ref or commit-graph stands in for it), refuses unless the
 ship is passed `--allow-dirty`, which carries them into the cut and records the
 override, with every path it carried, in the report (`allowed_dirty` in
 `--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,
@@ -1099,7 +1110,9 @@ over, so an earlier release's receipts never stand in for this one's and a
 batch-mate's receipts never shadow them. The released tree's newest release
 heading must be a dated `## [X.Y.Z] - <date>` heading: a pre-release or undated
 head, or a tree with no dated release, refuses, because there is no version to
-bind the receipts to.
+bind the receipts to. The derivation, and the release gate's reads of the
+release tags, their trees and their ancestry, read history as git stores it,
+with no replace ref, graft file or commit-graph in force.
 A one-commit branch breaks this: no receipt can name the commit that carries it,
 so the release has no receipts for its content and the gate refuses.
 
@@ -1325,6 +1338,12 @@ A repository with its own `.github/workflows/release.yml` (or `.yaml`) keeps it
 to add to it so it calls the gate before its build step (`call_stanza` in
 `--json`). Relay that stanza verbatim; the scaffold never edits the repository's
 own workflow.
+
+Every file the scaffold reads or writes resolves inside the repository. Where a
+directory on the way to a planned file is a symlink leading out of the
+repository (a committed `.github` that links elsewhere), the run stops with an
+error and writes nothing there, with or without `--confirm`, and the workflows
+behind that link supply no check name.
 
 ### Dependency-bump re-authoring (opt-in)
 

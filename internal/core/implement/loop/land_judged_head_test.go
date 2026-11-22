@@ -171,7 +171,7 @@ func TestACommitHoldingMoreThanTheMarkNeedsAModel(t *testing.T) {
 	head := l.HeadSHA
 	setModel(t, f, "", nil, true)
 	f.step(t)
-	f.fileAnotherIssue(t, l)
+	editIntentProse(t, l)
 	r := f.wantsRefusedStep(t)
 	if !strings.Contains(r.Reason, "did not compose") || !strings.Contains(r.Remedy, "model") {
 		t.Fatalf("the refusal names the model: %+v", r)

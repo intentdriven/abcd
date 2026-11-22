@@ -396,9 +396,11 @@ func recordSeverityAt(root, ref, relPath string) (string, error) {
 // recordFieldsAt reads one record's frontmatter at ref. It is the single blob
 // read behind both halves of this gate, so the grade a deletion is judged on at
 // the anchor and the grade an open record is judged on at HEAD can never be read
-// two different ways.
+// two different ways. The blob is read as stored (RunCappedAsStored), so no
+// refs/replace entry stands another record in for the one ref holds, and a
+// blob past maxRecordBytes is an error, never a truncated record.
 func recordFieldsAt(root, ref, relPath string) (map[string]frontmatter.Field, error) {
-	blob, err := gitutil.RunLimited(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
+	blob, err := gitutil.RunCappedAsStored(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s at %s: %w", relPath, ref, err)
 	}
@@ -612,9 +614,11 @@ func statusPathspecs() []string {
 //
 // -z makes git emit raw NUL-separated paths, so a path containing a quote, a
 // backslash or a newline cannot be mangled by git's default path quoting.
+// The tree is read as stored (RunCappedAsStored), so no refs/replace entry or
+// commit-graph stands another tree in for the one ref holds.
 func recordPathsIn(root string, ref string, pathspecs ...string) (map[string]struct{}, error) {
 	args := append([]string{"ls-tree", "-r", "-z", "--name-only", ref, "--"}, pathspecs...)
-	out, err := gitutil.Run(root, args...)
+	out, err := gitutil.RunCappedAsStored(root, maxLedgerListing, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing records at %s: %w", ref, err)
 	}

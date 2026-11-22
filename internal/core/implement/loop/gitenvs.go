@@ -141,6 +141,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.GitlinksWithIndex", isolatedEnv, false},
 	{"gitutil.MovedGitlinks", isolatedEnv, false},
 	{"gitutil.IsAncestor", isolatedEnv, false},
+	{"gitutil.IsAncestorAsStored", isolatedEnv, false},
 	// The floor guard the spot-check store's git passes: git's version and
 	// the repository's promisor settings, read in the isolated environment.
 	{"gitutil.LazyFetchGuard", isolatedEnv, false},
@@ -161,6 +162,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.RunCappedContext", isolatedEnv, false},
 	{"gitutil.RunCappedExitOne", isolatedEnv, false},
 	{"gitutil.RunCappedExitOneAsStored", isolatedEnv, false},
+	{"gitutil.RunCappedExitOneAsStoredContext", isolatedEnv, false},
 	{"gitutil.RunCappedExitOneContext", isolatedEnv, false},
 	{"gitutil.RunLimitedNetContext", isolatedEnv, false},
 	{"gitutil.RunWithIndex", isolatedEnv, false},

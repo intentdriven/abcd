@@ -656,7 +656,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// segment still stands where the payload expansion put it: the reading
 	// follows each command to the one that carried it (adr-2610091150447054).
 	if rc != nil {
-		signals = append(signals, r.readScripts(segs, rc, run)...)
+		sigs, readings := r.readScripts(segs, rc, run)
+		signals = append(signals, sigs...)
+		// A command that takes a settings file is read once more with the
+		// file's text in its place, where the command stands.
+		if len(readings) > 0 {
+			segs = append(segs, readings...)
+			walkSegments(segs)
+		}
 	}
 
 	// git rewrites its own subcommand from configuration carried IN the command
@@ -714,6 +721,15 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 			break
 		}
 	}
+	// And a glob qualifier list that holds an expansion, whose code is the
+	// expansion's text rather than the line's (segment.qualifierUnfixed); a
+	// positional parameter's only where the text can set it.
+	for _, s := range segs {
+		if s.qualifierUnfixed || s.qualifierPositional && (s.carrier > 0 || positionalsSet(command, segs)) {
+			signals = append(signals, qualifierUnfixedSignal())
+			break
+		}
+	}
 	// A shell reading its script from a pipe, a here-document or a here-string
 	// runs text the guard read as data (iss-2609251640462464), and so does one
 	// handed a process substitution or the stdin device as its script. After the
@@ -766,15 +782,29 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	for _, id := range ids {
 		p := r.Entries[id].Pattern
 		hit, named := false, false
-		// exported records whether a command before the one read exports a
-		// variable the entry names (Pattern.Env): an export holds for the
-		// rest of the shell, so it is carried along the line once.
-		exported := false
-		for i, s := range segs {
-			segHit, segNamed := matchSegmentEnv(p, s, exported)
-			if len(p.Env) > 0 && !exported {
-				exported = exportsAny(s, p.Env)
+		// exported records, per command, whether a command that runs before
+		// it exports a variable the entry names (Pattern.Env): an export
+		// holds for the rest of the shell, so it is carried along the line in
+		// the order the commands run (exportsBefore). A script the line runs
+		// starts with what the walk carried into it (scriptStart): a variable
+		// its environment already holds is in every command's.
+		var exported []bool
+		if len(p.Env) > 0 {
+			st := exportState{names: p.Env}
+			inherited := false
+			if run != nil {
+				st.allexport, st.keyword, st.shellopts = run.start.allexport, run.start.keyword, run.start.shellopts
+				for _, n := range p.Env {
+					inherited = inherited || containsString(run.start.env, n)
+				}
 			}
+			exported, _, _ = exportsBefore(segs, st)
+			for i := range exported {
+				exported[i] = exported[i] || inherited
+			}
+		}
+		for i, s := range segs {
+			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
 			if !segHit {
 				continue
 			}

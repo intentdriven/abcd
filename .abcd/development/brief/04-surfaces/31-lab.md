@@ -148,7 +148,8 @@ removes the home it made, and nothing else.
 The **preflight** writes its artefact and runs two groups of checks.
 Harness isolation: the lab's own HOME holds no link out of the lab; the
 snapshot is a standalone clone rather than a linked worktree, borrows no object
-store, and descends from the pin; it has no remote; and the hooks path a
+store, and descends from the pin by the parents its commits store; it has no
+remote; and the hooks path a
 session in it would run, read with the operator's global configuration in
 force and judged as git expands it (`~`, `~user`, `%(prefix)/`), resolves
 inside the lab; an empty value, or one git cannot expand, is refused. Dual binary: the work binary is a regular file,

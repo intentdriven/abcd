@@ -106,8 +106,14 @@ intents:
   second publishes the decision records as the decision log page, kept off
   the relationship chart and the development page. Its `record.elsewhere`
   names the Pages address the project route builds the record onto, with the
-  forwarding and narrowing switches the cut-over turns on
-  (spc-2610142146250176); both off, the composed build is unchanged.
+  forwarding and narrowing switches of the cut-over (spc-2610142146250176).
+  Here `narrow` is on and `forward` is off, by the person's ruling
+  (dcn-2611211021237477, dcn-2611211223308175): abcdev.app builds the
+  documentation, its landing page and the contributors and references pages,
+  links the record at the Pages address, ships neither the chart's script
+  nor a header block for a record path, and forwards none of the record's
+  old addresses. The screenshots audit measures the record on a build of the
+  project route, by the routes `site-src/audit/routes.json` names.
 - **The README migration** — README's product narrative lives in
   `docs/explanation/{rationale,roles,artefacts,process}.md` and
   `docs/how-to/install.md`, and README is a contributor page keeping the

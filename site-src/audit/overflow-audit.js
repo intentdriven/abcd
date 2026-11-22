@@ -15,6 +15,13 @@
 // itd-137 AC 7 require: a real browser loads every route family at four
 // viewport widths and fails if the document scrolls horizontally.
 //
+// It measures one build per run, named by its target in `routes.json` beside
+// this file. `docs` is the composed build abcdev.app serves, which is narrowed
+// to its documentation and holds none of the record. `record` is the project
+// route's build, which holds abcd's record as its GitHub Pages site serves it
+// (spc-2610142146250176, the cut-over). The record's pages are therefore still
+// measured, on the build that serves them.
+//
 // `abcd lint site`'s mobile gate is the STATIC half — it reads the emitted
 // HTML and CSS for a viewport meta, overflow containers, image constraints and
 // inline widths wider than 390px. That gate runs in the build path and blocks a
@@ -24,9 +31,10 @@
 //
 // # Usage
 //
-//   node site-src/audit/overflow-audit.js <base-url> <screenshot-dir>
+//   node site-src/audit/overflow-audit.js <target> <base-url> <screenshot-dir>
 //
-// Exits 0 when no page overflows at any width in any scheme, 1 otherwise, and
+// <target> is a key of `targets` in routes.json. Exits 0 when no page
+// overflows at any width in any scheme, 1 otherwise, and
 // writes a PNG per route/width/scheme either way — a failure is most useful
 // with the picture beside it.
 
@@ -52,23 +60,13 @@ const SCHEMES = [
 // learn to ignore. Anything a reader could actually scroll to is wider than this.
 const TOLERANCE_PX = 1;
 
-// The fixed route families. Record pages are discovered below rather than
-// listed, so a renamed or retired record cannot leave this file pointing at a
-// 404 that reports as a pass.
-const ROUTE_FAMILIES = [
-  '/',
-  '/record/',
-  '/record/graph/',
-  '/record/foundations/',
-  '/record/development/',
-  '/record/health/',
-  '/contributors/',
-  '/references/',
-];
-
-// The record types whose pages have their own shape; discoverRecordRoutes
-// samples two pages of each.
-const SAMPLED_TYPES = ['adr', 'intent', 'issue'];
+// The fixed route families of each target, and, for a target that samples
+// the record, the export it reads and the record types whose pages have their
+// own shape. A list rather than code, so the site package's tests hold every
+// route it names to a page the target's build really writes. Record pages are
+// discovered from the export rather than listed, so a renamed or retired
+// record cannot leave the audit pointing at a 404 that reports as a pass.
+const TARGETS = JSON.parse(fs.readFileSync(path.join(__dirname, 'routes.json'), 'utf8')).targets;
 
 function slug(route) {
   const s = route.replace(/^\/+|\/+$/g, '').replace(/[^A-Za-z0-9._-]+/g, '-');
@@ -90,23 +88,23 @@ function longestRun(s) {
 }
 
 // discoverRecordRoutes reads the record export the build emits and picks two
-// records of each sampled type: the lowest-numbered, and the one whose title or
-// source path holds the longest unbroken token (ties to the lower number). The
-// lowest-numbered record is the oldest and plainest; the second is the worst
-// case for wrapping, which the oldest record never is — a timestamp-id record's
-// path and a title quoting a path both widened record pages that the first
-// sample alone could not see (iss-2610040732240935). Deterministic, not random:
-// the audit must compare like with like from run to run, or a screenshot diff
-// is noise.
-async function discoverRecordRoutes(page, baseUrl) {
-  const res = await page.request.get(`${baseUrl}/record.json`);
+// records of each type the target samples: the lowest-numbered, and the one
+// whose title or source path holds the longest unbroken token (ties to the
+// lower number). The lowest-numbered record is the oldest and plainest; the
+// second is the worst case for wrapping, which the oldest record never is — a
+// timestamp-id record's path and a title quoting a path both widened record
+// pages that the first sample alone could not see (iss-2610040732240935).
+// Deterministic, not random: the audit must compare like with like from run
+// to run, or a screenshot diff is noise.
+async function discoverRecordRoutes(page, baseUrl, sample) {
+  const res = await page.request.get(`${baseUrl}/${sample.export}`);
   if (!res.ok()) {
-    throw new Error(`record.json is not served at ${baseUrl} (HTTP ${res.status()})`);
+    throw new Error(`${sample.export} is not served at ${baseUrl} (HTTP ${res.status()})`);
   }
   const data = await res.json();
   const nodes = Array.isArray(data.nodes) ? data.nodes : [];
   const routes = [];
-  for (const type of SAMPLED_TYPES) {
+  for (const type of sample.types) {
     const of = nodes
       .filter((n) => n && n.type === type && typeof n.id === 'string')
       .sort((a, b) => {
@@ -115,7 +113,7 @@ async function discoverRecordRoutes(page, baseUrl) {
         return na - nb;
       });
     if (of.length === 0) {
-      throw new Error(`record.json holds no node of type '${type}'; the audit cannot sample one`);
+      throw new Error(`${sample.export} holds no node of type '${type}'; the audit cannot sample one`);
     }
     routes.push(`/record/${type}/${of[0].id}/`);
     let widest = of[0];
@@ -205,10 +203,12 @@ async function settle(page) {
 }
 
 async function main() {
-  const baseUrl = (process.argv[2] || '').replace(/\/+$/, '');
-  const shotDir = process.argv[3];
-  if (!baseUrl || !shotDir) {
-    console.error('usage: node overflow-audit.js <base-url> <screenshot-dir>');
+  const name = process.argv[2] || '';
+  const baseUrl = (process.argv[3] || '').replace(/\/+$/, '');
+  const shotDir = process.argv[4];
+  const target = Object.prototype.hasOwnProperty.call(TARGETS, name) ? TARGETS[name] : null;
+  if (!target || !baseUrl || !shotDir) {
+    console.error(`usage: node overflow-audit.js <${Object.keys(TARGETS).join('|')}> <base-url> <screenshot-dir>`);
     process.exit(2);
   }
 
@@ -219,10 +219,10 @@ async function main() {
   try {
     const probe = await browser.newContext();
     const probePage = await probe.newPage();
-    const routes = ROUTE_FAMILIES.concat(await discoverRecordRoutes(probePage, baseUrl));
+    const routes = target.routes.concat(target.sample ? await discoverRecordRoutes(probePage, baseUrl, target.sample) : []);
     await probe.close();
 
-    console.log(`auditing ${routes.length} routes at ${WIDTHS.join('/')} px in ${SCHEMES.length} schemes`);
+    console.log(`auditing ${routes.length} routes of the ${name} build at ${WIDTHS.join('/')} px in ${SCHEMES.length} schemes`);
     for (const route of routes) console.log(`  ${route}`);
 
     for (const scheme of SCHEMES) {

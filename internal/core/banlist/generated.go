@@ -186,9 +186,9 @@ func ScanText(patterns []KeyedPattern, text []byte) ([]Hit, error) {
 	if len(patterns) == 0 {
 		return nil, nil
 	}
-	grepBinOnce.Do(func() { grepBin, _ = exec.LookPath("grep") })
+	lookGrep()
 	if grepBin == "" {
-		return nil, ErrNoEngine
+		return nil, noEngine()
 	}
 	f, err := os.CreateTemp("", "abcd-scan-*")
 	if err != nil {

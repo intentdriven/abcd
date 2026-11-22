@@ -94,6 +94,22 @@ func TestPersonaGlossaryScopesItsRuleToAModelledUser(t *testing.T) {
 	}
 }
 
+// TestPersonasPageAllowsAQuoteAttributedToARoleAlone holds the brief's
+// personas page to the same ruling as itd-79 (iss-2610262032106392,
+// dcn-2610271112330536): a press-release quote may be attributed to a role
+// alone, with no name, and only a name that is used must come from the
+// registry. The page said every quote uses a registered name.
+func TestPersonasPageAllowsAQuoteAttributedToARoleAlone(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/01-product/05-personas.md")
+	flat := strings.Join(strings.Fields(body), " ")
+	for _, want := range []string{"a role alone", "itd-79", "dcn-2610271112330536"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("05-personas.md does not say %q: a quote may be attributed to a role alone, as itd-79 allows by dcn-2610271112330536:\n%s", want, body)
+		}
+	}
+}
+
 // TestTheProductThinkerQuotesNameTheRegisteredPersona holds the press release
 // and itd-106 to one name for the product-thinker role (iss-2610262031403463):
 // the registry picks the name from the role, so each quote attributed to "a
@@ -201,5 +217,55 @@ func TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint(t *testing.T) {
 		if !strings.Contains(flat, want) {
 			t.Errorf("product-thinker.md's \"When NOT to use\" does not say %q:\n%s", want, section)
 		}
+	}
+}
+
+// TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator holds
+// itd-2609150819445595's press-release quote to the registry
+// (iss-2610262045546558, iss-2610262032102172): the role picks the name, and
+// personas.json gives the "facilitator" role to one persona, so the quote is
+// attributed to that persona as "a facilitator", and not to Iris, the product
+// thinker, as "a technical facilitator".
+func TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var want string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "facilitator" {
+				want = p.Name
+			}
+		}
+	}
+	if want == "" {
+		t.Fatal("personas.json gives no persona the \"facilitator\" role hint")
+	}
+
+	const rel = ".abcd/development/intents/shipped/itd-2609150819445595-a-debt-nothing-lists-owed-fidelity.md"
+	found := false
+	for i, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+		name, ok := lint.PersonaAttribution(line)
+		if !ok {
+			continue
+		}
+		found = true
+		if name != want {
+			t.Errorf("%s:%d attributes the quote to %s; personas.json gives the facilitator role to %s", rel, i+1, name, want)
+		}
+		if !strings.Contains(line, "said "+name+", a facilitator ") {
+			t.Errorf("%s:%d does not attribute the quote to %q", rel, i+1, name+", a facilitator")
+		}
+	}
+	if !found {
+		t.Errorf("%s holds no quote attributed to a named persona", rel)
 	}
 }

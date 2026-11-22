@@ -7,7 +7,7 @@ their dependencies and the lifecycle shelves.
 
 | # | File | Role |
 |---|---|---|
-| 1 | [`01-build-sequence.md`](01-build-sequence.md) | The delivery order (MVP → the companion harness → Claude Code) and what ships in each step |
+| 1 | [`01-build-sequence.md`](01-build-sequence.md) | The dependency DAG of build steps (scaffold, install and launch, history capture and memory, intent and review, spec engine, run seam, lifeboat) and what ships in each step |
 | 2 | [`02-verification-matrix.md`](02-verification-matrix.md) | Test coverage across the command surfaces |
 | 3 | [`03-out-of-scope.md`](03-out-of-scope.md) | What sits outside the committed intents, and where those items are tracked |
 

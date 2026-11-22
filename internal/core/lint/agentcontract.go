@@ -26,6 +26,7 @@ package lint
 //  3. a per-agent CHANGELOG entry for an agent added or changed in a diff.
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,6 +84,11 @@ var (
 // config. One cap rather than one per file kind: two constants is how the reads
 // come to disagree about what "too big" means.
 const maxAgentPromptBytes = 1 << 20
+
+// maxChangedPathsBytes bounds the listing of the paths a diff range touched:
+// far past any range a lint reads, and an error past it, never a partial
+// list.
+const maxChangedPathsBytes = 64 << 20
 
 // agentPrompt is one agent prompt as this rule sees it.
 type agentPrompt struct {
@@ -439,11 +445,13 @@ func checkAgentVersionBump(repoRoot, changelogRel string, prompts []agentPrompt,
 // (worktreeVersion). A prompt absent from either side is an introduction (or a
 // removal) and needs no bump; the tree half still demands its changelog entry.
 // Each side is read with cat-file, which runs no diff driver, textconv or
-// filter.
+// filter. The merge-base and both sides are read as stored, so no graft file,
+// refs/replace entry or commit-graph moves the base or stands another prompt
+// in for the one a side holds.
 func promptVersionSides(repoRoot, rangeSpec, rel, worktreeVersion string) (oldVersion, newVersion string, introduced bool, err error) {
 	var oldRev, newRev string
 	if a, b, ok := strings.Cut(rangeSpec, "..."); ok {
-		base, err := gitutil.Run(repoRoot, "merge-base", a, b)
+		base, err := gitutil.RunCappedAsStored(repoRoot, maxGitAnswerBytes, "merge-base", a, b)
 		if err != nil {
 			return "", "", false, err
 		}
@@ -548,7 +556,8 @@ func isDigits(s string) bool {
 // commit rev names, and whether rel holds a regular file there; a path that is
 // absent, or is a symlink, a tree or a submodule, holds no prompt on that
 // side. A git that cannot answer is an error, never an absence. The read is
-// capped as every read of the agent tree is (maxAgentPromptBytes).
+// capped as every read of the agent tree is (maxAgentPromptBytes). The tree
+// entry and the blob are read as stored.
 func promptVersionAt(repoRoot, rev, rel string) (string, bool, error) {
 	sha, err := gitutil.ResolveCommit(repoRoot, rev)
 	if err != nil {
@@ -556,7 +565,7 @@ func promptVersionAt(repoRoot, rev, rel string) (string, bool, error) {
 	}
 	// The path is a literal, never a pattern: a prompt's file name is the
 	// repository's to choose.
-	entry, err := gitutil.Run(repoRoot, "--literal-pathspecs", "ls-tree", "-z", sha, "--", rel)
+	entry, err := gitutil.RunCappedAsStored(repoRoot, maxGitAnswerBytes, "--literal-pathspecs", "ls-tree", "-z", sha, "--", rel)
 	if err != nil {
 		return "", false, err
 	}
@@ -566,7 +575,7 @@ func promptVersionAt(repoRoot, rev, rel string) (string, bool, error) {
 	if path != rel || len(parts) != 3 || parts[1] != "blob" || (parts[0] != "100644" && parts[0] != "100755") {
 		return "", false, nil
 	}
-	blob, err := gitutil.RunCappedBytes(repoRoot, maxAgentPromptBytes, "cat-file", "blob", parts[2])
+	blob, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxAgentPromptBytes, "cat-file", "blob", parts[2])
 	if err != nil {
 		return "", false, err
 	}
@@ -626,13 +635,15 @@ func agentChangelogEntries(text string) map[string]bool {
 // filter program runs and none decides what changed. --ignore-submodules=dirty
 // keeps that working-tree comparison from starting a status inside a
 // checked-out submodule, under the submodule's own config
-// (iss-2610091935327982).
+// (iss-2610091935327982). The commits the range names are read as stored, so
+// no graft file, refs/replace entry or commit-graph changes what the range
+// touched from what its commits hold.
 func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
 	filters, err := gitutil.FilterOverrides(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	out, err := gitutil.Run(repoRoot, append(filters, "diff", "--name-only", "-z", "--ignore-submodules=dirty", rangeSpec, "--")...)
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxChangedPathsBytes, append(filters, "diff", "--name-only", "-z", "--ignore-submodules=dirty", rangeSpec, "--")...)
 	if err != nil {
 		return nil, err
 	}

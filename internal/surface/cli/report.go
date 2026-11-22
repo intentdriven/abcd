@@ -156,9 +156,9 @@ func reportFromEditor(skeleton []byte) (data []byte, kept string, err error) {
 		return nil, "", werr
 	}
 	// The editor is the reporter's own setting and may carry arguments, so it is
-	// run by the shell; the file travels as a positional parameter, never
-	// spliced into the command text.
-	ed := exec.Command("sh", "-c", editor+` "$1"`, "abcd-report", name)
+	// run by the system shell (systemShell); the file travels as a positional
+	// parameter, never spliced into the command text.
+	ed := exec.Command(systemShell, "-c", editor+` "$1"`, "abcd-report", name)
 	ed.Stdin, ed.Stdout, ed.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := ed.Run(); err != nil {
 		return nil, name, fmt.Errorf("%w: the editor exited with %v; what you wrote is kept at %s", report.ErrRefused, err, fsutil.RedactHome(name))

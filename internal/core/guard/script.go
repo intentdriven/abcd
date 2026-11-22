@@ -385,10 +385,25 @@ func (rc *readCtx) note(format string, args ...any) {
 func (rc *readCtx) onStack(real string) bool { return containsString(rc.stack, real) }
 
 // scriptRun is how a script the line runs is read: the depth its commands
-// start at, and the shell state they start in.
+// start at, the shell state they start in, and what the export walk knows
+// of that shell when it starts (scriptStart).
 type scriptRun struct {
 	depth int
 	state *shellState
+	start scriptStart
+}
+
+// scriptStart is what the export walk (exportsBefore) carries into a script
+// the line runs: the options it follows as they hold when the script starts,
+// the SHELLOPTS its environment holds, and the variables an entry names
+// (Pattern.Env) that its environment holds. A sourced file starts in the
+// shell the source stands in, under its options; a child shell starts with
+// the options it is started with or an inherited SHELLOPTS names, and with
+// what the line exported or assigned for it.
+type scriptStart struct {
+	allexport, keyword bool
+	shellopts          string
+	env                []string
 }
 
 // shellState is what the guard knows of the shell a command runs in: its
@@ -912,11 +927,14 @@ type writeTarget struct {
 	// relative to a working directory the line leaves unknown; name is that
 	// path as a name in the directory (cwdName) and gen the directory
 	// (shellState.dirGen). base is the last component of a path the guard
-	// does not place, where the line fixes it, else "".
-	rel  bool
-	name string
-	gen  [2]int
-	base string
+	// does not place, where the line fixes it, else "". wrote marks a
+	// target as a write at all, so the zero writeTarget is none
+	// (unplacedWrite, writeAt).
+	rel   bool
+	name  string
+	gen   [2]int
+	base  string
+	wrote bool
 }
 
 // scriptSeg is the reading's record of one segment: every state it can run
@@ -1017,8 +1035,10 @@ func earlier(a, b []int) bool {
 }
 
 // readScripts reads every file the segments point a shell at and returns the
-// verdicts on them. segs are the text's segments after the payload expansion.
-func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []payloadSignal {
+// verdicts on them, and the readings of commands that take a settings file
+// with the file's text in its place (settingsFileReadings). segs are the
+// text's segments after the payload expansion.
+func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) ([]payloadSignal, []segment) {
 	n := len(segs)
 	recs := make([]scriptSeg, n)
 	rc.readings++
@@ -1042,6 +1062,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		}
 	}
 
+	order := runOrder(segs)
 	var top *shellState
 	if run != nil {
 		top = run.state
@@ -1091,11 +1112,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			here = []*shellState{here[0].unresolved()}
 		}
 		recs[i].states = here
-		if s.carrier > 0 && s.carrier-1 < i {
-			recs[i].order = append(append([]int(nil), recs[s.carrier-1].order...), i)
-		} else {
-			recs[i].order = []int{i}
-		}
+		recs[i].order = order[i]
 		next := make([]*shellState, len(here))
 		for j, st := range here {
 			next[j] = r.after(rc, st, s, dirChangeBelow[i])
@@ -1116,6 +1133,8 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 			}
 		}
 	}
+
+	readings := r.settingsFileReadings(rc, segs, recs)
 
 	// The targets each segment points a shell at, in every state it can run
 	// in, and only then the writes: most lines run no script, and pay for
@@ -1147,7 +1166,7 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		signals = append(signals, raised...)
 	}
 	if len(targets) == 0 {
-		return signals
+		return signals, readings
 	}
 	for i, s := range segs {
 		for _, st := range recs[i].states {
@@ -1168,10 +1187,278 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 				before = append(before, recs[j].writes...)
 			}
 		}
-		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before)...)
+		var sourced [][]segment
+		p.t.start = r.startOf(segs, p.seg, p.t.sourced, run)
+		signals = append(signals, r.readTarget(rc, segs[p.seg], p.st, p.t, before, &sourced)...)
+		// A sourced file runs in the line's own shell, so the export walk
+		// reads its commands where the source stands (exportStep).
+		segs[p.seg].sourced = append(segs[p.seg].sourced, sourced...)
 	}
-	return signals
+	return signals, readings
 }
+
+// startOf is what the export walk carries into a file segment i of segs
+// points a shell at (scriptStart), sourced where the file runs in the
+// segment's own shell. The walk runs from the state run starts the text in,
+// and reads, for each variable an entry names, whether a command before
+// segment i exports it or an assignment before one of the segment's commands
+// sets it for that command (envSetBefore). Each target walks the line
+// afresh, so a file an earlier target sourced counts (exportStep).
+func (r Registry) startOf(segs []segment, i int, sourced bool, run *scriptRun) scriptStart {
+	var in scriptStart
+	if run != nil {
+		in = run.start
+	}
+	names := r.envNames()
+	if len(names) == 0 {
+		return scriptStart{}
+	}
+	s := segs[i]
+	sites := commandSites(s)
+	out := scriptStart{env: append([]string(nil), in.env...)}
+	var st exportState
+	for _, n := range names {
+		before, states, _, _ := exportWalk(segs, exportState{names: []string{n}, allexport: in.allexport, keyword: in.keyword, shellopts: in.shellopts})
+		st = states[i]
+		set := before[i]
+		for _, a := range sites {
+			set = set || envSetBefore(s, a.idx, []string{n})
+		}
+		if set && !containsString(out.env, n) {
+			out.env = append(out.env, n)
+		}
+	}
+	if sourced {
+		out.allexport, out.keyword, out.shellopts = st.allexport, st.keyword, st.shellopts
+		return out
+	}
+	out.shellopts = st.shellopts
+	for _, a := range sites {
+		for _, w := range s.tokens[:a.idx] {
+			if v, ok := shelloptsValue(w, true); ok {
+				out.shellopts = v
+			}
+		}
+		out.allexport = out.allexport || shellStartsWith(s, a.idx, optAllexport, st.shellopts)
+		out.keyword = out.keyword || shellStartsWith(s, a.idx, optKeyword, st.shellopts)
+	}
+	out.allexport = out.allexport || shelloptsNames(out.shellopts, optAllexport)
+	out.keyword = out.keyword || shelloptsNames(out.shellopts, optKeyword)
+	return out
+}
+
+// envNames is every variable an entry of r names (Pattern.Env), sorted.
+func (r Registry) envNames() []string {
+	var out []string
+	for _, e := range r.Entries {
+		for _, n := range e.Pattern.Env {
+			if !containsString(out, n) {
+				out = append(out, n)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// settingsFileReadings is, for each command of segs that hands a program a
+// settings file by a flag an entry reads for ShapeSettingsUnchecked, another
+// reading of the command with the file's text in place of its name, so the
+// entry matches the settings the file holds as it matches them written on the
+// line. A file the guard cannot read now is read as settingsUnreadText,
+// which the entry refuses: a name the line does not fix, one relative to a
+// directory it leaves unknown, a glob that does not match exactly one file or
+// holds a pattern character besides `*` and `?` (globOne),
+// a file the line writes before the command, one that is not a regular file
+// the guard may open, one past the size it reads, and one past the check's
+// reading budget. The guard runs nothing to produce a file. A file that does
+// not exist is left unread, as the program does not start on it. Text on the
+// line itself (an object, or a value whose start the line does not fix) is
+// the entry's to read, not a file's name.
+func (r Registry) settingsFileReadings(rc *readCtx, segs []segment, recs []scriptSeg) []segment {
+	type flagOf struct{ command, flag string }
+	var flags []flagOf
+	for _, e := range r.Entries {
+		for _, fv := range e.Pattern.FlagValues {
+			if fv.Shape != ShapeSettingsUnchecked {
+				continue
+			}
+			for _, alt := range strings.Split(fv.Flag, "|") {
+				if alt != "" {
+					flags = append(flags, flagOf{e.Pattern.Command, alt})
+				}
+			}
+		}
+	}
+	if len(flags) == 0 {
+		return nil
+	}
+	var out []segment
+	for i, s := range segs {
+		for _, f := range flags {
+			for _, a := range sitesNamed(s, f.command) {
+				for j := a.idx + 1; j < len(s.tokens); j++ {
+					tok := s.tokens[j]
+					if tok == "--" {
+						break
+					}
+					at, prefix := -1, ""
+					switch {
+					case tok == f.flag && j+1 < len(s.tokens):
+						at = j + 1
+					case strings.HasPrefix(tok, f.flag+"="):
+						at, prefix = j, f.flag+"="
+					default:
+						continue
+					}
+					word := strings.TrimPrefix(s.tokens[at], prefix)
+					if word == "" || settingsUnchecked(word) || strings.HasPrefix(trimSettings(word), "{") {
+						continue
+					}
+					var texts []string
+					unread := isUnknown(word) || strings.ContainsRune(word, varMark)
+					if !unread {
+						texts, unread = r.settingsTexts(rc, segs, recs, i, word, prefix == "" && s.globAt(at))
+					}
+					if unread {
+						texts = append(texts, settingsUnreadText)
+					}
+					for _, text := range texts {
+						d := s
+						d.tokens = append([]string(nil), s.tokens...)
+						d.tokens[at] = prefix + text
+						if len(s.spelled) > 0 {
+							d.spelled = map[int][]string{}
+							for k, v := range s.spelled {
+								if k != at {
+									d.spelled[k] = v
+								}
+							}
+						}
+						d.home, d.at, d.sourced = nil, 0, nil
+						d.carrier = i + 1
+						out = append(out, d)
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// settingsUnreadText stands, in a reading settingsFileReadings builds, for
+// a settings file the guard cannot read now: a value whose start the line
+// does not fix, which settingsUnchecked refuses.
+const settingsUnreadText = unknownText
+
+// settingsTexts is the text of the settings file word names for the command
+// at segs[i], read in every directory the command can run in, and unread
+// where in any of them the guard cannot read it now (settingsFileReadings).
+// glob is whether word is a pattern the shell expands, which must match
+// exactly one file.
+func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i int, word string, glob bool) (texts []string, unread bool) {
+	var before []writeTarget
+	beforeRead := false
+	for _, st := range recs[i].states {
+		p, ok := st.resolve(rc, word, strings.HasPrefix(word, "~"))
+		if !ok {
+			return texts, true
+		}
+		if glob {
+			if p, ok = globOne(p); !ok {
+				return texts, true
+			}
+		}
+		if !beforeRead {
+			for j := range segs {
+				if j != i && earlier(recs[j].order, recs[i].order) {
+					for _, bst := range recs[j].states {
+						before = append(before, writesOf(rc, segs[j], bst)...)
+					}
+				}
+			}
+			beforeRead = true
+		}
+		if settingsWritten(p, before) {
+			return texts, true
+		}
+		real, err := filepath.EvalSymlinks(p)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return texts, true
+		}
+		fr, ok := rc.take(real)
+		if !ok || fr.err != nil || fr.tooBig {
+			return texts, true
+		}
+		text := string(fr.data)
+		if !strings.HasPrefix(trimSettings(text), "{") {
+			// Not an object: text claude cannot take as settings, which the
+			// guard does not read as a file's name either.
+			return texts, true
+		}
+		if !containsString(texts, text) {
+			texts = append(texts, text)
+		}
+	}
+	return texts, false
+}
+
+// settingsWritten reports whether a write before the command can land on the
+// settings file p: one the guard places on it, or one it does not place
+// whose last component is p's or is not fixed by the line, or that names a
+// path relative to a directory the line leaves unknown.
+func settingsWritten(p string, before []writeTarget) bool {
+	if written, _ := writtenBefore(p, before); written {
+		return true
+	}
+	for _, w := range before {
+		if w.wrote && !w.ok && (w.rel || w.base == "" || sameName(w.base, filepath.Base(p))) {
+			return true
+		}
+	}
+	return false
+}
+
+// globOne is the one file the pattern p matches as the shell expands it, a
+// name starting with a dot only where the pattern's own last component
+// does, and false where it matches none or several, or holds a pattern
+// character besides `*` and `?` (globShellOnly): Go's matcher reads a bracket
+// expression and a backslash by its own grammar, not the shell's (a POSIX
+// class such as `[[:digit:]]` names another file to it), and zsh reads more
+// characters as pattern syntax than Go does. A pattern holding `**` is
+// refused too: zsh reads `**/` as any number of directories, none among
+// them, and Go's matcher as exactly one, so `d/**/s.json` names `d/s.json`
+// to zsh and `d/x/s.json` to Go.
+func globOne(p string) (string, bool) {
+	if strings.ContainsAny(p, globShellOnly) || strings.Contains(p, "**") {
+		return "", false
+	}
+	matches, err := filepath.Glob(p)
+	if err != nil {
+		return "", false
+	}
+	dot := strings.HasPrefix(filepath.Base(p), ".")
+	var kept []string
+	for _, m := range matches {
+		if dot || !strings.HasPrefix(filepath.Base(m), ".") {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) != 1 {
+		return "", false
+	}
+	return kept[0], true
+}
+
+// globShellOnly are the characters a pattern may hold that the shell and Go's
+// matcher do not read alike: a bracket expression and a backslash, which both
+// read by different grammars, and the characters zsh reads as pattern syntax
+// (numeric ranges, groups, alternation, extendedglob's operators, braces)
+// where Go reads a plain character.
+const globShellOnly = "[]\\<>()|#~^{}"
 
 // containsSignal reports whether sigs holds sig, so a verdict two states of
 // one segment raise alike is reported once.
@@ -1281,8 +1568,8 @@ func (r Registry) after(rc *readCtx, st *shellState, s segment, stringChangesDir
 			out = out.unresolved()
 		case (name == "source" || name == ".") && sourcedChangesDir(rc, out, s, a.idx):
 			out = out.unresolved()
-		case name == "export" || name == "declare" || name == "typeset":
-			// `declare -x`/`typeset -x` export as `export` does; `export -n`
+		case name == "export" || name == "declare" || name == "typeset" || name == "local":
+			// `declare -x`/`typeset -x`/`local -x` export as `export` does; `export -n`
 			// and `declare +x` take the export away. A declare without -x sets
 			// the value and leaves the export attribute as it was, as bash does.
 			exports, unexports := name == "export", false
@@ -1859,6 +2146,8 @@ type readTarget struct {
 	// write on the search can supply (iss-2610120953449511).
 	shadows []string
 	missing string
+	// start is what the export walk carries into the file (scriptStart).
+	start scriptStart
 	// blind records a file named relative to a working directory the line
 	// leaves unknown, or a search that looked in one: the file that runs is
 	// not one the guard can name, so a write before it may be that file.
@@ -2730,8 +3019,9 @@ func shellExpandsStartup(value string) bool {
 }
 
 // readTarget reads one file a command points a shell at and judges it.
-// before are the files written before the command runs.
-func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget) []payloadSignal {
+// before are the files written before the command runs. The commands of a
+// file the shell sources are added to sourced, where it is not nil.
+func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarget, before []writeTarget, sourced *[][]segment) []payloadSignal {
 	if t.path == os.DevNull {
 		return nil
 	}
@@ -2854,17 +3144,20 @@ func (r Registry) readTarget(rc *readCtx, s segment, st *shellState, t readTarge
 				sigs = append(sigs, startupExpandedSignal("BASH_ENV"))
 			} else if p, ok := st.resolve(rc, v.text, strings.HasPrefix(v.text, "~")); ok {
 				sigs = append(sigs, r.readTarget(rc, s, st, readTarget{path: p, shown: "the startup file BASH_ENV names (" + v.text + ")",
-					kind: targetStartup, env: t.env}, before)...)
+					kind: targetStartup, env: t.env, start: t.start}, before, nil)...)
 			}
 		}
 	}
 	text := string(fr.data)
 	rc.stack = append(rc.stack, real)
-	v, err := r.judge(text, rc, &scriptRun{depth: s.depth + 1, state: state})
+	v, err := r.judge(text, rc, &scriptRun{depth: s.depth + 1, state: state, start: t.start})
 	rc.stack = rc.stack[:len(rc.stack)-1]
 	if err != nil {
 		sig := unparsableSignal(err)
 		return append(sigs, carriedOut(sig, t.shown))
+	}
+	if t.sourced && sourced != nil {
+		*sourced = append(*sourced, v.segs)
 	}
 	return append(sigs, r.scriptSignals(v, text, t.shown)...)
 }
@@ -2918,7 +3211,7 @@ func writtenBefore(p string, before []writeTarget) (written, unplaced bool) {
 	cp := fsutil.RealExistingPath(p)
 	for _, w := range before {
 		if !w.ok {
-			unplaced = true
+			unplaced = unplaced || w.wrote
 			continue
 		}
 		if fsutil.PathWithin(cp, fsutil.RealExistingPath(w.path), fold) {
