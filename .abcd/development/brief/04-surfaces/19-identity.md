@@ -66,9 +66,10 @@ The first three lines a reader meets are the lockup: the headline, which is the
 name and its descriptor ("acme — the catalogue tool for small shops"), the
 tagline, and the purpose. A block written before the name, descriptor and
 purpose existed reads exactly as it did: with no name the brand is the title's
-first word, and with no descriptor the headline is the title. Onboarding asks for
-the title, tagline and pitch, and the other fields are added to the block by
-hand. abcd's own block is the "Identity (canonical)" section of
+first word, and with neither a name nor a descriptor the headline is the title.
+A block with a name and no descriptor heads on the name and the title ("acme —
+Automated Catalogue Maintenance Engine"). Onboarding asks for the title, tagline
+and pitch, and the other fields are added to the block by hand. abcd's own block is the "Identity (canonical)" section of
 [`01-product/README.md`](../01-product/README.md).
 
 ## What a repo registers

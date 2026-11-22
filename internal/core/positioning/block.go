@@ -60,8 +60,8 @@ type BlockLocation struct {
 // The lockup is the three lines a reader meets first: the headline (the name
 // and its descriptor), the tagline, and the purpose. Name, Descriptor and
 // Purpose are optional so a block written before they existed reads exactly as
-// it did: with no Name the brand is the title's first word, and with no
-// Descriptor the headline is the title.
+// it did: with no Name the brand is the title's first word, and with neither a
+// Name nor a Descriptor the headline is the title.
 type Block struct {
 	// Name is what the product is called, apart from its title ("abcd").
 	Name  string `json:"name,omitempty"`
