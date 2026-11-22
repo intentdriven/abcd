@@ -77,10 +77,10 @@ type Surface struct {
 	Patterns []string `json:"patterns,omitempty"`
 	// Field (KindJSONField) is the top-level JSON key holding the description.
 	Field string `json:"field,omitempty"`
-	// Requires names the block fields this surface must carry (title, tagline,
-	// pitch). At least one is required.
+	// Requires names the block fields this surface must carry (any of
+	// FieldNames). At least one is required.
 	Requires []string `json:"requires"`
-	// Template renders the proposed replacement, over {title}/{tagline}/{pitch}.
+	// Template renders the proposed replacement, over the {field} placeholders FieldNames lists.
 	// Empty means the required fields joined by a single space.
 	Template string `json:"template,omitempty"`
 }
@@ -277,7 +277,7 @@ func (s Surface) validate(i int) error {
 	var probe Block
 	for _, f := range s.Requires {
 		if _, ok := probe.Field(f); !ok {
-			return fmt.Errorf("%w: %s.requires names unknown block field %q (want title, tagline, or pitch)", ErrConfigInvalid, where, f)
+			return fmt.Errorf("%w: %s.requires names unknown block field %q (want %s)", ErrConfigInvalid, where, f, fieldVocabulary())
 		}
 	}
 	for _, ph := range placeholderRe.FindAllStringSubmatch(s.Template, -1) {
@@ -286,6 +286,16 @@ func (s Surface) validate(i int) error {
 		}
 	}
 	return nil
+}
+
+// fieldVocabulary spells FieldNames as a list a refusal can name ("a, b or c"),
+// derived from the list itself so the message never falls behind a new field.
+func fieldVocabulary() string {
+	n := len(FieldNames)
+	if n < 2 {
+		return strings.Join(FieldNames, "")
+	}
+	return strings.Join(FieldNames[:n-1], ", ") + " or " + FieldNames[n-1]
 }
 
 // placeholderRe matches a {field} placeholder in a surface template.

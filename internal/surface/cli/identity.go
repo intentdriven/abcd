@@ -146,11 +146,7 @@ func identityGlyph(s positioning.Status) string {
 // terminal sanitiser.
 func renderIdentity(w io.Writer, rep positioning.Report) {
 	fmt.Fprintf(w, "abcd lint identity — %s (%s)\n", termsafe.Sanitize(rep.Block.File), rep.Severity)
-	fmt.Fprintf(w, "  title:   %s\n", termsafe.Sanitize(rep.Block.Title))
-	fmt.Fprintf(w, "  tagline: %s\n", termsafe.Sanitize(rep.Block.Tagline))
-	if rep.Block.Pitch != "" {
-		fmt.Fprintf(w, "  pitch:   %s\n", termsafe.Sanitize(rep.Block.Pitch))
-	}
+	renderBlockFields(w, rep.Block)
 	for _, s := range rep.Surfaces {
 		loc := termsafe.Sanitize(s.File)
 		if loc == "" {
@@ -165,6 +161,19 @@ func renderIdentity(w io.Writer, rep positioning.Report) {
 		}
 	}
 	fmt.Fprintf(w, "abcd lint identity — %d surface(s) adrift of the block\n", rep.Drifted())
+}
+
+// renderBlockFields prints the block's fields in the block's own order, the
+// title and tagline always and every optional field only when the block carries
+// it, so a block written before the lockup fields existed prints as it did.
+func renderBlockFields(w io.Writer, b positioning.Block) {
+	for _, name := range positioning.FieldNames {
+		v, _ := b.Field(name)
+		if v == "" && name != "title" && name != "tagline" {
+			continue
+		}
+		fmt.Fprintf(w, "  %-11s %s\n", name+":", termsafe.Sanitize(v))
+	}
 }
 
 // renderProposal prints the unified diffs. The header states plainly that this
@@ -197,11 +206,7 @@ func renderIdentityInit(w io.Writer, res positioning.InitResult) {
 		fmt.Fprintf(w, "abcd identity init — recorded the identity block at %s (%q)\n",
 			termsafe.Sanitize(res.Location.File), termsafe.Sanitize(res.Location.Heading))
 	}
-	fmt.Fprintf(w, "  title:   %s\n", termsafe.Sanitize(res.Block.Title))
-	fmt.Fprintf(w, "  tagline: %s\n", termsafe.Sanitize(res.Block.Tagline))
-	if res.Block.Pitch != "" {
-		fmt.Fprintf(w, "  pitch:   %s\n", termsafe.Sanitize(res.Block.Pitch))
-	}
+	renderBlockFields(w, res.Block)
 	for _, p := range res.Wrote {
 		fmt.Fprintf(w, "  wrote:   %s\n", p)
 	}

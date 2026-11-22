@@ -1,5 +1,6 @@
 // Package positioning holds a repository's canonical self-description — its
-// title, tagline, and elevator pitch — and the deterministic check that every
+// title, tagline and elevator pitch, and optionally the name, descriptor and
+// purpose that complete its lockup — and the deterministic check that every
 // rendered surface still says it.
 //
 // The canonical home is a markdown block in the repo's own record (markdown
@@ -53,28 +54,89 @@ type BlockLocation struct {
 }
 
 // Block is a repository's canonical self-description. Title and Tagline are
-// required; Pitch is optional at onboarding. File and Line cite where it was
+// required; every other field is optional. File and Line cite where it was
 // parsed from so a finding can point back at the canon.
+//
+// The lockup is the three lines a reader meets first: the headline (the name
+// and its descriptor), the tagline, and the purpose. Name, Descriptor and
+// Purpose are optional so a block written before they existed reads exactly as
+// it did: with no Name the brand is the title's first word, and with no
+// Descriptor the headline is the title.
 type Block struct {
-	Title   string `json:"title"`
-	Tagline string `json:"tagline"`
-	Pitch   string `json:"pitch,omitempty"`
+	// Name is what the product is called, apart from its title ("abcd").
+	Name  string `json:"name,omitempty"`
+	Title string `json:"title"`
+	// Descriptor is a noun phrase that completes "<name> is …": what kind of
+	// thing the product is and whom it is for.
+	Descriptor string `json:"descriptor,omitempty"`
+	Tagline    string `json:"tagline"`
+	// Purpose says why the product exists, in one sentence.
+	Purpose string `json:"purpose,omitempty"`
+	// Pitch says what the product is technically, for the surfaces that list it
+	// beside other tools.
+	Pitch string `json:"pitch,omitempty"`
+	// Listing is the line a tool listing shows beside other tools, written
+	// whole: a surface carries it as written rather than assembling it from
+	// the descriptor and the pitch, and any surface may use it.
+	Listing string `json:"listing,omitempty"`
 	File    string `json:"file"`
 	Line    int    `json:"line"`
 }
 
+// FieldNames is the block's vocabulary in the order the block lists it: the
+// names a surface's requires and template may use.
+var FieldNames = []string{"name", "title", "descriptor", "tagline", "purpose", "pitch", "listing"}
+
 // Field returns a block field by its lower-case name (the vocabulary a surface's
-// requires/template use), reporting whether the name is one of the three.
+// requires/template use), reporting whether the name is one of FieldNames.
 func (b Block) Field(name string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "name":
+		return b.Name, true
 	case "title":
 		return b.Title, true
+	case "descriptor":
+		return b.Descriptor, true
 	case "tagline":
 		return b.Tagline, true
+	case "purpose":
+		return b.Purpose, true
 	case "pitch":
 		return b.Pitch, true
+	case "listing":
+		return b.Listing, true
 	}
 	return "", false
+}
+
+// Brand is the short handle a surface shows for the product: the declared
+// Name, or failing that the title's first word, which is how a block without a
+// Name has always been read.
+func (b Block) Brand() string {
+	if b.Name != "" {
+		return b.Name
+	}
+	if f := strings.Fields(b.Title); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+// Headline is the lockup's first line: the name and its descriptor ("abcd —
+// the open way to build your idea, one working prototype at a time"). A block
+// with a Name and no Descriptor heads on its title after the name; a block
+// with neither heads on its title alone, as it did before the lockup fields
+// existed.
+func (b Block) Headline() string {
+	switch {
+	case b.Name != "" && b.Descriptor != "":
+		return b.Name + " — " + b.Descriptor
+	case b.Descriptor != "":
+		return b.Brand() + " — " + b.Descriptor
+	case b.Name != "" && b.Title != "" && b.Title != b.Name:
+		return b.Name + " — " + b.Title
+	}
+	return b.Title
 }
 
 // headingRe matches an ATX heading and captures its level and text.
@@ -90,9 +152,9 @@ var bulletRe = regexp.MustCompile(`^ {0,3}[-*]\s+\*\*([A-Za-z]+):\*\*\s*(.*)$`)
 // same or shallower level (or end of file). A bullet's value may wrap onto
 // indented continuation lines, which are joined with a single space.
 //
-// Title and Tagline are required; Pitch is optional. Every failure mode is a
-// sentinel-wrapped error, never a zero Block with a nil error — a caller must
-// not read "no block" as "the block says nothing".
+// Title and Tagline are required; the other fields are optional. Every
+// failure mode is a sentinel-wrapped error, never a zero Block with a nil
+// error — a caller must not read "no block" as "the block says nothing".
 func ParseBlock(root string, loc BlockLocation) (Block, error) {
 	if !validBlockFile(loc.File) {
 		return Block{}, fmt.Errorf("%w: %q", ErrBadLocation, loc.File)
@@ -158,12 +220,20 @@ func parseBlockIn(r *os.Root, loc BlockLocation) (Block, error) {
 	b := Block{File: loc.File, Line: start + 1}
 	for _, bl := range collectBullets(lines, start+1, level) {
 		switch strings.ToLower(bl.label) {
+		case "name":
+			b.Name = bl.value
 		case "title":
 			b.Title = bl.value
+		case "descriptor":
+			b.Descriptor = bl.value
 		case "tagline":
 			b.Tagline = bl.value
+		case "purpose":
+			b.Purpose = bl.value
 		case "pitch":
 			b.Pitch = bl.value
+		case "listing":
+			b.Listing = bl.value
 		}
 	}
 	for _, req := range []struct{ name, value string }{{"Title", b.Title}, {"Tagline", b.Tagline}} {

@@ -261,8 +261,9 @@ overwrites.
 
 emits `{ "block": …, "severity": …, "surfaces": [ … ] }`:
 
-- `block` — the canonical `title`, `tagline`, and optional `pitch`, plus the
-  `file` and `line` they are recorded at.
+- `block` — the canonical `title` and `tagline`, the optional `name`,
+  `descriptor`, `purpose`, `pitch`, and `listing`, and the `file` and `line`
+  they are recorded at.
 - `severity` — the family's weight, `warn` (the default) or `blocker`.
 - `surfaces` — one entry per registered surface: its `id`, the `file` and `line`
   checked, and a `status` of `ok`, `drifted`, `absent` (no such file in this
