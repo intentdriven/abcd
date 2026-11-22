@@ -11,6 +11,7 @@
       "subcommands": [
         "check",
         "claim",
+        "heartbeat",
         "join",
         "leave",
         "load",
@@ -70,6 +71,14 @@
       ],
       "inputs": [],
       "example": "abcd implement claim iss-2609010000000001 --session s-example --lane cli"
+    },
+    {
+      "path": "abcd implement heartbeat",
+      "sentence": "Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.",
+      "usage": "abcd implement heartbeat [<branch>|<pr>...] [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd implement heartbeat --json"
     },
     {
       "path": "abcd implement join",

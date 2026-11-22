@@ -48,7 +48,9 @@ alone takes a queued pull request for a dropped one; the report reads the queue
 entry itself. It is one listing to resolve a branch and one GraphQL read for
 each pull request (`landing.PRStates`), every field pinned in
 `internal/ghcontract`, and it writes nothing. A pull request it cannot read is
-reported so, never left out, and exits 1.
+reported so, never left out, and exits 1. The implement verb's heartbeat
+([`27-implement.md`](27-implement.md)) reads its tracked pull requests through
+the same primitive.
 
 Before the steps, the origin and the forge's default branch are checked (see
 the trust boundaries), and then `origin`'s default branch is fetched. A head

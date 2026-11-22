@@ -114,6 +114,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementWidenCommand(asJSON),
 		newImplementRecordCommand(asJSON),
 		newImplementOutageCommand(asJSON),
+		newImplementHeartbeatCommand(asJSON),
 	)
 	return cmd
 }

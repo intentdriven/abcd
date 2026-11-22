@@ -3,6 +3,7 @@ package implement
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -81,6 +82,11 @@ func diskFloorAt(getenv func(string) string, home string) uint64 {
 	}
 	return diskFloorFor(slots)
 }
+
+// DiskFloor is the floor the load gate judges the disk by for the account
+// whose home is home ("" is the machine home): the heartbeat reports the free
+// space against it (iss-2611220942554289), so both read one floor.
+func DiskFloor(home string) uint64 { return diskFloorAt(os.Getenv, home) }
 
 // The disk statuses.
 const (
@@ -305,6 +311,42 @@ func (d DiskCheck) Note() string {
 		return "the disk was checked only in part: " + d.Reason + "; the volume read has room, and the gate does not refuse for the one it could not read"
 	}
 	return ""
+}
+
+// Line is the check as one line, for a report that names the disk beside
+// other facts (the heartbeat): each low volume's free space and the floor, the
+// least free space read and the floor when there is room, or why the disk was
+// not checked.
+func (d DiskCheck) Line() string {
+	switch d.Status {
+	case DiskLow:
+		var low []string
+		for _, v := range d.Volumes {
+			if !v.Low {
+				continue
+			}
+			where := "a volume"
+			if v.Mount != "" {
+				where = "the volume mounted at " + v.Mount
+			}
+			low = append(low, bytesText(v.FreeBytes)+" free on "+where)
+		}
+		return "low: " + strings.Join(low, ", ") + ", below the load gate's floor of " + bytesText(d.FloorBytes) +
+			"; the gate admits no run until there is more room"
+	case DiskOK:
+		least, read := uint64(0), false
+		for _, v := range d.Volumes {
+			if !read || v.FreeBytes < least {
+				least, read = v.FreeBytes, true
+			}
+		}
+		l := bytesText(least) + " free, above the load gate's floor of " + bytesText(d.FloorBytes)
+		if d.Reason != "" {
+			l += "; checked only in part: " + d.Reason
+		}
+		return l
+	}
+	return "not checked: " + orUnread(d.Reason)
 }
 
 // orUnread is reason, or a stand-in when there is none.

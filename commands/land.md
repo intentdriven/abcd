@@ -378,7 +378,8 @@ the branch has none. `--json` carries `pull_requests`, each with `number`,
 It reads the forge and writes nothing, and takes no other flag (exit 2). It
 exits 1 when a pull request could not be read, which its line names, and 2 on
 an operand that is neither a branch name nor a number, or on a detached HEAD
-with no operand.
+with no operand. `abcd implement heartbeat` reports the tracked pull requests
+through the same read.
 
 ## Record the review pair's verdicts
 

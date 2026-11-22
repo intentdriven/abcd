@@ -137,6 +137,7 @@ var examples = map[string]string{
 	"abcd implement":               "abcd implement",
 	"abcd implement check":         "abcd implement check lane --session s-example",
 	"abcd implement claim":         "abcd implement claim iss-2609010000000001 --session s-example --lane cli",
+	"abcd implement heartbeat":     "abcd implement heartbeat --json",
 	"abcd implement join":          "abcd implement join --session s-example --role first",
 	"abcd implement leave":         "abcd implement leave --session s-example",
 	"abcd implement load":          "abcd implement load --site preflight",

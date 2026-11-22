@@ -2380,6 +2380,12 @@
       ]
     },
     {
+      "path": "abcd implement heartbeat",
+      "hidden": false,
+      "sentence": "Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.",
+      "flags": []
+    },
+    {
       "path": "abcd implement join",
       "hidden": false,
       "sentence": "Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.",

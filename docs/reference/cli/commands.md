@@ -3163,6 +3163,46 @@ reading corpus.
 abcd implement claim iss-2609010000000001 --session s-example --lane cli
 ```
 
+#### `abcd implement heartbeat`
+
+Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.
+
+**Usage:** `abcd implement heartbeat [<branch>|<pr>...]`
+
+An autonomous run's periodic check, in one command:
+
+  1. Reservations: fetches the reservations from origin and renews each of your own
+     reservations of an issue or an intent held from any worktree of this checkout
+     that is live and half through its lease, with its own term, as abcd reserve
+     --renew renews it, and only one whose latest commit the worktree holding it
+     pushed. A lapsed one is reported, never revived; one held from another clone or
+     computer, another person's and a release being cut are left alone.
+  2. Pull requests: reports each tracked pull request as abcd land --state does:
+     merged, queued with its position, armed, open and not armed, removed from the
+     merge queue with the reason, or closed. The tracked ones are your open pull
+     requests from this repository's branches, and each the last heartbeat read that
+     was not yet merged or closed, so a merge is reported once; or the branches and
+     numbers (N or #N) named, alone.
+  3. Disk: reports the free space against the load gate's disk floor, read as
+     abcd implement load reads it.
+
+It keeps what it read in .abcd/.work.local/heartbeat.json and prints one line when
+nothing changed since the last heartbeat, and otherwise one line for each change: a
+fact that is new, in another state, or gone. A renewal that only moved a lease on
+is no change. --json carries the same: changed, summary, changes (each with was or
+gone where it applies) and every fact read (items).
+
+It writes only the reservation renewals and its own state file; it trims nothing.
+A read it cannot make (the fetch, the listing, a pull request, the disk) is reported
+as a fact, never fatal. Exit 2 on an operand that is neither a branch name nor a
+number, or outside a checkout.
+
+**Example:**
+
+```
+abcd implement heartbeat --json
+```
+
 #### `abcd implement join`
 
 Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.
