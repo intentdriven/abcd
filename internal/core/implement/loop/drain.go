@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
+	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/landings"
@@ -2038,11 +2039,11 @@ func (s DrainState) bundlesWritten() bool {
 		return false
 	}
 	if f := s.Forming; f != nil {
-		if !validIssueKey(f.Lead) {
+		if !validIssueKey(f.Lead) || !formingHoldWritten(f.Hold) {
 			return false
 		}
 		for _, m := range f.Members {
-			if !validIssueKey(m.Issue) {
+			if !validIssueKey(m.Issue) || !formingHoldWritten(m.Hold) {
 				return false
 			}
 		}
@@ -2058,6 +2059,31 @@ func (s DrainState) bundlesWritten() bool {
 		}
 	}
 	return true
+}
+
+// formingHoldWritten reports whether a forming bundle's hold is one the drain
+// writes: none, or a reservation commit by its full object name, the fork
+// check it could not make in words with no control, bidi or zero-width rune,
+// and the fork it was let through on as one plain owner and name.
+func formingHoldWritten(h *DrainHold) bool {
+	if h == nil {
+		return true
+	}
+	return gitutil.IsFullSHA(h.Commit) &&
+		len(h.ForkUnchecked) <= maxForkUnchecked && plainStored(h.ForkUnchecked) && termsafe.Sanitize(h.ForkUnchecked) == h.ForkUnchecked &&
+		(h.ForkAllowed == "" || plainOwnerName(h.ForkAllowed))
+}
+
+// maxForkUnchecked bounds the words a stored hold gives for a fork check it
+// could not make.
+const maxForkUnchecked = 1024
+
+// plainOwnerName reports whether s is one plain GitHub owner and one plain
+// name joined by a slash, the fork a reservation names when it was let
+// through on the fork the repository allows.
+func plainOwnerName(s string) bool {
+	owner, name, ok := strings.Cut(s, "/")
+	return ok && github.PlainName(owner) && github.PlainName(name)
 }
 
 // pinned reports the first judgement, in a drain state, whose route carries a

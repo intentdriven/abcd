@@ -202,8 +202,9 @@ func TestAVersionFiveDrainStateIsRefusedAsNewer(t *testing.T) {
 func bundledDrain() DrainState {
 	st := writtenDrain()
 	st.BundleMax = &PaceValue{Value: 5, Layer: "repo", Origin: ".abcd/config.json"}
-	st.Forming = &DrainForming{Lead: "iss-2610010000000006", Hold: &DrainHold{Commit: strings.Repeat("a", 40)},
-		Members: []DrainFormingMember{{Issue: "iss-2610010000000007", Hold: &DrainHold{Commit: strings.Repeat("b", 40)}}}}
+	st.Forming = &DrainForming{Lead: "iss-2610010000000006", Hold: &DrainHold{Commit: strings.Repeat("a", 40), ForkAllowed: "owner/name"},
+		Members: []DrainFormingMember{{Issue: "iss-2610010000000007", Hold: &DrainHold{Commit: strings.Repeat("b", 40),
+			ForkUnchecked: "the forge did not answer"}}}}
 	minutes := 12.5
 	st.Lanes[0].Bundle = []string{"iss-2610010000000009"}
 	st.Lanes[0].Split = true
@@ -315,12 +316,16 @@ func TestAVersionThreeDrainStateCarryingABundleFieldIsRefusedNamingIt(t *testing
 func TestAVersionFourBundleFieldTheDrainNeverWritesIsRefused(t *testing.T) {
 	minutes := -1.0
 	for name, forge := range map[string]func(*DrainState){
-		"cap of 11":       func(s *DrainState) { s.BundleMax.Value = 11 },
-		"cap from a flag": func(s *DrainState) { s.BundleMax.Layer = "flag" },
-		"cap origin bidi": func(s *DrainState) { s.BundleMax.Origin += "\u202e" },
-		"member":          func(s *DrainState) { s.Lanes[0].Bundle = []string{"not-an-issue"} },
-		"forming member":  func(s *DrainState) { s.Forming.Members[0].Issue = "itd-2610010000000007" },
-		"ci minutes":      func(s *DrainState) { s.Lanes[1].CIMinutes = &minutes },
+		"cap of 11":              func(s *DrainState) { s.BundleMax.Value = 11 },
+		"cap from a flag":        func(s *DrainState) { s.BundleMax.Layer = "flag" },
+		"cap origin bidi":        func(s *DrainState) { s.BundleMax.Origin += "\u202e" },
+		"member":                 func(s *DrainState) { s.Lanes[0].Bundle = []string{"not-an-issue"} },
+		"forming member":         func(s *DrainState) { s.Forming.Members[0].Issue = "itd-2610010000000007" },
+		"forming lead hold":      func(s *DrainState) { s.Forming.Hold.Commit = "abc123" },
+		"forming member hold":    func(s *DrainState) { s.Forming.Members[0].Hold.Commit = strings.Repeat("g", 40) },
+		"forming fork allowed":   func(s *DrainState) { s.Forming.Hold.ForkAllowed = "owner/name/extra" },
+		"forming fork unchecked": func(s *DrainState) { s.Forming.Members[0].Hold.ForkUnchecked = "the forge\u202e did not answer" },
+		"ci minutes":             func(s *DrainState) { s.Lanes[1].CIMinutes = &minutes },
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
