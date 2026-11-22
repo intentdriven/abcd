@@ -25,8 +25,9 @@ and let it stand. The criteria have since refined it, and the introduction
 to the criteria lists each refinement: among them, where the host's agents
 did the judging a result first names what a receipt on disk carries
 (criterion 20), and where abcd starts a model and asks it for no class and
-no effort the result says none was asked (criterion 19). The text above is
-left as the product thinker read it._
+no effort the result says none was asked (criterion 19). A criterion's
+number is its place in the order the criteria are listed below. The text
+above is left as the product thinker read it._
 
 ## Why This Matters
 
@@ -562,7 +563,8 @@ which nothing was checked.
     host's judging, and the line says abcd was not told. A runner or an
     adapter that did not give an answer the drain could take is a gap and
     not a run where that state keeps a fallback for it; an attempt that
-    leaves none is in no result, which the drive's hand-written list says.
+    leaves none, or whose fallback the state has since dropped, is in no
+    result, which the drive's hand-written list says.
     The other answer there was to start launching that judge at a class,
     which would change which model judges and is not this intent's to
     decide. The line gives the class and never the model's

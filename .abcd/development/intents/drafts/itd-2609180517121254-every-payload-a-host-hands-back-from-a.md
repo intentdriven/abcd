@@ -101,7 +101,7 @@ part of a result that says how hard a model looked (its decision 14); this
 draft fills that part for the host's work and mints no second shape. Since
 its final review, that intent's results first name what a receipt on disk
 carries about the host's agents, and say abcd was not told for the rest
-(its criterion 20).
+(its criterion 20, by the order it lists them).
 
 - (SOTA 2026-10-23) Whether "the number of agents that ran" counts distinct
   agent ids (the top-level one included) or only sub-agents, and whether a

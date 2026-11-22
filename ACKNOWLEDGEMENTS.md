@@ -579,11 +579,20 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   skip reporting of pytest (<https://docs.pytest.org/en/stable/how-to/skipping.html>)
   and Semgrep, read from its source
   (<https://raw.githubusercontent.com/semgrep/semgrep/develop/cli/src/semgrep/output.py>);
-  and the narrowly
+  the narrowly
   named check flags of restic
   (<https://restic.readthedocs.io/en/stable/045_working_with_repos.html>), git
   fsck (<https://git-scm.com/docs/git-fsck>) and rsync
-  (<https://download.samba.org/pub/rsync/rsync.1>)**
+  (<https://download.samba.org/pub/rsync/rsync.1>); the warning options of
+  GCC (<https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html>) and the
+  strict flag of mypy
+  (<https://mypy.readthedocs.io/en/stable/command_line.html>), for where a
+  general switch leads; a benchmark of model code review
+  (<https://arxiv.org/abs/2509.01494>), for what more than one review adds;
+  OSCAL's assessment results (NIST,
+  <https://pages.nist.gov/OSCAL/learn/concepts/layer/assessment/assessment-results/>);
+  and OpenTelemetry's conventions for generative models
+  (<https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/>)**
   — the grounds for a result that says how far it looked
   (itd-2611211024360819) and for the stance against a general switch for
   looking harder (`.abcd/development/principles/no-general-depth-switch.md`):
