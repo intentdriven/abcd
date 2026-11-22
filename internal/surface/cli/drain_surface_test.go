@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -821,5 +822,90 @@ func TestDrainSkipHoldsAnIssueBackWithItsReason(t *testing.T) {
 	if len(res.Skips) != 1 || res.Skips[0].Target != held || len(res.Passed) != 1 || res.Passed[0].ID != held ||
 		res.Passed[0].Check != loop.CheckSkipped || !strings.Contains(res.Passed[0].Reason, "a peer's fix is in flight") {
 		t.Fatalf("--json carries the skip list and the pass-over: %+v", res)
+	}
+}
+
+// TestDrainDryRunShowsTheMembersEachLeadWouldTake: under drain.bundle_max of
+// 3, the dry run shows, under the issue that would lead, the members of its
+// kind and place its next lane would take, says what may make the bundle
+// smaller, and the --json envelope carries the cap and the bundles; with no
+// setting it shows none, its text as before.
+func TestDrainDryRunShowsTheMembersEachLeadWouldTake(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	t.Setenv("HOME", t.TempDir())
+	for _, f := range []string{"internal/a/one.go", "internal/a/two.go", "internal/a/three.go", "internal/b/four.go"} {
+		p := filepath.Join(repo, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	same := []string{
+		captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first", "--found-at", "internal/a/one.go"),
+		captureWithRemedy(t, "a loop reads one past the end", "--category", "bug", "--severity", "nitpick", "--remedy", "stop at the length", "--found-at", "internal/a/two.go"),
+		captureWithRemedy(t, "an error is dropped on close", "--category", "bug", "--remedy", "return the close error", "--found-at", "internal/a/three.go"),
+	}
+	elsewhere := captureWithRemedy(t, "a timer is never stopped", "--category", "bug", "--remedy", "stop the timer", "--found-at", "internal/b/four.go")
+	otherKind := captureWithRemedy(t, "the comment names the old flag", "--category", "documentation", "--remedy", "name the new flag", "--found-at", "internal/a/one.go")
+
+	type preview struct {
+		BundleMax struct {
+			Value int    `json:"value"`
+			Layer string `json:"layer"`
+		} `json:"bundle_max"`
+		Bundles []struct {
+			Lead    string   `json:"lead"`
+			Members []string `json:"members"`
+		} `json:"bundles"`
+		BundleNote string `json:"bundle_note"`
+	}
+	read := func() (string, preview, []byte) {
+		text := string(runCLI(t, "drain", "--dry-run"))
+		out := runCLI(t, "drain", "--dry-run", "--json")
+		var pv preview
+		if err := json.Unmarshal(out, &pv); err != nil {
+			t.Fatalf("--json is not JSON: %v\n%s", err, out)
+		}
+		return text, pv, out
+	}
+
+	text, pv, out := read()
+	if pv.BundleMax.Value != 1 || pv.BundleMax.Layer != "bundled" || len(pv.Bundles) != 0 || strings.Contains(string(out), `"bundles"`) {
+		t.Fatalf("with no setting the cap is the bundled 1 and no bundle is shown: %s", out)
+	}
+	if strings.Contains(text, "would also take") || strings.Contains(text, "bundle") {
+		t.Fatalf("with no setting the text shows no bundle:\n%s", text)
+	}
+
+	cfg := filepath.Join(repo, ".abcd", "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"drain":{"bundle_max":3}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text, pv, out = read()
+	if pv.BundleMax.Value != 3 || pv.BundleMax.Layer != "repo" || len(pv.Bundles) != 1 || !strings.Contains(pv.BundleNote, "reservation.max_live") {
+		t.Fatalf("the envelope carries the cap, one bundle and what may make it smaller: %s", out)
+	}
+	got := append([]string{pv.Bundles[0].Lead}, pv.Bundles[0].Members...)
+	slices.Sort(got)
+	want := slices.Clone(same)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("the bundle is the three bugs in internal/a, leaving %s and %s alone: %v", elsewhere, otherKind, got)
+	}
+	lead := pv.Bundles[0].Lead
+	lines := strings.Split(text, "\n")
+	i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, lead) && strings.Contains(l, "eligible") })
+	if i < 0 || i+1 >= len(lines) || !strings.Contains(lines[i+1], "its lane would also take "+strings.Join(pv.Bundles[0].Members, ", ")) {
+		t.Fatalf("the members are shown under the issue that would lead:\n%s", text)
+	}
+	for _, w := range []string{"drain.bundle_max is 3 (repo", "may make a bundle smaller", "reservation.max_live"} {
+		if !strings.Contains(text, w) {
+			t.Errorf("the text does not say %q:\n%s", w, text)
+		}
 	}
 }

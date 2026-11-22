@@ -456,6 +456,31 @@ chance allows. When git's
 identity names no holder, the copy's key alone tells copies apart. The
 payload's `order` states the rule. Every other open issue follows, by id.
 
+## Bundles
+
+`drain.bundle_max` is the most issues one lane may take: a whole number from 1
+to 10, set in the repository's `.abcd/config.json` over the machine's
+`~/.abcd.noindex/config.json`, and 1 by default for now, so a lane takes one
+issue unless a person sets the key. The `drain` namespace is claimed: 0, 11, a
+value that is not a whole number and a misspelt key are each refused, naming
+the file that holds them. A drain reads the cap once, when it starts, and
+keeps it with the layer and the file it came from; a running drain keeps it
+whatever the files say later.
+
+An issue joins the lane of an issue ahead of it in the drain order, its lead,
+when it is eligible, has exactly the lead's category, and has the lead's
+area: the directory holding the path its `found_at` names, or that path itself
+when it is a directory in the checkout. A `security` issue never joins, and
+neither does an issue whose area is the repository's root. A member's
+severity may differ from its lead's. A lead that is itself `security`, at the
+root or with no `found_at` path takes no members, and its lane opens alone.
+
+Under a cap above 1, the dry run prints, under each eligible issue that would
+lead, the members its next lane would take, and says that the judgements, the
+reservations and `reservation.max_live` may make a bundle smaller. The drain
+does not yet open a lane with members: it opens one issue's lane at a time,
+whatever the cap.
+
 ## Loosened floors
 
 When the repository's record loosens a floor, the text output prints a
@@ -485,6 +510,12 @@ totals them by outcome; `ledger` names the checkout and branch read.
 run mints none, so it takes each group oldest first, and `order` says the
 copy's own order within each group is drawn at its first move, which mints the
 key. Once the copy has a key, the dry run shows the order its next move takes.
+`bundle_max` is the cap the next move bundles under (`value`, `layer`,
+`origin`): a running drain's own, or the one a drain started now would take
+from the files. Under a cap above 1, `bundles` lists each issue that would
+lead with the members its next lane would take (`lead`, `members`), and
+`bundle_note` says what may make each smaller; both are absent when no issue
+would take a member.
 
 In a checkout with a remote named `origin`, the dry run plans from origin's
 default branch as this checkout last fetched it, and fetches nothing: `source`

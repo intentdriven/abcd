@@ -62,9 +62,10 @@ func storedDrainVersion(t *testing.T, path string) int {
 	return peek.SchemaVersion
 }
 
-func TestDrainSchemaVersionIsThree(t *testing.T) {
-	if DrainSchemaVersion != 3 || drainSchemaVersionUnspent != 2 || drainSchemaVersionUnpinned != 1 {
-		t.Fatalf("DrainSchemaVersion = %d (%d, %d), want 3 (2, 1)", DrainSchemaVersion, drainSchemaVersionUnspent, drainSchemaVersionUnpinned)
+func TestDrainSchemaVersionIsFour(t *testing.T) {
+	if DrainSchemaVersion != 4 || drainSchemaVersionUnbundled != 3 || drainSchemaVersionUnspent != 2 || drainSchemaVersionUnpinned != 1 {
+		t.Fatalf("DrainSchemaVersion = %d (%d, %d, %d), want 4 (3, 2, 1)", DrainSchemaVersion, drainSchemaVersionUnbundled,
+			drainSchemaVersionUnspent, drainSchemaVersionUnpinned)
 	}
 }
 
@@ -95,8 +96,8 @@ func TestAJudgeFallbacksSpendIsVersionThrees(t *testing.T) {
 	if err := writeDrain(root, st); err != nil {
 		t.Fatal(err)
 	}
-	if v := storedDrainVersion(t, path); v != 3 {
-		t.Errorf("the drain writes a version-2 state back at version %d, want 3", v)
+	if v := storedDrainVersion(t, path); v != DrainSchemaVersion {
+		t.Errorf("the drain writes a version-2 state back at version %d, want %d", v, DrainSchemaVersion)
 	}
 	writeDrainAt(t, root, spent(), 3)
 	st, _, err = readDrain(root)
@@ -183,16 +184,157 @@ func TestAVersionTwoDrainStateCarryingLocalReads(t *testing.T) {
 	}
 }
 
-// TestAVersionFourDrainStateIsRefusedAsNewer: a version above 3 is a newer
-// abcd's, refused as that before any strict decode (iss-2610230223231843).
-func TestAVersionFourDrainStateIsRefusedAsNewer(t *testing.T) {
+// TestAVersionFiveDrainStateIsRefusedAsNewer: a version above 4 is a newer
+// abcd's, refused as that before any strict decode (iss-2610230223231843), as
+// releases that write 3 refuse a version-4 file.
+func TestAVersionFiveDrainStateIsRefusedAsNewer(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	root := repo.Root()
-	writeDrainAt(t, root, judgedDrain(runner.Sides{Local: true}), 4)
+	writeDrainAt(t, root, bundledDrain(), 5)
 	_, _, err := readDrain(root)
 	rf := mustRefusal(t, err)
-	if !strings.Contains(rf.Reason, "schema version 4, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 3") {
-		t.Errorf("a version-4 drain state is refused as a newer abcd's: %q", rf.Reason)
+	if !strings.Contains(rf.Reason, "schema version 5, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 4") {
+		t.Errorf("a version-5 drain state is refused as a newer abcd's: %q", rf.Reason)
+	}
+}
+
+// bundledDrain is writtenDrain carrying every field version 4 adds.
+func bundledDrain() DrainState {
+	st := writtenDrain()
+	st.BundleMax = &PaceValue{Value: 5, Layer: "repo", Origin: ".abcd/config.json"}
+	st.Forming = &DrainForming{Lead: "iss-2610010000000006", Hold: &DrainHold{Commit: strings.Repeat("a", 40)},
+		Members: []DrainFormingMember{{Issue: "iss-2610010000000007", Hold: &DrainHold{Commit: strings.Repeat("b", 40)}}}}
+	minutes := 12.5
+	st.Lanes[0].Bundle = []string{"iss-2610010000000009"}
+	st.Lanes[0].Split = true
+	st.Lanes[1].CIMinutes = &minutes
+	return st
+}
+
+// TestVersionFoursBundleFieldsReadBack: the drain's cap and forming bundle,
+// and a lane's members, split and CI minutes, are version 4's and read back as
+// written.
+func TestVersionFoursBundleFieldsReadBack(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	root := repo.Root()
+	writeDrainAt(t, root, bundledDrain(), 4)
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-4 drain state carrying its fields reads: %v", err)
+	}
+	if b := st.BundleMax; b == nil || b.Value != 5 || b.Layer != "repo" {
+		t.Errorf("bundle_max is kept: %+v", b)
+	}
+	if f := st.Forming; f == nil || f.Lead != "iss-2610010000000006" || len(f.Members) != 1 || f.Members[0].Hold == nil {
+		t.Errorf("forming is kept: %+v", f)
+	}
+	if l := st.Lanes; len(l[0].Bundle) != 1 || !l[0].Split || l[1].CIMinutes == nil || *l[1].CIMinutes != 12.5 {
+		t.Errorf("a lane's bundle, split and ci_minutes are kept: %+v", l)
+	}
+	path := filepath.Join(root, filepath.FromSlash(DrainStateRel))
+	plain := writtenDrain()
+	if err := writeDrain(root, plain); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"bundle_max", "forming", "\"bundle\"", "split", "ci_minutes"} {
+		if strings.Contains(string(data), key) {
+			t.Errorf("a drain that set none of version 4's fields writes no %s:\n%s", key, data)
+		}
+	}
+}
+
+// TestAVersionThreeDrainStateReadsWithTheBundledCap: a version-3 file reads as
+// a drain that started with the bundled cap, its layer recorded as bundled,
+// and is written back at 4.
+func TestAVersionThreeDrainStateReadsWithTheBundledCap(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	root := repo.Root()
+	path := writeDrainAt(t, root, writtenDrain(), 3)
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-3 drain state reads: %v", err)
+	}
+	if st.SchemaVersion != 4 {
+		t.Errorf("a version-3 drain state is read at version %d, want 4", st.SchemaVersion)
+	}
+	if b := st.BundleMax; b == nil || b.Value != 1 || b.Layer != "bundled" || b.Origin != "bundled" {
+		t.Errorf("a version-3 drain started with the bundled cap: %+v", b)
+	}
+	if err := writeDrain(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if v := storedDrainVersion(t, path); v != 4 {
+		t.Errorf("the drain writes a version-3 state back at version %d, want 4", v)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back struct {
+		BundleMax *PaceValue `json:"bundle_max"`
+	}
+	if err := json.Unmarshal(data, &back); err != nil || back.BundleMax == nil || *back.BundleMax != bundledBundleMax() {
+		t.Errorf("the written-back state records the bundled cap (%v):\n%s", err, data)
+	}
+}
+
+// TestAVersionThreeDrainStateCarryingABundleFieldIsRefusedNamingIt: version 3
+// never wrote any of version 4's fields, so a version-3 file carrying one is
+// refused naming it.
+func TestAVersionThreeDrainStateCarryingABundleFieldIsRefusedNamingIt(t *testing.T) {
+	minutes := 3.0
+	for key, forge := range map[string]func(*DrainState){
+		"bundle_max": func(s *DrainState) { s.BundleMax = &PaceValue{Value: 1, Layer: "bundled", Origin: "bundled"} },
+		"forming":    func(s *DrainState) { s.Forming = &DrainForming{Lead: "iss-2610010000000006"} },
+		"bundle":     func(s *DrainState) { s.Lanes[1].Bundle = []string{"iss-2610010000000009"} },
+		"split":      func(s *DrainState) { s.Lanes[1].Split = true },
+		"ci_minutes": func(s *DrainState) { s.Lanes[1].CIMinutes = &minutes },
+	} {
+		t.Run(key, func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			root := repo.Root()
+			st := writtenDrain()
+			forge(&st)
+			writeDrainAt(t, root, st, 3)
+			_, _, err := readDrain(root)
+			rf := mustRefusal(t, err)
+			if !strings.Contains(rf.Reason, "schema version 3") || !strings.Contains(rf.Reason, "`"+key+"`") {
+				t.Errorf("a version-3 drain state carrying %s is refused naming it: %q", key, rf.Reason)
+			}
+		})
+	}
+}
+
+// TestAVersionFourBundleFieldTheDrainNeverWritesIsRefused: a cap out of range
+// or from a layer the resolver never writes, and a member that is no issue id,
+// are refused when the state is read.
+func TestAVersionFourBundleFieldTheDrainNeverWritesIsRefused(t *testing.T) {
+	minutes := -1.0
+	for name, forge := range map[string]func(*DrainState){
+		"cap of 11":       func(s *DrainState) { s.BundleMax.Value = 11 },
+		"cap from a flag": func(s *DrainState) { s.BundleMax.Layer = "flag" },
+		"cap origin bidi": func(s *DrainState) { s.BundleMax.Origin += "\u202e" },
+		"member":          func(s *DrainState) { s.Lanes[0].Bundle = []string{"not-an-issue"} },
+		"forming member":  func(s *DrainState) { s.Forming.Members[0].Issue = "itd-2610010000000007" },
+		"ci minutes":      func(s *DrainState) { s.Lanes[1].CIMinutes = &minutes },
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			root := repo.Root()
+			st := bundledDrain()
+			forge(&st)
+			writeDrainAt(t, root, st, 4)
+			_, _, err := readDrain(root)
+			rf := mustRefusal(t, err)
+			noRawRune(t, name, rf)
+			if !strings.Contains(rf.Reason, "never writes") {
+				t.Errorf("%s is refused as one the drain never writes: %q", name, rf.Reason)
+			}
+		})
 	}
 }
 

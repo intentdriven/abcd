@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -78,7 +79,23 @@ const drainLockRel = RunRelDir + "/drain.lock"
 // version 2 or lower carrying it is refused naming it. Releases that write
 // version 2 refuse a version-3 file as a newer abcd's before any strict
 // decode.
-const DrainSchemaVersion = 3
+//
+// Version 4 is a drain that bundles issues (itd-2611201450052326), defined
+// whole at once so no later step raises it again: the drain's `bundle_max`,
+// the cap it started with, with its layer and origin; a lane's `bundle`, the
+// members it took, and `split`, a bundle the drain split; the drain's
+// `forming`, the bundle its moves are forming; and a lane's `ci_minutes`, the
+// time its pull request's checks ran. Each is written only by the step that
+// uses it. Version 3 and lower are its strict subsets, read as a drain that
+// started with the bundled cap, its layer recorded as `bundled`, and opened
+// no bundle, and written back at version 4; a file of version 3 or lower
+// carrying any of them is refused naming it. Releases that write version 3
+// refuse a version-4 file as a newer abcd's before any strict decode.
+const DrainSchemaVersion = 4
+
+// drainSchemaVersionUnbundled is the drain state's version before bundles:
+// read, never written.
+const drainSchemaVersionUnbundled = 3
 
 // drainSchemaVersionUnspent is the drain state's version before a judge
 // fallback receipt's spend: read, never written.
@@ -190,6 +207,29 @@ type DrainState struct {
 	// Skips are the issues and paths a person holds back for now, each with
 	// its reason; the list clears when the drain ends (drain_skip.go).
 	Skips []DrainSkip `json:"skips,omitempty"`
+	// BundleMax is drain.bundle_max as the drain started with it, the layer
+	// and origin it came from: the most issues one lane takes. A running
+	// drain keeps it, whatever the files say by then (drain_bundle.go). Nil
+	// reads as the bundled cap.
+	BundleMax *PaceValue `json:"bundle_max,omitempty"`
+	// Forming is the bundle the drain's moves are forming, its lead and the
+	// members judged so far, each with its hold; nil while none forms.
+	Forming *DrainForming `json:"forming,omitempty"`
+}
+
+// DrainForming is a bundle the drain is forming across its moves: the lead,
+// whose judgement answered no, and each member a judgement has taken since,
+// with the hold the drain took on each to judge it.
+type DrainForming struct {
+	Lead    string               `json:"lead"`
+	Hold    *DrainHold           `json:"hold,omitempty"`
+	Members []DrainFormingMember `json:"members"`
+}
+
+// DrainFormingMember is one member of a forming bundle and its hold.
+type DrainFormingMember struct {
+	Issue string     `json:"issue"`
+	Hold  *DrainHold `json:"hold,omitempty"`
 }
 
 // DrainLane is one issue the drain handed to a lane.
@@ -199,6 +239,14 @@ type DrainLane struct {
 	OpenedAt time.Time `json:"opened_at"`
 	Outcome  string    `json:"outcome"`
 	PR       int       `json:"pr,omitempty"`
+	// Bundle is the members the lane took beside its issue, the lead; empty
+	// for a lane of one issue. Split marks a bundle the drain split after it
+	// failed, its issues taken up again alone.
+	Bundle []string `json:"bundle,omitempty"`
+	Split  bool     `json:"split,omitempty"`
+	// CIMinutes is the time the lane's merged pull request's checks ran, in
+	// minutes; nil until it is read.
+	CIMinutes *float64 `json:"ci_minutes,omitempty"`
 }
 
 // DrainRoute is one hand-back and where it went.
@@ -538,12 +586,18 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if err != nil {
 			return DrainResult{}, err
 		}
+		// The cap on a bundle is read once, as the pace is, and kept: a
+		// running drain takes no new one from the files (drain_bundle.go).
+		bundleMax, err := resolveBundleMax(o.roots(repoRoot))
+		if err != nil {
+			return DrainResult{}, err
+		}
 		// A hand-back an ended drain could not publish is still a person's,
 		// so the new drain keeps it pending (drain_pending.go).
 		pending := st.PendingHandBacks
 		st = DrainState{SchemaVersion: DrainSchemaVersion, StartedAt: now, UpdatedAt: now, Rule: rule.Record,
 			Max: d.Max, Pace: &pace, WindowStartedAt: &now, Lanes: []DrainLane{}, HandBacks: []DrainRoute{},
-			PendingHandBacks: pending}
+			PendingHandBacks: pending, BundleMax: &bundleMax}
 		started = true
 	} else {
 		if d.Max != 0 && d.Max != st.Max {
@@ -1868,8 +1922,22 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
 				"the drain is the file's only writer; restore it or remove it")
 		}
+	}
+	if st.SchemaVersion <= drainSchemaVersionUnbundled {
+		if p := st.bundled(); p != "" {
+			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
+				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
+				"the drain is the file's only writer; restore it or remove it")
+		}
+		// A drain before bundles started with the bundled cap.
+		bundled := bundledBundleMax()
+		st.BundleMax = &bundled
 		// Read as the current version; the move's write carries it.
 		st.SchemaVersion = DrainSchemaVersion
+	}
+	if !st.bundlesWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a bundle or a bundle cap the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
 	}
 	// The stored pace names the layers and origins the resolver writes, so no
 	// other text reaches the drain's --json payload or the refusal of a move
@@ -1932,6 +2000,58 @@ func (s DrainState) judgeSpent() string {
 		}
 	}
 	return ""
+}
+
+// bundled reports the first of version 4's fields a drain state carries,
+// which only version 4 and later write, or "".
+func (s DrainState) bundled() string {
+	switch {
+	case s.BundleMax != nil:
+		return "`bundle_max`"
+	case s.Forming != nil:
+		return "`forming`"
+	}
+	for i, l := range s.Lanes {
+		switch {
+		case l.Bundle != nil:
+			return fmt.Sprintf("`bundle` on lane %d (%s)", i+1, l.Issue)
+		case l.Split:
+			return fmt.Sprintf("`split` on lane %d (%s)", i+1, l.Issue)
+		case l.CIMinutes != nil:
+			return fmt.Sprintf("`ci_minutes` on lane %d (%s)", i+1, l.Issue)
+		}
+	}
+	return ""
+}
+
+// bundlesWritten reports whether version 4's fields are ones the drain
+// writes: a cap resolveBundleMax writes, issue ids for a lane's members and a
+// forming bundle's lead and members, and a non-negative, finite CI time.
+func (s DrainState) bundlesWritten() bool {
+	if !bundleMaxWritten(s.BundleMax) {
+		return false
+	}
+	if f := s.Forming; f != nil {
+		if !validIssueKey(f.Lead) {
+			return false
+		}
+		for _, m := range f.Members {
+			if !validIssueKey(m.Issue) {
+				return false
+			}
+		}
+	}
+	for _, l := range s.Lanes {
+		for _, m := range l.Bundle {
+			if !validIssueKey(m) {
+				return false
+			}
+		}
+		if c := l.CIMinutes; c != nil && (*c < 0 || math.IsInf(*c, 0) || math.IsNaN(*c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // pinned reports the first judgement, in a drain state, whose route carries a

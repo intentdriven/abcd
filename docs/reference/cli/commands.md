@@ -1758,7 +1758,10 @@ says the copy's own order is drawn at its first move. It fetches nothing either:
 last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
-back.
+back. Under drain.bundle_max above 1 (1 by default; 1 to 10, from .abcd/config.json
+or ~/.abcd.noindex/config.json), it shows under each issue that would lead the members of its
+category and directory its next lane would take, which the judgements, the
+reservations and reservation.max_live may make fewer.
 
 --drive makes the moves itself, from a plain terminal with no host session: it refuses
 before anything is reserved when the claude runner is not enabled or admitted, when
