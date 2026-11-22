@@ -250,6 +250,38 @@ func TestABuildOfARecordNotYetOnOriginSaysTheCheckoutIsNotBehind(t *testing.T) {
 	noReservations(t, bare)
 }
 
+// TestABuildOfARecordNotYetOnOriginFromABehindCheckoutSaysItHasNotReachedOrigin:
+// Pat files an issue in a checkout that is also behind origin/main, which
+// another account moved, and origin holds it neither open nor finished. The refusal
+// says the record has not reached origin and to land it there first, and does
+// not blame the checkout being behind, which would read as origin having
+// finished the issue.
+func TestABuildOfARecordNotYetOnOriginFromABehindCheckoutSaysItHasNotReachedOrigin(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	pushFromOtherCopy(t, bare, "another account's change", func(dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("another account's change\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	fileIssueAt(t, repo, originIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "commands/drain.md")
+	repo.Commit("file " + originIssue + " here")
+
+	_, err := Start(repo.Root(), originIssue, Options{})
+	r := mustRefusal(t, err)
+	for _, want := range []string{originIssue + " is not an open issue on origin/main at",
+		"origin/main holds " + originIssue + " neither open nor finished, while this checkout's own ledger holds it open: the record has not reached origin/main, so land it there first",
+		"this checkout is also 1 commit(s) behind origin/main"} {
+		if r.Check != CheckEligible || !strings.Contains(r.Reason, want) {
+			t.Fatalf("the refusal = %+v; want it at the eligible check saying %q", r, want)
+		}
+	}
+	if strings.Contains(r.Reason, "its own ledger still holds") {
+		t.Fatalf("the refusal blames the checkout being behind for a record origin never held: %s", r.Reason)
+	}
+	runTierAbsent(t, repo.Root())
+	noReservations(t, bare)
+}
+
 // TestADrainLaneLeavingItsLandingReadsItsFoundAtFromOrigin
 // (iss-2611010953085251): the drain judged the documentation issue from
 // origin's default branch, and the checkout the run lives in holds no record

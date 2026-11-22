@@ -385,8 +385,10 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 // (named). A build that read origin's default branch (snap.origin) says,
 // when this checkout's own ledger disagrees about whether key is open
 // (openThere is origin's answer), that the checkout is behind and by how
-// many commits; a build that could not read origin says why, and that the
-// checkout's own ledger was judged. "" when there is nothing to add.
+// many commits, or, where origin holds key neither open nor finished, that
+// the record has not reached origin; a build that could not read origin says
+// why, and that the checkout's own ledger was judged. "" when there is
+// nothing to add.
 func (snap *peerSnapshot) ledgerNote(repoRoot, key string, openThere, named bool) string {
 	var note string
 	if named && snap.plan != nil && snap.plan.Source != "" {
@@ -402,9 +404,15 @@ func (snap *peerSnapshot) ledgerNote(repoRoot, key string, openThere, named bool
 			if openHereToo {
 				held = "still holds " + key + " open"
 			}
-			if o.Behind > 0 {
+			switch {
+			case o.Behind > 0 && openHereToo && !slices.Contains(o.Finished, recordid.CanonCitedID(key)):
+				// Origin holds key neither open nor finished, so being
+				// behind it does not explain the disagreement: the
+				// record has not reached origin.
+				note += fmt.Sprintf("; %s holds %s neither open nor finished, while this checkout's own ledger holds it open: the record has not reached %s, so land it there first (this checkout is also %d commit(s) behind %s)", o.Ref, key, o.Ref, o.Behind, o.Ref)
+			case o.Behind > 0:
 				note += fmt.Sprintf("; this checkout is %d commit(s) behind %s, and its own ledger %s", o.Behind, o.Ref, held)
-			} else {
+			default:
 				note += fmt.Sprintf("; this checkout is not behind %s, but its own ledger %s", o.Ref, strings.Replace(held, "still holds", "holds", 1))
 			}
 		}
