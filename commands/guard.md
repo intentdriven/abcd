@@ -1309,7 +1309,9 @@ whose name a substitution prints with an option word that can be `-a` or
 +a`, a `setopt -m` pattern (read as turning it on, since the guard does not
 match patterns), an assignment to zsh's `options` array
 (`options[allexport]=on`, the option in any spelling, read as turning it on
-unless the value is `off` or `0`, and the whole array assigned),
+unless the value is exactly `off`, or exactly `on` for `options[noallexport]`,
+the only values zsh accepts for turning it off, since zsh keeps the option as
+it was for `OFF`, `0` or any other value; and the whole array assigned),
 `emulate MODE -o allexport`, bash's `shopt -so allexport`,
 and a shell started with `-a`, `-o allexport` or zsh's `--allexport`, or with
 a `SHELLOPTS` that names it or that the line does not fix, whether assigned

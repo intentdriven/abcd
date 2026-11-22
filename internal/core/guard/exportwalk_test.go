@@ -402,8 +402,9 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 
 // TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport: zsh turns
 // allexport on by an assignment to its options array, by the option's name in
-// any of zsh's spellings with the value on or 1, and the whole array assigned
-// is read as turning it on; under allexport, a name a declaration builtin
+// any of zsh's spellings; a value other than the one zsh reads as off is read
+// as turning it on, and the whole array assigned is read as turning it on;
+// under allexport, a name a declaration builtin
 // declares without a value is exported, so the scalar `typeset -T` ties to an
 // array is exported when the array is assigned.
 func TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport(t *testing.T) {
@@ -430,11 +431,51 @@ func TestGuardReadsZshsOptionsArrayAndTiedArraysUnderAllexport(t *testing.T) {
 	}
 	for _, line := range []string{
 		`options[allexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
-		`options[allexport]=0; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
 		`options[errexit]=on; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
 		`setopt allexport; options[allexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
 		`typeset -T OPENCODE_CONFIG oc; oc=(/tmp/o.json); opencode run x`,
 		`typeset OPENCODE_CONFIG; opencode run x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}
+
+// TestGuardTurnsAllexportOffOnlyByTheOptionsArrayValueZshAccepts: zsh accepts
+// only the exact values `on` and `off` for an element of its options array
+// and keeps the option as it was for any other value, reporting it invalid;
+// so only `off` on the option's name, or `on` on its `no` form, turns
+// allexport off, and `OFF`, `0`, `no`, `ON` on the `no` form or an empty
+// value leave the exports of a `set -a` before them in force.
+func TestGuardTurnsAllexportOffOnlyByTheOptionsArrayValueZshAccepts(t *testing.T) {
+	const id = "agent-launch-opencode-config-env"
+	r := Defaults()
+	for _, value := range []string{"OFF", "Off", "0", "no", "''"} {
+		line := `set -a; options[allexport]=` + value + `; OPENCODE_CONFIG=/tmp/o.json; opencode run x`
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, value := range []string{"ON", "On", "1", "yes", "off", "OFF", "0"} {
+		line := `set -a; options[noallexport]=` + value + `; OPENCODE_CONFIG=/tmp/o.json; opencode run x`
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+	}
+	for _, line := range []string{
+		`set -a; options[allexport]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`set -a; options[ALL_EXPORT]=off; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`set -a; options[noallexport]=on; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
+		`set -a; options[allexport]='off'; OPENCODE_CONFIG=/tmp/o.json; opencode run x`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)

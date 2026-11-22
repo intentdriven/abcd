@@ -912,10 +912,12 @@ const zshOptionsArray = "options"
 // optionsArrayOption is opt after the assignments toks, a command of
 // assignments alone, make to zsh's options array (zshOptionsArray), given on
 // before them: an element named for opt in any of zsh's spellings
-// (zshOption) set to off or 0, in any case, turns it off and set to anything
-// else turns it on, its `no` form the other way round; an element whose name
-// or value the line does not fix, and the whole array assigned, can turn it
-// on.
+// (zshOption) set to exactly `off`, or its `no` form set to exactly `on`,
+// turns it off, and any other value is read as turning it on: zsh accepts
+// only those two values in lower case and keeps the option as it was for
+// any other, so `OFF` or `0` after `set -a` leaves allexport on. An element
+// whose name or value the line does not fix, and the whole array assigned,
+// can turn it on.
 func optionsArrayOption(toks []string, on bool, opt shellOption) bool {
 	for _, tok := range toks {
 		name, eq, _, subscript, ok := splitAssignment(tok)
@@ -931,12 +933,11 @@ func optionsArrayOption(toks []string, on bool, opt shellOption) bool {
 			on = true
 			continue
 		}
-		off := strings.EqualFold(value, "off") || value == "0"
 		switch zshOption(key) {
 		case opt.name:
-			on = !off
+			on = value != "off"
 		case "no" + opt.name:
-			on = off
+			on = value != "on"
 		}
 	}
 	return on
