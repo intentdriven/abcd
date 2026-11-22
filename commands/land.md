@@ -472,12 +472,30 @@ exit 2, nothing is written, and the head needs a full pair:
 - Together they change at most 30 lines (added and removed, summed commit by
   commit) and 3 files. Their patches, with no context lines, also stay within 64 KiB.
 
-A merge from the default branch does not count against any of this, so merging it
-up costs a delta pair at most, whatever it brought. Each merge since `<base>` must
-take a commit already on the default branch as its second parent and hold exactly
-the tree git makes of its two parents with no conflict. Any other merge is refused,
-and so is any commit neither on the default branch nor on the first-parent line
-from the head to `<base>`.
+A merge from origin's default branch does not count against any of this, so
+merging it up after a full pair costs a delta pair at most, whatever it brought:
+what it brought was reviewed when it landed. Each merge since `<base>` must meet
+all of these, with history read as stored:
+
+- Its second parent is a commit already on origin's default branch as last
+  fetched. A local default branch does not count, since it may hold commits no
+  one has pushed, and a repository that tracks no default branch of origin
+  records no delta.
+- It holds exactly the tree git's own merge makes of its two parents, with no
+  conflict, so its resolution adds nothing beyond what its parents bring: the
+  check `git show --remerge-diff` makes, with every merge driver git's built-in
+  text merge.
+- Its parents have one merge base, so what it brings can be told apart from the
+  branch. A criss-cross merge needs a full pair.
+- What its second parent changes since that merge base touches no file the
+  branch's own commits change since `<base>`, before the merge or after it,
+  compared path by path with no rename detection. No reviewer read the two
+  together in one file, so a merge that meets the branch's own change needs a full
+  pair, however cleanly git merged it.
+
+Any other merge is refused, an octopus merge and a merge from another branch
+included, and so is any commit neither on the default branch nor on the
+first-parent line from the head to `<base>`.
 
 The merge gate asks all of this again at landing, against the default branch as
 just fetched and in the build of abcd that runs the gate, and the note says why

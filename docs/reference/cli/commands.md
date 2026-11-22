@@ -4989,9 +4989,12 @@ record's grounds. No part of such a path may start with a dot or begin as an ins
 name does, every file keeps its frontmatter byte for byte, and no file is added,
 removed or moved. Any other path needs a full pair, as code, open issues, decisions,
 intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
-of a default-branch commit counts for nothing when it is exactly
-the merge git makes of its parents with no conflict; any other merge is
-refused. The merge gate asks all of this again at landing. Without --rests-on, a
+of a commit on origin's default branch, as last fetched, counts for nothing when it
+is exactly the merge git makes of its parents with no conflict (an empty
+remerge-diff), its parents have one merge base, and what its second parent changes
+since that base touches no file the branch's own commits change since the base;
+any other merge is refused, an octopus or one from a local default branch
+included. The merge gate asks all of this again at landing. Without --rests-on, a
 return carrying a Reviewed delta line is refused.
 
 --approve records the technical facilitator's approval of the branch's head and

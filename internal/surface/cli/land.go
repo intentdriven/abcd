@@ -175,9 +175,12 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"name does, every file keeps its frontmatter byte for byte, and no file is added,\n" +
 			"removed or moved. Any other path needs a full pair, as code, open issues, decisions,\n" +
 			"intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge\n" +
-			"of a default-branch commit counts for nothing when it is exactly\n" +
-			"the merge git makes of its parents with no conflict; any other merge is\n" +
-			"refused. The merge gate asks all of this again at landing. Without --rests-on, a\n" +
+			"of a commit on origin's default branch, as last fetched, counts for nothing when it\n" +
+			"is exactly the merge git makes of its parents with no conflict (an empty\n" +
+			"remerge-diff), its parents have one merge base, and what its second parent changes\n" +
+			"since that base touches no file the branch's own commits change since the base;\n" +
+			"any other merge is refused, an octopus or one from a local default branch\n" +
+			"included. The merge gate asks all of this again at landing. Without --rests-on, a\n" +
 			"return carrying a Reviewed delta line is refused.\n\n" +
 			"--approve records the technical facilitator's approval of the branch's head and\n" +
 			"lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge\n" +

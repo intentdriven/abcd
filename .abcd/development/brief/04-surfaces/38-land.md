@@ -376,9 +376,13 @@ Its inputs:
   for byte, and no file is added, removed or moved. Anything
   else needs a full pair: code and tests, `commands/`, `agents/`, `.claude*` and
   `.abcd/*.json`, the release record and gate, the rest of `docs/`, open issues and
-  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
-  default branch up needs no full pair, when it is exactly the merge git makes of
-  its two parents with no conflict; any other merge is refused. The gate judges
+  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a commit on origin's default branch, as last
+  fetched, counts for nothing, so merging the default branch up needs no full pair,
+  when it is exactly the merge git makes of its two parents with no conflict (so its
+  resolution adds nothing, as an empty remerge-diff shows), its parents have one
+  merge base, and what its second parent changes since that base touches no file
+  the branch's own commits change since the base head; any other merge is refused,
+  an octopus merge and one from a local default branch included. The gate judges
   all of this again at landing, reads the receipts for the head in every worktree
   but a drive lane's (and none when it runs from one or lands a branch checked
   out in one), and counts a receipt with no delta only when it
