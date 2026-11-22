@@ -216,10 +216,11 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 	if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "net:ipv4") {
 		t.Fatalf("writeTrial with an address in its reason = %v; want it refused", err)
 	}
-	// A harness version a host reports is withheld only as far as its
-	// leading dotted number: a MAC, or a host name after the number, is
-	// still screened.
-	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local", "2.1.buildbox.local", "2.1a-kevin-laptop"} {
+	// A harness version a host reports is withheld only when it is a dotted
+	// number and nothing else: a MAC, one whose first pair is the number's last
+	// part included, or a host name after the number, is still screened.
+	for i, v := range []string{"3c:22:fb:4a:9e:01", "2.1-buildbox.local", "2.1.buildbox.local", "2.1a-kevin-laptop",
+		"2.10:22:fb:4a:9e:01", "2.10-22-fb-4a-9e-01"} {
 		tr = codeTrial(t, rec, "host-big", 3+i, StatusPassed)
 		tr.HarnessVersion = v
 		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {

@@ -702,8 +702,7 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 		t.Fatalf("writeRun with four-part versions: %v", err)
 	}
 	// The network screen reads the record line for line as written, with
-	// only its digests emptied and its versions' numbers read as the
-	// placeholder.
+	// only its digests and its bare versions emptied.
 	js, err := encodeRun(rec)
 	if err != nil {
 		t.Fatal(err)
@@ -717,7 +716,7 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 		t.Fatalf("the screened record has %d lines; the record has %d", len(vl), len(jl))
 	}
 	for i := range jl {
-		emptied := strings.HasSuffix(strings.TrimRight(vl[i], ","), `""`) || strings.HasSuffix(strings.TrimRight(vl[i], ","), `"`+versionPlaceholder+`"`)
+		emptied := strings.HasSuffix(strings.TrimRight(vl[i], ","), `""`)
 		if jl[i] != vl[i] && (strings.Contains(vl[i], "1.10.2.3") || !emptied) {
 			t.Errorf("line %d differs other than by an emptied value: %q vs %q", i+1, jl[i], vl[i])
 		}

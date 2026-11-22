@@ -701,10 +701,10 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 
 // withoutVersionsAndDigests is the record as the network screen reads it,
 // encoding to the record's own lines with nothing else changed: each value
-// that has a version's, a digest's or abcd's own field name's shape is
-// withheld, and only that part of it. A version keeps all but its leading
-// dotted number (asVersion), a value is emptied as a digest only when it is
-// hex (asDigest), and an unpinned field's name only when it is one abcd
+// that has a version's, a digest's or abcd's own field name's shape, whole, is
+// withheld, and no value is ever rewritten in part. A version is emptied only
+// when it is a dotted number and nothing else (asVersion), a value is emptied
+// as a digest only when it is hex (asDigest), and an unpinned field's name only when it is one abcd
 // builds for this record (asFieldName), where a cell id such as local-rev
 // would otherwise read as a host name. A value of any other shape is read as
 // it stands, so an address, a MAC or a host name a record carries from a
@@ -756,9 +756,9 @@ func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 }
 
 var (
-	// versionCoreRe is a version's leading dotted number, which a four-part
-	// version shares with an IPv4 address.
-	versionCoreRe = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)+`)
+	// bareVersionRe is a version that is a dotted number and nothing else,
+	// which a four-part version shares with an IPv4 address.
+	bareVersionRe = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)+$`)
 	// hexDigestRe is a digest or a commit: lower-case hex, an abbreviated
 	// commit's length at least.
 	hexDigestRe = regexp.MustCompile(`^[0-9a-f]{7,128}$`)
@@ -766,22 +766,21 @@ var (
 	settingNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 )
 
-// asVersion is v as the network screen reads a version: its leading dotted
-// number, which a four-part version shares with an IPv4 address, is read as
-// versionPlaceholder, and the rest of it as written. The number is replaced
-// rather than deleted, so what follows it keeps the first word it had:
-// 2.10.3.4 reads as a bare number, while 2.1-buildbox.local, 2.1.buildbox.local
-// and 2.1a-kevin-laptop still read as host names, where deleting the number
-// would leave a leading-dot name the scanner reads as a file's, or a word it
-// reads as prose.
+// asVersion is v as the network screen reads a version: emptied when it is a
+// dotted number and nothing else, the one shape a four-part version shares
+// with an IPv4 address, and read as it stands otherwise. Nothing is withheld
+// from part of a value: rewriting a version's number while keeping the rest
+// let a value the scanner refuses whole read as something it passes (a MAC
+// whose first pair is the number's last part, a host name, a word it reads as
+// prose), so 2.10.3.4 is withheld and 2.10:22:fb:4a:9e:01, 2.1.buildbox.local
+// and 2.1a-kevin-laptop are screened as written. A version with a suffix that
+// reads as an address is refused, the safe way to be wrong.
 func asVersion(v string) string {
-	return versionCoreRe.ReplaceAllLiteralString(v, versionPlaceholder)
+	if bareVersionRe.MatchString(v) {
+		return ""
+	}
+	return v
 }
-
-// versionPlaceholder stands in a version for its leading dotted number: one
-// digit, which no network kind reads as an address by itself and which keeps
-// the first character the kind it was.
-const versionPlaceholder = "0"
 
 // asDigest is v as the network screen reads a digest: emptied when it is hex,
 // read as it stands otherwise.

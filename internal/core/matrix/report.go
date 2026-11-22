@@ -326,10 +326,10 @@ func encodeTrial(t TrialRecord) (data, network []byte, err error) {
 }
 
 // withoutVersions is the trial as the network screen reads it, as
-// withoutVersionsAndDigests is a run's record: its harness version's leading
-// dotted number withheld (asVersion) and nothing else changed, so it encodes
-// to the trial's own lines and a harness version a host reports is screened
-// past that number.
+// withoutVersionsAndDigests is a run's record: its harness version withheld
+// only when it is a dotted number and nothing else (asVersion), and nothing
+// else changed, so it encodes to the trial's own lines and any other harness
+// version a host reports is screened as written.
 func (t TrialRecord) withoutVersions() TrialRecord {
 	t.HarnessVersion = asVersion(t.HarnessVersion)
 	return t
