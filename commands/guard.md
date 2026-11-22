@@ -1251,8 +1251,9 @@ text can add any key), a value or file name the line does not wholly fix
 (`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
 glob that does not match exactly one file or that holds a pattern character
 besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a backslash,
-or zsh's ranges, groups and operators), whose files the guard cannot name as
-the shell does, and a file the line writes before
+or zsh's ranges, groups and operators) or `**` (which zsh reads as any number
+of directories, none among them, and Go's matcher as one), whose files the
+guard cannot name as the shell does, and a file the line writes before
 the launch or may write there by a name it does not fix (`> "$F"`), one that
 is not a regular file, one over 256 KiB, or one that does not hold a JSON
 object. A write the guard does not read as one (an interpreter's payload, a

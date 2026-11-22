@@ -1428,9 +1428,12 @@ func settingsWritten(p string, before []writeTarget) bool {
 // character besides `*` and `?` (globShellOnly): Go's matcher reads a bracket
 // expression and a backslash by its own grammar, not the shell's (a POSIX
 // class such as `[[:digit:]]` names another file to it), and zsh reads more
-// characters as pattern syntax than Go does.
+// characters as pattern syntax than Go does. A pattern holding `**` is
+// refused too: zsh reads `**/` as any number of directories, none among
+// them, and Go's matcher as exactly one, so `d/**/s.json` names `d/s.json`
+// to zsh and `d/x/s.json` to Go.
 func globOne(p string) (string, bool) {
-	if strings.ContainsAny(p, globShellOnly) {
+	if strings.ContainsAny(p, globShellOnly) || strings.Contains(p, "**") {
 		return "", false
 	}
 	matches, err := filepath.Glob(p)

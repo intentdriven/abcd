@@ -838,9 +838,10 @@ refusing settings that turn the permission checks off, grant permission rules
 or directories, declare hooks or another command claude runs, turn hooks off,
 or set an `env` variable that changes what claude runs, and settings it cannot
 read now (text that does not parse, a value, name or directory the line does
-not fix, a glob that does not match one file, a file the line writes first or
-may write by a name it does not fix, or one it cannot open or that is too
-large). The flag forms of an allow list (`--allowedTools`),
+not fix, a glob that does not match one file or holds a pattern character
+the shell and Go read apart, a bracket expression or `**` among them, a file
+the line writes first or may write by a name it does not fix, or one it
+cannot open or that is too large). The flag forms of an allow list (`--allowedTools`),
 of extra directories (`--add-dir`) and of a prompt answerer
 (`--permission-prompt-tool` with `--mcp-config`) are refused by entries of
 their own, and `--allow-dangerously-skip-permissions` as the bypass flag is.

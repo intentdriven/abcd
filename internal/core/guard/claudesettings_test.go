@@ -129,7 +129,9 @@ func TestGuardReadsClaudeSettingsTextAsClaudeDoes(t *testing.T) {
 // known: a file the line writes before the claude, or may write there by a
 // name the line does not fix, one past the size the
 // guard reads, a glob that does not name exactly one file, a glob holding a
-// bracket expression or any pattern character besides `*` and `?`, a name or a
+// bracket expression or any pattern character besides `*` and `?`, a glob
+// holding `**`, which zsh reads as any number of directories and Go's matcher
+// as one, a name or a
 // directory the line does not fix, and text that does not parse. A glob
 // naming one readable file is read as that file, and a missing file stays
 // allowed, as claude does not start on it.
@@ -147,12 +149,19 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		"w/bad/bypass.json": `{"permissions": {"defaultMode": "bypassPermissions"}}`,
 		"w/cls/s1.json":     `{"permissions": {"defaultMode": "bypassPermissions"}}`,
 		"w/cls/sd].json":    `{}`,
+		"w/deep/s.json":     `{"permissions": {"defaultMode": "bypassPermissions"}}`,
+		"w/deep/x/s.json":   `{}`,
+		"w/lone/x/t.json":   `{}`,
 		"acct/keep":         "",
 	})
 	runExtendCases(t, dir, []extendCase{
 		{`echo '{}' > plain.json; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`claude -p x --settings cls/s[[:digit:]].json`, VerdictBlock, id, ""},
 		{`claude -p x --settings one/s[1].json`, VerdictBlock, id, ""},
+		{`claude -p x --settings deep/**/s.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings lone/**/t.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings lone/x/**.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings "deep/"**/s.json`, VerdictBlock, id, ""},
 		{`cp {d}/w/bad/bypass.json new.json && claude -p x --settings new.json`, VerdictBlock, id, ""},
 		{`claude -p x --settings big.json`, VerdictBlock, id, ""},
 		{`claude -p x --settings two/*.json`, VerdictBlock, id, ""},
@@ -170,6 +179,7 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		{`claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings one/s*.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings one/s?.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings lone/*/t.json`, VerdictAllow, "", ""},
 		{`claude -p x --settings missing.json`, VerdictAllow, "", ""},
 		{`echo '{}' > other.json; claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`git -C ../other status; claude -p x --settings plain.json`, VerdictAllow, "", ""},
