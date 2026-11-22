@@ -329,7 +329,7 @@ var sentences = map[string]string{
 		"Writes GitHub and the store only with --approve; refuses a digest for other text.",
 	"abcd embargo fixed": "Record the commits that fix an advisory under embargo: " +
 		"Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
-	"abcd embargo queue": "Queue the publish step of each advisory ready to publish for the person's return: " +
+	"abcd embargo queue": "Queue each ready advisory's publish step for the person's return: " +
 		"Writes only the away queue, each step once; refuses while the person is not away.",
 	"abcd embargo intake": "Take this repository's private advisories into private records in the embargo store: " +
 		"Writes only the embargo store; refuses a remote that is not on GitHub.",

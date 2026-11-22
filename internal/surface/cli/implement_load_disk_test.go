@@ -93,7 +93,8 @@ func TestImplementLoadWaitSaysTheTrimAtTheFloor(t *testing.T) {
 			Trim: &worktree.CacheTrim{Path: "~/Library/Caches/go-build", EntriesRemoved: 5, BytesFreed: 37 << 30, LeftBytes: 100 << 30, LimitBytes: 100 << 30, KeepHours: 3}}}}
 	}
 	t.Cleanup(func() { implement.ReadDisk, implement.TrimAtFloor = prevDisk, prevTrim })
-	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
+	// A trim starts only with implement.DiskTrimMinLeft of the wait left.
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "10m")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}

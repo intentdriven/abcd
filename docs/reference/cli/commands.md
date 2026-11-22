@@ -2242,7 +2242,7 @@ abcd embargo publish
 
 #### `abcd embargo queue`
 
-Queue the publish step of each advisory ready to publish for the person's return: Writes only the away queue, each step once; refuses while the person is not away.
+Queue each ready advisory's publish step for the person's return: Writes only the away queue, each step once; refuses while the person is not away.
 
 **Usage:** `abcd embargo queue`
 
