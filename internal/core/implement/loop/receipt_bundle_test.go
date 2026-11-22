@@ -452,3 +452,49 @@ func TestAStandingBundleReceiptHandingIssuesBackIsNotTakenByAStep(t *testing.T) 
 		})
 	}
 }
+
+// TestABundlesFixBriefAsksForEveryIssueInTheReceipt: a fix round's brief in a
+// run with members names each issue the run still holds and asks for every
+// one of them in `resolves` or `handbacks`, with each resolution's commit in
+// `commits`; a receipt that follows it, naming each issue's commit, passes the
+// receipt's account of the run's issues.
+func TestABundlesFixBriefAsksForEveryIssueInTheReceipt(t *testing.T) {
+	repo, _, runID, l, _ := bundleAwaiting(t)
+	a, b, c := bundleFix(t, repo, l, bundleLead), bundleFix(t, repo, l, bundleTwo), bundleFix(t, repo, l, bundleThree)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := Context{RepoRoot: repo.Root(), RunDir: runRel(runID), State: st, Now: time.Now()}
+	brief, _, err := writeFixBrief(ctx, l, ValidationRound{Round: 1, HeadSHA: c}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(abs(repo.Root(), brief))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, w := range []string{bundleLead, bundleTwo, bundleThree, "exactly once in this receipt", "`resolves`", "`handbacks`",
+		"the commit that fixes it", "list that commit in `commits`"} {
+		if !strings.Contains(text, w) {
+			t.Fatalf("the fix brief says %q:\n%s", w, text)
+		}
+	}
+	rc := LaneReceipt{Commits: []string{a, b, c},
+		Resolves: []Resolution{resolving(bundleLead, a), resolving(bundleTwo, b), resolving(bundleThree, c)}}
+	if gaps := bundleReceiptGaps(repo.Root(), st, l, rc, false); len(gaps) != 0 {
+		t.Fatalf("a fix receipt following the brief accounts for every issue: %v", gaps)
+	}
+
+	// A run without members is briefed as before, with no such paragraph.
+	st.Bundle = nil
+	ctx.State = st
+	brief, _, err = writeFixBrief(ctx, l, ValidationRound{Round: 2, HeadSHA: c}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(abs(repo.Root(), brief)); strings.Contains(string(data), "exactly once in this receipt") {
+		t.Fatalf("a run without members gets no bundle paragraph:\n%s", data)
+	}
+}
