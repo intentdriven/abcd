@@ -190,6 +190,7 @@ None for the build. Two choices are listed for the person to confirm on 22 Nov, 
    - needs: none
    - packages: internal/core/implement/loop/drain_bundle.go, internal/core/implement/loop/drain.go, internal/surface/cli/drain.go, commands/drain.md, .abcd/development/brief/04-surfaces/35-drain.md, .abcd/development/brief/05-internals/03-configuration.md
    - tests: internal/core/implement/loop/drain_bundle_test.go: `drain.bundle_max` from the repository, the machine, both and neither, the bundled default being 1; 0, 11 and a misspelt key refused naming the file; the cap kept on the drain state with its layer and not changed by a running drain; `bundleCandidates` over a ledger with one category in one directory at both severities, another category, another directory, a security issue, a root file, a lead that is not bundleable, and a cap of 1. internal/core/implement/loop/drain_schema_test.go: version 4's new fields; a version-3 file read and written back at 4; a version-3 file carrying any new field refused naming it; version 4 refused by a reader at 3. internal/surface/cli/drain_surface_test.go: `--dry-run` shows the members each leading issue's next lane would take, and the `--json` envelope carries them. The command page and the two brief pages state the key, its range, its layers, its default of 1 for now and the rule for who joins.
+   - landed: 7b16f2c4a
 4. The drain forms and opens bundles
    - criteria: 1, 3, 4, 5, 6, 8
    - needs: 1, 2, 3
