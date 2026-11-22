@@ -2,6 +2,7 @@ package claim
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // The generated set is kept between reads (iss-2610170833428011): a read
@@ -17,6 +19,22 @@ import (
 // change to the matching budget, reads afresh; and a kept file that is not
 // an answer for the key in hand, or is not a plain untracked regular file
 // within the cap, reads as nothing kept.
+
+// TestKeptFileIsWhatTheNotesArchiveLeavesOut: the worktree store's notes
+// archive leaves the kept file out by its path and its opening, the magic and
+// the NUL ending it (iss-2611181412255215), so the file lies in the
+// reservations' state directory and every outcome opens that way.
+func TestKeptFileIsWhatTheNotesArchiveLeavesOut(t *testing.T) {
+	if path.Dir(generatedKeptRel) != stateRelDir {
+		t.Fatalf("the kept file %s lies in the reservations' state, %s", generatedKeptRel, stateRelDir)
+	}
+	head := localtier.GeneratedSetMagic + "\x00"
+	for _, spent := range []bool{false, true} {
+		if got := string(encodeKept(strings.Repeat("ab", 32), map[string]bool{"go.sum": true}, spent)); !strings.HasPrefix(got, head) {
+			t.Fatalf("the kept file (spent %v) opens with %q: %q", spent, head, got)
+		}
+	}
+}
 
 // countMatches counts the matches generatedFilesAt makes from here on.
 func countMatches(t *testing.T) *int {
