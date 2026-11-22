@@ -288,8 +288,8 @@ read-only render of their own state, and close on the next move where there is
 one to name.
 
 It is a convention rather than a universal, and the exceptions are where the
-tree does not yet meet its own discipline. Nine parents print usage with no state
-at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, `scribe`,
+tree does not yet meet its own discipline. Eight parents print usage with no state
+at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, `scribe`,
 and `session`, whose running relay keeps its sessions in that process's memory alone. Bare
 `abcd explain` prints its own help, because its operand is the command it explains. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare

@@ -1671,7 +1671,7 @@
       "hidden": false,
       "group": "release",
       "block": "people",
-      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1711,6 +1711,20 @@
           "name": "approve",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo fixed",
+      "hidden": false,
+      "sentence": "Record the commits that fix an advisory under embargo: Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
+      "flags": [
+        {
+          "name": "replace",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

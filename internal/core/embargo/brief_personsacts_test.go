@@ -8,8 +8,9 @@ import (
 )
 
 // The embargo chapter says its "What stays the person's" section lists the
-// acts the command page hands the person. The page's own list carries five
-// items; the chapter once left out putting back the record details redacted to
+// acts the command page hands the person. The page's own list carries six
+// items (publishing an advisory the bare listing names ready joined them with
+// iss-2611220942278236); the chapter once left out putting back the record details redacted to
 // land a fix (iss-2611060809519550), which is a separate item from restoring
 // each record into the public ledger. Each act on the page is held here to a
 // phrase the chapter's section must carry, and the page's list to exactly
@@ -27,6 +28,7 @@ func TestBriefPersonsActsMatchCommandPage(t *testing.T) {
 		{"requesting a CVE", "requesting a CVE"},
 		{"putting back any record details they redacted", "putting back any record details redacted"},
 		{"every verdict", "Every verdict"},
+		{"publishing an advisory the bare listing names ready", "publishing an advisory the bare listing names ready"},
 	}
 
 	section := func(rel, heading string) string {

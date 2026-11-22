@@ -2008,7 +2008,7 @@ abcd drain --drive
 
 ### `abcd embargo`
 
-Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
+Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.
 
 **Usage:** `abcd embargo`
 
@@ -2024,6 +2024,17 @@ Every remote call is the person's own `gh` against github.com; abcd holds no
 token. close and publish each act on GitHub only with --approve naming the
 digest of exactly the text or plan they showed, and a host passes it only
 after the person, in that session, has seen it and said yes.
+
+Bare, it lists each advisory judged a vulnerability and not yet closed or
+published: ready to publish when a published release holds every fix commit
+recorded for it (`abcd embargo fixed`, or the fix commit its private record,
+resolved in the store, names), naming that release and the publish command
+that shows its plan; waiting, with why, when its fix is recorded and not yet
+in one; or with no fix recorded. Which release holds a fix is read from the
+commits as stored; origin's tags and GitHub's release are read only for a
+release tag that holds one. Bare writes nothing in the store and publishes
+nothing: while the person is away (`abcd mode autonomous`) it queues one step
+for their return for each advisory ready to publish, once, and says so.
 
 Exit 2 on a refusal (nothing written) and on a check finding.
 
@@ -2104,6 +2115,37 @@ session, has seen the text and said yes to it.
 
 ```
 abcd embargo close GHSA-xxxx-xxxx-xxxx
+```
+
+#### `abcd embargo fixed`
+
+Record the commits that fix an advisory under embargo: Writes only the embargo store; refuses a commit id that is not a commit of this repository.
+
+**Usage:** `abcd embargo fixed <iss-N|GHSA-id> <commit>... [flags]`
+
+Record the commits that fix one advisory judged a vulnerability and not yet
+closed or published, in the embargo store's state and nowhere else: the public
+ledger and this checkout are never written. Each commit is named by its id,
+abbreviated or full (7 to 64 lower-case hex digits; a ref name is refused), and
+must be a commit of this repository; it is kept by its full id. A commit already
+recorded is not recorded twice; --replace swaps the recorded list for the
+commits named.
+
+Bare `abcd embargo` then lists the advisory as ready to publish once a published
+release holds every recorded commit, and the publication plan takes them as the
+advisory's fix when no record of it is resolved in the release. Publishing stays
+yours: nothing is sent to GitHub.
+
+**Flags:**
+
+```
+      --replace[=true|false]   replace the recorded fix commits with those named, instead of adding to them
+```
+
+**Example:**
+
+```
+abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc
 ```
 
 #### `abcd embargo intake`
