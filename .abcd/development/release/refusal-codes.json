@@ -23,6 +23,9 @@
       "code": "capture/unknown-issue"
     },
     {
+      "code": "capture/unknown-reading-record"
+    },
+    {
       "code": "explain/unknown-code"
     },
     {

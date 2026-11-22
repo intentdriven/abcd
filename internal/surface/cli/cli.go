@@ -6777,10 +6777,14 @@ func captureRefusal(verb string, err error) error {
 	return exitWith(2, captureRefusalCode(err), "abcd "+name+": "+msg)
 }
 
-// captureRefusalCode is the code of a refusal the capture core decided, read
-// from its sentinel: the core names none of its own yet, so the front door
-// maps each sentinel captureRefusal refuses on to one code.
+// captureRefusalCode is the code of a refusal the capture core decided: the
+// code the core put on the error where it named one (refusal.Wrap), and
+// otherwise the one the front door maps the sentinel captureRefusal refuses
+// on to.
 func captureRefusalCode(err error) refusal.Code {
+	if c := refusal.CodeOf(err); c != refusal.None {
+		return c
+	}
 	switch {
 	case errors.Is(err, capture.ErrUnknownIssueID):
 		return refusal.CaptureUnknownIssue

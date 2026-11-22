@@ -74,10 +74,13 @@ const (
 	CaptureRemedyMissing      Code = "capture/remedy-missing"
 	CaptureRemedyMachineValue Code = "capture/remedy-machine-value"
 	CaptureUnknownIssue       Code = "capture/unknown-issue"
-	CaptureNotOpen            Code = "capture/not-open"
-	CaptureGroundsRefused     Code = "capture/grounds-refused"
-	CaptureInputInvalid       Code = "capture/input-invalid"
-	CaptureNotCharacterized   Code = "capture/not-characterized"
+	// CaptureUnknownReadingRecord is an id the reading ledger does not hold:
+	// a reading item, an admission, a disposition or a reframe.
+	CaptureUnknownReadingRecord Code = "capture/unknown-reading-record"
+	CaptureNotOpen              Code = "capture/not-open"
+	CaptureGroundsRefused       Code = "capture/grounds-refused"
+	CaptureInputInvalid         Code = "capture/input-invalid"
+	CaptureNotCharacterized     Code = "capture/not-characterized"
 
 	// explain's own refusals.
 	ExplainUnknownPath  Code = "explain/unknown-path"
@@ -189,13 +192,24 @@ var entries = []Entry{
 	{
 		Code:    CaptureUnknownIssue,
 		Summary: "no issue in this checkout's ledger has that id",
-		Explanation: "The id is in none of the ledger's status folders here. Check the id, or list the\n" +
-			"ledger; when the record is on another branch, `abcd peers` shows where.",
+		Explanation: "The issue id (iss-N) is in none of the ledger's status folders here. Check the\n" +
+			"id, or list the ledger; when the record is on another branch, `abcd peers` shows\n" +
+			"where. An id of the reading ledger (rdi-N, adm-N, dsp-N, rfm-N) carries\n" +
+			"capture/unknown-reading-record instead.",
 		Next: "abcd capture list --all",
-		RaisedBy: []string{"abcd capture mentions", "abcd capture resolve", "abcd capture link",
-			"abcd capture promote", "abcd capture disposition", "abcd capture admit",
-			"abcd capture surprise", "abcd capture reframe", "abcd capture wontfix",
-			"abcd capture defer", "abcd capture remedy"},
+		RaisedBy: []string{"abcd capture defer", "abcd capture link", "abcd capture promote",
+			"abcd capture remedy", "abcd capture resolve", "abcd capture wontfix"},
+	},
+	{
+		Code:    CaptureUnknownReadingRecord,
+		Summary: "no reading item, admission, disposition or reframe here has that id",
+		Explanation: "The id (rdi-N, adm-N, dsp-N or rfm-N) names no record the reading ledger holds\n" +
+			"here. Check the id and its kind: `abcd explain` on the command shows which kind\n" +
+			"each argument takes. When the record is on another branch, `abcd peers` shows\n" +
+			"where.",
+		Next: explainCommand,
+		RaisedBy: []string{"abcd capture admit", "abcd capture disposition", "abcd capture promote",
+			"abcd capture reframe", "abcd capture surprise"},
 	},
 	{
 		Code:    CaptureNotOpen,
@@ -212,8 +226,9 @@ var entries = []Entry{
 		Explanation: "The verb records the grounds for what it does, and those given were absent, not one\n" +
 			"of the accepted kinds, malformed, or below the substance floor. Nothing was\n" +
 			"written. The refusal names the accepted kinds; `abcd explain` shows the flag.",
-		Next:     explainCommand,
-		RaisedBy: []string{"abcd capture resolve", "abcd capture wontfix", "abcd capture promote", "abcd capture admit"},
+		Next: explainCommand,
+		RaisedBy: []string{"abcd capture admit", "abcd capture promote", "abcd capture reframe",
+			"abcd capture resolve", "abcd capture surprise", "abcd capture wontfix"},
 	},
 	{
 		Code:    CaptureInputInvalid,
@@ -222,9 +237,10 @@ var entries = []Entry{
 			"record, a release tag or a production mode that is not one: the refusal names\n" +
 			"which. Nothing was written.",
 		Next: explainCommand,
-		RaisedBy: []string{"abcd capture resolve", "abcd capture link", "abcd capture promote",
-			"abcd capture disposition", "abcd capture admit", "abcd capture surprise",
-			"abcd capture reframe", "abcd capture wontfix", "abcd capture defer", "abcd capture remedy"},
+		RaisedBy: []string{"abcd capture", "abcd capture admit", "abcd capture defer",
+			"abcd capture disposition", "abcd capture link", "abcd capture mentions",
+			"abcd capture reframe", "abcd capture remedy", "abcd capture resolve",
+			"abcd capture surprise"},
 	},
 	{
 		Code:    CaptureNotCharacterized,

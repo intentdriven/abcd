@@ -34,6 +34,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -959,7 +960,14 @@ func wrapLocatorErr(err error) error {
 	} {
 		if errors.Is(err, m.leaf) {
 			detail := strings.TrimPrefix(err.Error(), m.leaf.Error())
-			return &locatorError{sentinel: m.ours, cause: err, msg: m.ours.Error() + detail}
+			wrapped := &locatorError{sentinel: m.ours, cause: err, msg: m.ours.Error() + detail}
+			if m.leaf == readingitem.ErrUnknown {
+				// An unknown reading-ledger id is not an issue id, and
+				// `abcd capture list` cannot show it, so it carries the
+				// reading ledger's own code.
+				return refusal.Wrap(refusal.CaptureUnknownReadingRecord, wrapped)
+			}
+			return wrapped
 		}
 	}
 	return err
