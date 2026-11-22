@@ -25,6 +25,10 @@
         {
           "name": "rests-on",
           "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "bool"
         }
       ],
       "inputs": [],

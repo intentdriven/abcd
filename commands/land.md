@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--approve]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--approve] | --state [<branch>|<pr>...]"
 block: people
 ---
 
@@ -353,6 +353,32 @@ checkout or your own worktree. It is the person's own act: **never run it for th
 to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
+
+## Report a pull request's state
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land --state [<branch>|<pr>...] [--json]
+```
+
+`--state` reports each pull request's state and lands nothing
+(iss-2611220942419392). With no operand it reads the current branch's newest
+pull request from this repository; otherwise each branch, or pull request
+number (`N` or `#N`), named. The forge clears a pull request's arming as the
+merge queue takes it, so a check of the arming alone reads a queued pull
+request as dropped; this reads the queue entry itself. Each line says the pull
+request is merged (with when), queued in the merge queue (with the entry's
+state and position), armed for auto-merge and not yet queued, open and not
+armed, removed from the merge queue (with the removal's time and the forge's
+reason, read from the pull request's timeline), closed without merging, or that
+the branch has none. `--json` carries `pull_requests`, each with `number`,
+`branch`, `state` (`merged`, `queued`, `armed`, `open`, `removed`, `closed`,
+`none` or `unread`), and `merged_at`, `queue_state`, `position`, `armed_at`,
+`removed_at`, `removed_reason` or `unread` where they apply.
+
+It reads the forge and writes nothing, and takes no other flag (exit 2). It
+exits 1 when a pull request could not be read, which its line names, and 2 on
+an operand that is neither a branch name nor a number, or on a detached HEAD
+with no operand.
 
 ## Record the review pair's verdicts
 

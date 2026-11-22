@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/landing"
 remedy: "Have abcd land (bare, on a landed branch) or abcd peers report the merge-queue entry's state and position and, when the pull request left the queue, the removal event and its reason, read from the forge timeline, so a heartbeat tells queued from dropped with one command."
+resolution: "abcd land --state reports each pull request as merged with its time, queued with its entry's state and position, armed, open, or removed from the merge queue with the timeline's reason"
+impact: additive
 ---
 
 GitHub clears a pull request's auto-merge request when the merge queue takes it, so a run that checks the armed state reads a queued pull request as dropped. On 22 Nov 2026 an autonomous run had to query the forge's GraphQL timeline by hand to tell that its pull request was second in the queue, not removed.

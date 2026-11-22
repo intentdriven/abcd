@@ -4839,6 +4839,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 abcd land [<branch>] [--no-push] [--no-enqueue]
 abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
+abcd land --state [<branch>|<pr>...]
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -5000,6 +5001,18 @@ gate counts as an approval of that commit, and of no other. It is the
 facilitator's own act, for a pull request they authored (the forge refuses an
 author's approval of their own): the shell guard refuses it to an agent.
 
+--state reports each pull request's state and lands nothing: the checkout's
+current branch's newest pull request from this repository, or each branch or
+pull request number (N or #N) named. One line each says it is merged (and
+when), queued in the merge queue (with the entry's state and position), armed
+for auto-merge but not yet queued, open and not armed, removed from the merge
+queue (with the removal's time and the forge's reason, read from its timeline),
+closed, or that the branch has none. The forge clears a pull request's arming
+as the queue takes it, so this reads the queue entry itself, not the arming.
+It reads the forge and writes nothing; it takes no other flag. Exit 1 when a
+pull request could not be read, which its line names; exit 2 on an operand that
+is neither a branch name nor a number, or a detached HEAD with none named.
+
 **Flags:**
 
 ```
@@ -5008,6 +5021,7 @@ author's approval of their own): the shell guard refuses it to an agent.
       --no-push[=true|false]        do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
       --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
+      --state[=true|false]          report each pull request's state (merged, queued with its position, armed, open, or removed from the queue with the reason); lands nothing
 ```
 
 **Example:**

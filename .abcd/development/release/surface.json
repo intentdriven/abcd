@@ -3327,6 +3327,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "state",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },
