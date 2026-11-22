@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2611211024360819, itd-2609180517121254]
 severity: minor
 ---
 
@@ -47,7 +47,9 @@ Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in t
 
 **Decided 2026-08-29 (product thinker).** The ladder is the answer, not a single fixed level: built-in check by default, two models from one provider where a subscription allows it, different providers where more than one is available, an outside dependency for higher-value work, and a paid audit where the stakes justify it. Security is where the ladder gets built first.
 
-- (SOTA 2026-10-23) Is the ladder one ladder or one per track (security, correctness, docs), given SLSA's finding that tracks let a project climb one aspect without blocking on another?
+**Decided 2026-11-21 (product thinker).** A project chooses a level for each kind of check (security, correctness and documentation), not one level for everything, so that effort goes where the stakes are; the cost accepted is three choices to make and three levels to read. The same day the product thinker chose the order this draft is planned in: third, after [itd-2611211024360819](../planned/itd-2611211024360819-every-result-abcd-gives-says-how-far-it.md) (every result says how far it looked) and [itd-2609180517121254](itd-2609180517121254-every-payload-a-host-hands-back-from-a.md) (a host's payload names its model and its agents), so that how hard a review looked is known before anyone chooses a depth.
+
+- resolved: (SOTA 2026-10-23) Is the ladder one ladder or one per track (security, correctness, docs), given SLSA's finding that tracks let a project climb one aspect without blocking on another? One per track, by the decision of 2026-11-21 above.
 - (SOTA 2026-10-23) What does the record of a rung hold, so that a forge advisory, an independent session's findings and a paid audit's report all land in the same shape?
 
 ## Audit Notes
