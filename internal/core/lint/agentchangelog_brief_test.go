@@ -119,3 +119,32 @@ func TestBriefLayerBGivesNoStaleSecondAgentReason(t *testing.T) {
 		t.Errorf("%s no longer says when the layer-B harness lands", briefRel)
 	}
 }
+
+// The SOTA-audit section once said the research files it is gated on "do not
+// exist for any shipped agent", while the research-driven section of the same
+// chapter says a research file exists for the shipped intent auditor, stranded
+// under its old name (iss-2611060809343029). The section now says what the
+// later one does: no shipped prompt has a research file it can find by name.
+func TestBriefSOTAAuditAgreesResearchFilesAreStranded(t *testing.T) {
+	const briefRel = ".abcd/development/brief/05-internals/05-prompt-quality.md"
+	brief, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(briefRel)))
+	if err != nil {
+		t.Fatalf("read %s: %v", briefRel, err)
+	}
+	text := string(brief)
+	start := strings.Index(text, "## D — periodic SOTA audit")
+	if start < 0 {
+		t.Fatalf("%s has no SOTA-audit section", briefRel)
+	}
+	section := text[start:]
+	if end := strings.Index(section[1:], "\n## "); end >= 0 {
+		section = section[:1+end]
+	}
+	flat := strings.Join(strings.Fields(section), " ")
+	if strings.Contains(flat, "do not exist for any shipped agent") {
+		t.Errorf("%s's SOTA-audit section says research files do not exist for any shipped agent, though the intent auditor's exists under its old name", briefRel)
+	}
+	if !strings.Contains(flat, "no shipped prompt has a research file it can find by name") {
+		t.Errorf("%s's SOTA-audit section does not say no shipped prompt has a research file it can find by name:\n%s", briefRel, flat)
+	}
+}
