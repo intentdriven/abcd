@@ -1,10 +1,12 @@
 package loop
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -246,4 +248,42 @@ func TestABuildOfARecordNotYetOnOriginSaysTheCheckoutIsNotBehind(t *testing.T) {
 	}
 	runTierAbsent(t, repo.Root())
 	noReservations(t, bare)
+}
+
+// TestADrainLaneLeavingItsLandingReadsItsFoundAtFromOrigin
+// (iss-2611010953085251): the drain judged the documentation issue from
+// origin's default branch, and the checkout the run lives in holds no record
+// of it. Origin's default branch moves while the lane is at its landing, so
+// the landing's sync sends the lane back to a fresh round and widens its
+// narrowed reservation back to the issue's found_at, which it reads from
+// origin's record as last fetched rather than refusing because this
+// checkout's ledger lacks it.
+func TestADrainLaneLeavingItsLandingReadsItsFoundAtFromOrigin(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implementOnce(t, "docs/page.md")
+	f.toLandOnce(t)
+	matches, _ := filepath.Glob(filepath.Join(f.repo.Root(), ".abcd", "work", "issues", "*", secondIssue+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("the checkout holds one record of %s: %v", secondIssue, matches)
+	}
+	f.repo.Git("rm", "-q", "--", matches[0])
+	f.repo.Commit("this checkout's ledger without " + secondIssue)
+	pushFromOtherCopy(t, f.bare, "another account's change", func(dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("another account's change\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	due := f.tip(t).claimed.Add(61 * time.Minute)
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return due }})
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageValidate || len(l.Syncs) != 1 {
+		t.Fatalf("the landing's sync sends the lane back to a fresh round: stage %s, syncs %d, step %v", l.Stage, len(l.Syncs), err)
+	}
+	if r, ok := AsRefusal(err); ok && strings.Contains(r.Reason, "in no status folder") {
+		t.Fatalf("the step is refused for the checkout's ledger lacking the record: %v", err)
+	}
+	if fp := f.footprint(t); !slices.Contains(fp, "docs") {
+		t.Fatalf("the lane leaving its landing holds origin's found_at again: %q", fp)
+	}
 }
