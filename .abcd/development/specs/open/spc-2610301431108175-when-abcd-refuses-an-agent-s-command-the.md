@@ -228,10 +228,12 @@ the board (itd-2610031215002409), which reads the same facts once both exist;
    - needs: none
    - packages: internal/core/refusal, internal/surface/cli/cli.go, internal/surface/cli/explain.go, cmd/refusal-codes-sync, internal/core/changelog, .abcd/development/release/refusal-codes.json, .abcd/development/release/refusal-uncoded.txt, commands/explain.md, .abcd/development/brief/04-surfaces/41-explain.md
    - tests: internal/core/refusal/refusal_test.go, internal/surface/cli/refusal_codes_test.go, internal/surface/cli/refusal_envelope_test.go, internal/core/changelog/refusal_ledger_test.go
+   - landed: 46425fc70
 2. Usage errors on every command, hook plane included
    - needs: 1
    - packages: internal/surface/cli/cli.go, internal/surface/cli/usage_errors.go
    - tests: internal/surface/cli/refusal_codes_test.go
+   - landed: 46425fc70
 3. The record verbs' refusals: capture, intent, spec, decide, ideate, reserve, announce, peers, status, embargo and banlist
    - needs: 1
    - packages: internal/surface/cli, internal/core/capture, internal/core/intent, internal/core/spec, internal/core/ideate, internal/core/claim
