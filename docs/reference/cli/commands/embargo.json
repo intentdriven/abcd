@@ -3,7 +3,7 @@
   "commands": [
     {
       "path": "abcd embargo",
-      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb.",
       "usage": "abcd embargo [flags]",
       "flags": [],
       "inputs": [],
@@ -11,6 +11,7 @@
       "subcommands": [
         "check",
         "close",
+        "fixed",
         "intake",
         "publish",
         "triage"
@@ -49,6 +50,19 @@
       ],
       "inputs": [],
       "example": "abcd embargo close GHSA-xxxx-xxxx-xxxx"
+    },
+    {
+      "path": "abcd embargo fixed",
+      "sentence": "Record the commits that fix an advisory under embargo: Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
+      "usage": "abcd embargo fixed <iss-N|GHSA-id> <commit>... [flags]",
+      "flags": [
+        {
+          "name": "replace",
+          "type": "bool"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc"
     },
     {
       "path": "abcd embargo intake",

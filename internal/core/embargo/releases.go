@@ -42,6 +42,12 @@ type releaseTags struct {
 	local          map[string]string // release tag -> object, as this checkout holds it
 	origin         map[string]string // as origin holds it; nil until read
 	onGitHub       map[string]tagWhy // GitHub's answer for each tag asked about
+	// vouch, when set, is asked once before the first question to origin:
+	// a refusal from it refuses that question and every later one. A plan
+	// leaves it unset, having vouched for origin before reading any tag.
+	vouch   func() error
+	vouched error
+	asked   bool
 }
 
 // tagWhy is why a tag is not a published release, and the remedy; both
@@ -149,6 +155,12 @@ func SwapOriginRepoForTest(fn func(top string) (string, error)) (restore func())
 func (rt *releaseTags) published(tag string) (tagWhy, error) {
 	if !isReleaseTag(tag) {
 		return tagWhy{"it is not a release tag", "name a release tag of the form vMAJOR.MINOR.PATCH"}, nil
+	}
+	if rt.vouch != nil && !rt.asked {
+		rt.asked, rt.vouched = true, rt.vouch()
+	}
+	if rt.vouched != nil {
+		return tagWhy{}, rt.vouched
 	}
 	if err := rt.readOrigin(); err != nil {
 		return tagWhy{}, err

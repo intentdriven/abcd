@@ -1,7 +1,7 @@
 ---
 name: embargo
-description: "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb."
-argument-hint: "intake | triage <iss-N|GHSA-id> <verdict> --by <who> [--reason <why>] [--exists-without <why> --cannot-help <why>] | close <iss-N|GHSA-id> [--approve <digest>] | check [--range <a>..<b>] [--file <path>|-]... [--allow <GHSA-id>]... | publish [--release <vX.Y.Z>] [--approve <digest>]"
+description: "Keep private advisories off the public ledger, naming those ready to publish: Writes the embargo store, bare a queued step if away; refuses an unknown sub-verb."
+argument-hint: "[intake | triage <iss-N|GHSA-id> <verdict> --by <who> [--reason <why>] [--exists-without <why> --cannot-help <why>] | fixed <iss-N|GHSA-id> <commit>... [--replace] | close <iss-N|GHSA-id> [--approve <digest>] | check [--range <a>..<b>] [--file <path>|-]... [--allow <GHSA-id>]... | publish [--release <vX.Y.Z>] [--approve <digest>]]"
 block: people
 ---
 
@@ -35,8 +35,63 @@ A refusal for want of a scope names it and the person's own remedy
 a `gh` signed in to no account or holding a token GitHub rejects,
 names `gh auth login`.
 
-Pick the sub-verb from the user's input. With none, ask which step they are
-on; there is no bare listing.
+Pick the sub-verb from the user's input. With none, run the bare listing
+below and show the user what it reports.
+
+## Bare: what is ready to publish
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" embargo --json
+```
+
+Lists each advisory judged a vulnerability and neither closed nor published,
+in id order, in one of three lists. `ready` holds each whose fix a published
+release holds, every fix commit of it: `release` names the first such release
+and `publish_with` the publish command that shows its plan. `waiting` holds
+each whose fix is recorded and not yet in a published release, with the
+`reason`. `no_fix` holds each with no fix recorded. The fix is the commits
+`abcd embargo fixed` recorded, or, with none recorded, the fix commit its
+private record, resolved in the store, names, as the publication plan takes
+it. Which release tags hold a commit is read from the commits as git stores
+them, so a `refs/replace/` entry or a graft does not make a release hold a fix
+it lacks, and a tag counts only as a published release (see Publish below).
+Origin's tags and GitHub's release are read only for a release tag that holds
+a fix, so a fix in no tag asks nothing of the network; an answer that cannot be
+had leaves that advisory waiting, with the reason, rather than refusing the
+listing. A repository with no embargo store reports `no_store: true` and makes
+none.
+
+The listing writes nothing in the store and publishes nothing. Ready means the
+person can publish now, never that abcd will: show the user each ready
+advisory and its `publish_with`, and run the publish only as Publish below
+says. While the person is away (`abcd mode autonomous`), the listing queues
+one step for their return for each ready advisory not queued already, naming
+its private record and the release, never the advisory's id or title; `queued`
+lists the records it queued for, and `abcd mode back` prints the steps. A step
+that cannot be queued is named in `queue_note`, and the listing still
+succeeds.
+
+## Fixed
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" embargo fixed --json <iss-N|GHSA-id> <commit>... [--replace]
+```
+
+Records the commits that fix one advisory judged a vulnerability and neither
+closed nor published, in the store's state and nowhere else: the public ledger
+and this checkout are never written, so the link from the fix to the advisory
+stays private. Name each commit by its id, abbreviated or full; an id that is
+not 7 to 64 lower-case hex digits (a ref name, a tag, anything shaped like an
+option) is refused, and so is one git does not resolve to a single commit of
+this repository. Each is kept by its full id. A commit already recorded is not
+recorded twice, and `--replace` swaps the recorded list for the commits named.
+`fix_commits` is the list now recorded and `added` each commit this call
+added. Every refusal writes nothing.
+
+Run it once the fix lands, with the commit or commits that make it: the bare
+listing then names the advisory ready to publish as soon as a published
+release holds every one, and the publication plan takes them as its fix (see
+Publish below).
 
 ## Intake
 
@@ -251,9 +306,16 @@ first published release holding the commit gives the patched version, as for a
 public record. Such an entry carries `store_evidence: true`. A record resolved in the
 release is always taken first, whatever the store holds.
 
+Fix commits recorded with `abcd embargo fixed` come next: with no record
+resolved in the release, the plan takes them before the store's resolved
+record. Each is checked again to be a commit of this repository, since the
+state is a file on disk, and the first published release holding every one
+gives the patched version. Such an entry carries `store_evidence: true` and
+lists them in `fix_commits`, `fix_commit` being the first.
+
 `left_out` names each advisory the plan does not publish and why: its record
 is resolved neither in the release nor in the store with a fix commit the plan
-accepts, its fix is in no published release up to the release, its package is not set on GitHub, or its
+accepts, and no fix commit it accepts is recorded for it, its fix is in no published release up to the release, its package is not set on GitHub, or its
 summary, description, or any affected package's name or vulnerable functions
 carry a secret, a private name, or another advisory still under embargo
 (a closed one's title included: it stays private on GitHub). Show the user the
@@ -309,8 +371,10 @@ see. The person then lands the record in a change of its own.
 `embargo` does not fix, land or announce anything. These stay with the person:
 
 - fixing each vulnerability, landing the fixes so they are in the release
-  that publishes the advisories, and resolving each private record in the
-  store with its fix commit;
+  that publishes the advisories, and recording each fix with `abcd embargo
+  fixed` or resolving each private record in the store with its fix commit;
+- publishing an advisory the bare listing names ready to publish: the listing,
+  and the step it queues while the person is away, only say so;
 - restoring each record into the public ledger once its advisory is
   published, with the command a plan or an intake names, after comparing its
   body with the published advisory;
@@ -341,6 +405,8 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
   - An example call is `abcd embargo check --range v0.11.0..HEAD`.
 - `abcd embargo close <iss-N|GHSA-id> [flags]`
   - An example call is `abcd embargo close GHSA-xxxx-xxxx-xxxx`.
+- `abcd embargo fixed <iss-N|GHSA-id> <commit>... [flags]`
+  - An example call is `abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc`.
 - `abcd embargo intake [flags]`
   - An example call is `abcd embargo intake`.
 - `abcd embargo publish [flags]`
