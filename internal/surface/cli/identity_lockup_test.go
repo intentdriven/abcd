@@ -62,3 +62,40 @@ func TestIdentityPrintsTheLockupFields(t *testing.T) {
 		}
 	}
 }
+
+// TestIdentityFieldColumnFitsTheBlock holds the value column to the labels the
+// block actually prints: a block without the lockup fields prints byte for byte
+// as it did before they existed, and onboarding's wrote: lines sit in the same
+// column as the fields above them, whichever fields the block carries.
+func TestIdentityFieldColumnFitsTheBlock(t *testing.T) {
+	var old bytes.Buffer
+	renderBlockFields(&old, positioning.Block{Title: "acme", Tagline: "Widgets.", Pitch: "A shop."})
+	if want := "  title:   acme\n  tagline: Widgets.\n  pitch:   A shop.\n"; old.String() != want {
+		t.Errorf("an old block prints\n%q\nwant\n%q", old.String(), want)
+	}
+
+	for _, blk := range []positioning.Block{
+		{Title: "acme", Tagline: "Widgets."},
+		{Name: "acme", Title: "Acme", Descriptor: "a shop", Tagline: "Widgets.", Listing: "Buy widgets."},
+	} {
+		var out bytes.Buffer
+		renderIdentityInit(&out, positioning.InitResult{Block: blk, Wrote: []string{".abcd/positioning.json"},
+			Location: positioning.BlockLocation{File: "brief.md", Heading: "Identity (canonical)"}})
+		col := -1
+		for _, line := range strings.Split(out.String(), "\n") {
+			label, rest, ok := strings.Cut(strings.TrimPrefix(line, "  "), ":")
+			if !ok || !strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "   ") || strings.Contains(label, " ") {
+				continue
+			}
+			c := len(line) - len(strings.TrimLeft(rest, " "))
+			if col == -1 {
+				col = c
+			} else if c != col {
+				t.Errorf("value column %d on %q, want %d like the line above:\n%s", c, line, col, out.String())
+			}
+		}
+		if col == -1 {
+			t.Fatalf("no field lines in:\n%s", out.String())
+		}
+	}
+}
