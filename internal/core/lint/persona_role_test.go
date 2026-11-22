@@ -219,3 +219,53 @@ func TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint(t *testing.T) {
 		}
 	}
 }
+
+// TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator holds
+// itd-2609150819445595's press-release quote to the registry
+// (iss-2610262045546558, iss-2610262032102172): the role picks the name, and
+// personas.json gives the "facilitator" role to one persona, so the quote is
+// attributed to that persona as "a facilitator", and not to Iris, the product
+// thinker, as "a technical facilitator".
+func TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var want string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "facilitator" {
+				want = p.Name
+			}
+		}
+	}
+	if want == "" {
+		t.Fatal("personas.json gives no persona the \"facilitator\" role hint")
+	}
+
+	const rel = ".abcd/development/intents/shipped/itd-2609150819445595-a-debt-nothing-lists-owed-fidelity.md"
+	found := false
+	for i, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+		name, ok := lint.PersonaAttribution(line)
+		if !ok {
+			continue
+		}
+		found = true
+		if name != want {
+			t.Errorf("%s:%d attributes the quote to %s; personas.json gives the facilitator role to %s", rel, i+1, name, want)
+		}
+		if !strings.Contains(line, "said "+name+", a facilitator ") {
+			t.Errorf("%s:%d does not attribute the quote to %q", rel, i+1, name+", a facilitator")
+		}
+	}
+	if !found {
+		t.Errorf("%s holds no quote attributed to a named persona", rel)
+	}
+}
