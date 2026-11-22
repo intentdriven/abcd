@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"os"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -64,4 +65,12 @@ func SwapAfterWalkForTest(fn func()) (restore func()) {
 	prev := afterWalk
 	afterWalk = fn
 	return func() { afterWalk = prev }
+}
+
+// TrimForFloorToForTest is TrimForFloor with Go's trim working to limit rather
+// than the person's configured one, so a small cache stands over it.
+func TrimForFloorToForTest(limit uint64, home, dir string, now time.Time, before func(cache string)) FloorTrim {
+	return trimForFloor(home, dir, now, before, []trimStep{goTrimStep(func(dryRun bool, now time.Time) CacheTrim {
+		return TrimGoCacheToForTest(limit, dryRun, now)
+	})})
 }
