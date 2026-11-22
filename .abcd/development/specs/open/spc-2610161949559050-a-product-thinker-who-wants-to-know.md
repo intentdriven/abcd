@@ -127,3 +127,4 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - tests: pass@1 interval and pass^k; regularised Bradley–Terry with bootstrapped intervals and "not separable"; α with interval or "not estimable"; floors below three judges; a comparison under its power estimate states the smallest detectable difference; the report lists limitations and suggested improvements; a re-run reports drift field by field
    - needs: 1, 4, 5, 6, 7
    - the step that first runs the compliance check on a real trial puts the whole check, every git call and the transcript scan together, under one overall deadline, past which the copy is marked unexamined; step 4 bounds each call alone
+   - landed: 3a24b096b6d0
