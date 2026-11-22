@@ -992,8 +992,7 @@ script, and the startup files the line selects (`BASH_ENV`, `ENV`,
 which are carried out naming the script, the line and the entry; a script
 written earlier on the same line is refused, because the file read at check
 time is not the one that runs, and a write the guard cannot place before it
-warns, a `git -C <dir>` among them unless its subcommand only reads (`status`,
-`log`, `diff`, `show` and the like)
+warns, every `git -C <dir>` among them, whatever its subcommand
 ([adr-2610091150447054](../../decisions/adrs/2610091150447054-the-guard-reads-a-script-the-command.md)). A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what

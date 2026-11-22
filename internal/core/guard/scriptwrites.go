@@ -463,20 +463,19 @@ func (w writerArgs) sedTargets() []writeTarget {
 }
 
 // gitTargets is the paths `git checkout` and `git restore` write, and the
-// directory `git clone` makes. Under `-C`, which moves git to a directory
-// the guard does not follow, every subcommand but one that only reads
-// (gitOnlyReads) is a write the guard does not place: pull, switch, merge,
-// an alias or a subcommand the line does not fix can change any file there.
+// directory `git clone` makes. Every `git -C`, whatever its subcommand, is a
+// write the guard does not place: -C moves git to a directory the guard does
+// not follow, where a subcommand, its options, a configuration value on the
+// line or an alias can change any file.
 func (w writerArgs) gitTargets() []writeTarget {
 	toks := w.s.tokens
 	i := w.from
-	elsewhere := false
 	for i < len(toks) {
 		t := toks[i]
-		if t == "-C" || t == "-c" || t == "--git-dir" || t == "--work-tree" || t == "--namespace" {
-			// -C moves git to another directory, which the guard does not
-			// follow: a write there is not placed here.
-			elsewhere = elsewhere || t == "-C"
+		if t == "-C" {
+			return []writeTarget{unplacedWrite("")}
+		}
+		if t == "-c" || t == "--git-dir" || t == "--work-tree" || t == "--namespace" {
 			i += 2
 			continue
 		}
@@ -488,12 +487,6 @@ func (w writerArgs) gitTargets() []writeTarget {
 	}
 	if i >= len(toks) {
 		return nil
-	}
-	if elsewhere {
-		if gitOnlyReads(toks[i:]) {
-			return nil
-		}
-		return []writeTarget{unplacedWrite("")}
 	}
 	sub := w
 	sub.from = i + 1
@@ -519,45 +512,6 @@ func (w writerArgs) gitTargets() []writeTarget {
 		}
 	}
 	return nil
-}
-
-// gitReadOnly are the git subcommands that change no file in the working
-// tree whatever their arguments, short of an output file (gitOnlyReads).
-var gitReadOnly = []string{"status", "log", "diff", "show", "rev-parse", "ls-files", "ls-tree", "cat-file",
-	"grep", "blame", "describe", "for-each-ref", "merge-base", "rev-list", "show-ref", "symbolic-ref", "var",
-	"version", "help"}
-
-// gitOnlyReads reports whether the git subcommand words args (the
-// subcommand and its arguments) change no file: one of gitReadOnly with no
-// `--output` file, `branch` with no arguments or with `--list`, `remote`
-// with none or `-v` alone, and `config` with `--get` in any of its forms
-// or `--list`. A subcommand the line does not fix, an alias and every other
-// subcommand can write.
-func gitOnlyReads(args []string) bool {
-	if len(args) == 0 || isUnknown(args[0]) {
-		return false
-	}
-	rest := args[1:]
-	switch {
-	case containsString(gitReadOnly, args[0]):
-		for _, a := range rest {
-			if isUnknown(a) || strings.HasPrefix(a, "--output") {
-				return false
-			}
-		}
-		return true
-	case args[0] == "branch":
-		return len(rest) == 0 || containsString(rest, "--list")
-	case args[0] == "remote":
-		return len(rest) == 0 || len(rest) == 1 && (rest[0] == "-v" || rest[0] == "--verbose")
-	case args[0] == "config":
-		for _, a := range rest {
-			if strings.HasPrefix(a, "--get") || a == "--list" || a == "-l" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // tarExtracts reports whether a tar command extracts: a mode letter x in its

@@ -1045,12 +1045,10 @@ a child it starts. The verdicts:
   file that runs. A file the line writes and then runs by path is a **block**
   the same way, whatever the file is (`curl -o x … && ./x`). Write it in one
   command and run it in the next. A write the guard cannot place (`> "$LOG"`,
-  or a `git -C <dir>` whose subcommand can change files there, which is every
-  subcommand but one that only reads: `status`, `log`, `diff`, `show`,
-  `rev-parse`, `ls-files`, `ls-tree`, `cat-file`, `grep`, `blame`, `describe`,
-  `for-each-ref`, `merge-base`, `rev-list`, `show-ref`, `symbolic-ref`, `var`,
-  `version`, `help`, a bare `branch` or `branch --list`, `remote -v` and
-  `config --get`) before a script a shell is pointed at is a **warn**;
+  or any `git -C <dir>`, which works in a directory the guard does not follow,
+  where a subcommand, its options, a configuration value on the line or an
+  alias can change files) before a script a shell is pointed at is a
+  **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
 - a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
@@ -1259,13 +1257,16 @@ besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a backslash,
 or zsh's ranges, groups and operators) or `**` (which zsh reads as any number
 of directories, none among them, and Go's matcher as one), whose files the
 guard cannot name as the shell does, and a file the line writes before
-the launch or may write there by a name it does not fix (`> "$F"`, or a
-`git -C <dir>` whose subcommand does not only read, `git -C ../other pull`),
-one that
+the launch or may write there by a name it does not fix (`> "$F"`, or any
+`git -C <dir>`), one that
 is not a regular file, one over 256 KiB, or one that does not hold a JSON
 object. A write the guard does not read as one (an interpreter's payload, a
 program that rewrites the file in place by its own reading, such as `perl -pi`
-or `sponge`, or `git stash pop`) leaves the file read as it stands now. A settings file that does not exist is not refused,
+or `sponge`, or `git stash pop`) leaves the file read as it stands now. Every
+`git -C` counts as such a write whatever its subcommand, so a line that only
+reads in another directory before the launch (`git -C ../other status; claude
+-p x --settings plain.json`) is refused too, a known over-refusal: run the git
+command on a line of its own. A settings file that does not exist is not refused,
 since claude does not start on it, and other permission modes are left to the
 permission-mode entry, which refuses only the bypass. The entries name each program by
 basename, and match it however the line starts it: by name or path, behind `env`
