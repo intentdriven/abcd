@@ -6199,6 +6199,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve --renew <record-id> [--lease <duration>]
 abcd reserve rel-vX.Y.Z --admit <pr>
 abcd reserve <record-id> --release
 abcd reserve --holder
@@ -6281,6 +6282,16 @@ tracked files it covers on origin's default branch, or HEAD
 of a record you already hold writes its footprint in place of the one held,
 and warns on stderr, naming each held path it leaves out (dropped_footprint in
 --json): name them again to keep holding them.
+
+--renew <record-id> renews your own reservation of an issue or an intent with the
+footprint it already records, so none is named again, from the worktree that
+took it or any other worktree of this checkout. A renewal from another worktree
+keeps the reservation that worktree's (held_from in --json names it), so its own
+renewals and release go on from there. The lease is --lease, or the default 2h.
+A reservation another person holds, one held from another clone or computer,
+and one absent or released back off (exit 3) with nothing pushed; a lapsed one
+of yours is renewed. It takes no footprint, take-over, release or admission,
+and no release subject, which is renewed by reserving it again.
 
 A reservation, a renewal and a take-over consult the embargo store on this
 machine before anything is pushed, as an announcement does: a record the store
@@ -6372,6 +6383,7 @@ exit 2 when it could not run or origin refused a deletion.
       --lease duration           how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --older-than int           with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release[=true|false]     release your reservation from this copy by pushing a tombstone
+      --renew[=true|false]       renew your own reservation with the footprint it records, from any worktree of this checkout
       --sweep[=true|false]       list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over[=true|false]   move your own live reservation from another copy to this one
 ```

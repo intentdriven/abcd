@@ -99,6 +99,7 @@ type reserveOutput struct {
 	Record           string           `json:"record"`
 	Holder           string           `json:"holder"`
 	Copy             string           `json:"copy"`
+	HeldFrom         string           `json:"held_from,omitempty"`
 	Footprint        []string         `json:"footprint"`
 	ClaimedAt        string           `json:"claimed_at"`
 	EffectiveExpiry  string           `json:"effective_expiry"`
@@ -218,12 +219,14 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		release   bool
 		leaseFor  time.Duration
 		holder    bool
+		renew     bool
 		admit     int
 		sweep     *sweepFlags
 	)
 	cmd := &cobra.Command{
 		Use: "reserve <record-id>",
 		Long: "abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]\n" +
+			"abcd reserve --renew <record-id> [--lease <duration>]\n" +
 			"abcd reserve rel-vX.Y.Z --admit <pr>\n" +
 			"abcd reserve <record-id> --release\n" +
 			"abcd reserve --holder\n" +
@@ -300,6 +303,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"of a record you already hold writes its footprint in place of the one held,\n" +
 			"and warns on stderr, naming each held path it leaves out (dropped_footprint in\n" +
 			"--json): name them again to keep holding them.\n\n" +
+			"--renew <record-id> renews your own reservation of an issue or an intent with the\n" +
+			"footprint it already records, so none is named again, from the worktree that\n" +
+			"took it or any other worktree of this checkout. A renewal from another worktree\n" +
+			"keeps the reservation that worktree's (held_from in --json names it), so its own\n" +
+			"renewals and release go on from there. The lease is --lease, or the default 2h.\n" +
+			"A reservation another person holds, one held from another clone or computer,\n" +
+			"and one absent or released back off (exit 3) with nothing pushed; a lapsed one\n" +
+			"of yours is renewed. It takes no footprint, take-over, release or admission,\n" +
+			"and no release subject, which is renewed by reserving it again.\n\n" +
 			"A reservation, a renewal and a take-over consult the embargo store on this\n" +
 			"machine before anything is pushed, as an announcement does: a record the store\n" +
 			"holds, or a footprint naming something under embargo, is refused (exit 2) with\n" +
@@ -383,7 +395,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				if len(args) > 0 {
 					with = append(with, "record id")
 				}
-				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit"} {
+				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit", "renew"} {
 					if cmd.Flags().Changed(f) {
 						with = append(with, "--"+f)
 					}
@@ -411,12 +423,17 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			for _, lone := range []struct {
 				flag string
 				on   bool
-			}{{"--release", release}, {"--admit", cmd.Flags().Changed("admit")}} {
+				// lease is true for a flag that may name a --lease.
+				lease bool
+			}{{"--release", release, false}, {"--admit", cmd.Flags().Changed("admit"), false}, {"--renew", renew, true}} {
 				if !lone.on {
 					continue
 				}
 				var with []string
-				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit"} {
+				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit", "renew"} {
+					if f == "lease" && lone.lease {
+						continue
+					}
 					if "--"+f != lone.flag && cmd.Flags().Changed(f) {
 						with = append(with, "--"+f)
 					}
@@ -424,6 +441,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				if len(with) > 0 {
 					return &exitError{Code: 2, Msg: "abcd reserve: " + lone.flag + " takes no " + strings.Join(with, ", ") + "; nothing was pushed"}
 				}
+			}
+			if renew && strings.HasPrefix(args[0], "rel-") {
+				return &exitError{Code: 2, Msg: "abcd reserve: --renew renews an issue or an intent; a release being cut is renewed by reserving it again (abcd reserve " +
+					termsafe.Sanitize(args[0]) + "); nothing was pushed"}
 			}
 			if cmd.Flags().Changed("admit") && admit <= 0 {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd reserve: --admit takes a pull request number, not %d; nothing was pushed", admit)}
@@ -437,8 +458,12 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
-			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release, Admit: admit, WarnOwnOverlap: true}, claim.Options{Embargo: reserveEmbargoCheck, ForgeUser: reserveForgeUser})
+			req := claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
+				TakeOver: takeOver, Release: release, Admit: admit, WarnOwnOverlap: true}
+			if renew {
+				req = claim.Request{Record: args[0], Lease: leaseFor, Renew: true, AnyWorktree: true}
+			}
+			res, err := claim.Reserve(root, req, claim.Options{Embargo: reserveEmbargoCheck, ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
@@ -459,6 +484,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
 	cmd.Flags().IntVar(&admit, "admit", 0, "on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted")
+	cmd.Flags().BoolVar(&renew, "renew", false, "renew your own reservation with the footprint it records, from any worktree of this checkout")
 	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing")
 	sweep = addSweepFlags(cmd)
 	return cmd
@@ -546,7 +572,7 @@ func reserveRefusal(err error) error {
 // reserveView is a result as a surface shows it: times in RFC 3339 UTC, every
 // value a writer chose sanitised for the terminal.
 func reserveView(res claim.Result) reserveOutput {
-	out := reserveOutput{Act: res.Act, Record: res.Record, Holder: res.Holder, Copy: res.Copy,
+	out := reserveOutput{Act: res.Act, Record: res.Record, Holder: res.Holder, Copy: res.Copy, HeldFrom: termsafe.Sanitize(res.HeldFrom),
 		Footprint: make([]string, 0, len(res.Footprint)), ClaimedAt: rfc3339(res.ClaimedAt),
 		EffectiveExpiry: rfc3339(res.ExpiresAt), Commit: res.Commit,
 		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked)),
@@ -623,7 +649,11 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	case claim.ActReserved:
 		fmt.Fprintf(w, "abcd reserve: reserved %s for %s from this copy until %s\n", out.Record, out.Holder, out.EffectiveExpiry)
 	case claim.ActRenewed:
-		fmt.Fprintf(w, "abcd reserve: renewed %s for %s from this copy until %s\n", out.Record, out.Holder, out.EffectiveExpiry)
+		from := "this copy"
+		if out.HeldFrom != "" {
+			from = out.HeldFrom
+		}
+		fmt.Fprintf(w, "abcd reserve: renewed %s for %s from %s until %s\n", out.Record, out.Holder, from, out.EffectiveExpiry)
 	case claim.ActTakenOver:
 		fmt.Fprintf(w, "abcd reserve: took over %s for %s from this copy until %s\n", out.Record, out.Holder, out.EffectiveExpiry)
 	case claim.ActReleased:

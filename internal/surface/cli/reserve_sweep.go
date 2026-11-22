@@ -48,7 +48,7 @@ func (s *sweepFlags) args(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		with = append(with, "record id")
 	}
-	for _, f := range []string{"footprint", "take-over", "lease", "release", "holder"} {
+	for _, f := range []string{"footprint", "take-over", "lease", "release", "holder", "renew"} {
 		if cmd.Flags().Changed(f) {
 			with = append(with, "--"+f)
 		}

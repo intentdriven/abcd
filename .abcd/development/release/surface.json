@@ -4273,6 +4273,13 @@
           "hidden": false
         },
         {
+          "name": "renew",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "sweep",
           "shorthand": "",
           "type": "bool",

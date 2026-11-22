@@ -59,8 +59,13 @@ type Result struct {
 	Record string
 	Holder string
 	// Copy is CopyThis for every act that pushed, and for a release found
-	// already made, whether the tombstone came from this copy.
-	Copy      string
+	// already made, whether the tombstone came from this copy; CopyAnother
+	// for a renewal from any worktree (Request.AnyWorktree) of a reservation
+	// another worktree of this checkout holds, which HeldFrom then names.
+	Copy string
+	// HeldFrom names the other worktree whose reservation a renewal from any
+	// worktree renewed, "your worktree <path> on this machine"; "" otherwise.
+	HeldFrom  string
 	Footprint []string
 	ClaimedAt time.Time
 	ExpiresAt time.Time
@@ -414,12 +419,23 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if perr := push(root, pushArgs(sha, p.id)); perr != nil {
 		return Result{}, lostRace(p, tree, j, perr)
 	}
-	notePushed(root, p.id, sha)
+	if len(p.heldBy) > 0 {
+		// A renewal for another worktree keeps that worktree's note of its
+		// last push, so its own renewals go on from the commit just pushed.
+		for _, at := range p.heldBy {
+			notePushed(at, p.id, sha)
+		}
+	} else {
+		notePushed(root, p.id, sha)
+	}
 	if !p.req.Release && !p.req.Renew {
 		res.Directories = directoryFootprints(root, j.defaultRef, res.Footprint)
 	}
 	res.Commit = sha
 	res.Copy = CopyThis
+	if len(p.heldBy) > 0 {
+		res.Copy = CopyAnother
+	}
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
@@ -984,7 +1000,7 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 	case !j.mine:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrBackOff,
 			fmt.Sprintf("%s is reserved by %s until %s, not by you; %s", p.id, j.Holder, stamp(exp), nothingPushed))
-	case !j.thisCopy:
+	case !j.thisCopy && !p.renewsForSibling(j):
 		yours := yourCopyAt(siblingCopy(p.root, j.Copy))
 		nh := j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff, fmt.Sprintf("%s is held by %s, until %s; %s", p.id, yours, stamp(exp), nothingPushed))
 		nh.YourCopy = yours
@@ -999,11 +1015,32 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 		p.req.Footprint = append([]string(nil), p.req.Narrow...)
 	}
 	m := p.reservation()
+	if len(p.heldBy) > 0 {
+		// The reservation stays the holding worktree's.
+		m.Copy = j.Copy
+	}
 	// A lane's renewal names its stage; a renewal that names none carries
 	// none, so only the tip's stage is ever read (spc-2610161044461448 step 18).
 	m.Stage = p.req.Stage
 	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
-		ExpiresAt: m.ExpiresAt, Narrowed: narrowed}, m, j.Commit, nil
+		ExpiresAt: m.ExpiresAt, Narrowed: narrowed, HeldFrom: p.heldFrom}, m, j.Commit, nil
+}
+
+// renewsForSibling reports whether a renewal asked for from any worktree
+// (Request.AnyWorktree) renews j, the person's own tip from another copy,
+// for the worktree of this checkout that keeps that copy, and records that
+// worktree on p; false, recording nothing, for any other act or tip.
+func (p *prepared) renewsForSibling(j judged) bool {
+	p.heldBy, p.heldFrom = nil, ""
+	if !p.req.AnyWorktree || !j.mine || j.thisCopy {
+		return false
+	}
+	roots := siblingRoots(p.root, j.Copy)
+	if len(roots) == 0 {
+		return false
+	}
+	p.heldBy, p.heldFrom = roots, yourCopyAt(siblingCopy(p.root, j.Copy))
+	return true
 }
 
 // notHeld is the *NotHeld a judged tip gives an act that needed this
