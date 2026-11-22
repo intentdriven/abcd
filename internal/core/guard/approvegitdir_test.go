@@ -408,7 +408,7 @@ func TestApproveJudgesGitDirWhereTheLineCannotBeReadInOrder(t *testing.T) {
 		// An earlier git command that may change the working tree.
 		`git switch prog && git -C sub log -1`,
 		`git merge prog && git -C sub log -1`,
-		`git stash pop && cd sub && git log -1`,
+		`git checkout prog && cd sub && git log -1`,
 		`git diff --output=prog && git -C sub log -1`,
 		`git log --out=prog && git -C sub log -1`,
 		`git branch prog && git -C sub log -1`,

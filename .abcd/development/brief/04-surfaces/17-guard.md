@@ -125,8 +125,7 @@ support reads them there. In the 30 days to 4 Nov 2026 the guard refused 478 of 
 in only 11 of 110; if main-session refusals more than double on comparable work, the
 most refused hazards go back into what is sent. An entry added to the registry is
 listed and enforced from the same release, with no second edit. A hazard the guard reads in code rather
-than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
-a checkout with more than one worktree), `interpreter-reads-stream` (a shell
+than from the registry, such as `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
@@ -1012,9 +1011,11 @@ with that pipe as its input — and a `pkill` or
 attached, as selecting every session under the account; `pkill`'s signal name
 is read as a signal first, in any case. Flipping a source-ledger line to
 public citation is blocked, because the ledger records that a person chose to
-cite the source, and that choice is the person's to make. In a repository with more
-than one worktree, a stash or pop that does not name its entry is warned about,
-because the stash stack is shared across worktrees. Where the reading is a
+cite the source, and that choice is the person's to make. In a repository with linked
+worktrees, every `git stash` that changes the stash list is warned about, a
+named entry included, because the list is shared across worktrees; `git stash
+list` and `git stash show` are not (`git-stash-shared-stack`, a registry entry
+whose worktree count and subcommand are read in code). Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
 A recursive delete is read by what it deletes. Of the filesystem root or the

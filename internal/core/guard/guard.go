@@ -230,7 +230,8 @@ type Registry struct {
 	Entries       map[string]Entry `json:"entries"`
 
 	// worktrees counts the working trees of the repository this registry was
-	// loaded for (stash.go); nil for a registry with no repository behind it.
+	// loaded for (stash.go, deletes.go); nil for a registry with no repository
+	// behind it.
 	worktrees func() int
 
 	// files is the directory a command runs in and the files the guard has
@@ -681,12 +682,6 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// After the alias pre-pass, so an alias's expansion is read too.
 	segs = expandHooksPathOverrides(segs, r.gitValueFlags())
 
-	// A stash that does not name its entry, in a repository whose stash stack
-	// several worktrees share (iss-2609190338340796). Read after the alias
-	// pre-pass so an alias that expands to `stash pop` is reached too.
-	if sig, ok := r.sharedStashSignal(segs, r.gitValueFlags()); ok {
-		signals = append(signals, sig)
-	}
 	// The person's own acts under any program name (personacts.go), and the
 	// merge rule (merge.go): the merge commands while facilitator.mode is
 	// human, and an approving review on the forge in any mode. The acts come
@@ -809,6 +804,11 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {
+				continue
+			}
+			// The shared stash list's conditions the Pattern language
+			// cannot say (stash.go).
+			if !r.stashEntryStands(id, s) {
 				continue
 			}
 			matchedSeg[i] = true
