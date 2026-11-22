@@ -290,7 +290,7 @@ func (c *composer) head() string { return c.headWith(policyAbout, "", "") }
 func (c *composer) headWith(family, pageTitle, script string) string {
 	title, desc := c.repo.Name, ""
 	if blk, ok := c.identity(); ok {
-		title, desc = blk.Title, blk.Tagline
+		title, desc = blk.Headline(), blk.Tagline
 	}
 	if pageTitle != "" {
 		title = pageTitle + " · " + title
@@ -357,12 +357,13 @@ func (c *composer) identitySrc() string {
 	return srcAttr(c.identityLoc.File, slug(c.identityLoc.Heading))
 }
 
-// brandName is the short handle the header shows beside the mark: the first word
-// of the canonical title, which is the project's own name for itself.
+// brandName is the short handle the header shows beside the mark: the Identity
+// block's name, or failing that the first word of its title, which is the
+// project's own name for itself (positioning.Block.Brand).
 func (c *composer) brandName() string {
 	if blk, ok := c.identity(); ok {
-		if f := strings.Fields(blk.Title); len(f) > 0 {
-			return f[0]
+		if b := blk.Brand(); b != "" {
+			return b
 		}
 	}
 	return c.repo.Name
@@ -610,7 +611,7 @@ func (c *composer) hero() (string, error) {
 	b.WriteString(`<section class="hero"><div class="wrap"><div class="grid"><div>`)
 	blk, haveIdentity := c.identity()
 	if haveIdentity {
-		b.WriteString(`<p class="eyebrow"` + c.identitySrc() + `>` + escapeText(blk.Title) + `</p>`)
+		b.WriteString(`<p class="eyebrow"` + c.identitySrc() + `>` + escapeText(blk.Headline()) + `</p>`)
 	}
 	b.WriteString(`<h1` + srcAttr(p.Rel, "") + `>` + escapeText(h1.Title) + `</h1>`)
 	if lede != "" {
@@ -619,6 +620,9 @@ func (c *composer) hero() (string, error) {
 	b.WriteString(`</div><div class="hero-aside">`)
 	if haveIdentity {
 		b.WriteString(`<p class="tagline"` + c.identitySrc() + `>` + escapeText(blk.Tagline) + `</p>`)
+		if blk.Purpose != "" {
+			b.WriteString(`<p class="purpose"` + c.identitySrc() + `>` + escapeText(blk.Purpose) + `</p>`)
+		}
 		if blk.Pitch != "" {
 			b.WriteString(`<p class="pitch"` + c.identitySrc() + `>` + escapeText(blk.Pitch) + `</p>`)
 		}

@@ -41,14 +41,35 @@ the block lives:
 ```markdown
 ## Identity (canonical)
 
-- **Title:** abcd — Agent-Based Configuration for Development
-- **Tagline:** For people who know what they want to build and need help shipping it.
-- **Pitch:** A single Go binary that carries the why from idea to shipped
-  reality, usable as a plugin in compatible agent harnesses.
+- **Name:** acme
+- **Title:** Automated Catalogue Maintenance Engine
+- **Descriptor:** the catalogue tool for small shops
+- **Tagline:** List it once. Sell it everywhere.
+- **Purpose:** Keep every storefront's catalogue true to the one you keep.
+- **Pitch:** A command-line tool and web panel that syncs one product list to
+  every marketplace a shop sells on.
+- **Listing:** List your products once and sell them on every marketplace.
+  acme keeps every storefront in step.
 ```
 
-Title and tagline are required; the pitch is optional at onboarding and may wrap
-across lines. abcd's own block is the "Identity (canonical)" section of
+Title and tagline are required; every other field is optional, and any of them
+may wrap across lines. The **Name** is what the product is called, apart from its
+title, which may be the name's expansion. The **Descriptor** is a noun phrase that
+completes "<name> is …": what kind of thing the product is and whom it is for.
+The **Purpose** says why the product exists, and the **Pitch** says what it is
+technically. The **Listing** is the line a tool listing shows beside other
+tools, written whole, so a surface such as a plugin manifest carries it as
+written rather than assembling it from other fields, and any surface may use
+it.
+
+The first three lines a reader meets are the lockup: the headline, which is the
+name and its descriptor ("acme — the catalogue tool for small shops"), the
+tagline, and the purpose. A block written before the name, descriptor and
+purpose existed reads exactly as it did: with no name the brand is the title's
+first word, and with neither a name nor a descriptor the headline is the title.
+A block with a name and no descriptor heads on the name and the title ("acme —
+Automated Catalogue Maintenance Engine"). Onboarding asks for the title, tagline
+and pitch, and the other fields are added to the block by hand. abcd's own block is the "Identity (canonical)" section of
 [`01-product/README.md`](../01-product/README.md).
 
 ## What a repo registers
@@ -70,7 +91,16 @@ regular expression with exactly one capture group around the text to compare, or
 a top-level JSON field), which block fields it requires, and the template a
 proposal renders from. The single group is a rule, not a convention: a pattern
 carrying two makes the whole registry invalid and the check refuses to run,
-naming the pattern and the count it found. Leaving the surface list
+naming the pattern and the count it found. A pattern whose capture sits inside a
+quoted string names that string's format with `escape`: `json` for a JSON string
+literal, `yaml` for a YAML double-quoted scalar. The check then compares what the
+string says rather than how it is escaped, and a proposal escapes the rendered
+text for that format, so a block value holding a quote or a backslash neither
+breaks the file nor reports drift that adopting the proposal cannot clear. A
+string that does not decode in its format, an unescaped quote inside it
+included, is reported as drift with the reason rather than compared as written,
+so a broken manifest or citation never reads as a clean pass. A top-level JSON
+field is always read and proposed that way. Leaving the surface list
 empty adopts the canonical three — the README strapline, the plugin manifest
 description, and the conventions-file opening; naming any replaces them, so
 nothing is ever registered silently.

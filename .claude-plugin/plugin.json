@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "abcd",
-  "description": "For people who know what they want to build and need help shipping it. A single Go binary that carries the why from idea to shipped reality, usable as a plugin in compatible agent harnesses.",
+  "description": "The open way to build your idea with the agent you already use. abcd keeps your idea, its decisions, and every check as plain files beside the code.",
   "author": {
     "name": "intentdriven",
     "url": "https://github.com/intentdriven"

@@ -39,6 +39,13 @@ const (
 	// KindJSONField reads a top-level string field of a JSON manifest, so the
 	// registry is not tied to one manifest format.
 	KindJSONField = "json_field"
+
+	// EscapeJSON says a regexp surface's capture is the body of a JSON string
+	// literal.
+	EscapeJSON = "json"
+	// EscapeYAML says a regexp surface's capture is the body of a YAML
+	// double-quoted scalar.
+	EscapeYAML = "yaml"
 )
 
 // Severity levels a repo may set for the whole positioning family.
@@ -77,10 +84,18 @@ type Surface struct {
 	Patterns []string `json:"patterns,omitempty"`
 	// Field (KindJSONField) is the top-level JSON key holding the description.
 	Field string `json:"field,omitempty"`
-	// Requires names the block fields this surface must carry (title, tagline,
-	// pitch). At least one is required.
+	// Escape (KindRegexp) names the quoted string the capture sits inside:
+	// EscapeJSON for the body of a JSON string literal, EscapeYAML for the
+	// body of a YAML double-quoted scalar. The capture is decoded before it is
+	// compared, and a proposal re-escapes the rendered text before splicing it
+	// back, so a block value holding a quote or a backslash neither breaks the
+	// file nor reads as drift that never clears. Empty means the capture is
+	// plain text. A KindJSONField surface is always decoded and re-escaped.
+	Escape string `json:"escape,omitempty"`
+	// Requires names the block fields this surface must carry (any of
+	// FieldNames). At least one is required.
 	Requires []string `json:"requires"`
-	// Template renders the proposed replacement, over {title}/{tagline}/{pitch}.
+	// Template renders the proposed replacement, over the {field} placeholders FieldNames lists.
 	// Empty means the required fields joined by a single space.
 	Template string `json:"template,omitempty"`
 }
@@ -264,9 +279,17 @@ func (s Surface) validate(i int) error {
 				return fmt.Errorf("%w: %s pattern %q has %d capture groups, want exactly 1", ErrConfigInvalid, where, p, n)
 			}
 		}
+		switch s.Escape {
+		case "", EscapeJSON, EscapeYAML:
+		default:
+			return fmt.Errorf("%w: %s.escape must be %q or %q, got %q", ErrConfigInvalid, where, EscapeJSON, EscapeYAML, s.Escape)
+		}
 	case KindJSONField:
 		if strings.TrimSpace(s.Field) == "" {
 			return fmt.Errorf("%w: %s.field is required for kind %q", ErrConfigInvalid, where, KindJSONField)
+		}
+		if s.Escape != "" {
+			return fmt.Errorf("%w: %s.escape applies to kind %q only; a %q surface is always decoded", ErrConfigInvalid, where, KindRegexp, KindJSONField)
 		}
 	default:
 		return fmt.Errorf("%w: %s.kind must be %q or %q, got %q", ErrConfigInvalid, where, KindRegexp, KindJSONField, s.Kind)
@@ -277,7 +300,7 @@ func (s Surface) validate(i int) error {
 	var probe Block
 	for _, f := range s.Requires {
 		if _, ok := probe.Field(f); !ok {
-			return fmt.Errorf("%w: %s.requires names unknown block field %q (want title, tagline, or pitch)", ErrConfigInvalid, where, f)
+			return fmt.Errorf("%w: %s.requires names unknown block field %q (want %s)", ErrConfigInvalid, where, f, fieldVocabulary())
 		}
 	}
 	for _, ph := range placeholderRe.FindAllStringSubmatch(s.Template, -1) {
@@ -286,6 +309,16 @@ func (s Surface) validate(i int) error {
 		}
 	}
 	return nil
+}
+
+// fieldVocabulary spells FieldNames as a list a refusal can name ("a, b or c"),
+// derived from the list itself so the message never falls behind a new field.
+func fieldVocabulary() string {
+	n := len(FieldNames)
+	if n < 2 {
+		return strings.Join(FieldNames, "")
+	}
+	return strings.Join(FieldNames[:n-1], ", ") + " or " + FieldNames[n-1]
 }
 
 // placeholderRe matches a {field} placeholder in a surface template.

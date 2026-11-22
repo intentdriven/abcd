@@ -4,7 +4,9 @@
 
   <h1>Agent-Based Configuration for Development</h1>
 
-  <p>For people who know what they want to build and need help shipping it.</p>
+  <p><strong>abcd — the open way to build your idea, one working prototype at a time.</strong><br>
+  Your idea evolves. The record keeps up.<br>
+  <em>For people who know what they want to build, and want every prototype to match it.</em></p>
 
   <p>
 <!-- BEGIN ABCD:release-badge sha256=7094948651644ba7ca3cd0b237c40538e04bf2975e257cac31caf992ca8652e3 -->
@@ -47,7 +49,7 @@
 
 AI agents are very good at coding but not always at remembering *human intentions* for why the code was written. `abcd` is a host-agnostic configuration layer for intent-driven development, there to help you actually ship what you set out to build, including *what was decided*, *what was rejected*, and on *what evidence*.
 
-In AI-assisted development, this (human) reasoning typically lives in transcripts that are hard to decipher after the fact. `abcd` keeps it as structured records the [product thinker](https://x.com/signulll/status/2030404483897815089), the facilitator, and their agents *do* read: The *intent* that says what shipping looks like, the *decision* that says what was chosen and what was refused, the *specification* that says how to build it, and the *issue ledger* that says what must be revisited. In `abcd`, these structured records are plain files that live *inside* the repository, and they are checked by gates, most of which *refuse* rather than warn, so a record that drifts from the repository is caught rather than noted. Whether what a record claims about the *product* holds is a second judgement: An audit reads a shipped intent's acceptance criteria against the code that shipped and states a verdict on each one. That verdict is recorded, not enforced.
+In AI-assisted development, this (human) reasoning typically lives in transcripts that are hard to decipher after the fact. `abcd` keeps it as structured records the [product thinker](https://x.com/signulll/status/2030404483897815089), the facilitator, and their agents *do* read: The *intent* that says what shipping looks like, the *decision* that says what was chosen and what was refused, the *specification* that says how to build it, and the *issue ledger* that says what must be revisited. In `abcd`, these structured records are plain files that live *inside* the repository, and they are checked by gates, most of which *refuse* rather than warn, so a record that drifts from the repository is caught rather than noted. Whether what a record claims about the *product* holds is a second judgement: An audit reads a shipped intent's acceptance criteria against the code that shipped and states a verdict on each one. That verdict is recorded rather than gating the intent: a criterion judged not met leaves the intent shipped and files a major issue, which the next release cut does not pass while it stays open.
 
 
 ## Built in the open
@@ -172,7 +174,7 @@ repository* button reads:
 
 ```bibtex
 @software{intentdriven_abcd,
-  author  = {{intentdriven}},
+  author  = {Reppel, Alex and {intentdriven}},
   title   = {{abcd}: {Agent-Based} {Configuration} for {Development}},
   url     = {https://github.com/intentdriven/abcd},
   license = {MIT}

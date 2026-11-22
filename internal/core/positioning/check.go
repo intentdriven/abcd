@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"go.yaml.in/yaml/v3"
 )
 
 // maxSurfaceBytes caps a guarded surface read. A README or manifest is small;
@@ -53,6 +54,9 @@ type SurfaceResult struct {
 	Missing []string `json:"missing,omitempty"`
 	// Canonical is what the block says this surface should carry.
 	Canonical string `json:"canonical,omitempty"`
+	// Reason says why a drifted surface drifted when it is not a missing
+	// field: a quoted string that does not decode in its own format.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Report is a whole positioning check: the block it was held to, the family
@@ -116,7 +120,7 @@ func checkSurface(r *os.Root, s Surface, b Block) (SurfaceResult, error) {
 	}
 	res.File = rel
 
-	found, line, located, err := s.locate(data)
+	found, line, located, undecodable, err := s.locate(data)
 	if err != nil {
 		return SurfaceResult{}, fmt.Errorf("surface %q in %s: %w", s.ID, rel, err)
 	}
@@ -125,6 +129,14 @@ func checkSurface(r *os.Root, s Surface, b Block) (SurfaceResult, error) {
 		return res, nil
 	}
 	res.Found, res.Line = found, line
+	if undecodable != "" {
+		// A quoted string that does not decode says nothing a reader of the
+		// file can rely on, so the block's words appearing in it as written
+		// prove nothing: it is drift, with the reason, and the proposal that
+		// replaces it is escaped for the format.
+		res.Status, res.Reason = StatusDrifted, undecodable
+		return res, nil
+	}
 
 	hay := normalize(found)
 	for _, field := range s.Requires {
@@ -184,21 +196,25 @@ type span struct {
 	// escaped reports that the byte range holds an escaped form, so a
 	// replacement must be re-escaped before it is spliced back in.
 	escaped bool
+	// undecodable, when set, says why an escaped capture did not decode in
+	// its format; text is then the capture as written.
+	undecodable string
 }
 
 // locate extracts the surface's self-description and the 1-based line it starts
-// on, reporting whether the locator matched at all.
-func (s Surface) locate(data []byte) (found string, line int, ok bool, err error) {
+// on, reporting whether the locator matched at all and, for a quoted string
+// that did not decode in its format, why.
+func (s Surface) locate(data []byte) (found string, line int, ok bool, undecodable string, err error) {
 	text := normalizeNewlines(data)
 	sp, ok, err := s.locateSpan(text)
 	if err != nil || !ok {
-		return "", 0, false, err
+		return "", 0, false, "", err
 	}
 	if sp.start < 0 {
 		// Located by value but not pinned to a byte range: no citable line.
-		return sp.text, 0, true, nil
+		return sp.text, 0, true, sp.undecodable, nil
 	}
-	return sp.text, 1 + strings.Count(text[:sp.start], "\n"), true, nil
+	return sp.text, 1 + strings.Count(text[:sp.start], "\n"), true, sp.undecodable, nil
 }
 
 // locateSpan finds the byte range the surface's self-description occupies.
@@ -224,7 +240,21 @@ func (s Surface) locateSpan(text string) (span, bool, error) {
 			for end > start && (text[end-1] == '\n' || text[end-1] == '\r') {
 				end--
 			}
-			return span{start: start, end: end, text: text[start:end]}, true, nil
+			sp := span{start: start, end: end, text: text[start:end]}
+			if s.Escape != "" {
+				// The capture is the body of a quoted string: compare what it
+				// says, not how it is spelled, and have a proposal re-escape.
+				// A body that does not decode is never compared at all; the
+				// check reports it, and the proposal that replaces it is
+				// escaped correctly.
+				sp.escaped = true
+				if v, derr := decodeQuoted(s.Escape, sp.text); derr != nil {
+					sp.undecodable = fmt.Sprintf("the quoted %s string does not decode: %v", strings.ToUpper(s.Escape), derr)
+				} else {
+					sp.text = v
+				}
+			}
+			return sp, true, nil
 		}
 		return span{}, false, nil
 	}
@@ -272,6 +302,37 @@ func locateJSONField(text, field string) (span, bool, error) {
 	// Report the value with no usable range: the check still runs, the
 	// re-render declines to propose rather than splicing at a guessed offset.
 	return span{start: -1, end: -1, text: value}, true, nil
+}
+
+// quotedBodyRe matches the inside of a double-quoted string that closes only
+// at its end: every quote in it is escaped. The s flag lets an escape take a
+// newline, since a YAML double-quoted string may end a line with a backslash
+// and continue on the next.
+var quotedBodyRe = regexp.MustCompile(`(?s)^(?:[^"\\]|\\.)*$`)
+
+// decodeQuoted reads body as the inside of a quoted string in the named
+// format, returning the decoder's error when it does not decode. A body with
+// an unescaped quote is refused before any decoder sees it: the string would
+// close at that quote, and go-yaml decodes `"a" b` to "a" without an error,
+// so only this check keeps the rest of the line from passing unread.
+func decodeQuoted(format, body string) (string, error) {
+	if !quotedBodyRe.MatchString(body) {
+		return "", errors.New("an unescaped quote closes the string before its end")
+	}
+	var v string
+	var err error
+	switch format {
+	case EscapeJSON:
+		err = json.Unmarshal([]byte(`"`+body+`"`), &v)
+	case EscapeYAML:
+		err = yaml.Unmarshal([]byte(`"`+body+`"`), &v)
+	default:
+		err = fmt.Errorf("unknown escape format %q", format)
+	}
+	if err != nil {
+		return "", err
+	}
+	return v, nil
 }
 
 // normalizeNewlines renders file bytes as the text every locator works over.
