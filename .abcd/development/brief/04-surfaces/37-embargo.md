@@ -132,10 +132,11 @@ account's alone. `abcd peers` skips the store, counting it without its path.
 ## What stays the person's
 
 Every verdict, every approval, fixing and landing the fixes, resolving each
-private record in the store with its fix, requesting a CVE, and restoring each
-record into the public ledger after publication. The command page,
-[`commands/embargo.md`](../../../../commands/embargo.md), says so to the host
-and to the person.
+private record in the store with its fix, requesting a CVE, restoring each
+record into the public ledger after publication, and putting back any record
+details redacted to land a fix, once the advisory is published. The command
+page, [`commands/embargo.md`](../../../../commands/embargo.md), says so to the
+host and to the person.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
