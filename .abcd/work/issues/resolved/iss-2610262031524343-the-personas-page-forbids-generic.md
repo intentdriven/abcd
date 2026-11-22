@@ -12,6 +12,10 @@ found_at: ".abcd/development/brief/01-product/05-personas.md:5"
 remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): May a press-release quote be attributed to one of abcd's own roles ('a product thinker', 'a technical facilitator') instead of a registry persona? Answers: (a) yes, amend 05-personas.md and itd-79; (b) no, rewrite every such quote to the registered name. Recommended (a): 'a technical facilitator' is one of the framework's two named roles (adr-2609151528057260) and about 47 intents already use role attributions the lint cannot see."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-896bc07753e23357
+resolution: "05-personas.md's codified principle now says a quote attributed to one of abcd's own roles, such as 'a technical facilitator', is not the generic phrasing it forbids, citing dcn-2610271112330536; itd-79 and the page's line 3 already allowed a role alone (9eacbd1d6, fc6fb8edd)."
+impact: internal
+resolved_by:
+  commit: "4df597146abbdf7b795918df2728b0e1b152b843"
 ---
 
 The personas page forbids generic, unnamed quote attributions, but itd-2609201916151817's quote is credited to 'a technical facilitator'.
@@ -24,3 +28,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 05-personas codifies that press-release quotes use named placeholders from the registry, picked by role, and never generic phrasing, because that loses voice. itd-2609201916151817's press-release quote is credited to 'a technical facilitator' with no registered name.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 188.
+
+## Grounds
+
+- pursued: the personas page and itd-2609201916151817's role-only quote no longer contradict each other; TestPersonasPrincipleTellsARoleFromGenericPhrasing holds it, and a consistency pass flagging the pair again would show it wrong
