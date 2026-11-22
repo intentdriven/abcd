@@ -1915,7 +1915,9 @@ again just before it goes; a build that looks one up in the instant between that
 read and the unlink can still fail to open it, and a rerun rebuilds it. Judge
 it by the cache's size, never by free disk: a local snapshot can hold what it deleted.
 
-`ahoy worktree prune` runs the same trim when it removes a worktree. The build loop
+`ahoy worktree prune` runs the same trim when it removes a worktree, and the load
+gate runs it once, inline, before it refuses a waiter at the disk floor, under the
+same hourly pacing (`commands/implement.md`). The build loop
 runs this verb detached whenever it makes a lane, for a build and a drain alike, at
 most once an hour across the account (`~/.abcd.noindex/go-cache-trim.json`), and the
 lane does not wait for it. What a detached run could not do (skipped, an entry it

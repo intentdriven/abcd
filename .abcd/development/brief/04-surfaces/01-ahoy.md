@@ -597,8 +597,9 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  the worktree store's prune verb writes it before
                                  it removes the worktree (itd-2609091014076309)
   go-cache-trim.json, .lock      when the Go build cache's trim last ran and what it
-                                 answered, pacing the trim a lane's start asks for to
-                                 once an hour (iss-2611041338455722)
+                                 answered, pacing the trim a lane's start and the
+                                 load gate's disk floor ask for to once an hour
+                                 (iss-2611041338455722, iss-2611220942266387)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
                                  (itd-2609221656373558)

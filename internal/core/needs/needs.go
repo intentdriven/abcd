@@ -185,6 +185,11 @@ func versionFiles(name string) []string {
 	return slices.Clone(versionFileSets[name])
 }
 
+// VersionFiles is versionFiles for a caller outside the package: the files at a
+// repository's root that say it uses name, the closed set the trim at the load
+// gate's disk floor tells a repository's toolchain by (worktree.TrimForFloor).
+func VersionFiles(name string) []string { return versionFiles(name) }
+
 // checkVersionFile refuses a version file outside name's closed set. A tool
 // with a set must name one, since its version is what abcd checks it by; a
 // tool without one must name none.

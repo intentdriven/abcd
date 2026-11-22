@@ -375,7 +375,17 @@ gates refuse, exiting 1 without waiting, while the volume holding the Go build
 cache or the worktree store has less free space than the disk floor: 4 GiB for
 each preflight the first gate admits at once, and 8 GiB at least; a disk that
 falls below the floor while a gate waits is refused before the gate
-opens. Both gates also wait, never refuse, while the system reports memory
+opens. Before it refuses, a waiter whose low volume holds the Go build cache
+runs the cache trim of each toolchain its checkout uses once
+(iss-2611220942266387): a toolchain is told by a file from its closed set at
+the checkout's root (`go.mod` or `go.work` for Go), and the Go build cache's
+trim, the one abcd has, is the same trim a lane's start runs, down to the
+person's size limit and paced by the same hourly record, so two waiters at the
+floor never both run it. It says on stderr that it is trimming, what each trim
+freed or why it did not run (paced out, a pacing record it could not claim, a
+cache it skipped, or no known toolchain), and the free space after, and refuses
+only if the volume is still under the floor, naming what the trim did.
+Both gates also wait, never refuse, while the system reports memory
 pressure at or above the person's floor (itd-2611012048006057): macOS's own
 pressure level against `load.memory_floor_macos` (`warn` by default, or
 `critical`), or on Linux the share of the last ten seconds some task stalled

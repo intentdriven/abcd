@@ -33,10 +33,14 @@ import (
 // than waits, since nothing frees disk while it sleeps. The refusal names
 // each low volume, its free space and the floor, and, when the cache's own
 // volume is low, the cache's path and size and the age-based trim a person
-// can run. The gate never trims the cache itself: deleting another tool's
-// files is not its call. abcd does so to a size limit in `ahoy worktree prune`,
-// after it removes a worktree, in `ahoy worktree trim-cache`, and, detached and
-// at most hourly, when the build loop makes a lane (worktree.TrimGoCache).
+// can run. Before it refuses, the waiter runs the paced trim of the caches
+// its checkout's toolchains fill once, and refuses only if the volume is still
+// low after it (load_disk_trim.go, iss-2611220942266387); the trim deletes only
+// the Go build cache's own entries, down to the person's size limit
+// (worktree.TrimGoCache). abcd also trims to that limit in `ahoy worktree
+// prune`, after it removes a worktree, in `ahoy worktree trim-cache`, and,
+// detached and at most hourly, when the build loop makes a lane. The load
+// check (CheckLoad) never trims.
 //
 // A platform whose free space abcd cannot read (other than macOS and Linux),
 // or a read that fails, is reported and never refused.
@@ -141,6 +145,9 @@ type DiskCheck struct {
 	goCacheMeasured  bool
 	goCacheTrimmable bool
 	goCacheHome      bool
+	// trimNote is what the waiter's trim at the floor did, or why none ran
+	// (floorTrim.at), for the refusal to name; "" outside a wait.
+	trimNote string
 }
 
 // ReadDisk judges the free space for the account whose home is home ("" is
@@ -398,6 +405,9 @@ func (d DiskCheck) describe() string {
 	}
 	if storeLow {
 		b.WriteString("  Remove the store worktrees no longer in use (git worktree remove <path>), or free space on that volume otherwise.\n")
+	}
+	if d.trimNote != "" {
+		fmt.Fprintf(&b, "  %s\n", d.trimNote)
 	}
 	if d.Reason != "" {
 		fmt.Fprintf(&b, "  Also: %s.\n", d.Reason)
