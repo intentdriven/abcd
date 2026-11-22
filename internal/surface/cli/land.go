@@ -29,7 +29,7 @@ var landSeams landing.Options
 // pull request's merge where the merge gate allows, each step resumable by
 // running the verb again.
 func newLandCommand(asJSON *bool) *cobra.Command {
-	var noPush, noEnqueue, approve bool
+	var noPush, noEnqueue, approve, state bool
 	var reviews []string
 	var restsOn, reviewBrief string
 	cmd := &cobra.Command{
@@ -37,7 +37,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 		Long: "abcd land [<branch>] [--no-push] [--no-enqueue]\n" +
 			"abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]\n" +
 			"abcd land [<branch>] --approve\n" +
-			"abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]\n\n" +
+			"abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]\n" +
+			"abcd land --state [<branch>|<pr>...]\n\n" +
 			"Land a branch whose work is committed: the checkout's current branch, or the one\n" +
 			"named, from the worktree that has it checked out. Each step can be resumed by\n" +
 			"running abcd land again.\n\n" +
@@ -196,9 +197,20 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge\n" +
 			"gate counts as an approval of that commit, and of no other. It is the\n" +
 			"facilitator's own act, for a pull request they authored (the forge refuses an\n" +
-			"author's approval of their own): the shell guard refuses it to an agent.",
+			"author's approval of their own): the shell guard refuses it to an agent.\n\n" +
+			"--state reports each pull request's state and lands nothing: the checkout's\n" +
+			"current branch's newest pull request from this repository, or each branch or\n" +
+			"pull request number (N or #N) named. One line each says it is merged (and\n" +
+			"when), queued in the merge queue (with the entry's state and position), armed\n" +
+			"for auto-merge but not yet queued, open and not armed, removed from the merge\n" +
+			"queue (with the removal's time and the forge's reason, read from its timeline),\n" +
+			"closed, or that the branch has none. The forge clears a pull request's arming\n" +
+			"as the queue takes it, so this reads the queue entry itself, not the arming.\n" +
+			"It reads the forge and writes nothing; it takes no other flag. Exit 1 when a\n" +
+			"pull request could not be read, which its line names; exit 2 on an operand that\n" +
+			"is neither a branch name nor a number, or a detached HEAD with none named.",
 		Args: func(_ *cobra.Command, args []string) error {
-			if len(args) > 1 {
+			if len(args) > 1 && !state {
 				return &exitError{Code: 2, Msg: "abcd land: takes at most one branch, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
 			}
 			return nil
@@ -207,6 +219,18 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
+			}
+			if state {
+				var with []string
+				for _, f := range []string{"no-push", "no-enqueue", "approve", "record-review", "rests-on", "review-brief"} {
+					if cmd.Flags().Changed(f) {
+						with = append(with, "--"+f)
+					}
+				}
+				if len(with) > 0 {
+					return &exitError{Code: 2, Msg: "abcd land: --state lands nothing, so it takes no " + strings.Join(with, ", ") + "; nothing was done"}
+				}
+				return landState(cmd, *asJSON, cwd, args)
 			}
 			if cmd.Flags().Changed("review-brief") {
 				if noPush || noEnqueue || approve || len(reviews) > 0 {
@@ -255,8 +279,52 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringArrayVar(&reviews, "record-review", nil, "record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing")
 	cmd.Flags().StringVar(&reviewBrief, "review-brief", "", "print the return a reviewer writes for the branch's head, or for the commit given as --review-brief=<commit>, a delta's with --rests-on; writes nothing")
 	cmd.Flags().Lookup("review-brief").NoOptDefVal = reviewBriefOfBranch
+	cmd.Flags().BoolVar(&state, "state", false, "report each pull request's state (merged, queued with its position, armed, open, or removed from the queue with the reason); lands nothing")
 	cmd.Flags().StringVar(&restsOn, "rests-on", "", "make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>")
 	return cmd
+}
+
+// landState is `abcd land --state` (iss-2611220942419392): each pull
+// request's state, read from the forge, for the current branch or each branch
+// or number named. It writes nothing; exit 1 when a pull request could not be
+// read.
+func landState(cmd *cobra.Command, asJSON bool, cwd string, args []string) error {
+	root, err := gitutil.CheckoutRoot(cwd, "the pull requests")
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(err.Error()) + "; nothing was read"}
+	}
+	var asks []landing.PRAsk
+	for _, a := range args {
+		ask, err := landing.ParsePRAsk(a)
+		if err != nil {
+			return &exitError{Code: 2, Msg: "abcd land: " + err.Error() + "; nothing was read"}
+		}
+		asks = append(asks, ask)
+	}
+	if len(asks) == 0 {
+		branch, err := gitutil.Run(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+		if err != nil || branch == "" {
+			return &exitError{Code: 2, Msg: "abcd land: --state with no operand reports the current branch's pull request, and HEAD is detached; name a branch or a pull request; nothing was read"}
+		}
+		asks = append(asks, landing.PRAsk{Branch: branch})
+	}
+	states := landing.PRStates(root, landSeams.Forge, asks)
+	view := struct {
+		PullRequests []landing.PRState `json:"pull_requests"`
+	}{states}
+	if err := render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) {
+		for _, s := range states {
+			fmt.Fprintf(w, "abcd land: %s\n", s.Line())
+		}
+	}); err != nil {
+		return err
+	}
+	for _, s := range states {
+		if s.State == landing.PRUnread {
+			return &exitError{Code: 1, Msg: "abcd land: a pull request could not be read; its line says why"}
+		}
+	}
+	return nil
 }
 
 // recordReview is `abcd land --record-review`: it reads each return, bounded,

@@ -24,7 +24,7 @@ person's records group beside `build`, and its page is on a person's `/abcd:` me
 
 ## The steps
 
-The verb takes at most one operand, the branch, and lands the checkout's
+A landing takes at most one operand, the branch, and lands the checkout's
 current branch without one, and is refused on the default branch, on a
 detached HEAD and on a tree with uncommitted changes. A named branch is landed from the worktree that
 has it checked out, because the preflight runs in the branch's own checkout.
@@ -36,6 +36,21 @@ environment and credentials, so the verb is for branches whose content the
 person trusts. With `land.push` and `land.enqueue` both off nothing runs. With
 `land.push` off and `land.enqueue` on the gate still runs, by design: arming a
 pull request says its head is ready to merge, and readiness is the gate.
+
+The state report lands nothing (iss-2611220942419392): it takes any number of
+operands, each a branch or a pull request number, or none for the current
+branch, and says of each pull request whether it is merged and when, queued in
+the merge queue with the entry's state and position, armed and not yet queued,
+open and not armed, removed from the queue with the removal's time and the
+forge's reason from the pull request's timeline, closed, or absent. The forge
+clears a pull request's arming as the queue takes it, so a reader of the arming
+alone takes a queued pull request for a dropped one; the report reads the queue
+entry itself. It is one listing to resolve a branch and one GraphQL read for
+each pull request (`landing.PRStates`), every field pinned in
+`internal/ghcontract`, and it writes nothing. A pull request it cannot read is
+reported so, never left out, and exits 1. The implement verb's heartbeat
+([`27-implement.md`](27-implement.md)) reads its tracked pull requests through
+the same primitive.
 
 Before the steps, the origin and the forge's default branch are checked (see
 the trust boundaries), and then `origin`'s default branch is fetched. A head
@@ -588,5 +603,6 @@ Sub-verbs: none.
 | `--record-review` | stringArray |
 | `--rests-on` | string |
 | `--review-brief` | string |
+| `--state` | bool |
 
 <!-- surface-appendix:end -->

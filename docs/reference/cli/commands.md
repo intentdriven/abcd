@@ -3205,6 +3205,46 @@ reading corpus.
 abcd implement claim iss-2609010000000001 --session s-example --lane cli
 ```
 
+#### `abcd implement heartbeat`
+
+Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.
+
+**Usage:** `abcd implement heartbeat [<branch>|<pr>...]`
+
+An autonomous run's periodic check, in one command:
+
+  1. Reservations: fetches the reservations from origin and renews each of your own
+     reservations of an issue or an intent held from any worktree of this checkout
+     that is live and half through its lease, with its own term, as abcd reserve
+     --renew renews it, and only one whose latest commit the worktree holding it
+     pushed. A lapsed one is reported, never revived; one held from another clone or
+     computer, another person's and a release being cut are left alone.
+  2. Pull requests: reports each tracked pull request as abcd land --state does:
+     merged, queued with its position, armed, open and not armed, removed from the
+     merge queue with the reason, or closed. The tracked ones are your open pull
+     requests from this repository's branches, and each the last heartbeat read that
+     was not yet merged or closed, so a merge is reported once; or the branches and
+     numbers (N or #N) named, alone.
+  3. Disk: reports the free space against the load gate's disk floor, read as
+     abcd implement load reads it.
+
+It keeps what it read in .abcd/.work.local/heartbeat.json and prints one line when
+nothing changed since the last heartbeat, and otherwise one line for each change: a
+fact that is new, in another state, or gone. A renewal that only moved a lease on
+is no change. --json carries the same: changed, summary, changes (each with was or
+gone where it applies) and every fact read (items).
+
+It writes only the reservation renewals and its own state file; it trims nothing.
+A read it cannot make (the fetch, the listing, a pull request, the disk) is reported
+as a fact, never fatal. Exit 2 on an operand that is neither a branch name nor a
+number, or outside a checkout.
+
+**Example:**
+
+```
+abcd implement heartbeat --json
+```
+
 #### `abcd implement join`
 
 Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.
@@ -4887,6 +4927,7 @@ abcd land [<branch>] [--no-push] [--no-enqueue]
 abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
 abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]
+abcd land --state [<branch>|<pr>...]
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -5061,6 +5102,18 @@ gate counts as an approval of that commit, and of no other. It is the
 facilitator's own act, for a pull request they authored (the forge refuses an
 author's approval of their own): the shell guard refuses it to an agent.
 
+--state reports each pull request's state and lands nothing: the checkout's
+current branch's newest pull request from this repository, or each branch or
+pull request number (N or #N) named. One line each says it is merged (and
+when), queued in the merge queue (with the entry's state and position), armed
+for auto-merge but not yet queued, open and not armed, removed from the merge
+queue (with the removal's time and the forge's reason, read from its timeline),
+closed, or that the branch has none. The forge clears a pull request's arming
+as the queue takes it, so this reads the queue entry itself, not the arming.
+It reads the forge and writes nothing; it takes no other flag. Exit 1 when a
+pull request could not be read, which its line names; exit 2 on an operand that
+is neither a branch name nor a number, or a detached HEAD with none named.
+
 **Flags:**
 
 ```
@@ -5070,6 +5123,7 @@ author's approval of their own): the shell guard refuses it to an agent.
       --record-review stringArray      record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
       --rests-on string                make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
       --review-brief string[="HEAD"]   print the return a reviewer writes for the branch's head, or for the commit given as --review-brief=<commit>, a delta's with --rests-on; writes nothing
+      --state[=true|false]             report each pull request's state (merged, queued with its position, armed, open, or removed from the queue with the reason); lands nothing
 ```
 
 **Example:**
@@ -6314,6 +6368,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve --renew <record-id> [--lease <duration>]
 abcd reserve rel-vX.Y.Z --admit <pr>
 abcd reserve <record-id> --release
 abcd reserve --holder
@@ -6396,6 +6451,16 @@ tracked files it covers on origin's default branch, or HEAD
 of a record you already hold writes its footprint in place of the one held,
 and warns on stderr, naming each held path it leaves out (dropped_footprint in
 --json): name them again to keep holding them.
+
+--renew <record-id> renews your own reservation of an issue or an intent with the
+footprint it already records, so none is named again, from the worktree that
+took it or any other worktree of this checkout. A renewal from another worktree
+keeps the reservation that worktree's (held_from in --json names it), so its own
+renewals and release go on from there. The lease is --lease, or the default 2h.
+A reservation another person holds, one held from another clone or computer,
+and one absent or released back off (exit 3) with nothing pushed; a lapsed one
+of yours is renewed. It takes no footprint, take-over, release or admission,
+and no release subject, which is renewed by reserving it again.
 
 A reservation, a renewal and a take-over consult the embargo store on this
 machine before anything is pushed, as an announcement does: a record the store
@@ -6487,6 +6552,7 @@ exit 2 when it could not run or origin refused a deletion.
       --lease duration           how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --older-than int           with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release[=true|false]     release your reservation from this copy by pushing a tombstone
+      --renew[=true|false]       renew your own reservation with the footprint it records, from any worktree of this checkout
       --sweep[=true|false]       list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over[=true|false]   move your own live reservation from another copy to this one
 ```

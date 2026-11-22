@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|widen|record|outage] …"
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|widen|record|outage|heartbeat] …"
 block: agents
 user-invocable: false
 ---
@@ -2394,6 +2394,50 @@ renewal runs through git and gh, no
 waiter counts another's git or gh child as its command, so gate make or go,
 never git or gh itself.
 
+## Take the run's heartbeat
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement heartbeat [<branch>|<pr>...] [--json]
+```
+
+`implement heartbeat` is an autonomous run's periodic check in one command
+(iss-2611220942554289), where a run used to compose it by hand from a handful
+of shell commands each time, any of which could drift or be skipped. Call it
+on the run's schedule (every half hour, say) and act only on what it reports.
+It does three things:
+
+- **Reservations.** It fetches the reservations from `origin` and renews each
+  of your own reservations of an issue or an intent held from any worktree of
+  this checkout that is live and half through its lease, with its own term, as
+  `abcd reserve --renew` renews it. The worktree that took each keeps it. It
+  renews only a reservation whose latest commit the worktree holding it
+  pushed. A lapsed one is reported, never revived; one held from another clone
+  or computer, another person's and a release being cut are left alone.
+- **Pull requests.** It reports each tracked pull request as `abcd land
+  --state` does: merged, queued with its position, armed, open and not armed,
+  removed from the merge queue with the forge's reason, or closed. The tracked
+  ones are your open pull requests from this repository's branches and each one
+  the last heartbeat read that was not yet merged or closed, so a merge is
+  reported once; or, when you name branches or numbers (`N` or `#N`), those
+  alone.
+- **Disk.** It reports the free space against the load gate's disk floor, read
+  as `implement load` reads it. It trims nothing; `abcd ahoy worktree
+  trim-cache` does.
+
+It keeps what it read in `.abcd/.work.local/heartbeat.json` and prints one line
+when nothing changed since the last heartbeat, and otherwise one line for each
+change: a fact that is new, in another state (named after it, `(was …)`), or
+gone. A renewal that only moved a lease on is no change. The first heartbeat in
+a checkout reports every fact. `--json` carries `at`, `previous_at`, `changed`,
+`summary`, `changes` (each with `kind`, `key`, `state`, `line`, and `was` or
+`gone` where it applies) and `items`, every fact read.
+
+It writes only the renewals and its own state file. A read it cannot make, the
+fetch, the listing of your pull requests, one pull request or the disk, is
+reported as a fact, never fatal, and a state file it cannot read or keep is
+named on stderr. Exit 2 on an operand that is neither a branch name nor a
+number, or outside a checkout.
+
 ## Wait out a lost connection
 
 ```bash
@@ -2479,6 +2523,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd implement check lane --session s-example`.
 - `abcd implement claim <record> --session <id> --lane <lane> [flags]`
   - An example call is `abcd implement claim iss-2609010000000001 --session s-example --lane cli`.
+- `abcd implement heartbeat [<branch>|<pr>...] [flags]`
+  - An example call is `abcd implement heartbeat --json`.
 - `abcd implement join --session <id> --role first|second [flags]`
   - An example call is `abcd implement join --session s-example --role first`.
 - `abcd implement leave --session <id> [flags]`

@@ -222,6 +222,8 @@ var sentences = map[string]string{
 		"Writes the session's record and a session_open line; refuses the other role on a resume.",
 	"abcd implement leave": "Leave the run, releasing every claim this session holds: " +
 		"Writes the releases and a session_close line; refuses without --session.",
+	"abcd implement heartbeat": "Renew the run's reservations, report its pull requests and disk, say what changed: " +
+		"Writes renewals and its state file; refuses an operand naming no branch.",
 	"abcd implement load": "Check the load before abcd's tests start, or wait for capacity: " +
 		"Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
 	"abcd implement log": "Append one of the run's events to today's run log: " +

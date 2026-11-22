@@ -29,6 +29,10 @@
         {
           "name": "review-brief",
           "type": "string"
+        },
+        {
+          "name": "state",
+          "type": "bool"
         }
       ],
       "inputs": [],

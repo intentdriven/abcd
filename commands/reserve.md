@@ -1,7 +1,7 @@
 ---
 name: reserve
 description: "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3."
-argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | rel-vX.Y.Z [--lease <duration>] | rel-vX.Y.Z --admit <pr> | <record-id|rel-vX.Y.Z> --release | --holder | --sweep [--apply] [--older-than <days>]"
+argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | rel-vX.Y.Z [--lease <duration>] | rel-vX.Y.Z --admit <pr> | --renew <record-id> [--lease <duration>] | <record-id|rel-vX.Y.Z> --release | --holder | --sweep [--apply] [--older-than <days>]"
 block: agents
 user-invocable: false
 ---
@@ -97,6 +97,31 @@ was read from; the text form warns of each on stderr. Pass them on to the
 user, and reserve again naming the files the work changes.
 
 Tell the user what was reserved and until when.
+
+## Renew a reservation you hold
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve --renew iss-2609020716570699 --json
+```
+
+`--renew <record-id>` renews your own reservation of an issue or an intent
+with the footprint it already records, so no `--footprint` is named again
+(iss-2611220942285216). It runs from the worktree that took the reservation
+or from any other worktree of the same checkout. A renewal from another
+worktree keeps the reservation that worktree's: the commit names that
+worktree's copy, its own note of the last push moves to the renewal, and its
+renewals and its release go on from there. The payload then carries `copy`
+`another` and `held_from`, "your worktree … on this machine", and the text
+reads `renewed <record> for <holder> from your worktree … on this machine
+until <time>`. The lease is `--lease`, or the default two hours. A lapsed
+reservation of yours is renewed too, judged for overlap as a new one would be.
+
+It backs off (exit 3), pushing nothing, when the reservation is another
+person's, when it is held from another clone or another computer (renew it
+there, or move it here with `--take-over`), and when it is absent or
+released. It takes no `--footprint`, `--take-over`, `--release` or `--admit`
+(exit 2), and no release subject (exit 2): a release being cut is renewed by
+reserving it again.
 
 ## Reserve a release before cutting it
 

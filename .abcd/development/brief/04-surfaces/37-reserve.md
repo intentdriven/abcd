@@ -50,6 +50,17 @@ leaves out, neither named again nor beneath a directory it names, which no
 longer holds anything off (`dropped_footprint`, a warning on stderr in the text form,
 iss-2610290507512835). Its lease is from one minute to 24 hours, two hours by
 default. A release takes no footprint, take-over or lease.
+A fourth form, the renewal, names a record alone and renews the person's own
+reservation of an issue or an intent with the footprint it already records, so no
+footprint is named again, from the worktree that took it or any other
+worktree of the same checkout (iss-2611220942285216). A renewal from another
+worktree keeps the reservation that worktree's: the commit names its copy, the
+note of the copy's last push in that worktree's local tier moves to the
+renewal, and its own renewals and release go on from there; the act names it
+(`held_from`). It backs off another person's reservation, one held from
+another clone or computer, and an absent or released one, with nothing pushed,
+and takes no footprint, take-over, release, admission or release subject. Its
+lease is the lease flag, or two hours.
 A reservation, a renewal and a take-over first consult the embargo store on
 this machine, as an announcement does: a record the store holds, a footprint
 naming something under embargo, or a store that cannot be read refuses the
@@ -1061,6 +1072,7 @@ Sub-verbs: none.
 | `--lease` | duration |
 | `--older-than` | int |
 | `--release` | bool |
+| `--renew` | bool |
 | `--sweep` | bool |
 | `--take-over` | bool |
 

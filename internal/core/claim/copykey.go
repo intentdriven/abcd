@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
 )
 
@@ -117,6 +118,27 @@ func siblingCopy(root, key string) string {
 	}
 	sibs, _ := siblingCopies(root, ownCopyKey(root))
 	return sibs[key].Path
+}
+
+// siblingRoots is the root of every other worktree of the checkout at root
+// that keeps key as its copy key, unredacted, for writing to its local tier;
+// nil when none does, key is this copy's own, or the worktrees cannot be
+// listed.
+func siblingRoots(root, key string) []string {
+	if !validCopyKey(key) || key == ownCopyKey(root) {
+		return nil
+	}
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, wt := range wts {
+		if !wt.Bare && ownCopyKey(wt.Path) == key {
+			out = append(out, wt.Path)
+		}
+	}
+	return out
 }
 
 // yourCopyAt names a copy of the person's own that is not this one: "your
