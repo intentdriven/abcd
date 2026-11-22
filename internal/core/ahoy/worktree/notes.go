@@ -10,7 +10,9 @@ package worktree
 // transcript store runs, so there is one redaction path. The tier is read
 // whole and redacted before anything is written: a file the pass cannot vouch
 // for (not text, over the cap, a residual it cannot mask) fails the archive
-// with nothing written, and a failed archive keeps the worktree.
+// with nothing written, and a failed archive keeps the worktree. abcd's own
+// re-derivable output in the tier, the built binary and the generated-set
+// cache, is left out instead (leftOut).
 
 import (
 	"bytes"
@@ -19,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -32,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // NotesRel is the notes archive, relative to the caller's home.
@@ -70,6 +74,45 @@ func hasBuildName(rel string) bool {
 		return rel == builtBinaryRel
 	}
 	return pid != "" && strings.Trim(pid, "0123456789") == ""
+}
+
+// generatedSetRel is the generated-set cache the reservation views keep,
+// relative to the tier, and generatedSetHead is how it opens: its magic and
+// the NUL ending it. The cache is re-derived by the next view and is no note,
+// and its fields are NUL-separated, so archiving it would keep every worktree
+// a view ever ran in (iss-2611181412255215). The archive leaves it out, and
+// prune removes it with the worktree.
+var (
+	generatedSetRel  = strings.TrimPrefix(localtier.GeneratedSetRel, tierRel+"/")
+	generatedSetHead = localtier.GeneratedSetMagic + "\x00"
+)
+
+// isGeneratedSet reports whether the regular file at p, tier-relative rel, is
+// the generated-set cache. It takes both the name and how the file opens: text
+// holds no NUL, so text at that name is what a person wrote, as is a file there
+// that opens any other way, and each is judged as a note. A file it cannot read
+// is no cache, and the walk names it.
+func isGeneratedSet(p, rel string) bool {
+	if rel != generatedSetRel {
+		return false
+	}
+	f, _, err := fsutil.OpenRegular(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, len(generatedSetHead))
+	if _, err := io.ReadFull(f, head); err != nil {
+		return false
+	}
+	return string(head) == generatedSetHead
+}
+
+// leftOut reports whether the regular file at p, tier-relative rel, is abcd's
+// own re-derivable output, which the archive leaves out: the built binary or
+// the generated-set cache.
+func leftOut(p, rel string) bool {
+	return isBuildProduct(p, rel) || isGeneratedSet(p, rel)
 }
 
 // isText reports whether data is what the redaction pass can vouch for.
@@ -155,7 +198,7 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 		if err != nil {
 			return named(repoRoot, rel, causeOf(err))
 		}
-		if d.IsDir() || (d.Type().IsRegular() && isBuildProduct(p, rel)) {
+		if d.IsDir() || (d.Type().IsRegular() && leftOut(p, rel)) {
 			return nil
 		}
 		if len(notes) == maxNoteFiles {

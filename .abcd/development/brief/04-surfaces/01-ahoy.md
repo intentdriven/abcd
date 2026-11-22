@@ -369,7 +369,11 @@ The appendix lists the sub-verbs and their options.
   quiet unmerged one the person names on the command line. Each worktree gets a
   row, `reclaimed`, `quiet` or `kept` with its reason. Before a removal it copies
   the local tier, redacted, into the notes archive beside a manifest, and a tier
-  it cannot archive keeps the worktree. The removal is `git worktree remove`
+  it cannot archive keeps the worktree. abcd's own files in the tier, which it
+  makes again when needed, are left out and go with the worktree: the binary
+  `scripts/abcd.sh` builds and the reservation views' generated-set cache, each
+  known by its path and by what it holds, so text a person writes at either
+  path is archived (iss-2611181412255215). The removal is `git worktree remove`
   without its force option; the prune never deletes a branch and never runs the
   repository-wide `git worktree prune`. Files git ignores outside the local tier
   go with the worktree unarchived (iss-2610272112319234 holds that finding), so
