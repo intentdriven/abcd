@@ -305,8 +305,10 @@ func locateJSONField(text, field string) (span, bool, error) {
 }
 
 // quotedBodyRe matches the inside of a double-quoted string that closes only
-// at its end: every quote in it is escaped.
-var quotedBodyRe = regexp.MustCompile(`^(?:[^"\\]|\\.)*$`)
+// at its end: every quote in it is escaped. The s flag lets an escape take a
+// newline, since a YAML double-quoted string may end a line with a backslash
+// and continue on the next.
+var quotedBodyRe = regexp.MustCompile(`(?s)^(?:[^"\\]|\\.)*$`)
 
 // decodeQuoted reads body as the inside of a quoted string in the named
 // format, returning the decoder's error when it does not decode. A body with

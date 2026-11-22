@@ -217,3 +217,31 @@ func TestSurfaceEscapeIsValidated(t *testing.T) {
 		t.Error("an escape on a json_field surface is accepted")
 	}
 }
+
+// A YAML double-quoted string may end a line with a backslash and continue on
+// the next, which is valid YAML: such a string reads ok, and the quote check
+// does not mistake the continuation for an unescaped quote. A string with a
+// bare quote in it still reads drifted.
+func TestYAMLLineContinuationReadsOK(t *testing.T) {
+	s := Surface{ID: "citation-abstract", Kind: KindRegexp, Files: []string{"CITATION.cff"},
+		Patterns: []string{`(?s)abstract: "((?:[^"\\]|\\.)*)"`}, Escape: EscapeYAML,
+		Requires: []string{"title"}, Template: "{title}"}
+	cfg := Config{SchemaVersion: 1, Block: BlockLocation{File: "brief.md", Heading: "Identity (canonical)"}, Surfaces: []Surface{s}}
+	brief := "# Product\n\n## Identity (canonical)\n\n- **Title:** Acme Catalogue Engine\n- **Tagline:** List it once.\n"
+	for _, c := range []struct {
+		name, abstract string
+		want           Status
+	}{
+		{"continued", "abstract: \"Acme Catalogue \\\n  Engine\"\n", StatusOK},
+		{"bare quote", "abstract: \"Acme \"Catalogue\" \\\n  Engine Acme Catalogue Engine\"\n", StatusDrifted},
+	} {
+		root := writeRepo(t, map[string]string{"brief.md": brief, "CITATION.cff": "cff-version: 1.2.0\n" + c.abstract})
+		rep, err := Check(root, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rep.Surfaces[0]; got.Status != c.want {
+			t.Errorf("%s: reads %s (found %q, reason %q), want %s", c.name, got.Status, got.Found, got.Reason, c.want)
+		}
+	}
+}
