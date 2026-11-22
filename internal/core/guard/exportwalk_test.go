@@ -409,7 +409,8 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 // their own, so as an option value it can set a variable: `"$@"` and
 // `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `$=V`,
 // `"$^@"` and `"${(f)V}"`, and, read the same way without listing which
-// yield several, `"$*"`, `"${v:-x}"` and a substitution.
+// yield several, `"$*"` and `"${v:-x}"`. A quoted substitution, `"$(…)"` or
+// `"$((…))"`, is one word.
 func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t *testing.T) {
 	r := Defaults()
 	for line, id := range map[string]string{
@@ -440,8 +441,6 @@ func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t 
 		`env -u "$*" opencode run x`:               "agent-launch-opencode-config-env",
 		`env -u "${a[*]}" opencode run x`:          "agent-launch-opencode-config-env",
 		`env -u "${v:-x}" opencode run x`:          "agent-launch-opencode-config-env",
-		`env -u "$(cat v)" opencode run x`:         "agent-launch-opencode-config-env",
-		`env -u "$((n))" opencode run x`:           "agent-launch-opencode-config-env",
 		`env -u "$!" opencode run x`:               "agent-launch-opencode-config-env",
 		`env -u x"$@" opencode run x`:              "agent-launch-opencode-config-env",
 		`env -u "$v$@" opencode run x`:             "agent-launch-opencode-config-env",
@@ -470,6 +469,8 @@ func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t 
 		`env -u x"$v" opencode run x`,
 		`sudo -u "$u" opencode run x`,
 		`sudo -u "${u}" opencode run x`,
+		`env -u "$(cat v)" opencode run x`,
+		`env -u "$((n))" opencode run x`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)

@@ -46,3 +46,27 @@ func TestGuardReadsAQuotedPositionalAsOneOptionValue(t *testing.T) {
 		`env -u ${1} opencode run x`:        "agent-launch-opencode-config-env",
 	})
 }
+
+// TestGuardReadsAQuotedSubstitutionAsOneOptionValue: a double-quoted command
+// substitution or arithmetic expansion, `"$(…)"`, its backtick spelling or
+// `"$((…))"`, is one word in bash and zsh, whatever it prints, so as the
+// value of one of env's or sudo's options it is that option's value. An
+// unquoted one, or a quoted one beside an expansion that can yield several
+// words, is still read as possibly several.
+func TestGuardReadsAQuotedSubstitutionAsOneOptionValue(t *testing.T) {
+	checkOptionValues(t, []string{
+		`sudo -u "$(id -un)" opencode run x`,
+		"sudo -u \"`id -un`\" opencode run x",
+		`env -u "$(cat v)" opencode run x`,
+		`env -C "$(pwd)/sub" claude -p x`,
+		`env -C "$((n+1))" claude -p x`,
+	}, map[string]string{
+		`env -u $(cat v) opencode run x`:             "agent-launch-opencode-config-env",
+		"env -u `cat v` opencode run x":              "agent-launch-opencode-config-env",
+		`env -u $((n)) opencode run x`:               "agent-launch-opencode-config-env",
+		`env -u "$(cat v)"$@ opencode run x`:         "agent-launch-opencode-config-env",
+		`env -u "$(cat v)$@" opencode run x`:         "agent-launch-opencode-config-env",
+		`env -u "${(f)$(cat v)}" opencode run x`:     "agent-launch-opencode-config-env",
+		`sudo -u "$(id -un)" "$PAIR" opencode run x`: "agent-launch-opencode-config-env",
+	})
+}

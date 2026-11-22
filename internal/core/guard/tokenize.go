@@ -600,9 +600,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
-		// curSplit records, for the word being built, that an unquoted
-		// command substitution left its mark in it; fieldSplits rides with
-		// the segment (segment.fieldSplit).
+		// curSplit records, for the word being built, that an expansion
+		// that can yield several words left its mark in it: an unquoted
+		// command substitution, or a quoted parameter expansion other than
+		// a plain name or positional; fieldSplits rides with the segment
+		// (segment.fieldSplit).
 		curSplit    bool
 		fieldSplits map[int]bool
 		// spells rides with the segment (segment.spelled); curVarAt records,
@@ -1578,8 +1580,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						start := len(segs)
 						arithmetic(line[j+3 : end-1])
 						feedFrom(start)
+						// Quoted, the number it prints is one word.
 						addCur([]byte(arithmeticOperand), 0)
-						curSplit = true
 						j = end + 1
 						continue
 					}
@@ -1606,8 +1608,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					start := len(segs)
 					follow(text)
 					feedFrom(start)
+					// Quoted, what it prints is one word, however many
+					// lines or spaces it holds.
 					addCur([]byte{unknownMark}, 0)
-					curSub, curSplit = true, true
+					curSub = true
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken reads the
 					// word with that text in the output's place.
