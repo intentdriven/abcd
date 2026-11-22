@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/github"
 )
 
 // TestAReleaseReArmsWhileTheRecordLagsItsOwnTombstone: the forge's record of
@@ -96,16 +98,17 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 	}
 }
 
-// TestAWithdrawalIsVouchedForOnlyWithinTheWalk: octo's newest push within
-// the 64 commits read, beneath commits another login pushed, is read and
-// re-armed from when the commit beneath it, the reservation, is read too, so
-// the walk shows that push first recorded #11; one at the walk's last commit,
-// or past it, is not, and nothing is re-armed.
+// TestAWithdrawalIsVouchedForOnlyWithinTheWalk: octo's newest push beneath
+// commits another login pushed is read and re-armed from when the commit
+// beneath it, the reservation, is read too, so the walk shows that push first
+// recorded #11: at the first page's last commit, or past it, the walk reads on
+// a page at a time; at the last commit it reads on to, or past it, it is not,
+// and nothing is re-armed.
 func TestAWithdrawalIsVouchedForOnlyWithinTheWalk(t *testing.T) {
 	for _, c := range []struct {
 		renewals int
 		rearmed  bool
-	}{{maxChain - 2, true}, {maxChain - 1, false}, {maxChain, false}} {
+	}{{maxChain - 2, true}, {maxChain - 1, true}, {maxChain, true}, {maxChainRead - 2, true}, {maxChainRead - 1, false}} {
 		w := newWorld(t)
 		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
 		p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -305,11 +308,24 @@ func TestAPersonsOwnPushOfSeveralCommitsVouchesForEach(t *testing.T) {
 	}
 }
 
-// TestTheWalkReadsTheSixtyFourCommitsTheBriefNames: brief 37 and the launch
-// check's remedy name the walk's bound, 64 commits; the tests above pin the
-// behaviour at whatever bound is set, this pins the bound itself.
+// TestTheWalkReadsTheSixtyFourCommitsTheBriefNames: brief 37 and the
+// reserve page name the walk's bounds, a page of 64 commits read on to at
+// most 512; the tests above pin the behaviour at whatever bounds are set,
+// this pins the bounds themselves.
 func TestTheWalkReadsTheSixtyFourCommitsTheBriefNames(t *testing.T) {
-	if maxChain != 64 {
-		t.Fatalf("maxChain = %d; brief 37 and the launch check's remedy say 64", maxChain)
+	if maxChain != 64 || maxChainRead != 512 {
+		t.Fatalf("maxChain = %d, maxChainRead = %d; brief 37 and the reserve page say 64 and 512", maxChain, maxChainRead)
+	}
+}
+
+// TestTheRecordOfPushesIsReadToTheSixHundredActivitiesTheBriefNames: brief
+// 37 and the reserve page name how far the forge's record of pushes to a
+// release branch is read, a page of 100 activities at a time up to 600; this
+// pins the bound, and that the forge's page the fake answers is the one the
+// reader counts by.
+func TestTheRecordOfPushesIsReadToTheSixHundredActivitiesTheBriefNames(t *testing.T) {
+	if github.ActivityPage != forgeActivityPage || maxPushPages != 6 || maxPushPages*github.ActivityPage < maxChainRead {
+		t.Fatalf("a page of %d, %d pages; brief 37 and the reserve page say six pages of 100, at least the %d commits the walk reads",
+			github.ActivityPage, maxPushPages, maxChainRead)
 	}
 }

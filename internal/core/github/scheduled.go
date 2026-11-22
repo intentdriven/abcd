@@ -47,12 +47,12 @@ func ValidRunURL(s string) bool { return runURLRe.MatchString(s) }
 // newest first, at most scheduledRunsPage of them. It answers none and no error
 // when the forge lists none. An answer holding anything that is not such a run,
 // or does not read as one, is an error: only runs it can vouch for replace what
-// a caller knew. gh is ended when ctx does.
+// a caller knew. The read of origin's URL and gh are both ended when ctx does.
 func ScheduledRuns(ctx context.Context, cwd, workflow, branch string) ([]ScheduledRun, error) {
 	if !PlainName(workflow) {
 		return nil, fmt.Errorf("the workflow name is not a plain file name, so it will not be used to build an API path")
 	}
-	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
+	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return nil, fmt.Errorf("this checkout has no origin remote to ask about")
 	}

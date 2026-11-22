@@ -167,11 +167,19 @@ relay; pass it only when the user names the address. `--behind-proxy` trusts
 the proxy's `X-Forwarded-For` entry as each visitor's address, and belongs to
 the team's relay behind its host's proxy. On loopback without it, a visitor
 is counted by the tailnet address Tailscale Serve forwards, and only when the
-connection itself comes from loopback. By default it admits a page from
-`https://abcdesign.app` or loopback; `--origin` (repeatable) replaces that
-list, so the relay then admits exactly the origins named, and without
-`--origin` so does `ABCD_SESSION_ORIGINS`, a comma list of origins, which the
-blueprint sets on the team's relay. An entry for a page served below a base
+connection itself comes from loopback. Every client that connects to the
+loopback listener directly, with no address Serve forwards, is counted under
+one shared key, whatever loopback address and port it connects from, so a
+client that reconnects keeps the wrong-code count and connection count it
+had. A process
+on this computer can write the header Serve writes, so the address it
+forwards cannot tell such a process from a tailnet visitor. By default it
+admits a page from `https://abcdesign.app` alone, and no loopback page;
+`--origin` (repeatable) replaces that list, so the relay then admits exactly
+the origins named, and without `--origin` so does `ABCD_SESSION_ORIGINS`, a
+comma list of origins, which the blueprint sets on the team's relay. A
+session page served on this computer, while working on it, is admitted only
+by naming its exact origin, as `--origin http://127.0.0.1:<port>`. An entry for a page served below a base
 path names it after the origin, as `page --base-path` wrote it
 (`https://<host>/<base>/`); the sign-in's callback forwards only to the
 page's own base path, the root for an entry that names none. `--json` prints the
@@ -213,7 +221,7 @@ that is not an origin, `ABCD_SESSION_GITHUB_APP_TYPE` set to anything but
 address it cannot listen on.
 
 The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
-address, an IPv6 /48, or a tailnet address by itself), past which a new one is refused with 503; 30 seconds
+address, an IPv6 /48, a tailnet address by itself, or, on loopback, every direct client together), past which a new one is refused with 503; 30 seconds
 for a connection to host, join or rejoin; 1,024 queued items and 8 MiB per
 connection, past which that connection is dropped; a member's updates to 60 a
 second in bursts of 200; an awareness message to 8 KiB, one connection's

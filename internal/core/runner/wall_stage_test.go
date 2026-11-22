@@ -383,7 +383,7 @@ func TestProgramsAreResolvedOnce(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", early+string(os.PathListSeparator)+late)
-	PinPrograms("git", "make", "gh")
+	PinPrograms("", "git", "make", "gh")
 	if err := os.WriteFile(filepath.Join(early, "git"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -443,9 +443,40 @@ func TestPinningKeepsEachNamesFirstMatch(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", gnu+string(os.PathListSeparator)+system)
-	PinPrograms("git", "make")
+	PinPrograms("", "git", "make")
 	if got, err := exec.LookPath("make"); err != nil || got != filepath.Join(gnu, "make") {
 		t.Fatalf("make resolves to %q %v", got, err)
+	}
+}
+
+// TestAProgramInsideTheWorkingTreeIsNotPinned: a name PATH finds inside the
+// working tree of the directory the drive runs for, from any directory in it, is
+// not moved ahead on PATH; a name found outside it still is.
+func TestAProgramInsideTheWorkingTreeIsNotPinned(t *testing.T) {
+	checkout, system := t.TempDir(), t.TempDir()
+	bin, sub := filepath.Join(checkout, "bin"), filepath.Join(checkout, "pkg")
+	for _, d := range []string{filepath.Join(checkout, ".git"), bin, sub} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{filepath.Join(bin, "make"), filepath.Join(system, "git")} {
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, dir := range []string{checkout, sub} {
+		path := system + string(os.PathListSeparator) + bin
+		t.Setenv("PATH", path)
+		PinPrograms(dir, "make")
+		if got := os.Getenv("PATH"); got != path {
+			t.Fatalf("from %s, a make inside the working tree was pinned: PATH is %q, want %q", dir, got, path)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+system)
+		PinPrograms(dir, "make", "git")
+		if first := filepath.SplitList(os.Getenv("PATH"))[0]; first != system {
+			t.Fatalf("from %s, PATH starts with %q, want only the directory outside the working tree, %q", dir, first, system)
+		}
 	}
 }
 

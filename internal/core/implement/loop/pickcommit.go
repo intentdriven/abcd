@@ -28,6 +28,7 @@ package loop
 // else on the branch or in the worktree is refused and left where it is.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -313,7 +314,7 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 	rel := filepath.ToSlash(it.Path)
 
 	branchRef := "refs/heads/" + branch
-	revs, err := gitutil.Run(c.RepoRoot, "rev-list", "--reverse", base+".."+branchRef, "--")
+	revs, err := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "rev-list", "--reverse", base+".."+branchRef, "--")
 	if err != nil {
 		return "", fmt.Errorf("listing %s past its base: %v", branch, err)
 	}
@@ -393,7 +394,7 @@ func expectedPickRecord(repoRoot, wt string, st State, rel, base string) (string
 	if err != nil {
 		return "", err
 	}
-	was, err := gitutil.RunCappedBytes(repoRoot, maxIntentBytes, "cat-file", "blob", base+":"+rel)
+	was, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxIntentBytes, "cat-file", "blob", base+":"+rel)
 	if err != nil {
 		return "", fmt.Errorf("the record at the lane's base cannot be read: %v", err)
 	}
@@ -403,17 +404,19 @@ func expectedPickRecord(repoRoot, wt string, st State, rel, base string) (string
 // isPickCommit reports whether sha is this run's record-only commit: its
 // parent is the base, its subject is the pick's, it changes the picked
 // intent's record at rel and no other path, and that record is byte for byte
-// the base's with this run's one entry appended.
+// the base's with this run's one entry appended. Every read is of the commit
+// as stored (gitutil.AsStoredEnv): no replace ref, graft file or commit-graph
+// stands in for its parent, its message or what it holds.
 func isPickCommit(repoRoot, wt string, st State, rel, sha, base string) (bool, string) {
-	parent, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", sha+"^1^{commit}", "--")
+	parent, err := gitutil.RunCappedAsStored(repoRoot, maxGitOutput, "rev-parse", "--verify", "--quiet", sha+"^1^{commit}", "--")
 	if err != nil || parent != base {
 		return false, "its parent is not the lane's base"
 	}
-	subject, err := gitutil.Run(repoRoot, "log", "-1", "--format=%s", sha, "--")
+	subject, err := gitutil.RunCappedAsStored(repoRoot, maxGitOutput, "log", "-1", "--format=%s", sha, "--")
 	if err != nil || subject != pickSubject(st) {
 		return false, "its subject is not the pick's"
 	}
-	files, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "--no-renames", sha, "--")
+	files, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxGitOutput, "diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "--no-renames", sha, "--")
 	if err != nil || string(files) != rel+"\x00" {
 		return false, "it changes a path other than " + st.Intent + "'s record, or more than that record"
 	}
@@ -421,7 +424,7 @@ func isPickCommit(repoRoot, wt string, st State, rel, sha, base string) (bool, s
 	if err != nil {
 		return false, "the record it should carry cannot be built: " + fsutil.RedactHome(err.Error())
 	}
-	got, err := gitutil.RunCappedBytes(repoRoot, maxIntentBytes, "cat-file", "blob", sha+":"+rel)
+	got, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), repoRoot, "", maxIntentBytes, "cat-file", "blob", sha+":"+rel)
 	if err != nil {
 		return false, "its record cannot be read"
 	}

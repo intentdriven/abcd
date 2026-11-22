@@ -230,6 +230,46 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 	}
 }
 
+// TestSyncRepoPinsRewritesNothingThroughALinkedDirectory: when the templates
+// directory is a symlink to a directory outside the tree, the sync refuses
+// rather than reading or rewriting the templates there.
+func TestSyncRepoPinsRewritesNothingThroughALinkedDirectory(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "tree")
+	realRoot := repoRoot(t)
+	for _, pair := range syncTargets() {
+		copyInto(t, realRoot, root, pair.workflow)
+		copyInto(t, realRoot, root, pair.template)
+	}
+	wfPath := filepath.Join(root, filepath.FromSlash(ReleaseYMLPath))
+	before := readFile(t, wfPath)
+	current := regexp.MustCompile(`actions/attest@\S+ # \S+`).FindString(before)
+	if current == "" {
+		t.Fatal("release.yml no longer pins actions/attest; pick another action for this test")
+	}
+	bumped := strings.ReplaceAll(before, current, "actions/attest@1111111111111111111111111111111111111111 # v9.9.9")
+	if err := os.WriteFile(wfPath, []byte(bumped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tmplDir := filepath.Dir(filepath.Join(root, filepath.FromSlash(releaseTemplateRel)))
+	outside := filepath.Join(parent, "outside-templates")
+	if err := os.Rename(tmplDir, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, tmplDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	outsideTmpl := filepath.Join(outside, filepath.Base(releaseTemplateRel))
+	tmplBefore := readFile(t, outsideTmpl)
+
+	if _, err := SyncRepoPins(root, true); err == nil {
+		t.Fatal("the sync read and rewrote templates behind a linked directory")
+	}
+	if got := readFile(t, outsideTmpl); got != tmplBefore {
+		t.Fatal("the sync rewrote a template outside the tree")
+	}
+}
+
 func copyInto(t *testing.T, fromRoot, toRoot, rel string) {
 	t.Helper()
 	dst := filepath.Join(toRoot, filepath.FromSlash(rel))

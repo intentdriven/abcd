@@ -112,7 +112,9 @@ scanner (a token, a key, the caller's own home or identity) refuses the cut,
 named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
 release digest, then the changelog heading; a failure rolls the earlier writes
-back. A fixes-only cut writes no page.
+back. Each write and each rollback resolves inside the repository, so a
+directory that links out of it fails the step rather than receiving the file.
+A fixes-only cut writes no page.
 
 **A repository that declares a digest gets the cut appended to it.** The
 repository's own `.abcd/config.json` (the repository layer alone) may declare
@@ -186,7 +188,9 @@ It reads the required gates from the committed `release.yml`, derives the
 content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it — one reader, which a test holds to the
 release job's verdict and reasons on the same repository state by running the
-workflow's step beside it. It names each missing or non-PROMOTE receipt and the
+workflow's step beside it. The derivation and the release tags' reads take
+history as git stores it, with no replace ref, graft file or commit-graph in
+force. It names each missing or non-PROMOTE receipt and the
 commit the receipt must name, and each finding the gate's closed disposition
 vocabulary refuses: from release-gate manifest schemaVersion 2 a finding is
 exactly `fixed`, `invalid` or `deferred`, and a deferred one names, in a
@@ -228,7 +232,10 @@ verifies only (it tags too when the caller passes `create_tag: true`). Every sca
 managed repository's workflow carries gate plumbing and a **named empty build
 job**: abcd does not guess how a repository builds (iss-2608270559310755), so the
 job holds one step to fill and names `dist/` as its output, and the publish job
-attaches whatever is left there. The verify job's Go leg renders only for a
+attaches whatever is left there. Every scaffolded file is read and written
+inside the repository: where a directory on the way to a planned file is a
+symlink leading out of it, the run stops with an error and writes nothing there,
+whether or not the person confirmed overwriting a hand-edited file. The verify job's Go leg renders only for a
 repository with a `go.mod`. Every file is wired to the repo's own default branch
 and Go version and to the check names its own pull-request CI reports,
 token-scoped and injection-safe. The check
@@ -512,7 +519,11 @@ only writes are to a private temporary tree it removes.
 The payload is an **include list**, pinned in
 `.abcd/config/launch-payload.json`, over one tree. Everything not named is
 excluded, along with anything `.gitignore` matches. The list is the only
-mechanism that can put a path *into* the release artefact.
+mechanism that can put a path *into* the release artefact. It is read only as a
+regular file of at most 64 KiB inside the repository: a symlink, a FIFO or
+device, or a file reached through a directory that links out of the repository
+is refused as unreadable, and the pinned scripts closure beside it is read on
+the same terms.
 
 The `.abcd/` exclusion is not an entry on a deny list: it is **structural**
 (`internal/core/launch/bundle.go`, per

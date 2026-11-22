@@ -19,7 +19,7 @@ impact: additive
 
 > **Every shipped intent owes a fidelity review, and abcd now says which ones are still owed.** The close that ships an intent mints the review receipt and marks the intent as owed; until now nothing counted those marks across the record, so a session that wanted to pay the debt enumerated the shipped intents by hand or grepped the decision log for receipt ids. With this change the intent lifecycle board shows the count, a read-only listing names every owed intent with its receipt, and the record dispatcher on a shipped intent says "fidelity review owed" with the command that re-emits the request, instead of "none". Nothing refuses: the close mints the debt in the same change, so a gate on it would block by construction. The listing makes the debt visible; a host still runs the auditor.
 >
-> "I asked what was outstanding and got a list of eight, with the command to re-emit each one," said Iris, a technical facilitator paying down a run's review debt. "Last week the same question was a grep through the decision log."
+> "I asked what was outstanding and got a list of eight, with the command to re-emit each one," said Nia, a facilitator paying down a run's review debt. "Last week the same question was a grep through the decision log."
 
 ## Why This Matters
 

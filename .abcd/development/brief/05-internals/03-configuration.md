@@ -1916,7 +1916,7 @@ names the file that set each figure; a refused value leaves it at the defaults
 with the refusal written in and named on stderr, and the domain stays bundled
 either way. Its recall keywords are words of asking and
 choosing (`which`, `choose`, `decide`, `options`, `interview`, …), so it lands
-in most sessions, at about 1,100 tokens. A bundled `rules.json` that declares
+in most sessions; `abcd rules --json` gives its size in bytes. A bundled `rules.json` that declares
 it by hand panics at load, as one declaring `SHELL` does. It reaches every
 managed repository through the binary, abcd's own repository included, which
 declares no override of it; to every loader contract it is an ordinary bundled

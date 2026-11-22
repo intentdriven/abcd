@@ -94,6 +94,22 @@ func TestPersonaGlossaryScopesItsRuleToAModelledUser(t *testing.T) {
 	}
 }
 
+// TestPersonasPageAllowsAQuoteAttributedToARoleAlone holds the brief's
+// personas page to the same ruling as itd-79 (iss-2610262032106392,
+// dcn-2610271112330536): a press-release quote may be attributed to a role
+// alone, with no name, and only a name that is used must come from the
+// registry. The page said every quote uses a registered name.
+func TestPersonasPageAllowsAQuoteAttributedToARoleAlone(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/01-product/05-personas.md")
+	flat := strings.Join(strings.Fields(body), " ")
+	for _, want := range []string{"a role alone", "itd-79", "dcn-2610271112330536"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("05-personas.md does not say %q: a quote may be attributed to a role alone, as itd-79 allows by dcn-2610271112330536:\n%s", want, body)
+		}
+	}
+}
+
 // TestTheProductThinkerQuotesNameTheRegisteredPersona holds the press release
 // and itd-106 to one name for the product-thinker role (iss-2610262031403463):
 // the registry picks the name from the role, so each quote attributed to "a
@@ -201,5 +217,97 @@ func TestProductThinkerGlossaryLetsAPersonaCarryTheRoleHint(t *testing.T) {
 		if !strings.Contains(flat, want) {
 			t.Errorf("product-thinker.md's \"When NOT to use\" does not say %q:\n%s", want, section)
 		}
+	}
+}
+
+// TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator holds
+// itd-2609150819445595's press-release quote to the registry
+// (iss-2610262045546558, iss-2610262032102172): the role picks the name, and
+// personas.json gives the "facilitator" role to one persona, so the quote is
+// attributed to that persona as "a facilitator", and not to Iris, the product
+// thinker, as "a technical facilitator".
+func TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var reg struct {
+		Personas []struct {
+			Name      string   `json:"name"`
+			RoleHints []string `json:"role_hints"`
+		} `json:"personas"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, root, ".abcd/development/personas.json")), &reg); err != nil {
+		t.Fatal(err)
+	}
+	var want string
+	for _, p := range reg.Personas {
+		for _, h := range p.RoleHints {
+			if h == "facilitator" {
+				want = p.Name
+			}
+		}
+	}
+	if want == "" {
+		t.Fatal("personas.json gives no persona the \"facilitator\" role hint")
+	}
+
+	const rel = ".abcd/development/intents/shipped/itd-2609150819445595-a-debt-nothing-lists-owed-fidelity.md"
+	found := false
+	for i, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+		name, ok := lint.PersonaAttribution(line)
+		if !ok {
+			continue
+		}
+		found = true
+		if name != want {
+			t.Errorf("%s:%d attributes the quote to %s; personas.json gives the facilitator role to %s", rel, i+1, name, want)
+		}
+		if !strings.Contains(line, "said "+name+", a facilitator ") {
+			t.Errorf("%s:%d does not attribute the quote to %q", rel, i+1, name+", a facilitator")
+		}
+	}
+	if !found {
+		t.Errorf("%s holds no quote attributed to a named persona", rel)
+	}
+}
+
+// TestPersonasPrincipleTellsARoleFromGenericPhrasing holds the personas
+// page's codified principle to the ruling (iss-2610262031524343,
+// dcn-2610271112330536): it forbids generic "a hypothetical user" phrasing,
+// and a quote attributed to one of abcd's own roles, such as "a technical
+// facilitator" (itd-2609201916151817), is not that phrasing, because the
+// role gives the quote its voice. The principle says so, and the
+// persona_registry rule leaves such a quote alone.
+func TestPersonasPrincipleTellsARoleFromGenericPhrasing(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/01-product/05-personas.md")
+	principle := body
+	if i := strings.Index(principle, "**Codified abcd principle:**"); i >= 0 {
+		principle = principle[i:]
+	} else {
+		t.Fatalf("05-personas.md has no codified principle")
+	}
+	if i := strings.Index(principle, "\n\n"); i >= 0 {
+		principle = principle[:i]
+	}
+	flat := strings.Join(strings.Fields(principle), " ")
+	for _, want := range []string{"a hypothetical user", "a technical facilitator", "is not generic"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("05-personas.md's principle does not say %q: a quote attributed to a role such as a technical facilitator is not the generic phrasing it forbids:\n%s", want, principle)
+		}
+	}
+
+	const rel = ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md"
+	quoted := false
+	for _, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+		if !strings.Contains(line, "said a technical facilitator") {
+			continue
+		}
+		quoted = true
+		if name, ok := lint.PersonaAttribution(line); ok {
+			t.Errorf("%s attributes its quote to the name %q; the ruling allows a role alone, with no name", rel, name)
+		}
+	}
+	if !quoted {
+		t.Errorf("%s holds no quote attributed to a technical facilitator", rel)
 	}
 }

@@ -378,10 +378,10 @@ func detectDependencies(cwd string, judge bool) []Gap {
 }
 
 // onPath reports whether tool is installed where abcd would run it from: PATH
-// resolves it to an absolute program outside the checkout at root. A program
-// PATH resolves inside the checkout, lexically or after symlinks, is
-// repository content that the installer refuses to run, so it does not count
-// as installed either; the judgement is the installer's own (tools.WithinTree).
+// resolves it to an absolute program outside root and every git working tree
+// root lies in. A program PATH resolves inside the checkout, lexically or
+// after symlinks, is repository content that the installer refuses to run, so
+// it does not count as installed either; the judgement is the installer's own (tools.WithinTree).
 // abcd's own recorded copy counts wherever it is (tools.Resolve), since that is
 // the copy abcd runs.
 func onPath(root, tool string) bool {

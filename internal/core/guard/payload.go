@@ -1427,6 +1427,11 @@ func payloadsOf(s segment) []payloadRef {
 	for _, p := range promptPayloads(s.tokens) {
 		add(kindShell, familyShell, p, nil, false)
 	}
+	// A zsh glob qualifier that runs code runs it as eval runs a string
+	// (segment.qualifierCode).
+	for _, p := range s.qualifierCode {
+		add(kindShell, familyShell, p, nil, false)
+	}
 	for _, w := range []string{"env", "sudo"} {
 		known, guessed := starts(arrivals, w)
 		for _, group := range []struct {
@@ -2519,6 +2524,20 @@ func fetchedScriptSignal() payloadSignal {
 		reason: "This command runs a script the same line downloads to a file (curl or wget writes it, then a shell, `source` or the path runs it), " +
 			"so what runs is text the guard has not read, as if the download were piped into the shell.",
 		successor: "Download the script in one command, read it, and run it in the next, where the guard reads the file the shell runs.",
+	}
+}
+
+// qualifierUnfixedSignal is the fail-closed verdict for a zsh glob qualifier
+// list that holds an expansion (segment.qualifierUnfixed): zsh reads the
+// qualifiers from the expanded text, so the code an `e` or `+` qualifier in
+// it runs is not text the guard can read.
+func qualifierUnfixedSignal() payloadSignal {
+	return payloadSignal{
+		verdict: VerdictBlock,
+		family:  familyShell,
+		reason: "This command glues a `(` holding a variable, a substitution or a backquote to a word, which zsh reads as glob qualifiers " +
+			"once it has expanded them, so code a qualifier runs (`e:…:`, `+name`) would be text the guard has not read.",
+		successor: "Write the qualifiers out on the line (`*(.)`, `*(e:'…':)`), or list the files another way (`find`), so the guard reads what runs.",
 	}
 }
 

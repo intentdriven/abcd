@@ -3,6 +3,7 @@ package machineload
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -190,5 +191,27 @@ func TestLooksLikeGoCache(t *testing.T) {
 		if got := LooksLikeGoCache(dir); got != want {
 			t.Errorf("LooksLikeGoCache(%s) = %v, want %v", dir, got, want)
 		}
+	}
+}
+
+// TestGoEnvCacheAsksOnlyTheGoItIsGiven: GoEnvCache runs the go program its
+// caller found and no other; given none, it is exec.ErrNotFound and runs
+// nothing, whatever PATH holds.
+func TestGoEnvCacheAsksOnlyTheGoItIsGiven(t *testing.T) {
+	bin, cache := t.TempDir(), t.TempDir()
+	marker := filepath.Join(t.TempDir(), "ran")
+	script := "#!/bin/sh\ntouch '" + marker + "'\necho '" + cache + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	if got, err := GoEnvCache(""); !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("GoEnvCache(\"\") = %q, %v; want exec.ErrNotFound", got, err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("a go found on PATH ran (%v)", err)
+	}
+	if got, err := GoEnvCache(filepath.Join(bin, "go")); err != nil || got != cache {
+		t.Fatalf("GoEnvCache(the go given) = %q, %v; want %q", got, err, cache)
 	}
 }

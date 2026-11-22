@@ -240,7 +240,17 @@ const SeedKeptDetail = "present: the repository's own, left as it is"
 // A run that refuses any file writes NOTHING and returns ErrScaffoldBlocked with
 // the outcomes, so the caller can render exactly what was and was not touched —
 // no partial half-write.
+//
+// Every read and write resolves through an os.Root opened on repoRoot, so a
+// planned path whose directory is a symlink leading out of the repository (a
+// committed `.github -> ../elsewhere`) is never read or written there: the
+// classify read fails, the file is refused, and under confirm its write fails.
 func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes []FileOutcome, wrote, refused int, err error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("scaffold: open the repository: %w", err)
+	}
+	defer root.Close()
 	// First pass: classify every file WITHOUT writing. A refusal on any file with
 	// confirm unset aborts the whole run before a single write, so the scaffold is
 	// all-or-nothing rather than half-applied. Nothing is marked "written" here —
@@ -250,8 +260,7 @@ func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes 
 	writeNeeded := make([]bool, len(planned))
 	overwrite := make([]bool, len(planned))
 	for i, p := range planned {
-		abs := filepath.Join(repoRoot, filepath.FromSlash(p.Path))
-		disp, detail := classify(abs, p.Data)
+		disp, detail := classify(root, p.Path, p.Data)
 		switch {
 		case disp == dispCurrent:
 			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusCurrent}
@@ -289,8 +298,7 @@ func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes 
 		if !writeNeeded[i] {
 			continue
 		}
-		abs := filepath.Join(repoRoot, filepath.FromSlash(p.Path))
-		if err := fsutil.WriteFileAtomicPreserveMode(abs, p.Data); err != nil {
+		if err := fsutil.WriteFileAtomicPreserveModeInRoot(root, p.Path, p.Data); err != nil {
 			// The atomic writer never leaves a half-written file; the files written
 			// before this fault are marked written, this one and any later planned
 			// file stay StatusSkipped (not written), so the report matches disk.
@@ -306,22 +314,22 @@ func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes 
 	return outcomes, wrote, 0, nil
 }
 
-// classify reports whether abs is absent (→ dispAbsent, write it), byte-equal to
-// want (→ dispCurrent, no-op), or present-and-different (→ dispDiffers, refuse or
-// overwrite under --confirm). A non-regular leaf (symlink/FIFO/device) or an
-// unreadable existing file is treated as dispDiffers — the scaffold never writes
+// classify reports whether rel, read inside root, is absent (→ dispAbsent, write
+// it), byte-equal to want (→ dispCurrent, no-op), or present-and-different (→
+// dispDiffers, refuse or overwrite under --confirm). A non-regular leaf
+// (symlink/FIFO/device), an unreadable existing file, or a path whose directory
+// resolves outside root is treated as dispDiffers — the scaffold never writes
 // through a symlink silently and never assumes an unreadable file is safe to
 // clobber. The string is a refusal reason, set only for dispDiffers.
-func classify(abs string, want []byte) (disposition, string) {
-	got, err := fsutil.ReadGuarded(abs, maxWorkflowBytes)
+func classify(root *os.Root, rel string, want []byte) (disposition, string) {
+	got, err := fsutil.ReadGuardedInRoot(root, rel, maxWorkflowBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return dispAbsent, ""
 		}
-		// A symlink leaf fails the O_NOFOLLOW open with ELOOP before ReadGuarded
-		// can classify it as non-regular, so fold it in here — otherwise the
-		// symlink case (named first in this function's contract) falls through to
-		// the generic branch below and leaks a developer-identity path.
+		// A symlink leaf is refused as non-regular before anything is read;
+		// ELOOP is folded in too, so the symlink case (named first in this
+		// function's contract) never falls through to the generic branch below.
 		if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
 			return dispDiffers, "existing path is not a regular file (a symlink or non-regular leaf is never written through)"
 		}

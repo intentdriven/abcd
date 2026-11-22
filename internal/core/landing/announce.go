@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"context"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -26,14 +27,17 @@ const maxTrailerBytes = 1 << 20
 
 // branchItems is the announcement items the trailers of the commits from
 // tracking (origin's default branch as just fetched) to head name, oldest
-// first, each once.
+// first, each once. The commits are read as stored
+// (RunCappedBytesAsStoredContext): no refs/replace entry, graft file or
+// commit-graph changes which commits the range holds or what their messages
+// say from the commits the push sends.
 func branchItems(dir, tracking, head string) ([]string, error) {
 	format := "--format=%(trailers:valueonly"
 	for _, k := range itemTrailers {
 		format += ",key=" + k
 	}
 	format += ")"
-	out, err := gitutil.RunCappedBytes(dir, maxTrailerBytes, "log", "--reverse", format, tracking+".."+head, "--")
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), dir, "", maxTrailerBytes, "log", "--reverse", format, tracking+".."+head, "--")
 	if err != nil {
 		return nil, err
 	}

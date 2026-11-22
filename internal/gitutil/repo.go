@@ -428,12 +428,20 @@ func InRepo(root string) bool {
 // option, is refused before git runs (RefIsSafe): callers pass names read
 // from stored state as well as from git.
 func IsAncestor(root, ancestor, descendant string) (bool, error) {
+	return isAncestor(root, false, ancestor, descendant)
+}
+
+// isAncestor is IsAncestor (stored false) and IsAncestorAsStored (true).
+func isAncestor(root string, stored bool, ancestor, descendant string) (bool, error) {
 	for _, ref := range []string{ancestor, descendant} {
 		if !RefIsSafe(ref) {
 			return false, fmt.Errorf("refusing ref %q: an empty or option-shaped ref would reach git as a flag", ref)
 		}
 	}
 	cmd := isolatedGit(root, "merge-base", "--is-ancestor", ancestor, descendant)
+	if stored {
+		asStored(cmd)
+	}
 	e := &capWriter{remaining: 4096}
 	cmd.Stderr = e
 	err := cmd.Run()
@@ -896,12 +904,18 @@ func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, 
 // deadline: git is killed when ctx ends, its output is read to EOF before
 // Wait, and a run ctx ended answers ctx's own error, never a partial answer.
 func RunCappedExitOneContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	return runCappedExitOneContextCmd(ctx, func() *exec.Cmd { return isolatedGitContext(ctx, root, args...) }, maxBytes, args)
+}
+
+// runCappedExitOneContextCmd is RunCappedExitOneContext's body for the command
+// build makes, built only once ctx is known not to have ended.
+func runCappedExitOneContextCmd(ctx context.Context, build func() *exec.Cmd, maxBytes int, args []string) ([]byte, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
-	err := procgroup.RunToEOF(ctx, isolatedGitContext(ctx, root, args...), w, e)
+	err := procgroup.RunToEOF(ctx, build(), w, e)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, false, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}

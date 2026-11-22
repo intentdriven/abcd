@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
@@ -318,11 +319,16 @@ func judgeCommand(path, tree string) error {
 	if err != nil {
 		return fmt.Errorf("%w: its folder could not be resolved", ErrUnsafeCommand)
 	}
-	if tree != "" {
-		if t, err := filepath.EvalSymlinks(tree); err == nil {
-			if rel, err := filepath.Rel(t, dir); err == nil && (rel == "." || !strings.HasPrefix(rel, "..")) {
-				return fmt.Errorf("%w: it lives inside the working tree", ErrUnsafeCommand)
-			}
+	// The working tree is held as every program abcd runs is held to it
+	// (tools.WithinTree): with each working tree it lies in, and through every
+	// link on the command's route.
+	if tree != "" && filepath.IsAbs(tree) {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			resolved = filepath.Join(dir, filepath.Base(path))
+		}
+		if tools.WithinTree(path, resolved, tree) {
+			return fmt.Errorf("%w: it lives inside the working tree", ErrUnsafeCommand)
 		}
 	}
 	di, err := os.Stat(dir)

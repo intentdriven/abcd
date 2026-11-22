@@ -17,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // waitFixture points `implement load --wait` at a fake machine whose readings
@@ -779,6 +780,43 @@ func TestImplementLoadHelpNamesTheNarrowGate(t *testing.T) {
 	for _, want := range []string{implement.NarrowRunsKey, "narrow run"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("help lacks %q", want)
+		}
+	}
+}
+
+// TestImplementLoadWaitDoesNotRunAProgramFromTheWorkingTree: the command's
+// program, found by name on PATH, is held to the in-checkout rule
+// (tools.LookPath): a make inside the working tree the waiter runs from, from
+// any directory in it, is refused at once, before any wait, and never run. A
+// lane's preflight starts `make preflight` through this waiter.
+func TestImplementLoadWaitDoesNotRunAProgramFromTheWorkingTree(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, sub := filepath.Join(root, "bin"), filepath.Join(root, "pkg")
+	marker := filepath.Join(t.TempDir(), "ran")
+	for _, d := range []string{bin, sub} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(bin, "make"), []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, dir := range []string{root, sub} {
+		t.Chdir(dir)
+		code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "make", "preflight")
+		if code != 127 || !strings.Contains(errOut, tools.ErrInsideWorkingTree.Error()) {
+			t.Fatalf("from %s: exit %d, want 127 naming the refusal\n%s%s", dir, code, out, errOut)
+		}
+		if strings.Contains(out, "load gate open") {
+			t.Fatalf("from %s: the waiter waited before refusing:\n%s", dir, out)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("from %s: the make inside the working tree ran (%v)", dir, err)
 		}
 	}
 }

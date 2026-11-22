@@ -12,6 +12,11 @@ import (
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
+// ghIncludedHeaders is the stand-in `gh`'s first lines: asked with
+// --include, as the forge's activity record is, it writes the status line
+// and the headers before the body, as gh does.
+const ghIncludedHeaders = "case \" $* \" in *\" --include \"*) printf 'HTTP/2.0 200 OK\\nContent-Type: application/json; charset=utf-8\\r\\n\\r\\n' ;; esac\n"
+
 // forgeAnswering puts a stand-in `gh` on PATH that answers the activity
 // record in GitHub's shape: the fixture internal/core/github records
 // (testdata/activity.json, a real answer trimmed, every login a placeholder),
@@ -51,7 +56,7 @@ func forgeAnswering(t *testing.T, fixture string, subs map[string]string) {
 		return p
 	}
 	every, onlyPush := write("every.json", all), write("push.json", pushes)
-	script := "#!/bin/sh\ncase \"$*\" in\n*activity_type=push*) cat " + shellquote.Single(onlyPush) + " ;;\n*) cat " +
+	script := "#!/bin/sh\n" + ghIncludedHeaders + "case \"$*\" in\n*activity_type=push*) cat " + shellquote.Single(onlyPush) + " ;;\n*) cat " +
 		shellquote.Single(every) + " ;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)

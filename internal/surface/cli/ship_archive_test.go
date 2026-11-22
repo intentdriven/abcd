@@ -83,7 +83,7 @@ func TestLaunchShipPinsTheReleaseArchive(t *testing.T) {
 	if got := readFileString(t, filepath.Join(r.Root(), ".claude-plugin/plugin.json")); got != pluginBefore {
 		t.Error("adr-19: the ship mutated the working tree's plugin.json")
 	}
-	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), filepath.Join(r.Root(), ".abcd/config/version-location.json")); !res.OK {
+	if res := launch.CheckLockstep(launch.TreeDev, r.Root(), r.Root()); !res.OK {
 		t.Errorf("a pinned working tree must stay version-absent, got %+v", res)
 	}
 
@@ -630,3 +630,49 @@ func TestSavedFileRestoreCases(t *testing.T) {
 }
 
 func restoreText(s string) *string { return &s }
+
+// TestTheShipSavesRestoresAndRefreshesOnlyInsideTheRepository: with the
+// catalog's directory and .abcd each a symlink to a directory outside the
+// repository, the ship's save, its rollback and its snapshot refresh each
+// refuse, and the files outside are left as they were.
+func TestTheShipSavesRestoresAndRefreshesOnlyInsideTheRepository(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repo")
+	outside := filepath.Join(parent, "outside")
+	for _, rel := range []string{"repo", "outside/plugin", "outside/abcd/development/release"} {
+		if err := os.MkdirAll(filepath.Join(parent, filepath.FromSlash(rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	catalog := filepath.Join(outside, "plugin", "marketplace.json")
+	snapshot := filepath.Join(outside, "abcd", "development", "release", "surface.json")
+	for _, p := range []string{catalog, snapshot} {
+		if err := os.WriteFile(p, []byte("outside\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for link, target := range map[string]string{".claude-plugin": "../outside/plugin", ".abcd": "../outside/abcd"} {
+		if err := os.Symlink(target, filepath.Join(root, link)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+	}
+	const rel = ".claude-plugin/marketplace.json"
+
+	if f, err := saveFile(root, rel); err == nil {
+		t.Fatalf("the save read the catalog behind a linked directory: %+v", f)
+	}
+	if err := (savedFile{rel: rel, data: []byte("restored\n"), present: true}).restore(root); err == nil {
+		t.Fatal("the rollback rewrote the catalog behind a linked directory")
+	}
+	if err := (savedFile{rel: rel}).restore(root); err == nil {
+		t.Fatal("the rollback removed the catalog behind a linked directory")
+	}
+	if err := refreshSurfaceSnapshot(root); err == nil {
+		t.Fatal("the snapshot behind a linked .abcd was refreshed")
+	}
+	for _, p := range []string{catalog, snapshot} {
+		if got, err := os.ReadFile(p); err != nil || string(got) != "outside\n" {
+			t.Fatalf("%s outside the repository is %q, %v", filepath.Base(p), got, err)
+		}
+	}
+}

@@ -202,7 +202,7 @@ func TestWriteArchivePinRewritesOnlyTheSource(t *testing.T) {
 	if v, _ := resolvePointer(market, "/plugins/0/source/source"); v != "archive" {
 		t.Errorf("source kind = %v, want archive", v)
 	}
-	if res := CheckLockstep(TreeDev, root, filepath.Join(root, versionLocationRelPath)); !res.OK {
+	if res := CheckLockstep(TreeDev, root, root); !res.OK {
 		t.Errorf("a pinned catalog must stay version-absent, got %+v", res)
 	}
 
@@ -363,5 +363,53 @@ func TestCheckArchiveRepository(t *testing.T) {
 				t.Errorf("err = %v, want it to name %q", err, tc.wantText)
 			}
 		})
+	}
+}
+
+// TestTheCatalogPinIsWrittenOnlyInsideTheRepository: with .claude-plugin a
+// symlink to a directory outside the repository, the pin is refused and the
+// catalog there is left byte-for-byte as it was.
+func TestTheCatalogPinIsWrittenOnlyInsideTheRepository(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	const catalog = `{"name": "m", "plugins": [{"name": "abcd", "source": "./"}]}`
+	writeFile(t, outside, "plugin.json", `{"name": "abcd", "repository": "https://github.com/example/abcd"}`)
+	writeFile(t, outside, "marketplace.json", catalog)
+	symlink(t, outside, filepath.Join(root, ".claude-plugin"))
+	pin := ArchivePin{URL: "https://github.com/example/abcd/releases/download/v1.2.3/abcd-plugin-v1.2.3.zip", SHA256: strings.Repeat("ab", 32)}
+
+	if err := WriteArchivePin(root, pin); err == nil {
+		t.Fatal("the pin was written through a linked .claude-plugin")
+	}
+	if got, _ := os.ReadFile(filepath.Join(outside, "marketplace.json")); string(got) != catalog {
+		t.Fatalf("the catalog outside the repository was rewritten: %s", got)
+	}
+	if _, err := ReleaseRepository(root); err == nil {
+		t.Fatal("the plugin manifest behind a linked .claude-plugin was read")
+	}
+}
+
+// TestTheVersionLocationContractIsReadOnlyInsideTheRepository: a contract
+// reached through a .abcd/config that links out of the repository is refused
+// by every reader of it, and is not taken as an absent one.
+func TestTheVersionLocationContractIsReadOnlyInsideTheRepository(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	writeFile(t, outside, "version-location.json",
+		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version", "publishes_plugin_archive": true}`)
+	writeFile(t, root, ".claude-plugin/plugin.json", `{"name": "abcd"}`)
+	writeFile(t, root, ".claude-plugin/marketplace.json", `{"plugins": [{"name": "abcd", "source": "./"}]}`)
+	mkdirAll(t, filepath.Join(root, ".abcd"))
+	symlink(t, outside, filepath.Join(root, ".abcd", "config"))
+
+	if declared, err := DeclaresPluginArchive(root); err == nil {
+		t.Fatalf("the contract behind a linked directory was read: declared=%v", declared)
+	}
+	if res := CheckLockstep(TreeDev, root, root); !res.Unreadable {
+		t.Fatalf("CheckLockstep read the contract behind a linked directory: %+v", res)
+	}
+	if res := CheckDeclaredLockstep(TreeDev, root, root, nil); !res.Unreadable {
+		t.Fatalf("CheckDeclaredLockstep read the contract behind a linked directory: %+v", res)
+	}
+	if stamped := stampedManifests(root); len(stamped) != 1 {
+		t.Fatalf("the stamped manifests carry the contract behind a linked directory: %v", stamped)
 	}
 }

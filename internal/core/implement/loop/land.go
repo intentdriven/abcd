@@ -77,7 +77,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/landings"
@@ -1351,7 +1353,7 @@ func storeRecord(path string) (store closeStore, bucket, name string, ok bool) {
 }
 
 // strayRule is what the landing commits, in the record stores' modes and outside them.
-const strayRule = "the landing commits a record a store reads only with the mode its writes give it, and outside the record stores only the links its own moves repointed"
+const strayRule = "the landing commits a record a store reads only with the mode its writes give it, an issue record it does not resolve only as the repoint of its own moves rewrites it or as resolved from open/ when an intent it ships names it in related_issues, and outside the record stores only the links its own moves repointed"
 
 // strayRefusal names a change the landing does not commit, and how to take it out.
 func strayRefusal(lane Lane, why string) error {
@@ -1426,17 +1428,27 @@ func parseRawDiff(raw string) ([]rawEntry, error) {
 }
 
 // landingDiff reads what the landing would commit: the moves of the landing's own records
-// the list holds, each entry outside what a store reads, and a record whose mode no write
-// of the landing's gives it, "" when none is.
-func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, string, error) {
+// the list holds, each entry to be held to the repoint's rewrite (one outside what a store
+// reads, or a change to an issue record the landing does not resolve), and the first entry
+// the landing does not write, "" when none is. That is a record whose mode no write of the
+// landing's gives it, or an issue record the landing does not resolve that is added,
+// removed or moved, unless it moves from open/ to resolved/ and named lists it: the issues
+// an intent the close ships names in related_issues at the judged head, which the close's
+// check on what it ships lets the lane's worktree resolve for the landing to commit. Each
+// such resolution is returned as its pair of entries, the record leaving open/ and the
+// record standing in resolved/, for the caller to hold to what a resolve writes
+// (resolvedAsWritten).
+func landingDiff(st State, lane Lane, raw string, named []string) ([]relink.Move, []rawEntry, [][2]rawEntry, string, error) {
 	entries, err := parseRawDiff(raw)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, nil, "", err
 	}
 	from, to, left := map[string]string{}, map[string]string{}, map[string]string{}
+	resolvedFrom, resolvedTo := map[string]rawEntry{}, map[string]rawEntry{}
+	var resolutions [][2]rawEntry
 	var outside []rawEntry
 	for _, e := range entries {
-		store, _, name, ok := storeRecord(e.path)
+		store, bucket, name, ok := storeRecord(e.path)
 		if !ok {
 			outside = append(outside, e)
 			continue
@@ -1446,6 +1458,19 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 			left[key] = e.oldMode
 		}
 		if !ownMovedRecord(st, lane, store, name) {
+			if store.rel != issueStore.rel {
+				continue
+			}
+			switch {
+			case e.status == "M":
+				outside = append(outside, e)
+			case e.status == "D" && bucket == string(capture.StateOpen) && namesIssueRecord(named, name):
+				resolvedFrom[key] = e
+			case e.status == "A" && bucket == string(capture.StateResolved) && namesIssueRecord(named, name):
+				resolvedTo[key] = e
+			default:
+				return nil, nil, nil, e.path, nil
+			}
 			continue
 		}
 		switch e.status {
@@ -1454,6 +1479,28 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 		case "A":
 			to[key] = e.path
 		}
+	}
+	// A resolution the lane's worktree made is one move: its record leaves open/ and
+	// stands in resolved/, so either half alone is no resolution. The list's order picks
+	// which path a refusal names.
+	for _, e := range entries {
+		store, _, name, ok := storeRecord(e.path)
+		if !ok || store.rel != issueStore.rel {
+			continue
+		}
+		key := store.rel + "/" + name
+		was, gone := resolvedFrom[key]
+		reached, came := resolvedTo[key]
+		switch {
+		case !gone && !came:
+			continue
+		case !gone || !came:
+			return nil, nil, nil, e.path, nil
+		}
+		if _, seen := from[key]; !seen {
+			resolutions = append(resolutions, [2]rawEntry{was, reached})
+		}
+		from[key], to[key] = was.path, reached.path
 	}
 	for _, e := range entries {
 		store, _, name, ok := storeRecord(e.path)
@@ -1465,7 +1512,7 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 			had = left[store.rel+"/"+name]
 		}
 		if !recordModeHolds(e.newMode, had) {
-			return nil, nil, e.path, nil
+			return nil, nil, nil, e.path, nil
 		}
 	}
 	var moves []relink.Move
@@ -1474,7 +1521,66 @@ func landingDiff(st State, lane Lane, raw string) ([]relink.Move, []rawEntry, st
 			moves = append(moves, relink.Move{From: was, To: reached})
 		}
 	}
-	return moves, outside, "", nil
+	return moves, outside, resolutions, "", nil
+}
+
+// resolveFields are the frontmatter keys a resolve sets (capture.Resolve): its note, the
+// impact, the release that already carried the work, its provenance, and the production
+// mode it restamps.
+var resolveFields = map[string]bool{"resolution": true, "impact": true, "shipped_in": true, "resolved_by": true, "production_mode": true}
+
+// resolvedAsWritten reports whether added, the record a resolution stands at addedRel in
+// resolved/, is what a resolve writes over removed, the record it took out of open/ at
+// removedRel, with the repoint of moves replayed over it: a record valid for resolved/
+// whose frontmatter is the open record's line for line but for the keys a resolve sets,
+// and whose body is the open record's, or that body with one grounds entry appended as a
+// resolve appends its grounds.
+func resolvedAsWritten(removedRel, removed, addedRel, added string, moves []relink.Move) bool {
+	fm, _, err := issuerecord.Parse(added)
+	if err != nil || issuerecord.ValidateStrict(fm) != nil ||
+		issuerecord.ValidateInvariants(fm, string(capture.StateResolved), addedRel) != nil {
+		return false
+	}
+	want := relink.Rewritten(removedRel, removed, moves)
+	wantHead, wantBody := frontmatter.Split(want)
+	head, body := frontmatter.Split(added)
+	if wantHead == "" || !slices.Equal(unresolvedLines(wantHead), unresolvedLines(head)) {
+		return false
+	}
+	if body == wantBody {
+		return true
+	}
+	entries := grounds.ParseSection(added)
+	if len(entries) != len(grounds.ParseSection(want))+1 {
+		return false
+	}
+	appended, err := grounds.AppendToRecord(want, entries[len(entries)-1])
+	if err != nil {
+		return false
+	}
+	_, appendedBody := frontmatter.Split(appended)
+	return body == appendedBody
+}
+
+// unresolvedLines are a record's frontmatter lines less each top-level key a resolve sets
+// (resolveFields) and the indented lines that continue it.
+func unresolvedLines(head string) []string {
+	var out []string
+	skipping := false
+	for _, ln := range strings.SplitAfter(head, "\n") {
+		if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
+			if !skipping {
+				out = append(out, ln)
+			}
+			continue
+		}
+		key, _, found := strings.Cut(ln, ":")
+		skipping = found && resolveFields[strings.TrimSpace(key)]
+		if !skipping {
+			out = append(out, ln)
+		}
+	}
+	return out
 }
 
 // recordModeHolds reports whether a record's mode is one a store's write gives it: an
@@ -1559,14 +1665,18 @@ type rawEntry struct {
 // in the list and the object store, so a call after a refusal or a kill reads the same
 // answer.
 func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, error) {
-	moves, outside, odd, err := landingDiff(st, lane, raw)
+	named, err := shippedIssues(repo, st, lane)
+	if err != nil {
+		return "", err
+	}
+	moves, outside, resolutions, odd, err := landingDiff(st, lane, raw, named)
 	if err != nil {
 		return "", err
 	}
 	if odd != "" {
 		return strconv.Quote(termsafe.Sanitize(odd)), nil
 	}
-	if len(outside) > 0 {
+	if len(outside) > 0 || len(resolutions) > 0 {
 		standing, err := standingMoves(repo, st, lane)
 		if err != nil {
 			return "", err
@@ -1583,6 +1693,18 @@ func judgeLandingDiff(repo string, st State, lane Lane, raw string) (string, err
 			return says, nil
 		}
 		if blobs[1].Content != relink.Rewritten(e.path, blobs[0].Content, moves) {
+			return says, nil
+		}
+	}
+	// A resolution the lane's worktree made of an issue a shipped intent names is held to
+	// what a resolve writes over the record it took out of open/.
+	for _, r := range resolutions {
+		says := strconv.Quote(termsafe.Sanitize(r[1].path))
+		blobs, err := gitutil.CatFileBatch(repo, []string{r[0].oldObject, r[1].newObject}, 2*(maxRepointedBytes+256))
+		if err != nil || len(blobs) != 2 || blobs[0].Missing || blobs[1].Missing {
+			return says, nil
+		}
+		if !resolvedAsWritten(r[0].path, blobs[0].Content, r[1].path, blobs[1].Content, moves) {
 			return says, nil
 		}
 	}
@@ -1790,6 +1912,54 @@ func ownMovedRecord(st State, lane Lane, store closeStore, name string) bool {
 			return strings.HasPrefix(name, r.Issue+"-") || name == r.Issue+".md"
 		})
 	}
+}
+
+// namesIssueRecord reports whether an issue store's file name is the record of one of
+// ids, read by the id its name carries.
+func namesIssueRecord(ids []string, name string) bool {
+	id, _, ok := recordid.SplitRecordFilename("iss", name)
+	return ok && slices.ContainsFunc(ids, func(n string) bool { return recordid.SameID(n, id) })
+}
+
+// shippedIssues are the issues the intents a closing lane's close ships name in
+// related_issues, as the judged head holds them: the close's own spec record's members,
+// or the run's intent where the head holds no record of the spec. A lane that does not
+// close ships none.
+func shippedIssues(repo string, st State, lane Lane) ([]string, error) {
+	if lane.Landing == nil || !lane.Landing.Closes {
+		return nil, nil
+	}
+	at := baseTree{root: repo, sha: lane.HeadSHA}
+	specs, err := treeRecords(at, specCloseStore)
+	if err != nil {
+		return nil, err
+	}
+	intents, err := treeRecords(at, intentCloseStore)
+	if err != nil {
+		return nil, err
+	}
+	var members []closeRecord
+	ownSpec := false
+	for _, r := range specs {
+		if isSpecRecordOf(r.rel, st.Spec) {
+			ownSpec = true
+			members = append(members, r.closeMembers(intents)...)
+		}
+	}
+	if !ownSpec {
+		for _, r := range intents {
+			if recordid.SameID(r.field("id"), st.Intent) {
+				members = append(members, r)
+			}
+		}
+	}
+	var named []string
+	for _, m := range members {
+		if v := m.field(intent.RelatedIssuesKey); !frontmatter.IsNull(v) {
+			named = append(named, frontmatter.StringList(v)...)
+		}
+	}
+	return named, nil
 }
 
 // recordsRoundWanted reports whether the lane's head is a records commit no round has
@@ -2798,7 +2968,8 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 
 // retireLanded removes a landed lane's worktree and branch once merged, the
 // default branch's commit the landing was proved on, holds what the lane
-// pushed. The branch is deleted only at a tip merged holds: a commit added
+// pushed. The branch is deleted only at a tip merged holds as stored (no
+// replace ref, graft or commit-graph gives either commit other parents): a commit added
 // after the push is work that did not land, and is refused, as a branch another
 // checkout or a stopped rebase or bisect holds is, and a worktree git will not
 // remove (it refuses one with changes). Nothing is removed before every refusal
@@ -2816,16 +2987,19 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 func retireLanded(ctx context.Context, c Context, lane Lane, merged, stage, again string) error {
 	ref := "refs/heads/" + lane.Branch
 	// A branch git does not name a commit for is gone, as the land step has
-	// always read it: there is nothing of it to delete.
-	tip, tipErr := gitutil.RunCappedContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	if tip = strings.TrimSpace(tip); tipErr != nil || !gitutil.IsFullSHA(tip) {
+	// always read it: there is nothing of it to delete. The tip is read as
+	// stored, so a refs/replace entry standing another object in for it does
+	// not make a standing branch read as gone and skip the gates below.
+	out, _, tipErr := gitutil.RunCappedExitOneAsStoredContext(ctx, c.RepoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	tip := strings.TrimSpace(string(out))
+	if tipErr != nil || !gitutil.IsFullSHA(tip) {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return fmt.Errorf("resolving the lane branch %s: %w", lane.Branch, ctxErr)
 		}
 		tip = ""
 	}
 	if tip != "" {
-		_, notOn, err := gitutil.RunCappedExitOneContext(ctx, c.RepoRoot, 4096, "merge-base", "--is-ancestor", tip, merged)
+		_, notOn, err := gitutil.RunCappedExitOneAsStoredContext(ctx, c.RepoRoot, 4096, "merge-base", "--is-ancestor", tip, merged)
 		if ctxErr := ctx.Err(); err != nil && ctxErr != nil {
 			return fmt.Errorf("reading whether %s is on %s: %w", lane.Branch, shortSHA(merged), ctxErr)
 		}

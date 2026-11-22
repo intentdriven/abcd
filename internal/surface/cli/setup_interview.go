@@ -147,13 +147,19 @@ func (p *drawnPrompter) AtTerminal() bool { return true }
 // answers already given and recording nothing for q; any other failure ends
 // it with exit 1. The words name no verb: ahoy remote apply and site setup
 // ask through this door too.
-func (p *drawnPrompter) put(q question.Question) ask.Answer {
+func (p *drawnPrompter) put(q question.Question) ask.Answer { return p.putExplaining(q, nil) }
+
+// putExplaining is put for a question whose ? also lists more than the
+// question holds: full is written on the terminal before the whole question
+// is drawn, as the plan screen lists every item its counts count.
+func (p *drawnPrompter) putExplaining(q question.Question, full []question.Block) ask.Answer {
 	// Setup asks each question on its one line first; ? shows the whole
 	// question and asks it again (itd-2610240823055889, criterion 6).
 	brief := p.term
 	brief.Explain = true
 	got, err := drawnPut(brief, question.Ask{Questions: []question.Question{ahoy.BriefQuestion(q)}})
 	if errors.Is(err, ask.ErrExplain) {
+		writePlanInFull(p.term.Out, full)
 		got, err = drawnPut(p.term, question.Ask{Questions: []question.Question{q}})
 	}
 	switch {
@@ -203,12 +209,13 @@ func (p *drawnPrompter) Confirm(text string) bool {
 }
 
 // Plan draws the plan screen, which makes the drawn door an
-// ahoy.PlanPrompter: the plan, its one line and its three answers, recorded
-// under ahoy.PlanQuestionID; deciding later cancels.
+// ahoy.PlanPrompter: the plan in counts, its one line and its three answers,
+// recorded under ahoy.PlanQuestionID, with ? listing every item before the
+// whole question; deciding later cancels.
 func (p *drawnPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 	p.n++
 	q := ahoy.SetupPlanQuestion(p.n, plan)
-	a := p.put(q)
+	a := p.putExplaining(q, ahoy.PlanInFull(plan))
 	p.record(q, a.Value, "", interview.Terminal)
 	c, ok := ahoy.PlanChoiceOf(a.Value)
 	if !ok || a.Later {
@@ -421,9 +428,12 @@ func (p *answersPrompter) Confirm(text string) bool {
 // Plan answers the plan screen from the file, which makes the answers door an
 // ahoy.PlanPrompter: approve.plan is the one approval a file gives, and a
 // file that does not answer it stops the run before anything is written.
+// Every item the plan counts is written first, as ? lists it at a terminal,
+// so a host relaying the plan has the full list to show when asked.
 func (p *answersPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 	p.n++
 	q := ahoy.SetupPlanQuestion(p.n, plan)
+	writePlanInFull(p.w, ahoy.PlanInFull(plan))
 	e, o := p.answer(q, "no flag answers it (--yes approves every kind of change without the plan)")
 	p.record(q, o.Value, e.Note, p.place(e))
 	c, ok := ahoy.PlanChoiceOf(o.Value)
@@ -431,6 +441,30 @@ func (p *answersPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 		c = ahoy.PlanCancel
 	}
 	return c, true
+}
+
+// planInFullHeading opens the plan's full list wherever a door writes it.
+const planInFullHeading = "The plan in full:"
+
+// writePlanInFull writes blocks, the plan's full list (ahoy.PlanInFull), as
+// plain lines on w: its heading, each paragraph on its own line after a
+// blank one, each list item indented under it, and a blank line after, every
+// line terminal-safe. Nothing is written for no blocks.
+func writePlanInFull(w io.Writer, blocks []question.Block) {
+	if len(blocks) == 0 || w == nil {
+		return
+	}
+	fmt.Fprintf(w, "%s\n", planInFullHeading)
+	for _, b := range blocks {
+		if b.Kind == question.KindList {
+			for _, it := range b.Items {
+				fmt.Fprintf(w, "  - %s\n", termsafe.Sanitize(it))
+			}
+			continue
+		}
+		fmt.Fprintf(w, "\n%s\n", termsafe.Sanitize(b.Text))
+	}
+	fmt.Fprint(w, "\n")
 }
 
 // readSetupAnswers reads --answers for the setup interview: strict JSON, one

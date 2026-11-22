@@ -268,7 +268,7 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 		}
 	}
 
-	guest := f.dial(t, "http://localhost:5173")
+	guest := f.dial(t, origin)
 	guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})
 	if j, _ := guest.until("joined"); j["role"] != "guest" {
 		t.Fatalf("joined = %v", j)
@@ -321,8 +321,8 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 }
 
 // TestDisallowedOriginIsRefused: by default the relay admits
-// https://abcdesign.app and loopback pages; given origins replace that list,
-// so then only they are admitted.
+// https://abcdesign.app alone, and no loopback page; given origins replace
+// that list, so then only they are admitted, a loopback page among them.
 func TestDisallowedOriginIsRefused(t *testing.T) {
 	refused := func(f *fixture, o string) {
 		t.Helper()
@@ -338,10 +338,9 @@ func TestDisallowedOriginIsRefused(t *testing.T) {
 		}
 	}
 	def := newFixture(t, nil)
-	for _, o := range []string{"https://abcdesign.app", "http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost"} {
-		def.dial(t, o)
-	}
-	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null"} {
+	def.dial(t, "https://abcdesign.app")
+	for _, o := range []string{"https://brief.example.org", "https://evil.example", "", "null",
+		"http://127.0.0.1:8000", "http://[::1]:3000", "http://localhost", "http://localhost:5173", def.http.URL} {
 		refused(def, o)
 	}
 	f := newFixture(t, func(c *Config) { c.Origins = []string{"https://brief.example.org", "http://localhost:5173"} })
@@ -560,15 +559,52 @@ func TestClientAddressOnTheTailnetRoute(t *testing.T) {
 		{"tailnet IPv6 through Serve", at("[::1]:5555", "fd7a:115c:a1e0::a1"), true, "fd7a:115c:a1e0::a1"},  // abcd-lint:allow: a tailnet address, the shape under test
 		{"a forged header from a non-loopback peer", at("192.0.2.7:5555", "100.64.0.1"), true, "192.0.2.7"}, // abcd-lint:allow: a tailnet address, the shape under test
 		{"a relay not bound to loopback alone", at("127.0.0.1:5555", "100.64.0.1"), false, "127.0.0.1"},     // abcd-lint:allow: a tailnet address, the shape under test
-		{"no header", at("127.0.0.1:5555"), true, "127.0.0.1"},
-		{"an empty header", at("127.0.0.1:5555", ""), true, "127.0.0.1"},
-		{"not an address", at("127.0.0.1:5555", "not-an-ip"), true, "127.0.0.1"},
-		{"an address with a port", at("127.0.0.1:5555", "100.64.0.1:443"), true, "127.0.0.1"},           // abcd-lint:allow: a tailnet address, the shape under test
-		{"a list Serve never sends", at("127.0.0.1:5555", "100.64.0.1, 100.64.0.2"), true, "127.0.0.1"}, // abcd-lint:allow: a tailnet address, the shape under test
-		{"two header lines", at("127.0.0.1:5555", "100.64.0.1", "100.64.0.2"), true, "127.0.0.1"},       // abcd-lint:allow: a tailnet address, the shape under test
-		{"an address outside the tailnet", at("127.0.0.1:5555", "203.0.113.9"), true, "127.0.0.1"},
+		{"no header", at("127.0.0.1:5555"), true, directLoopbackKey},
+		{"an empty header", at("127.0.0.1:5555", ""), true, directLoopbackKey},
+		{"not an address", at("127.0.0.1:5555", "not-an-ip"), true, directLoopbackKey},
+		{"an address with a port", at("127.0.0.1:5555", "100.64.0.1:443"), true, directLoopbackKey},           // abcd-lint:allow: a tailnet address, the shape under test
+		{"a list Serve never sends", at("127.0.0.1:5555", "100.64.0.1, 100.64.0.2"), true, directLoopbackKey}, // abcd-lint:allow: a tailnet address, the shape under test
+		{"two header lines", at("127.0.0.1:5555", "100.64.0.1", "100.64.0.2"), true, directLoopbackKey},       // abcd-lint:allow: a tailnet address, the shape under test
+		{"an address outside the tailnet", at("127.0.0.1:5555", "203.0.113.9"), true, directLoopbackKey},
 	} {
 		if got := clientAddress(c.r, false, c.loopback); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestEveryDirectLoopbackClientIsCountedUnderOneKey: on a relay bound to
+// loopback, every client with no address Serve forwards is counted under one
+// key, whatever loopback address and port its socket has, so a reconnect is
+// counted with the connection before it; a forwarded tailnet address, a relay
+// behind a proxy and a relay beyond loopback count as before.
+func TestEveryDirectLoopbackClientIsCountedUnderOneKey(t *testing.T) {
+	at := func(remote string, xff ...string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/session", nil)
+		r.RemoteAddr = remote
+		for _, v := range xff {
+			r.Header.Add("X-Forwarded-For", v)
+		}
+		return r
+	}
+	for _, c := range []struct {
+		name                  string
+		r                     *http.Request
+		behindProxy, loopback bool
+		want                  string
+	}{
+		{"a direct IPv4 client", at("127.0.0.1:5555"), false, true, directLoopbackKey},
+		{"the same client reconnected", at("127.0.0.1:5556"), false, true, directLoopbackKey},
+		{"another loopback address", at("127.0.0.2:5557"), false, true, directLoopbackKey},
+		{"a direct IPv6 client", at("[::1]:5558"), false, true, directLoopbackKey},
+		{"a mapped IPv4 loopback address", at("[::ffff:127.0.0.1]:5559"), false, true, directLoopbackKey},
+		{"a header Serve never sends", at("127.0.0.1:5560", "203.0.113.9"), false, true, directLoopbackKey},
+		{"a tailnet visitor through Serve", at("127.0.0.1:5561", "100.101.102.103"), false, true, "100.101.102.103"}, // abcd-lint:allow: a tailnet address, the shape under test
+		{"a relay beyond loopback", at("127.0.0.1:5562"), false, false, "127.0.0.1"},
+		{"a relay behind a proxy", at("127.0.0.1:5563", "198.51.100.4"), true, true, "198.51.100.4"},
+		{"a peer that is not loopback", at("192.0.2.7:5564"), false, true, "192.0.2.7"},
+	} {
+		if got := clientAddress(c.r, c.behindProxy, c.loopback); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 	}
@@ -607,6 +643,65 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 			t.Fatalf("%s was held up by %s's wrong codes: %v", pair[1], pair[0], j)
 		}
 	}
+}
+
+// TestDirectLoopbackReconnectsShareOneBudget: on a relay bound to loopback,
+// every client that connects straight to the listener, with no address
+// Tailscale Serve forwards, is counted under one key. A client whose wrong
+// codes closed its connection finds its budget used up when it reconnects,
+// and direct connections past the per-address cap are refused, while a
+// tailnet visitor through Serve keeps its own count and the sign-in exchange
+// keeps its own window.
+func TestDirectLoopbackReconnectsShareOneBudget(t *testing.T) {
+	t.Run("wrong codes", func(t *testing.T) {
+		f := newFixture(t, func(c *Config) {
+			c.LoopbackOnly = true
+			c.Limits.MaxFailedJoins = 2
+		})
+		_, code := f.hostSession(t)
+		mal := f.dial(t, origin)
+		for i := 0; i < 2; i++ {
+			mal.sendJSON(map[string]string{"type": "join", "code": "ZZZZZZ", "name": "Mal"})
+			if e, _ := mal.until("error"); e["code"] != "bad-code" {
+				t.Fatalf("try %d: %v, want bad-code", i, e)
+			}
+		}
+		if _, _, err := mal.next(); websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+			t.Fatalf("after its limit the connection read %v, want a policy close", err)
+		}
+		again := f.dial(t, origin)
+		again.sendJSON(map[string]string{"type": "join", "code": code, "name": "Mal"})
+		if e, _ := again.until("error"); e["code"] != "too-many-tries" {
+			t.Fatalf("a reconnect after the limit: %v, want too-many-tries", e)
+		}
+		visitor := f.dialFrom(t, origin, "100.101.102.103") // abcd-lint:allow: a tailnet address, the shape under test
+		visitor.sendJSON(map[string]string{"type": "join", "code": code, "name": "Vi"})
+		if j, _ := visitor.until("joined"); j["role"] != "guest" {
+			t.Fatalf("a tailnet visitor was held up: %v", j)
+		}
+		url := f.http.URL + "/auth/token"
+		body := `{"code":"good-code","code_verifier":"` + verifier + `","redirect_uri":"` + f.http.URL + `/auth/callback"}`
+		for i := 0; i < 10; i++ {
+			if resp, got := post(t, url, origin, body); resp.StatusCode != http.StatusOK {
+				t.Fatalf("exchange %d: %d %s", i+1, resp.StatusCode, got)
+			}
+		}
+		if resp, _ := post(t, url, origin, body); resp.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("the eleventh exchange from loopback: %d, want 429", resp.StatusCode)
+		}
+	})
+	t.Run("connection cap", func(t *testing.T) {
+		f := newFixture(t, func(c *Config) {
+			c.LoopbackOnly = true
+			c.Limits.MaxConnsPerAddr = 2
+		})
+		f.hostSession(t)
+		f.dial(t, origin)
+		if got := f.dialStatus(t); got != http.StatusServiceUnavailable {
+			t.Fatalf("a third direct connection: status %d, want 503", got)
+		}
+		f.dialFrom(t, origin, "100.101.102.103") // abcd-lint:allow: a tailnet address, the shape under test
+	})
 }
 
 func TestOriginsAreParsedStrictly(t *testing.T) {

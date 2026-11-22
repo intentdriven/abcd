@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -244,18 +245,39 @@ func armHooksLimitQuestion(t *testing.T, n int) question.Question {
 // "<plan> at the <limits>: <rule>". The plan is drawn at a terminal and,
 // through commands/ahoy.md, relayed to the host's question tool as the plan
 // screen's material, where a rows overrun is admitted with a note and cut
-// off at the window; its height is iss-2611152326582649. The list may only shrink: a plan that newly breaks a limit
-// fails, and so does a line here that no longer breaks.
-var setupPlanLimitsOwed = map[string]bool{
-	"a fresh repository at the defaults: rows": true,
-	"a fresh repository at the floors: rows":   true,
-	"nothing to change at the floors: rows":    true,
+// off at the window. It is empty: since iss-2611152326582649 the plan is
+// quoted in counts, with every item behind ? (PlanInFull). The list may only
+// shrink: a plan that newly breaks a limit fails, and so does a line here
+// that no longer breaks.
+var setupPlanLimitsOwed = map[string]bool{}
+
+// tallestSetupPlan is a plan longer than any detection builds: every place
+// with more items than setup has gaps, every default, and every question only
+// a person answers, so its counts run to two digits in every clause.
+func tallestSetupPlan() SetupPlan {
+	p := SetupPlan{AsksYou: []string{}}
+	for _, where := range []string{planWhere["repo"], planWhere["machine"], planWhere["user"]} {
+		g := PlanGroup{Where: where}
+		for i := range 40 {
+			g.Items = append(g.Items, fmt.Sprintf("a change of some length, number %d in its place", i+1))
+		}
+		p.Changes = append(p.Changes, g)
+	}
+	p.Changes[0].Items[0] = planAdoptItem
+	for _, d := range planDefaultFor {
+		p.Defaults = append(p.Defaults, d.def)
+	}
+	for i := range 12 {
+		p.AsksYou = append(p.AsksYou, fmt.Sprintf("a question only you answer, number %d", i+1))
+	}
+	return p
 }
 
 // TestSetupPlanQuestionPassesTheLimitsAtTheFloors (itd-2610301914350541,
-// ac-23): the setup plan, as a fresh repository's detection builds it and
-// with nothing to change, is held to abcd's defaults and to the floor of
-// every key; what it breaks today is owed by name in setupPlanLimitsOwed.
+// ac-23): the setup plan, as a fresh repository's detection builds it, with
+// nothing to change, and longer than any detection builds, is held to abcd's
+// defaults and to the floor of every key; what it breaks today is owed by
+// name in setupPlanLimitsOwed.
 func TestSetupPlanQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
 	setupHermetic(t)
 	repo := t.TempDir()
@@ -269,6 +291,7 @@ func TestSetupPlanQuestionPassesTheLimitsAtTheFloors(t *testing.T) {
 	plans := map[string]SetupPlan{
 		"a fresh repository": buildSetupPlan(det, []string{"the repository's visibility", "where agents read their instructions"}),
 		"nothing to change":  {},
+		"the tallest plan":   tallestSetupPlan(),
 	}
 	broken := map[string]bool{}
 	for name, plan := range plans {

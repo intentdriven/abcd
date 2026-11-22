@@ -1,9 +1,12 @@
 package guard
 
 import (
+	"encoding/json"
 	"path"
 	"slices"
 	"strings"
+	"sync"
+	"unicode"
 )
 
 // varpath.go reads the one operand shape an entry's arg_shapes can name
@@ -478,6 +481,13 @@ const (
 	ShapeRefForceField           = "rest-ref-force-field"
 )
 
+// ShapeSettingsUnchecked is a claude settings value that turns its permission
+// checks off, grants permission rules or directories, declares hooks or
+// another command claude runs, turns hooks off, or that the guard
+// cannot read (settingsUnchecked). The value is the JSON text `--settings`
+// takes inline, or the text of the file it names (settingsFileReadings).
+const ShapeSettingsUnchecked = "claude-settings-unchecked"
+
 // flagValueShapes are the shapes a flag-value constraint may name; Validate
 // refuses any other.
 var flagValueShapes = map[string]bool{
@@ -486,6 +496,7 @@ var flagValueShapes = map[string]bool{
 	ShapeRefUpdateQuery:          true,
 	ShapeForceField:              true,
 	ShapeRefForceField:           true,
+	ShapeSettingsUnchecked:       true,
 }
 
 // flagValueShapeHolds reports whether a setting's fixed text has the shape. The
@@ -496,6 +507,8 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 	switch shape {
 	case ShapeRefForceField:
 		return setsRefForce(got, glob)
+	case ShapeSettingsUnchecked:
+		return settingsUnchecked(got)
 	case ShapeForcedRefMutation:
 		query, ok := strings.CutPrefix(text, "query=")
 		return ok && forcesRefUpdate(query)
@@ -509,6 +522,122 @@ func flagValueShapeHolds(shape, got string, glob bool) bool {
 		key, value, ok := strings.Cut(text, "=")
 		key = strings.ToLower(key)
 		return ok && (key == "force" || strings.HasSuffix(key, "[force]")) && !gitBoolFalse(value)
+	}
+	return false
+}
+
+// settingsUnchecked reports whether a claude settings value is one the
+// entry refuses. A JSON object is read as claude reads it, its string
+// escapes decoded and a repeated key taking its last value, and is refused
+// where it turns the permission checks off, with `permissions.defaultMode`
+// set to `bypassPermissions` (compared ignoring case, as the flag's value
+// is); where it grants permission rules or directories, a `permissions.allow`
+// holding any rule or a non-empty `permissions.additionalDirectories`; where
+// it declares hooks, a non-empty `hooks`, since a hook can answer the
+// permission prompts for every call; where it holds any other command claude
+// runs (settingsCommandKeys); where it turns hooks off, a
+// `disableAllHooks` that is neither false nor null; and where its `env`
+// block sets a variable that changes what claude runs (settingsEnvRefused)
+// or is not an object, whose names the guard cannot read. Every other mode is the
+// permission-mode flag's to judge, and that entry refuses only the bypass.
+// Text that starts as an object and does not parse is refused, since
+// claude's reader may take what Go's refuses, and so is an object holding a
+// part the line does not fix, since a value spliced into the text can add
+// any key, a value whose start the line does not fix, which can be any
+// object, and a process substitution's output (procSubOperand), which is
+// text a command prints. Any other value is a file's name, which settingsFileReadings
+// reads. Leading and trailing space is trimmed as JavaScript trims it, a
+// byte-order mark included.
+func settingsUnchecked(got string) bool {
+	text := trimSettings(got)
+	if text == "" {
+		return false
+	}
+	if text[0] == unknownMark || text[0] == varMark || strings.Contains(text, procSubOperand) {
+		return true
+	}
+	if text[0] != '{' {
+		return false
+	}
+	if isUnknown(text) || strings.ContainsRune(text, varMark) {
+		return true
+	}
+	var root map[string]any
+	if json.Unmarshal([]byte(text), &root) != nil {
+		return true
+	}
+	for _, key := range settingsCommandKeys {
+		if !emptyJSON(root[key]) {
+			return true
+		}
+	}
+	if off, ok := root["disableAllHooks"]; ok && off != nil && off != false {
+		return true
+	}
+	if env, ok := root["env"]; ok && env != nil {
+		vars, isObject := env.(map[string]any)
+		if !isObject {
+			return true
+		}
+		for name := range vars {
+			if settingsEnvRefused(name) {
+				return true
+			}
+		}
+	}
+	perms, _ := root["permissions"].(map[string]any)
+	if mode, _ := perms["defaultMode"].(string); strings.EqualFold(mode, "bypassPermissions") {
+		return true
+	}
+	allow, _ := perms["allow"].([]any)
+	return len(allow) > 0 || !emptyJSON(perms["additionalDirectories"])
+}
+
+// settingsCommandKeys are the claude settings keys whose value is a command
+// claude runs, or holds one: hooks, the credential and header helpers, the
+// status line, the file suggestion command, the process wrapper and the SSH
+// host commands. settingsUnchecked refuses any of them that holds a value.
+var settingsCommandKeys = []string{
+	"hooks", "apiKeyHelper", "awsAuthRefresh", "awsCredentialExport", "gcpAuthRefresh",
+	"otelHeadersHelper", "statusLine", "fileSuggestion", "processWrapper", "sshHostCommands",
+}
+
+// settingsEnvRefused reports whether a variable a settings `env` block sets
+// is one settingsUnchecked refuses: any OPENCODE_ variable, opencode's
+// configuration, and every variable a bundled entry watches in the
+// environment of a harness it starts (Pattern.Env), so the settings block and
+// the line refuse the same names from one list: CLAUDE_CONFIG_DIR, and the
+// variables that change what a shell command claude runs does beyond its own
+// text (CLAUDE_CODE_SHELL_PREFIX, a command every one runs behind;
+// CLAUDE_CODE_SHELL, the shell that runs it; BASH_ENV and ENV, a file that
+// shell sources as it starts), among them. A repository's own entries are
+// not read here. Names are compared as written, as the environment compares
+// them.
+func settingsEnvRefused(name string) bool {
+	return strings.HasPrefix(name, "OPENCODE_") || slices.Contains(watchedEnv(), name)
+}
+
+// watchedEnv is every variable a bundled entry names (Pattern.Env), read once.
+var watchedEnv = sync.OnceValue(func() []string { return defaultRegistry.envNames() })
+
+// trimSettings is a settings text with leading and trailing space removed as
+// JavaScript's trim removes it, a byte-order mark included.
+func trimSettings(text string) string {
+	return strings.TrimFunc(text, func(r rune) bool { return unicode.IsSpace(r) || r == 0xFEFF })
+}
+
+// emptyJSON reports whether a decoded JSON value holds nothing: absent or
+// null, an empty object, an empty array or an empty string.
+func emptyJSON(v any) bool {
+	switch v := v.(type) {
+	case nil:
+		return true
+	case map[string]any:
+		return len(v) == 0
+	case []any:
+		return len(v) == 0
+	case string:
+		return v == ""
 	}
 	return false
 }

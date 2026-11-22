@@ -109,10 +109,20 @@ type segment struct {
 	// an empty segment of its own as namesIFSInText does; namesAssigned
 	// reads it.
 	assignsInText []string
+	// numbersInText is the names an arithmetic expression or a redirection
+	// naming its descriptor anywhere in the text a tokenize call read can
+	// assign a number to (numberAssigns), riding on the same segment as
+	// assignsInText. Only the export walk reads it (exportWalk).
+	numbersInText []string
 	// ifsSplit records, per token index, a spelled word whose fields rest on
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
 	ifsSplit map[int]bool
+	// fieldSplit records, per token index, a word in which an unquoted
+	// parameter expansion or command substitution stands, whose value the
+	// shell splits into fields, so the word can stand for several words.
+	// nil when no word does. Only envSetBefore reads it.
+	fieldSplit map[int]bool
 	// varLead records, per token index, a word that opens with a variable
 	// whose value can be empty directly followed by `/` (opensUnguardedPath
 	// in varpath.go), which empty names a path from the filesystem root. Only
@@ -125,6 +135,19 @@ type segment struct {
 	// qualifiers or modifiers, which can change the path the word names. The
 	// tokenizer splits the word there, so the segment holds the record.
 	parenWord bool
+	// qualifierCode holds the shell code zsh glob qualifiers in such a `(`
+	// run: an `e` qualifier's string (`*(e:'…':)`, `*(e{…})`) and a `+name`
+	// qualifier's function or command (zshQualifierCode). The payload reading
+	// reads each as the string an eval runs.
+	qualifierCode []string
+	// qualifierUnfixed records a `(` glued to a word whose qualifier list
+	// holds an expansion (`*($q)`, `*(e:"$q":)`): zsh reads the list as
+	// qualifiers once the word is expanded, so the code they run is not
+	// text on the line. Check turns it into a fail-closed block.
+	// qualifierPositional records one whose expansions are all positional
+	// or special parameters (`*($1)`, `x($0)`), which Check refuses only
+	// where the text can set them (positionalsSet).
+	qualifierUnfixed, qualifierPositional bool
 	// leadFrom records, per token index, a spelled word holding a value a
 	// guard keeps from being empty or a site whose empty text leaves a `/`
 	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
@@ -217,6 +240,11 @@ type segment struct {
 	// deep it sits, counted from the text the reading began at.
 	carrier int
 	depth   int
+	// sourced holds the commands of each file this command sources, as the
+	// script reading judged them (readTarget), one list per file, so an
+	// export a file makes holds for the commands after this one
+	// (exportStep). nil where the command sources nothing the guard read.
+	sourced [][]segment
 	// arrayOf names the variable whose array assignment (`fpath=(a b)`) this
 	// command's words are elements of, and arrayAppend records `+=`; "" for
 	// any other command. The words are still read as a command, as before;
@@ -572,6 +600,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
+		// curSplit records, for the word being built, that an unquoted
+		// command substitution left its mark in it; fieldSplits rides with
+		// the segment (segment.fieldSplit).
+		curSplit    bool
+		fieldSplits map[int]bool
 		// spells rides with the segment (segment.spelled); curVarAt records,
 		// for the word being built, where in cur each variable's mark stands
 		// and the expansion's text, "" where it is not known.
@@ -584,12 +617,20 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		leads    map[int]bool
 		leadFrom map[int]leadSource
 		// keywords records, per token index of the command being built, a
-		// for, case or in the line leaves wholly unquoted, which bashParens
-		// reads.
+		// for, case, in or [[ the line leaves wholly unquoted, which
+		// bashParens and testsWords read.
 		keywords map[int]bool
 		// parenNext rides with the segment the next flushSegment ends
-		// (segment.parenWord).
+		// (segment.parenWord), and qualNext with it (segment.qualifierCode).
 		parenNext bool
+		qualNext  []string
+		// qualUnfixedNext and qualPositionalNext ride with it as
+		// segment.qualifierUnfixed and segment.qualifierPositional.
+		qualUnfixedNext, qualPositionalNext bool
+		// inTest records that a `[[ … ]]` test opened in a command an `&&`,
+		// an `||` or a group's paren ended before its `]]`, so the words read
+		// next are still the test's (testsWords).
+		inTest bool
 		// curQuoted records that the word being built took a quote or an
 		// escape, an empty quote pair included, which leaves no byte in cur.
 		curQuoted bool
@@ -865,6 +906,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	addBang := func(mask byte) {
 		curVarAt = append(curVarAt, varSite{at: len(cur), texts: paramTexts("$!"), width: 2})
 		addCur([]byte("$!"), mask)
+		curSplit = true
 	}
 	// markIFSSplit files the word being built under segment.ifsSplit when its
 	// sites rest on the default IFS.
@@ -876,6 +918,25 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			splits = map[int]bool{}
 		}
 		splits[len(toks)] = true
+	}
+	// markFieldSplit files the word being built, or each word a brace
+	// expansion made of it, under segment.fieldSplit when an unquoted
+	// parameter expansion or command substitution stands in it. n is how
+	// many words it became.
+	markFieldSplit := func(n int) {
+		split := curSplit
+		for _, site := range curVarAt {
+			split = split || site.split
+		}
+		if !split {
+			return
+		}
+		if fieldSplits == nil {
+			fieldSplits = map[int]bool{}
+		}
+		for k := range n {
+			fieldSplits[len(toks)+k] = true
+		}
 	}
 	// markVarLead files the word being built under segment.varLead when it
 	// opens with a variable that can be empty, directly followed by `/`
@@ -969,6 +1030,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 			}
 			if words, ok := expandBraces(in, &braceLim); ok {
+				markFieldSplit(len(words))
 				for _, w := range words {
 					recordFeeds()
 					recordVar(false)
@@ -978,7 +1040,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace, curQuoted = nil, nil, false, false, false, false
-				curPieces, curFeeds, curVar, curSub, curVarAt = nil, nil, false, false, nil
+				curPieces, curFeeds, curVar, curSub, curSplit, curVarAt = nil, nil, false, false, false, nil
 				return
 			}
 			braceGroup = true
@@ -997,9 +1059,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordFeeds()
 		recordVar(true)
 		recordSpelling(tok, tok == string(cur))
-		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
+		markFieldSplit(1)
+		curFeeds, curVar, curSub, curSplit, curVarAt = nil, false, false, false, nil
 		bare := !curQuoted && tok == string(cur) && allStruct(curMask)
-		if bare && parenKeywords[tok] {
+		if bare && (parenKeywords[tok] || tok == "[[") {
 			if keywords == nil {
 				keywords = map[int]bool{}
 			}
@@ -1025,6 +1088,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
+			inTest = (inTest || testsWords(toks, keywords)) && !containsString(toks, "]]")
 			for _, k := range curDocs {
 				docOwners[k] = len(segs)
 			}
@@ -1036,7 +1100,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1049,6 +1113,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			vars = nil
 			spells = nil
 			splits = nil
+			fieldSplits = nil
 			leads = nil
 			leadFrom = nil
 			keywords = nil
@@ -1059,10 +1124,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A command of redirections alone still opens its files: `> f`
 			// truncates f. It is kept, with no words, for the files it writes.
 			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
-				redirects: curRedirs, parenWord: parenNext, afterAnd: andNext, end: pos})
+				redirects: curRedirs, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, afterAnd: andNext, end: pos})
 			curRedirs, andNext = nil, false
 		}
-		curStdin, curDocs, parenNext = false, nil, false
+		curStdin, curDocs, parenNext, qualNext = false, nil, false, nil
+		qualUnfixedNext, qualPositionalNext = false, false
 	}
 	// follow reads the text of a command substitution the scan found whole —
 	// inside double quotes, or inside an arithmetic expansion — as commands of
@@ -1197,19 +1263,20 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
-			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom, keywords: keywords,
+			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub, curSplit: curSplit,
+			spells: spells, curVarAt: curVarAt, splits: splits, fieldSplits: fieldSplits, leads: leads, leadFrom: leadFrom, keywords: keywords,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext,
+			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext, inTest: inTest,
 		}
+		inTest = false
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curQuoted = false
 		curRedirs, andNext = nil, false
-		curPieces, vars, curVar, curSub = nil, nil, false, false
-		spells, curVarAt, splits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil
+		curPieces, vars, curVar, curSub, curSplit = nil, nil, false, false, false
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -1280,13 +1347,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
+		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
+		inTest = e.inTest
 		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
+			curSplit = true
 			// The number it prints is computed from what the substitutions
 			// inside it printed.
 			feedFrom(e.segStart)
@@ -1306,16 +1375,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
+		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
+		inTest = e.inTest
 		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
 		} else {
 			addCur([]byte{unknownMark}, 0)
-			curSub = true
+			curSub, curSplit = true, true
 		}
 		lastList = false
 	}
@@ -1332,6 +1402,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// (segment.variable); one that ran a substitution may print its output.
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
+	//
+	// A quoted one other than a plain `${NAME}` marks its word as one an
+	// unquoted substitution stands in (curSplit): an operator, a flag, a
+	// modifier, a subscript or a nested expansion can make it yield several
+	// words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and `"${^@}"`), and
+	// the guard does not work out which do.
 	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
@@ -1343,6 +1419,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		site.transform = transformsValue(body)
 		if len(segs) > start {
 			curSub = true
+		}
+		if !split && !isName(body) {
+			curSplit = true
 		}
 	}
 
@@ -1471,6 +1550,20 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
+					// Only a plain `"$NAME"` is one word: `"$@"` yields one
+					// per element, and zsh reads a subscript or a modifier
+					// after the name (`"$a[@]"`, `"$v:h"`).
+					if !plainParam(line, j, k) {
+						curSplit = true
+					}
+					j = k
+					continue
+				}
+				if k := zshFlaggedParamEnd(line, j+1); line[j] == '$' && k >= 0 {
+					// zsh's `"$=V"`, `"$^@"` and `"$~@"` split or expand
+					// what they print.
+					addParam("$" + strings.TrimLeft(line[j+1:k], zshParamFlags))
+					curSplit = true
 					j = k
 					continue
 				}
@@ -1486,6 +1579,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						arithmetic(line[j+3 : end-1])
 						feedFrom(start)
 						addCur([]byte(arithmeticOperand), 0)
+						curSplit = true
 						j = end + 1
 						continue
 					}
@@ -1513,7 +1607,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					follow(text)
 					feedFrom(start)
 					addCur([]byte{unknownMark}, 0)
-					curSub = true
+					curSub, curSplit = true, true
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken reads the
 					// word with that text in the output's place.
@@ -1800,6 +1894,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			addBang(wordStruct)
 			lastList = false
 			i += 2
+		case c == '$' && zshFlaggedParamEnd(line, i+1) >= 0:
+			// zsh's `$=V`, `$^V` and `$~V`: the parameter, split or expanded
+			// as a pattern, read as an unquoted one is.
+			end := zshFlaggedParamEnd(line, i+1)
+			addParam("$" + strings.TrimLeft(line[i+1:end], zshParamFlags))
+			curVarAt[len(curVarAt)-1].bare = true
+			curVarAt[len(curVarAt)-1].split = true
+			lastList = false
+			i = end
 		case c == '$' && simpleParamEnd(line, i+1) >= 0:
 			// A parameter expansion (iss-2609251824244354): the value it prints
 			// is not in the command line, so the word holds unknownMark where
@@ -1887,6 +1990,14 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			if c == '(' && arrayName == "" && !funcParens(line, i, toks, cur, hasCur) && !bashParens(line, i, toks, keywords, string(cur), hasCur, curBare) {
 				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
+				if parenNext {
+					code, expands := zshQualifierCode(line, i)
+					qualNext = append(qualNext, code...)
+					if glued && !inTest && !testsWords(toks, keywords) {
+						qualUnfixedNext = qualUnfixedNext || expands == qualifierUnfixed
+						qualPositionalNext = qualPositionalNext || expands == qualifierPositional
+					}
+				}
 			}
 			flushSegment()
 			if c == '&' && !(i+1 < len(line) && line[i+1] == '&') && len(segs) > 0 {
@@ -1976,10 +2087,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i += 2
 				continue
 			}
-			switch c {
-			case '|':
+			switch {
+			case c == '|' && inTest:
+				// A `|` inside a `[[ … ]]` test is a pattern's or a regular
+				// expression's alternation, which pipes nothing.
+				pipeNext = false
+				pipeFrom = len(segs)
+			case c == '|':
 				pipeNext = true
-			case ';', '&':
+			case c == ';' || c == '&':
 				pipeNext = false
 				pipeFrom = len(segs)
 			}
@@ -2083,37 +2199,205 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		segs = append(segs, segment{chain: chain, namesIFSInText: true})
 	}
 	if depth == 0 {
-		if names := expansionAssigns(line); len(names) > 0 {
-			segs = append(segs, segment{chain: chain, assignsInText: names})
+		if names, numbers := expansionAssigns(line), numberAssigns(line); len(names) > 0 || len(numbers) > 0 {
+			segs = append(segs, segment{chain: chain, assignsInText: names, numbersInText: numbers})
 		}
 	}
 	return segs, nil
 }
 
-// expansionAssigns is every name a `${NAME:=w}` or `${NAME=w}` in text
-// assigns, wherever it stands, a quoted one included: reaching past what
-// the shell assigns only keeps a word read as any file the line wrote.
+// expansionAssigns is every name a `${NAME:=w}`, `${NAME=w}` or zsh's
+// `${NAME::=w}` in text assigns, wherever it stands, a quoted one included,
+// and behind zsh's flags before the name (`${(q)NAME:=w}`, `${=NAME:=w}`,
+// `${^~NAME:=w}`): reaching past what the shell assigns only keeps a word
+// read as any file the line wrote.
 func expansionAssigns(text string) []string {
 	var out []string
 	for i := 0; i+2 < len(text); i++ {
 		if text[i] != '$' || text[i+1] != '{' {
 			continue
 		}
-		j := i + 2
-		for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
-			j > i+2 && text[j] >= '0' && text[j] <= '9') {
-			j++
+		from := i + 2
+		if from < len(text) && text[from] == '(' {
+			if end := strings.IndexByte(text[from:], ')'); end >= 0 {
+				from += end + 1
+			}
 		}
-		if j == i+2 || j >= len(text) {
+		for from < len(text) && strings.IndexByte("^=~", text[from]) >= 0 {
+			from++
+		}
+		j := nameEnd(text, from)
+		if j == from || j >= len(text) {
 			continue
 		}
-		if text[j] == '=' || text[j] == ':' && j+1 < len(text) && text[j+1] == '=' {
-			if name := text[i+2 : j]; !containsString(out, name) {
+		rest := text[j:]
+		if strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, ":=") || strings.HasPrefix(rest, "::=") {
+			if name := text[from:j]; !containsString(out, name) {
 				out = append(out, name)
 			}
 		}
 	}
 	return out
+}
+
+// nameEnd is the index just past the shell name that starts at text[from]: a
+// letter or underscore, then letters, digits and underscores. It is from
+// where no name starts there.
+func nameEnd(text string, from int) int {
+	j := from
+	for j < len(text) && (text[j] == '_' || text[j] >= 'a' && text[j] <= 'z' || text[j] >= 'A' && text[j] <= 'Z' ||
+		j > from && text[j] >= '0' && text[j] <= '9') {
+		j++
+	}
+	return j
+}
+
+// anyNameAssigned stands, among the names numberAssigns reports, for an
+// arithmetic assignment whose target a variable's value names (`(($X=1))`),
+// which can be any name.
+const anyNameAssigned = "*"
+
+// numberAssigns is every name text can assign a number to, wherever it
+// stands, a quoted one included: an arithmetic expression's assignment,
+// inside `(( … ))`, `$(( … ))` (a `for (( … ))` loop's among them) or
+// `$[ … ]`, by `=`, a compound operator such as `+=` or `<<=`, or `++` or
+// `--` on either side of the name; and a redirection that names its
+// descriptor (`{NAME}<file`, `exec {NAME}>&-`), which assigns the descriptor's
+// number. A comparison (`==`, `!=`, `<=`, `>=`) assigns nothing. An
+// arithmetic target written as a variable (`$X=1`) is anyNameAssigned.
+func numberAssigns(text string) []string {
+	names, _ := numberAssignsWork(text)
+	return names
+}
+
+// numberAssignsWork is numberAssigns, and the bytes it visited. An opener's
+// expression runs to the bracket that closes it, or to the end of the text
+// where none does. The closes are found in one pass (bracketCloses), and each
+// byte is read as an expression's at most once: an opener inside a span
+// already read adds only the part of its own span past it, so an expression
+// nested in another, and the openers after one that never closes, are not
+// read again. Quoted text is read too, since a `$(( … ))` inside double
+// quotes assigns as an unquoted one does.
+func numberAssignsWork(text string) ([]string, int) {
+	var out []string
+	add := func(name string) {
+		if !containsString(out, name) {
+			out = append(out, name)
+		}
+	}
+	if !strings.Contains(text, "((") && !strings.Contains(text, "$[") && !strings.Contains(text, "{") {
+		return nil, len(text)
+	}
+	parens, brackets := bracketCloses(text, '(', ')'), bracketCloses(text, '[', ']')
+	work := 2 * len(text)
+	covered := 0 // the text before covered has been read as an expression's
+	read := func(lo, hi int) {
+		lo = max(lo, covered)
+		if hi <= lo {
+			return
+		}
+		work += arithmeticTargets(text, lo, hi, brackets, add)
+		covered = hi
+	}
+	for i := 0; i+1 < len(text); i++ {
+		work++
+		switch {
+		case text[i] == '(' && text[i+1] == '(':
+			read(i+2, closeWithin(parens, i, len(text)))
+		case text[i] == '$' && text[i+1] == '[':
+			read(i+2, closeWithin(brackets, i+1, len(text)))
+		case text[i] == '{':
+			if j := nameEnd(text, i+1); j > i+1 && j+1 < len(text) && text[j] == '}' && (text[j+1] == '<' || text[j+1] == '>') {
+				add(text[i+1 : j])
+			}
+		}
+	}
+	return out, work
+}
+
+// bracketCloses is, for each byte of text that opens a bracket, the index of
+// the byte that closes it, counting nested pairs, or -1 where none does; -1
+// for every other byte. One pass, with a stack of the openers not yet
+// closed.
+func bracketCloses(text string, open, close byte) []int {
+	closes := make([]int, len(text))
+	var stack []int
+	for k := range len(text) {
+		closes[k] = -1
+		switch text[k] {
+		case open:
+			stack = append(stack, k)
+		case close:
+			if n := len(stack); n > 0 {
+				closes[stack[n-1]], stack = k, stack[:n-1]
+			}
+		}
+	}
+	return closes
+}
+
+// closeWithin is the close bracketCloses found for the opener at at, or hi
+// where it has none before hi: the end of the text an expression of
+// text[:hi] runs to.
+func closeWithin(closes []int, at, hi int) int {
+	if c := closes[at]; c >= 0 && c < hi {
+		return c
+	}
+	return hi
+}
+
+// arithmeticTargets hands add every name the arithmetic expression
+// text[lo:hi] assigns (numberAssigns), a subscript's close read from
+// brackets (bracketCloses over text), and returns the bytes it visited.
+func arithmeticTargets(text string, lo, hi int, brackets []int, add func(string)) int {
+	work := 0
+	for k := lo; k < hi; {
+		work++
+		end := min(nameEnd(text[:hi], k), hi)
+		if end == k || k > lo && (text[k-1] >= '0' && text[k-1] <= '9' || text[k-1] == '#') {
+			work += end - k
+			k = max(end, k+1)
+			continue
+		}
+		work += end - k
+		name := text[k:end]
+		if k > lo && text[k-1] == '$' {
+			name = anyNameAssigned
+		}
+		before := strings.TrimRight(text[lo:k], " \t\n$")
+		after := end
+		if after < hi && text[after] == '[' {
+			after = closeWithin(brackets, after, hi) + 1
+		}
+		for after < hi && (text[after] == ' ' || text[after] == '\t' || text[after] == '\n') {
+			after++
+		}
+		if strings.HasSuffix(before, "++") || strings.HasSuffix(before, "--") || arithmeticAssignsAt(text[min(after, hi):hi]) {
+			add(name)
+		}
+		k = end
+	}
+	return work
+}
+
+// arithmeticAssignsAt reports whether an arithmetic operator that assigns to
+// the name before it starts op: `=` but not `==`, a compound assignment
+// (`+=`, `<<=`, zsh's `**=` and `&&=`), or `++` or `--`.
+func arithmeticAssignsAt(op string) bool {
+	switch {
+	case strings.HasPrefix(op, "++"), strings.HasPrefix(op, "--"):
+		return true
+	case strings.HasPrefix(op, "=="):
+		return false
+	case strings.HasPrefix(op, "="):
+		return true
+	}
+	for _, two := range []string{"<<", ">>", "**", "&&", "||", "^^"} {
+		if strings.HasPrefix(op, two+"=") {
+			return true
+		}
+	}
+	return len(op) >= 2 && strings.IndexByte("+-*/%&|^", op[0]) >= 0 && op[1] == '='
 }
 
 // unwordedIFS reports whether line holds the name IFS more times than the
@@ -2178,6 +2462,19 @@ func bashParens(line string, i int, toks []string, keywords map[int]bool, cur st
 		return len(words) == 1 && words[0] == "for" && keywords[lead]
 	}
 	return !hasCur && len(words) == 3 && words[0] == "case" && keywords[lead] && words[2] == "in" && keywords[lead+2]
+}
+
+// testsWords reports whether the command being read is a `[[ … ]]` test,
+// past the reserved words before it, where a `(` groups a pattern or a
+// regular expression and names no path. The `[[` counts only when the line
+// leaves it wholly unquoted (keywords): a quoted or escaped `[[` is a
+// command's name to bash and zsh, which no `]]` closes.
+func testsWords(toks []string, keywords map[int]bool) bool {
+	lead := 0
+	for lead < len(toks) && reserved[toks[lead]] {
+		lead++
+	}
+	return lead < len(toks) && toks[lead] == "[[" && keywords[lead]
 }
 
 // allReserved reports whether every token so far is a reserved word, so the
@@ -2461,6 +2758,35 @@ func simpleParamEnd(line string, i int) int {
 	return -1
 }
 
+// plainParam reports whether the unbraced parameter line[j:k] (the `$` at
+// j) is a plain `$NAME`: a name, not a special parameter, with no subscript
+// or modifier after it, both of which zsh reads (`$a[@]`, `$v:h`).
+func plainParam(line string, j, k int) bool {
+	if !isName(line[j+1 : k]) {
+		return false
+	}
+	return k >= len(line) || (line[k] != '[' && line[k] != ':')
+}
+
+// zshParamFlags are the characters zsh reads between `$` and a parameter's
+// name: `=` splits its value into words, `~` expands it as a pattern and `^`
+// joins it to the text beside it element by element.
+const zshParamFlags = "=^~"
+
+// zshFlaggedParamEnd is the end of a parameter written with zsh's flags
+// after the `$` at i-1 (`$=V`, `$^@`, `$~V`, `$=~V`), or -1 where no flag
+// stands at i or no parameter follows the flags.
+func zshFlaggedParamEnd(line string, i int) int {
+	j := i
+	for j < len(line) && strings.IndexByte(zshParamFlags, line[j]) >= 0 {
+		j++
+	}
+	if j == i {
+		return -1
+	}
+	return simpleParamEnd(line, j)
+}
+
 // closingDolBrace returns the index of the `}` that closes a `${` standing
 // inside double quotes, whose body starts at i, or one of closeNone and
 // closeUnread. It reads the body as bash's parser does (parse_matched_pair
@@ -2648,29 +2974,35 @@ type groupOpen struct {
 // inside it: its tokens so far, the word in progress, and the chain it belongs
 // to, which a newline inside the substitution must not change.
 type enclosing struct {
-	toks       []string
-	globs      []bool
-	lits       map[int]wordLiteral
-	vars       map[int]string
-	curVar     bool
-	curSub     bool
-	spells     map[int][]string
-	curVarAt   []varSite
-	splits     map[int]bool
-	leads      map[int]bool
-	leadFrom   map[int]leadSource
-	keywords   map[int]bool
-	cur        []byte
-	curMask    []byte
-	hasCur     bool
-	curQuoted  bool
-	curGlob    bool
-	curBrace   bool
-	braceGroup bool
-	chain      int
+	toks     []string
+	globs    []bool
+	lits     map[int]wordLiteral
+	vars     map[int]string
+	curVar   bool
+	curSub   bool
+	curSplit bool
+	spells   map[int][]string
+	curVarAt []varSite
+	splits   map[int]bool
+	// fieldSplits is the enclosing command's segment.fieldSplit so far.
+	fieldSplits map[int]bool
+	leads       map[int]bool
+	leadFrom    map[int]leadSource
+	keywords    map[int]bool
+	cur         []byte
+	curMask     []byte
+	hasCur      bool
+	curQuoted   bool
+	curGlob     bool
+	curBrace    bool
+	braceGroup  bool
+	chain       int
 	// procSub records that the substitution is a process substitution, which
 	// leaves one /dev/fd operand in the word it sat in.
 	procSub bool
+	// inTest is the enclosing command's record of an open `[[ … ]]` test
+	// (tokenizeAt).
+	inTest bool
 	// curStdin and pipeNext are the enclosing command's own standard-input
 	// record (tokenizeAt), suspended with the rest of it.
 	curStdin bool
@@ -3552,6 +3884,55 @@ func literalHeredocOutput(text string) (string, bool) {
 	return strings.TrimRight(body, "\n"), true
 }
 
+// qualifierExpansion is what a glob qualifier list holds that zsh expands
+// before it reads the qualifiers (zshQualifierCode).
+type qualifierExpansion int
+
+const (
+	// qualifierFixed: no expansion; the list is the line's text.
+	qualifierFixed qualifierExpansion = iota
+	// qualifierPositional: only positional or special parameters (`$1`,
+	// `${2}`, `$@`, `$*`, `$0`, `$#`, `$?`, `$$`, `$!`), whose values the
+	// text sets only through `set`, a function's call or a shell's
+	// arguments.
+	qualifierPositional
+	// qualifierUnfixed: any other expansion, a variable's value or a
+	// substitution's output.
+	qualifierUnfixed
+)
+
+// expansionAt is the kind of expansion the `$`, backquote or mark at
+// line[i] opens: a positional or special parameter, a lone `$` that
+// expands nothing, or any other.
+func expansionAt(line string, i int) qualifierExpansion {
+	if line[i] != '$' {
+		return qualifierUnfixed
+	}
+	if i+1 >= len(line) {
+		return qualifierFixed
+	}
+	special := func(name string) bool {
+		if name == "" {
+			return false
+		}
+		if strings.Trim(name, "0123456789") == "" {
+			return true
+		}
+		return len(name) == 1 && strings.Contains("@*#?$!", name)
+	}
+	switch c := line[i+1]; {
+	case c == ' ' || c == '\t' || c == ')' || c == '"':
+		return qualifierFixed
+	case c >= '0' && c <= '9' || strings.IndexByte("@*#?$!", c) >= 0:
+		return qualifierPositional
+	case c == '{':
+		if end := strings.IndexByte(line[i+2:], '}'); end >= 0 && special(line[i+2:i+2+end]) {
+			return qualifierPositional
+		}
+	}
+	return qualifierUnfixed
+}
+
 // oddTrailingBackslashes reports whether text ends in an odd number of
 // backslashes: its last backslash is unescaped, so before a newline it is a
 // line continuation.
@@ -3561,4 +3942,184 @@ func oddTrailingBackslashes(text string) bool {
 		n++
 	}
 	return n%2 == 1
+}
+
+// zshQualifierCode is the shell code the zsh glob qualifiers opening at
+// line[open] run: each `e` qualifier's string, delimited by the character
+// after the e (`e:…:`, `e|…|`, or a bracket pair, `e{…}`, `e[…]`, `e(…)`,
+// `e<…>`), and each `+name` qualifier's name, which zsh runs as a command, as
+// `o` and `O` read their `e` and `+` sort keys. The qualifiers are read after
+// quote removal, as zsh reads them once the word is split. `(#q…)` is read
+// the same way; a list of modifiers (from a `:`) or a list that does not
+// close on its line runs no code here. The other qualifiers that take an
+// argument (`u`, `g`, `f`, `P`, a size, a time or a count, `[…]`) are stepped
+// over, so their argument is not read as a qualifier.
+//
+// expands is the expansions the list holds, which zsh performs before it
+// reads the qualifiers: a `$` or a backquote, unquoted or inside double
+// quotes and not escaped, or, in a string a shell is handed, the mark of a
+// value the enclosing shell already put there (varMark, unknownMark).
+func zshQualifierCode(line string, open int) (code []string, expands qualifierExpansion) {
+	var q []byte
+	depth := 1
+	i := open + 1
+scan:
+	for ; i < len(line); i++ {
+		c := line[i]
+		switch c {
+		case '\n':
+			return nil, expands
+		case '\\':
+			if i+1 < len(line) {
+				i++
+				q = append(q, line[i])
+			}
+		case '$', '`', varMark, unknownMark:
+			expands = max(expands, expansionAt(line, i))
+			q = append(q, c)
+		case '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				return nil, expands
+			}
+			q = append(q, line[i+1:i+1+end]...)
+			i += end + 1
+		case '"':
+			j := i + 1
+			for ; j < len(line) && line[j] != '"'; j++ {
+				if line[j] == '\\' && j+1 < len(line) && strings.IndexByte("\"\\$`", line[j+1]) >= 0 {
+					j++
+				} else if strings.IndexByte("$`"+varText+unknownText, line[j]) >= 0 {
+					expands = max(expands, expansionAt(line, j))
+				}
+				q = append(q, line[j])
+			}
+			if j >= len(line) {
+				return nil, expands
+			}
+			i = j
+		case '(':
+			depth++
+			q = append(q, c)
+		case ')':
+			depth--
+			if depth == 0 {
+				break scan
+			}
+			q = append(q, c)
+		default:
+			q = append(q, c)
+		}
+	}
+	if depth != 0 {
+		return nil, expands
+	}
+	list := string(q)
+	if strings.HasPrefix(list, "#") {
+		var ok bool
+		if list, ok = strings.CutPrefix(list, "#q"); !ok {
+			return nil, expands
+		}
+	}
+	closer := map[byte]byte{'(': ')', '[': ']', '{': '}', '<': '>'}
+	// delimited returns the argument delimited from list[at] and the index
+	// after it, or ok false where it does not close.
+	delimited := func(at int) (arg string, next int, ok bool) {
+		if at >= len(list) {
+			return "", at, false
+		}
+		end := list[at]
+		if c, ok := closer[end]; ok {
+			end = c
+		}
+		j := strings.IndexByte(list[at+1:], end)
+		if j < 0 {
+			return "", len(list), false
+		}
+		return list[at+1 : at+1+j], at + 2 + j, true
+	}
+	digits := func(at int) int {
+		for at < len(list) && list[at] >= '0' && list[at] <= '9' {
+			at++
+		}
+		return at
+	}
+	isName := func(c byte) bool {
+		return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+	}
+	var out []string
+	for k := 0; k < len(list); {
+		c := list[k]
+		switch {
+		case c == ':':
+			// Modifiers from here on (`:e` is the extension, not code).
+			return out, expands
+		case c == 'e':
+			code, next, ok := delimited(k + 1)
+			if !ok {
+				return out, expands
+			}
+			if strings.TrimSpace(code) != "" {
+				out = append(out, code)
+			}
+			k = next
+		case c == '+':
+			j := k + 1
+			for j < len(list) && isName(list[j]) {
+				j++
+			}
+			if j > k+1 {
+				out = append(out, list[k+1:j])
+			}
+			k = j
+		case c == 'o' || c == 'O':
+			// A sort key: one letter, or an `e` or `+` key read above.
+			if k+1 < len(list) && list[k+1] != 'e' && list[k+1] != '+' {
+				k++
+			}
+			k++
+		case c == 'u' || c == 'g' || c == 'P':
+			if k+1 < len(list) && list[k+1] >= '0' && list[k+1] <= '9' {
+				k = digits(k + 1)
+				continue
+			}
+			_, next, ok := delimited(k + 1)
+			if !ok {
+				return out, expands
+			}
+			k = next
+		case c == 'f':
+			j := k + 1
+			if j < len(list) && strings.IndexByte("=+-", list[j]) >= 0 {
+				j++
+			}
+			if j < len(list) && list[j] >= '0' && list[j] <= '9' {
+				k = digits(j)
+				continue
+			}
+			_, next, ok := delimited(k + 1)
+			if !ok {
+				return out, expands
+			}
+			k = next
+		case c == 'a' || c == 'm' || c == 'c' || c == 'L' || c == 'l' || c == 'd' || c == 'Y':
+			j := k + 1
+			if j < len(list) && (c == 'L' && strings.IndexByte("kKmMpPgGtT", list[j]) >= 0 || c != 'L' && c != 'l' && strings.IndexByte("Mwhms", list[j]) >= 0) {
+				j++
+			}
+			if j < len(list) && (list[j] == '+' || list[j] == '-') {
+				j++
+			}
+			k = digits(j)
+		case c == '[':
+			j := strings.IndexByte(list[k:], ']')
+			if j < 0 {
+				return out, expands
+			}
+			k += j + 1
+		default:
+			k++
+		}
+	}
+	return out, expands
 }

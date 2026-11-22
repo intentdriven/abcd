@@ -330,7 +330,7 @@ func (rep *ParityReport) fill(current, baseline map[string]string) {
 // an unreadable contract leaves only the catalog, whose pointers are fixed.
 func stampedManifests(repoRoot string) map[string][]string {
 	out := map[string][]string{marketplaceFile: {secondaryVersionPointer, secondaryChangelogPtr}}
-	if decision, err := loadJSON(filepath.Join(repoRoot, versionLocationRelPath)); err == nil {
+	if decision, err := loadRepoJSON(repoRoot, versionLocationRelPath); err == nil {
 		if primary, ptr, verr := validateVersionLocation(decision); verr == "" {
 			out[primary] = append(out[primary], ptr)
 		}

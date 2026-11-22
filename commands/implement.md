@@ -2015,6 +2015,13 @@ platform), `waited_on` and `waited_s`, with the `gate` it waited at
 (`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, and `backoffs` when it stood
 back.
 
+A command after `--` named by a path runs as given. One named by its name alone
+runs as `PATH` finds it, unless that program lies inside the working tree the
+waiter runs from or any working tree around it (every other working tree of
+the same repository too: its main checkout and each linked worktree): then the waiter exits 127 at once, before any
+wait, names why, and runs nothing. A drive's lane preflight starts `make
+preflight` this way, in the lane's checkout.
+
 Both gates also refuse, exiting 1 without waiting, while the volume holding
 the Go build cache (`go env GOCACHE`) or the one holding the worktree store
 (`~/.abcd.noindex/worktrees`, or its nearest existing parent) has less free
