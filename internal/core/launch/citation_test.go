@@ -28,12 +28,8 @@ func TestReadmeCitationAgreesWithCitationCFF(t *testing.T) {
 	// CFF names a person by family and given names and an organisation by a
 	// single name; BibTeX spells the first "family, given" and keeps the second
 	// whole inside a second pair of braces, so it is never split into names.
-	author := ""
-	if family, ok := cffLookup(t, cff, "family-names"); ok {
-		author = "{" + family + ", " + cffValue(t, cff, "given-names") + "}"
-	} else {
-		author = "{{" + cffValue(t, cff, "name") + "}}"
-	}
+	// Several authors are joined by "and", in the order CFF lists them.
+	author := "{" + strings.Join(cffAuthors(t, cff), " and ") + "}"
 	repo := cffValue(t, cff, "repository-code")
 	license := cffValue(t, cff, "license")
 
@@ -55,6 +51,55 @@ func TestReadmeCitationAgreesWithCitationCFF(t *testing.T) {
 			}
 		})
 	}
+}
+
+// cffAuthors returns each author under authors: in BibTeX's spelling, in the
+// order the file lists them: "Family, Given" for a person, "{Name}" for an
+// organisation. An authors list with no author fails the test, so the check
+// against the README can never pass vacuously.
+func cffAuthors(t *testing.T, cff string) []string {
+	t.Helper()
+	var out []string
+	in := false
+	var family, given string
+	flush := func() {
+		if family != "" {
+			out = append(out, family+", "+given)
+		}
+		family, given = "", ""
+	}
+	for _, line := range strings.Split(cff, "\n") {
+		if !in {
+			in = strings.TrimSpace(line) == "authors:"
+			continue
+		}
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") {
+			flush()
+			trimmed = strings.TrimPrefix(trimmed, "- ")
+		}
+		key, value, ok := strings.Cut(trimmed, ":")
+		if !ok {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch key {
+		case "family-names":
+			family = value
+		case "given-names":
+			given = value
+		case "name":
+			out = append(out, "{"+value+"}")
+		}
+	}
+	flush()
+	if len(out) == 0 {
+		t.Fatal("CITATION.cff lists no author under authors:")
+	}
+	return out
 }
 
 // readRepoFile reads one repo-relative path or fails the test.

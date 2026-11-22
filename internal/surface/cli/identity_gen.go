@@ -6,6 +6,6 @@
 package cli
 
 const (
-	bakedTitle   = "abcd — Agent-Based Configuration for Development"
-	bakedTagline = "For people who know what they want to build and need help shipping it."
+	bakedTitle   = "Agent-Based Configuration for Development"
+	bakedTagline = "Your idea evolves. The record keeps up."
 )

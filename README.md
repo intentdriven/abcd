@@ -4,7 +4,9 @@
 
   <h1>Agent-Based Configuration for Development</h1>
 
-  <p>For people who know what they want to build and need help shipping it.</p>
+  <p><strong>abcd — the open way to build your idea, one working prototype at a time.</strong><br>
+  Your idea evolves. The record keeps up.<br>
+  <em>For people who know what they want to build, and want every prototype to match it.</em></p>
 
   <p>
 <!-- BEGIN ABCD:release-badge sha256=7094948651644ba7ca3cd0b237c40538e04bf2975e257cac31caf992ca8652e3 -->
@@ -172,7 +174,7 @@ repository* button reads:
 
 ```bibtex
 @software{intentdriven_abcd,
-  author  = {{intentdriven}},
+  author  = {Reppel, Alex and {intentdriven}},
   title   = {{abcd}: {Agent-Based} {Configuration} for {Development}},
   url     = {https://github.com/intentdriven/abcd},
   license = {MIT}

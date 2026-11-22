@@ -11,24 +11,32 @@
       "files": ["README.md"],
       "kind": "regexp",
       "patterns": ["(?s)<p>(.*?)</p>"],
-      "requires": ["tagline"],
-      "template": "{tagline}"
+      "requires": ["name", "descriptor", "tagline", "purpose"],
+      "template": "{name} — {descriptor}. {tagline} {purpose}"
     },
     {
       "id": "manifest-description",
       "files": [".claude-plugin/plugin.json"],
       "kind": "json_field",
       "field": "description",
-      "requires": ["tagline", "pitch"],
-      "template": "{tagline} {pitch}"
+      "requires": ["listing"],
+      "template": "{listing}"
+    },
+    {
+      "id": "catalogue-description",
+      "files": [".claude-plugin/marketplace.json"],
+      "kind": "regexp",
+      "patterns": ["(?s)\"plugins\"\\s*:\\s*\\[\\s*\\{.*?\"description\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\""],
+      "requires": ["listing"],
+      "template": "{listing}"
     },
     {
       "id": "conventions-opening",
       "files": ["AGENTS.md"],
       "kind": "regexp",
       "patterns": ["(?s)<!-- END ABCD -->\\n+(.*?)(?:\\n\\n|\\z)"],
-      "requires": ["tagline"],
-      "template": "{tagline}"
+      "requires": ["name", "title", "descriptor"],
+      "template": "{name} ({title}) is {descriptor}."
     },
     {
       "id": "banner-baked-identity",
@@ -37,6 +45,14 @@
       "patterns": ["bakedTagline = \"(.*?)\""],
       "requires": ["tagline"],
       "template": "{tagline}"
+    },
+    {
+      "id": "citation-abstract",
+      "files": ["CITATION.cff"],
+      "kind": "regexp",
+      "patterns": ["(?m)^abstract: \"(.*)\"$"],
+      "requires": ["title", "descriptor"],
+      "template": "{title}: {descriptor}"
     }
   ]
 }
