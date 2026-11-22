@@ -63,3 +63,17 @@ every machine.
 
 Regenerate and commit the result in the same change that alters a command, a flag,
 or a manifest.
+
+## `refusal-codes.json` — the ledger of refusal codes
+
+`refusal-codes.json` lists every refusal code the registry in
+`internal/core/refusal` holds, retired codes included, sorted, each with the
+release that retired it where it is retired. Only the codes are recorded: a
+code's summary, explanation and next command may be reworded in any change,
+and the code may not (adr-2610301638558260). `make refusal-codes-sync` writes
+it from the registry, and a drift test fails `go test` when the two disagree.
+
+The release cut reads the copy carried by the **last release tag** and refuses
+a cut in which a code that copy lists is missing from the copy at `HEAD`, or a
+code it lists as retired is live again. A tag that carries no ledger passes,
+so the rule binds from the first release whose ledger lists codes.

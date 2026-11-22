@@ -631,7 +631,7 @@ of records derives `1.0.0` from a `0.y.z` base.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are eleven, and an operator sees them as
+would be wrong. There are twelve, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -646,6 +646,7 @@ would be wrong. There are eleven, and an operator sees them as
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
 | `unlanded-reference` | a record's prose cites a record the tree being cut does not hold: a pending reference record-lint accepted while its record was in review, or a forward-looking marker's, whose record never landed; every citing line is named, and the remedy is to land that record or correct the reference (iss-2611031731385043) |
 | `doc-fidelity` | a surface the binary ships that no brief chapter names, whatever the cut ships; or, where the cut ships an intent, the brief lags the surface it delivered or no saved docs review names the commit being cut ([`10-docs.md`](10-docs.md), itd-60) |
+| `refusal-codes` | a refusal code the last release's ledger lists is missing from the ledger at HEAD, or a code it lists as retired is live again; every code is named, and the remedy is to restore the code in the registry, marked retired where its refusal is gone, or to give a changed refusal a new code ([`41-explain.md`](41-explain.md), adr-2610301638558260) |
 | `empty-cut` | nothing user-facing shipped, so there is no release |
 
 `release-in-flight` is the one an operator meets most often outside a release
@@ -661,6 +662,15 @@ A regroup or a rewording is not a break, so the diff never reads them, but a
 binary whose placement or sentence disagrees with the snapshot committed at
 `HEAD` is refused as stale, and the refusal names each moved verb and each
 reworded sentence.
+
+**Refusal-code guardrail.** A refusal code is a promise once a release has
+carried it ([adr-2610301638558260](../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)).
+The cut reads the ledger of codes (`.abcd/development/release/refusal-codes.json`)
+at the previous release's tag, the way it reads the surface snapshot, and
+compares it with the ledger committed at `HEAD`. A code the tag's ledger lists
+that `HEAD`'s does not, or one it lists as retired that `HEAD`'s lists as live,
+fails the launch under `refusal-codes`, naming every such code. A tag whose
+tree carries no ledger passes: that release carried no code to keep.
 
 **Unfixed-findings guardrail.** The cut and its read-only preview in
 the launch preview both ask one further question of the cut: of the findings **this cycle**
