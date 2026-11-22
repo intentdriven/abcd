@@ -26,6 +26,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -465,4 +466,92 @@ func commandNames(root *cobra.Command) map[string]bool {
 	}
 	walk(root)
 	return names
+}
+
+// usageCode is the usage classifier (spc-2610301431108175 step 2): the
+// usage/... code of a refusal the command framework raised, read from
+// pflag's error types where the parse kept them (flagErrorCode, on a
+// flagParseError) and otherwise from cobra's own wording, which has no types
+// and which withholdOperands already parses. It is read before Run rewords
+// the message. A refusal worded by a verb's own validator matches none of it
+// and carries no usage code: its code is its verb's.
+func usageCode(err error, msg string) refusal.Code {
+	var fp *flagParseError
+	if errors.As(err, &fp) && fp.code != refusal.None {
+		return fp.code
+	}
+	return usageWordingCode(msg)
+}
+
+// flagErrorCode classifies a flag-parse error by pflag's error type: a flag
+// the command does not declare, or an argument that names no flag, is an
+// unknown flag; a flag whose value is missing or does not parse is a bad
+// value. Anything else the parser raises is classified by its wording.
+func flagErrorCode(err error) refusal.Code {
+	var missing *pflag.NotExistError
+	var syntax *pflag.InvalidSyntaxError
+	var needs *pflag.ValueRequiredError
+	var invalid *pflag.InvalidValueError
+	switch {
+	case errors.As(err, &missing), errors.As(err, &syntax):
+		return refusal.UsageUnknownFlag
+	case errors.As(err, &needs), errors.As(err, &invalid):
+		return refusal.UsageBadFlagValue
+	}
+	if c := usageWordingCode(err.Error()); c != refusal.None {
+		return c
+	}
+	return refusal.UsageBadFlagValue
+}
+
+// The wordings of cobra's positional validators (cobra args.go), each count
+// captured so a wrong count is told apart as too few or too many.
+var (
+	argsAtLeastRe = regexp.MustCompile(`requires at least (\d+) arg\(s\), only received (\d+)`)
+	argsAtMostRe  = regexp.MustCompile(`accepts at most (\d+) arg\(s\), received (\d+)`)
+	argsExactRe   = regexp.MustCompile(`accepts (\d+) arg\(s\), received (\d+)`)
+	argsRangeRe   = regexp.MustCompile(`accepts between (\d+) and (\d+) arg\(s\), received (\d+)`)
+)
+
+// usageWordingCode classifies a refusal by the command framework's wording:
+// cobra's unknown command and positional counts, its flag groups and
+// required flags, pflag's flag wordings, and the requirement aggregate's
+// (requirements.go). The first wording found in msg decides, in the order
+// the framework checks them: the arguments, then the flags.
+func usageWordingCode(msg string) refusal.Code {
+	count := func(want, got string) refusal.Code {
+		w, _ := strconv.Atoi(want)
+		g, _ := strconv.Atoi(got)
+		if g < w {
+			return refusal.UsageMissingArgument
+		}
+		return refusal.UsageExtraArgument
+	}
+	switch {
+	case unknownCommandLineRe.MatchString(msg):
+		return refusal.UsageUnknownCommand
+	case argsAtLeastRe.MatchString(msg):
+		return refusal.UsageMissingArgument
+	case argsAtMostRe.MatchString(msg):
+		return refusal.UsageExtraArgument
+	case argsRangeRe.MatchString(msg):
+		m := argsRangeRe.FindStringSubmatch(msg)
+		return count(m[1], m[3])
+	case argsExactRe.MatchString(msg):
+		m := argsExactRe.FindStringSubmatch(msg)
+		return count(m[1], m[2])
+	case strings.Contains(msg, "are set none of the others can be"):
+		return refusal.UsageFlagConflict
+	case strings.Contains(msg, "are set they must all be set"),
+		strings.Contains(msg, "is required") && strings.Contains(msg, "at least one of the flags in the group"),
+		strings.Contains(msg, "required flag(s) "),
+		strings.Contains(msg, " is not set — usage: "):
+		return refusal.UsageMissingRequiredFlag
+	case strings.HasPrefix(msg, "unknown flag: "), strings.HasPrefix(msg, "unknown shorthand flag: "),
+		strings.HasPrefix(msg, "bad flag syntax: "):
+		return refusal.UsageUnknownFlag
+	case strings.HasPrefix(msg, "flag needs an argument: "), strings.HasPrefix(msg, "invalid argument ") && strings.Contains(msg, " flag: "):
+		return refusal.UsageBadFlagValue
+	}
+	return refusal.None
 }

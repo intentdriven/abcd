@@ -1,7 +1,7 @@
 ---
 name: explain
-description: "Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have."
-argument-hint: "<verb> [<sub-verb>...] [--input <flag>]"
+description: "Print how to call one command, an input's shape, or what a refusal code means: Writes nothing; refuses a command path or a code the binary does not have."
+argument-hint: "<verb> [<sub-verb>...] [--input <flag>] | <code>"
 block: agents
 user-invocable: false
 ---
@@ -66,6 +66,40 @@ check. Build the input from this answer, not from a page.
 An interview's `--answers` file has no shape here: the interview that asks the
 questions prints it.
 
+## One refusal code
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture/remedy-missing
+```
+
+When abcd refuses a call, the refusal carries a short code, such as
+`capture/remedy-missing` or `usage/unknown-flag`: the verb, a slash and the
+reason. A word holding a slash is read as a code, and `explain` prints:
+
+- the code and its one-line summary, the hint the refusal showed;
+- a few lines saying what the refusal means and how to get past it;
+- the command to try next, or `none` where no command gets past it (a
+  refusal that says to wait, say); a next command that names the refused
+  command shows it as `<the refused command>`;
+- the commands that raise the code, or, for a `usage/` code, that every
+  command raises it;
+- for a retired code, the release that retired it.
+
+A refusal under `--json` carries the same three facts beside its message:
+the error object every verb prints on stdout keeps `abcd`, `error` and
+`exit_code`, and adds `code`, `hint` (the summary) and `next` (the command to
+try, filled in with the refused command, or `none`). Without `--json`, the
+refusal's line on stderr is followed by one more:
+`abcd: <hint> — try: <next> (abcd explain <code>)`. The next command is built
+from the refused command alone, never from what was typed. A refusal not yet
+given a code carries none of the three, and no second line.
+
+Once a release has carried a code, the code keeps its meaning: it is never
+renamed or given to another refusal, and a code whose refusal goes away is
+kept, marked retired, so `explain` still answers it. Match on the code, never
+on the message, which can be reworded in any release. A code from a newer
+release is unknown to an older binary.
+
 ## Machine-readable
 
 ```bash
@@ -88,18 +122,26 @@ its own, though its text answer says `(hidden)`. With `--input` it prints the
 input's shape: `path`, `flag`, `name`, `schema_version`, `version_in`, `root`
 (`object` or `array`), `fields` and `example`.
 
+For a code, `--json` prints the code's entry: `code`, `summary`,
+`explanation`, `next` (holding `{command}` where the refused command is filled
+in), `raised_by` (absent for a `usage/` code) and `retired` (present only for
+a retired code).
+
 ## Refusals
 
 Each refusal exits 2 and names what was wrong on stderr, or, with `--json`, as the
-error object every verb prints on stdout:
+error object every verb prints on stdout, with its code:
 
 - a command path the tree does not have, naming the nearest real path when one
   is a letter or two away, and otherwise the sub-commands where the path went
   wrong; a word after a command that takes no sub-command is refused the same
-  way;
+  way (`explain/unknown-path`);
 - `--input` naming a flag the command reads no input through, naming the inputs
-  it does read;
-- `--input` with no command named.
+  it does read (`explain/unknown-input`);
+- `--input` with no command named (`usage/missing-argument`), or with a code
+  (`usage/flag-conflict`);
+- a code this binary does not register, naming the nearest registered code
+  (`explain/unknown-code`).
 
 Bare, `explain` prints its own help. It reads only and writes nothing.
 
@@ -121,7 +163,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 **Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain explain` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
-- `abcd explain [<verb> [<sub-verb>...]] [flags]`
+- `abcd explain [<verb> [<sub-verb>...] | <code>] [flags]`
   - An example call is `abcd explain ideate record --input verdict-json`.
 <!-- /generated -->
 

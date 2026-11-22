@@ -98,6 +98,63 @@ registers, or a `schema_version` the input does not have. It reports nothing on
 a line marked `<!-- facts-lint: historical -->`, though it still reads that
 line to tell which input a nearby `schema_version` belongs to.
 
+## Refusal codes
+
+A refusal (exit 2, or 3 when someone else holds what the call needs) carries a
+short code, a one-line hint and the next command to try
+(itd-2610301428378830, spc-2610301431108175), and `abcd explain <code>`
+prints what the code means. A word holding a slash is read as a code rather
+than a command path. The answer gives the code's summary, a few lines of
+explanation, the command to try next or `none` where no command gets past the
+refusal, the commands that raise the code (every command, for a `usage/`
+code) and, for a retired code, the release that retired it; the
+machine-readable form is the code's registry entry. An unknown code is
+refused at exit 2 as `explain/unknown-code`, naming the nearest registered
+code and never repeating the word.
+
+The codes live in one table held in code (`internal/core/refusal`). A code is
+a short name, the verb, a slash and the reason in lower-case kebab-case, never
+a number ([adr-2610301638558260](../decisions/adrs/2610301638558260-a-published-refusal-code-is-never.md)):
+`usage/` names the command framework's own refusals (an unknown command or
+flag, too few or too many positional arguments, two flags that cannot go
+together, a required flag left out, a flag value that is missing or does not
+parse), which every command raises, and the hook plane raises at exit 1. A
+core package names a code where the refusal is decided, by wrapping its error
+(`refusal.Wrap`), and the front door finds it however the error was wrapped;
+the front door builds a refusal only through two constructors, one naming a
+registered code and one for a code known only at run time, which marks a
+refusal left without one as `internal/uncoded`, a code that is never
+registered.
+
+The error boundary (`run`, `internal/surface/cli/cli.go`) reads the code from
+the error, or else from the usage classifier, which reads the parser's error
+types and, where it has none, the command framework's wording. In the
+machine-readable form the error object keeps `abcd`, `error` and `exit_code` exactly as they were
+and adds `code`, `hint` and `next`; the text form adds one line after the
+refusal's own: `abcd: <hint> — try: <next> (abcd explain <code>)`. The next
+command is filled from the refused command's own path, never from the
+caller's arguments, which the boundary withholds. A refusal not yet coded
+carries none of the three.
+
+Tests hold the table whole: no two entries share a code, every code follows
+the grammar, every code resolves through `explain`, every next command and
+every raising command names a command the tree has, every command codes an
+unknown flag and every parent the framework refuses codes an unknown
+sub-verb, and the test binary fails on a refusal that leaves with
+`internal/uncoded` or with a code the table does not hold.
+`make refusal-codes-sync` (`cmd/refusal-codes-sync`) writes the ledger of
+codes, `.abcd/development/release/refusal-codes.json`, from the table, and a
+drift test holds it. The release cut reads the ledger at the last tag and
+refuses, as `refusal-codes`, a cut in which a code that ledger lists is
+missing from HEAD's, or a code it lists as retired is live again
+([`04-launch.md`](04-launch.md)); a tag that carries no ledger passes.
+
+The migration of every refusal to a code runs over several steps. While it
+runs, `.abcd/development/release/refusal-uncoded.txt` names the files whose
+refusals carry no code yet, and the test that refuses a refusal built outside
+the two constructors exempts only those. The list only shrinks, under a
+ceiling the test holds, and the intent cannot ship while it exists.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

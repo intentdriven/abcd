@@ -77,3 +77,12 @@ The release cut reads the copy carried by the **last release tag** and refuses
 a cut in which a code that copy lists is missing from the copy at `HEAD`, or a
 code it lists as retired is live again. A tag that carries no ledger passes,
 so the rule binds from the first release whose ledger lists codes.
+
+## `refusal-uncoded.txt` — the files whose refusals carry no code yet
+
+While every refusal is being given a code (spc-2610301431108175), this list
+names the files under `internal/surface/cli` that still build a refusal with
+no code. The test that refuses a refusal built outside the two coded
+constructors exempts only these files. It is written by hand, not generated:
+the step that codes a file's last refusal removes the file from it, the list
+never grows past the ceiling the test holds, and the last step deletes it.

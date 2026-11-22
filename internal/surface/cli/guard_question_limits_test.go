@@ -129,10 +129,10 @@ type namedPart struct {
 	Rule string `json:"rule"`
 }
 
-// refusal splits a limits refusal into its head line and the parts its group
+// limitsRefusal splits a limits refusal into its head line and the parts its group
 // lines name, one per rule and tab, failing the test when the head line is not
 // the spec's or does not count every finding the group lines hold.
-func refusal(t *testing.T, stderr string) (head string, parts []namedPart, lines []string) {
+func limitsRefusal(t *testing.T, stderr string) (head string, parts []namedPart, lines []string) {
 	t.Helper()
 	all := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
 	head = all[0]
@@ -229,7 +229,7 @@ func TestRoutingQuestionOf20261003IsRefused(t *testing.T) {
 
 	stdout, stderr, code := runGuard(askToolPayload(t, root, json.RawMessage(input)), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	head, got, _ := refusal(t, reason)
+	head, got, _ := limitsRefusal(t, reason)
 	if !slices.Equal(got, want.Findings) {
 		t.Errorf("the refusal named\n%v\nwant exactly\n%v\nreason:\n%s", got, want.Findings, reason)
 	}
@@ -290,7 +290,7 @@ func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {
 			tc.edit(&q)
 			stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 			reason := mustDeny(t, stdout, stderr, code)
-			_, parts, lines := refusal(t, reason)
+			_, parts, lines := limitsRefusal(t, reason)
 			hit := false
 			for i, p := range parts {
 				if p.Rule == tc.rule && strings.Contains(lines[i], strconv.Quote(tc.value)) && strings.Contains(lines[i], tc.limit) {
@@ -331,7 +331,7 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 			setMode(t, root, mode.ProductThinker)
 			stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 			reason := mustDeny(t, stdout, stderr, code)
-			if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+			if _, parts, _ := limitsRefusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
 				t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 
@@ -347,7 +347,7 @@ func TestProductThinkerQuestionNamesNoRecordOrCommand(t *testing.T) {
 			repo := unmanagedRepo(t)
 			stdout, stderr, code = runGuard(askPayload(t, repo, q), "guard", "hook")
 			reason = mustDeny(t, stdout, stderr, code)
-			if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+			if _, parts, _ := limitsRefusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
 				t.Errorf("no mode store, Product chip: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 			}
 		})
@@ -364,7 +364,7 @@ func TestRecommendedOrStarredOptionIsRefused(t *testing.T) {
 	q.Options[1].Label = "Number only *"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	_, parts, lines := refusal(t, reason)
+	_, parts, lines := limitsRefusal(t, reason)
 	if len(parts) != 1 || parts[0].Rule != "never-recommended" || parts[0].Part != "option 2 label" {
 		t.Fatalf("want one never-recommended finding on option 2's label; got %v:\n%s", parts, reason)
 	}
@@ -412,7 +412,7 @@ func TestAbcdChipWhileManagedIsNeverRefusedOnTheMode(t *testing.T) {
 	q.Options[0].Label = "Keep it (Recommended)"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
+	if _, parts, _ := limitsRefusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"never-recommended"}) {
 		t.Errorf("want the one field finding; got %v:\n%s", rulesNamed(parts), reason)
 	}
 	for _, not := range []string{"mode reads managed", "abcd mode"} {
@@ -479,7 +479,7 @@ func TestQuestionRefusalEchoesSanitisedValues(t *testing.T) {
 			t.Fatalf("the refusal echoes an unsafe rune %U:\n%q", r, reason)
 		}
 	}
-	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"meaning-sentences", "never-recommended"}) {
+	if _, parts, _ := limitsRefusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"meaning-sentences", "never-recommended"}) {
 		t.Fatalf("want the description and the label each named; got %v:\n%s", rulesNamed(parts), reason)
 	}
 }
@@ -493,7 +493,7 @@ func TestLongChipHeaderIsRefusedWithoutAMode(t *testing.T) {
 	q.Header = "Product Q12/40"
 	stdout, stderr, code := runGuard(askPayload(t, repo, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	_, parts, lines := refusal(t, reason)
+	_, parts, lines := limitsRefusal(t, reason)
 	if !slices.Equal(rulesNamed(parts), []string{"header"}) || !strings.Contains(lines[0], "12 columns") {
 		t.Errorf("want one header finding naming the 12-column limit; got %v:\n%s", rulesNamed(parts), reason)
 	}
@@ -556,7 +556,7 @@ func TestQuestionRefusalIsBoundedOnAFlood(t *testing.T) {
 			}
 			// refusal checks the head line's count against the findings the
 			// group lines hold.
-			refusal(t, reason)
+			limitsRefusal(t, reason)
 		})
 	}
 }
@@ -575,7 +575,7 @@ func TestEmDashFloodTakesOneLinePerTab(t *testing.T) {
 	}
 	stdout, stderr, code := runGuard(askPayload(t, repo, qs...), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	head, parts, lines := refusal(t, reason)
+	head, parts, lines := limitsRefusal(t, reason)
 	var dashed []string
 	for i, p := range parts {
 		if p.Rule == string(question.RuleEmDashListItem) {
@@ -641,7 +641,7 @@ func TestQuestionDenyNamesEveryRuleAndTab(t *testing.T) {
 	if strings.Contains(reason, "more part") {
 		t.Errorf("the deny cuts its list with an \"and N more part(s)\" line:\n%s", reason)
 	}
-	head, parts, _ := refusal(t, reason)
+	head, parts, _ := limitsRefusal(t, reason)
 	if !slices.Equal(parts, want) {
 		t.Errorf("the deny names\n%v\nwant one line per refusing rule and tab\n%v\nreason:\n%s", parts, want, reason)
 	}
@@ -841,7 +841,7 @@ func TestMixedCallJudgesEachTabByItsOwnPerson(t *testing.T) {
 	product.Options[0].Description = "It closes iss-2609202058058301. It costs a few characters."
 	stdout, stderr, code := runGuard(askPayload(t, root, clean, product), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	if _, parts, _ := refusal(t, reason); len(parts) != 1 || parts[0].Rule != "register" || parts[0].Tab != 2 {
+	if _, parts, _ := limitsRefusal(t, reason); len(parts) != 1 || parts[0].Rule != "register" || parts[0].Tab != 2 {
 		t.Errorf("want one register finding on tab 2; got %v:\n%s", parts, reason)
 	}
 	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
@@ -970,7 +970,7 @@ func TestNumberHeaderRegisterFollowsTheMode(t *testing.T) {
 	setMode(t, root, mode.ProductThinker)
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	if _, parts, _ := refusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
+	if _, parts, _ := limitsRefusal(t, reason); !slices.Equal(rulesNamed(parts), []string{"register"}) {
 		t.Errorf("product thinker: want one register finding; got %v:\n%s", rulesNamed(parts), reason)
 	}
 	for _, st := range []mode.State{mode.Facilitator, mode.Managed} {

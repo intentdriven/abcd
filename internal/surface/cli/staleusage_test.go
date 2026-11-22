@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -96,12 +97,31 @@ func unknownCommandLine(t *testing.T, path ...string) string {
 		"\" (the first argument, not repeated here; its sub-commands are " + strings.Join(names, ", ") + ")"
 }
 
+// The refusal-code line Run adds last (spc-2610301431108175) is cut from the
+// stderr returned, after checking it is the last line, so these tests assert
+// the refusal's own lines; refusal_envelope_test.go asserts that line.
 func runMain(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
 	code = Run(args, &out, &errb)
-	return code, out.String(), errb.String()
+	return code, out.String(), withoutRefusalCodeLine(errb.String())
 }
+
+// withoutRefusalCodeLine cuts the refusal-code line from the end of a
+// refusal's stderr, leaving everything before it as it was.
+func withoutRefusalCodeLine(stderr string) string {
+	body := strings.TrimSuffix(stderr, "\n")
+	i := strings.LastIndex(body, "\n")
+	last := body[i+1:]
+	if strings.HasPrefix(last, "abcd: ") && refusalCodeLineRe.MatchString(last) {
+		return body[:i+1]
+	}
+	return stderr
+}
+
+// refusalCodeLineRe is the refusal-code line's ending: the call that explains
+// the code.
+var refusalCodeLineRe = regexp.MustCompile(`\(abcd explain [a-z0-9-]+/[a-z0-9-]+\)$`)
 
 func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 	root := stalePluginRoot(t)

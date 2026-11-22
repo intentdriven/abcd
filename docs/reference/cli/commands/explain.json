@@ -3,8 +3,8 @@
   "commands": [
     {
       "path": "abcd explain",
-      "sentence": "Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.",
-      "usage": "abcd explain [<verb> [<sub-verb>...]] [flags]",
+      "sentence": "Print how to call one command, an input's shape, or what a refusal code means: Writes nothing; refuses a command path or a code the binary does not have.",
+      "usage": "abcd explain [<verb> [<sub-verb>...] | <code>] [flags]",
       "flags": [
         {
           "name": "input",

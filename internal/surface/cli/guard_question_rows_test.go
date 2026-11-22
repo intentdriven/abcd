@@ -133,7 +133,7 @@ func TestRowsWithAnotherFindingIsDenied(t *testing.T) {
 	q.Options[0].Label = "Keep it (Recommended)"
 	stdout, stderr, code := runGuard(askPayload(t, root, q), "guard", "hook")
 	reason := mustDeny(t, stdout, stderr, code)
-	head, parts, _ := refusal(t, reason)
+	head, parts, _ := limitsRefusal(t, reason)
 	if got := rulesNamed(parts); !slices.Equal(got, []string{"never-recommended"}) {
 		t.Errorf("want only the never-recommended finding among the parts to fix; got %v:\n%s", got, reason)
 	}
