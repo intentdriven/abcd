@@ -1403,11 +1403,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
 	//
-	// A quoted one other than a plain `${NAME}` marks its word as one an
-	// unquoted substitution stands in (curSplit): an operator, a flag, a
-	// modifier, a subscript or a nested expansion can make it yield several
-	// words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and `"${^@}"`), and
-	// the guard does not work out which do.
+	// A quoted one other than a plain `${NAME}` or positional `${1}` marks its
+	// word as one an unquoted substitution stands in (curSplit): an operator, a
+	// flag, a modifier, a subscript or a nested expansion can make it yield
+	// several words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and
+	// `"${^@}"`), and the guard does not work out which do.
 	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
@@ -1420,7 +1420,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if len(segs) > start {
 			curSub = true
 		}
-		if !split && !isName(body) {
+		if !split && !isName(body) && !allDigits(body) {
 			curSplit = true
 		}
 	}
@@ -1550,9 +1550,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
-					// Only a plain `"$NAME"` is one word: `"$@"` yields one
-					// per element, and zsh reads a subscript or a modifier
-					// after the name (`"$a[@]"`, `"$v:h"`).
+					// Only a plain `"$NAME"` or `"$1"` is one word: `"$@"`
+					// yields one per element, and zsh reads a subscript or a
+					// modifier after the name (`"$a[@]"`, `"$v:h"`).
 					if !plainParam(line, j, k) {
 						curSplit = true
 					}
@@ -2759,10 +2759,11 @@ func simpleParamEnd(line string, i int) int {
 }
 
 // plainParam reports whether the unbraced parameter line[j:k] (the `$` at
-// j) is a plain `$NAME`: a name, not a special parameter, with no subscript
-// or modifier after it, both of which zsh reads (`$a[@]`, `$v:h`).
+// j) is a plain `$NAME` or positional `$1`: a name or a digit, not a special
+// parameter, with no subscript or modifier after it, both of which zsh reads
+// (`$a[@]`, `$v:h`).
 func plainParam(line string, j, k int) bool {
-	if !isName(line[j+1 : k]) {
+	if name := line[j+1 : k]; !isName(name) && !allDigits(name) {
 		return false
 	}
 	return k >= len(line) || (line[k] != '[' && line[k] != ':')

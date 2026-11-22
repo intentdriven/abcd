@@ -402,8 +402,9 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 
 // TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName:
 // the value of one of env's or sudo's options is one word only where every
-// expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"`, with
-// no operator, flag, modifier, subscript or nesting. Any other expansion can
+// expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"` or a
+// positional such as `"$1"`, with no operator, flag, modifier, subscript or
+// nesting. Any other expansion can
 // yield several words, the ones after the first operands of env or sudo of
 // their own, so as an option value it can set a variable: `"$@"` and
 // `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `$=V`,
