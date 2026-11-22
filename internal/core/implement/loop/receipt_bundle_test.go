@@ -162,7 +162,7 @@ func TestABundleReceiptsAccountOfItsIssuesIsChecked(t *testing.T) {
 		t.Fatalf("a run without members refuses handbacks: %s", r.Reason)
 	}
 	rc.HandBacks = nil
-	rc.Resolves = append(rc.Resolves, resolving(secondIssue, sha))
+	rc.Resolves = append(rc.Resolves, resolving(majorIssue, sha))
 	if _, err := Receipt(repo2.Root(), runID2, writeReceipt(t, dir2, rc), DefaultStages(), Options{}); err != nil {
 		t.Fatalf("a single lane's receipt still resolves another capture: %v", err)
 	}

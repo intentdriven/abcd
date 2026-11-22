@@ -27,6 +27,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -255,6 +256,64 @@ func resolutionGaps(rs []Resolution, commits []string) []string {
 	}
 	slices.Sort(gaps)
 	return gaps
+}
+
+// incidentalGaps judges each capture a receipt resolves that is no issue of
+// the run: a lane resolves the captures it fixed (commands/implement.md), its
+// own issue and any other it fixed on the way, but only an issue open at the
+// lane's head and not one another holder reserves, which is that holder's to
+// resolve. A run with members names each of its issues alone
+// (bundleReceiptGaps), so only a run without members is judged here. The
+// reservations are read as last fetched, with no network act; a checkout with
+// no remote named origin has none.
+func incidentalGaps(c Context, lane Lane, rs []Resolution) []string {
+	if c.State.hasMembers() {
+		return nil
+	}
+	var incidental []string
+	for _, r := range rs {
+		if issueIDRe.MatchString(r.Issue) && !c.State.covers(r.Issue) && !slices.Contains(incidental, r.Issue) {
+			incidental = append(incidental, r.Issue)
+		}
+	}
+	if len(incidental) == 0 {
+		return nil
+	}
+	var gaps []string
+	for _, id := range incidental {
+		if !openIn(lane.Worktree, id) {
+			gaps = append(gaps, id+", an open issue at the lane's head, or no resolution of it (a lane resolves only an open capture it fixed)")
+		}
+	}
+	for _, id := range incidental {
+		if held := incidentalHeld(c.RepoRoot, id, c.Now); held != "" {
+			gaps = append(gaps, id+", which another holder reserves, out of resolves ("+held+"): it is that holder's to resolve")
+		}
+	}
+	return gaps
+}
+
+// incidentalHeld is how the reservations as last fetched name another copy's
+// hold on id, "" when nothing holds it but this copy or there is no origin;
+// reservations that cannot be read are named as that, since the hold they
+// may carry is unknown.
+func incidentalHeld(repoRoot, id string, now time.Time) string {
+	has, err := claim.HasOrigin(repoRoot)
+	if err == nil && !has {
+		return ""
+	}
+	snap, err := claim.View(repoRoot, now)
+	if err == nil {
+		return termsafe.Sanitize(snap.HeldBy(id, now))
+	}
+	return "the reservations could not be read: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+}
+
+// openIn reports whether id's record is in the open ledger of the checkout at
+// wt.
+func openIn(wt, id string) bool {
+	m, _ := filepath.Glob(filepath.Join(wt, ".abcd", "work", "issues", "open", id+"-*.md"))
+	return len(m) > 0
 }
 
 // recordReceipt records a verified implementer's receipt on the lane: the
@@ -625,6 +684,7 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 	missing = append(missing, members...)
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 	missing = append(missing, resolutionGaps(rc.Resolves, rc.Commits)...)
+	missing = append(missing, incidentalGaps(c, *lane, rc.Resolves)...)
 	// The landing's Assisted-by: trailer names the model, so a receipt that
 	// reports none is refused here, where the implementer can still add it,
 	// rather than at the landing (iss-2611012309408370).

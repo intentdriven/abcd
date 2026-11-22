@@ -661,6 +661,9 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			trailers = append(trailers, "Delivers: "+st.Intent)
 		}
 	}
+	if err := incidentalHeldAtLanding(c, *lane); err != nil {
+		return Outcome{}, err
+	}
 	for _, r := range lane.Resolves {
 		if resolvedIn(wt, r.Issue) {
 			// A call killed or refused after the move may have left links naming the
@@ -2267,6 +2270,27 @@ func laneResolves(lane Lane, issue string) bool {
 		}
 	}
 	return false
+}
+
+// incidentalHeldAtLanding refuses the landing's resolutions when a capture
+// the lane fixed beside its own issue is one another holder has reserved
+// since the receipt: it is that holder's to resolve, so nothing is resolved,
+// and the refusal names it (incidentalGaps judged it at the receipt).
+func incidentalHeldAtLanding(c Context, lane Lane) error {
+	st := c.State
+	if st.hasMembers() {
+		return nil
+	}
+	for _, r := range lane.Resolves {
+		if st.covers(r.Issue) || resolvedIn(lane.Worktree, r.Issue) {
+			continue
+		}
+		if held := incidentalHeld(c.RepoRoot, r.Issue, c.Now); held != "" {
+			return refuse(string(StageLand), "", lane.ID, "the lane's receipt resolves "+r.Issue+", which is not the run's issue and which another holder reserves ("+held+"), so the landing resolves nothing",
+				"the issue is that holder's to resolve: wait for that reservation to end and run `abcd implement step` again, or end the lane with `abcd implement step --run "+st.RunID+" --discard "+lane.ID+"`")
+		}
+	}
+	return nil
 }
 
 // resolvedIn reports whether issue is already in the worktree's resolved/.
