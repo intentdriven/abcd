@@ -38,6 +38,10 @@
 #   dependency-reauthor.sh check   the bound alone; writes nothing, needs no secret
 #   dependency-reauthor.sh run     the bound, then an in-bound bump is re-authored
 #                                  and pushed back to its branch
+#   dependency-reauthor.sh rows    the declaration alone, as parsed: "owner declared"
+#                                  or "owner unset", then "row <row>" per ecosystem;
+#                                  needs no pull request (`abcd launch reland` and
+#                                  abcd's status board read the bound through it)
 #
 # Inputs come from the environment, which the workflow fills from the event;
 # nothing the pull request's author wrote is ever spliced into this script:
@@ -244,16 +248,19 @@ say "in bound: $bot, $prefix, $changed file(s), \"$subject\""
 [ "$mode" = run ] || exit 0
 
 # --- The owner and the secrets: refuse, never fall back -----------------------
-[ -n "$owner_name" ] || refuse "owner_name is empty in $CONF; the person whose authorship this workflow asserts sets it"
-[ -n "$owner_email" ] || refuse "owner_email is empty in $CONF; the person whose authorship this workflow asserts sets it"
+# Each refusal names how the bump lands meanwhile: a person relands it as their
+# own commit, inside this same bound, with abcd (iss-2611220952509874).
+meanwhile="; until then a person lands the bump as their own commit with \`abcd launch reland <pull request number>\`"
+[ -n "$owner_name" ] || refuse "owner_name is empty in $CONF; the person whose authorship this workflow asserts sets it$meanwhile"
+[ -n "$owner_email" ] || refuse "owner_email is empty in $CONF; the person whose authorship this workflow asserts sets it$meanwhile"
 case "$owner_email" in
 *@*) ;;
 *) refuse "owner_email in $CONF is not an address" ;;
 esac
 [ -n "${DEPENDENCY_REAUTHOR_APP_ID:-}" ] ||
-	refuse "the secret DEPENDENCY_REAUTHOR_APP_ID is not set (a Dependabot secret: the GitHub App's id)"
+	refuse "the secret DEPENDENCY_REAUTHOR_APP_ID is not set (a Dependabot secret: the GitHub App's id)$meanwhile"
 [ -n "${DEPENDENCY_REAUTHOR_APP_KEY:-}" ] ||
-	refuse "the secret DEPENDENCY_REAUTHOR_APP_KEY is not set (a Dependabot secret: the GitHub App's private key)"
+	refuse "the secret DEPENDENCY_REAUTHOR_APP_KEY is not set (a Dependabot secret: the GitHub App's private key)$meanwhile"
 printf '%s' "$DEPENDENCY_REAUTHOR_APP_ID" | grep -Eq '^[A-Za-z0-9._-]+$' ||
 	refuse "DEPENDENCY_REAUTHOR_APP_ID is not an App id"
 printf '%s' "$GITHUB_REPOSITORY" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' ||

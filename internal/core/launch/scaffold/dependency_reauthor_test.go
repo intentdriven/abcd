@@ -388,6 +388,11 @@ func TestReauthorRefusesWithoutTheOwnerOrEitherSecret(t *testing.T) {
 			if code != 1 || !strings.Contains(out, c.want) {
 				t.Fatalf("want exit 1 with %q, got exit %d:\n%s", c.want, code, out)
 			}
+			// iss-2611220952509874: the refusal names the person's way to land
+			// the bump meanwhile.
+			if !strings.Contains(out, "abcd launch reland") {
+				t.Fatalf("the refusal does not name `abcd launch reland`:\n%s", out)
+			}
 			if got := remoteHead(t, remote); got != f.head {
 				t.Fatalf("a refused run moved the branch to %s", got)
 			}
