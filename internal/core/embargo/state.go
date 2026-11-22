@@ -16,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // SchemaVersion is the state shape this package writes. Schema 1, which had
@@ -97,7 +98,14 @@ type Advisory struct {
 	ClosedAt    *time.Time     `json:"closed_at"`
 	PublishedAt *time.Time     `json:"published_at"`
 	History     []HistoryEntry `json:"history,omitempty"`
+	// FixCommits are the full ids of the commits that fix the advisory, as
+	// `abcd embargo fixed` recorded them (fixes.go). It is omitted while
+	// empty, so a state with none recorded is what it always was.
+	FixCommits []string `json:"fix_commits,omitempty"`
 }
+
+// maxFixCommits bounds the fix commits one advisory records.
+const maxFixCommits = 64
 
 // HistoryEntry is a verdict a later triage replaced: triage appends rather
 // than overwrites, so who decided what, and when, is never lost.
@@ -150,6 +158,17 @@ func (st State) validate() error {
 		for j, h := range a.History {
 			if !slices.Contains(Verdicts, h.Verdict) {
 				return fmt.Errorf("%s: history entry %d's verdict is not one of %s", where, j+1, strings.Join(Verdicts, ", "))
+			}
+		}
+		if len(a.FixCommits) > maxFixCommits {
+			return fmt.Errorf("%s: it records more than %d fix commits", where, maxFixCommits)
+		}
+		for j, c := range a.FixCommits {
+			switch {
+			case !gitutil.IsFullSHA(c):
+				return fmt.Errorf("%s: fix commit %d is not a full commit id", where, j+1)
+			case slices.Contains(a.FixCommits[:j], c):
+				return fmt.Errorf("%s: fix commit %d is listed twice", where, j+1)
 			}
 		}
 		ghsas[a.GHSAID], issues[a.IssueID] = true, true

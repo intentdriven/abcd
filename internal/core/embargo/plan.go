@@ -84,6 +84,12 @@ type PlanEntry struct {
 	// release carries no public record of it. It is omitted when false, so a
 	// public-record entry, and the digest over it, is what it always was.
 	StoreEvidence bool `json:"store_evidence,omitempty"`
+	// FixCommits are the fix commits `abcd embargo fixed` recorded in the
+	// store's state, when they are the evidence (FixCommit is the first of
+	// them, and FirstTag the first published release holding every one).
+	// It is omitted otherwise, so any other entry, and the digest over it,
+	// is what it always was.
+	FixCommits []string `json:"fix_commits,omitempty"`
 }
 
 // LeftOut is an advisory judged a vulnerability that the plan does not
@@ -273,15 +279,30 @@ func planEntry(s Store, rt *releaseTags, release string, resolved []string, a Ad
 		return PlanEntry{}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", nil
 	}
 	var fix, storeRec string
-	if rec != "" {
+	var recorded []string
+	switch {
+	case rec != "":
 		fix, why = fixCommit(s.Checkout, release, rec)
-	} else if fix, storeRec, why = s.storeFixCommit(a.IssueID); why != "" {
-		why = "its record is not resolved in " + release + ", " + why
+	case len(a.FixCommits) > 0:
+		recorded, why = recordedFixCommits(s.Checkout, a)
+		if why == "" {
+			fix = recorded[0]
+		} else {
+			why = "its record is not resolved in " + release + ", and " + why
+		}
+	default:
+		if fix, storeRec, why = s.storeFixCommit(a.IssueID); why != "" {
+			why = "its record is not resolved in " + release + ", " + why
+		}
 	}
 	if why != "" {
 		return PlanEntry{}, why, nil
 	}
-	first, why, err := firstReleaseTag(rt, fix, release)
+	fixes := []string{fix}
+	if recorded != nil {
+		fixes = recorded
+	}
+	first, why, err := firstReleaseHoldingAll(rt, fixes, release)
 	if err != nil || why != "" {
 		return PlanEntry{}, why, err
 	}
@@ -342,7 +363,7 @@ func planEntry(s Store, rt *releaseTags, release string, resolved []string, a Ad
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,
 		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote),
-		StoreEvidence: storeRec != ""}, "", nil
+		StoreEvidence: storeRec != "" || recorded != nil, FixCommits: recorded}, "", nil
 }
 
 // isRecordOf reports whether a ledger file name is the record of issID.
@@ -578,18 +599,33 @@ func fixCommit(checkout, release, rec string) (string, string) {
 // Which tags hold the fix is read from the commits as stored, so no graft or
 // refs/replace entry gives a tag's commit the fix as an ancestor.
 func firstReleaseTag(rt *releaseTags, fix, release string) (string, string, error) {
-	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), rt.checkout, "", maxTagListing, "tag", "--contains", fix, "--list", "v*")
-	if err != nil {
-		return "", "", refuse("git could not list the tags holding a fix commit", "settle what git reports, then run it again")
+	return firstReleaseHoldingAll(rt, []string{fix}, release)
+}
+
+// firstReleaseHoldingAll is firstReleaseTag for a fix made of several
+// commits: the lowest release tag holding every one of fixes that is a
+// published release, up to release ("" sets no bound). Which tags hold a
+// commit is read as stored (releaseTagsHolding).
+func firstReleaseHoldingAll(rt *releaseTags, fixes []string, release string) (string, string, error) {
+	var tags []string
+	for i, fix := range fixes {
+		held, err := releaseTagsHolding(rt.checkout, fix)
+		if err != nil {
+			return "", "", err
+		}
+		if i == 0 {
+			tags = held
+			continue
+		}
+		tags = slices.DeleteFunc(tags, func(t string) bool { return !slices.Contains(held, t) })
 	}
-	tags := sortReleaseTags(strings.Split(string(out), "\n"))
 	if len(tags) == 0 {
 		return "", "its fix is in no release tag yet", nil
 	}
 	rv, _ := launch.ParseSemver(strings.TrimPrefix(release, "v"))
 	for i, t := range tags {
 		tv, _ := launch.ParseSemver(strings.TrimPrefix(t, "v"))
-		if compareCore(tv, rv) > 0 {
+		if release != "" && compareCore(tv, rv) > 0 {
 			if i == 0 {
 				return "", "its fix is first tagged in " + t + ", after " + release, nil
 			}
@@ -603,8 +639,23 @@ func firstReleaseTag(rt *releaseTags, fix, release string) (string, string, erro
 			return t, "", nil
 		}
 	}
-	return "", "its fix is in no published release up to " + release + ": a release tag counts once origin holds it at the same object " +
+	upTo := " yet"
+	if release != "" {
+		upTo = " up to " + release
+	}
+	return "", "its fix is in no published release" + upTo + ": a release tag counts once origin holds it at the same object " +
 		"and GitHub reports its release neither a draft nor a prerelease", nil
+}
+
+// releaseTagsHolding is every release tag holding commit, lowest version
+// first. It is read from the commits as stored, so no graft or refs/replace
+// entry gives a tag's commit the fix as an ancestor.
+func releaseTagsHolding(checkout, commit string) ([]string, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), checkout, "", maxTagListing, "tag", "--contains", commit, "--list", "v*")
+	if err != nil {
+		return nil, refuse("git could not list the tags holding a fix commit", "settle what git reports, then run it again")
+	}
+	return sortReleaseTags(strings.Split(string(out), "\n")), nil
 }
 
 // textDigest binds an advisory's text as read: SHA-256 over its summary and
