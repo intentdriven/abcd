@@ -2231,71 +2231,118 @@ const anyNameAssigned = "*"
 // number. A comparison (`==`, `!=`, `<=`, `>=`) assigns nothing. An
 // arithmetic target written as a variable (`$X=1`) is anyNameAssigned.
 func numberAssigns(text string) []string {
+	names, _ := numberAssignsWork(text)
+	return names
+}
+
+// numberAssignsWork is numberAssigns, and the bytes it visited. An opener's
+// expression runs to the bracket that closes it, or to the end of the text
+// where none does. The closes are found in one pass (bracketCloses), and each
+// byte is read as an expression's at most once: an opener inside a span
+// already read adds only the part of its own span past it, so an expression
+// nested in another, and the openers after one that never closes, are not
+// read again. Quoted text is read too, since a `$(( … ))` inside double
+// quotes assigns as an unquoted one does.
+func numberAssignsWork(text string) ([]string, int) {
 	var out []string
 	add := func(name string) {
 		if !containsString(out, name) {
 			out = append(out, name)
 		}
 	}
+	if !strings.Contains(text, "((") && !strings.Contains(text, "$[") && !strings.Contains(text, "{") {
+		return nil, len(text)
+	}
+	parens, brackets := bracketCloses(text, '(', ')'), bracketCloses(text, '[', ']')
+	work := 2 * len(text)
+	covered := 0 // the text before covered has been read as an expression's
+	read := func(lo, hi int) {
+		lo = max(lo, covered)
+		if hi <= lo {
+			return
+		}
+		work += arithmeticTargets(text, lo, hi, brackets, add)
+		covered = hi
+	}
 	for i := 0; i+1 < len(text); i++ {
+		work++
 		switch {
 		case text[i] == '(' && text[i+1] == '(':
-			arithmeticTargets(text[i+2:bracketClose(text, i, '(', ')')], add)
+			read(i+2, closeWithin(parens, i, len(text)))
 		case text[i] == '$' && text[i+1] == '[':
-			arithmeticTargets(text[i+2:bracketClose(text, i+1, '[', ']')], add)
+			read(i+2, closeWithin(brackets, i+1, len(text)))
 		case text[i] == '{':
 			if j := nameEnd(text, i+1); j > i+1 && j+1 < len(text) && text[j] == '}' && (text[j+1] == '<' || text[j+1] == '>') {
 				add(text[i+1 : j])
 			}
 		}
 	}
-	return out
+	return out, work
 }
 
-// bracketClose is the index of the byte that closes the bracket opening at
-// text[at], counting nested pairs, or len(text) where it never closes.
-func bracketClose(text string, at int, open, close byte) int {
-	depth := 0
-	for k := at; k < len(text); k++ {
+// bracketCloses is, for each byte of text that opens a bracket, the index of
+// the byte that closes it, counting nested pairs, or -1 where none does; -1
+// for every other byte. One pass, with a stack of the openers not yet
+// closed.
+func bracketCloses(text string, open, close byte) []int {
+	closes := make([]int, len(text))
+	var stack []int
+	for k := range len(text) {
+		closes[k] = -1
 		switch text[k] {
 		case open:
-			depth++
+			stack = append(stack, k)
 		case close:
-			depth--
-			if depth == 0 {
-				return k
+			if n := len(stack); n > 0 {
+				closes[stack[n-1]], stack = k, stack[:n-1]
 			}
 		}
 	}
-	return len(text)
+	return closes
 }
 
-// arithmeticTargets hands add every name an arithmetic expression assigns
-// (numberAssigns).
-func arithmeticTargets(expr string, add func(string)) {
-	for k := 0; k < len(expr); {
-		end := nameEnd(expr, k)
-		if end == k || k > 0 && (expr[k-1] >= '0' && expr[k-1] <= '9' || expr[k-1] == '#') {
+// closeWithin is the close bracketCloses found for the opener at at, or hi
+// where it has none before hi: the end of the text an expression of
+// text[:hi] runs to.
+func closeWithin(closes []int, at, hi int) int {
+	if c := closes[at]; c >= 0 && c < hi {
+		return c
+	}
+	return hi
+}
+
+// arithmeticTargets hands add every name the arithmetic expression
+// text[lo:hi] assigns (numberAssigns), a subscript's close read from
+// brackets (bracketCloses over text), and returns the bytes it visited.
+func arithmeticTargets(text string, lo, hi int, brackets []int, add func(string)) int {
+	work := 0
+	for k := lo; k < hi; {
+		work++
+		end := min(nameEnd(text[:hi], k), hi)
+		if end == k || k > lo && (text[k-1] >= '0' && text[k-1] <= '9' || text[k-1] == '#') {
+			work += end - k
 			k = max(end, k+1)
 			continue
 		}
-		name := expr[k:end]
-		if k > 0 && expr[k-1] == '$' {
+		work += end - k
+		name := text[k:end]
+		if k > lo && text[k-1] == '$' {
 			name = anyNameAssigned
 		}
-		before := strings.TrimRight(expr[:k], " \t\n$")
+		before := strings.TrimRight(text[lo:k], " \t\n$")
 		after := end
-		if after < len(expr) && expr[after] == '[' {
-			after = bracketClose(expr, after, '[', ']') + 1
+		if after < hi && text[after] == '[' {
+			after = closeWithin(brackets, after, hi) + 1
 		}
-		for after < len(expr) && (expr[after] == ' ' || expr[after] == '\t' || expr[after] == '\n') {
+		for after < hi && (text[after] == ' ' || text[after] == '\t' || text[after] == '\n') {
 			after++
 		}
-		if strings.HasSuffix(before, "++") || strings.HasSuffix(before, "--") || arithmeticAssignsAt(expr[min(after, len(expr)):]) {
+		if strings.HasSuffix(before, "++") || strings.HasSuffix(before, "--") || arithmeticAssignsAt(text[min(after, hi):hi]) {
 			add(name)
 		}
 		k = end
 	}
+	return work
 }
 
 // arithmeticAssignsAt reports whether an arithmetic operator that assigns to
