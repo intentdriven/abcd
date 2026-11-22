@@ -3369,7 +3369,12 @@ preflight the first gate admits at once (`load.preflights`), and 8 GiB at least,
 8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
 and again just before it opens (the race gate at one preflight at a time reads
 it as it starts and at each look while memory holds it), and refuses at any such
-look. The refusal names
+look. Before it refuses, a waiter whose low volume holds the Go build cache runs
+the cache trim of each toolchain its checkout uses once (`go.mod` or `go.work` at
+its root for Go, whose build cache is the one abcd trims), paced to once an hour
+across the account as `abcd ahoy worktree trim-cache` is, says on stderr what each
+trim freed or why it did not run, and refuses only if the volume is still low.
+The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to
 its size limit, and a command that deletes its build entries unused for two

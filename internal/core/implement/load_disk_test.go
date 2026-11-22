@@ -13,20 +13,26 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
-// No test in this package reads the real disk or the real memory pressure
-// unless it asks: every wait and every check sees a disk with room and macOS
-// at its normal memory level, so a nearly full or memory-pressed development
-// machine or CI runner does not turn every gate test into a disk or memory
-// test. This is the package's one init: the plain-only guard scan
+// No test in this package reads the real disk or the real memory pressure, or
+// trims a real cache, unless it asks: every wait and every check sees a disk
+// with room and macOS at its normal memory level, so a nearly full or
+// memory-pressed development machine or CI runner does not turn every gate
+// test into a disk or memory test. This is the package's one init: the plain-only guard scan
 // (internal/core/lint) refuses a function name a package declares twice.
 func init() {
 	ReadDisk = func(_ string, floor uint64) DiskCheck {
 		return DiskCheck{Status: DiskOK, FloorBytes: floor, Volumes: []DiskVolume{}}
 	}
 	ReadMemory = func() (machineload.Memory, error) { return macMemory(machineload.MemoryNormal), nil }
+	// No test trims a real cache either: a wait refused at the floor runs a
+	// trim that frees nothing unless the test stands in its own.
+	TrimAtFloor = func(string, string, time.Time, func(string)) worktree.FloorTrim {
+		return worktree.FloorTrim{None: "no cache is trimmed in this package's tests"}
+	}
 }
 
 // productionReadDisk is ReadDisk as the binary runs it, kept before init

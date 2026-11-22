@@ -278,7 +278,12 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
 			"and again just before it opens (the race gate at one preflight at a time reads\n" +
 			"it as it starts and at each look while memory holds it), and refuses at any such\n" +
-			"look. The refusal names\n" +
+			"look. Before it refuses, a waiter whose low volume holds the Go build cache runs\n" +
+			"the cache trim of each toolchain its checkout uses once (`go.mod` or `go.work` at\n" +
+			"its root for Go, whose build cache is the one abcd trims), paced to once an hour\n" +
+			"across the account as `abcd ahoy worktree trim-cache` is, says on stderr what each\n" +
+			"trim freed or why it did not run, and refuses only if the volume is still low.\n" +
+			"The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
 			"is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to\n" +
 			"its size limit, and a command that deletes its build entries unused for two\n" +
@@ -532,6 +537,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 	// The marker's note is said at the look that could not write it, not when
 	// the wait returns: a preflight can stay queued for hours.
 	req.OnMarkNote = func(note string) { fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, note) }
+	// The trim at the disk floor says each step as it goes, since walking a
+	// large cache takes minutes.
+	req.OnDiskTrim = func(line string) { fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, line) }
 	res, err := implement.WaitLoad(req)
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}

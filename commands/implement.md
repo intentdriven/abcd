@@ -2037,9 +2037,29 @@ and the floor, and, when the cache's own volume is low, the cache's path and
 size and three ways to free it: `abcd ahoy worktree trim-cache` and a `find` line
 deleting the build entries unused for two days (each offered only for a directory
 with a Go build cache's shape, and keeping the fuzz corpora) and `go clean -cache`.
-The gate never deletes anything itself; abcd keeps the cache to its size limit
-when `ahoy worktree prune` removes a worktree and, detached and at most hourly,
-when the build loop makes a lane (`commands/ahoy.md`). A disk it cannot read, on a platform other than macOS and Linux or
+
+Before it refuses, a waiter whose low volume holds the Go build cache runs the
+cache trim once: the trim of each toolchain its checkout uses, told by a file
+from that toolchain's closed set at the checkout's root (`go.mod` or `go.work`
+for Go, the files `.abcd/needs.json` accepts as Go's version file). The Go build
+cache's trim is the one abcd has, the same trim as `abcd ahoy worktree
+trim-cache`, down to `load.go_cache_limit_gib` and paced by the same record
+(`~/.abcd.noindex/go-cache-trim.json`), so it runs at most once an hour across the
+account and two waiters at the floor never both run it. The waiter says on
+stderr that it is trimming, what each trim removed and freed, or why it did not
+run (paced out by a trim started in the last hour, and what that trim did if it
+finished; a pacing record it could not claim; a cache the trim skipped; or a
+checkout with no toolchain abcd trims a cache for), and the free space after.
+It reads the disk again only when the trim freed something, and refuses only
+if the volume is still under the floor, the refusal naming what the trim did;
+`disk_trim` in `--json` carries the same lines. A waiter trims once: a disk
+that falls below the floor again while it waits is refused at the open look.
+Only the Go build cache's volume is trimmed for, so a low worktree store on a
+volume of its own is refused without a trim. A cache under its limit loses
+nothing here; lower the limit to let the trim free more. abcd also keeps the
+cache to its limit when `ahoy worktree prune` removes a worktree and, detached
+and at most hourly, when the build loop makes a lane (`commands/ahoy.md`). The
+load check never trims. A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.
