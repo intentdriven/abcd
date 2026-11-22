@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/wall.go"
 remedy: "Let the person's machine configuration name further cache variables a stage carries (each an absolute path outside the login), read by stageGoExports' successor, with the shipped default keeping only Go's."
+decision_needed: "The remedy adds a new machine-configuration setting a person writes and widens what a walled stage may read and write beyond its emptied home, so the record must answer: which configured cache paths outside the login may a walled stage carry, who is trusted to name them, and what validation (absolute, outside the login, not secrets-bearing, read or write access) bounds them?"
 ---
 
 A walled stage's shell finds no cache of a toolchain other than Go's: its home is emptied at each launch and only Go's caches are named, so a repository built with rustup, cargo, npm or the like downloads or fails in every stage, though abcd serves any repository's product.

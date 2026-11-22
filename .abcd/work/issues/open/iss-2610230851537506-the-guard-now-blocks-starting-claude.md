@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard"
 remedy: "Capture and resolve an additive record for the new guard blocks so the next cut's changelog names them."
+related_intents: [itd-2611190107385638]
 ---
 
 The guard now blocks starting claude --dangerously-skip-permissions, codex --yolo, opencode run --auto and the OPENCODE_* settings, and reads bunx, bun x and pnpm exec, but no user-facing record carries the change, so the next release's changelog has no line for it.

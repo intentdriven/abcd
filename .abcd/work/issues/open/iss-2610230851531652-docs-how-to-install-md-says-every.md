@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "docs/how-to/install.md"
 remedy: "Name the hooks that do not bootstrap and add the stop check to the list in docs/how-to/install.md."
+related_intents: [itd-2611181403247962]
 ---
 
 docs/how-to/install.md says every live-session hook needing the binary tries the bootstrap, but stop.sh, stop-failure.sh and subagent-stop.sh never do, and its list of what a broken install loses omits the away mode's stop check.

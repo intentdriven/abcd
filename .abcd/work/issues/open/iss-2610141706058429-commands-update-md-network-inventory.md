@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/update.md"
 remedy: "Name GitHub attestations and git APIs and the Sigstore TUF repository, reached by update and ahoy install."
+decision_needed: "Should the adr-38 network inventory, which users rely on as the full list of hosts the tool contacts, be widened to approve the GitHub git API (for resolving tag commits) and to name ahoy install as a second verb that reaches GitHub attestations and the Sigstore TUF repository, or should those calls be changed or cut back to fit the inventory as it stands?"
 ---
 
 commands/update.md network inventory (adr-38) says GitHub attestations API and the Sigstore TUF repository are reached by update, to verify build provenance, reading as exhaustive; ahoy install now makes the same check (internal/core/ahoy/apply.go), and both verbs also reach the GitHub git API to resolve the tag commit (internal/core/update/provenance.go), which the inventory omits.

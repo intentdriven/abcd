@@ -12,6 +12,7 @@ found_at: ".abcd/development/intents/planned/itd-2609170822093401-the-oracle-cho
 remedy: "In the routing intent's scope bullet and press release say the install states the proposal in counts in one question and writes the full table, readable and editable row by row, on consent, as 01-ahoy.md and commands/ahoy.md describe."
 related_intents: [itd-2609170822093401]
 finding_ref: cfk-c14c99b8068308e9
+decision_needed: "Before the install writes the oracle-routing table at machine level on consent, is it enough for the person to see only counts (agents, agents per tier, fan-out bounds) in one question, or must they be shown the per-agent rows they are consenting to?"
 ---
 
 The routing intent has the install render the proposal, a table with one row per agent, before consent; the ahoy page states the proposal in counts and names no agent.

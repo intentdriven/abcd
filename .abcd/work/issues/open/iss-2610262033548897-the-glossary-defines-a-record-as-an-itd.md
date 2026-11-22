@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record.md:4"
 remedy: "In record.md replace the closed list 'itd, spc, adr, iss or rdg' with the id kinds the citation grammar and abcd record-id dispatch admit (itd, spc, adr, iss, dcn, adm, srp, rfm, rdg), or point at that one list."
 finding_ref: cfk-9b80a35daf87d651
+related_intents: [itd-2611192109264982]
 ---
 
 The glossary defines a record as an itd, spc, adr, iss or rdg document; the record dispatcher treats dcn, adm, srp and rfm ids as records and gives rdg no dispatch.

@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: "commands/launch.md"
 remedy: "State the real order of magnitude, or say it scales with the test suite."
 refines: [iss-356, iss-2609091956001547]
+related_intents: [itd-2611181402332460]
 ---
 
 commands/launch.md says the release verify job takes a few minutes; abcd's own takes about 49.

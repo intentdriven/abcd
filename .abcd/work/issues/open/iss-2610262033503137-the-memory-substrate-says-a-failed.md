@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:140"
 remedy: "Edit 07-memory.md section 5 (coverage check): drop 'refuses next quotation block'; say a failed cumulative check is an MQ002 blocker that makes `abcd library lint` exit nonzero, and nothing refuses at ingest."
 finding_ref: cfk-791a99c89edbe335
+decision_needed: "When a source fails its cumulative quotation coverage check, should abcd refuse further quotation blocks from that source at ingest, as 07-memory says, or only report an MQ002 blocker that makes `abcd library lint` exit nonzero, as 07-library says, with nothing refusing at ingest?"
 ---
 
 The memory substrate says a failed coverage check refuses the next quotation block from that source; the library chapter says nothing enforces the budget at ingest.

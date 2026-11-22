@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/validate.go"
 remedy: "Name the same thing in both exhaustion refusals: the review's return path, passed from keepAside into createAside."
+related_intents: [itd-2611211741311815]
 ---
 
 createAside's refusal when every numbered aside name is taken names the review's directory, while keepAside's refusal for the same exhaustion names the review's return path, so one condition reads two ways.

@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "CHANGELOG.md"
 remedy: "Have the delivering change carry a record, so a cut's changelog names a new surface that behaves differently unasked."
+related_intents: [itd-2611181838242943]
 ---
 
 abcd build --auto-plan is new since v0.16.0 and plans a draft with no person present, but the v0.16.1 changelog carries no line for it, because no record in the cut covers it; only a fix to it appears.
