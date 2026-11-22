@@ -498,3 +498,20 @@ func TestABundlesFixBriefAsksForEveryIssueInTheReceipt(t *testing.T) {
 		t.Fatalf("a run without members gets no bundle paragraph:\n%s", data)
 	}
 }
+
+// TestARunWithOnlyItsMembersHeldIsRenewedWhereItWaits: a run whose lead was
+// handed back alone, its members still held, is renewed where its agent
+// waits, as a run holding its lead is.
+func TestARunWithOnlyItsMembersHeldIsRenewedWhereItWaits(t *testing.T) {
+	now := time.Now()
+	st := State{Key: bundleLead, LeadHandBack: &HandBack{At: now, Kind: HandBackUserVisible, Reason: "a person's call"},
+		Bundle: []Member{{Issue: bundleTwo, ReservedAt: &now}, {Issue: bundleThree, ReservedAt: &now}},
+		Lanes:  []Lane{{ID: "lane-1", Key: bundleLead, Stage: StageImplement}}}
+	if !renewsWhereItWaits(st) {
+		t.Fatal("a run holding its members is renewed where it waits")
+	}
+	st.Bundle[0].ReservedAt, st.Bundle[1].ReservedAt = nil, nil
+	if renewsWhereItWaits(st) {
+		t.Fatal("a run holding nothing is not")
+	}
+}
