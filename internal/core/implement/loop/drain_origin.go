@@ -161,13 +161,16 @@ type originView struct {
 
 // lastFetchedOrigin is origin's default branch as last fetched (the ref the
 // lane's worktree is cut from, gitutil.DefaultRef), or the kind of wait and
-// why there is none.
+// why there is none. The ref's commit is resolved as stored
+// (gitutil.RunCappedAsStored), as the lane's base is (worktreeStage), so the
+// commit whose ledger is read is the one the ref names, never one a
+// refs/replace entry stands in for it.
 func lastFetchedOrigin(repoRoot string) (v originView, kind, why string) {
 	ref := gitutil.DefaultRef(repoRoot)
 	if !strings.HasPrefix(ref, "refs/remotes/"+claim.Remote+"/") {
 		return originView{}, DrainOriginHead, "this checkout names no default branch of " + claim.Remote + " (no origin/HEAD, and no origin/main, master, trunk or develop)"
 	}
-	sha, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	sha, err := gitutil.RunCappedAsStored(repoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(sha) {
 		return originView{}, DrainOriginDefaultBranch, "could not resolve " + gitutil.ShortRef(ref) + "'s commit"
 	}
@@ -224,6 +227,14 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}
+	return plan, originViewOf(repoRoot, v, ledger, now), nil
+}
+
+// originViewOf is the view v at now, whose ledger is the one read out of
+// its commit: when it was fetched, how many commits this checkout is behind
+// it, counted in history as stored (gitutil.RunCappedAsStored), and the
+// issues open here that it holds finished.
+func originViewOf(repoRoot string, v originView, ledger *capture.TreeLedger, now time.Time) *DrainOrigin {
 	o := &DrainOrigin{Ref: gitutil.ShortRef(v.ref), Commit: v.commit, Finished: []string{}}
 	if at := claim.LastFetched(repoRoot); !at.IsZero() {
 		o.FetchedAt = &at
@@ -231,7 +242,7 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 			o.AgeMinutes = int(age / time.Minute)
 		}
 	}
-	if out, err := gitutil.Run(repoRoot, "rev-list", "--count", "HEAD.."+v.commit, "--"); err == nil {
+	if out, err := gitutil.RunCappedAsStored(repoRoot, 64, "rev-list", "--count", "HEAD.."+v.commit, "--"); err == nil {
 		o.Behind, _ = strconv.Atoi(strings.TrimSpace(out))
 	}
 	terminal := ledger.Terminal()
@@ -240,7 +251,7 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 			o.Finished = append(o.Finished, id)
 		}
 	}
-	return plan, o, nil
+	return o
 }
 
 // maxLedgerBatch caps what one move's read of the open records may answer:

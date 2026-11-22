@@ -27,10 +27,13 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -1390,14 +1393,24 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 		}
 		i := slices.IndexFunc(lr.Issues, func(iss capture.Issue) bool { return recordid.SameID(iss.ID, key) })
 		if i < 0 {
-			return nil, refuse(StageReservation, "", "", key+" is in no status folder of this checkout's ledger, so it names no found_at path to reserve it with; "+outcome,
+			fp, source, held, ok := originRecordFootprint(repoRoot, key)
+			switch {
+			case held && ok:
+				return fp, nil
+			case held:
+				return nil, noFoundAtRefusal(key, outcome)
+			}
+			where := "this checkout's ledger,"
+			if source != "" {
+				where = "this checkout's ledger, nor of " + source + " as last fetched,"
+			}
+			return nil, refuse(StageReservation, "", "", key+" is in no status folder of "+where+" so it names no found_at path to reserve it with; "+outcome,
 				"restore the issue's record, or remove the run's directory if the issue is gone for good")
 		}
 		if fp, ok := issueFootprint(repoRoot, lr.Issues[i]); ok {
 			return fp, nil
 		}
-		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
-			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
+		return nil, noFoundAtRefusal(key, outcome)
 	}
 	fp, err := specPackages(repoRoot, specID, built)
 	var entry *footprintEntryError
@@ -1413,6 +1426,46 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 			"name the packages the build will change on the `- packages:` line of "+specID+"'s `## Footprint` section; the reservation names them for every other participant")
 	}
 	return fp, nil
+}
+
+// originRecordFootprint is runFootprint's read of issue key's found_at where this
+// checkout's ledger holds no record of it: a run a build started for an issue
+// only origin's default branch held (readIssueLedger) is resumed, leaves its
+// landing and declares its walled stages with the found_at it was reserved
+// with (iss-2611101316317556). The record is read out of origin's default
+// branch as last fetched (lastFetchedOrigin, the ref the build judged it
+// from), with no network act, from whichever status folder holds it, as the
+// checkout's is, and judged as the ledger's reader judges one
+// (issuerecord.JudgeText). source names the commit read, "" where this
+// checkout names no default branch of origin; held reports whether that
+// commit holds key's record in exactly one file the reader takes, and ok
+// whether its found_at names a path (issueFootprint).
+func originRecordFootprint(repoRoot, key string) (fp []string, source string, held, ok bool) {
+	v, kind, _ := lastFetchedOrigin(repoRoot)
+	if kind != "" {
+		return nil, "", false, false
+	}
+	source = gitutil.ShortRef(v.ref) + " at " + shortSHA(v.commit)
+	at := baseTree{root: repoRoot, sha: v.commit}
+	found, err := at.record(recordid.IssuesRelDir, "iss", key)
+	if err != nil || len(found) != 1 {
+		return nil, source, false, false
+	}
+	text, err := at.blob(found[0], issueschema.RecordReadLimit)
+	fm, _, refusal, claims := issuerecord.JudgeText(found[0].path, found[0].folder, string(text), err)
+	if !claims || refusal != nil {
+		return nil, source, false, false
+	}
+	foundAt, _ := fm["found_at"].(string)
+	fp, ok = issueFootprint(repoRoot, capture.Issue{FoundAt: foundAt})
+	return fp, source, true, ok
+}
+
+// noFoundAtRefusal refuses a build of issue key whose record names no
+// found_at path to reserve it with; outcome says what the refusal left.
+func noFoundAtRefusal(key, outcome string) *Refusal {
+	return refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
+		"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 }
 
 // noFootprint says that specID names no footprint to reserve key with: the

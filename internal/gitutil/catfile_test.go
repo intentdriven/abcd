@@ -77,6 +77,46 @@ func TestTreePathTypesAnswersEachPathOnItsOwn(t *testing.T) {
 	}
 }
 
+// TestTreePathTypesReadsTheTreeAsStored: a refs/replace entry standing a tag
+// of an earlier commit in for the commit asked, or a commit with another
+// tree, changes nothing the batch answers: each path is resolved in the tree
+// the commit stores.
+func TestTreePathTypesReadsTheTreeAsStored(t *testing.T) {
+	setup := func(t *testing.T) (repo *gittest.Repo, earlier, head string) {
+		t.Helper()
+		repo = gittest.NewRepo(t)
+		repo.Write("README.md", "a project\n")
+		repo.Commit("start")
+		earlier = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+		repo.Write("internal/x/a.go", "package x\n")
+		repo.Commit("a file")
+		return repo, earlier, strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	}
+	check := func(t *testing.T, repo *gittest.Repo, head string) {
+		t.Helper()
+		got, err := gitutil.TreePathTypes(repo.Root(), head, []string{"internal/x/a.go", "internal/x", "README.md"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"blob", "tree", "blob"}; strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("the types = %q; want %q, the tree the commit stores", got, want)
+		}
+	}
+	t.Run("a tag of an earlier commit", func(t *testing.T) {
+		repo, earlier, head := setup(t)
+		repo.Git("-c", "tag.gpgsign=false", "tag", "-a", "-m", "stand-in", "stand-in", earlier)
+		standIn := strings.TrimSpace(repo.Git("rev-parse", "refs/tags/stand-in"))
+		repo.Git("update-ref", "-d", "refs/tags/stand-in")
+		repo.Git("update-ref", "refs/replace/"+head, standIn)
+		check(t, repo, head)
+	})
+	t.Run("a commit with another tree", func(t *testing.T) {
+		repo, earlier, head := setup(t)
+		repo.Git("replace", head, strings.TrimSpace(repo.Git("commit-tree", earlier+"^{tree}", "-p", earlier, "-m", "a file")))
+		check(t, repo, head)
+	})
+}
+
 // TestTreePathTypesClassifiesAGitlinkAsACommit: a submodule's gitlink is a
 // commit entry in its tree, never a file. Git answers "<sha> commit" when the
 // repository holds the commit the gitlink names, and from 2.51 "<sha>

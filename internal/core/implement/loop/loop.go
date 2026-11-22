@@ -785,12 +785,27 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		}
 		shared = run
 	}
+	// A person's build of an issue judges it from origin's default branch
+	// after a fetch, as the drain's move does (readIssueLedger). The fetch is
+	// made before the peers are read, so the listing, the claims and the
+	// reservations judged are never older than it, as a drain's lane reads
+	// them after its move's fetch.
+	var ledger *peerSnapshot
+	if o.plan == nil && validIssueKey(key) {
+		ledger = &peerSnapshot{now: o.now()}
+		if err := readIssueLedger(repoRoot, ledger); err != nil {
+			return StartResult{}, err
+		}
+	}
 	snap, err := readPeers(repoRoot, o.now())
 	if err != nil {
 		return StartResult{}, err
 	}
 	snap.takeOver = o.TakeOver
 	snap.plan = o.plan
+	if ledger != nil {
+		snap.plan, snap.aside, snap.origin, snap.originUnread = ledger.plan, ledger.aside, ledger.origin, ledger.originUnread
+	}
 	planning, err := autoPlans(repoRoot, key, o)
 	if err != nil {
 		return StartResult{}, err
@@ -812,6 +827,23 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	}
 	if chk.autoPlan != nil && o.reserve == nil {
 		o.reserve = autoPlanFootprint(*chk.autoPlan)
+	}
+	if snap.origin != nil && o.reserve == nil {
+		// The issue was judged from origin's record, so it is reserved with
+		// that record's found_at, which this checkout's ledger may not hold.
+		// The record is looked up by the id the plan judged it under, as the
+		// drain's lane looks it up, not by the key as it was typed.
+		id := chk.Key
+		if i := slices.IndexFunc(snap.plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, chk.Key) }); i >= 0 {
+			id = snap.plan.Dispositions[i].ID
+		}
+		if iss, ok := snap.plan.OpenIssue(id); ok {
+			fp, ok := issueFootprint(repoRoot, iss)
+			if !ok && !o.noReserve && !o.Trial && o.held == nil {
+				return StartResult{}, noFoundAtRefusal(chk.Key, "nothing was started")
+			}
+			o.reserve = fp
+		}
 	}
 	// The budget check runs once the record may start, and writes nothing:
 	// a run its estimate exceeds is refused before the run directory exists.
@@ -839,6 +871,11 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
+	// A build that could not read origin's default branch judged the issue
+	// from this checkout's own ledger (readIssueLedger). The eligible row
+	// says so, and is not stored, so the run's record says so too, for a
+	// later reader of the run.
+	judgedHere := snap.judgedHere(chk.Key)
 	var res StartResult
 	err = withLock(repoRoot, func(root *os.Root) error {
 		runs, err := readRuns(root)
@@ -921,6 +958,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: review.Judge.note()})
 		}
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
+		if judgedHere != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: CheckEligible, Note: judgedHere})
+		}
 		if st.Admitted != nil {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted, Note: "admitted under " + st.Admitted.String()})
 		}
