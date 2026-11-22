@@ -842,7 +842,7 @@
         "flags": ["--hard"]
       },
       "why": "`--hard` throws away every uncommitted change in the working tree, and nothing in git can bring back work that was never committed.",
-      "successor": "Save the changes first (`git stash`), or undo one file with `git restore <path>`; use `--hard` only on work you created yourself.",
+      "successor": "Save the changes first (commit them, or `git diff > file.patch`), or undo one file with `git restore <path>`; use `--hard` only on work you created yourself.",
       "fixtures": {
         "known_bad": [
           "git reset --hard origin/main",
@@ -875,8 +875,35 @@
         ],
         "known_good": [
           "git status --porcelain",
-          "git stash --include-untracked",
+          "git status --ignored",
           "abcd capture \"git clean -fd wiped my scratch notes\""
+        ]
+      }
+    },
+    "git-stash-shared-stack": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "stash",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "git keeps one stash list for the whole repository, shared by every linked worktree, so a stash, pop, apply, drop or clear here can take or destroy another worktree's work, and `stash@{0}` is whichever entry is newest when it runs. The guard warns only where linked worktrees exist.",
+      "successor": "Keep the work on this worktree's own branch with a commit (`git commit -m 'wip: <why>'`), or save it to a patch file (`git diff > file.patch`, applied back with `git apply file.patch`).",
+      "fixtures": {
+        "known_bad": [
+          "git stash",
+          "git stash pop",
+          "git stash push -m 'lane-a: probe'",
+          "git stash drop stash@{0}",
+          "git stash clear",
+          "git -C ../lane stash apply"
+        ],
+        "known_good": [
+          "git stash list",
+          "git stash show -p stash@{0}",
+          "git diff > lane-a.patch",
+          "git commit -m 'wip: probe'",
+          "abcd capture \"an agent popped another lane's git stash\""
         ]
       }
     },

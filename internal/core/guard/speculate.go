@@ -107,7 +107,7 @@ type speculationBudget struct {
 // the guard's own verdict.
 var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
-	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
+	gitConfigEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
 	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
 	forgeTextEntryID, forgeUnreadEntryID, forgeDisclosureEntryID, forgeMentionEntryID, shellCDeleteEntryID,
 	unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,

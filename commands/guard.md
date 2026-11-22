@@ -1467,11 +1467,20 @@ though bash runs what it prints (handed to `sh -c` as its string, each warns).
 Coverage is what the registry names. Say exactly this if a user asks about
 coverage — never that the guard cleared the command.
 
-In a repository with more than one worktree, a `git stash` or `git stash pop`
-that does not name its entry is a **warn** (`git-stash-shared-stack`): git keeps
-one stash stack for the whole repository, so a bare pop can take another
-worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
-warned about, and neither is anything in a single-worktree clone.
+In a repository with linked worktrees, every `git stash` that changes the
+stash list is a **warn** (`git-stash-shared-stack`): a bare `git stash`, and
+`push`, `pop`, `apply`, `drop`, `clear`, `save`, `branch` or a subcommand the
+line does not fix, with a message or an entry named or not. git keeps one stash
+list for the whole repository, shared by every linked worktree, so a pop can
+take another worktree's work, and `stash@{0}` is whatever entry is newest when
+the command runs. The warning offers a commit on the worktree's own branch, or
+`git diff > file.patch`. `git stash list` and `git stash show` only read the
+list and are not warned about, and nothing is in a single-worktree clone. The
+entry is in the registry, so the SHELL rules teach it, but its pattern names
+only `git stash`: whether the stash changes the list and whether the
+repository has linked worktrees are read in code, because the pattern language
+cannot say either. Where the guard has no repository to count, as with the
+bundled registry on its own, the entry warns.
 
 Merging is the technical facilitator's decision where `facilitator.mode` is
 `human`. The guard reads the mode the way `abcd land`'s merge gate does: from

@@ -178,7 +178,7 @@ func TestScriptRunAfterGitInAnotherDirectoryWarns(t *testing.T) {
 		{`git -C {d}/d switch other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`git -C {d}/d rebase other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`git -C {d}/d merge other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
-		{`git -C {d}/d stash pop; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d stash list; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`git -C {d}/d co other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`git -C {d}/d config -f --get.sh a.b c; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
 		{`git -C {d}/d -c core.fsmonitor=x status; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},

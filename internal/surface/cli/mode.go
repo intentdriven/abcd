@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/autonomy"
@@ -21,6 +22,16 @@ import (
 type modeOutput struct {
 	State  mode.State `json:"state"`
 	Notice string     `json:"notice,omitempty"`
+	// Away is present on the bare print only while an away record holds.
+	Away *modeAway `json:"away,omitempty"`
+}
+
+// modeAway is what bare `abcd mode` says of an away record that holds: when
+// it ends and how many steps wait for the person's return.
+type modeAway struct {
+	Until     time.Time `json:"until"`
+	OpenEnded bool      `json:"open_ended"`
+	Queued    int       `json:"queued"`
 }
 
 // newModeCommand builds the `mode` verb — the front door onto
@@ -38,7 +49,9 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"is waiting), `facilitator` (the loop is parked on the facilitator, the person\n" +
 			"at the terminal running the agents), or `product-thinker` (the loop is parked\n" +
 			"on the product thinker, who answers on a surface of their own). An absent\n" +
-			"store reads as `managed`.\n\n" +
+			"store reads as `managed`. While an away record holds, a second line says when\n" +
+			"the away mode ends and how many steps are queued; --json carries both under\n" +
+			"`away`, absent otherwise.\n\n" +
 			"`abcd mode <state>` sets it. Two writers share the verb: the agent runs it\n" +
 			"when it stops for a verdict other than a question, naming whom it is\n" +
 			"addressing, and the human runs it by hand to say which hat they wear. The state lives per checkout at\n" +
@@ -62,8 +75,9 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"and nothing is written on any of them.\n\n" +
 			"The away mode sits beside the badge, not as a fourth word: `abcd mode\n" +
 			"autonomous [--until <time>] [--hold-pushes]` records that the person is away,\n" +
-			"`abcd mode queue \"<step>\"` keeps a step for their return, and `abcd mode back`\n" +
-			"ends it and prints what was queued and recorded. While it holds, setting\n" +
+			"`abcd mode queue \"<step>\"` keeps a step for their return, bare `abcd mode\n" +
+			"queue` lists what is queued and writes nothing, and `abcd mode back` ends it\n" +
+			"and prints what was queued and recorded. While it holds, setting\n" +
 			"`product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:\n" +
 			"a stop parked on a person who is away is a question nobody answers. The away\n" +
 			"mode grants no rights; the person's standing instruction decides what is pushed.",
@@ -79,8 +93,16 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return modeRefusal(err)
 				}
-				return render(cmd.OutOrStdout(), *asJSON, modeOutput{State: st}, func(w io.Writer) {
+				out := modeOutput{State: st, Away: awayHeld(cmd.ErrOrStderr(), cwd)}
+				return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 					fmt.Fprintln(w, st)
+					if a := out.Away; a != nil {
+						end := a.Until.Local().Format("2006-01-02 15:04 MST")
+						if a.OpenEnded {
+							end += " (open-ended, seven days at most)"
+						}
+						fmt.Fprintf(w, "away until %s, %d queued\n", end, a.Queued)
+					}
 				})
 			}
 			st, err := mode.ParseState(args[0])
@@ -136,6 +158,28 @@ func refuseParkWhileAway(errw io.Writer, cwd string, st mode.State) error {
 		fmt.Fprintf(errw, "abcd mode: %v; read as not away\n", err)
 	}
 	return mode.RefuseParkWhileAway(st, away)
+}
+
+// awayHeld reads the away record for cwd's repository for the bare print:
+// nil unless one holds. Like refuseParkWhileAway it fails open, saying in one
+// line on errw when the record is not safely this account's; a directory
+// outside a checkout, or a repository with no root commit, has no record.
+func awayHeld(errw io.Writer, cwd string) *modeAway {
+	root, err := mode.Root(cwd)
+	if err != nil {
+		return nil
+	}
+	rec, away, err := autonomy.AwayAt(root, autonomy.Options{})
+	if err != nil {
+		if errors.Is(err, autonomy.ErrUnsafe) {
+			fmt.Fprintf(errw, "abcd mode: %v; read as not away\n", err)
+		}
+		return nil
+	}
+	if !away {
+		return nil
+	}
+	return &modeAway{Until: rec.Ends(), OpenEnded: rec.OpenEnded, Queued: len(rec.Queue)}
 }
 
 // stateWords is the closed vocabulary as strings, for shell completion.
