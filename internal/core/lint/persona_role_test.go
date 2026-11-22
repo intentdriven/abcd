@@ -269,3 +269,45 @@ func TestTheOwedFidelityQuoteNamesTheRegisteredFacilitator(t *testing.T) {
 		t.Errorf("%s holds no quote attributed to a named persona", rel)
 	}
 }
+
+// TestPersonasPrincipleTellsARoleFromGenericPhrasing holds the personas
+// page's codified principle to the ruling (iss-2610262031524343,
+// dcn-2610271112330536): it forbids generic "a hypothetical user" phrasing,
+// and a quote attributed to one of abcd's own roles, such as "a technical
+// facilitator" (itd-2609201916151817), is not that phrasing, because the
+// role gives the quote its voice. The principle says so, and the
+// persona_registry rule leaves such a quote alone.
+func TestPersonasPrincipleTellsARoleFromGenericPhrasing(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	body := readRepoFile(t, root, ".abcd/development/brief/01-product/05-personas.md")
+	principle := body
+	if i := strings.Index(principle, "**Codified abcd principle:**"); i >= 0 {
+		principle = principle[i:]
+	} else {
+		t.Fatalf("05-personas.md has no codified principle")
+	}
+	if i := strings.Index(principle, "\n\n"); i >= 0 {
+		principle = principle[:i]
+	}
+	flat := strings.Join(strings.Fields(principle), " ")
+	for _, want := range []string{"a hypothetical user", "a technical facilitator", "is not generic"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("05-personas.md's principle does not say %q: a quote attributed to a role such as a technical facilitator is not the generic phrasing it forbids:\n%s", want, principle)
+		}
+	}
+
+	const rel = ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md"
+	quoted := false
+	for _, line := range strings.Split(readRepoFile(t, root, rel), "\n") {
+		if !strings.Contains(line, "said a technical facilitator") {
+			continue
+		}
+		quoted = true
+		if name, ok := lint.PersonaAttribution(line); ok {
+			t.Errorf("%s attributes its quote to the name %q; the ruling allows a role alone, with no name", rel, name)
+		}
+	}
+	if !quoted {
+		t.Errorf("%s holds no quote attributed to a technical facilitator", rel)
+	}
+}
