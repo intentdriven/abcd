@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:417"
 remedy: "In the agent register, list intent-auditor as serving `intent` and `build`, since the build loop composes its request and validates its verdict."
 finding_ref: cfk-6aecefdab4925277
+resolution: "The agent register already lists intent-auditor as serving `intent` and `build` (row corrected in f8de4f61c5543c1fc33db5a8540bde03eb59cdc0); this commit adds a lint test that fails if either verb leaves the row."
+impact: internal
+resolved_by:
+  commit: "2f9e95cccc2600feb678e9e452967043a8cbbbde"
 ---
 
 The agent register says intent-auditor serves `intent` alone, while the build loop composes its request and validates its verdict
@@ -23,3 +27,7 @@ A premise contradiction (severity nitpick) found by the cross-document consisten
 README's Serves column names the verb that builds an agent's input or validates what it returns. It lists only `intent` for intent-auditor, while it lists `build` and `drain` for the two reviewers. 34-build has the validate stage hand the closing lane to an intent-auditor and check its fidelity verdict against the request before the loop records it. By the column's own definition, `build` serves the auditor as well.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 690.
+
+## Grounds
+
+- pursued: the register's intent-auditor Serves cell names `intent` and `build`; TestAgentRegisterIntentAuditorServesIntentAndBuild failing, or the row naming only one verb, would show it wrong
