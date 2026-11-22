@@ -9,9 +9,11 @@
 // gh-2.100.0/. Refresh them by running those three commands with a newer gh.
 //
 // It pins the forge's GraphQL fields the same way (graphql-fields.txt, read
-// by introspection), and CheckGraphQL refuses a query selecting a field its
-// type does not have, so a renamed or mistyped field in a query abcd sends
-// fails a test rather than the real forge.
+// by introspection) and their arguments (graphql-args.txt), and CheckGraphQL
+// refuses a query selecting a field its type does not have, passing an
+// argument its field does not take or leaving out one it requires, so a
+// renamed or mistyped field or a dropped argument in a query abcd sends fails
+// a test rather than the real forge.
 //
 // It is a test-support package, as gittest is: production code never imports
 // it.

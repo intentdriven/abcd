@@ -1,0 +1,166 @@
+# The arguments of each field graphql-fields.txt pins (its input objects'
+# fields aside, which take none), read 2026-11-22 by a read-only introspection
+# query, one a type:
+#   {__type(name:"<Type>"){fields(includeDeprecated:true){name
+#     args(includeDeprecated:true){name defaultValue isDeprecated
+#     type{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}}
+# One argument a line: <Type>.<field> <argument> <type>, the type written as a
+# query writes it (Int!, [String!]), and "default" after it where the schema
+# gives the argument a default value. None of these is deprecated. A pinned
+# field with no line here takes no argument, and CheckGraphQL refuses one
+# passed to it; a non-null argument with no default is required, and
+# CheckGraphQL refuses a query that leaves it out. Refresh it by running that
+# query again for each type graphql-fields.txt pins.
+#
+# A line "one <Type>.<field> <argument> <argument>..." says the forge needs at
+# least one of those arguments though its schema marks none required: it
+# refuses the query when it runs it. isRequired with neither argument was
+# refused 2026-10-15 with "A pull request ID or pull request number is
+# required" (iss-2610151411351873); CheckRun's and StatusContext's take the
+# same two arguments, described alike, and both are pinned so.
+one CheckRun.isRequired pullRequestId pullRequestNumber
+one StatusContext.isRequired pullRequestId pullRequestNumber
+Actor.avatarUrl size Int
+CheckRun.annotations after String
+CheckRun.annotations before String
+CheckRun.annotations first Int
+CheckRun.annotations last Int
+CheckRun.isRequired pullRequestId ID
+CheckRun.isRequired pullRequestNumber Int
+CheckRun.steps after String
+CheckRun.steps before String
+CheckRun.steps first Int
+CheckRun.steps last Int
+CheckRun.steps number Int
+Mutation.addComment input AddCommentInput!
+Mutation.dequeuePullRequest input DequeuePullRequestInput!
+Mutation.disablePullRequestAutoMerge input DisablePullRequestAutoMergeInput!
+Mutation.enablePullRequestAutoMerge input EnablePullRequestAutoMergeInput!
+Mutation.enqueuePullRequest input EnqueuePullRequestInput!
+PullRequest.assignedActors after String
+PullRequest.assignedActors before String
+PullRequest.assignedActors first Int
+PullRequest.assignedActors last Int
+PullRequest.assignees after String
+PullRequest.assignees before String
+PullRequest.assignees first Int
+PullRequest.assignees last Int
+PullRequest.autoMergeRequest includeStack Boolean default
+PullRequest.closingIssuesReferences userLinkedOnly Boolean default
+PullRequest.closingIssuesReferences excludeUserLinked Boolean default
+PullRequest.closingIssuesReferences after String
+PullRequest.closingIssuesReferences before String
+PullRequest.closingIssuesReferences first Int
+PullRequest.closingIssuesReferences last Int
+PullRequest.closingIssuesReferences orderBy IssueOrder
+PullRequest.comments orderBy IssueCommentOrder
+PullRequest.comments after String
+PullRequest.comments before String
+PullRequest.comments first Int
+PullRequest.comments last Int
+PullRequest.commits after String
+PullRequest.commits before String
+PullRequest.commits first Int
+PullRequest.commits last Int
+PullRequest.files after String
+PullRequest.files before String
+PullRequest.files first Int
+PullRequest.files last Int
+PullRequest.hovercard includeNotificationContexts Boolean default
+PullRequest.labels orderBy LabelOrder default
+PullRequest.labels after String
+PullRequest.labels before String
+PullRequest.labels first Int
+PullRequest.labels last Int
+PullRequest.latestOpinionatedReviews after String
+PullRequest.latestOpinionatedReviews before String
+PullRequest.latestOpinionatedReviews first Int
+PullRequest.latestOpinionatedReviews last Int
+PullRequest.latestOpinionatedReviews writersOnly Boolean default
+PullRequest.latestReviews after String
+PullRequest.latestReviews before String
+PullRequest.latestReviews first Int
+PullRequest.latestReviews last Int
+PullRequest.participants after String
+PullRequest.participants before String
+PullRequest.participants first Int
+PullRequest.participants last Int
+PullRequest.projectItems includeArchived Boolean default
+PullRequest.projectItems after String
+PullRequest.projectItems before String
+PullRequest.projectItems first Int
+PullRequest.projectItems last Int
+PullRequest.projectV2 number Int!
+PullRequest.projectsV2 query String
+PullRequest.projectsV2 orderBy ProjectV2Order default
+PullRequest.projectsV2 minPermissionLevel ProjectV2PermissionLevel default
+PullRequest.projectsV2 after String
+PullRequest.projectsV2 before String
+PullRequest.projectsV2 first Int
+PullRequest.projectsV2 last Int
+PullRequest.reactions after String
+PullRequest.reactions before String
+PullRequest.reactions first Int
+PullRequest.reactions last Int
+PullRequest.reactions content ReactionContent
+PullRequest.reactions orderBy ReactionOrder
+PullRequest.reviewRequests after String
+PullRequest.reviewRequests before String
+PullRequest.reviewRequests first Int
+PullRequest.reviewRequests last Int
+PullRequest.reviewThreads after String
+PullRequest.reviewThreads before String
+PullRequest.reviewThreads first Int
+PullRequest.reviewThreads last Int
+PullRequest.reviews after String
+PullRequest.reviews before String
+PullRequest.reviews first Int
+PullRequest.reviews last Int
+PullRequest.reviews states [PullRequestReviewState!]
+PullRequest.reviews author String
+PullRequest.suggestedActors query String
+PullRequest.suggestedActors after String
+PullRequest.suggestedActors before String
+PullRequest.suggestedActors first Int
+PullRequest.suggestedActors last Int
+PullRequest.suggestedReviewerActors after String
+PullRequest.suggestedReviewerActors before String
+PullRequest.suggestedReviewerActors first Int
+PullRequest.suggestedReviewerActors last Int
+PullRequest.suggestedReviewerActors query String
+PullRequest.timelineItems since DateTime
+PullRequest.timelineItems skip Int
+PullRequest.timelineItems itemTypes [PullRequestTimelineItemsItemType!]
+PullRequest.timelineItems after String
+PullRequest.timelineItems before String
+PullRequest.timelineItems first Int
+PullRequest.timelineItems last Int
+PullRequest.userContentEdits after String
+PullRequest.userContentEdits before String
+PullRequest.userContentEdits first Int
+PullRequest.userContentEdits last Int
+PullRequest.viewerCanDisableAutoMerge includeStack Boolean default
+PullRequest.viewerCanEnableAutoMerge includeStack Boolean default
+PullRequest.viewerMergeBodyText mergeType PullRequestMergeMethod
+PullRequest.viewerMergeHeadlineText mergeType PullRequestMergeMethod
+Query.node id ID!
+Query.repository owner String!
+Query.repository name String!
+Query.repository followRenames Boolean default
+Repository.pullRequest number Int!
+Repository.pullRequests states [PullRequestState!]
+Repository.pullRequests labels [String!]
+Repository.pullRequests headRefName String
+Repository.pullRequests baseRefName String
+Repository.pullRequests orderBy IssueOrder
+Repository.pullRequests after String
+Repository.pullRequests before String
+Repository.pullRequests first Int
+Repository.pullRequests last Int
+StatusCheckRollup.contexts after String
+StatusCheckRollup.contexts before String
+StatusCheckRollup.contexts first Int
+StatusCheckRollup.contexts last Int
+StatusContext.avatarUrl size Int default
+StatusContext.isRequired pullRequestId ID
+StatusContext.isRequired pullRequestNumber Int
