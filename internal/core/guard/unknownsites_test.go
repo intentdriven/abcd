@@ -222,6 +222,7 @@ var wordReaders = map[string]string{
 	"lnTarget":           "exempt: reads ln's literal options; a single operand that is unknown, globbed or a variable is an unplaced write, and the others go through resolveToken, which refuses an unknown word",
 	"sedTargets":         "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":         "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
+	"gitOnlyReads":       "isUnknown: a subcommand or an argument the line does not fix is read as one that can write",
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
 	"findActions":        "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
 	"goBuildTarget":      "exempt: reads go build's literal -o spellings; an unknown word reads as no -o, a write the reading misses",

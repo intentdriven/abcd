@@ -167,6 +167,40 @@ func TestScriptWrittenThenRunOnOneLineBlocks(t *testing.T) {
 	})
 }
 
+// TestScriptRunAfterGitInAnotherDirectoryWarnsUnlessGitOnlyReads: `git -C
+// <dir>` works in a directory the guard does not follow, so any subcommand
+// that can change files there (pull, switch, rebase, merge, an alias, one
+// the line does not fix) is a write it cannot place, and a script run after it
+// warns; a subcommand that only reads (status, log, diff, show, a bare
+// branch or `branch --list`, `remote -v`, `config --get`) writes nothing.
+func TestScriptRunAfterGitInAnotherDirectoryWarnsUnlessGitOnlyReads(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"d/run.sh": "echo hi"})
+	runScriptCases(t, dir, []scriptCase{
+		{`git -C {d}/d pull; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d switch other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d rebase other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d merge other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d stash pop; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d co other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d branch other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d remote add o u; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d config core.x y; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d diff --output=run.sh; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d -c x.y=z pull; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		{`git -C {d}/d status; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d log --oneline -3; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d diff HEAD; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d show HEAD:run.sh; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d rev-parse HEAD; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d branch; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d branch --list; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d remote -v; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d config --get user.name; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`git -C {d}/d -c x.y=z status; bash {d}/d/run.sh`, VerdictAllow, ""},
+	})
+}
+
 func TestScriptReadVerdictsOnWhatIsFound(t *testing.T) {
 	big := strings.Repeat("echo hi\n", (maxScriptBytes/8)+16)
 	dir := scriptTree(t, map[string]string{

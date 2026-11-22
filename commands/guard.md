@@ -1044,8 +1044,13 @@ a child it starts. The verdicts:
   **block** (`script-written-then-run`): the file the guard reads now is not the
   file that runs. A file the line writes and then runs by path is a **block**
   the same way, whatever the file is (`curl -o x … && ./x`). Write it in one
-  command and run it in the next. A write the guard cannot place (`> "$LOG"`)
-  before a script a shell is pointed at is a **warn**;
+  command and run it in the next. A write the guard cannot place (`> "$LOG"`,
+  or a `git -C <dir>` whose subcommand can change files there, which is every
+  subcommand but one that only reads: `status`, `log`, `diff`, `show`,
+  `rev-parse`, `ls-files`, `ls-tree`, `cat-file`, `grep`, `blame`, `describe`,
+  `for-each-ref`, `merge-base`, `rev-list`, `show-ref`, `symbolic-ref`, `var`,
+  `version`, `help`, a bare `branch` or `branch --list`, `remote -v` and
+  `config --get`) before a script a shell is pointed at is a **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
 - a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
@@ -1254,7 +1259,9 @@ besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a backslash,
 or zsh's ranges, groups and operators) or `**` (which zsh reads as any number
 of directories, none among them, and Go's matcher as one), whose files the
 guard cannot name as the shell does, and a file the line writes before
-the launch or may write there by a name it does not fix (`> "$F"`), one that
+the launch or may write there by a name it does not fix (`> "$F"`, or a
+`git -C <dir>` whose subcommand does not only read, `git -C ../other pull`),
+one that
 is not a regular file, one over 256 KiB, or one that does not hold a JSON
 object. A write the guard does not read as one (an interpreter's payload, a
 program that rewrites the file in place by its own reading, such as `perl -pi`

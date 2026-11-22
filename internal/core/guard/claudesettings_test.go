@@ -174,6 +174,9 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		{`cat bad/bypass.json > "$(echo plain.json)"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`echo '{}' > "$F"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`git -C ../other checkout plain.json; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`git -C ../other switch other; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`git -C ../other pull; claude -p x --settings plain.json`, VerdictBlock, id, ""},
+		{`git -C ../other "$sub"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 		{`echo '{}' >& "$F"; claude -p x --settings plain.json`, VerdictBlock, id, ""},
 
 		{`claude -p x --settings plain.json`, VerdictAllow, "", ""},
@@ -183,6 +186,7 @@ func TestGuardRefusesClaudeSettingsFileItCannotRead(t *testing.T) {
 		{`claude -p x --settings missing.json`, VerdictAllow, "", ""},
 		{`echo '{}' > other.json; claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`git -C ../other status; claude -p x --settings plain.json`, VerdictAllow, "", ""},
+		{`git -C ../other log -1; claude -p x --settings plain.json`, VerdictAllow, "", ""},
 		{`cat <&"$fd"; claude -p x --settings plain.json`, VerdictAllow, "", ""},
 	})
 }

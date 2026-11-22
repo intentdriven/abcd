@@ -463,7 +463,10 @@ func (w writerArgs) sedTargets() []writeTarget {
 }
 
 // gitTargets is the paths `git checkout` and `git restore` write, and the
-// directory `git clone` makes.
+// directory `git clone` makes. Under `-C`, which moves git to a directory
+// the guard does not follow, every subcommand but one that only reads
+// (gitOnlyReads) is a write the guard does not place: pull, switch, merge,
+// an alias or a subcommand the line does not fix can change any file there.
 func (w writerArgs) gitTargets() []writeTarget {
 	toks := w.s.tokens
 	i := w.from
@@ -487,11 +490,10 @@ func (w writerArgs) gitTargets() []writeTarget {
 		return nil
 	}
 	if elsewhere {
-		switch toks[i] {
-		case "checkout", "restore", "clone":
-			return []writeTarget{unplacedWrite("")}
+		if gitOnlyReads(toks[i:]) {
+			return nil
 		}
-		return nil
+		return []writeTarget{unplacedWrite("")}
 	}
 	sub := w
 	sub.from = i + 1
@@ -517,6 +519,45 @@ func (w writerArgs) gitTargets() []writeTarget {
 		}
 	}
 	return nil
+}
+
+// gitReadOnly are the git subcommands that change no file in the working
+// tree whatever their arguments, short of an output file (gitOnlyReads).
+var gitReadOnly = []string{"status", "log", "diff", "show", "rev-parse", "ls-files", "ls-tree", "cat-file",
+	"grep", "blame", "describe", "for-each-ref", "merge-base", "rev-list", "show-ref", "symbolic-ref", "var",
+	"version", "help"}
+
+// gitOnlyReads reports whether the git subcommand words args (the
+// subcommand and its arguments) change no file: one of gitReadOnly with no
+// `--output` file, `branch` with no arguments or with `--list`, `remote`
+// with none or `-v` alone, and `config` with `--get` in any of its forms
+// or `--list`. A subcommand the line does not fix, an alias and every other
+// subcommand can write.
+func gitOnlyReads(args []string) bool {
+	if len(args) == 0 || isUnknown(args[0]) {
+		return false
+	}
+	rest := args[1:]
+	switch {
+	case containsString(gitReadOnly, args[0]):
+		for _, a := range rest {
+			if isUnknown(a) || strings.HasPrefix(a, "--output") {
+				return false
+			}
+		}
+		return true
+	case args[0] == "branch":
+		return len(rest) == 0 || containsString(rest, "--list")
+	case args[0] == "remote":
+		return len(rest) == 0 || len(rest) == 1 && (rest[0] == "-v" || rest[0] == "--verbose")
+	case args[0] == "config":
+		for _, a := range rest {
+			if strings.HasPrefix(a, "--get") || a == "--list" || a == "-l" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // tarExtracts reports whether a tar command extracts: a mode letter x in its
