@@ -70,3 +70,23 @@ func TestGuardReadsAQuotedSubstitutionAsOneOptionValue(t *testing.T) {
 		`sudo -u "$(id -un)" "$PAIR" opencode run x`: "agent-launch-opencode-config-env",
 	})
 }
+
+// TestGuardReadsAQuotedNumberParameterAsOneOptionValue: `"$!"` and
+// `"${#NAME}"` print a number, or nothing for a `$!` with no job, and are one
+// word in double quotes, so as the value of one of env's or sudo's options
+// they are that option's value. An unquoted `$!`, and a length with a
+// subscript or an operator, are still read as possibly several words.
+func TestGuardReadsAQuotedNumberParameterAsOneOptionValue(t *testing.T) {
+	checkOptionValues(t, []string{
+		`env -u "$!" opencode run x`,
+		`sudo -u "${#u}" opencode run x`,
+		`sudo -u "${#1}" opencode run x`,
+	}, map[string]string{
+		`env -u $! opencode run x`:             "agent-launch-opencode-config-env",
+		`env -u "${#a[@]}" opencode run x`:     "agent-launch-opencode-config-env",
+		`env -u "${#@}" opencode run x`:        "agent-launch-opencode-config-env",
+		`env -u "${#v:-x}" opencode run x`:     "agent-launch-opencode-config-env",
+		`env -u "$!$@" opencode run x`:         "agent-launch-opencode-config-env",
+		`env -u "${#u}${a[@]}" opencode run x`: "agent-launch-opencode-config-env",
+	})
+}

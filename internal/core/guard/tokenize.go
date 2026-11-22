@@ -904,11 +904,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// reading takes as the job's number (`kill $!`), and records a site on
 	// it for the written spelling alone: the number, or nothing where no job
 	// ran in the background, which leaves the text beside it, so `$!/` is
-	// also `/` to arg_values (iss-2609300057467536).
+	// also `/` to arg_values (iss-2609300057467536). An unquoted one (mask
+	// set) marks its word as one that can yield several words, or none
+	// (curSplit); a quoted one is one word.
 	addBang := func(mask byte) {
 		curVarAt = append(curVarAt, varSite{at: len(cur), texts: paramTexts("$!"), width: 2})
 		addCur([]byte("$!"), mask)
-		curSplit = true
+		if mask != 0 {
+			curSplit = true
+		}
 	}
 	// markIFSSplit files the word being built under segment.ifsSplit when its
 	// sites rest on the default IFS.
@@ -1405,8 +1409,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
 	//
-	// A quoted one other than a plain `${NAME}` or positional `${1}` marks its
-	// word as one an unquoted substitution stands in (curSplit): an operator, a
+	// A quoted one other than a plain `${NAME}`, a positional `${1}` or a
+	// length `${#NAME}` marks its word as one an unquoted substitution stands
+	// in (curSplit): an operator, a
 	// flag, a modifier, a subscript or a nested expansion can make it yield
 	// several words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and
 	// `"${^@}"`), and the guard does not work out which do.
@@ -1422,7 +1427,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if len(segs) > start {
 			curSub = true
 		}
-		if !split && !isName(body) && !allDigits(body) {
+		if !split && !isName(body) && !allDigits(body) && !isLength(body) {
 			curSplit = true
 		}
 	}
@@ -2771,6 +2776,13 @@ func plainParam(line string, j, k int) bool {
 		return false
 	}
 	return k >= len(line) || (line[k] != '[' && line[k] != ':')
+}
+
+// isLength reports whether the body of a `${…}` is a length, `#` and a name
+// or a positional (`${#NAME}`, `${#1}`), which prints one number.
+func isLength(body string) bool {
+	rest, ok := strings.CutPrefix(body, "#")
+	return ok && (isName(rest) || allDigits(rest))
 }
 
 // zshParamFlags are the characters zsh reads between `$` and a parameter's
