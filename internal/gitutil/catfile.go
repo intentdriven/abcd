@@ -116,7 +116,9 @@ func (w *capBuilder) Write(p []byte) (int, error) {
 // so a directory asked beside a path beneath it is still answered as a tree,
 // and the answer is one short line per path, whatever the trees beneath hold.
 // commit must be a full object name, and a path holding a newline or a NUL,
-// or none at all, never reaches git.
+// or none at all, never reaches git. Each path is resolved in the tree commit
+// stores (asStored), as CatFileBatch reads each object: no replace ref, graft
+// or commit-graph stands another tree in for it.
 func TreePathTypes(root, commit string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -138,7 +140,7 @@ func TreePathTypes(root, commit string, paths []string) ([]string, error) {
 		// line asked with " missing".
 		limit += len(specs[i]) + 80
 	}
-	cmd := isolatedGit(root, "cat-file", "--batch-check=%(objectname) %(objecttype)")
+	cmd := asStored(isolatedGit(root, "cat-file", "--batch-check=%(objectname) %(objecttype)"))
 	cmd.Stdin = strings.NewReader(in.String())
 	out, overflowed, err := runBoundedCmd(context.Background(), cmd, limit)
 	if err != nil {
