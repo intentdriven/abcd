@@ -92,8 +92,8 @@ var headRefRe = regexp.MustCompile(`^[A-Za-z0-9._/+-]{1,255}$`)
 // gitCap bounds a git read here: object names, a commit, a short listing.
 const gitCap = 1 << 20
 
-// BranchFor is the local branch a reland of pull request n is made on.
-func BranchFor(n int) string { return "reland/pr-" + strconv.Itoa(n) }
+// branchFor is the local branch a reland of pull request n is made on.
+func branchFor(n int) string { return "reland/pr-" + strconv.Itoa(n) }
 
 // Reland relands pull request o.PR as the checkout's own commit: it asks the
 // forge for the pull request, fetches origin's default branch and the
@@ -274,7 +274,7 @@ func Reland(o Options) (Result, error) {
 	if !gitutil.IsFullSHA(commit) {
 		return res, fmt.Errorf("composing the relanded commit named no commit")
 	}
-	branch := BranchFor(o.PR)
+	branch := branchFor(o.PR)
 	// An empty old value creates the branch only where none exists, so a
 	// branch already there is never moved.
 	if _, err := gitutil.LocalGit(root, "update-ref", "-m", "abcd launch reland #"+strconv.Itoa(o.PR), "refs/heads/"+branch, commit, ""); err != nil {

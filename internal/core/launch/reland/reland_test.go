@@ -110,7 +110,7 @@ func (f *fixture) options(ref string) Options {
 // noBranch fails the test when the reland branch exists in the clone.
 func (f *fixture) noBranch() {
 	f.t.Helper()
-	if out := f.work.Git("branch", "--list", BranchFor(prNumber)); out != "" {
+	if out := f.work.Git("branch", "--list", branchFor(prNumber)); out != "" {
 		f.t.Fatalf("a refused reland left the branch %s", out)
 	}
 }
@@ -133,7 +133,7 @@ func TestAnInBoundBumpIsRelandedOntoTheDefaultBranchAsThePersonsCommit(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	branch := BranchFor(prNumber)
+	branch := branchFor(prNumber)
 	if res.Branch != branch || res.Commit != f.work.Git("rev-parse", "refs/heads/"+branch) {
 		t.Fatalf("result %+v does not name the branch made", res)
 	}
@@ -264,11 +264,11 @@ func TestARelandUnderAMachineIdentityIsRefused(t *testing.T) {
 
 func TestARelandNeverMovesABranchAlreadyThere(t *testing.T) {
 	f := newFixture(t, bumpRef)
-	f.work.Git("branch", BranchFor(prNumber), "HEAD")
-	before := f.work.Git("rev-parse", BranchFor(prNumber))
+	f.work.Git("branch", branchFor(prNumber), "HEAD")
+	before := f.work.Git("rev-parse", branchFor(prNumber))
 	_, err := Reland(f.options(bumpRef))
 	wantRefusal(t, err, "already exists")
-	if after := f.work.Git("rev-parse", BranchFor(prNumber)); after != before {
+	if after := f.work.Git("rev-parse", branchFor(prNumber)); after != before {
 		t.Fatalf("the existing branch moved from %s to %s", before, after)
 	}
 }

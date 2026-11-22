@@ -21,7 +21,7 @@ type Fetched struct {
 // The branches are as last fetched: a bump merged or closed since stays
 // listed until a fetch prunes its branch.
 func AsFetched(root string) (Fetched, error) {
-	d, err := ReadDeclaration(root)
+	d, err := readDeclaration(root)
 	if err != nil {
 		return Fetched{}, err
 	}

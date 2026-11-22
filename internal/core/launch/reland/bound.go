@@ -55,10 +55,10 @@ func (d Declaration) Matches(author, head string) (Row, bool) {
 // answers: the repository has not opted in to re-authoring.
 var ErrNoDeclaration = errors.New("the repository declares no dependency re-authoring (" + scaffold.ReauthorConfPath + ")")
 
-// ReadDeclaration parses the declaration in the checkout at root's working
+// readDeclaration parses the declaration in the checkout at root's working
 // tree through the script's rows mode. A checkout without one answers
 // ErrNoDeclaration; a malformed one, the script's refusal.
-func ReadDeclaration(root string) (Declaration, error) {
+func readDeclaration(root string) (Declaration, error) {
 	conf := filepath.Join(root, filepath.FromSlash(scaffold.ReauthorConfPath))
 	if fi, err := os.Lstat(conf); err != nil || !fi.Mode().IsRegular() {
 		return Declaration{}, ErrNoDeclaration

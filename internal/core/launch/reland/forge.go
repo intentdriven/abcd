@@ -141,7 +141,7 @@ type Waiting struct {
 // List asks the forge for the open pull requests a declared bot opened from
 // a declared prefix in this repository: the bumps waiting on a reland.
 func List(root string, f Forge) (Waiting, error) {
-	d, err := ReadDeclaration(root)
+	d, err := readDeclaration(root)
 	if err != nil {
 		return Waiting{}, err
 	}
