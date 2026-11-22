@@ -15,10 +15,13 @@ package claim
 //     (dcn-2610230328242929).
 //
 // The walk is bounded: the first-parent line from the tip, at most maxChain
-// commits, read in one rev-list and one batch of bodies. A withdrawal whose
-// first record lies past the bound is not vouched for.
+// commits, read in one rev-list and one batch of bodies. A reading of one
+// person's record that has not found what it looks for within that line reads
+// on, a page of maxChain commits at a time, up to maxChainRead (asker.deepen).
+// A withdrawal whose first record lies past what was read is not vouched for.
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -28,6 +31,13 @@ import (
 // each, renewals, the tombstone and its settle), so a line this long is a
 // writer's doing.
 const maxChain = 64
+
+// maxChainRead bounds how far a reading of one person's record on a release
+// branch reads on past the first maxChain commits, a page of maxChain at a
+// time, when the commits above that person's newest push fill the first page:
+// eight pages, so the bodies it holds stay within a few MiB however long a
+// writer makes the line.
+const maxChainRead = 8 * maxChain
 
 // chainLink is one commit of a release branch's first-parent line, newest
 // first: its name, and its message when it reads.
@@ -42,23 +52,39 @@ type chainLink struct {
 // the line runs past the bound. A commit that does not read is kept, with
 // readable false: nothing past it is trusted.
 func releaseChain(root, id, tip, tree string) (links []chainLink, complete bool, err error) {
-	line, err := firstParents(root, refName(id), tip, maxChain)
+	return chainTo(root, id, tip, tree, nil, maxChain)
+}
+
+// chainTo is the first-parent line of id's release branch from tip, newest
+// first, at most limit commits, read on from have, the line's first commits as
+// an earlier read took them: only the commits beneath have are parsed, their
+// bodies read a page of maxChain at a time, so each batch stays within its
+// budget. complete is false when the line runs past limit.
+func chainTo(root, id, tip, tree string, have []chainLink, limit int) (links []chainLink, complete bool, err error) {
+	line, err := firstParents(root, refName(id), tip, limit)
 	if err != nil {
 		return nil, false, err
 	}
-	complete = len(line) <= maxChain
+	complete = len(line) <= limit
 	if !complete {
-		line = line[:maxChain]
+		line = line[:limit]
 	}
-	bodies := commitBodies(viewGit{}, root, line, batchBudget)
-	for _, c := range line {
-		b, ok := bodies[c]
-		if !ok {
-			links = append(links, chainLink{commit: c})
-			continue
+	if len(have) > len(line) || !slices.EqualFunc(have, line[:len(have)], func(l chainLink, c string) bool { return l.commit == c }) {
+		have = nil
+	}
+	links = slices.Clone(have)
+	for from := len(links); from < len(line); from += maxChain {
+		page := line[from:min(from+maxChain, len(line))]
+		bodies := commitBodies(viewGit{}, root, page, batchBudget)
+		for _, c := range page {
+			b, ok := bodies[c]
+			if !ok {
+				links = append(links, chainLink{commit: c})
+				continue
+			}
+			h, m := parseTip(c, []byte(strings.TrimRight(b, " \t\r\n")), tree, reservationParser(id))
+			links = append(links, chainLink{commit: c, m: m, readable: h.Unreadable == ""})
 		}
-		h, m := parseTip(c, []byte(strings.TrimRight(b, " \t\r\n")), tree, reservationParser(id))
-		links = append(links, chainLink{commit: c, m: m, readable: h.Unreadable == ""})
 	}
 	return links, complete, nil
 }
@@ -121,11 +147,19 @@ func firstRecord(links []chainLink, complete bool, w Withdrawal) (string, bool) 
 // their login to their kept id as the one their login-named reservation
 // first recorded.
 func firstRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (string, bool) {
+	commit, ok, _ := firstRecordWalk(links, complete, w, same)
+	return commit, ok
+}
+
+// firstRecordWalk is firstRecordAs, and short: whether it found no first
+// record only because the walk reached the last commit read of a line that
+// runs on, so a longer read could find one.
+func firstRecordWalk(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (commit string, ok, short bool) {
 	first := -1
 	kept := w.State == WithdrawnKept
 	for i, l := range links {
 		if !l.readable {
-			return "", false
+			return "", false, false
 		}
 		e, ok := entryInAs(l.m.Withdrawn, w, same)
 		if ok && kept {
@@ -139,15 +173,18 @@ func firstRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, 
 		}
 		first = i
 	}
-	if first < 0 || first == len(links)-1 && !complete {
-		return "", false
+	if first < 0 {
+		return "", false, false
+	}
+	if first == len(links)-1 && !complete {
+		return "", false, true
 	}
 	l := links[first]
 	e, _ := entryInAs(l.m.Withdrawn, w, same)
 	if l.m.released() || !same(l.m.Holder, w.By) || e.State != WithdrawnPending {
-		return "", false
+		return "", false, false
 	}
-	return l.commit, true
+	return l.commit, true, false
 }
 
 // firstKeptRecordAs is the commit that first recorded w kept, for an entry
@@ -160,27 +197,37 @@ func firstRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, 
 // One carried kept over the same entry in any other state is firstRecordAs's
 // to judge, and is not one here.
 func firstKeptRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (string, bool) {
+	commit, ok, _ := firstKeptRecordWalk(links, complete, w, same)
+	return commit, ok
+}
+
+// firstKeptRecordWalk is firstKeptRecordAs, and short as firstRecordWalk
+// reports it.
+func firstKeptRecordWalk(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (commit string, ok, short bool) {
 	first := -1
 	for i, l := range links {
 		if !l.readable {
-			return "", false
+			return "", false, false
 		}
 		e, ok := entryInAs(l.m.Withdrawn, w, same)
 		if !ok {
 			break
 		}
 		if e.State != WithdrawnKept {
-			return "", false
+			return "", false, false
 		}
 		first = i
 	}
-	if first < 0 || first == len(links)-1 && !complete {
-		return "", false
+	if first < 0 {
+		return "", false, false
+	}
+	if first == len(links)-1 && !complete {
+		return "", false, true
 	}
 	if l := links[first]; !l.m.released() && same(l.m.Holder, w.By) {
-		return l.commit, true
+		return l.commit, true, false
 	}
-	return "", false
+	return "", false, false
 }
 
 // lostWithdrawals is each withdrawal still withdrawn on an ancestor of the

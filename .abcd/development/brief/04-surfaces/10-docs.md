@@ -90,7 +90,9 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   chapter by file name, under `04-surfaces/`, or by the repo-relative path the
   reviewer's request lists; the record sub-verb and the apply form read it
   through one parse and save the file name, so any other path is refused when
-  the verdict is recorded, never when its edit is applied.
+  the verdict is recorded, never when its edit is applied. Both read and write
+  only inside the repository: a chapters directory, `.abcd/work` or local tier
+  that links out of it is refused before anything is written.
 - **Where the gate refuses.** The spec close runs it over the intents the close
   would ship, before anything moves, and the release cut runs it over every
   intent shipped since the last tag. Layer 1 runs at both whatever they ship: a

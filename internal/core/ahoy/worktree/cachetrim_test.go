@@ -424,6 +424,36 @@ func TestTrimGoCacheSkips(t *testing.T) {
 	})
 }
 
+// TestTrimGoCacheDoesNotAskAGoFromTheWorkingTree: the go asked where the cache
+// is, found by name on PATH, is held to the in-checkout rule (tools.LookPath):
+// a go inside the working tree the trim runs from, from any directory in it,
+// is never run, the trim says so, and nothing it would name is trimmed.
+func TestTrimGoCacheDoesNotAskAGoFromTheWorkingTree(t *testing.T) {
+	dir := tempCache(t)
+	old := cacheFile(t, dir, "ab/"+entryA, "x", oldTime)
+	checkout := t.TempDir()
+	bin, sub := filepath.Join(checkout, "bin"), filepath.Join(checkout, "pkg")
+	marker := filepath.Join(t.TempDir(), "ran")
+	for _, d := range []string{filepath.Join(checkout, ".git"), bin, sub} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script := "#!/bin/sh\ntouch '" + marker + "'\necho '" + dir + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Chdir(sub)
+	got := worktree.TrimGoCache(false, trimNow)
+	if !strings.Contains(got.Skipped, "never run") || got.EntriesRemoved != 0 || !exists(old) {
+		t.Fatalf("skipped, naming the go that was not run: %+v", got)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("the go inside the working tree ran (%v)", err)
+	}
+}
+
 // TestTrimGoCacheSkipsWhatDoesNotLookLikeACache: GOCACHE can name a home or a
 // project directory no go command ever opened as a cache, and a person's file
 // there can wear an entry's name. Nothing without the cache's shape is touched.

@@ -47,6 +47,8 @@ const (
 	diffCap = 16 << 20
 	// logCap bounds the default branch's patches since the merge base.
 	logCap = 32 << 20
+	// mergeBaseCap bounds the merge base's object name.
+	mergeBaseCap = 4096
 )
 
 // judgement is one branch's merged judgement and how it was reached.
@@ -128,7 +130,9 @@ func judge(dir, def string, wt gitutil.Worktree, start string, prs map[string][]
 // nil when the forge was not asked; a listing that does not parse counts as
 // none. It is the one judgement the worktree store's reclaim and the shell
 // guard's delete proof share (iss-2610241239492159), erring towards unmerged
-// the same way for both.
+// the same way for both. Every read of history it makes is as stored, so no
+// graft file, refs/replace entry or commit-graph makes a commit look held by
+// def that def's stored history does not hold.
 func Merged(dir, def, ref, tip string, prs []byte) (merged bool, by string) {
 	if def == "" || !gitutil.IsFullSHA(tip) {
 		return false, ""
@@ -163,7 +167,7 @@ func judgeTip(dir, def, ref, branch, tip, start string, prs []pullRequest) judge
 	if ref == def || branch == branchName(def) {
 		return judgement{}
 	}
-	if ok, err := gitutil.IsAncestor(dir, tip, def); err == nil && ok {
+	if ok, err := gitutil.IsAncestorAsStored(dir, tip, def); err == nil && ok {
 		// A branch cut and never committed to is an ancestor of its base too,
 		// and so is one fast-forwarded along it since; it is merged only when
 		// it holds a commit of its own.
@@ -237,11 +241,11 @@ func ownCommit(dir, ref, tip, start string) bool {
 	}
 	for _, sha := range made {
 		if start != "" {
-			if before, err := gitutil.IsAncestor(dir, sha, start); err != nil || before {
+			if before, err := gitutil.IsAncestorAsStored(dir, sha, start); err != nil || before {
 				continue
 			}
 		}
-		if held, err := gitutil.IsAncestor(dir, sha, tip); err == nil && held {
+		if held, err := gitutil.IsAncestorAsStored(dir, sha, tip); err == nil && held {
 			return true
 		}
 	}
@@ -280,7 +284,8 @@ func rebased(dir, def, tip string) bool {
 // squashed reports whether the branch's whole change since its merge base
 // with def is one commit on def since that base, by stable patch id.
 func squashed(dir, def, tip string) bool {
-	base, err := gitutil.Run(dir, "merge-base", def, tip)
+	base, err := asStored(dir, "", mergeBaseCap, "merge-base", def, tip)
+	base = strings.TrimSpace(base)
 	if err != nil || !gitutil.IsFullSHA(base) {
 		return false
 	}

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -111,7 +110,7 @@ var artefactKeys = map[string]struct{}{"kind": {}, "lockstep": {}, "site": {}}
 // Whether a declared lockstep file can be READ is the lockstep check's to say,
 // where the refusal names the path.
 func LoadArtefact(repoRoot string) (Artefact, error) {
-	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(ArtefactRelPath)), maxArtefactBytes)
+	data, err := readRepoConfig(repoRoot, ArtefactRelPath, maxArtefactBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Artefact{}, &PreflightError{msg: noArtefactMessage(), err: ErrNoArtefact}

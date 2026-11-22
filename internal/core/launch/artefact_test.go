@@ -2,6 +2,7 @@ package launch
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -128,5 +129,22 @@ func TestParseArtefactRefusesRepeatedAndCaseFoldedKeys(t *testing.T) {
 				t.Errorf("the refusal does not name %q: %v", c.want, err)
 			}
 		})
+	}
+}
+
+// TestLoadArtefactRefusesADeclarationBehindALinkedConfigDirectory: a
+// declaration reached through a .abcd/config that links out of the repository
+// is refused as unreadable, not read and not taken as absent.
+func TestLoadArtefactRefusesADeclarationBehindALinkedConfigDirectory(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	writeFile(t, outside, "artefact.json", `{"kind": "plugin"}`)
+	mkdirAll(t, filepath.Join(root, ".abcd"))
+	symlink(t, outside, filepath.Join(root, ".abcd", "config"))
+	art, err := LoadArtefact(root)
+	if err == nil {
+		t.Fatalf("the declaration behind a linked directory was read: %+v", art)
+	}
+	if errors.Is(err, ErrNoArtefact) {
+		t.Fatalf("refused as absent: %v", err)
 	}
 }

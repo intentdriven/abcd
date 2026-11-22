@@ -59,8 +59,14 @@ type flagFile struct {
 	Flags         []Flag `json:"flags"`
 }
 
+// readFlags reads the flag ledger inside an os.Root on root.
 func readFlags(root string) ([]Flag, error) {
-	data, err := fsutil.ReadGuarded(filepath.Join(root, FlagsPath), maxPayloadBytes)
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", FlagsPath, err)
+	}
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, FlagsPath, maxPayloadBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -81,8 +87,16 @@ func readFlags(root string) ([]Flag, error) {
 // naming the reviewed commit. Every edit is checked before anything is
 // written: a chapter outside the surfaces directory, a sentence or replacement
 // that is not one bounded line, or a sentence the chapter does not carry
-// exactly once, refuses the whole apply and writes nothing.
+// exactly once, refuses the whole apply and writes nothing. Every chapter and
+// the flag ledger are read and written inside an os.Root on root, so a
+// directory on the way that links out of the repository is an error, not a
+// file read or written elsewhere.
 func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
 	next := map[string]string{}
 	edits = append([]Edit(nil), edits...)
 	for i := range edits {
@@ -103,7 +117,7 @@ func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, erro
 		}
 		text, ok := next[e.Chapter]
 		if !ok {
-			data, err := fsutil.ReadGuarded(filepath.Join(root, ChaptersDir, e.Chapter), maxChapterBytes)
+			data, err := fsutil.ReadGuardedInRoot(r, ChaptersDir+"/"+e.Chapter, maxChapterBytes)
 			if err != nil {
 				return nil, fmt.Errorf("reading %s/%s: %w", ChaptersDir, e.Chapter, err)
 			}
@@ -132,14 +146,11 @@ func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, erro
 		return nil, err
 	}
 	for chapter, text := range next {
-		if err := fsutil.WriteFileAtomicPreserveMode(filepath.Join(root, ChaptersDir, chapter), []byte(text)); err != nil {
+		if err := fsutil.WriteFileAtomicPreserveModeInRoot(r, ChaptersDir+"/"+chapter, []byte(text)); err != nil {
 			return nil, err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(FlagsPath)), 0o755); err != nil {
-		return nil, err
-	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(root, FlagsPath), append(data, '\n'), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(r, FlagsPath, append(data, '\n'), 0o644); err != nil {
 		return nil, err
 	}
 	return added, nil

@@ -10,8 +10,9 @@ package runner
 //     not absolute, when other can write it or its directory, when a group
 //     other than darwin's admin group (gid 80, on darwin only) can write
 //     either, or when it resolves inside the repository the role runs in, or
-//     the checkout a lane's worktree belongs to, lexically or through a
-//     symlink (a PATH entry into either is repository content, never run);
+//     the checkout a lane's worktree belongs to, or any git working tree
+//     either lies in, lexically or through a symlink (a PATH entry into any
+//     of them is repository content, never run);
 //   - the environment is the parent's with every git repository-selection and
 //     config-injection variable scrubbed (gitutil.ScrubbedEnv), so an inherited
 //     GIT_DIR cannot aim the role's git at another repository, while the

@@ -73,7 +73,8 @@ load, a refused repository root) leads the reason rather than vanishing. A warn
 exits 1 because a pre-tool-use hook that exits 0 has its stderr discarded, so a
 warn returning 0 would run as if allowed with nobody told (iss-231). An allow
 prints nothing on stdout, where the host reads a decision. A guard that cannot answer at all — a registry with
-nothing left to check against, a registry switched off — exits 1 on the hook and
+nothing left to check against, a registry switched off, a git that does not
+answer within the hook's git deadline — exits 1 on the hook and
 lets the command run, and exits 2 on the check so that a script never reads
 silence as clearance. A command line the guard cannot split is the exception on
 the hook: it is blocked (`command-unparsable`), not let through, because a line
@@ -540,6 +541,21 @@ does carry a raw NUL reaches the binary with the byte gone rather than as an
 unreadable payload, and one over the size cap only by trailing newlines comes
 under it.
 
+A hook that waits is as unguarded as one that fails, so the hook bounds its
+own time. Its first git calls, the lookups of the checkout holding the session
+directory and the call's `workdir` for a shell command and of the one holding
+the session directory for a question, run under a five-second deadline
+(`guardGitBudget`, through `rules.ResolveContext` and
+`gitutil.ToplevelContext`). Every later git call reads the configuration those
+lookups read, so a configuration git cannot finish reading, such as one that
+includes a named pipe, is caught there: git is killed, and the hook fails open
+loudly with a line naming git, the deadline, the directory and that cause,
+where it would otherwise have held every call until the host's timeout and
+then let it run with nothing said. The manifest gives the pre-tool-use hook
+no timeout of its own, so a slow first download always finishes there
+(iss-323); a git that hangs later in the check, on a call not yet bound
+(iss-2611100548341325), is bounded only by the host's default for the hook.
+
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it
 calls is reachable, and whether a hazard registry is armed. A repo
@@ -613,8 +629,9 @@ somebody reviews, and the diff must be *committed* before it counts. An edit
 that weakens the registry — switching it off, or changing a blocker's tier or
 pattern — is refused until `HEAD` carries it: the committed registry stays in
 force, the hook announces the refused edit on every command, and the check
-refuses to answer. Where git cannot say what `HEAD` carries, the edit is refused
-too. An edit that only adds or tightens a hazard needs no commit. Once a
+refuses to answer. What `HEAD` carries is read as git stores it, with no
+replace ref, graft file or commit-graph in force. Where git cannot say what
+`HEAD` carries, the edit is refused too. An edit that only adds or tightens a hazard needs no commit. Once a
 switch-off is committed, every command it lets through carries an `UNGUARDED`
 warning naming the file, and `abcd ahoy` reads `OFF`.
 
@@ -803,7 +820,33 @@ among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
 launchers the registry steps, so a harness started under another name, a copied
 or linked binary run by that name, is not recognisable at this layer
-(iss-2610162027075062). The list of agent launches is a mistake filter: it
+(iss-2610162027075062). An agent-launch entry that names a harness's
+environment reads every way the line exports a variable to it, allexport and
+the assignments it turns into exports included (an arithmetic assignment, a
+descriptor a redirection names, zsh's `${NAME::=…}` and an assignment to an
+array the line ties to the variable with `typeset -T` among them), with an
+assignment whose name or value the line does not fix read as setting the
+variable and the value of one of env's or sudo's own options read as no
+assignment only where every expansion in it is a plain quoted `"$NAME"` or
+`"${NAME}"`, any other expansion being read as possibly several words, a
+`set` whose option words it does not fix and a `SHELLOPTS` exported before a
+shell read as turning allexport on, an element of zsh's `options` array read
+as turning it off only for the exact value zsh accepts (`off`, or `on` for the
+`no` form), and a script the line runs judged with the
+environment and the allexport state its shell starts with, and the `claude
+--settings` entry reads the settings JSON on the line and in the file it names,
+refusing settings that turn the permission checks off, grant permission rules
+or directories, declare hooks or another command claude runs, turn hooks off,
+or set an `env` variable that changes what claude runs, and settings it cannot
+read now (text that does not parse, a value, name or directory the line does
+not fix, a glob that does not match one file or holds a pattern character
+the shell and Go read apart, a bracket expression or `**` among them, a file
+the line writes first or may write by a name it does not fix, or one it
+cannot open or that is too large). The flag forms of an allow list (`--allowedTools`),
+of extra directories (`--add-dir`) and of a prompt answerer
+(`--permission-prompt-tool` with `--mcp-config`) are refused by entries of
+their own, and `--allow-dangerously-skip-permissions` as the bypass flag is.
+The list of agent launches is a mistake filter: it
 steers an agent that starts another harness by an ordinary route, a harness
 started by any route outside it (another name, a copied binary, a
 configuration file it reads) is bounded by the OS sandbox and not by the list,
@@ -949,7 +992,7 @@ script, and the startup files the line selects (`BASH_ENV`, `ENV`,
 which are carried out naming the script, the line and the entry; a script
 written earlier on the same line is refused, because the file read at check
 time is not the one that runs, and a write the guard cannot place before it
-warns
+warns, every `git -C <dir>` among them, whatever its subcommand
 ([adr-2610091150447054](../../decisions/adrs/2610091150447054-the-guard-reads-a-script-the-command.md)). A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what
@@ -1108,8 +1151,11 @@ the line, or an operator the line does not write: a value built from
 expansions or a command's output that an arithmetic context evaluates, as in
 `x=$(cmd); : $((x))`, or a decrement written as its own word in such a
 string, as in `n="1 + --$x"` for an integer `n`),
-since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
-grep` chain;
+since every line is read from the default IFS; an export the walk does not
+place before the command it reaches, since the walk follows the commands in
+the order they stand and not the shell's control flow (an export in a loop
+body the next pass reaches, or one made after a function or a `trap` action is
+defined and before it runs); a pid list a kill reads through a variable or a file;
 a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; another interpreter's file, a
 program, the account's own startup files, file text substituted into a command

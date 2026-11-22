@@ -160,9 +160,10 @@ func unproven(failed, settle string) guard.DeleteProof {
 // ancestor of def, or the store's merged judgement (a rebase, a squash, or a
 // pull request merged at tip) finds it merged. Ancestry alone suffices here,
 // unlike the store's reclaim, which also asks for a commit of the branch's own:
-// a branch that never left def deletes nothing def lacks.
+// a branch that never left def deletes nothing def lacks. Ancestry is read
+// from the commits as stored, as the store's judgement reads it.
 func keptBy(root, def, ref, tip string, prs []byte) bool {
-	if ok, err := gitutil.IsAncestor(root, tip, def); err == nil && ok {
+	if ok, err := gitutil.IsAncestorAsStored(root, tip, def); err == nil && ok {
 		return true
 	}
 	ok, _ := store.Merged(root, def, ref, tip, prs)

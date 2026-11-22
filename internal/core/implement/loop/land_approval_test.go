@@ -563,7 +563,7 @@ func TestACommitFoundOnTheJudgedHeadIsReadLikeAnyOther(t *testing.T) {
 	}
 	for name, arrange := range map[string]func(){
 		"an empty commit": func() {},
-		"records alone":   func() { f.fileAnotherIssue(t, l) },
+		"records alone":   func() { editIntentProse(t, l) },
 	} {
 		arrange()
 		f.repo.Git("-C", l.Worktree, "add", "-A")
@@ -634,7 +634,7 @@ func TestALandingOverARefusedHookKeepsItsOwnEdits(t *testing.T) {
 	f.validated(t)
 	f.step(t)
 	l := currentLane(t, f.repo, f.runID)
-	f.fileAnotherIssue(t, l)
+	editIntentProse(t, l)
 	f.step(t)
 	if l := currentLane(t, f.repo, f.runID); !l.Landing.RecordsDone {
 		t.Fatalf("the records commit is made: %+v", l.Landing)

@@ -369,11 +369,15 @@ func TestInterviewOffATerminalIsPlainAndMatchesTheTerminalRecord(t *testing.T) {
 	if dRepo == nil || dMachine == nil {
 		t.Fatalf("the drawn run left the records repo=%q machine=%q\n%s", dRepo, dMachine, drawnOut)
 	}
-	// The plan screen is drawn first: the plan, then its one line
-	// (itd-2610240823055889); the routing table is one of its defaults.
+	// The plan screen is drawn first: the plan in counts, then its one line
+	// (itd-2610240823055889); the list of every item waits for ?, which this
+	// run never answers (iss-2611152326582649).
 	plain := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(drawnOut, "")
-	if !regexp.MustCompile(`(?s)› Setup Q1\n\n.*Defaults it takes:.*model routing for this machine.*Proceed with this plan\? \(\? explains\)\n`).MatchString(plain) {
-		t.Fatalf("the plan screen was not drawn with its defaults and its one line:\n%s", drawnOut)
+	if !regexp.MustCompile(`(?s)› Setup Q1\n\n.*Setup\s+makes\s+\d+\s+changes.*takes\s+\d+\s+defaults.*Answer\s+\?\s+to\s+see\s+every\s+item\..*Proceed with this plan\? \(\? explains\)\n`).MatchString(plain) {
+		t.Fatalf("the plan screen was not drawn with its counts and its one line:\n%s", drawnOut)
+	}
+	if strings.Contains(plain, "Defaults it takes:") {
+		t.Fatalf("the plan's full list was drawn without ? being answered:\n%s", drawnOut)
 	}
 
 	piped := newSetupRun(t)
@@ -386,6 +390,10 @@ func TestInterviewOffATerminalIsPlainAndMatchesTheTerminalRecord(t *testing.T) {
 	}
 	if !strings.Contains(pipedOut, "Setup Q1") || !strings.Contains(pipedOut, "Proceed with this plan?") {
 		t.Fatalf("the piped run did not write its questions as plain text:\n%s", pipedOut)
+	}
+	// A host relaying the plan has every item it counts to show when asked.
+	if !strings.Contains(pipedOut, planInFullHeading) || !strings.Contains(pipedOut, "Defaults it takes:") {
+		t.Fatalf("the piped run did not write the plan in full:\n%s", pipedOut)
 	}
 	pRepo, pMachine := piped.records(t)
 	if !bytes.Equal(dRepo, pRepo) {

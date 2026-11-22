@@ -46,8 +46,7 @@ func TestRenderPayloadSatisfiesPublicLockstep(t *testing.T) {
 		t.Fatalf("rendered payload must pass the public check, got %+v", res.Lockstep)
 	}
 
-	vl := filepath.Join(root, versionLocationRelPath)
-	if got := CheckLockstep(TreePublic, dest, vl); !got.OK {
+	if got := CheckLockstep(TreePublic, dest, root); !got.OK {
 		t.Fatalf("independent public check over the payload must pass, got %+v", got)
 	}
 
@@ -104,7 +103,7 @@ func TestRenderPayloadLeavesSourceTreeUnversioned(t *testing.T) {
 			t.Errorf("%s was mutated by the render — adr-19 requires the working tree stay version-absent", rel)
 		}
 	}
-	if res := CheckLockstep(TreeDev, root, filepath.Join(root, versionLocationRelPath)); !res.OK {
+	if res := CheckLockstep(TreeDev, root, root); !res.OK {
 		t.Errorf("the working tree must still satisfy the dev polarity after a render, got %+v", res)
 	}
 }
@@ -255,7 +254,7 @@ func TestRenderPayloadRefusesOnItsOwnDrift(t *testing.T) {
 	root := renderFixture(t)
 	restore := payloadLockstep
 	t.Cleanup(func() { payloadLockstep = restore })
-	payloadLockstep = func(tree LockstepTree, repoRoot, vl string) LockstepResult {
+	payloadLockstep = func(tree LockstepTree, repoRoot, contractRoot string) LockstepResult {
 		return LockstepResult{Tree: tree, Drifts: []string{"DRIFT public /pinned/later: expected 0.4.0"}, ExitCode: 1}
 	}
 

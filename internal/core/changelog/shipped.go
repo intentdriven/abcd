@@ -398,17 +398,30 @@ func recordsByIDAt(root string, ref string) (map[recordKey][]string, error) {
 // maxRecordBytes caps the guarded blob read, in the same order as
 // maxChangelogBytes and for the same reason: a record is a page of prose, so a
 // file that is not one must not stream unbounded input into a read-only preview.
-// Only the frontmatter is read, and that is at the top of the blob, so a
-// truncated tail cannot change the parsed impact.
+// A blob past it is an error, never a truncated record: a record that size is
+// four times the issue family's own read limit, so it is not a record.
 const maxRecordBytes = 4 << 20
+
+// maxLedgerListing bounds a listing of the ledger's records at a ref, and
+// maxRenameListing the cut's rename listing: far past any ledger or cut, and
+// an error past either, never a partial list.
+const (
+	maxLedgerListing = 16 << 20
+	maxRenameListing = 16 << 20
+)
+
+// maxPathEntry bounds the read of one path's tree entry.
+const maxPathEntry = 64 << 10
 
 // newRecord reads one record's blob at ref and parses its impact. A blob that
 // cannot be read, or an impact that cannot be parsed, yields an unlabelled
 // record carrying the reason rather than an error: one malformed record must not
-// hide the rest of the cut from the operator who has to fix it.
+// hide the rest of the cut from the operator who has to fix it. The blob is
+// read as stored (RunCappedAsStored), so no refs/replace entry stands another
+// record in for the one ref holds.
 func newRecord(root, ref, baseRef, relPath string, probe *pathProbe) Record {
 	rec := Record{Path: relPath, ID: recordID(relPath)}
-	blob, err := gitutil.RunLimited(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
+	blob, err := gitutil.RunCappedAsStored(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
 	if err != nil {
 		rec.ImpactErr = fmt.Sprintf("reading %s at %s: %v", relPath, ref, err)
 		rec.Title = rec.ID
@@ -476,13 +489,15 @@ const renameLimit = 1000
 // newPathProbeWithin is newPathProbe under a named rename limit. Past its
 // limit git skips rename detection and still exits 0, so a cut whose added
 // and deleted paths could exceed it is one where no rename is certain, and
-// the probe marks nothing.
+// the probe marks nothing. Both commits are read as stored
+// (RunCappedAsStored), so no refs/replace entry or commit-graph changes what
+// moved between them.
 func newPathProbeWithin(root, baseRef string, limit int) *pathProbe {
 	pr := &pathProbe{root: root, base: baseRef}
 	if baseRef == "" {
 		return pr
 	}
-	out, err := gitutil.Run(root, "diff", "-z", "--no-ext-diff", "--no-textconv", "--name-status", "-M",
+	out, err := gitutil.RunCappedAsStored(root, maxRenameListing, "diff", "-z", "--no-ext-diff", "--no-textconv", "--name-status", "-M",
 		"-l"+strconv.Itoa(limit), baseRef, "HEAD", "--")
 	if err != nil {
 		return pr
@@ -556,9 +571,9 @@ func (pr *pathProbe) newSince(p string) bool {
 // answers it, and which tells an absent path (no line, no error) from a tree
 // it could not read (an error). p is a cleaned relative path with no leading
 // colon, so ls-tree reads it as a path, not as pathspec magic; ls-tree does
-// not glob.
+// not glob. The tree is read as stored.
 func (pr *pathProbe) present(ref, p string) (bool, error) {
-	out, err := gitutil.Run(pr.root, "ls-tree", "-z", "--name-only", ref, "--", p)
+	out, err := gitutil.RunCappedAsStored(pr.root, maxPathEntry, "ls-tree", "-z", "--name-only", ref, "--", p)
 	if err != nil {
 		return false, err
 	}
@@ -599,8 +614,10 @@ func parseShippedIn(root, baseRef, raw string) (value string, parseErr string) {
 	}
 	// Reachable from the anchor means "already released by the time this cut
 	// starts". A tag that is newer than the anchor, or on an unrelated line of
-	// history, cannot have carried work this cut is measuring.
-	if _, err := gitutil.Run(root, "merge-base", "--is-ancestor", v, baseRef); err != nil {
+	// history, cannot have carried work this cut is measuring. Ancestry is read
+	// from the commits as stored, so no graft file, refs/replace entry or
+	// commit-graph puts the tag behind the anchor.
+	if _, notAncestor, err := gitutil.RunCappedExitOneAsStored(root, maxPathEntry, "merge-base", "--is-ancestor", v, baseRef); err != nil || notAncestor {
 		return "", fmt.Sprintf("shipped_in %q is not an ancestor of %s, so it cannot have carried this work", v, baseRef)
 	}
 	return v, ""

@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -79,7 +80,8 @@ var (
 )
 
 // effectiveGoFlags is go's own answer to what GOFLAGS is for the command cmd, from
-// the environment, GOENV's file or `go env -w` alike, from the same directory.
+// the environment, GOENV's file or `go env -w` alike, from the same directory, asked
+// of the program the command itself would start (gatedProgram).
 func effectiveGoFlags(cmd []string) (string, error) {
 	var prefix []string
 	for _, a := range cmd[1:] {
@@ -90,7 +92,11 @@ func effectiveGoFlags(cmd []string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	raw, err := exec.CommandContext(ctx, cmd[0], append(prefix, "env", "GOFLAGS")...).Output()
+	bin, err := gatedProgram(cmd[0])
+	if err != nil {
+		return "", err
+	}
+	raw, err := exec.CommandContext(ctx, bin, append(prefix, "env", "GOFLAGS")...).Output()
 	if err != nil {
 		return "", err
 	}
@@ -469,6 +475,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 // releases the hold when it exits.
 func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, marked bool, command []string) error {
 	out := cmd.OutOrStdout()
+	// A program the rule refuses is refused now, before go is asked for its
+	// GOFLAGS and before a wait that can last hours; runGated looks it up again
+	// when it starts the command.
+	if len(command) > 0 {
+		if _, err := gatedProgram(command[0]); errors.Is(err, tools.ErrInsideWorkingTree) {
+			return &exitError{Code: 127, Msg: "abcd implement load " + waitFlag(race) + ": the command could not be started: " + err.Error()}
+		}
+	}
 	// The same judgement every other reader of this waiter's argv makes, so a mark
 	// it cannot honour comes off the argv before it waits.
 	narrow := marked && machineload.IsNarrowCommand(command)
@@ -506,10 +520,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 				pidsText(first, "another waiter opened", "waiters opened"), j.Round(time.Second))
 		}
 	}
-	flag := "--wait"
-	if race {
-		flag = "--race-gate"
-	}
+	flag := waitFlag(race)
 	// The renewal goes on until the command exits, not only while the gate is
 	// shut: an agent's preflight or go test runs for hours under the gate, and
 	// nothing else renews a build's reservation meanwhile
@@ -822,6 +833,27 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
+// gatedProgram is the program the gated command starts: name as given when it
+// is a path, and otherwise the PATH lookup held to the in-checkout rule
+// (tools.LookPath, from the working directory), so a program found by name
+// inside the working tree the waiter runs from, or any tree around it, is
+// refused with tools.ErrInsideWorkingTree and never run. The path it returns
+// is what starts, so a make started this way names itself by that path.
+func gatedProgram(name string) (string, error) {
+	if strings.ContainsRune(name, os.PathSeparator) {
+		return name, nil
+	}
+	return tools.LookPath(name, "")
+}
+
+// waitFlag is the waiter's flag as its messages name it.
+func waitFlag(race bool) string {
+	if race {
+		return "--race-gate"
+	}
+	return "--wait"
+}
+
 // runGated runs the gated command with the verb's own streams, standard
 // error as stderr gives it (sharedStderr), and returns its exit code; the error is a command that could not be started. A SIGINT or
 // SIGTERM to the waiter is forwarded to the command, and the waiter goes on
@@ -833,7 +865,11 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 // waiter's mark (implement.WaitResult.Unmark). The caller releases the hold
 // once this returns.
 func runGated(cmd *cobra.Command, command, env []string, stderr io.Writer, started func()) (int, error) {
-	c := exec.Command(command[0], command[1:]...)
+	bin, err := gatedProgram(command[0])
+	if err != nil {
+		return 0, err
+	}
+	c := exec.Command(bin, command[1:]...)
 	c.Env = env
 	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), stderr
 	sigs := make(chan os.Signal, 2)
@@ -845,7 +881,6 @@ func runGated(cmd *cobra.Command, command, env []string, stderr io.Writer, start
 	started()
 	done := make(chan error, 1)
 	go func() { done <- c.Wait() }()
-	var err error
 wait:
 	for {
 		select {

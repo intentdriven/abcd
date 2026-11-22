@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -132,10 +133,12 @@ type fakeForge struct {
 	commentEcho func(string) string
 	// The forge's record of pushes to a reservation branch: by default one
 	// push a commit on origin's first-parent line, by the holder its
-	// Abcd-Holder trailer names, as abcd pushes them. pusherOf overrides one
+	// Abcd-Holder trailer names, as abcd pushes them, answered a page of
+	// forgeActivityPage at a time, as the forge answers. pusherOf overrides one
 	// commit's pusher (a login, or "app" for an app's push); lag leaves the
 	// newest pushes out, as a record that has not caught up does; partial
-	// answers ErrPartialRecord beside them, and pushersErr fails the ask.
+	// answers ErrPartialRecord beside them, a page naming no page past it, and
+	// pushersErr fails the ask. pushAsks counts the asks of the newest page.
 	pusherOf   map[string]string
 	lag        int
 	partial    bool
@@ -156,20 +159,31 @@ func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 	return f
 }
 
-// pushers is the forge's record of pushes to ref on the origin root clones,
-// newest first.
-func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error) {
+// pushers is one page of the forge's record of pushes to ref on the origin
+// root clones, newest first, from the cursor after: page-<n> names the n-th
+// page past the newest.
+func (f *fakeForge) pushers(_ context.Context, root, ref, after string) ([]Push, string, error) {
 	f.mu.Lock()
-	f.pushAsks++
+	if after == "" {
+		f.pushAsks++
+	}
 	lag, partial, perr, edit := f.lag, f.partial, f.pushersErr, f.edit
 	over := maps.Clone(f.pusherOf)
 	f.mu.Unlock()
 	if perr != nil {
-		return nil, perr
+		return nil, "", perr
+	}
+	page := 0
+	if after != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(after, "page-"))
+		if err != nil || n < 1 {
+			f.t.Fatalf("the forge was asked for a page by a cursor it never named: %q", after)
+		}
+		page = n
 	}
 	bare := strings.TrimSpace(runGit(f.t, root, "remote", "get-url", "origin"))
 	if strings.TrimSpace(runGit(f.t, bare, "for-each-ref", "--format=%(objectname)", ref)) == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 	var out []Push
 	for _, l := range strings.Split(strings.TrimSpace(runGit(f.t, bare, "log", "--first-parent",
@@ -201,10 +215,22 @@ func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error)
 		out = edit(out)
 	}
 	if partial {
-		return out, ErrPartialRecord
+		return out[:min(len(out), forgeActivityPage)], "", ErrPartialRecord
 	}
-	return out, nil
+	// The forge answers one page of its activity record at a time, and names
+	// the page past it while one is left.
+	from := min(len(out), page*forgeActivityPage)
+	to := min(len(out), from+forgeActivityPage)
+	next := ""
+	if to < len(out) {
+		next = "page-" + strconv.Itoa(page+1)
+	}
+	return out[from:to], next, nil
 }
+
+// forgeActivityPage is the most activities the forge's record answers in
+// one page.
+const forgeActivityPage = 100
 
 // login is the account gh acts as in the checkout at root.
 func (f *fakeForge) login(root string) (string, error) {

@@ -5430,8 +5430,9 @@ func (p *stdinPrompter) echo(answer string) {
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 // Plan puts the plan screen to a person typing at a terminal, which makes
-// the stdin door an ahoy.PlanPrompter there: the plan, then its one line,
-// and ? shows what each answer does before asking again. Off a terminal the
+// the stdin door an ahoy.PlanPrompter there: the plan in counts, then its one
+// line, and ? lists every item the counts count and what each answer does
+// before asking again. Off a terminal the
 // plan is not put (asked false): a piped stream answers the approvals one
 // by one, in their fixed order, as before.
 func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
@@ -5453,6 +5454,7 @@ func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 		line, err := p.r.ReadString('\n')
 		line = strings.TrimSpace(line)
 		if line == "?" {
+			writePlanInFull(p.w, ahoy.PlanInFull(plan))
 			for _, o := range q.Options {
 				fmt.Fprintf(p.w, "  %s — %s\n", strings.ToLower(o.Label), o.Meaning)
 			}
@@ -7549,6 +7551,20 @@ func rulesRoot(cwd string, w io.Writer) string {
 		diagnosticLine(w, "abcd %s", note)
 	}
 	return res.Root
+}
+
+// rulesRootContext is rulesRoot with its git call bound to ctx
+// (rules.ResolveContext). When git does not answer before ctx ends, it prints
+// nothing and returns the error, for the caller to say what it could not do.
+func rulesRootContext(ctx context.Context, cwd string, w io.Writer) (string, error) {
+	res, err := rules.ResolveContext(ctx, cwd)
+	if err != nil {
+		return cwd, err
+	}
+	for _, note := range res.Notes {
+		diagnosticLine(w, "abcd %s", note)
+	}
+	return res.Root, nil
 }
 
 func repoRootSHA() (string, error) {

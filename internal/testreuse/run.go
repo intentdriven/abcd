@@ -50,6 +50,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -366,7 +367,11 @@ func headAndTree(ctx context.Context, worktree string) (head, tree string) {
 // it must test the edits.
 func treeNotCommit(ctx context.Context, worktree string) string {
 	script := filepath.Join(worktree, "scripts", "preflight-receipt.sh")
-	cmd := exec.CommandContext(ctx, "bash", script, "state")
+	bash, err := tools.LookPath("bash", worktree)
+	if err != nil {
+		return "the tree's state could not be read: " + err.Error()
+	}
+	cmd := exec.CommandContext(ctx, bash, script, "state")
 	cmd.Dir = worktree
 	cmd.Env = storedGitEnv()
 	out, err := cmd.Output()
@@ -590,7 +595,12 @@ func (b *lockedBuffer) Write(p []byte) (int, error) {
 }
 
 func (r lineRunner) exec(l goLine, stdout, stderr io.Writer) bool {
-	cmd := exec.CommandContext(r.ctx, "go", l.args...)
+	goBin, err := tools.LookPath("go", l.dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "check-tests: go was not run: %v\n", err)
+		return true
+	}
+	cmd := exec.CommandContext(r.ctx, goBin, l.args...)
 	cmd.Dir = l.dir
 	cmd.Env = l.env
 	if cmd.Env == nil {

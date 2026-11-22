@@ -69,12 +69,20 @@ func TestQuestionMarkDrawsTheWholeQuestion(t *testing.T) {
 		t.Fatalf("install: %v\n%s", err, got)
 	}
 	out := string(got)
+	const meaning = "Makes every change and takes every default"
 	brief := strings.Index(out, "Proceed with this plan? "+ahoy.ExplainHint)
-	whole := strings.Index(out, "Makes every change and takes every default on the plan")
+	full := strings.Index(out, planInFullHeading)
+	defaults := strings.Index(out, "Defaults it takes:")
+	whole := strings.Index(out, meaning)
 	if brief < 0 || whole < 0 || whole < brief {
 		t.Fatalf("the plan was not drawn on its one line and then whole after ?:\n%s", out)
 	}
-	if strings.Count(out, "Makes every change and takes every default on the plan") != 1 {
+	// ? lists every item the plan counts before the whole question
+	// (iss-2611152326582649), and only after the one line.
+	if full < brief || defaults < full || whole < defaults || strings.Count(out, planInFullHeading) != 1 {
+		t.Errorf("? did not list the plan in full between its one line and the whole question:\n%s", out)
+	}
+	if strings.Count(out, meaning) != 1 {
 		t.Errorf("the meanings were drawn before ? was answered:\n%s", out)
 	}
 }

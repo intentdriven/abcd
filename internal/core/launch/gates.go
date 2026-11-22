@@ -950,6 +950,11 @@ func clip(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
+// maxDirtyListing bounds the listing of the working tree's changes against
+// HEAD: far past any working tree, and an error past it, never a partial
+// list read as cleaner than the tree is.
+const maxDirtyListing = 64 << 20
+
 // localTierPrefix is the gitignored local tier. Nothing in it is ever committed,
 // and the pre-flight report itself lands there, so it is never dirt — even in a
 // checkout that forgot to ignore it.
@@ -959,7 +964,9 @@ const localTierPrefix = ".abcd/.work.local/"
 // sorted: every tracked change against HEAD, staged or not, and every untracked
 // file git does not ignore. The local tier is never listed. A tree whose state
 // git cannot read (no repository, no HEAD) is an error — never an empty list,
-// which would read as clean.
+// which would read as clean. HEAD is compared as stored, so no refs/replace
+// entry or commit-graph stands a commit carrying the uncommitted changes in
+// for it and hides them.
 func DirtyTreeFiles(repoRoot string) ([]string, error) {
 	// Resolve HEAD first: outside a repository `git diff` falls back to its
 	// no-index mode and answers with a usage page, not a reason.
@@ -984,7 +991,7 @@ func DirtyTreeFiles(repoRoot string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}
-	changed, err := gitutil.Run(repoRoot, append(filters, "diff", "--no-renames", "--ignore-submodules=dirty", "--name-only", "-z", "HEAD")...)
+	changed, err := gitutil.RunCappedAsStored(repoRoot, maxDirtyListing, append(filters, "diff", "--no-renames", "--ignore-submodules=dirty", "--name-only", "-z", "HEAD")...)
 	if err != nil {
 		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
 	}

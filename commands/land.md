@@ -27,7 +27,9 @@ reviewed before it is landed.
 `merging <item>` on your status branch, through the code `/abcd:announce`
 runs, for each issue, intent or pull request the branch's own commits name in
 a `Refs:`, `Resolves:` or `Delivers:` trailer (a pull request written `#N`),
-and pushes only once each announcement is on `origin`. So a colleague's
+and pushes only once each announcement is on `origin`. The commits are read
+as git stores them, with no replace ref, graft file or commit-graph in force,
+so the trailers read are the ones the push sends. So a colleague's
 `/abcd:status` shows the announcement before the branch exists there. An item
 you announced `merging` that still stands is not sent again, unless your newest
 announcement of it is now another, `merged` say. When the branch names several
@@ -120,10 +122,10 @@ that name with none at this head, since the proof may lie past the bound.
    client's own timeout), and, if the head never shows, stops saying how long
    it waited. The merge rule is read from the ruleset mirror
    (`.abcd/work/rulesets/`) at `origin`'s default branch as just fetched,
-   never at the branch's tip. Then the merge gate decides, and where it arms
-   nothing the step is `left` and says why (see **Who approves a merge**
-   below). An armed pull request goes into the merge queue by the queue's
-   method where one gates the default branch; where none does, its arming is
+   never at the branch's tip, and as git stores that commit's tree. Then the
+   merge gate decides, and where it arms nothing the step is `left` and says
+   why (see **Who approves a merge** below). An armed pull request goes into
+   the merge queue by the queue's method where one gates the default branch; where none does, its arming is
    the forge's auto-merge, the note says the forge merges it once its
    required checks pass, and a forge that refuses auto-merge (a repository
    that leaves it off) leaves the step `left`, saying so. The note gives the
@@ -220,7 +222,8 @@ that name with none at this head, since the proof may lie past the bound.
    its dependency merges is not done yet. Where a merge queue
    gates the default branch, land lists before arming the open pull requests
    into it that are queued or armed, and a branch that shares a commit not on
-   the default branch with one of them (a branch cut from that one's branch)
+   the default branch with one of them (a branch cut from that one's branch),
+   read by the parents the commits store,
    is not armed: the step is `stopped`, naming each such pull request and
    whether it is queued or armed, because the merge queue removes a pull
    request whose branch carries another queued or armed one's commits. Relay
@@ -256,9 +259,9 @@ that name with none at this head, since the proof may lie past the bound.
    `stopped` with the `gh pr create` command: relay it to the user, who opens
    the pull request; the next `abcd land` queues it. The command carries
    `--title` (the branch's first commit's subject) and `--body-file`, naming a
-   body land composed from the branch's commits into the checkout's
-   `.abcd/.work.local/scratch/land/`: each commit's subject as a list, then
-   their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
+   body land composed from the branch's commits, read as git stores them,
+   into the checkout's `.abcd/.work.local/scratch/land/`: each commit's
+   subject as a list, then their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
    own `Assisted-by: abcd:<version>` label, since abcd composed the text, and
    the models the commits' `Assisted-by:` lines name (a commit's `None` is not
    carried), and no commit's prose. land judges that body as the shell guard judges a

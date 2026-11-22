@@ -1011,11 +1011,18 @@ anything, in this order:
    and exiting 2 (`setup_basics.go`). Every other missing basic, a folder not
    on `PATH`, a required tool, is a step on the report's checklist.
 2. **The plan screen** (`setup_plan.go`). At a terminal, and through an answers
-   file (`approve.plan`), setup shows one plan: every change grouped by where
-   it lands, every default it takes with where to change it (visibility,
-   docs target, deep scanning, the house-style rule, the artefact kind, the
-   model routing tables, the drain rule, the README parts, the status line's
-   parts, all on), and the person-only questions that follow. It asks once:
+   file (`approve.plan`), setup shows one plan, quoted as one decision in a
+   sentence of counts (`SetupPlanQuestion`): the changes in each place they
+   land, the adoption where there is one, the defaults it takes and the
+   person-only questions that follow. The counts hold the screen within the
+   rows limit at the 24-row floor however much setup would do
+   (iss-2611152326582649). `?` lists every item they count (`PlanInFull`):
+   every change grouped by where it lands, every default with its value and
+   where to change it (visibility, docs target, deep scanning, the house-style
+   rule, the artefact kind, the model routing tables, the drain rule, the
+   README parts, the status line's parts, all on), and each question that
+   follows, before the plan is asked again; the answers door writes the same
+   list on stderr before the question, for a host to show when asked. It asks once:
    proceed, customise or cancel. Proceed answers every approval of a kind of
    change and takes every listed default without asking; customise asks the
    approvals and the values in turn, as before the plan; cancel writes
@@ -1027,8 +1034,8 @@ anything, in this order:
    shell settings, the commit checks (`commit_checks.go`), the status line,
    the commit identity and each tool abcd offers to install, each its own
    question naming the value and where it is written, whatever the answer to
-   the plan, asked in that order and listed by the plan only where the run
-   will put it: the shell settings only where the run leaves an entry, a tool
+   the plan, asked in that order and counted by the plan, and listed behind
+   its `?`, only where the run will put it: the shell settings only where the run leaves an entry, a tool
    only where abcd offers its own copy. The identity is never listed under,
    or declined by, the settings approval (iss-2610240824005655), and at a
    terminal no `dependency` approval is asked, so customising never drops a
@@ -1290,8 +1297,9 @@ takes nothing, so the most a hostile file above the tree can cause is a
 warning. The version warning asks the `claude` command on `PATH` once for its
 version (`host_version.go`), through the runner's one launch primitive for a
 vendor binary (`runner.Exec`): the command is refused when it resolves to a
-relative path or inside the project, or when group or other can write it or a
-folder it is reached through, and it runs with the git-scrubbed environment,
+relative path, inside the project or inside any git working tree the project
+lies in (the account's own home aside), or when group or other can write it or
+a folder it is reached through, and it runs with the git-scrubbed environment,
 each stream bounded, and a three-second limit that kills the process group it
 leads. The warning reads the first `major.minor.patch` the command prints on
 stdout, and warns, naming no version, when it is below the one floor constant,
@@ -1333,7 +1341,17 @@ version, or the copy is removed again. The copy is recorded, path and digest, in
 same condition. A copy installed some other way is used when its version lies in
 the tool's compatible range, and is never changed: when the bin folder already
 holds a program of that name abcd did not install, it installs nothing and says
-why.
+why. A copy `PATH` finds inside the directory the verb runs from, or inside any
+git working tree that directory lies in (the whole checkout from a subdirectory,
+a superproject as well, and every other working tree of the same repository:
+its main checkout and each linked worktree, read from the worktree's `.git`
+file, its git directory's `commondir` and the shared git directory's
+`worktrees/<name>/gitdir` files; the account's own home aside), is repository
+content: it is never run, never counts as installed, and its gap stays. The
+record is read only from a home the home rule admits
+(`gitutil.HomeInsideWorkingTree`): under a `HOME` inside a git working tree that
+is not the account's own, abcd reads no record there, runs no copy it names, and
+installs nothing there.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the

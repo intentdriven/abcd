@@ -72,14 +72,14 @@ func syncMessage(lane Lane, runID, def, merged string, siblings []string) string
 }
 
 // landedSiblings names the run's lanes that landed with a head this lane does
-// not hold.
+// not hold, its history read as stored (gitutil.IsAncestorAsStored).
 func landedSiblings(c Context, lane Lane) ([]string, error) {
 	var out []string
 	for _, l := range c.State.Lanes {
 		if l.ID == lane.ID || l.Stage != StageDone || l.Landing == nil || !gitutil.IsFullSHA(l.Landing.Pushed) {
 			continue
 		}
-		on, err := gitutil.IsAncestor(c.RepoRoot, l.Landing.Pushed, lane.HeadSHA)
+		on, err := gitutil.IsAncestorAsStored(c.RepoRoot, l.Landing.Pushed, lane.HeadSHA)
 		if err != nil {
 			return nil, fmt.Errorf("placing %s's landed head on %s: %v", l.ID, lane.ID, err)
 		}
@@ -125,7 +125,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 		return Outcome{}, false, fmt.Errorf("resolving %s/%s to sync %s: %v", Remote, def, lane.ID, err)
 	}
 	if len(siblings) == 0 {
-		on, err := gitutil.IsAncestor(c.RepoRoot, merged, lane.HeadSHA)
+		on, err := gitutil.IsAncestorAsStored(c.RepoRoot, merged, lane.HeadSHA)
 		if err != nil {
 			return Outcome{}, false, fmt.Errorf("placing %s/%s on %s: %v", Remote, def, lane.ID, err)
 		}
@@ -149,8 +149,9 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 	var reserved string
 	if tip != lane.HeadSHA {
 		// A call killed after its merge commit and before its state write:
-		// found, when the tip is exactly that merge.
-		parents, _ := gitutil.Run(c.RepoRoot, "rev-list", "--parents", "-n", "1", tip, "--")
+		// found, when the tip is exactly that merge, its parents read as
+		// stored.
+		parents, _ := gitutil.RunCappedAsStored(c.RepoRoot, maxGitOutput, "rev-list", "--parents", "-n", "1", tip, "--")
 		if f := strings.Fields(parents); len(f) != 3 || f[1] != lane.HeadSHA || f[2] != merged {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("%s moved to %s, which is not a sync of the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
@@ -324,7 +325,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 	// The pushed head already holding the default branch leaves nothing to
 	// merge: the forge's verdict is stale, and the landing waits on it as
 	// before, its arming untouched.
-	if on, err := gitutil.IsAncestor(c.RepoRoot, tracking, lane.HeadSHA); err != nil {
+	if on, err := gitutil.IsAncestorAsStored(c.RepoRoot, tracking, lane.HeadSHA); err != nil {
 		return Outcome{}, fmt.Errorf("placing %s/%s on %s: %v", Remote, def, lane.ID, err)
 	} else if on {
 		return Outcome{}, contend(string(StageLand), "", lane.ID,
@@ -529,13 +530,15 @@ func writeSyncBriefFor(c Context, lane Lane, n int, def string, s *Sync, generat
 }
 
 // verifySync verifies the receipt of the implementer a conflicting sync went
-// to: as a fix receipt is, and with the merged sha an ancestor of the new head.
+// to: as a fix receipt is, and with the merged sha an ancestor of the new head
+// as stored, so no replace ref, graft file or commit-graph gives the head a
+// parent it does not store.
 func verifySync(c Context, lane *Lane, receiptRel string) error {
 	s := lane.pendingSync()
 	if err := verifyLaneReceipt(c, lane, receiptRel, s.Receipt); err != nil {
 		return err
 	}
-	on, err := gitutil.IsAncestor(c.RepoRoot, s.Merged, lane.HeadSHA)
+	on, err := gitutil.IsAncestorAsStored(c.RepoRoot, s.Merged, lane.HeadSHA)
 	if err != nil || !on {
 		return refuse("receipt", "", lane.ID,
 			fmt.Sprintf("%s's head %s does not contain %s, the default branch's sha the sync merges in", lane.Branch, shortSHA(lane.HeadSHA), shortSHA(s.Merged)),

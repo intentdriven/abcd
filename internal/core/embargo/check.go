@@ -3,6 +3,7 @@ package embargo
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -434,7 +435,10 @@ type addedRun struct {
 // readRange reads every commit of `<a>..<b>`, oldest first. Both ends are
 // resolved to commits before git sees the range, so neither can reach git as
 // an option. Every git call is isolated (no hook, no repository-configured
-// program), and the patch passes --no-ext-diff and --no-textconv so no diff
+// program) and reads the objects as stored (RunCappedBytesAsStoredContext):
+// no refs/replace entry, graft file or commit-graph changes a commit's
+// message, parents or patch from the ones a push sends. The patch passes
+// --no-ext-diff and --no-textconv so no diff
 // driver or text conversion the repository configures runs, or decides what
 // the check reads; --text keeps a file marked binary from hiding its lines.
 // A merge commit is read for the lines it adds against every one of its
@@ -457,7 +461,7 @@ func readRange(top, rng string) ([]commitText, error) {
 	if err1 != nil || err2 != nil {
 		return nil, refuse("an end of --range names no commit in this repository", "name two commits, branches or tags this checkout holds")
 	}
-	list, err := gitutil.RunCappedBytes(top, maxCheckGit, "rev-list", "--reverse", from+".."+to, "--")
+	list, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), top, "", maxCheckGit, "rev-list", "--reverse", from+".."+to, "--")
 	if err != nil {
 		return nil, refuse("git could not list the range's commits", "narrow the range, then run it again")
 	}
@@ -466,11 +470,11 @@ func readRange(top, rng string) ([]commitText, error) {
 		if !gitutil.IsFullSHA(sha) {
 			return nil, refuse("git listed the range in a form this abcd does not read", "run it again; if it persists, report it")
 		}
-		msg, err := gitutil.RunCappedBytes(top, maxCheckText, "log", "-1", "--no-show-signature", "--format=%B", sha, "--")
+		msg, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), top, "", maxCheckText, "log", "-1", "--no-show-signature", "--format=%B", sha, "--")
 		if err != nil {
 			return nil, refuse("a commit message of the range could not be read within the check's limit", "narrow the range, then run it again")
 		}
-		parents, err := gitutil.RunCappedBytes(top, maxCheckText, "log", "-1", "--no-show-signature", "--format=%P", sha, "--")
+		parents, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), top, "", maxCheckText, "log", "-1", "--no-show-signature", "--format=%P", sha, "--")
 		if err != nil {
 			return nil, refuse("a commit of the range could not be read within the check's limit", "narrow the range, then run it again")
 		}
@@ -501,7 +505,7 @@ func readRange(top, rng string) ([]commitText, error) {
 func commitAdds(top string, args ...string) ([]fileAdds, error) {
 	full := append(args, "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--no-renames", "--no-relative",
 		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "--")
-	patch, err := gitutil.RunCappedBytes(top, maxCheckGit, full...)
+	patch, err := gitutil.RunCappedBytesAsStoredContext(context.Background(), top, "", maxCheckGit, full...)
 	if err != nil {
 		return nil, refuse("a commit of the range could not be read within the check's limit", "narrow the range, then run it again")
 	}

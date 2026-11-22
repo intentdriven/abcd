@@ -322,8 +322,9 @@ func TestGuardReadsARunnerBehindManagerOptions(t *testing.T) {
 }
 
 // TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment: opencode reads a
-// configuration file named by OPENCODE_CONFIG, and configuration text from
-// OPENCODE_CONFIG_CONTENT, over its own, so a line that sets either for the
+// configuration file named by OPENCODE_CONFIG, configuration from the
+// directory OPENCODE_CONFIG_DIR names, and configuration text from
+// OPENCODE_CONFIG_CONTENT, over its own, so a line that sets any of them for the
 // opencode it starts is refused under the config entry, with its reason and
 // what to run instead. Setting them for another program is not.
 func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
@@ -335,6 +336,9 @@ func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
 		`env OPENCODE_CONFIG_CONTENT='{"permission":"allow"}' opencode run x`,
 		`export OPENCODE_CONFIG=/tmp/open.json; opencode run x`,
 		`OPENCODE_CONFIG=/tmp/open.json npx opencode-ai run x`,
+		`OPENCODE_CONFIG_DIR=/tmp/oc opencode run x`,
+		`export OPENCODE_CONFIG_DIR=/tmp/oc; opencode run x`,
+		`env OPENCODE_CONFIG_DIR=/tmp/oc opencode run x`,
 	} {
 		d, err := r.Check(line)
 		if err != nil {
@@ -356,6 +360,50 @@ func TestGuardRefusesOpencodeWithItsConfigFromTheEnvironment(t *testing.T) {
 		`OPENCODE_CONFIG=/tmp/open.json echo hi`,
 		`export OPENCODE_CONFIG_CONTENT=x`,
 		`env -u OPENCODE_CONFIG opencode run x`,
+		`OPENCODE_CONFIG_DIR=/tmp/oc echo hi`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}
+
+// TestGuardRefusesClaudeWithItsConfigDirectoryFromTheEnvironment: claude
+// reads its settings from the directory CLAUDE_CONFIG_DIR names, so a line
+// that sets it for the claude it starts is refused under the config entry,
+// with its reason and what to run instead. Setting it for another program is
+// not.
+func TestGuardRefusesClaudeWithItsConfigDirectoryFromTheEnvironment(t *testing.T) {
+	const id = "agent-launch-claude-config-env"
+	r := Defaults()
+	for _, line := range []string{
+		`CLAUDE_CONFIG_DIR=/tmp/c claude -p x`,
+		`export CLAUDE_CONFIG_DIR=/tmp/c; claude -p x`,
+		`env CLAUDE_CONFIG_DIR=/tmp/c claude -p x`,
+		`CLAUDE_CONFIG_DIR=/tmp/c npx @anthropic-ai/claude-code -p x`,
+		`set -a; CLAUDE_CONFIG_DIR=/tmp/c; claude -p x`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+		a := approveShell(clean(), NewFiles(t.TempDir()), line)
+		if a.Allow || a.EntryID != id {
+			t.Errorf("%q: the approver answered %+v, want a refusal under %q", line, a, id)
+			continue
+		}
+		if !strings.Contains(a.Reason, "CLAUDE_CONFIG_DIR") || !strings.Contains(a.Reason, "Run instead: ") {
+			t.Errorf("%q: the refusal does not carry the entry's reason and successor: %s", line, a.Reason)
+		}
+	}
+	for _, line := range []string{
+		`CLAUDE_CONFIG_DIR=/tmp/c echo hi`,
+		`export CLAUDE_CONFIG_DIR=/tmp/c`,
+		`env -u CLAUDE_CONFIG_DIR claude -p x`,
+		`claude -p x`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)

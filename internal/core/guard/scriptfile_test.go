@@ -167,6 +167,30 @@ func TestScriptWrittenThenRunOnOneLineBlocks(t *testing.T) {
 	})
 }
 
+// TestScriptRunAfterGitInAnotherDirectoryWarns: `git -C <dir>` works in a
+// directory the guard does not follow, so every subcommand there is a write
+// it cannot place, one that reads as well (a configuration value on the line,
+// an option or an alias can make it write), and a script run after it warns.
+func TestScriptRunAfterGitInAnotherDirectoryWarns(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"d/run.sh": "echo hi"})
+	runScriptCases(t, dir, []scriptCase{
+		{`git -C {d}/d pull; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d switch other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d rebase other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d merge other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d stash pop; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d co other; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d config -f --get.sh a.b c; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d -c core.fsmonitor=x status; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d -c x.y=z status; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d status; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+		{`git -C {d}/d log --oneline -3; bash {d}/d/run.sh`, VerdictWarn, scriptWrittenEntryID},
+
+		{`git status; bash {d}/d/run.sh`, VerdictAllow, ""},
+		{`bash {d}/d/run.sh; git -C {d}/d pull`, VerdictAllow, ""},
+	})
+}
+
 func TestScriptReadVerdictsOnWhatIsFound(t *testing.T) {
 	big := strings.Repeat("echo hi\n", (maxScriptBytes/8)+16)
 	dir := scriptTree(t, map[string]string{

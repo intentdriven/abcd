@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // HomeInsideWorkingTree is the one rule for whether a home ($HOME, as
@@ -52,6 +55,144 @@ func HomeInsideWorkingTree(home string) string {
 		return ""
 	}
 	return tree
+}
+
+// WorkingTreesAround is every working tree dir lies in, nearest first: each
+// directory at or above dir that carries a .git entry (RepoShapedRoot's
+// marker, judged at every level rather than the nearest alone), walked both as
+// dir is spelled and at its physical path. A submodule's superproject, and a
+// checkout that holds another checkout, are named with the tree dir is in.
+// The account's own home is left out, as HomeInsideWorkingTree leaves it out:
+// a dotfiles-in-HOME account keeps its home in a working tree, and that home
+// is the person's.
+//
+// It is the bound a program abcd runs is held outside of (tools.GuardForms):
+// git's own toplevel for dir is one of these directories, since git names a
+// toplevel only where its .git sits (ToplevelContext). It reads directory
+// entries and git's own link files alone, starts no git and reads no repository configuration, so it
+// answers at once whatever a repository's configuration holds, and it still
+// names a tree git would refuse to answer for (another account's checkout, an
+// unsafe directory). The repository's other working trees are named as well,
+// after the trees above dir: for each tree that is a main checkout or a linked
+// worktree, the main checkout and then every linked worktree its shared git
+// directory lists (repositoryTrees, read from git's link files alone), so a
+// program in any working tree of the same repository is held from every
+// other. The account's own home is not read for its worktrees.
+func WorkingTreesAround(dir string) []string {
+	if dir == "" {
+		return nil
+	}
+	starts := []string{filepath.Clean(dir)}
+	if phys, err := filepath.EvalSymlinks(dir); err == nil && phys != starts[0] {
+		starts = append(starts, phys)
+	}
+	var trees []string
+	for _, start := range starts {
+		for d := start; ; {
+			if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil && !slices.Contains(trees, d) {
+				trees = append(trees, d)
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				break
+			}
+			d = parent
+		}
+	}
+	trees = slices.DeleteFunc(trees, isAccountHome)
+	for _, t := range slices.Clone(trees) {
+		for _, o := range repositoryTrees(t) {
+			if !slices.Contains(trees, o) {
+				trees = append(trees, o)
+			}
+		}
+	}
+	return slices.DeleteFunc(trees, isAccountHome)
+}
+
+// linkPointerCap bounds a git link file read: one path and its prefix.
+const linkPointerCap = 4096
+
+// repositoryTrees is every working tree of the repository tree belongs to:
+// the main checkout first, then each linked worktree, in the order of the
+// names the shared git directory files them under. The shared directory is
+// tree's own .git folder for a main checkout; for a linked worktree it is read
+// from two files, the worktree's .git file naming its git directory
+// ("gitdir: <path>") and that directory's commondir. A shared directory that
+// is a .git folder has the main checkout as its parent; any other (a bare
+// repository) has no main checkout, and its linked worktrees alone are named.
+// Each linked worktree is read from <shared>/worktrees/<name>/gitdir, which
+// names the worktree's .git file; one whose .git file is gone (removed
+// without a prune) or whose gitdir names no .git is left out. It is empty for
+// a submodule's tree (its git directory carries no commondir) or a file that
+// cannot be read. Each file is read as a regular file within linkPointerCap,
+// never through a link at its leaf and never blocking on a FIFO
+// (fsutil.ReadGuarded), and no git is started.
+func repositoryTrees(tree string) []string {
+	dotGit := filepath.Join(tree, ".git")
+	fi, err := os.Lstat(dotGit)
+	if err != nil {
+		return nil
+	}
+	common := dotGit
+	switch {
+	case fi.IsDir():
+	case fi.Mode().IsRegular():
+		gitDir, ok := linkPointer(dotGit, "gitdir: ")
+		if !ok {
+			return nil
+		}
+		if common, ok = linkPointer(filepath.Join(gitDir, "commondir"), ""); !ok {
+			return nil
+		}
+		if ci, err := os.Lstat(common); err != nil || !ci.IsDir() {
+			return nil
+		}
+	default:
+		return nil
+	}
+	var trees []string
+	if filepath.Base(common) == ".git" {
+		trees = append(trees, filepath.Dir(common))
+	}
+	entries, err := os.ReadDir(filepath.Join(common, "worktrees"))
+	if err != nil {
+		return trees
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		wtGit, ok := linkPointer(filepath.Join(common, "worktrees", e.Name(), "gitdir"), "")
+		if !ok || filepath.Base(wtGit) != ".git" {
+			continue
+		}
+		if wi, err := os.Lstat(wtGit); err != nil || !wi.Mode().IsRegular() {
+			continue
+		}
+		if wt := filepath.Dir(wtGit); !slices.Contains(trees, wt) {
+			trees = append(trees, wt)
+		}
+	}
+	return trees
+}
+
+// linkPointer is the one path a git link file at p holds after prefix, made
+// absolute against p's directory when it is written relative.
+func linkPointer(p, prefix string) (string, bool) {
+	b, err := fsutil.ReadGuarded(p, linkPointerCap)
+	if err != nil {
+		return "", false
+	}
+	line, _, _ := strings.Cut(string(b), "\n")
+	target, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), prefix)
+	if !ok || strings.TrimSpace(target) == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(p), target)
+	}
+	return filepath.Clean(target), true
 }
 
 // isAccountHome reports whether dir is the home the account database names

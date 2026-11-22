@@ -60,11 +60,10 @@ func kindGatePolicy(repoRoot string, art Artefact) (GatePolicy, error) {
 // kindLockstep checks the source tree's lockstep for the declared kind: the
 // pinned plugin-manifest table for a plugin, the declared list for any other.
 func kindLockstep(tree LockstepTree, repoRoot string, art Artefact) LockstepResult {
-	vl := filepath.Join(repoRoot, versionLocationRelPath)
 	if art.IsPlugin() {
-		return CheckLockstep(tree, repoRoot, vl)
+		return CheckLockstep(tree, repoRoot, repoRoot)
 	}
-	return CheckDeclaredLockstep(tree, repoRoot, vl, art.Lockstep)
+	return CheckDeclaredLockstep(tree, repoRoot, repoRoot, art.Lockstep)
 }
 
 // pluginOnlyRow is the row a plugin-only gate reports for another kind: not

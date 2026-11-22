@@ -23,18 +23,29 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 		switch r.op {
 		case "<", "<>":
 			continue // read, or opened read-write without a byte changed
-		case "<&", ">&":
+		case "<&":
+			// A duplicate of an input descriptor, or a redirection error
+			// where the word names no descriptor: no file is written.
+			continue
+		case ">&":
 			if t := r.target.text; r.target.ok && (t == "-" || isAllDigits([]byte(t))) {
 				continue // a descriptor, not a file
 			}
 		}
 		if !r.target.ok {
-			out = append(out, writeTarget{base: r.target.base})
+			out = append(out, unplacedWrite(r.target.base))
 			continue
 		}
 		out = append(out, writeAt(rc, st, r.target.text, r.target.tilde))
 	}
 	return append(out, writerTargets(rc, s, st)...)
+}
+
+// unplacedWrite is a write the guard does not place: base is its path's last
+// component where the line fixes it, else "", a write that can land on any
+// name.
+func unplacedWrite(base string) writeTarget {
+	return writeTarget{base: base, wrote: true}
 }
 
 // writeAt is a write to word, resolved as the shell opens it. Where the line
@@ -43,7 +54,7 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 // directory's identity (cwdName).
 func writeAt(rc *readCtx, st *shellState, word string, tilde bool) writeTarget {
 	p, ok := st.resolve(rc, word, tilde)
-	w := writeTarget{path: p, ok: ok}
+	w := writeTarget{path: p, ok: ok, wrote: true}
 	if !ok && !tilde && st.relativeUnknown(word) {
 		w.rel, w.base = true, filepath.Base(word)
 		w.name, w.gen = cwdName(word), st.dirGen
@@ -249,9 +260,9 @@ func (w writerArgs) at(i int) writeTarget {
 	tok, ok := fixedToken(w.s, i)
 	if !ok {
 		if i >= 0 && i < len(w.s.tokens) && !w.s.globAt(i) {
-			return writeTarget{base: tokenBase(w.s.tokens[i])}
+			return unplacedWrite(tokenBase(w.s.tokens[i]))
 		}
-		return writeTarget{}
+		return unplacedWrite("")
 	}
 	return writeAt(w.rc, w.st, tok, strings.HasPrefix(tok, "~"))
 }
@@ -260,7 +271,7 @@ func (w writerArgs) at(i int) writeTarget {
 func (w writerArgs) valueAt(i, skip int) writeTarget {
 	tok := w.s.tokens[i]
 	if isUnknown(tok) || w.s.globAt(i) || strings.ContainsRune(tok, varMark) {
-		return writeTarget{}
+		return unplacedWrite("")
 	}
 	v := tok[skip:]
 	return writeAt(w.rc, w.st, v, strings.HasPrefix(v, "~"))
@@ -347,7 +358,7 @@ func (w writerArgs) dirTarget(flags []string) writeTarget {
 		return vs[len(vs)-1]
 	}
 	ok := w.st.dirOK && w.st.dir != ""
-	return writeTarget{path: w.st.dir, ok: ok, rel: !ok}
+	return writeTarget{path: w.st.dir, ok: ok, rel: !ok, wrote: true}
 }
 
 // copyTarget is the destination of cp, mv or install: the -t value, else the
@@ -377,7 +388,7 @@ func (w writerArgs) lnTarget() []writeTarget {
 	case 1:
 		tok := w.s.tokens[idx[0]]
 		if isUnknown(tok) || w.s.globAt(idx[0]) || strings.ContainsRune(tok, varMark) {
-			return []writeTarget{{}}
+			return []writeTarget{unplacedWrite("")}
 		}
 		return []writeTarget{writeAt(w.rc, w.st, path.Base(tok), false)}
 	}
@@ -406,12 +417,12 @@ func (w writerArgs) curlTargets() []writeTarget {
 			continue
 		}
 		if isUnknown(t) || strings.ContainsRune(t, varMark) {
-			out = append(out, writeTarget{})
+			out = append(out, unplacedWrite(""))
 			continue
 		}
 		u, err := url.Parse(t)
 		if err != nil || path.Base(u.Path) == "/" || path.Base(u.Path) == "." {
-			out = append(out, writeTarget{})
+			out = append(out, unplacedWrite(""))
 			continue
 		}
 		out = append(out, writeAt(w.rc, w.st, path.Base(u.Path), false))
@@ -452,16 +463,19 @@ func (w writerArgs) sedTargets() []writeTarget {
 }
 
 // gitTargets is the paths `git checkout` and `git restore` write, and the
-// directory `git clone` makes.
+// directory `git clone` makes. Every `git -C`, whatever its subcommand, is a
+// write the guard does not place: -C moves git to a directory the guard does
+// not follow, where a subcommand, its options, a configuration value on the
+// line or an alias can change any file.
 func (w writerArgs) gitTargets() []writeTarget {
 	toks := w.s.tokens
 	i := w.from
 	for i < len(toks) {
 		t := toks[i]
-		if t == "-C" || t == "-c" || t == "--git-dir" || t == "--work-tree" || t == "--namespace" {
-			if t == "-C" {
-				return []writeTarget{{}} // another directory: not placed here
-			}
+		if t == "-C" {
+			return []writeTarget{unplacedWrite("")}
+		}
+		if t == "-c" || t == "--git-dir" || t == "--work-tree" || t == "--namespace" {
 			i += 2
 			continue
 		}
@@ -488,7 +502,7 @@ func (w writerArgs) gitTargets() []writeTarget {
 		case len(idx) == 1:
 			repo, ok := fixedToken(w.s, idx[0])
 			if !ok {
-				return []writeTarget{{}}
+				return []writeTarget{unplacedWrite("")}
 			}
 			name := strings.TrimSuffix(path.Base(strings.TrimRight(repo, "/")), ".git")
 			if i := strings.LastIndexByte(name, ':'); i >= 0 {
