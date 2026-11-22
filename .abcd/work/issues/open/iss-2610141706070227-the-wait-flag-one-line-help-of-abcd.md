@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/implement_load.go"
 remedy: "Extend the flag summary to: and no other go test -race run, make preflight or earlier waiter is live, under any account."
+related_intents: [itd-2611112035301804]
 ---
 
 The --wait flag one-line help of abcd implement load says it waits until the load is below the wait limit and no other go test -race run is live; the gate also stays shut while any account make preflight or an earlier waiter is live, as the command Long help and commands/implement.md say.

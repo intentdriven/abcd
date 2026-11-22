@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/31-lab.md"
 remedy: "Have the harvest print the line with a --remedy placeholder, or say in the chapter and help that the line needs --remedy added before it files anything."
 refines: [iss-2609091956001547]
+related_intents: [itd-2611150129104044]
 ---
 
 The lab chapter and `abcd lab harvest --help` say every product finding is listed with the capture line that files it (.abcd/development/brief/04-surfaces/31-lab.md:124). The line built at internal/core/lab/harvest.go:135 has no --remedy, and `abcd capture` refuses it with exit 2. harvest.md says the flag must be added before the command runs; the chapter, the help and the verb's terminal listing do not.

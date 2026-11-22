@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/22-site.md"
 remedy: "Name record.decisions beside the issue-ledger switch and in the export, and have the bare board report it."
+related_intents: [itd-2611150522299258]
 ---
 
 .abcd/development/brief/04-surfaces/22-site.md:256-261 says one input reaches past the durable record, the issue-ledger switch, and .abcd/development/brief/04-surfaces/22-site.md:340-348 enumerates the record export without decisions. record.decisions (internal/core/site/manifest.go:313, set in .abcd/site.json) publishes .abcd/work/decisions/ as a decision log and a page per record, and record.json carries a `decisions` key. Its only brief mention is .abcd/development/brief/05-internals/10-site.md:105. Bare `abcd site` reports only the issue ledger.

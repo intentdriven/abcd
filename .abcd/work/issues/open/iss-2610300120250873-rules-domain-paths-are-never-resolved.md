@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/rules/defaults/rules.json"
 remedy: "Add a lint that resolves every repository path named in a rules domain (the bundled defaults in internal/core/rules/defaults/rules.json and a repository's own .abcd/rules.json) and fails on one that does not exist, so a moved home breaks the check that names its pointer."
+related_intents: [itd-2611111023428807]
 ---
 
 A rules domain points at its home with a bare repository path, and nothing checks that the path still resolves. The link check reads markdown links only, and the one test that reads an OPINIONS path checks the users-directory principle alone. So renaming or moving a principle leaves its OPINIONS rule pointing at a file that is gone, the loader keeps injecting the dead pointer into every matching prompt, and every check stays green.

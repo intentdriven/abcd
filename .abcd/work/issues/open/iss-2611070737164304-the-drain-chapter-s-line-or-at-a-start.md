@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/35-drain.md"
 remedy: "Make the line say it, or drop the clause."
+related_intents: [itd-2611180920083484]
 ---
 
 The drain chapter's line 'or at a start tried again' leaves out that a resuming process's first attempt also stops on a file the team does not admit; the nearby line already says so but this one does not.

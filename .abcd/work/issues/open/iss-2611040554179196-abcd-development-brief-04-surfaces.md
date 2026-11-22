@@ -12,6 +12,7 @@ found_at: ".abcd/development/brief/04-surfaces/20-banlist.md"
 remedy: "State the home ignore lay as an exception to the read-only claim."
 duplicates: [iss-2611040554128376]
 refines: [iss-2611040554149214]
+decision_needed: "Should bare invocation and listing, specified in the banlist as strictly read-only, be formally allowed to write ~/.abcd.noindex/.gitignore and its marker when the folder exists unmarked, or should the code stop writing so the read-only rule stays absolute?"
 ---
 
 .abcd/development/brief/04-surfaces/20-banlist.md:11-12 calls bare invocation and listing strictly read-only. Where ~/.abcd.noindex exists without its marker, the command first writes ~/.abcd.noindex/.gitignore and gitignore-laid (internal/surface/cli/homestop.go:176; .abcd/development/brief/05-internals/03-configuration.md:1202). Nothing is written when the folder is absent.

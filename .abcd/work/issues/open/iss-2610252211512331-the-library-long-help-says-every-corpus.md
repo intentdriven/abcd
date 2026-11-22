@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/source.go"
 remedy: "Name the exception in the library long help: 'Every corpus verb but init exits 3 when there is no corpus; sync-banlist --refresh notes it and exits 0.'"
+related_intents: [itd-2611112035509135]
 ---
 
 The library long help says 'Every corpus verb but init exits 3 when there is no corpus.' (internal/surface/cli/source.go:98-99, docs/reference/cli/commands.md:3708-3709). But library sync-banlist --refresh with no corpus prints a one-line notice and exits 0 (source.go:557-561), as its own help and flag text say (commands.md:3906-3914).

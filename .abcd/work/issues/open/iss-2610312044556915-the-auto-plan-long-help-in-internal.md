@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/build.go"
 remedy: "Add the covered and uncovered parts to the --auto-plan long help in one parenthesis, matching commands/build.md, and regenerate the CLI reference."
+related_intents: [itd-2611120412123840]
 ---
 
 The --auto-plan long help in internal/surface/cli/build.go (about line 205) says only that a checkout that changed since the start hands the lane back, while commands/build.md says what the digest covers (HEAD, the index's entries and their flags, the files the ignore rules admit outside the local tier) and what it does not (ignored files, the git directory).

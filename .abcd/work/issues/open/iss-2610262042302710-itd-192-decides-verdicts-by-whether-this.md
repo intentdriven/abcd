@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/position.md:25"
 remedy: "In itd-192 replace 'this phase' with 'this release' (a planned intent whose target_release names the release being cut wires the criterion; a conditional verdict is re-checked at the release cut, not at phase close)."
-related_intents: [itd-192]
+related_intents: [itd-192, itd-2611210210129962]
 finding_ref: cfk-4d639ded95e9180b
 ---
 

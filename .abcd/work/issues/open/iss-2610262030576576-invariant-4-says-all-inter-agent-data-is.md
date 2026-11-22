@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:15"
 remedy: "In 03-invariants.md invariant 4 (and 05-internals/04-universal-patterns.md section 4), scope 'all inter-agent data is JSON' to data the core validates and name the exceptions: a Markdown artefact built as a model's context (history reconstruct) and the prose-verdict reviewers (see iss-2610262031138048)."
 finding_ref: cfk-97d08d265a8dd54b
+decision_needed: "Should invariant 4 be narrowed from 'all inter-agent data is JSON' to 'data the core validates', formally allowing unvalidated Markdown and prose-verdict output (whose status is still open in iss-2610262031138048) to pass between agents, or should those paths instead be brought under JSON validation?"
 ---
 
 Invariant 4 says all inter-agent data is JSON and markdown is only a render step; the history chapter's reconstruct artefact is Markdown precisely because a model reads it.

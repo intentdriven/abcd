@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/38-announce.md"
 remedy: "Reword: a hosted session abcd's setup prepared runs the committed hooks; only one that skipped the setup runs none, and there the ruleset and the reader are the guards."
 refines: [iss-2610171249310666]
+related_intents: [itd-2611152110178358]
 ---
 
 38-announce.md says a hosted session runs no hook, but the cloud setup script sets core.hooksPath=.githooks (scripts/cloud/connectors/claude/setup.sh:315), so a hosted session abcd set up runs the pre-push hook.

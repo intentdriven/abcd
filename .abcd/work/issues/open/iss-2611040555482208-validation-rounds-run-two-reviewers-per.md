@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "CHANGELOG.md"
 remedy: "Have the delivering change carry a record; name this default in the next cut's changelog."
+related_intents: [itd-2611181754209133]
 ---
 
 Validation rounds run two reviewers per code-review role by default, which affects agent spend, with no line in the v0.16.1 changelog, because no record in the cut covers it.

@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/claim/prepare.go"
 remedy: "Pick an author and committer identity for reservation and announcement commits made without a person's git identity that passes the attribution gate's human-author rule and names no login, and write it in place of the token account's login and no-reply address."
+decision_needed: "Which author and committer name and email should abcd write on reservation and announcement commits pushed without a person's git identity, given that the choice changes the identity published in pushed history, must satisfy the attribution gate's human-author rule without being a person's identity, and must expose no login?"
 ---
 
 When git's identity in a session is not a person's, abcd authors and commits each reservation and announcement commit it pushes as the account the forge token resolves to, with that account's login and no-reply address, so those commits' author and committer fields carry the login that the holder id keeps out of every trailer and ref name. That is the stated exception for the release bringing the holder id; the follow-up is an author identity for those commits that the human-author attribution gate accepts and that carries no login.

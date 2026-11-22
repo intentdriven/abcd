@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md"
 remedy: "State the persona exemption and its accepted residual in the rule's row."
+decision_needed: "Should the privacy-hygiene rule's spec formally adopt the registry-persona home-path exemption, and accept that another person's home path under a persona username goes unflagged, or should that exemption be narrowed?"
 ---
 
 .abcd/development/brief/04-surfaces/16-lint.md:160 describes privacy-hygiene as flagging absolute local paths on any tracked text line, with only the line waiver as an exemption. The rule also exempts a home path whose username segment is a registry persona other than this machine's own user (internal/core/repolint/rule_privacy.go:409, isPersonaHomeSegment), and accepts in a code comment that another person's home under such a name goes unflagged. The chapter states neither.
