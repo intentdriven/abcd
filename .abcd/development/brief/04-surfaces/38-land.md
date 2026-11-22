@@ -387,6 +387,14 @@ Its inputs:
   but a drive lane's (and none when it runs from one or lands a branch checked
   out in one), and counts a receipt with no delta only when it
   holds a passing pair for the head it names.
+- **A review brief**, the return a reviewer writes, printed before the review so
+  the reviewer is told the shape and not left to learn it from a refusal. The act
+  names the branch's head, or a commit, and prints the first line naming it in full
+  (the delta's line when a base is named), a place for the findings, the one
+  Verdict heading and the verdict line naming the head in full, its word left to
+  the reviewer. It is built from the rule the review act reads a return by, so the
+  two cannot drift: a brief filled in with a passing verdict is recorded. It writes
+  and lands nothing.
 
 The decision, in order:
 
@@ -579,5 +587,6 @@ Sub-verbs: none.
 | `--no-push` | bool |
 | `--record-review` | stringArray |
 | `--rests-on` | string |
+| `--review-brief` | string |
 
 <!-- surface-appendix:end -->

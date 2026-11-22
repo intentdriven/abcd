@@ -3327,6 +3327,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "review-brief",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },

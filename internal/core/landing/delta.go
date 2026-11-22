@@ -156,8 +156,9 @@ type deltaRecord struct {
 const restsOnItself = "a head cannot rest on itself"
 
 // reviewedDelta is a delta return's first line that is not blank, stating the delta
-// it read, exactly: nothing before the words and nothing after the range.
-var reviewedDelta = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*Reviewed delta: ([0-9a-f]+)\.\.([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
+// it read, exactly: nothing before the words and nothing after the range. Its
+// label is the one a review brief writes (ReviewBrief).
+var reviewedDelta = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*` + regexp.QuoteMeta(reviewedDeltaLabel) + `([0-9a-f]+)\.\.([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
 
 // anyDeltaLine is any line that begins by stating a delta, in any case, whatever
 // markup leads it or closes the words, by a colon or a range. A full pair's return
@@ -189,7 +190,8 @@ func statesDelta(text, base, head string) error {
 
 // reviewedHead is a full pair's return's first line that is not blank, stating
 // the head it read, exactly: nothing before the words and nothing after the name.
-var reviewedHead = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*Reviewed head: ([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
+// Its label is the one a review brief writes (ReviewBrief).
+var reviewedHead = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*` + regexp.QuoteMeta(reviewedHeadLabel) + `([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
 
 // anyHeadLine is any line that begins by stating the head it reviewed, in any case,
 // whatever markup leads it. A verdict naming its head is not one.
@@ -199,7 +201,7 @@ var anyHeadLine = regexp.MustCompile(`(?mi)^[^\pL\pN\n]*reviewed[ \t]+head\b[^\p
 // its first line reads Reviewed head: <name>, naming head by at least the nine
 // characters a brief abbreviates it to, and no other line is a Reviewed head line.
 func statesHead(text, head string) error {
-	want := "Reviewed head: " + head[:reviewedCommitPrefix]
+	want := reviewedHeadLabel + head[:reviewedCommitPrefix]
 	m := reviewedHead.FindStringSubmatch(text)
 	if m == nil {
 		return fmt.Errorf("its first line does not read %s, so it cannot be told it reviewed this head", want)

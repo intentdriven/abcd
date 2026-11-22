@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--approve]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--review-brief[=<commit>]] [--approve]"
 block: people
 ---
 
@@ -354,6 +354,31 @@ to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
 
+## Brief a reviewer
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --review-brief[=<commit>] [--rests-on <base>] [--json]
+```
+
+`--review-brief` prints the return a reviewer writes for the branch's head, ready
+to paste into the reviewer's brief, and writes and lands nothing. Given bare, it
+names the head of the branch (or the checkout's current branch); given as
+`--review-brief=<commit>`, with no branch, it names that commit. The brief's first
+line reads `Reviewed head: <full name>`, then comes a place for the findings, then
+the `### Verdict` heading, and under it the verdict line naming the head in full,
+its word left to the reviewer: `SHIP` or `APPROVE` when no finding is critical or
+major, otherwise `NEEDS-INPUT`, `FIX FIRST` or `BLOCK`. With `--rests-on <base>`,
+the base's full object name, the first line is the delta's instead,
+`Reviewed delta: <base>..<head>`; whether the delta stands is judged when the pair
+is recorded.
+
+The brief is built from the rule `--record-review` reads a return by, below, so
+the two cannot drift: a brief filled in with a passing verdict is recorded. A head
+or base that is not a commit the repository holds, an abbreviated base, a head
+resting on itself, and a branch given beside `--review-brief=<commit>` are each
+refused with exit 2. It takes no `--no-push`, `--no-enqueue`, `--approve` or
+`--record-review`. `--json` carries the `commit`, `rests_on` and the `brief`.
+
 ## Record the review pair's verdicts
 
 ```bash
@@ -502,7 +527,7 @@ just fetched and in the build of abcd that runs the gate, and the note says why
 when a delta no longer stands. It reads the receipts for the head in every worktree
 but a drive lane's or one under it, and a full pair in any of them counts. It counts a
 receipt with no delta only when it holds a passing pair for the head it names.
-`--rests-on` without `--record-review` is refused with exit 2.
+`--rests-on` without `--record-review` or `--review-brief` is refused with exit 2.
 
 ## Turning an act off
 

@@ -25,6 +25,10 @@
         {
           "name": "rests-on",
           "type": "string"
+        },
+        {
+          "name": "review-brief",
+          "type": "string"
         }
       ],
       "inputs": [],
