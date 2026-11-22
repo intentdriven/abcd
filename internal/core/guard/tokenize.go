@@ -906,6 +906,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	addBang := func(mask byte) {
 		curVarAt = append(curVarAt, varSite{at: len(cur), texts: paramTexts("$!"), width: 2})
 		addCur([]byte("$!"), mask)
+		curSplit = true
 	}
 	// markIFSSplit files the word being built under segment.ifsSplit when its
 	// sites rest on the default IFS.
@@ -1354,6 +1355,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
+			curSplit = true
 			// The number it prints is computed from what the substitutions
 			// inside it printed.
 			feedFrom(e.segStart)
@@ -1401,9 +1403,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
 	//
-	// A quoted one that yields one word per element (quotedYieldsSeveral)
-	// marks its word as one an unquoted substitution stands in (curSplit),
-	// since it too can stand for several words.
+	// A quoted one other than a plain `${NAME}` marks its word as one an
+	// unquoted substitution stands in (curSplit): an operator, a flag, a
+	// modifier, a subscript or a nested expansion can make it yield several
+	// words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and `"${^@}"`), and
+	// the guard does not work out which do.
 	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
@@ -1416,7 +1420,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if len(segs) > start {
 			curSub = true
 		}
-		if !split && quotedYieldsSeveral(body) {
+		if !split && !isName(body) {
 			curSplit = true
 		}
 	}
@@ -1546,11 +1550,20 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
-					// `"$@"`, and zsh's `"$a[@]"`, yield one word per
-					// element, as an unquoted substitution can.
-					if line[j+1] == '@' || strings.HasPrefix(line[k:], "[@]") {
+					// Only a plain `"$NAME"` is one word: `"$@"` yields one
+					// per element, and zsh reads a subscript or a modifier
+					// after the name (`"$a[@]"`, `"$v:h"`).
+					if !plainParam(line, j, k) {
 						curSplit = true
 					}
+					j = k
+					continue
+				}
+				if k := zshFlaggedParamEnd(line, j+1); line[j] == '$' && k >= 0 {
+					// zsh's `"$=V"`, `"$^@"` and `"$~@"` split or expand
+					// what they print.
+					addParam("$" + strings.TrimLeft(line[j+1:k], zshParamFlags))
+					curSplit = true
 					j = k
 					continue
 				}
@@ -1566,6 +1579,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						arithmetic(line[j+3 : end-1])
 						feedFrom(start)
 						addCur([]byte(arithmeticOperand), 0)
+						curSplit = true
 						j = end + 1
 						continue
 					}
@@ -1593,7 +1607,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					follow(text)
 					feedFrom(start)
 					addCur([]byte{unknownMark}, 0)
-					curSub = true
+					curSub, curSplit = true, true
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken reads the
 					// word with that text in the output's place.
@@ -1880,6 +1894,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			addBang(wordStruct)
 			lastList = false
 			i += 2
+		case c == '$' && zshFlaggedParamEnd(line, i+1) >= 0:
+			// zsh's `$=V`, `$^V` and `$~V`: the parameter, split or expanded
+			// as a pattern, read as an unquoted one is.
+			end := zshFlaggedParamEnd(line, i+1)
+			addParam("$" + strings.TrimLeft(line[i+1:end], zshParamFlags))
+			curVarAt[len(curVarAt)-1].bare = true
+			curVarAt[len(curVarAt)-1].split = true
+			lastList = false
+			i = end
 		case c == '$' && simpleParamEnd(line, i+1) >= 0:
 			// A parameter expansion (iss-2609251824244354): the value it prints
 			// is not in the command line, so the word holds unknownMark where
@@ -2735,26 +2758,33 @@ func simpleParamEnd(line string, i int) int {
 	return -1
 }
 
-// quotedYieldsSeveral reports whether a double-quoted `${…}` whose text
-// between the braces is body can yield several words, one per element:
-// the positional parameters (`"${@}"`, `"${@:2}"`), an array's elements
-// (`"${a[@]}"`, `"${a[@]:1}"`), bash's keys and names (`"${!a[@]}"`,
-// `"${!pre@}"`), and zsh's splitting forms, `=` (`"${=V}"`, behind `^` or
-// `~` too) and any flag group (`"${(f)V}"`, `"${(s: :)V}"`, `"${(@)a}"`),
-// read as one that can split since the guard does not read each flag. A
-// length (`"${#a[@]}"`) is one word, and so are `"${*}"` and `"${a[*]}"`.
-func quotedYieldsSeveral(body string) bool {
-	if strings.HasPrefix(body, "#") {
+// plainParam reports whether the unbraced parameter line[j:k] (the `$` at
+// j) is a plain `$NAME`: a name, not a special parameter, with no subscript
+// or modifier after it, both of which zsh reads (`$a[@]`, `$v:h`).
+func plainParam(line string, j, k int) bool {
+	if !isName(line[j+1 : k]) {
 		return false
 	}
-	if rest, ok := strings.CutPrefix(body, "!"); ok {
-		return strings.Contains(rest, "[@]") || strings.HasSuffix(rest, "@")
+	return k >= len(line) || (line[k] != '[' && line[k] != ':')
+}
+
+// zshParamFlags are the characters zsh reads between `$` and a parameter's
+// name: `=` splits its value into words, `~` expands it as a pattern and `^`
+// joins it to the text beside it element by element.
+const zshParamFlags = "=^~"
+
+// zshFlaggedParamEnd is the end of a parameter written with zsh's flags
+// after the `$` at i-1 (`$=V`, `$^@`, `$~V`, `$=~V`), or -1 where no flag
+// stands at i or no parameter follows the flags.
+func zshFlaggedParamEnd(line string, i int) int {
+	j := i
+	for j < len(line) && strings.IndexByte(zshParamFlags, line[j]) >= 0 {
+		j++
 	}
-	if strings.HasPrefix(body, "@") || strings.Contains(body, "[@]") {
-		return true
+	if j == i {
+		return -1
 	}
-	lead := strings.TrimLeft(body, "^~")
-	return strings.HasPrefix(lead, "=") || strings.HasPrefix(lead, "(")
+	return simpleParamEnd(line, j)
 }
 
 // closingDolBrace returns the index of the `}` that closes a `${` standing

@@ -827,8 +827,8 @@ descriptor a redirection names, zsh's `${NAME::=…}` and an assignment to an
 array the line ties to the variable with `typeset -T` among them), with an
 assignment whose name or value the line does not fix read as setting the
 variable and the value of one of env's or sudo's own options read as no
-assignment unless an expansion that can yield several words stands in it
-(an unquoted one, or a quoted `"$@"` or `"${a[@]}"`), a
+assignment only where every expansion in it is a plain quoted `"$NAME"` or
+`"${NAME}"`, any other expansion being read as possibly several words, a
 `set` whose option words it does not fix and a `SHELLOPTS` exported before a
 shell read as turning allexport on, an element of zsh's `options` array read
 as turning it off only for the exact value zsh accepts (`off`, or `on` for the

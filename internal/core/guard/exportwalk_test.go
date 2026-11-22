@@ -400,34 +400,57 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 	}
 }
 
-// TestGuardReadsAQuotedExpansionOfSeveralWordsAsAnOptionValueOfSeveral: a
-// double-quoted expansion that yields one word per element — `"$@"`,
-// `"${@:2}"`, `"${a[@]}"`, bash's `"${!a[@]}"`, zsh's `"$a[@]"`, `"${(@)a}"`,
-// and zsh's splitting forms `"${=V}"`, `"${(f)V}"`, `"${(s: :)V}"` — can
-// stand for several words, the ones after the first operands of env or sudo
-// of their own, so as the value of one of their options it can set a
-// variable. `"$*"`, `"${a[*]}"`, `"${#a[@]}"` and `"$V"` are one word.
-func TestGuardReadsAQuotedExpansionOfSeveralWordsAsAnOptionValueOfSeveral(t *testing.T) {
+// TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName:
+// the value of one of env's or sudo's options is one word only where every
+// expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"`, with
+// no operator, flag, modifier, subscript or nesting. Any other expansion can
+// yield several words, the ones after the first operands of env or sudo of
+// their own, so as an option value it can set a variable: `"$@"` and
+// `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `$=V`,
+// `"$^@"` and `"${(f)V}"`, and, read the same way without listing which
+// yield several, `"$*"`, `"${v:-x}"` and a substitution.
+func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t *testing.T) {
 	r := Defaults()
 	for line, id := range map[string]string{
-		`env -u "$@" opencode run x`:          "agent-launch-opencode-config-env",
-		`env -u "${@}" opencode run x`:        "agent-launch-opencode-config-env",
-		`env -u "${@:2}" opencode run x`:      "agent-launch-opencode-config-env",
-		`env -u "${a[@]}" claude -p x`:        "agent-launch-claude-config-env",
-		`env -u "${a[@]:1}" claude -p x`:      "agent-launch-claude-config-env",
-		`env -u "${!a[@]}" claude -p x`:       "agent-launch-claude-config-env",
-		`env -u "$a[@]" opencode run x`:       "agent-launch-opencode-config-env",
-		`env -u "${(@)a}" opencode run x`:     "agent-launch-opencode-config-env",
-		`env -u "${=V}" opencode run x`:       "agent-launch-opencode-config-env",
-		`env -u "${(f)V}" opencode run x`:     "agent-launch-opencode-config-env",
-		`env -u "${(s: :)V}" opencode run x`:  "agent-launch-opencode-config-env",
-		`env -u x"$@" opencode run x`:         "agent-launch-opencode-config-env",
-		`env -C "$wt" -u "$@" claude -p x`:    "agent-launch-claude-config-env",
-		`sudo -u "$@" opencode run x`:         "agent-launch-opencode-config-env",
-		`sudo -u "${a[@]}" opencode run x`:    "agent-launch-opencode-config-env",
-		`sudo --user "${=U}" opencode run x`:  "agent-launch-opencode-config-env",
-		`env --unset "${(f)V}" claude -p x`:   "agent-launch-claude-config-env",
-		`env --chdir "${arr[@]}" claude -p x`: "agent-launch-claude-config-env",
+		`env -u "$@" opencode run x`:               "agent-launch-opencode-config-env",
+		`env -u "${@}" opencode run x`:             "agent-launch-opencode-config-env",
+		`env -u "${@:2}" opencode run x`:           "agent-launch-opencode-config-env",
+		`env -u "${a[@]}" claude -p x`:             "agent-launch-claude-config-env",
+		`env -u "${a[@]:1}" claude -p x`:           "agent-launch-claude-config-env",
+		`env -u "${!a[@]}" claude -p x`:            "agent-launch-claude-config-env",
+		`env -u "$a[@]" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$a[1]" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "$v:h" opencode run x`:             "agent-launch-opencode-config-env",
+		`env -u "${(@)a}" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "${=V}" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "${(f)V}" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "${(s: :)V}" opencode run x`:       "agent-launch-opencode-config-env",
+		`env -u "${1+"$@"}" opencode run x`:        "agent-launch-opencode-config-env",
+		`env -u "${1+$@}" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "${x:-$@}" opencode run x`:         "agent-launch-opencode-config-env",
+		`env -u "${nope:-"$@"}" opencode run x`:    "agent-launch-opencode-config-env",
+		`env -u "${nope:-${(@)a}}" opencode run x`: "agent-launch-opencode-config-env",
+		`env -u "${^@}" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u "${~@}" opencode run x`:            "agent-launch-opencode-config-env",
+		`env -u $=V claude -p x`:                   "agent-launch-claude-config-env",
+		`env -u "$=V" opencode run x`:              "agent-launch-opencode-config-env",
+		`env -u "$^@" opencode run x`:              "agent-launch-opencode-config-env",
+		`env -u "$~@" opencode run x`:              "agent-launch-opencode-config-env",
+		`env -u "$*" opencode run x`:               "agent-launch-opencode-config-env",
+		`env -u "${a[*]}" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "${v:-x}" opencode run x`:          "agent-launch-opencode-config-env",
+		`env -u "$(cat v)" opencode run x`:         "agent-launch-opencode-config-env",
+		`env -u "$((n))" opencode run x`:           "agent-launch-opencode-config-env",
+		`env -u "$!" opencode run x`:               "agent-launch-opencode-config-env",
+		`env -u x"$@" opencode run x`:              "agent-launch-opencode-config-env",
+		`env -u "$v$@" opencode run x`:             "agent-launch-opencode-config-env",
+		`env -C "$wt" -u "$@" claude -p x`:         "agent-launch-claude-config-env",
+		`sudo -u "$@" opencode run x`:              "agent-launch-opencode-config-env",
+		`sudo -u "${a[@]}" opencode run x`:         "agent-launch-opencode-config-env",
+		`sudo --user "${=U}" opencode run x`:       "agent-launch-opencode-config-env",
+		`sudo -u "$=U" opencode run x`:             "agent-launch-opencode-config-env",
+		`env --unset "${(f)V}" claude -p x`:        "agent-launch-claude-config-env",
+		`env --chdir "${arr[@]}" claude -p x`:      "agent-launch-claude-config-env",
 	} {
 		d, err := r.Check(line)
 		if err != nil {
@@ -438,12 +461,12 @@ func TestGuardReadsAQuotedExpansionOfSeveralWordsAsAnOptionValueOfSeveral(t *tes
 		}
 	}
 	for _, line := range []string{
-		`env -u "$*" opencode run x`,
-		`env -u "${a[*]}" opencode run x`,
-		`env -u "${#a[@]}" opencode run x`,
-		`env -u "${#@}" opencode run x`,
 		`env -u "$v" opencode run x`,
-		`env -u "${v:-x}" opencode run x`,
+		`env -u "$USER" opencode run x`,
+		`env -C "${wt}" opencode run x`,
+		`env -C "$wt" -u "$v" opencode run x`,
+		`env -C "$wt/sub" opencode run x`,
+		`env -u x"$v" opencode run x`,
 		`sudo -u "$u" opencode run x`,
 		`sudo -u "${u}" opencode run x`,
 	} {
