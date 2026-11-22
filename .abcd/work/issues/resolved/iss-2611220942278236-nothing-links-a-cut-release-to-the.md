@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/embargo/plan.go"
 remedy: "Record the fixing commit on each embargoed record (an embargo verb that takes the record and the commit), and have bare abcd embargo and launch ship list every record whose fixing commit is in a published release tag as ready to publish, queueing the person's publish step in away mode; the publish itself stays the person's act."
-resolution: "abcd embargo fixed records an advisory's fix commits in the embargo store, bare abcd embargo lists each advisory whose fix a published release holds as ready to publish, naming the release, and writes nothing, and abcd embargo queue queues the person's publish step for each, once, while they are away"
+resolution: "abcd embargo fixed records an advisory's fix commits in the embargo store, bare abcd embargo lists each advisory whose fix a published release holds as ready to publish, naming the release, and writes nothing, and abcd embargo queue queues the person's publish step for each, once, while they are away. The remedy's launch ship half was not built: launch ship lists no advisory a cut makes publishable, and iss-2611221400190610 carries it"
 impact: additive
 ---
 
