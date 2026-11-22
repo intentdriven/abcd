@@ -30,6 +30,47 @@ const escapeBrief = `# Product
 // the value, and once that proposal is adopted the surface no longer drifts.
 // The surfaces are this repository's own registrations.
 func TestEscapedSurfacesProposeValidFilesAndClear(t *testing.T) {
+	proposeAdoptAndClear(t, escapeBrief, staleCatalogue, staleCitation)
+}
+
+// TestYAMLRefusedCharactersAreEscaped carries the characters a YAML stream may
+// not hold raw (DEL, the C1 controls, U+FFFE and U+FFFF) and NEL, which YAML
+// reads as a line break and folds to a space inside a double-quoted scalar:
+// the proposed CITATION.cff must still parse and say each of them exactly, so
+// the surface clears once the proposal is adopted.
+func TestYAMLRefusedCharactersAreEscaped(t *testing.T) {
+	odd := "\u007f\u0080\u0085\u009f\ufffe\uffff"
+	brief := "# Product\n\n## Identity (canonical)\n\n" +
+		"- **Name:** acme\n" +
+		"- **Title:** Acme " + odd + " Engine\n" +
+		"- **Descriptor:** the tool for a\u0085b sellers " + odd + " too\n" +
+		"- **Tagline:** List it once.\n" +
+		"- **Listing:** Say " + odd + " to every store.\n"
+	proposeAdoptAndClear(t, brief, staleCatalogue, staleCitation)
+}
+
+const staleCatalogue = `{
+  "name": "acme-marketplace",
+  "plugins": [
+    {
+      "description": "An old description.",
+      "name": "acme"
+    }
+  ]
+}
+`
+
+const staleCitation = `cff-version: 1.2.0
+title: "acme"
+abstract: "An old abstract."
+license: MIT
+`
+
+// escapeRepo writes a fixture holding brief, the catalogue and the citation,
+// and returns it with a config of this repository's own catalogue and
+// citation surfaces.
+func escapeRepo(t *testing.T, brief, catalogue, citation string) (string, Config) {
+	t.Helper()
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -47,26 +88,20 @@ func TestEscapedSurfacesProposeValidFilesAndClear(t *testing.T) {
 	if len(surfaces) != 2 {
 		t.Fatalf("found %d of the catalogue and citation surfaces, want 2", len(surfaces))
 	}
-
 	root := writeRepo(t, map[string]string{
-		"brief.md": escapeBrief,
-		".claude-plugin/marketplace.json": `{
-  "name": "acme-marketplace",
-  "plugins": [
-    {
-      "description": "An old description.",
-      "name": "acme"
-    }
-  ]
-}
-`,
-		"CITATION.cff": `cff-version: 1.2.0
-title: "acme"
-abstract: "An old abstract."
-license: MIT
-`,
+		"brief.md":                        brief,
+		".claude-plugin/marketplace.json": catalogue,
+		"CITATION.cff":                    citation,
 	})
-	cfg := Config{SchemaVersion: 1, Block: BlockLocation{File: "brief.md", Heading: "Identity (canonical)"}, Surfaces: surfaces}
+	return root, Config{SchemaVersion: 1, Block: BlockLocation{File: "brief.md", Heading: "Identity (canonical)"}, Surfaces: surfaces}
+}
+
+// proposeAdoptAndClear proposes both surfaces from brief, holds each proposed
+// file to its format and to the block's value, adopts the proposals, and
+// requires both surfaces to read ok afterwards.
+func proposeAdoptAndClear(t *testing.T, brief, catalogue, citation string) {
+	t.Helper()
+	root, cfg := escapeRepo(t, brief, catalogue, citation)
 	b, err := ParseBlock(root, cfg.Block)
 	if err != nil {
 		t.Fatal(err)

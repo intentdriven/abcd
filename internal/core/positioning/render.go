@@ -97,7 +97,7 @@ func Propose(root string, cfg Config) (Proposal, error) {
 		if sp.escaped {
 			// Splicing back into a quoted string: the canonical line must be
 			// re-escaped or the proposed file would not parse.
-			esc, merr := escapeQuoted(replacement)
+			esc, merr := escapeQuoted(s.Escape, replacement)
 			if merr != nil {
 				return Proposal{}, merr
 			}
@@ -122,16 +122,39 @@ func Propose(root string, cfg Config) (Proposal, error) {
 	return p, nil
 }
 
-// escapeQuoted spells s as the body of a JSON string literal. The same body is
-// valid inside a YAML double-quoted scalar, whose escapes are a superset of
-// JSON's, so one spelling serves a JSON manifest field, an EscapeJSON surface
-// and an EscapeYAML surface alike.
-func escapeQuoted(s string) (string, error) {
+// escapeQuoted spells s as the body of a quoted string in the named format:
+// EscapeYAML for a YAML double-quoted scalar, anything else for a JSON string
+// literal (a json_field surface passes no format). The JSON body is
+// json.Marshal's. YAML's escapes are a superset of JSON's, but a YAML stream
+// may not hold DEL, the C1 controls, U+FFFE or U+FFFF raw, which json.Marshal
+// leaves as they are, and it reads NEL (U+0085, a C1 control) as a line break
+// that a double-quoted scalar folds to a space; so for YAML each of those is
+// written as a \uXXXX escape, which decodes back to the character itself.
+func escapeQuoted(format, s string) (string, error) {
 	enc, err := json.Marshal(s)
 	if err != nil {
 		return "", err
 	}
-	return string(enc[1 : len(enc)-1]), nil
+	body := string(enc[1 : len(enc)-1])
+	if format != EscapeYAML {
+		return body, nil
+	}
+	var b strings.Builder
+	for _, r := range body {
+		if yamlRefusesRaw(r) {
+			fmt.Fprintf(&b, `\u%04X`, r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), nil
+}
+
+// yamlRefusesRaw reports a character a YAML double-quoted scalar cannot carry
+// as itself: DEL and the C1 controls, NEL among them, and the two
+// noncharacters U+FFFE and U+FFFF.
+func yamlRefusesRaw(r rune) bool {
+	return (r >= 0x7f && r <= 0x9f) || r == 0xfffe || r == 0xffff
 }
 
 // noNewlineMarker is the unified-diff notation for a final line that the file
