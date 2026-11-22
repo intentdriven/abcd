@@ -273,7 +273,10 @@ emits `{ "block": …, "severity": …, "surfaces": [ … ] }`:
   repo — not a fault), or `unlocatable` (the file is there but the locator
   matches nothing, so drift would go unseen). A `drifted` entry carries `found`
   (the exact text the surface says), `missing` (which block fields it no longer
-  carries), and `canonical` (what the block says it should).
+  carries), and `canonical` (what the block says it should). A surface whose
+  quoted string does not decode in its format is `drifted` with a `reason`
+  saying so instead of a `missing` list: its words are never compared, so it
+  never reads `ok`.
 
 Report the block first, then any surface that is not `ok`, naming the file, the
 line, what it says, and what the block says. It exits `0` even when it reports

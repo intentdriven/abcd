@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -47,6 +48,43 @@ func TestYAMLRefusedCharactersAreEscaped(t *testing.T) {
 		"- **Tagline:** List it once.\n" +
 		"- **Listing:** Say " + odd + " to every store.\n"
 	proposeAdoptAndClear(t, brief, staleCatalogue, staleCitation)
+}
+
+// TestUndecodableQuotedStringIsNeverOK holds a quoted surface whose string
+// does not decode in its own format to a finding, never to ok, even when the
+// block's words sit in it as written: a CITATION.cff abstract with bare inner
+// quotes is not YAML, and a catalogue description with an escape JSON rejects
+// is not JSON. Each reports drifted with the reason, and the proposal that
+// replaces it clears it.
+func TestUndecodableQuotedStringIsNeverOK(t *testing.T) {
+	catalogue := `{
+  "name": "acme-marketplace",
+  "plugins": [
+    {
+      "description": "\q Say \"hi\" to every C:\\store at once.",
+      "name": "acme"
+    }
+  ]
+}
+`
+	// The description holds `\q`, an escape JSON rejects, beside the listing
+	// spelled as JSON would spell it.
+	citation := "cff-version: 1.2.0\ntitle: \"acme\"\n" +
+		`abstract: "Acme "Quoted" Engine: the tool for C:\shops and "small" sellers"` + "\nlicense: MIT\n"
+	root, cfg := escapeRepo(t, escapeBrief, catalogue, citation)
+	rep, err := Check(root, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range rep.Surfaces {
+		if s.Status != StatusDrifted {
+			t.Errorf("an undecodable %s reads %s, want drifted", s.ID, s.Status)
+		}
+		if !strings.Contains(s.Reason, "does not decode") {
+			t.Errorf("an undecodable %s gives the reason %q, want it to say the string does not decode", s.ID, s.Reason)
+		}
+	}
+	proposeAdoptAndClear(t, escapeBrief, catalogue, citation)
 }
 
 const staleCatalogue = `{

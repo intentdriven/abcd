@@ -99,3 +99,19 @@ func TestIdentityFieldColumnFitsTheBlock(t *testing.T) {
 		}
 	}
 }
+
+// TestIdentityPrintsWhyAQuotedSurfaceDrifted holds the report to the reason a
+// surface carries when it drifted for something other than a missing field: a
+// quoted string that does not decode.
+func TestIdentityPrintsWhyAQuotedSurfaceDrifted(t *testing.T) {
+	var out bytes.Buffer
+	renderIdentity(&out, positioning.Report{
+		Block:    positioning.Block{Title: "acme", Tagline: "Widgets.", File: "brief.md"},
+		Severity: "warn",
+		Surfaces: []positioning.SurfaceResult{{ID: "citation-abstract", Status: positioning.StatusDrifted, File: "CITATION.cff", Line: 3,
+			Found: `A "b" c`, Canonical: "acme", Reason: "the quoted YAML string does not decode: yaml: line 1: did not find expected key"}},
+	})
+	if !strings.Contains(out.String(), "reason:    the quoted YAML string does not decode") {
+		t.Errorf("the report does not give the reason:\n%s", out.String())
+	}
+}

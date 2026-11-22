@@ -97,7 +97,10 @@ literal, `yaml` for a YAML double-quoted scalar. The check then compares what th
 string says rather than how it is escaped, and a proposal escapes the rendered
 text for that format, so a block value holding a quote or a backslash neither
 breaks the file nor reports drift that adopting the proposal cannot clear. A
-top-level JSON field is always read and proposed that way. Leaving the surface list
+string that does not decode in its format, an unescaped quote inside it
+included, is reported as drift with the reason rather than compared as written,
+so a broken manifest or citation never reads as a clean pass. A top-level JSON
+field is always read and proposed that way. Leaving the surface list
 empty adopts the canonical three — the README strapline, the plugin manifest
 description, and the conventions-file opening; naming any replaces them, so
 nothing is ever registered silently.

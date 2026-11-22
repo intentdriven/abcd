@@ -74,13 +74,20 @@ func (r identityPositioning) Eval(ctx Context) ([]Finding, error) {
 	for _, s := range rep.Surfaces {
 		switch s.Status {
 		case positioning.StatusDrifted:
+			msg := fmt.Sprintf("surface %q no longer carries the canonical %s — it says %q; the identity block (%s) says %q",
+				s.ID, strings.Join(s.Missing, ", "), truncate(s.Found), rep.Block.File, s.Canonical)
+			if s.Reason != "" {
+				// Drift that is not a missing field: a quoted string that
+				// does not decode, so its words were never compared.
+				msg = fmt.Sprintf("surface %q cannot be read: %s — it says %q; the identity block (%s) says %q",
+					s.ID, s.Reason, truncate(s.Found), rep.Block.File, s.Canonical)
+			}
 			out = append(out, Finding{
 				RuleID:   "identity-positioning",
 				Severity: sev,
 				File:     s.File,
 				Line:     s.Line,
-				Message: fmt.Sprintf("surface %q no longer carries the canonical %s — it says %q; the identity block (%s) says %q",
-					s.ID, strings.Join(s.Missing, ", "), truncate(s.Found), rep.Block.File, s.Canonical),
+				Message:  msg,
 			})
 		case positioning.StatusUnlocatable:
 			out = append(out, Finding{

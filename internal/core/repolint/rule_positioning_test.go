@@ -215,3 +215,23 @@ func TestPositioningFindingsCarryNoAbsolutePath(t *testing.T) {
 		})
 	}
 }
+
+// A quoted surface whose string does not decode in its format is a finding
+// that says so, even when the tagline sits in it as written: a CITATION.cff
+// abstract with bare inner quotes is not YAML, so its words prove nothing.
+func TestPositioningUndecodableQuotedSurfaceNamesTheReason(t *testing.T) {
+	cfg := strings.Replace(positioningConfig, `"surfaces": [`, `"surfaces": [
+    {"id": "citation-abstract", "files": ["CITATION.cff"], "kind": "regexp",
+     "patterns": ["(?m)^abstract: \"(.*)\"$"], "escape": "yaml", "requires": ["tagline"], "template": "{tagline}"},`, 1)
+	res := newFixtureRepo(t).conforming().withPositioning().
+		file(".abcd/positioning.json", cfg).
+		file("CITATION.cff", "cff-version: 1.2.0\nabstract: \"A \"host-agnostic\" A host-agnostic configuration layer for intent-driven development.\"\n").
+		commit().run()
+	f := findingFor(res, "identity-positioning")
+	if f == nil {
+		t.Fatal("an undecodable CITATION.cff abstract produced no finding")
+	}
+	if f.File != "CITATION.cff" || !strings.Contains(f.Message, "does not decode") {
+		t.Errorf("finding = %s: %q, want CITATION.cff naming the string that does not decode", f.File, f.Message)
+	}
+}

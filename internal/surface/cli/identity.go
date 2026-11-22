@@ -158,6 +158,9 @@ func renderIdentity(w io.Writer, rep positioning.Report) {
 		if s.Status == positioning.StatusDrifted {
 			fmt.Fprintf(w, "    says:      %s\n", termsafe.Sanitize(s.Found))
 			fmt.Fprintf(w, "    canonical: %s\n", termsafe.Sanitize(s.Canonical))
+			if s.Reason != "" {
+				fmt.Fprintf(w, "    reason:    %s\n", termsafe.Sanitize(s.Reason))
+			}
 		}
 	}
 	fmt.Fprintf(w, "abcd lint identity — %d surface(s) adrift of the block\n", rep.Drifted())
