@@ -79,6 +79,7 @@ refuses to stage one and the archive render refuses outright.
 | `archive` | gate | shipped |
 | `manifests` | gate | shipped |
 | `receipts` | gate | shipped |
+| `reland` | — | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
 
