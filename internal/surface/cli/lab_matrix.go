@@ -27,20 +27,52 @@ type labMatrixView struct {
 	ApproveWith string `json:"approve_with"`
 }
 
-// labMatrixStarted is a consented run: its record is written; starting copies
-// is spec step 3's, so nothing is launched yet, and the verb says so.
+// labMatrixStarted is a consented run: its record is written and every pilot
+// copy is handed off, each in its own clone (matrix.Launcher). Launched says
+// the copies were handed off; Copies lists each one's hand-off, its clone
+// shown with the home directory as ~.
 type labMatrixStarted struct {
-	RunID    string `json:"run_id"`
-	Digest   string `json:"digest"`
-	Launched bool   `json:"launched"`
-	Note     string `json:"note"`
+	RunID    string           `json:"run_id"`
+	Digest   string           `json:"digest"`
+	Launched bool             `json:"launched"`
+	Note     string           `json:"note"`
+	Copies   []matrix.HandOff `json:"copies"`
 }
 
-// recordOnly is the Starter until the run's trial mode exists (spec step 3):
-// the record is written and nothing is launched.
-type recordOnly struct{}
+// matrixLauncher is the Starter a consented run is started with, from this
+// checkout into the clone store under the account's home.
+func matrixLauncher(root string) (*matrix.Launcher, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil, fmt.Errorf("the account's home directory, which holds the clone store, cannot be named: %v", err)
+	}
+	return &matrix.Launcher{RepoRoot: root, Home: home}, nil
+}
 
-func (recordOnly) Start(matrix.Plan, matrix.RunRecord) error { return nil }
+// startedView is a consented run as the verb shows it.
+func startedView(rec matrix.RunRecord, plan matrix.Plan, l *matrix.Launcher, what string) labMatrixStarted {
+	out := labMatrixStarted{RunID: rec.RunID, Digest: plan.Digest, Launched: len(l.Handed) > 0, Copies: []matrix.HandOff{}}
+	counts := map[matrix.HandOffState]int{}
+	for _, h := range l.Handed {
+		h.Clone = fsutil.RedactHome(h.Clone)
+		h.Brief = fsutil.RedactHome(h.Brief)
+		h.Gates = nil
+		out.Copies = append(out.Copies, h)
+		counts[h.State]++
+	}
+	out.Note = fmt.Sprintf("%s is written in the lab and its %d pilot copies are handed off, each in its own clone: %d for the host to make and hand back "+
+		"with `abcd lab matrix copy`, %d awaiting a runner abcd does not launch yet, %d refused by the secret scan",
+		what, len(l.Handed), counts[matrix.HandOffWaiting], counts[matrix.HandOffAwaitingRunner], counts[matrix.HandOffRefused])
+	return out
+}
+
+// renderStarted draws a consented run's hand-offs.
+func renderStarted(w io.Writer, verb string, out labMatrixStarted) {
+	fmt.Fprintf(w, "%s: recorded run %s for the plan %s\n  %s\n", verb, out.RunID, out.Digest[:12], termsafe.Sanitize(out.Note))
+	for _, h := range out.Copies {
+		fmt.Fprintf(w, "  %-28s %-16s %s\n", termsafe.Sanitize(h.Key.String()), h.State, termsafe.Sanitize(h.Clone))
+	}
+}
 
 // newLabMatrixCommand builds `lab matrix`, the front door onto a model matrix
 // run (itd-2610161733316518, spc-2610161949559050 step 2): show the plan, and
@@ -59,8 +91,12 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			"--approve <digest> records the run, once the person has seen the plan and said\n" +
 			"yes to it: the plan is built again and must carry that digest. A host passes\n" +
 			"--approve only after the person, in that session, has seen the plan and said\n" +
-			"yes to it. Starting the run's copies is not built yet, so a consented run is\n" +
-			"recorded in the lab and nothing is launched; the output says so.\n\n" +
+			"yes to it. The run then hands off every pilot copy, each in its own clone of the\n" +
+			"frozen commit made under a random alias in the clone store outside every\n" +
+			"checkout; a clone bound for a provider passes the launch bundle's secret scan\n" +
+			"first, and a hit refuses the cell. A host cell's copy is the host's to make in\n" +
+			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,\n" +
+			"since abcd does not launch a runner in a clone yet and nothing stands in for it.\n\n" +
 			"Refused, exit 2, with nothing written: a declaration that does not parse, a\n" +
 			"cell route the runner rung or this machine's runner configuration refuses, a\n" +
 			"cell on a runner that names no model, a model its provider does not list, an\n" +
@@ -94,27 +130,35 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd lab matrix: the running binary cannot be named: %w", err)
 			}
-			rec, plan, err := matrix.StartRun(root, args[0], decl, approve, cores, exe, core.Version, recordOnly{})
+			l, err := matrixLauncher(root)
+			if err != nil {
+				return fmt.Errorf("abcd lab matrix: %w", err)
+			}
+			rec, plan, err := matrix.StartRun(root, args[0], decl, approve, cores, exe, core.Version, l)
 			if err != nil {
 				return matrixFailure(err)
 			}
-			out := labMatrixStarted{RunID: rec.RunID, Digest: plan.Digest, Launched: false,
-				Note: "the run's record is written in the lab; starting its copies is not built yet (spec step 3), so nothing was launched"}
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd lab matrix: recorded run %s for the plan %s\n  %s\n", out.RunID, out.Digest[:12], out.Note)
-			})
+			out := startedView(rec, plan, l, "the run's record")
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderStarted(w, "abcd lab matrix", out) })
 		},
 	}
 	cmd.Flags().StringVar(&approve, "approve", "", "the digest of the plan the person saw and said yes to; records the run")
+	cmd.AddCommand(newLabMatrixReportCommand(asJSON), newLabMatrixRerunCommand(asJSON), newLabMatrixCopyCommand(asJSON),
+		newLabMatrixReviewCommand(asJSON), newLabMatrixJudgeCommand(asJSON))
 	return cmd
 }
 
 // matrixFailure maps a refusal to exit 2 and a halted lab to exit 1, the
-// message masked and with no home path.
+// message masked and with no home path. A refusal says nothing was written
+// only when it came before any write; one raised after a write says what was
+// written in its own words.
 func matrixFailure(err error) error {
 	msg := "abcd lab matrix: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 	if errors.Is(err, lab.ErrHalted) {
 		return &exitError{Code: 1, Msg: msg}
+	}
+	if errors.Is(err, matrix.ErrWrittenInPart) {
+		return &exitError{Code: 2, Msg: msg}
 	}
 	return &exitError{Code: 2, Msg: msg + "; nothing was written"}
 }

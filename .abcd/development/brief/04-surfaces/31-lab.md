@@ -25,6 +25,11 @@ the verb encodes is the discipline record
 | `sweep` | gate | shipped |
 | `harvest` | — | shipped |
 | `matrix` | — | shipped |
+| `matrix copy` | — | shipped |
+| `matrix review` | — | shipped |
+| `matrix judge` | — | shipped |
+| `matrix report` | — | shipped |
+| `matrix rerun` | — | shipped |
 
 ## A model matrix run
 
@@ -37,10 +42,78 @@ call, no price fetched (a cost is reckoned only from a cell's declared
 Approving that digest records the run once the person has seen the plan and said
 yes to it; the plan is built again and must carry the same digest. The spending
 cap comes from the declaration's `spend_cap` or the machine's
-`matrix.spend_cap`, never from the repository's configuration. Starting the
-run's copies is step 3's, so a consented run is recorded and nothing is
-launched, and the verb says so. A refusal exits 2 with nothing written; a
-halted lab exits 1.
+`matrix.spend_cap`, never from the repository's configuration. A refusal
+exits 2 with nothing written; a halted lab exits 1.
+
+A consented run hands off every pilot copy (spc-2610161949559050 step 8): each
+copy's clone of the frozen commit is made under a random alias in the clone
+store outside every checkout, the record of which alias is which copy is kept
+in the run's state in the lab, and a clone bound for a provider passes the
+launch bundle's secret scan first, a hit refusing the cell. Each hand-off
+carries the brief the copy is made from, which names no task id, cell, route
+or model. A host cell's copy is the host's to make in its clone and hand back
+with a receipt and its transcript; a made code copy carries its hidden tests'
+result as the host ran them, and its trial says abcd neither placed nor ran
+them: it marks that result, the model served, the harness version and the
+times as the host's own word, and says it carries no call receipts. A writing
+copy's document is kept only once its trial passes the secret screen, so a
+hand-back the screen refuses can be made again. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
+and the host never stands in for one, since its answer would measure the wrong
+model. A copy handed back is checked for compliance under one overall deadline
+before its trial is written, a check copy's findings are recorded and its trial
+written before its clone is deleted, and every trial, review request and
+judging packet passes the secret screen. The report accounts for every copy
+handed off that holds no trial: one the host never handed back, one waiting for
+its runner, a refused cell's, and one the run's start never reached are each
+shown and kept out of every rate. A review or a judging is drawn once, so it
+waits until every copy of its task handed to the host is back. A code task's
+copies are then reviewed through blinded requests, each assembled from the
+frozen tree and the copy's clone read as data under an opaque label, whose
+answers are scored before they are recorded. A writing task's judging packet is
+drawn from its made copies with every mention of where a copy ran, its alias,
+every task, cell, route and model and every maker withheld, however it is
+spelt (split by invisible characters or by separators between its letters, in
+look-alike letters, or with its version after it), and a judging session's
+verdict file is recorded against it. A check copy's quote of the frozen
+material is located in the material as written and shown with every model and
+maker withheld, and its finding is keyed on the line as located, so two lines
+that differ only in the model they name are never matched as one finding. A
+check copy's own words are scrubbed before they are made one line, so a name
+broken across lines is withheld from them too.
+
+A recorded run's report is read from its records in the lab and writes nothing
+(spc-2610161949559050 step 8). A code task gives each builder's pass rate on
+its hidden tests with a 95% interval and its pass^k, what the reviewers caught
+of its copies, its cost per passing build stated by source with what that cost
+is comparable with, and its model time apart from the time spent waiting on
+gates; a copy that never started, or one the compliance check set apart, is
+counted apart and in no rate. A pass rate resting on hidden tests' results the
+host reported counts them, a limitation names their copies, and every
+comparison on them says so, so no ranking on the host's word is shown
+unqualified. Each pair of builders is ranked only at the
+repeats its power estimate asks for, from the smallest difference in pass rate
+the declaration names; otherwise the comparison states the smallest difference
+it could have detected and is not ranked. A written doc gives each model's
+rating from a regularised Bradley–Terry fit of every judge's ranking, with an
+interval bootstrapped over judges and copies and whether it is separable from
+the others, how often its copies were good enough, the judges' agreement as
+Krippendorff's alpha with an interval (or not estimable, saying why) and each
+copy's length; below three judges it gives each judge's ranking and the
+good-enough counts only. Guests and the host's own self-blinded rankings are
+reported apart. Every report lists the run's limitations and the improvements
+it suggests for the next run.
+
+A model run is re-runnable, not reproducible. A re-run starts from a recorded
+run, named by its id in the lab or by a run's folder carried from elsewhere,
+and is planned from that run's own declaration under the person's consent to
+its own plan; a run whose frozen commit is not the lab's pin is refused, and
+so is a carried folder holding anything that is neither a file nor a folder,
+which is never opened. The
+re-run keeps a copy of the first run's records beside its own, each passed
+through the secret screen, and its report shows, field by field, where it
+drifted: the run's record and each copy's trial, with both values, leaving out
+the ids and clocks that differ by construction. A re-run hands off its own
+pilot copies as a run does.
 
 ## The store
 
@@ -202,11 +275,56 @@ Flags: none.
 
 ### `abcd lab matrix`
 
+Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
+
+| Flag | Type |
+|---|---|
+| `--approve` | string |
+
+### `abcd lab matrix copy`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answer` | string |
+| `--form` | string |
+| `--receipt` | string |
+| `--transcript` | string |
+
+### `abcd lab matrix judge`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--bad` | string |
+| `--good` | string |
+| `--host` | string |
+| `--judges` | string |
+| `--verdicts` | string |
+
+### `abcd lab matrix report`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd lab matrix rerun`
+
 Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
 | `--approve` | string |
+
+### `abcd lab matrix review`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answers` | string |
 
 ### `abcd lab mint`
 

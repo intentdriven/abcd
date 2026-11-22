@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -240,12 +241,27 @@ func collectForm(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	c, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, form, gates, answer))
 	return clone, c, err
+}
+
+// collectCheckCopy is a check copy's collection as a hand-back makes it, short
+// of its trial: its findings recorded (recordCheckCopy), then its clone
+// deleted. CollectCopy is the production path, which writes the trial between
+// the two.
+func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
+	c, clone, err := recordCheckCopy(labID, in)
+	if err != nil {
+		return CheckCopy{}, err
+	}
+	if err := os.RemoveAll(clone); err != nil {
+		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
+	}
+	return c, nil
 }
 
 // checkInputs is copy key's inputs to collectCheckCopy, the gates snapshotted
@@ -285,7 +301,7 @@ func TestACheckCopysFindingsAreReadBeforeItsCloneIsDeleted(t *testing.T) {
 	// A second collection of the same copy cannot be recorded, so its clone
 	// stays where it is.
 	key2 := TrialKey{Task: checkTask, Cell: "host-big", Repeat: 2}
-	clone2, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
+	clone2, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +848,7 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -844,12 +860,17 @@ func TestTheGatesSnapshotBracketsTheCopysWholeRun(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), filepath.ToSlash(rel)) {
 			t.Errorf("%s changed while the copy ran: collectCheckCopy = %v; want a refusal naming it", rel, err)
 		}
+		// The refusal comes once the copy's findings are recorded, so it
+		// says so, and no front door reports that nothing was written.
+		if !errors.Is(err, ErrWrittenInPart) || !strings.Contains(err.Error(), "findings are recorded") {
+			t.Errorf("%s changed while the copy ran: collectCheckCopy = %v; want it to say the findings are recorded, marked as written in part", rel, err)
+		}
 		if _, err := os.Stat(clone); err != nil {
 			t.Errorf("%s changed while the copy ran, and the copy lost its clone: %v", rel, err)
 		}
 	}
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
-	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
+	if _, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := collectCheckCopy(m.ID, checkInputs(t, r, rec, store, key, CheckDocFidelity, nil, dfAnswer(t, "It refuses a hazard"))); err == nil ||
@@ -976,12 +997,14 @@ func TestTheMatcherIsShownNoFullPath(t *testing.T) {
 }
 
 // The run's own chapter of the frozen material: it names the grammar's words
-// (host, local, provider, openrouter), a harness version and a cell, so a
-// quote of it that the material holds carries them, the same for every copy.
+// (host, local, provider), a route's vendor (openrouter), a harness version
+// and a cell, so a quote of it that the material holds carries them, the same
+// for every copy; and, on its fifth line, models and their makers.
 const (
 	routesChapter = docfidelity.ChaptersDir + "/18-routes.md"
 	routesLine    = "The host reads the local registry before a provider or openrouter route runs, as harness 1.2.3 does for or-cheap."
-	routesText    = "# Routes\n\n" + routesLine + "\n"
+	modelsLine    = "The guide was drafted with Claude Opus 5.5 and checked by GPT-4o from OpenAI."
+	routesText    = "# Routes\n\n" + routesLine + "\n\n" + modelsLine + "\n"
 )
 
 // identityLab is a run of three cells, two of them named for their routes
@@ -999,7 +1022,7 @@ func identityLab(t *testing.T) (*gittest.Repo, string, lab.Minted, RunRecord, st
 // run's state as the test's own reading.
 func cloneAlias(t *testing.T, home string, m lab.Minted, rec RunRecord, key TrialKey) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "check", key.Task, "aliases", key.Cell, strconv.Itoa(key.Repeat)+".json"))
+	data, err := os.ReadFile(filepath.Join(runDir(home, m, rec.RunID), "aliases", key.Task, key.Cell, strconv.Itoa(key.Repeat)+".json"))
 	if err != nil {
 		t.Fatalf("copy %s's alias is not in the run's state: %v", key, err)
 	}
@@ -1093,9 +1116,9 @@ func TestACheckCopyIsShownNoCellOrTaskID(t *testing.T) {
 	for _, cell := range []string{"or-cheap", "lr", "host-big"} {
 		for repeat := 1; repeat <= 2; repeat++ {
 			key := TrialKey{Task: checkTask, Cell: cell, Repeat: repeat}
-			clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+			clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 			if err != nil {
-				t.Fatalf("makeCheckClone(%s): %v", key, err)
+				t.Fatalf("makeCopyClone(%s): %v", key, err)
 			}
 			alias := cloneAlias(t, home, m, rec, key)
 			if !regexp.MustCompile(`^copy_[0-9a-f]{32}$`).MatchString(alias) {
@@ -1120,13 +1143,13 @@ func TestACheckCopyIsShownNoCellOrTaskID(t *testing.T) {
 	// given; one that is there is never made twice.
 	key := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
 	alias := cloneAlias(t, home, m, rec, key)
-	if _, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err == nil {
+	if _, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key); err == nil {
 		t.Error("a copy's clone was made twice")
 	}
 	if err := os.RemoveAll(filepath.Join(store, rec.RunID, alias)); err != nil {
 		t.Fatal(err)
 	}
-	again, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	again, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil || again != filepath.Join(store, rec.RunID, alias) {
 		t.Errorf("the clone made again = %q, %v; want it under the alias %s", again, err, alias)
 	}
@@ -1151,7 +1174,7 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 	var shown []string
 	for i, cell := range []string{"or-cheap", "lr", "host-big"} {
 		key := TrialKey{Task: checkTask, Cell: cell, Repeat: 1}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1221,7 +1244,7 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 		func(string, string) string { return "docs/opencode1.md" },
 	} {
 		key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2 + i}
-		clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+		clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1241,17 +1264,22 @@ func TestACheckCopyCannotNameItsCellTaskOrRouteToItsJudges(t *testing.T) {
 	}
 }
 
-// A quote the frozen material holds is the material's own words, the same for
-// every copy that quotes it, so it signs no copy and is kept whole: the
-// grammar's words (host, local, provider, openrouter), a harness version and
-// even a cell's id stay in it, in the record, the person's packet and the
-// matcher's request, at the lines the material holds it.
-func TestALocatedQuoteIsKeptWholeThoughItNamesTheRunsWords(t *testing.T) {
+// A quote the frozen material holds is located and verified against the
+// material as written, and shown with every model and maker withheld, as the
+// copy's own words are (dcn-2611211626560528 corrects dcn-2611210903322839 in
+// part): a copy chooses which line it quotes, so a quote of a line that names
+// a model is a signature by choice. The rest of the line is kept: the
+// grammar's words (host, local, provider), a harness version and even a
+// cell's id stay in it, in the record, the person's packet and the matcher's
+// request, at the lines the material holds it; a route's vendor is withheld.
+func TestALocatedQuoteWithholdsModelsAndMakersAndStaysLocated(t *testing.T) {
 	r, _, m, rec, store := identityLab(t)
+	wantRoutes := strings.Replace(routesLine, "openrouter", withheldMark, 1)
+	wantModels := "The guide was drafted with " + withheldMark + " " + withheldMark + " and checked by " + withheldMark + " from " + withheldMark + "."
 	var copies []CheckCopy
 	for _, x := range []struct{ cell, class string }{{"or-cheap", "contradiction"}, {"lr", "drift"}} {
-		cons := consistencyJSON(t, consistencyRow(x.class, "the routes chapter disagrees with the guard",
-			[2]string{routesChapter, routesLine}, [2]string{guardChapter, "The guard never logs a refusal."}))
+		cons := consistencyJSON(t, consistencyRow(x.class, "the routes chapter disagrees with itself",
+			[2]string{routesChapter, routesLine}, [2]string{routesChapter, modelsLine}))
 		_, c, err := collectForm(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: x.cell, Repeat: 1}, CheckConsistency, cons)
 		if err != nil || !c.Answered {
 			t.Fatalf("collectCheckCopy = %+v, %v", c, err)
@@ -1259,25 +1287,37 @@ func TestALocatedQuoteIsKeptWholeThoughItNamesTheRunsWords(t *testing.T) {
 		copies = append(copies, c)
 	}
 	_, dc, err := collect(t, r, m, rec, store, TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1},
-		dfAnswerIn(t, path.Base(routesChapter), routesLine))
+		dfAnswerIn(t, path.Base(routesChapter), routesLine, modelsLine))
 	if err != nil || !dc.Answered {
 		t.Fatalf("collectCheckCopy = %+v, %v", dc, err)
 	}
-	whole := func(what string, quote string, lines *LineSpan) {
+	shownAs := func(what string, quote string, lines *LineSpan) {
 		t.Helper()
-		if quote != routesLine {
-			t.Errorf("%s quotes %q; want the material's line whole, %q", what, quote, routesLine)
+		want, line := wantRoutes, 3
+		if strings.Contains(quote, "guide") {
+			want, line = wantModels, 5
 		}
-		if lines != nil && (lines.Start != 3 || lines.End != 3) {
-			t.Errorf("%s is at %+v; want line 3", what, lines)
+		if quote != want {
+			t.Errorf("%s quotes %q; want %q", what, quote, want)
+		}
+		if lines != nil && (lines.Start != line || lines.End != line) {
+			t.Errorf("%s is at %+v; want line %d", what, lines, line)
 		}
 	}
 	for _, c := range append(slices.Clone(copies), dc) {
-		e := c.Findings[0].Ends[0]
-		if e.Lines == nil {
-			t.Errorf("copy %s's quote of the routes chapter is not located", c.Key)
+		var ends []FindingEnd
+		for _, f := range c.Findings {
+			ends = append(ends, f.Ends...)
 		}
-		whole("copy "+c.Key.String()+"'s record", e.Quote, e.Lines)
+		if len(ends) != 2 {
+			t.Fatalf("copy %s's ends = %+v; want two", c.Key, ends)
+		}
+		for _, e := range ends {
+			if e.Lines == nil {
+				t.Errorf("copy %s's quote %q of the routes chapter is not located", c.Key, e.Quote)
+			}
+			shownAs("copy "+c.Key.String()+"'s record", e.Quote, e.Lines)
+		}
 	}
 	for _, set := range [][]CheckCopy{copies, {dc}} {
 		p, _, err := drawCheckPacket(rec.RunID, checkTask, set, matchExact(set).rows(), checkSeed)
@@ -1292,7 +1332,7 @@ func TestALocatedQuoteIsKeptWholeThoughItNamesTheRunsWords(t *testing.T) {
 		for _, it := range p.Items {
 			for _, e := range it.Ends {
 				if e.Document == path.Base(routesChapter) {
-					whole("the packet", e.Quote, e.Lines)
+					shownAs("the packet", e.Quote, e.Lines)
 					shown++
 				}
 			}
@@ -1300,13 +1340,19 @@ func TestALocatedQuoteIsKeptWholeThoughItNamesTheRunsWords(t *testing.T) {
 		for _, it := range req.Items {
 			for _, e := range it.Ends {
 				if e.Document == path.Base(routesChapter) {
-					whole("the matcher's request", e.Quote, nil)
+					shownAs("the matcher's request", e.Quote, nil)
 					shown++
 				}
 			}
 		}
 		if shown < 2 {
-			t.Errorf("the routes chapter's quote is shown %d times in the packet and the matcher's request; want both", shown)
+			t.Errorf("the routes chapter's quotes are shown %d times in the packet and the matcher's request; want both", shown)
+		}
+		js, _ := json.Marshal(p)
+		for _, leak := range []string{"Claude", "Opus", "GPT", "OpenAI", "openrouter"} {
+			if bytes.Contains(js, []byte(leak)) {
+				t.Errorf("the packet carries %q: %s", leak, js)
+			}
 		}
 	}
 }
@@ -1321,7 +1367,7 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 		t.Fatal(err)
 	}
 	key := TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}
-	clone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
+	clone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1377,7 +1423,7 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 	// A copy whose runner failed is recorded with the runner's words, which
 	// name nothing of the run either.
 	fkey := TrialKey{Task: checkTask, Cell: "lr", Repeat: 1}
-	fclone, err := makeCheckClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, fkey)
+	fclone, err := makeCopyClone(m.ID, r.Root(), store, rec.RunID, rec.FrozenCommit, fkey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1392,4 +1438,114 @@ func TestADocFidelityCopyOrAFailedCopyCannotNameItsCellTaskOrRoute(t *testing.T)
 		t.Fatalf("failed copy = %+v; want its failure's reason", fc)
 	}
 	noIdentity(t, "a failed copy's reason", []byte(fc.Reason), fparts...)
+}
+
+// modelListDoc is a material file whose lines differ only in the model they
+// name, so a quote of each is shown alike once the model is withheld.
+const (
+	modelListDoc  = "docs/reference/models.md"
+	modelListText = "# Models\n\n- opus: reads the brief\n- sonnet: reads the brief\n"
+)
+
+// modelListCopy reads one consistency copy on cell quoting quote of the
+// model list against its first line.
+func modelListCopy(t *testing.T, cell, quote string) CheckCopy {
+	t.Helper()
+	return readCheckCopy(checkCopyInputs{
+		RepoRoot: "/work/checkout", Store: "/work/store", Run: "mx-261023012949-ab12",
+		Key: TrialKey{Task: checkTask, Cell: cell, Repeat: 1}, Form: CheckConsistency,
+		Material: map[string]string{modelListDoc: modelListText},
+		Answer: consistencyJSON(t, consistencyRow("drift", "the list disagrees with itself",
+			[2]string{modelListDoc, quote}, [2]string{modelListDoc, "# Models"})),
+	})
+}
+
+// A located quote is keyed on the line as the material holds it, and shown
+// with every model and maker withheld: two copies quoting two lines that
+// differ only in the model they name are two findings, never joined by their
+// key as the copies agreeing, though both are shown alike and the path and
+// line span still name each line. A quote the material does not hold is the
+// copy's own words, keyed as it is shown.
+func TestLocatedQuotesThatDifferOnlyInAModelKeepTheirOwnKeys(t *testing.T) {
+	a := modelListCopy(t, "big", "- opus: reads the brief")
+	b := modelListCopy(t, "cheap", "- sonnet: reads the brief")
+	shown := "- " + withheldMark + ": reads the brief"
+	for i, c := range []CheckCopy{a, b} {
+		if !c.Answered || len(c.Findings) != 1 {
+			t.Fatalf("copy %s = %+v; want one finding", c.Key, c)
+		}
+		var end FindingEnd
+		for _, e := range c.Findings[0].Ends {
+			if e.Quote != "# Models" {
+				end = e
+			}
+		}
+		if end.Quote != shown {
+			t.Errorf("copy %s shows %q; want %q", c.Key, end.Quote, shown)
+		}
+		if want := 3 + i; end.Lines == nil || end.Lines.Start != want || end.Lines.End != want {
+			t.Errorf("copy %s's quote is at %+v; want line %d", c.Key, end.Lines, want)
+		}
+	}
+	if a.Findings[0].Key == b.Findings[0].Key {
+		t.Errorf("two located lines that differ only in their model share the key %s", a.Findings[0].Key)
+	}
+	if rows := matchExact([]CheckCopy{a, b}).rows(); len(rows) != 2 {
+		t.Errorf("exact matching joined two different lines: %+v; want two rows", rows)
+	}
+	same := modelListCopy(t, "cheap", "- opus: reads the brief")
+	if same.Findings[0].Key != a.Findings[0].Key {
+		t.Errorf("two copies quoting the same line have keys %s and %s; want one", a.Findings[0].Key, same.Findings[0].Key)
+	}
+	ua := modelListCopy(t, "big", "written by opus")
+	ub := modelListCopy(t, "cheap", "written by sonnet")
+	if ua.Findings[0].Key != ub.Findings[0].Key {
+		t.Errorf("two unlocated quotes shown alike have keys %s and %s; want them keyed as shown", ua.Findings[0].Key, ub.Findings[0].Key)
+	}
+}
+
+// A check copy's words are scrubbed before their white space is collapsed to
+// one line, so a name broken across lines, by a line feed or a carriage
+// return and line feed, is withheld from a check copy's summary and from a
+// quote of its own, as it is from a writing copy's text.
+func TestANameBrokenAcrossLinesIsWithheldFromACheckCopysWords(t *testing.T) {
+	for _, nl := range []string{"\n", "\r\n"} {
+		signed := "Found by Clau" + nl + "de in the list."
+		want := "Found by " + withheldMark + " in the list."
+		c := readCheckCopy(checkCopyInputs{
+			RepoRoot: "/work/checkout", Store: "/work/store", Run: "mx-261023012949-ab12",
+			Key: TrialKey{Task: checkTask, Cell: "big", Repeat: 1}, Form: CheckConsistency,
+			Material: map[string]string{modelListDoc: modelListText},
+			Answer: consistencyJSON(t, consistencyRow("drift", signed,
+				[2]string{modelListDoc, signed}, [2]string{modelListDoc, "# Models"})),
+		})
+		if !c.Answered || len(c.Findings) != 1 {
+			t.Fatalf("copy = %+v; want one finding", c)
+		}
+		if got := c.Findings[0].Evidence; got != want {
+			t.Errorf("a summary broken by %q = %q; want %q", nl, got, want)
+		}
+		quoted := false
+		for _, e := range c.Findings[0].Ends {
+			if e.Lines == nil {
+				quoted = true
+				if e.Quote != want {
+					t.Errorf("an unlocated quote broken by %q = %q; want %q", nl, e.Quote, want)
+				}
+			}
+		}
+		if !quoted {
+			t.Errorf("the copy's own quote is located: %+v", c.Findings[0].Ends)
+		}
+		if got, _ := scrubFor(writingInputs(1, 1, 1)).scrub(signed); got != "Found by "+withheldMark+" in the list." {
+			t.Errorf("a writing copy's text broken by %q = %q; want the name withheld", nl, got)
+		}
+	}
+	// Prose wrapped between two short words stays prose either way.
+	for _, nl := range []string{"\n", "\r\n"} {
+		prose := "I met" + nl + "a friend."
+		if got, n := scrubFor(writingInputs(1, 1, 1)).scrub(prose); n != 0 {
+			t.Errorf("prose wrapped by %q = %q; want it kept", nl, got)
+		}
+	}
 }

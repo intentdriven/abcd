@@ -4687,7 +4687,7 @@ abcd lab harvest lab-260901000000-0123abc
 
 #### `abcd lab matrix`
 
-Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.
+Show a model matrix run's plan, or record the consented run and hand off its copies: Writes only with --approve; refuses a metered run with no cap.
 
 **Usage:** `abcd lab matrix <lab-id> <declaration.json> [flags]`
 
@@ -4703,8 +4703,12 @@ names exactly that plan.
 --approve <digest> records the run, once the person has seen the plan and said
 yes to it: the plan is built again and must carry that digest. A host passes
 --approve only after the person, in that session, has seen the plan and said
-yes to it. Starting the run's copies is not built yet, so a consented run is
-recorded in the lab and nothing is launched; the output says so.
+yes to it. The run then hands off every pilot copy, each in its own clone of the
+frozen commit made under a random alias in the clone store outside every
+checkout; a clone bound for a provider passes the launch bundle's secret scan
+first, and a hit refuses the cell. A host cell's copy is the host's to make in
+its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,
+since abcd does not launch a runner in a clone yet and nothing stands in for it.
 
 Refused, exit 2, with nothing written: a declaration that does not parse, a
 cell route the runner rung or this machine's runner configuration refuses, a
@@ -4723,6 +4727,201 @@ is not the plan's digest. A halted lab exits 1.
 
 ```
 abcd lab matrix lab-260901000000-0123abc matrix.json
+```
+
+##### `abcd lab matrix copy`
+
+Show a matrix copy's hand-off, or hand a host cell's copy back as its trial: Writes only with --receipt; refuses a runner cell's copy.
+
+**Usage:** `abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [flags]`
+
+abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [--receipt <file>]
+
+Show one copy's hand-off, writing nothing: its state, its clone and the brief the
+copy is made from, which names no task id, cell, route or model. A host cell's
+copy is the host's to make: hand its brief to a fresh sub-agent working in the
+clone. A runner cell's copy waits for a launcher, and the host never makes it.
+
+--receipt <file> hands a host cell's copy back: a JSON object with schema_version
+1, outcome made or failed, a reason for a failure, and optionally
+harness_version, model_served, started_at, finished_at, model_time_ms and
+gate_wait_ms. A made code copy carries score, its hidden tests' passed and total
+as the host ran them; the trial says abcd neither placed nor ran them.
+--transcript <file> is the copy's transcript, which the compliance check reads
+for reads outside the clone; without it that rule is unexamined. A made writing
+copy names its document with --answer <file>, and a check copy its answer with
+--answer and --form (doc-fidelity or consistency). The copy is checked for
+compliance under one overall deadline, a check copy's findings are recorded
+before its clone is deleted, and the trial is written through the secret screen.
+
+Refused, exit 2, with nothing written: a key that is not one, a copy the run did
+not hand off to the host, one already handed back, a receipt, score or answer
+that does not validate, and a trial the secret screen refuses. A check copy's
+clone is deleted only once its trial is written. A refusal raised once a check
+copy's findings are recorded, or a writing copy's document is kept, says so
+instead. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --answer string       a writing copy's document, or a check copy's answer
+      --form string         a check copy's answer form: doc-fidelity or consistency
+      --receipt string      the host's receipt of the copy it made, a JSON file; hands the copy back and writes its trial
+      --transcript string   the copy's transcript as its harness wrote it, which the compliance check reads
+```
+
+**Example:**
+
+```
+abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1
+```
+
+##### `abcd lab matrix judge`
+
+Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.
+
+**Usage:** `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
+
+abcd lab matrix judge <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>
+abcd lab matrix judge <lab-id> <run-id> <task> --verdicts <file> [--host <login>]
+
+Draw a writing task's judging, once, from its made copies: the packet a judging
+session is given and the key that stays on this machine, both written in the
+run's state. Each copy is rendered as inert text with every mention of where it
+ran, its alias, every task, cell, route and model, and every maker withheld,
+and the packet names no run, task, cell or path. --good and --bad are the
+examples each judge calibrates on, and --judges how many subsets of at most
+eight copies to draw, enough that every pair of models meets in one.
+
+--verdicts <file> records a judging session's verdict file against that
+packet, validated as untrusted input, one ranking per judge identity; --host
+names the host's own GitHub login, whose rankings are reported apart.
+
+Refused, exit 2, with nothing written: a task that is not one of the run's
+writing tasks, no made copy, a missing example, too few judges, a judging
+already drawn, a task with a copy handed to the host and not handed back, a
+packet the secret screen refuses, and a verdict file that does not validate.
+A halted lab exits 1.
+
+**Flags:**
+
+```
+      --bad string        the bad example each judge calibrates on, a file
+      --good string       the good example each judge calibrates on, a file
+      --host string       with --verdicts: the host's own GitHub login, whose rankings are reported apart
+      --judges string     how many judges' subsets to draw, a whole number
+      --verdicts string   a judging session's verdict file; records it
+```
+
+**Example:**
+
+```
+abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3
+```
+
+##### `abcd lab matrix report`
+
+Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.
+
+**Usage:** `abcd lab matrix report <lab-id> <run-id>`
+
+abcd lab matrix report <lab-id> <run-id>
+
+Print a recorded run's report from its records in the lab, writing nothing.
+A code task gives each builder's pass rate on its hidden tests with a 95%
+interval, its pass^k, what the reviewers caught, its cost per passing build
+by source and its model time apart from gate waits; each pair of builders is
+ranked only at the repeats its power estimate asks for, otherwise it states
+the smallest difference it could have detected. A pass rate resting on hidden
+tests' results the host reported counts them, a limitation names their
+copies, and a comparison on them says so. A written doc gives each
+model's rating from all the judges' rankings with its interval, whether it is
+separable, the judges' agreement and each copy's length; below three judges,
+each judge's ranking and the good-enough counts only. A check gives the table
+the person's locked verdicts unlocked. A re-run's report shows, field by field,
+where it drifted from the run it repeats. Every report ends with its
+limitations and suggested improvements.
+
+Refused, exit 2: a run id that is not one, and a run the lab never recorded.
+A halted lab exits 1.
+
+**Example:**
+
+```
+abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b
+```
+
+##### `abcd lab matrix rerun`
+
+Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: Writes only with --approve; refuses a run of another frozen commit.
+
+**Usage:** `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
+
+abcd lab matrix rerun <lab-id> <run-id|run-folder> [--approve <digest>]
+
+Show the plan for a re-run of a recorded run: the run named by its id in the
+lab, or a run's folder carried from elsewhere. The plan is built from that
+run's own declaration, as `abcd lab matrix` builds one, and writes nothing.
+
+--approve <digest> records the re-run, once the person has seen the plan and
+said yes to it, and copies the first run's records beside it, so the re-run's
+report shows field by field where it drifted. A model run is re-runnable, not
+reproducible: the drift is the finding. The re-run then hands off its pilot
+copies as `abcd lab matrix --approve` does.
+
+Refused, exit 2, with nothing written: a run the lab never recorded, a folder
+that holds no run's records, a run whose frozen commit is not the lab's pin,
+a run whose records the secret screen refuses, every refusal `abcd lab matrix`
+gives, and an approval that is not the plan's digest. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --approve string   the digest of the plan the person saw and said yes to; records the re-run
+```
+
+**Example:**
+
+```
+abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b
+```
+
+##### `abcd lab matrix review`
+
+Draw a code task's blinded reviewer requests, or record the reviewers' answers: Writes the requests once; refuses an answer that does not validate.
+
+**Usage:** `abcd lab matrix review <lab-id> <run-id> <task> [flags]`
+
+abcd lab matrix review <lab-id> <run-id> <task> [--answers <dir>]
+
+Draw, once, a blinded request for each of a code task's copies its hidden tests
+judged, and hand every request to every reviewer cell. A request is assembled
+from the frozen tree and the copy's clone read as data, under an opaque label,
+with no trailer, author, branch or run metadata, and the run keeps each copy's
+known truth apart from it. A host reviewer cell's request is the host's to
+hand to a fresh sub-agent, which answers with the one JSON object the request
+asks for; a runner reviewer cell's waits for a launcher. Asked again, the verb
+shows the requests it drew.
+
+--answers <dir> records the answers, each at <dir>/<reviewer-cell>/<label>.json,
+read as untrusted input and scored before anything is recorded.
+
+Refused, exit 2, with nothing written: a task that is not one of the run's code
+tasks, a task no copy of which its hidden tests judged, an answer that does not
+validate or names a label never asked about, an answer for a runner reviewer
+cell, reviews already recorded, a task with a copy handed to the host and not
+handed back, and a request the secret screen refuses. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --answers string   the folder of the reviewers' answers, <dir>/<reviewer-cell>/<label>.json; records them
+```
+
+**Example:**
+
+```
+abcd lab matrix review lab-260901000000-0123abc mx-260901000000-0a1b feature-a
 ```
 
 #### `abcd lab mint`

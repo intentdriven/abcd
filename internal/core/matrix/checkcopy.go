@@ -6,14 +6,16 @@ package matrix
 // model's output and is read as untrusted input: bounded, decoded strictly,
 // every text made one inert line with every mention of where the copy ran
 // withheld. A check copy is never shown its task's or its cell's id: its clone
-// is made under an alias minted at random when it starts (makeCheckClone), and
+// is made under an alias minted at random when it starts (makeCopyClone), and
 // every name in the run that could identify a copy (its run, task, cell,
 // route, runner and pins, and its alias) and every name of a model or of its
 // maker is withheld from the copy's own words wherever it stands, inside a
 // longer word too, so a copy cannot sign what it found in front of the person,
 // the matcher or the outside judge (identityScrub); a quote the frozen
-// material holds is the material's own and is kept whole. Every position is
-// computed from the frozen material, never taken from the copy. A doc-fidelity copy's verdict is validated by the recorder's
+// material holds is located and verified against the material as written,
+// and shown with every model and maker withheld, since a copy chooses which
+// line it quotes. Every position is computed from the frozen material, never
+// taken from the copy. A doc-fidelity copy's verdict is validated by the recorder's
 // own decoder (docfidelity.ReportFindings) and never recorded where the release
 // gates read; what it drafted as a correction is dropped, never applied.
 //
@@ -28,7 +30,6 @@ package matrix
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -40,9 +41,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/docfidelity"
@@ -52,6 +55,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/termsafe"
+	"golang.org/x/text/unicode/norm"
 )
 
 // CheckCopySchema is a check copy's record's schema version.
@@ -137,7 +141,7 @@ type CheckCopy struct {
 // final message, and Failure the runner's failure, "" when it answered. Gates
 // is what the release gates read, snapshotted before the copy started
 // (snapshotGates), and Identity what in the run identifies a copy, which
-// collectCheckCopy reads from the run's record, its declaration and the
+// recordCheckCopy reads from the run's record, its declaration and the
 // copy's alias record, replacing a caller's.
 type checkCopyInputs struct {
 	RepoRoot, Store, Run, Frozen string
@@ -159,89 +163,6 @@ type runIdentity struct {
 	Alias string
 }
 
-// checkAlias is a check copy's alias as the run's state records it: the one
-// name its clone is made under, and so the one name the copy is shown of
-// which copy it is (dcn-2611210903322839). It is minted at random when the
-// copy starts and never derived from the copy's key, route, runner or model,
-// so a copy echoing it tells its judges nothing.
-type checkAlias struct {
-	SchemaVersion int    `json:"schema_version"`
-	Alias         string `json:"alias"`
-}
-
-// checkAliasRe is an alias: 128 random bits, under a word no task's or cell's
-// id can be (an id holds no underscore), so no copy's clone is ever made where
-// a trial's is.
-var checkAliasRe = regexp.MustCompile(`^copy_[0-9a-f]{32}$`)
-
-// checkAliasRel is copy key's alias record in its run's directory.
-func checkAliasRel(run string, key TrialKey) string {
-	return run + "/check/" + key.Task + "/aliases/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + ".json"
-}
-
-// checkCloneDir is a check copy's clone under store: the run's id and the
-// copy's alias, and nothing of its task or its cell.
-func checkCloneDir(store, run, alias string) string { return filepath.Join(store, run, alias) }
-
-// makeCheckClone makes check copy key's clone of frozen, as makeClone makes a
-// trial's, at checkCloneDir under the copy's alias. The alias is minted and
-// recorded in the run's state before the clone is made, or read back where an
-// earlier attempt recorded it, so a clone that was not made is made again
-// under the alias its copy was given, and one that is there is refused. The
-// run's record must be written first.
-func makeCheckClone(labID, repoRoot, store, run, frozen string, key TrialKey) (string, error) {
-	if err := cloneArgs(repoRoot, run, frozen, key); err != nil {
-		return "", err
-	}
-	proc, err := lab.OpenProcedure(repoRoot, labID)
-	if err != nil {
-		return "", err
-	}
-	defer proc.Close()
-	if _, err := proc.ReadState(run + "/run.json"); err != nil {
-		return "", fmt.Errorf("copy %s is not made: its run's record is not written: %w", key, err)
-	}
-	alias, err := readCheckAlias(proc, run, key)
-	if errors.Is(err, fs.ErrNotExist) {
-		alias, err = mintCheckAlias(proc, run, key)
-	}
-	if err != nil {
-		return "", err
-	}
-	return makeCloneAt(repoRoot, store, checkCloneDir(store, run, alias), frozen, "copy "+key.String())
-}
-
-// mintCheckAlias mints copy key's alias and records it, once.
-func mintCheckAlias(proc *lab.Procedure, run string, key TrialKey) (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("copy %s's alias could not be minted: %w", key, err)
-	}
-	alias := "copy_" + hex.EncodeToString(b[:])
-	data, err := encodeCheck(checkAlias{SchemaVersion: CheckCopySchema, Alias: alias})
-	if err != nil {
-		return "", err
-	}
-	if err := proc.WriteState(checkAliasRel(run, key), data); err != nil {
-		return "", fmt.Errorf("copy %s's alias is not recorded: %w", key, err)
-	}
-	return alias, nil
-}
-
-// readCheckAlias is copy key's alias as its run's state records it; an error
-// wrapping fs.ErrNotExist where none is recorded.
-func readCheckAlias(proc *lab.Procedure, run string, key TrialKey) (string, error) {
-	raw, err := proc.ReadState(checkAliasRel(run, key))
-	if err != nil {
-		return "", err
-	}
-	var a checkAlias
-	if err := jsonstrict.Decode(raw, &a); err != nil || a.SchemaVersion != CheckCopySchema || !checkAliasRe.MatchString(a.Alias) {
-		return "", fmt.Errorf("copy %s's alias record does not read as one", key)
-	}
-	return a.Alias, nil
-}
-
 // checkCopyRel is copy key's findings record in its run's directory.
 func checkCopyRel(run string, key TrialKey) string {
 	return run + "/check/" + key.Task + "/copies/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + ".json"
@@ -252,7 +173,7 @@ func checkCopyRel(run string, key TrialKey) string {
 func readCheckCopy(in checkCopyInputs) CheckCopy {
 	c := CheckCopy{SchemaVersion: CheckCopySchema, Run: in.Run, Key: in.Key, Form: in.Form, Findings: []CheckFinding{}}
 	red := checkRedactor{
-		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: checkCloneDir(in.Store, in.Run, in.Identity.Alias), Run: in.Run}),
+		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: cloneDir(in.Store, in.Run, in.Identity.Alias), Run: in.Run}),
 		model: newIdentityScrub(in.Run, in.Key, in.Identity),
 	}
 	reason := func(s string) string {
@@ -306,14 +227,14 @@ func docFidelityFindings(data []byte, material map[string]string, red checkRedac
 		if err := red.path(p, material); err != nil {
 			return nil, 0, fmt.Errorf("finding %d: %w", i+1, err)
 		}
-		end, n := red.end(p, s.Sentence, material)
+		end, keyQuote, n := red.end(p, s.Sentence, material)
 		evidence, m := red.inert(s.Evidence)
 		redacted += n + m
 		if len(evidence) > maxFindingBytes {
 			return nil, 0, fmt.Errorf("finding %d's evidence is past its bound of %d bytes", i+1, maxFindingBytes)
 		}
 		out = append(out, CheckFinding{
-			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: end.Quote}, findingkey.End{}),
+			Key:  findingkey.Derive("doc-fidelity/"+s.Doc, findingkey.End{Path: p, Quote: keyQuote}, findingkey.End{}),
 			Doc:  s.Doc,
 			Ends: []FindingEnd{end}, Evidence: evidence,
 		})
@@ -378,12 +299,12 @@ func consistencyFindings(data []byte, material map[string]string, red checkRedac
 			if err := red.path(e.Path, material); err != nil {
 				return nil, 0, fmt.Errorf("finding %d end %d: %w", i+1, j+1, err)
 			}
-			end, n := red.end(e.Path, e.Quote, material)
+			end, keyQuote, n := red.end(e.Path, e.Quote, material)
 			redacted += n
 			if end.Quote == "" || len(end.Quote) > maxQuoteBytes {
 				return nil, 0, fmt.Errorf("finding %d end %d quotes nothing, or more than %d bytes", i+1, j+1, maxQuoteBytes)
 			}
-			ends[j] = findingkey.End{Path: e.Path, Quote: end.Quote}
+			ends[j] = findingkey.End{Path: e.Path, Quote: keyQuote}
 			cf.Ends = append(cf.Ends, end)
 		}
 		cf.Key = findingkey.Derive(class, ends[0], ends[1])
@@ -415,11 +336,20 @@ func (r checkRedactor) text(s string) (string, int) {
 	return s, n + m
 }
 
-// inert is s made one inert line with both withheld.
+// inert is s made one inert line with both withheld. The identity scrub
+// reads s before its white space is collapsed, so a name broken across lines
+// ("Clau\nde") is read as broken by a line break, not as two words.
 func (r checkRedactor) inert(s string) (string, int) {
-	s, n := inert(s, r.place)
-	s, m := r.model.scrub(s)
-	return s, n + m
+	return r.inertWith(s, r.model.scrub)
+}
+
+// inertWith is s made one inert line, where the copy ran withheld from it
+// and then what scrub withholds, both before its white space is collapsed.
+func (r checkRedactor) inertWith(s string, scrub func(string) (string, int)) (string, int) {
+	s, n := r.place.redact(strings.ToValidUTF8(s, "?"))
+	s, m := scrub(s)
+	s, k := inert(s, r.place)
+	return s, n + m + k
 }
 
 // path refuses a finding's path unless it is a clean path inside the
@@ -438,18 +368,29 @@ func (r checkRedactor) path(p string, material map[string]string) error {
 }
 
 // end is one end of a finding: the quote made inert, and where the frozen
-// material at p holds it. A quote the material holds is the material's own
-// words, the same for every copy that quotes it, so it signs no copy and is
-// kept whole (dcn-2611210903322839). One it does not hold is the copy's own,
-// and has everything the identity scrub withholds withheld.
-func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, int) {
-	q, n := inert(quote, r.place)
-	lines := locate(material[p], q)
-	var m int
+// material at p holds it, with the quote its finding key is derived from. The
+// quote is located in the material as written, before anything is withheld
+// from it, so where it stands and whether the material holds it are read from
+// the material's own words. A quote the material holds is the same for every
+// copy that quotes it, but a copy chooses which line it quotes, so a quote of
+// a line naming a model would sign it by choice: it is shown with every model
+// and maker withheld (scrubModels), and the rest of the line, the run's other
+// words among them, kept, and it stays located (dcn-2611211626560528,
+// correcting dcn-2611210903322839 in part). It is keyed on the line as
+// located, so two lines that differ only in a model named are two findings,
+// though both are shown alike: the path and line span shown already name the
+// line, so its key tells a reader nothing more. One the material does not
+// hold is the copy's own, has everything the identity scrub withholds
+// withheld, and is keyed as shown.
+func (r checkRedactor) end(p, quote string, material map[string]string) (FindingEnd, string, int) {
+	located, _ := inert(quote, r.place)
+	lines := locate(material[p], located)
 	if lines == nil {
-		q, m = r.model.scrub(q)
+		q, n := r.inertWith(quote, r.model.scrub)
+		return FindingEnd{Path: p, Quote: q}, q, n
 	}
-	return FindingEnd{Path: p, Quote: q, Lines: lines}, n + m
+	q, n := r.inertWith(quote, r.model.scrubModels)
+	return FindingEnd{Path: p, Quote: q, Lines: lines}, located, n
 }
 
 // withheldMark stands in for what is withheld from a check copy's text by the
@@ -465,7 +406,18 @@ const withheldClass = "withheld"
 // tell a judge which copy wrote them (dcn-2611210903322839), so a copy cannot
 // sign its findings. Each name is matched in any case and as a substring,
 // wherever it stands, fused to a letter or a digit or joined by any mark, so
-// no way of writing an ordinary id escapes a word boundary:
+// no way of writing an ordinary id escapes a word boundary, and in the text
+// as scrubFold folds it, so no respelling does either: compatibility forms
+// read as their plain letters, combining marks, format characters (a
+// zero-width space or joiner, a soft hyphen), Hangul fillers and controls
+// other than white space dropped, every dash read as a hyphen, and Cyrillic,
+// Greek and Armenian letters that look Latin read as the Latin ones. A model's
+// or a maker's name spelled with its letters split by single separators
+// ("c-l-a-u-d-e", "g.p.t") is withheld too (spacedSpans). A withheld name
+// takes the rest of its model id token with it (versionEnds), and a joiner
+// between two withheld spans is withheld with them, so "claude-opus-5-5" goes
+// under one mark. The scrub reads its text in time linear in its length.
+// It withholds:
 //
 //   - every name in the run that could identify a copy: the run's id; every
 //     task's id; and each cell's id, source, route whole and by its parts (its
@@ -481,10 +433,21 @@ const withheldClass = "withheld"
 // A name shorter than minNameBytes would withhold ordinary text wherever its
 // letters fall, so it is not matched: a task's or a cell's id that short is
 // kept from the copy instead, which is never shown its task's or its cell's id
-// (checkCloneDir), only its alias.
+// (cloneDir), only its alias.
+//
+// A quote the frozen material holds has only the model and maker names
+// withheld (scrubModels): the model families and their developers, the AI
+// names, an o-series name, and each cell's model and the vendors its route and
+// pin name.
 type identityScrub struct {
-	// withheld is every name withheld, lower-cased.
+	// withheld is every name withheld, folded.
 	withheld []string
+	// models is the names of models and their makers, folded: the part of
+	// withheld a located quote has withheld.
+	models []string
+	// spaced is the names of models and makers matched when spelled with
+	// separators (spacedSpans).
+	spaced []string
 }
 
 // minNameBytes is the shortest name the scrub matches.
@@ -492,24 +455,86 @@ const minNameBytes = 3
 
 func newIdentityScrub(run string, key TrialKey, id runIdentity) identityScrub {
 	var s identityScrub
-	seen := map[string]bool{}
-	add := func(n string) {
-		if n = asciiLower(strings.TrimSpace(n)); len(n) >= minNameBytes && !seen[n] {
+	seen, seenModel := map[string]bool{}, map[string]bool{}
+	add := func(n string, model bool) {
+		n, _, _ = scrubFold(strings.TrimSpace(n))
+		if len(n) < minNameBytes {
+			return
+		}
+		if !seen[n] {
 			seen[n] = true
 			s.withheld = append(s.withheld, n)
 		}
+		if model && !seenModel[n] {
+			seenModel[n] = true
+			s.models = append(s.models, n)
+		}
 	}
 	for _, n := range identityNames(run, key, id) {
-		add(n)
+		add(n, false)
 	}
-	for _, n := range modelFamilies {
-		add(n)
-	}
-	for _, d := range developers {
-		add(d)
+	for _, n := range modelVendorNames(id) {
+		add(n, true)
 	}
 	sort.Strings(s.withheld)
+	sort.Strings(s.models)
+	short := map[string]bool{}
+	for _, n := range modelFamilies {
+		short[n] = true
+	}
+	for _, d := range developers {
+		short[d] = true
+	}
+	for _, n := range s.models {
+		if isLetters(n) && (len(n) >= minSpacedBytes || short[n]) {
+			s.spaced = append(s.spaced, n)
+		}
+	}
 	return s
+}
+
+// minSpacedBytes is the shortest name matched spelled with separators, short
+// of the model families' and developers' own short names (gpt, glm, phi, xai),
+// which are matched however short.
+const minSpacedBytes = 4
+
+// isLetters reports whether s is ASCII letters alone.
+func isLetters(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if !isLetter(s[i]) {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// modelVendorNames is every name of a model or its maker in the run: the
+// model families and their developers, and each cell's model whole and by
+// segment and the vendors its route and its provider pin name. The grammar's
+// words for where a model runs (host, local, provider) name no vendor, so a
+// route's segment that is one of them is not among them.
+func modelVendorNames(id runIdentity) []string {
+	out := slices.Clone(modelFamilies)
+	for _, d := range developers {
+		out = append(out, d)
+	}
+	for _, c := range id.Cells {
+		out = append(out, modelNames(c.Model)...)
+		if m := routeModel(c.Route); m != "" {
+			out = append(out, modelNames(m)...)
+		}
+		if p := c.ProviderPin; p != nil {
+			out = append(out, modelNames(p.CanonicalSlug)...)
+			out = append(out, p.Order...)
+		}
+	}
+	return slices.DeleteFunc(out, func(n string) bool {
+		switch Source(strings.ToLower(strings.TrimSpace(n))) {
+		case SourceHost, SourceLocal, SourceProvider:
+			return true
+		}
+		return false
+	})
 }
 
 // identityNames is every name in the run that could identify a copy: the
@@ -517,8 +542,24 @@ func newIdentityScrub(run string, key TrialKey, id runIdentity) identityScrub {
 // scrubbed of them too, and its alias. A cell's role is not one (every copy of
 // a check shares it), nor are its sampling settings or its pin's
 // data-collection policy, which are values, not names.
+//
+// Every task's id joined to every cell's by a slash is one too: how a key is
+// written (<task>/<cell>/<repeat>) and how every record of a copy is filed
+// (trials/, aliases/ and the check's copies/ under <task>/<cell>/), so an
+// error naming a copy's key or a record's path, which a runner may echo, is
+// withheld whole however short the cell's own id.
 func identityNames(run string, key TrialKey, id runIdentity) []string {
 	out := append([]string{run, key.Task, key.Cell, id.Alias}, id.Tasks...)
+	tasks := append([]string{key.Task}, id.Tasks...)
+	cells := []string{key.Cell}
+	for _, c := range id.Cells {
+		cells = append(cells, c.Cell)
+	}
+	for _, t := range tasks {
+		for _, c := range cells {
+			out = append(out, t+"/"+c)
+		}
+	}
 	for _, c := range id.Cells {
 		out = append(out, c.Cell, string(c.Source), c.Runner, c.HarnessVersion)
 		out = append(out, routeNames(c.Route)...)
@@ -560,6 +601,13 @@ func routeNames(route string) []string {
 	return out
 }
 
+// routeModel is the provider and model a cell's route names after its `@`,
+// "" where it names none.
+func routeModel(route string) string {
+	_, model, _ := strings.Cut(route, "@")
+	return model
+}
+
 // asciiLower is s with its ASCII letters lower-cased and every other byte as
 // it is, so offsets into it are offsets into s.
 func asciiLower(s string) string {
@@ -578,7 +626,18 @@ func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 // withheld, each run of withheld bytes under one mark, and how many marks it
 // wrote.
 func (m identityScrub) scrub(s string) (string, int) {
-	held := m.held(s)
+	return markHeld(s, m.held(m.withheld, s))
+}
+
+// scrubModels is scrub with only the names of models and their makers
+// withheld: how a quote the frozen material holds is shown.
+func (m identityScrub) scrubModels(s string) (string, int) {
+	return markHeld(s, m.held(m.models, s))
+}
+
+// markHeld is s with each run of held bytes under one mark, and how many marks
+// it wrote.
+func markHeld(s string, held []bool) (string, int) {
 	var b strings.Builder
 	n := 0
 	for i := 0; i < len(s); i++ {
@@ -593,27 +652,44 @@ func (m identityScrub) scrub(s string) (string, int) {
 	return b.String(), n
 }
 
-// held marks each byte of s that is part of a name the scrub withholds.
-func (m identityScrub) held(s string) []bool {
-	low := asciiLower(s)
-	held := make([]bool, len(s))
+// held marks each byte of s that is part of one of names, an AI name, an
+// o-series name, or a model's or maker's name spelled with separators. The
+// names are matched in s as scrubFold folds it, and each match holds the
+// bytes of s it was folded from, the format characters inside it included.
+// Every step is linear in the length of s: each match's token end is read
+// from a table built once (versionEnds), and the matches are summed into the
+// held bytes once, at the end.
+func (m identityScrub) held(names []string, s string) []bool {
+	low, from, to := scrubFold(s)
+	cover := make([]int32, len(s)+1)
 	hold := func(i, j int) {
-		for ; i < j; i++ {
-			held[i] = true
+		if i < j {
+			cover[i]++
+			cover[j]--
 		}
 	}
-	for _, name := range m.withheld {
+	// holdFolded holds low[i:j] as the bytes of s it came from.
+	holdFolded := func(i, j int) {
+		if i < j {
+			hold(from[i], to[j-1])
+		}
+	}
+	ends := newVersionEnds(low)
+	for _, name := range names {
 		for at := 0; at < len(low); {
 			i := strings.Index(low[at:], name)
 			if i < 0 {
 				break
 			}
-			hold(at+i, at+i+len(name))
+			holdFolded(at+i, ends.at(at+i+len(name), false))
 			at += i + 1
 		}
 	}
 	for _, sp := range identity.AINameSpans(s) {
 		hold(sp[0], sp[1])
+	}
+	for _, sp := range identity.AINameSpans(low) {
+		holdFolded(sp[0], ends.at(sp[1], false))
 	}
 	for i := 0; i+1 < len(low); i++ {
 		if low[i] == oSeries[0] && (i == 0 || !isLetter(low[i-1])) && isDigit(low[i+1]) {
@@ -621,10 +697,267 @@ func (m identityScrub) held(s string) []bool {
 			for j < len(low) && isDigit(low[j]) {
 				j++
 			}
-			hold(i, j)
+			holdFolded(i, ends.at(j, true))
+		}
+	}
+	m.spacedSpans(low, func(i, j int) { holdFolded(i, ends.at(j, false)) })
+	held := make([]bool, len(s))
+	var depth int32
+	for i := range held {
+		depth += cover[i]
+		held[i] = depth > 0
+	}
+	// A joiner between two withheld spans joins one name: "claude-opus",
+	// "claude–opus" (every dash folds to a hyphen).
+	for k := 0; k < len(low); k++ {
+		if strings.IndexByte(tokenJoiners, low[k]) < 0 {
+			continue
+		}
+		i, j := from[k], to[k]
+		if i == 0 || j >= len(s) || !held[i-1] || !held[j] || held[i] {
+			continue
+		}
+		for ; i < j; i++ {
+			held[i] = true
 		}
 	}
 	return held
+}
+
+// spacedSpans calls hold with each span of folded text low that spells one of
+// the scrub's spaced names, or an AI name, with its letters split by single
+// separators: one character that is neither a letter nor a digit between two
+// letters (a space, a dot, a hyphen, an asterisk, an underscore, a line
+// break). A span counts only where it is the whole name, with no letter
+// directly before or after it, and holds at least one separator. Ordinary
+// prose splits words at spaces and line breaks, so a span split by white
+// space counts only where every letter is split from the next ("c l a u d
+// e"), or where its only white space is line breaks and the name is at least
+// minWrappedBytes long ("Clau\nde"): "met a" and "op us" stay prose. A
+// carriage return and line feed is one line break. An ordinary hyphenated
+// word that spells a name (hyphenatedWords) is kept.
+func (m identityScrub) spacedSpans(low string, hold func(i, j int)) {
+	// letters is low's ASCII letters with each single separator between two
+	// of them dropped, and a zero byte for anything else; at[k] is where its
+	// byte k stands in low.
+	letters := make([]byte, 0, len(low))
+	at := make([]int, 0, len(low))
+	for i := 0; i < len(low); {
+		r, w := utf8.DecodeRuneInString(low[i:])
+		if strings.HasPrefix(low[i:], "\r\n") {
+			w = 2
+		}
+		switch {
+		case isLetter(low[i]):
+			letters, at = append(letters, low[i]), append(at, i)
+		case i > 0 && isLetter(low[i-1]) && i+w < len(low) && isLetter(low[i+w]) && !unicode.IsLetter(r) && !unicode.IsDigit(r):
+		default:
+			letters, at = append(letters, 0), append(at, i)
+		}
+		i += w
+	}
+	text := string(letters)
+	try := func(a, b int) {
+		lo, hi := at[a], at[b-1]+1
+		if before, _ := utf8.DecodeLastRuneInString(low[:lo]); lo > 0 && unicode.IsLetter(before) {
+			return
+		}
+		if after, _ := utf8.DecodeRuneInString(low[hi:]); hi < len(low) && unicode.IsLetter(after) {
+			return
+		}
+		if slices.Contains(hyphenatedWords, low[lo:hi]) {
+			return
+		}
+		seps, white, wrapped := 0, false, true
+		for k := a; k+1 < b; k++ {
+			if at[k+1] == at[k]+1 {
+				continue
+			}
+			seps++
+			if r, _ := utf8.DecodeRuneInString(low[at[k]+1:]); unicode.IsSpace(r) {
+				white = true
+				wrapped = wrapped && (r == '\n' || strings.HasPrefix(low[at[k]+1:], "\r\n"))
+			}
+		}
+		switch {
+		case seps == 0:
+		case !white, seps == b-a-1, wrapped && b-a >= minWrappedBytes:
+			hold(lo, hi)
+		}
+	}
+	for _, name := range m.spaced {
+		for from := 0; from < len(text); {
+			i := strings.Index(text[from:], name)
+			if i < 0 {
+				break
+			}
+			try(from+i, from+i+len(name))
+			from += i + 1
+		}
+	}
+	for _, sp := range identity.AINameSpans(text) {
+		try(sp[0], sp[1])
+	}
+}
+
+// hyphenatedWords are ordinary hyphenated words whose letters spell a name
+// matched spelled with separators: each is kept as written, while the name
+// written straight on, or split at every letter, is still withheld.
+var hyphenatedWords = []string{"co-pilot"}
+
+// minWrappedBytes is the shortest name matched broken across lines with no
+// other separator: a shorter one ("met\na" for meta) is how prose wraps.
+const minWrappedBytes = 5
+
+// tokenJoiners join the parts of a model id token.
+const tokenJoiners = "-._:/"
+
+// versionEnds is, for each place j in folded text low, where the model id
+// token a withheld name ending at j goes on to: a version after it, joined by
+// a joiner or a space or written straight on ("-5-5", " 5.5", "4o"), each
+// part led by a digit, and once a version has begun, every part joined to it
+// by a joiner ("-mini", "-coder-32b"). A name fused to a letter, or followed
+// by a word, takes nothing more. The table is built once, from the end of
+// the text back, so reading it for every match costs nothing more.
+type versionEnds struct {
+	// end[0][j] is the end where no version has begun at j, end[1][j]
+	// where one has.
+	end [2][]int32
+}
+
+func newVersionEnds(low string) versionEnds {
+	n := len(low)
+	// run[k] is where the run of letters and digits starting at k ends.
+	run := make([]int32, n+1)
+	run[n] = int32(n)
+	for k := n - 1; k >= 0; k-- {
+		run[k] = int32(k)
+		if isAlnum(low[k]) {
+			run[k] = run[k+1]
+		}
+	}
+	e := versionEnds{end: [2][]int32{make([]int32, n+1), make([]int32, n+1)}}
+	for j := n; j >= 0; j-- {
+		for v := 0; v < 2; v++ {
+			e.end[v][j] = int32(j)
+			k := j
+			sep := byte(0)
+			if k < n && (low[k] == ' ' || strings.IndexByte(tokenJoiners, low[k]) >= 0) {
+				sep = low[k]
+				k++
+			}
+			if k >= n || !isAlnum(low[k]) {
+				continue
+			}
+			digit := isDigit(low[k])
+			if !digit && (sep == 0 || sep == ' ' || v == 0) {
+				continue
+			}
+			next := v
+			if digit {
+				next = 1
+			}
+			e.end[v][j] = e.end[next][run[k]]
+		}
+	}
+	return e
+}
+
+// at is where the token a name ending at j goes on to, versioned saying
+// whether a version has begun.
+func (e versionEnds) at(j int, versioned bool) int {
+	if versioned {
+		return int(e.end[1][j])
+	}
+	return int(e.end[0][j])
+}
+
+func isAlnum(c byte) bool { return isLetter(c) || isDigit(c) }
+
+// scrubFold is s as the identity scrub matches it, and, for each byte of the
+// result, the span of s it was folded from (from[i] to to[i]). It reads s
+// through NFKD, so a compatibility form becomes its plain letters (as NFKC
+// would) and a combining mark comes apart from its letter; drops every
+// combining mark and every format character (a zero-width space, joiner or
+// non-joiner, a word joiner, a soft hyphen, a direction mark); reads every
+// dash and the minus sign as a hyphen; and folds the Cyrillic, Greek and
+// Armenian letters that look Latin (scrubConfusables) to the Latin ones, and
+// every other letter to lower case. It also drops every enclosing and spacing
+// mark, the Hangul fillers, and every control that is not white space.
+func scrubFold(s string) (string, []int, []int) {
+	var b strings.Builder
+	from := make([]int, 0, len(s))
+	to := make([]int, 0, len(s))
+	var it norm.Iter
+	it.InitString(norm.NFKD, s)
+	for !it.Done() {
+		pos := it.Pos()
+		seg := string(it.Next())
+		end := it.Pos()
+		exact := seg == s[pos:end]
+		for k := 0; k < len(seg); {
+			r, w := utf8.DecodeRuneInString(seg[k:])
+			lo, hi := pos, end
+			if exact {
+				lo, hi = pos+k, pos+k+w
+			}
+			k += w
+			switch {
+			case foldDropped(r):
+				continue
+			case unicode.Is(unicode.Pd, r) || r == '\u2212':
+				r = '-'
+			default:
+				if c, ok := scrubConfusables[r]; ok {
+					r = c
+				} else {
+					r = unicode.ToLower(r)
+				}
+			}
+			n := b.Len()
+			b.WriteRune(r)
+			for ; n < b.Len(); n++ {
+				from = append(from, lo)
+				to = append(to, hi)
+			}
+		}
+	}
+	return b.String(), from, to
+}
+
+// foldDropped reports whether scrubFold drops r: a combining, enclosing or
+// spacing mark, a format character, a Hangul filler, or a control that is not
+// white space, none of which shows as a letter of a name.
+func foldDropped(r rune) bool {
+	switch r {
+	case '\u115f', '\u1160', '\u3164', '\uffa0':
+		return true
+	}
+	return unicode.In(r, unicode.Mn, unicode.Me, unicode.Mc, unicode.Cf) || unicode.Is(unicode.Cc, r) && !unicode.IsSpace(r)
+}
+
+// scrubConfusables are the Cyrillic, Greek and Armenian letters, in both
+// cases, that look like a Latin letter, each to the lower-case Latin letter
+// it looks like: the common ones of Unicode's confusables (TR39) for these
+// scripts.
+var scrubConfusables = map[rune]rune{
+	// Cyrillic capitals and smalls.
+	'А': 'a', 'а': 'a', 'В': 'b', 'в': 'b', 'С': 'c', 'с': 'c', 'Ԁ': 'd', 'ԁ': 'd',
+	'Е': 'e', 'е': 'e', 'Һ': 'h', 'һ': 'h', 'Н': 'h', 'н': 'h', 'І': 'i', 'і': 'i',
+	'Ј': 'j', 'ј': 'j', 'К': 'k', 'к': 'k', 'Ӏ': 'l', 'ӏ': 'l', 'М': 'm', 'м': 'm',
+	'О': 'o', 'о': 'o', 'Р': 'p', 'р': 'p', 'Ԛ': 'q', 'ԛ': 'q', 'Ѕ': 's', 'ѕ': 's',
+	'Т': 't', 'т': 't', 'Ү': 'y', 'ү': 'y', 'У': 'y', 'у': 'y', 'Ԝ': 'w', 'ԝ': 'w',
+	'Х': 'x', 'х': 'x', 'Ь': 'b', 'ь': 'b',
+	// Greek capitals and smalls.
+	'Α': 'a', 'α': 'a', 'Β': 'b', 'β': 'b', 'Ε': 'e', 'ε': 'e', 'Ζ': 'z', 'Η': 'h',
+	'η': 'n', 'Ι': 'i', 'ι': 'i', 'Κ': 'k', 'κ': 'k', 'Μ': 'm', 'Ν': 'n', 'ν': 'v',
+	'Ο': 'o', 'ο': 'o', 'Ρ': 'p', 'ρ': 'p', 'Τ': 't', 'τ': 't', 'Υ': 'y', 'υ': 'u',
+	'Χ': 'x', 'χ': 'x', 'ϲ': 'c', 'Ϲ': 'c', 'ϳ': 'j',
+	// Armenian capitals and smalls.
+	'Օ': 'o', 'օ': 'o', 'Ս': 'u', 'ս': 'u', 'Տ': 's', 'Լ': 'l', 'հ': 'h', 'ո': 'n',
+	'ց': 'g', 'զ': 'q', 'ք': 'f', 'յ': 'j', 'ա': 'w',
+	// Latin letters that read as another.
+	'ı': 'i', 'ɡ': 'g', 'ɑ': 'a',
 }
 
 // names reports whether s names anything the scrub withholds.
@@ -836,55 +1169,59 @@ func encodeCheck(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// collectCheckCopy reads copy in.Key's answer into its run's record in lab
-// labID, and only then deletes the copy's clone. A copy whose findings the
-// secret screen refuses is recorded as failed, with nothing of its answer
-// kept. A copy whose findings cannot be recorded (another record of the copy
-// is already written) keeps its clone, and so does a run that finds the
-// release gates' receipts, the review flags or the ledger changed since
-// in.Gates was snapshotted, before the copy started. A record already written
-// with the same bytes counts as written, so a collection that failed after
-// writing it can be tried again, and the retry deletes the clone.
-func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
+// recordCheckCopy reads copy in.Key's answer into its run's record in lab
+// labID: it records the copy's findings, proves the release gates' reads
+// unchanged, and returns the clone to delete once the caller has written what
+// else it must (a hand-back's trial, CollectCopy), so nothing it refuses can
+// leave a copy with no clone. A copy whose findings the secret screen refuses
+// is recorded as failed, with nothing of its answer kept. A copy whose
+// findings cannot be recorded (another record of the copy is already
+// written), or whose run finds the release gates' receipts, the review flags
+// or the ledger changed since in.Gates was snapshotted, before the copy
+// started, is refused, keeping its clone. A record already written with the
+// same bytes counts as written, so a hand-back that failed after writing it
+// can be tried again. A refusal raised once the findings are written says
+// they are recorded, and is marked ErrWrittenInPart.
+func recordCheckCopy(labID string, in checkCopyInputs) (CheckCopy, string, error) {
 	if !runIDRe.MatchString(in.Run) {
-		return CheckCopy{}, fmt.Errorf("%q is not a run id", clip(in.Run))
+		return CheckCopy{}, "", fmt.Errorf("%q is not a run id", clip(in.Run))
 	}
 	if err := in.Key.validate(); err != nil {
-		return CheckCopy{}, err
+		return CheckCopy{}, "", err
 	}
 	if !filepath.IsAbs(in.RepoRoot) || !filepath.IsAbs(in.Store) {
-		return CheckCopy{}, errors.New("the run's checkout and its clone store are named by absolute paths")
+		return CheckCopy{}, "", errors.New("the run's checkout and its clone store are named by absolute paths")
 	}
 	if in.Form != CheckDocFidelity && in.Form != CheckConsistency {
-		return CheckCopy{}, fmt.Errorf("%q is not a check form abcd reads", clip(string(in.Form)))
+		return CheckCopy{}, "", fmt.Errorf("%q is not a check form abcd reads", clip(string(in.Form)))
 	}
 	if in.Gates == nil {
-		return CheckCopy{}, errors.New("the copy is not collected: what the release gates read was not snapshotted before it ran")
+		return CheckCopy{}, "", errors.New("the copy is not collected: what the release gates read was not snapshotted before it ran")
 	}
 	proc, err := lab.OpenProcedure(in.RepoRoot, labID)
 	if err != nil {
-		return CheckCopy{}, err
+		return CheckCopy{}, "", err
 	}
 	defer proc.Close()
 	raw, err := proc.ReadState(in.Run + "/run.json")
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: its run's record is not written: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: its run's record is not written: %w", err)
 	}
 	var rec RunRecord
 	if err := jsonstrict.Decode(raw, &rec); err != nil || rec.RunID != in.Run {
-		return CheckCopy{}, errors.New("the copy is not collected: its run's record does not read as the run's")
+		return CheckCopy{}, "", errors.New("the copy is not collected: its run's record does not read as the run's")
 	}
 	decl, err := proc.ReadState(in.Run + "/declaration.json")
 	if err != nil || contentOf("declaration.json", decl) != rec.Declaration {
-		return CheckCopy{}, errors.New("the copy is not collected: its run's declaration does not read as the one its record keeps")
+		return CheckCopy{}, "", errors.New("the copy is not collected: its run's declaration does not read as the one its record keeps")
 	}
 	d, err := parseDeclaration(decl)
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: %w", err)
 	}
-	alias, err := readCheckAlias(proc, in.Run, in.Key)
+	alias, err := readAlias(proc, in.Run, in.Key)
 	if err != nil {
-		return CheckCopy{}, fmt.Errorf("the copy is not collected: its clone's alias is not recorded: %w", err)
+		return CheckCopy{}, "", fmt.Errorf("the copy is not collected: its clone's alias is not recorded: %w", err)
 	}
 	in.Identity = runIdentity{Cells: rec.Cells, Alias: alias}
 	for _, t := range d.Tasks {
@@ -893,22 +1230,20 @@ func collectCheckCopy(labID string, in checkCopyInputs) (CheckCopy, error) {
 	rel := checkCopyRel(in.Run, in.Key)
 	c, data, err := screenedCheckCopy(in, rel)
 	if err != nil {
-		return CheckCopy{}, err
+		return CheckCopy{}, "", err
 	}
 	werr := proc.WriteState(rel, data)
 	if back, err := proc.ReadState(rel); err != nil || !bytes.Equal(back, data) {
 		if werr != nil {
-			return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
+			return CheckCopy{}, "", fmt.Errorf("copy %s keeps its clone: its findings are not recorded: %w", in.Key, werr)
 		}
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key)
+		return CheckCopy{}, "", afterWrite(fmt.Errorf("copy %s keeps its clone: its findings do not read back as written", in.Key))
 	}
+	// The findings are recorded from here on, so a refusal says so.
 	if err := in.Gates.unchanged(in.RepoRoot); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s keeps its clone: %w", in.Key, err)
+		return CheckCopy{}, "", afterWrite(fmt.Errorf("copy %s's findings are recorded, and it keeps its clone: %w", in.Key, err))
 	}
-	if err := os.RemoveAll(checkCloneDir(in.Store, in.Run, alias)); err != nil {
-		return CheckCopy{}, fmt.Errorf("copy %s's findings are recorded, and its clone could not be deleted: %w", in.Key, err)
-	}
-	return c, nil
+	return c, cloneDir(in.Store, in.Run, alias), nil
 }
 
 // screenRefusedReason is a copy's failure when the secret screen refuses its

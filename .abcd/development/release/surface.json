@@ -3243,10 +3243,121 @@
     {
       "path": "abcd lab matrix",
       "hidden": false,
-      "sentence": "Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.",
+      "sentence": "Show a model matrix run's plan, or record the consented run and hand off its copies: Writes only with --approve; refuses a metered run with no cap.",
       "flags": [
         {
           "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab matrix copy",
+      "hidden": false,
+      "sentence": "Show a matrix copy's hand-off, or hand a host cell's copy back as its trial: Writes only with --receipt; refuses a runner cell's copy.",
+      "flags": [
+        {
+          "name": "answer",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "form",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "receipt",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "transcript",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab matrix judge",
+      "hidden": false,
+      "sentence": "Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.",
+      "flags": [
+        {
+          "name": "bad",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "good",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "host",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "judges",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "verdicts",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab matrix report",
+      "hidden": false,
+      "sentence": "Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab matrix rerun",
+      "hidden": false,
+      "sentence": "Plan a re-run of a recorded matrix run, or record the re-run its digest consents to: Writes only with --approve; refuses a run of another frozen commit.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab matrix review",
+      "hidden": false,
+      "sentence": "Draw a code task's blinded reviewer requests, or record the reviewers' answers: Writes the requests once; refuses an answer that does not validate.",
+      "flags": [
+        {
+          "name": "answers",
           "shorthand": "",
           "type": "string",
           "required": false,

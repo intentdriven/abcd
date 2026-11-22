@@ -208,3 +208,20 @@ func TestACellSettingTheOracleRefusesIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// A declaration may name the smallest difference in pass rate that would change
+// a choice, which sizes the repeats by a power estimate; it is a difference in
+// a rate, so above nought and at most one.
+func TestADeclarationMayNameTheSmallestDifferenceThatMatters(t *testing.T) {
+	doc := strings.Replace(goodDeclaration, `"max": 20}`, `"max": 20, "min_difference": 0.2}`, 1)
+	d, err := parseDeclaration([]byte(doc))
+	if err != nil || d.Repeats.MinDifference == nil || *d.Repeats.MinDifference != 0.2 {
+		t.Fatalf("parseDeclaration = %+v, %v; want a smallest difference of 0.2", d.Repeats, err)
+	}
+	for _, bad := range []string{"0", "-0.1", "1.5"} {
+		doc := strings.Replace(goodDeclaration, `"max": 20}`, `"max": 20, "min_difference": `+bad+`}`, 1)
+		if _, err := parseDeclaration([]byte(doc)); err == nil || !strings.Contains(err.Error(), "min_difference") {
+			t.Errorf("min_difference %s: %v; want a refusal naming it", bad, err)
+		}
+	}
+}

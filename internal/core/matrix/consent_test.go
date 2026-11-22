@@ -106,3 +106,24 @@ func TestConsentWritesTheRunRecordAndStartsOnce(t *testing.T) {
 		t.Fatalf("a second consent to the same run: err %v, starts %d; want a refusal and one start", err, s.starts)
 	}
 }
+
+// failingStarter refuses every start.
+type failingStarter struct{}
+
+func (failingStarter) Start(Plan, RunRecord) error { return errors.New("no runner") }
+
+// A run whose record is written and whose start then fails is marked as
+// written in part, so no front door reports that nothing was written.
+func TestAFailedStartAfterItsRecordIsMarkedWrittenInPart(t *testing.T) {
+	root, run, p, in := consentSetup(t)
+	_, err := consent(root, p, p.Digest, in, failingStarter{})
+	if err == nil || !errors.Is(err, ErrWrittenInPart) {
+		t.Fatalf("err = %v; want a failure marked ErrWrittenInPart", err)
+	}
+	if !strings.Contains(err.Error(), "the run's record is written") {
+		t.Errorf("err = %q; want it to say the record is written", err)
+	}
+	if _, serr := os.Stat(run); serr != nil {
+		t.Fatalf("the run's record is absent after a failed start: %v", serr)
+	}
+}

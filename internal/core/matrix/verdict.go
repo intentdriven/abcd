@@ -322,10 +322,17 @@ func writeJudging(repoRoot, labID string, p JudgingPacket, k JudgingKey) error {
 	if err != nil {
 		return err
 	}
-	return proc.WriteStates(
-		lab.StateFile{Rel: judgingRel(k.Run, k.Task, "packet.json"), Data: pd},
-		lab.StateFile{Rel: judgingRel(k.Run, k.Task, "key.json"), Data: kd},
-	)
+	files := []lab.StateFile{
+		{Rel: judgingRel(k.Run, k.Task, "packet.json"), Data: pd},
+		{Rel: judgingRel(k.Run, k.Task, "key.json"), Data: kd},
+	}
+	// The packet carries models' words and the person's calibration
+	// examples, so it passes the secret screen before it is written, as a
+	// trial does.
+	if err := screen(repoRoot, []screened{{files[0], pd}, {files[1], kd}}); err != nil {
+		return fmt.Errorf("the judging of %s is not drawn: %w", k.Task, err)
+	}
+	return proc.WriteStates(files...)
 }
 
 // recordVerdicts reads a session's verdict file against the packet and key the

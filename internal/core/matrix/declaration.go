@@ -138,6 +138,12 @@ type Cell struct {
 type Repeats struct {
 	Pilot int `json:"pilot"`
 	Max   int `json:"max"`
+	// MinDifference is the smallest difference in pass rate that would change
+	// a choice; it sizes the repeats by a power estimate, and a comparison
+	// resting on fewer repeats than that estimate asks for is not ranked. Nil
+	// where none is declared: no comparison is ranked, and each states the
+	// smallest difference it could have detected.
+	MinDifference *float64 `json:"min_difference,omitempty"`
 }
 
 // Money is an amount in a unit. The only unit is usd: a cap is the person's
@@ -232,6 +238,9 @@ func (d Declaration) validate() error {
 	}
 	if r.Max < r.Pilot || r.Max > MaxRepeats {
 		return fmt.Errorf("repeats.max is %d; it is at least the pilot (%d) and at most %d", r.Max, r.Pilot, MaxRepeats)
+	}
+	if m := r.MinDifference; m != nil && (!(*m > 0) || *m > 1) {
+		return fmt.Errorf("repeats.min_difference is %v; it is a difference in pass rate, above nought and at most one", *m)
 	}
 	if d.SpendCap != nil {
 		if err := d.SpendCap.validate(); err != nil {

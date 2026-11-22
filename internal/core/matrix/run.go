@@ -682,10 +682,12 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	if len(js) > lab.MaxStateBytes {
 		return fmt.Errorf("the run record is %d bytes, past the %d its lab reads a record back within", len(js), lab.MaxStateBytes)
 	}
-	// A version or a digest is screened as what it is, never as an
+	// A bare version or a hex digest is screened as what it is, not as an
 	// address: a four-part version reads as an IPv4 one. So the network
-	// screen reads the record with those fields emptied, line for line the
-	// record as written, and every other screen reads the record whole.
+	// screen reads the record line for line as written, with only a version
+	// that is a dotted number and nothing else, a hex digest and a field name
+	// abcd builds emptied (withoutVersionsAndDigests), and any other value
+	// read as written; every other screen reads the record whole.
 	versionless, err := encodeRun(rec.withoutVersionsAndDigests())
 	if err != nil {
 		return err
@@ -699,57 +701,118 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	return p.WriteStates(files...)
 }
 
-// withoutVersionsAndDigests is the record with every version and digest
-// emptied and nothing else changed, so it encodes to the record's own lines:
-// the commits, the binary's digest, version and revision, every content
-// reference's and hash map's digest, each cell's harness version and local
-// runtime version and weights digest, and each unpinned field's name, which
-// abcd builds from a validated id (cell.<id>.<field>) and which a cell id such
-// as local-rev would otherwise make read as a host name. It changes nothing in
+// withoutVersionsAndDigests is the record as the network screen reads it,
+// encoding to the record's own lines with nothing else changed: each value
+// that has a version's, a digest's or abcd's own field name's shape, whole, is
+// withheld, and no value is ever rewritten in part. A version is emptied only
+// when it is a dotted number and nothing else (asVersion), a value is emptied
+// as a digest only when it is hex (asDigest), and an unpinned field's name only when it is one abcd
+// builds for this record (asFieldName), where a cell id such as local-rev
+// would otherwise read as a host name. A value of any other shape is read as
+// it stands, so an address, a MAC or a host name a record carries from a
+// host's receipt or a carried folder is still screened. It changes nothing in
 // rec.
 func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 	r := rec
-	r.RootSHA, r.FrozenCommit = "", ""
-	r.Binary.SHA256, r.Binary.Version, r.Binary.Revision = "", "", ""
-	r.Declaration.SHA256 = ""
-	emptied := func(m map[string]string) map[string]string {
+	r.RootSHA, r.FrozenCommit = asDigest(rec.RootSHA), asDigest(rec.FrozenCommit)
+	r.Binary.SHA256, r.Binary.Version, r.Binary.Revision = asDigest(rec.Binary.SHA256), asVersion(rec.Binary.Version), asDigest(rec.Binary.Revision)
+	r.Declaration.SHA256 = asDigest(rec.Declaration.SHA256)
+	digests := func(m map[string]string) map[string]string {
 		if m == nil {
 			return nil
 		}
 		out := make(map[string]string, len(m))
-		for k := range m {
-			out[k] = ""
+		for k, v := range m {
+			out[k] = asDigest(v)
 		}
 		return out
 	}
-	r.PromptSHA256, r.ToolDefinitionsSHA256 = emptied(rec.PromptSHA256), emptied(rec.ToolDefinitionsSHA256)
+	r.PromptSHA256, r.ToolDefinitionsSHA256 = digests(rec.PromptSHA256), digests(rec.ToolDefinitionsSHA256)
 	if rec.RenderTemplate != nil {
 		t := *rec.RenderTemplate
-		t.SHA256 = ""
+		t.SHA256 = asDigest(t.SHA256)
 		r.RenderTemplate = &t
 	}
-	undigested := func(in []ContentRef) []ContentRef {
+	refs := func(in []ContentRef) []ContentRef {
 		out := slices.Clone(in)
 		for i := range out {
-			out[i].SHA256 = ""
+			out[i].SHA256 = asDigest(out[i].SHA256)
 		}
 		return out
 	}
-	r.HiddenTests, r.SeededMaterial = undigested(rec.HiddenTests), undigested(rec.SeededMaterial)
+	r.HiddenTests, r.SeededMaterial = refs(rec.HiddenTests), refs(rec.SeededMaterial)
 	r.Cells = slices.Clone(rec.Cells)
 	for i := range r.Cells {
-		r.Cells[i].HarnessVersion = ""
+		r.Cells[i].HarnessVersion = asVersion(rec.Cells[i].HarnessVersion)
 		if lp := rec.Cells[i].LocalPin; lp != nil {
 			l := *lp
-			l.RuntimeVersion, l.WeightsSHA256 = "", ""
+			l.RuntimeVersion, l.WeightsSHA256 = asVersion(l.RuntimeVersion), asDigest(l.WeightsSHA256)
 			r.Cells[i].LocalPin = &l
 		}
 	}
 	r.Unpinned = slices.Clone(rec.Unpinned)
 	for i := range r.Unpinned {
-		r.Unpinned[i].Field = ""
+		r.Unpinned[i].Field = rec.asFieldName(rec.Unpinned[i].Field)
 	}
 	return r
+}
+
+var (
+	// bareVersionRe is a version that is a dotted number and nothing else,
+	// which a four-part version shares with an IPv4 address.
+	bareVersionRe = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)+$`)
+	// hexDigestRe is a digest or a commit: lower-case hex, an abbreviated
+	// commit's length at least.
+	hexDigestRe = regexp.MustCompile(`^[0-9a-f]{7,128}$`)
+	// settingNameRe is a setting's name as a cell's unpinned field names it.
+	settingNameRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+)
+
+// asVersion is v as the network screen reads a version: emptied when it is a
+// dotted number and nothing else, the one shape a four-part version shares
+// with an IPv4 address, and read as it stands otherwise. Nothing is withheld
+// from part of a value: rewriting a version's number while keeping the rest
+// let a value the scanner refuses whole read as something it passes (a MAC
+// whose first pair is the number's last part, a host name, a word it reads as
+// prose), so 2.10.3.4 is withheld and 2.10:22:fb:4a:9e:01, 2.1.buildbox.local
+// and 2.1a-kevin-laptop are screened as written. A version with a suffix that
+// reads as an address is refused, the safe way to be wrong.
+func asVersion(v string) string {
+	if bareVersionRe.MatchString(v) {
+		return ""
+	}
+	return v
+}
+
+// asDigest is v as the network screen reads a digest: emptied when it is hex,
+// read as it stands otherwise.
+func asDigest(v string) string {
+	if hexDigestRe.MatchString(v) {
+		return ""
+	}
+	return v
+}
+
+// asFieldName is f as the network screen reads an unpinned field's name:
+// emptied when it is a name abcd builds for this record (the machine's two,
+// or cell.<id>.<field> for one of its cells, with a field abcd names), read
+// as it stands otherwise.
+func (rec RunRecord) asFieldName(f oracle.Field) oracle.Field {
+	if f == RunMachineCPU || f == RunMachineMemory {
+		return ""
+	}
+	for _, c := range rec.Cells {
+		tail, ok := strings.CutPrefix(string(f), "cell."+c.Cell+".")
+		if !ok || !idRe.MatchString(c.Cell) {
+			continue
+		}
+		switch name, setting := strings.CutPrefix(tail, "settings."); {
+		case setting && settingNameRe.MatchString(name),
+			tail == "model", tail == "harness_version", tail == "local_pin":
+			return ""
+		}
+	}
+	return f
 }
 
 // screened is a file to screen: what is written, and the same file as the
@@ -757,7 +820,9 @@ func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 type screened struct {
 	lab.StateFile
 	// network is the file the network kinds (an address, a MAC, a host
-	// name) are screened in: Data with its versions and digests emptied.
+	// name) are screened in: Data with only its bare versions and hex
+	// digests (and a run record's field names abcd builds) emptied, any
+	// other value as written.
 	network []byte
 }
 
@@ -766,11 +831,12 @@ type screened struct {
 // a credential or an identity (a home path, a user or host name, an address)
 // or anything else the launch bundle's scan fails on: the record names every
 // route and launches none. The credential and personal
-// screens read the file as written; the network screen reads it with its
-// versions and digests emptied. A scanner that cannot run, runs degraded, or
-// runs without the augmenter the repository configured refuses rather than
-// reporting clean, as the launch bundle's scan does. A refusal names the file,
-// line and kind, never the value.
+// screens read the file as written; the network screen reads it with only
+// the values screened.network names emptied (its bare versions and hex
+// digests) and any other value as written. A scanner that cannot run, runs
+// degraded, or runs without the augmenter the repository configured refuses
+// rather than reporting clean, as the launch bundle's scan does. A refusal
+// names the file, line and kind, never the value.
 func screen(repoRoot string, files []screened) error {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {

@@ -247,3 +247,34 @@ func TestAProcedureWritesASetOfRecordsWholeOrNotAtAll(t *testing.T) {
 		t.Fatal("WriteStates did not write the set")
 	}
 }
+
+// A procedure lists what it wrote under a folder of its records: each entry's
+// name, sorted, folders and files alike; a folder it never wrote lists as not
+// existing, and a path that is not a record's is refused as ReadState refuses
+// it.
+func TestAProcedureListsTheRecordsUnderAFolder(t *testing.T) {
+	m, _, root := passedLab(t)
+	p, err := OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	for _, rel := range []string{"mx-261023012949-ab12/trials/t/b/2.json", "mx-261023012949-ab12/trials/t/b/10.json", "mx-261023012949-ab12/trials/t/a/1.json"} {
+		if err := p.WriteState(rel, []byte("{}\n")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := p.ListState("mx-261023012949-ab12/trials/t")
+	if err != nil || strings.Join(got, ",") != "a,b" {
+		t.Fatalf("ListState of the cells = %v, %v; want a,b", got, err)
+	}
+	if got, err := p.ListState("mx-261023012949-ab12/trials/t/b"); err != nil || strings.Join(got, ",") != "10.json,2.json" {
+		t.Fatalf("ListState of a cell = %v, %v; want 10.json,2.json", got, err)
+	}
+	if _, err := p.ListState("mx-261023012949-ab12/judging"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ListState of an unwritten folder = %v; want os.ErrNotExist", err)
+	}
+	if _, err := p.ListState("../state"); err == nil {
+		t.Fatal("ListState of a path that is no record's was not refused")
+	}
+}

@@ -70,7 +70,7 @@ func TestAFrozenFileUnderAnUnlistableDirectoryIsNotShownDeleted(t *testing.T) {
 	src.Commit("frozen")
 	frozen := src.Git("rev-parse", "HEAD")
 	store := filepath.Join(t.TempDir(), "matrix-store")
-	clone, err := makeClone(src.Root(), store, reviewRun, frozen, TrialKey{Task: "widget", Cell: "a", Repeat: 1})
+	clone, err := makeClone(src.Root(), store, reviewRun, frozen, TrialKey{Task: "widget", Cell: "a", Repeat: 1}, keyAlias(TrialKey{Task: "widget", Cell: "a", Repeat: 1}))
 	if err != nil {
 		t.Fatal(err)
 	}

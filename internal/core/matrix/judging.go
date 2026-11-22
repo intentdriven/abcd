@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"html"
 	"math/rand/v2"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -60,10 +61,12 @@ const codeAlphabet = "ABCDEFGHJKMNPQRTUVWXY34679"
 // distinct without many draws.
 const codeLen = 4
 
-// writingCopy is one writing copy's text, as its trial produced it.
+// writingCopy is one writing copy's text, as its trial produced it, and the
+// alias its clone was made under (makeCopyClone).
 type writingCopy struct {
-	Key  TrialKey
-	Text string
+	Key   TrialKey
+	Alias string
+	Text  string
 }
 
 // namedText is one document the judges read beside the copies: a source the
@@ -78,13 +81,20 @@ type namedText struct {
 // came back, the task's source material in the order it names it, the good
 // and the bad example the judges calibrate on, and how many subsets to draw.
 type judgingInputs struct {
-	Run            string
-	Task           Task
-	GuestsMayJudge bool
-	Copies         []writingCopy
-	Sources        []namedText
-	Good, Bad      string
-	Judges         int
+	Run  string
+	Task Task
+	// Tasks and Cells are every task's id and every cell the run pins: what
+	// in the run could identify a copy, withheld from its text. RepoRoot and
+	// Store are the run's own checkout and its clone store, each absolute or
+	// empty: where a copy ran, withheld from its text too.
+	Tasks           []string
+	Cells           []CellPin
+	RepoRoot, Store string
+	GuestsMayJudge  bool
+	Copies          []writingCopy
+	Sources         []namedText
+	Good, Bad       string
+	Judges          int
 }
 
 // JudgingDoc is one document a judge reads, rendered as inert text.
@@ -133,6 +143,10 @@ type KeyedCopy struct {
 	Key   TrialKey `json:"key"`
 	Words int      `json:"words"`
 	Bytes int      `json:"bytes"`
+	// Withheld counts the mentions withheld from the copy's text before a
+	// judge reads it: of where it ran, of what in the run identifies it, and
+	// of models and makers.
+	Withheld int `json:"withheld"`
 }
 
 // JudgingKey is the host's own half of a packet: never given to the session.
@@ -225,8 +239,9 @@ func drawJudging(in judgingInputs, seed [32]byte) (JudgingPacket, JudgingKey, er
 	for i, c := range shown {
 		id := fmt.Sprintf("d%d", i+1)
 		docOf[c.Key] = id
-		p.Documents = append(p.Documents, JudgingDoc{ID: id, HTML: renderInert("Copy", c.Text)})
-		k.Documents[id] = KeyedCopy{Key: c.Key, Words: len(strings.Fields(c.Text)), Bytes: len(c.Text)}
+		text, withheld := in.scrub(c)
+		p.Documents = append(p.Documents, JudgingDoc{ID: id, HTML: renderInert("Copy", text)})
+		k.Documents[id] = KeyedCopy{Key: c.Key, Words: len(strings.Fields(text)), Bytes: len(text), Withheld: withheld}
 	}
 	for s, sub := range slots {
 		slot := JudgeSlot{ID: fmt.Sprintf("s%d", s+1)}
@@ -245,6 +260,26 @@ func drawJudging(in judgingInputs, seed [32]byte) (JudgingPacket, JudgingKey, er
 	return p, k, nil
 }
 
+// scrub is copy c's text as a judge reads it: every mention of where it ran
+// (its clone, the clone store, the run's checkout, the home directory, the
+// run's id) and everything the identity scrub withholds (every name in the
+// run that could identify a copy, and every name of a model or its maker)
+// withheld, as a check copy's own words are (identityScrub), so a copy cannot
+// sign its work in front of its judges. It returns how many mentions it
+// withheld. A writing copy is the model's own words throughout: no part of it
+// is the frozen material's, so nothing of it is kept whole.
+func (in judgingInputs) scrub(c writingCopy) (string, int) {
+	dir := ""
+	if in.Store != "" && c.Alias != "" {
+		dir = cloneDir(in.Store, in.Run, c.Alias)
+	}
+	red := checkRedactor{
+		place: newRedactor(reviewInputs{RepoRoot: in.RepoRoot, Store: in.Store, Dir: dir, Run: in.Run}),
+		model: newIdentityScrub(in.Run, c.Key, runIdentity{Tasks: append([]string{in.Task.ID}, in.Tasks...), Cells: in.Cells, Alias: c.Alias}),
+	}
+	return red.text(c.Text)
+}
+
 func (in judgingInputs) validate() error {
 	if !runIDRe.MatchString(in.Run) {
 		return fmt.Errorf("%q is not a run id", echo(in.Run))
@@ -257,6 +292,14 @@ func (in judgingInputs) validate() error {
 	}
 	if len(in.Copies) == 0 {
 		return fmt.Errorf("the task %s has no copy to judge", in.Task.ID)
+	}
+	// What the scrub withholds is required, so a caller that leaves it out
+	// is refused rather than handing judges an unscrubbed copy.
+	if len(in.Tasks) == 0 || len(in.Cells) == 0 {
+		return errors.New("the run's tasks and cells, which the scrub withholds from every copy, are not given")
+	}
+	if !filepath.IsAbs(in.Store) {
+		return errors.New("the run's clone store, which the scrub withholds from every copy, is not given as an absolute path")
 	}
 	if in.Judges < 1 || in.Judges > maxJudgeSlots {
 		return fmt.Errorf("%d judges asked for; from 1 to %d", in.Judges, maxJudgeSlots)
@@ -271,6 +314,9 @@ func (in judgingInputs) validate() error {
 		}
 		if seen[c.Key] {
 			return fmt.Errorf("the copy %s is given twice", c.Key)
+		}
+		if !aliasRe.MatchString(c.Alias) {
+			return fmt.Errorf("the copy %s comes with no alias, which the scrub withholds from it", c.Key)
 		}
 		seen[c.Key] = true
 		if err := readable("the copy "+c.Key.String(), c.Text); err != nil {

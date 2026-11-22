@@ -31,6 +31,15 @@ func TestLocalUsernameGenericAccountNameIsNotAFindingInProse(t *testing.T) {
 			"the hosted Runner image carries git",
 			"a runner-scoped cache",
 		},
+		// A home named by a number (a container's uid-numbered home) names
+		// no person: the number is ordinary text wherever it stands.
+		"1000": {
+			"the review drew item-1000 from 1000 copies",
+			"a 1000-line file",
+		},
+		"001": {
+			"the request numbers its first item item-001",
+		},
 	}
 	for user, lines := range cases {
 		id := Identity{HomeUser: user}
@@ -62,6 +71,9 @@ func TestLocalUsernameGenericAccountNameStillCaughtWhereAnAccountStands(t *testi
 		"runner": {
 			"work tree at /home/runner/work/repo", // abcd-audit:allow
 			"log in as runner@ci.example.com",
+		},
+		"1000": {
+			"backup written to /home/1000/data", // abcd-audit:allow
 		},
 	}
 	for user, lines := range cases {
@@ -120,6 +132,20 @@ func TestLocalUsernameSpecificAccountNameKeepsTheWordRule(t *testing.T) {
 	}
 }
 
+// A login of more than six digits is a person's number (a student's or a
+// member of staff's), not a uid-numbered home, so it keeps the whole-word
+// rule; six digits or fewer read as a generic account.
+func TestLocalUsernameALongNumericLoginKeepsTheWordRule(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	if got := ScanText("access granted to 20241234 today", Identity{HomeUser: "20241234"}, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+		t.Errorf("a long numeric login in prose was not flagged: %+v", got)
+	}
+	if got := ScanText("the review drew item-123456 today", Identity{HomeUser: "123456"}, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("a six-digit home in prose was flagged as the local username: %+v", got)
+	}
+}
+
 // The finding names where the matched value came from, so a reader can tell a
 // collision from a leak without reopening the scanner.
 func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
@@ -137,12 +163,12 @@ func TestLocalUsernameFindingNamesItsIdentitySource(t *testing.T) {
 }
 
 func TestGenericAccountNameFloor(t *testing.T) {
-	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a"} {
+	for _, name := range []string{"abcd", "dev", "DEV", "runner", "root", "ubuntu", "ec2-user", "me", "a", "1000", "001", "65534", "123456"} {
 		if !isGenericAccountName(name) {
 			t.Errorf("%q should be under the generic-account floor", name)
 		}
 	}
-	for _, name := range []string{"zq8home", "alice", "colleague", ""} { // abcd-audit:allow
+	for _, name := range []string{"zq8home", "alice", "colleague", "", "user1000", "1000a", "1234567", "20241234"} { // abcd-audit:allow
 		if isGenericAccountName(name) {
 			t.Errorf("%q should not be under the generic-account floor", name)
 		}

@@ -152,14 +152,139 @@ with the digest it carried:
 
 The plan is built again and must carry that digest; an approval naming another
 plan is refused with nothing written. Never pass `--approve` on your own
-judgement, and never with a digest the person did not see. Starting the run's
-copies is not built yet, so a consented run is recorded in the lab and nothing
-is launched: `launched` is false and `note` says so; tell the person that
-plainly. Refused, exit 2, with nothing written: a metered cell with no spending
+judgement, and never with a digest the person did not see. The run then hands
+off every pilot copy: `copies` lists each one's `key`, `state`, `clone` (its own
+clone of the frozen commit under a random alias, outside every checkout) and
+`brief` (what the copy is asked, naming no task id, cell, route or model). A
+clone bound for a provider passes the launch bundle's secret scan first, and a
+hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
+make, below. A runner cell's copy is `awaiting_runner`: abcd does not launch a
+runner in a clone yet, and nothing stands in for it, so never make it yourself
+and tell the person plainly that those cells wait. Refused, exit 2, with nothing
+written: a metered cell with no spending
 cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
 person's own machine configuration, never the repository's), a local cell with
 no load cap or one at or above the cores, a route this machine's runners refuse,
 an OpenRouter or local cell with no pin, and a stale approval.
+
+**Make each host cell's copy and hand it back.** Show a copy's hand-off with:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <task>/<cell>/<repeat>
+```
+
+Hand its `brief` to a fresh sub-agent working in its `clone` and nowhere else,
+telling it nothing more of the run. For a code copy, then run the task's hidden
+tests against the clone yourself, through the load gate, outside the clone.
+Hand the copy back with a receipt file, `{"schema_version": 1, "outcome":
+"made"}` or `"failed"` with a `reason`, with `started_at`, `finished_at`,
+`model_time_ms` and `gate_wait_ms` where known, and for a made code copy
+`"score": {"passed": <n>, "total": <n>}` from those hidden tests:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <key> --receipt <file> --transcript <file> [--answer <file>] [--form doc-fidelity|consistency]
+```
+
+`--transcript` is the sub-agent's transcript, which the compliance check reads
+for reads outside the clone (without it that rule is unexamined and the copy is
+reported apart). A writing copy names its document with `--answer`; a check
+copy its answer with `--answer` and `--form`. The copy is checked for
+compliance first, and the trial (`status`, `reason`, `score`, `compliance`) is
+written once; the trial says the host, not abcd, ran the hidden tests, and its
+`unpinned` marks the score, the model served, the harness version and the times
+as `self_reported` where the receipt gives them and `trial.calls` as
+`not_reported`, since a host copy carries no call receipts. A writing copy's
+document is kept only once its trial passes the secret screen. A check
+copy's clone is deleted only once its trial is written. Refused, exit 2, with
+nothing written: a runner cell's copy, a copy already handed back, a receipt,
+score or answer that does not validate, and a trial the secret screen refuses.
+A refusal raised once a check copy's findings are recorded, or a writing copy's
+document is kept, says so instead.
+Hand back every host copy you were handed, a failed one with its reason: a copy
+never handed back is in no rate, and the report names it.
+
+**Review a code task's copies**, once every copy of it handed to you is back:
+the review is drawn once, so it is refused while one is out.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task>
+```
+
+`requests` gives each reviewer cell's blinded `request` about each copy under
+an opaque `label`. Hand each `handed_off` request, and nothing else, to a fresh
+sub-agent, and save its one JSON answer at `<dir>/<reviewer-cell>/<label>.json`;
+a request `awaiting_runner` waits, as a runner cell's copy does. Every request
+passes the secret screen before it is stored or handed out, and a refusal
+draws nothing. Then record
+them, read as untrusted input and scored before anything is written:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix review --json <lab-id> <run-id> <task> --answers <dir>
+```
+
+**Draw a writing task's judging** from its made copies, once every copy of it
+handed to you is back, with one good and one bad example the person gives and
+how many judges' subsets to draw:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>
+```
+
+The packet, written in the run's state with its key beside it, renders every
+copy as inert text with every mention of where it ran, its alias, every task,
+cell, route and model and every maker withheld, however it is spelt (split by
+invisible characters or by separators between its letters, in look-alike
+letters, or with its version after it), and names no run, task or path.
+The packet and key pass the secret screen before they are written, and a
+refusal draws nothing. It is what the person's judging session shows; hand the session's verdict file
+back with `--verdicts <file>` (and `--host <login>` when the host judged too,
+whose rankings are reported apart).
+
+**Read a recorded run's report**, which writes nothing:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix report --json <lab-id> <run-id>
+```
+
+`code` gives, per task, each builder cell's `pass_at_1` (passes of the attempts
+that count, the rate and its 95% `interval`), `host_reported` (how many of
+those rest on the host's own report of its hidden tests), `pass_hat_k`, the copies set
+apart (`not_started`, `unexamined`, `excluded`, in no rate), `reviews`
+(`confirmed` findings on failing copies, `unconfirmed` flags on passing ones),
+`costs` by unit with `per_pass` and what the figure is `comparable` with, and
+`model_time_ms` apart from `gate_wait_ms`; and `comparisons`, each `ranked` only
+at the repeats its power estimate asks for (`needed`, from the declaration's
+`repeats.min_difference`), otherwise stating `min_detectable`, the smallest
+difference it could have detected, in its `note`; one resting on host-reported
+results says so in its `note`, with `host_reported` set, and a limitation names
+those copies. `writing` gives each model's
+`ratings` (a regularised Bradley–Terry rating, its `interval` and whether it is
+`separable`), `agreement` (alpha with an interval, or `not_estimable` saying
+why), `good_enough` and each copy's length; with fewer than three judges,
+`floor` says so and `rankings` holds each judge's ranking instead. `check` gives
+the table the person's locked verdicts unlocked, null until then. `drift`, on a
+re-run, lists every field that drifted from the first run with both values.
+`unreturned` lists every copy handed off that holds no trial, by task, cell
+and `state` (`not_handed_back`, `awaiting_runner`, `refused`, or
+`never_handed_off` when the run's start stopped before it), with its
+`repeats`; each code cell counts them too, and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
+plain words: a comparison that is not ranked is not a result either way.
+
+**Re-run a recorded run** from its own declaration, by its id in the lab or a
+run's folder carried from elsewhere:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix rerun --json <lab-id> <run-id|run-folder>
+```
+
+It shows the plan as the first form does and writes nothing; record the re-run
+only after the person has seen that plan and said yes to it, with the digest it
+carried (`--approve <digest>`). The re-run's record is written beside a copy of
+the first run's records, its pilot copies are handed off as the first form's
+are, and its report shows the drift. Refused, exit 2, with
+nothing written: a run the lab never recorded, a folder holding no run's
+records, a run whose frozen commit is not the lab's pin, a run whose records
+the secret screen refuses, and a stale approval.
 
 Exit codes: `0` done; `1` a gate refused or a halted lab refused a probe; `2`
 the request was refused (no checkout, an unknown lab, a bad name, question or
@@ -189,6 +314,17 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd lab harvest lab-260901000000-0123abc`.
 - `abcd lab matrix <lab-id> <declaration.json> [flags]`
   - An example call is `abcd lab matrix lab-260901000000-0123abc matrix.json`.
+- `abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [flags]`
+  - An example call is `abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1`.
+- `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
+  - An example call is `abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3`.
+- `abcd lab matrix report <lab-id> <run-id> [flags]`
+  - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
+- `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
+  - An example call is `abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b`.
+- `abcd lab matrix review <lab-id> <run-id> <task> [flags]`
+  - Reads `--answers`, the interview answers.
+  - An example call is `abcd lab matrix review lab-260901000000-0123abc mx-260901000000-0a1b feature-a`.
 - `abcd lab mint <question> [flags]`
   - An example call is `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`.
 - `abcd lab preflight <lab-id> [flags]`

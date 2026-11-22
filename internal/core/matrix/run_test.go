@@ -685,9 +685,10 @@ func TestARunWrittenPartWayLeavesNothing(t *testing.T) {
 	}
 }
 
-// A version is screened as a version, never as an address: a four-part
-// runtime, harness or binary version is written, while the token screen still
-// covers those fields and an address in free text (a route) still refuses.
+// A bare version is screened as a version, not as an address: a four-part
+// runtime, harness or binary version that is a dotted number and nothing else
+// is written, while the token screen still covers those fields and an address
+// in free text (a route) still refuses.
 func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 	root, home, m, in := matrixLab(t)
 	in.Binary.Version = "1.10.2.3"
@@ -702,7 +703,7 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 		t.Fatalf("writeRun with four-part versions: %v", err)
 	}
 	// The network screen reads the record line for line as written, with
-	// only its versions and digests emptied.
+	// only its digests and its bare versions emptied.
 	js, err := encodeRun(rec)
 	if err != nil {
 		t.Fatal(err)
@@ -716,7 +717,8 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 		t.Fatalf("the screened record has %d lines; the record has %d", len(vl), len(jl))
 	}
 	for i := range jl {
-		if jl[i] != vl[i] && (strings.Contains(vl[i], "1.10.2.3") || !strings.HasSuffix(strings.TrimRight(vl[i], ","), `""`)) {
+		emptied := strings.HasSuffix(strings.TrimRight(vl[i], ","), `""`)
+		if jl[i] != vl[i] && (strings.Contains(vl[i], "1.10.2.3") || !emptied) {
 			t.Errorf("line %d differs other than by an emptied value: %q vs %q", i+1, jl[i], vl[i])
 		}
 	}
@@ -878,5 +880,23 @@ func TestAnUnpinnedFieldNamedForACellIsNotReadAsAHostName(t *testing.T) {
 	}
 	if err := writeRun(root, rec, in.Declaration); err != nil {
 		t.Fatalf("writeRun with cell.local-rev.harness_version unpinned: %v", err)
+	}
+}
+
+// A home whose last segment is a bare number (a container's uid-numbered
+// home) names no person, so the screen does not refuse that number where it
+// stands as ordinary text: a review request's "item-1000", a count of copies.
+func TestTheScreenPassesTheNumberAHomeIsNamedBy(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "1000")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	r := gittest.NewRepo(t)
+	r.Write("README.md", "root\n")
+	r.Commit("root")
+	data := []byte("# item-1000\n\nThe review drew 1000 copies.\n")
+	if err := screen(r.Root(), []screened{{lab.StateFile{Rel: "run/review/item-1000.md", Data: data}, data}}); err != nil {
+		t.Errorf("the screen under HOME=%s refused the number it is named by: %v", home, err)
 	}
 }

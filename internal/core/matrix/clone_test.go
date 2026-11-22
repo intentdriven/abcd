@@ -1,6 +1,8 @@
 package matrix
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,14 @@ import (
 // holding no local-tier file and no other copy's refs.
 
 const cloneRun = "mx-261108070000-ab12"
+
+// keyAlias is the alias a test makes copy key's clone under where no lab
+// records one (makeCopyClone mints it at random): fixed per key, and spelling
+// nothing of it.
+func keyAlias(key TrialKey) string {
+	sum := sha256.Sum256([]byte(key.String()))
+	return "copy_" + hex.EncodeToString(sum[:16])
+}
 
 // cloneSource is a repository with a frozen commit, a later commit on another
 // branch, and a local tier holding a file, as the person's checkout would.
@@ -45,7 +55,7 @@ func gitOut(t *testing.T, env []string, dir string, args ...string) string {
 }
 
 // TestACopyIsAnIsolatedCloneOfTheFrozenCommit: the clone is under the store,
-// keyed by task, cell and repeat, at the frozen commit with nothing but a
+// at the run and the copy's alias, at the frozen commit with nothing but a
 // detached HEAD: no branch, no remote, no other copy's refs, no objects shared
 // with the source, and no local-tier file.
 func TestACopyIsAnIsolatedCloneOfTheFrozenCommit(t *testing.T) {
@@ -53,12 +63,12 @@ func TestACopyIsAnIsolatedCloneOfTheFrozenCommit(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 2}
 
-	dir, err := makeClone(src.Root(), store, cloneRun, frozen, key)
+	dir, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(store, cloneRun, "widget", "cheap", "2"); dir != want {
-		t.Fatalf("the clone is keyed by run, task, cell and repeat: %s, want %s", dir, want)
+	if want := filepath.Join(store, cloneRun, keyAlias(key)); dir != want {
+		t.Fatalf("the clone is made under the run and the copy's alias: %s, want %s", dir, want)
 	}
 	env := src.Env()
 	if head := gitOut(t, env, dir, "rev-parse", "HEAD"); head != frozen {
@@ -104,7 +114,7 @@ func TestACloneHoldsTheFrozenCommitAlone(t *testing.T) {
 	frozen := r.Git("rev-parse", "HEAD")
 	store := filepath.Join(t.TempDir(), "matrix-store")
 
-	dir, err := makeClone(r.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1})
+	dir, err := makeClone(r.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +149,7 @@ func TestACopyIsNeverMadeInsideAWorkingTree(t *testing.T) {
 		"another repository": filepath.Join(other.Root(), "store"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := makeClone(src.Root(), store, cloneRun, frozen, key); err == nil ||
+			if _, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key)); err == nil ||
 				!strings.Contains(err.Error(), "working tree") {
 				t.Fatalf("a store inside %s is refused naming the working tree: %v", name, err)
 			}
@@ -156,10 +166,10 @@ func TestACopyIsMadeOnce(t *testing.T) {
 	src, frozen := cloneSource(t)
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
-	if _, err := makeClone(src.Root(), store, cloneRun, frozen, key); err != nil {
+	if _, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := makeClone(src.Root(), store, cloneRun, frozen, key); err == nil || !strings.Contains(err.Error(), "already") {
+	if _, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key)); err == nil || !strings.Contains(err.Error(), "already") {
 		t.Fatalf("a second clone of one key is refused: %v", err)
 	}
 }
@@ -178,7 +188,7 @@ func TestACloneRefusesABadKeyOrCommit(t *testing.T) {
 		"a short commit": {cloneRun, frozen[:12], TrialKey{Task: "w", Cell: "c", Repeat: 1}},
 		"an option":      {cloneRun, "--upload-pack=x", TrialKey{Task: "w", Cell: "c", Repeat: 1}},
 	} {
-		if _, err := makeClone(src.Root(), store, c.run, c.commit, c.key); err == nil {
+		if _, err := makeClone(src.Root(), store, c.run, c.commit, c.key, keyAlias(c.key)); err == nil {
 			t.Fatalf("%s that is not one is refused", name)
 		}
 	}
@@ -195,7 +205,7 @@ func TestACloneTakesItsSourceByAbsolutePath(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
 	for _, source := range []string{"src", "./src", "--upload-pack=x", ""} {
-		_, err := makeClone(source, store, cloneRun, frozen, key)
+		_, err := makeClone(source, store, cloneRun, frozen, key, keyAlias(key))
 		if err == nil || !strings.Contains(err.Error(), "source") || !strings.Contains(err.Error(), "absolute") {
 			t.Fatalf("a source of %q is refused as not absolute: %v", source, err)
 		}
@@ -214,7 +224,7 @@ func TestAFrozenCommitTrackingALocalTierFileIsRefused(t *testing.T) {
 	r.Commit("tracked local tier")
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
-	dir, err := makeClone(r.Root(), store, cloneRun, r.Git("rev-parse", "HEAD"), key)
+	dir, err := makeClone(r.Root(), store, cloneRun, r.Git("rev-parse", "HEAD"), key, keyAlias(key))
 	if err == nil || !strings.Contains(err.Error(), "local tier") {
 		t.Fatalf("a clone holding a local-tier file is refused: %v", err)
 	}

@@ -43,11 +43,11 @@ func newComplianceCase(t *testing.T, more ...func(r *gittest.Repo)) complianceCa
 	frozen := r.Git("rev-parse", "HEAD")
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
-	clone, err := makeClone(r.Root(), store, cloneRun, frozen, key)
+	clone, err := makeClone(r.Root(), store, cloneRun, frozen, key, keyAlias(key))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := makeClone(r.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "dear", Repeat: 1}); err != nil {
+	if _, err := makeClone(r.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "dear", Repeat: 1}, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1})); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := placeHiddenTests(store, cloneRun, "widget", widgetHidden); err != nil {
@@ -56,7 +56,7 @@ func newComplianceCase(t *testing.T, more ...func(r *gittest.Repo)) complianceCa
 	transcript := `{"type":"tool_use","name":"read","input":{"path":"` + filepath.Join(clone, "widget", "widget.go") + `"}}` + "\n" +
 		`{"type":"tool_use","name":"bash","input":{"command":"cd ` + clone + ` && go test ./..."}}` + "\n"
 	return complianceCase{src: r, store: store, clone: clone, in: complianceInputs{
-		RepoRoot: r.Root(), Store: store, Run: cloneRun, Key: key, Frozen: frozen,
+		RepoRoot: r.Root(), Store: store, Run: cloneRun, Key: key, Alias: keyAlias(key), Frozen: frozen,
 		Source: SourceOpenRouter, Transcript: []byte(transcript),
 	}}
 }
@@ -169,10 +169,10 @@ func TestTheComplianceCheckExcludesACopyThatEditedTests(t *testing.T) {
 func TestTheComplianceCheckExcludesACopyThatReadAnotherCopy(t *testing.T) {
 	for name, line := range map[string]func(c complianceCase) string{
 		"a sibling's file": func(c complianceCase) string {
-			return `{"input":{"path":"` + filepath.Join(cloneDir(c.store, cloneRun, TrialKey{"widget", "dear", 1}), "widget", "widget.go") + `"}}`
+			return `{"input":{"path":"` + filepath.Join(cloneDir(c.store, cloneRun, keyAlias(TrialKey{"widget", "dear", 1})), "widget", "widget.go") + `"}}`
 		},
 		"another repeat": func(c complianceCase) string {
-			return "cat " + cloneDir(c.store, cloneRun, TrialKey{"widget", "cheap", 10}) + "/widget/widget.go"
+			return "cat " + cloneDir(c.store, cloneRun, keyAlias(TrialKey{"widget", "cheap", 10})) + "/widget/widget.go"
 		},
 		"the hidden tests": func(c complianceCase) string {
 			return "cat " + filepath.Join(hiddenDir(c.store, cloneRun, "widget"), "widget", "hidden_test.go")
@@ -182,7 +182,7 @@ func TestTheComplianceCheckExcludesACopyThatReadAnotherCopy(t *testing.T) {
 			return "cat " + c.clone + "/../2/widget/widget.go"
 		},
 		"slashes escaped": func(c complianceCase) string {
-			return `{"path":"` + strings.ReplaceAll(cloneDir(c.store, cloneRun, TrialKey{"widget", "dear", 1}), "/", `\/`) + `"}`
+			return `{"path":"` + strings.ReplaceAll(cloneDir(c.store, cloneRun, keyAlias(TrialKey{"widget", "dear", 1})), "/", `\/`) + `"}`
 		},
 		// The store as its links resolve (a temporary directory on macOS is
 		// under /var, a link to /private/var), a path the check was not given.
@@ -375,7 +375,9 @@ func TestATrialCarriesTheComplianceItsStatusRestsOn(t *testing.T) {
 // its clone's root or from a folder inside it) and a link the clone holds that
 // leads out of it into the store are each a read outside the copy's own clone.
 func TestOwnCopyOnlyReadsTheStoreInEverySpelling(t *testing.T) {
-	sibling := func(c complianceCase) string { return cloneDir(c.store, cloneRun, TrialKey{"widget", "dear", 1}) }
+	sibling := func(c complianceCase) string {
+		return cloneDir(c.store, cloneRun, keyAlias(TrialKey{"widget", "dear", 1}))
+	}
 	home := func(t *testing.T, c complianceCase) string {
 		t.Helper()
 		t.Setenv("HOME", filepath.Dir(c.store))
@@ -400,26 +402,28 @@ func TestOwnCopyOnlyReadsTheStoreInEverySpelling(t *testing.T) {
 			return "cc -I$HOME/" + home(t, c) + "/widget -c x.c"
 		},
 		"a doubled slash": func(t *testing.T, c complianceCase) string {
-			return "cat " + c.store + "//" + cloneRun + "/widget/dear/1/README.md"
+			return "cat " + c.store + "//" + cloneRun + "/" + keyAlias(TrialKey{"widget", "dear", 1}) + "/README.md"
 		},
 		"a dot segment": func(t *testing.T, c complianceCase) string {
-			return "cat " + c.store + "/./" + cloneRun + "/widget/dear/1/README.md"
+			return "cat " + c.store + "/./" + cloneRun + "/" + keyAlias(TrialKey{"widget", "dear", 1}) + "/README.md"
 		},
 		"another case": func(t *testing.T, c complianceCase) string {
 			return "cat " + strings.ToUpper(sibling(c)) + "/README.md"
 		},
 		"a climb from the clone's root": func(t *testing.T, c complianceCase) string {
-			return "cat ../../dear/1/widget/widget.go"
+			return "cat ../" + keyAlias(TrialKey{"widget", "dear", 1}) + "/widget/widget.go"
 		},
 		"a climb from a folder inside it": func(t *testing.T, c complianceCase) string {
-			return "cd widget && cat ../../../dear/1/README.md"
+			return "cd widget && cat ../../" + keyAlias(TrialKey{"widget", "dear", 1}) + "/README.md"
 		},
 		"an escaped climb": func(t *testing.T, c complianceCase) string {
-			return `{"command":"cat ..\/..\/dear\/1\/README.md"}`
+			return `{"command":"cat ..\/` + keyAlias(TrialKey{"widget", "dear", 1}) + `\/README.md"}`
 		},
-		"a climb from $PWD": func(t *testing.T, c complianceCase) string { return "cat $PWD/../../dear/1/README.md" },
+		"a climb from $PWD": func(t *testing.T, c complianceCase) string {
+			return "cat $PWD/../" + keyAlias(TrialKey{"widget", "dear", 1}) + "/README.md"
+		},
 		"a climb to the hidden tests": func(t *testing.T, c complianceCase) string {
-			return "cat ../../../../hidden/" + cloneRun + "/widget/widget/hidden_test.go"
+			return "cat ../../hidden/" + cloneRun + "/" + hiddenName(cloneRun, "widget") + "/widget/hidden_test.go"
 		},
 		"a link out of the clone": func(t *testing.T, c complianceCase) string {
 			if err := os.Symlink(sibling(c), filepath.Join(c.clone, "peek")); err != nil {
@@ -428,7 +432,7 @@ func TestOwnCopyOnlyReadsTheStoreInEverySpelling(t *testing.T) {
 			return "cat peek/widget/widget.go"
 		},
 		"a relative link out of the clone": func(t *testing.T, c complianceCase) string {
-			if err := os.Symlink("../../../dear/1", filepath.Join(c.clone, "widget", "peek")); err != nil {
+			if err := os.Symlink("../../"+keyAlias(TrialKey{"widget", "dear", 1}), filepath.Join(c.clone, "widget", "peek")); err != nil {
 				t.Fatal(err)
 			}
 			return "cat widget/peek/README.md"

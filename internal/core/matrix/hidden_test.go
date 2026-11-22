@@ -21,7 +21,7 @@ func TestHiddenTestsSitOutsideTheClone(t *testing.T) {
 	src, frozen := cloneSource(t)
 	store := filepath.Join(t.TempDir(), "matrix-store")
 	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
-	clone, err := makeClone(src.Root(), store, cloneRun, frozen, key)
+	clone, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestHiddenTestsSitOutsideTheClone(t *testing.T) {
 		t.Fatalf("the hidden tests are at %s, inside the clone %s", dir, clone)
 	}
 	for _, other := range []TrialKey{key, {Task: "widget", Cell: "cheap", Repeat: 2}, {Task: "hidden", Cell: "x", Repeat: 1}} {
-		if rel, _ := filepath.Rel(cloneDir(store, cloneRun, other), dir); !strings.HasPrefix(rel, "..") {
+		if rel, _ := filepath.Rel(cloneDir(store, cloneRun, keyAlias(other)), dir); !strings.HasPrefix(rel, "..") {
 			t.Fatalf("the hidden tests sit inside copy %s's clone", other)
 		}
 	}
@@ -87,7 +87,7 @@ func TestAHiddenTestTheCloneHoldsIsRefused(t *testing.T) {
 	src.Commit("leak a hidden case")
 	frozen := src.Git("rev-parse", "HEAD")
 	store := filepath.Join(t.TempDir(), "matrix-store")
-	clone, err := makeClone(src.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1})
+	clone, err := makeClone(src.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestHiddenTestErrorsNameNoPlaceOnThisMachine(t *testing.T) {
 
 	src, frozen := cloneSource(t)
 	store = filepath.Join(t.TempDir(), "matrix-store")
-	clone, err := makeClone(src.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1})
+	clone, err := makeClone(src.Root(), store, cloneRun, frozen, TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
 	if err != nil {
 		t.Fatal(err)
 	}

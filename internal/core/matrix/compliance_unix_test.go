@@ -138,3 +138,40 @@ func TestAGitThatWaitsIsStoppedAtItsBound(t *testing.T) {
 		t.Fatalf("a git that waits took %s to stop; want about its bound", took)
 	}
 }
+
+// The whole compliance check, every git call and the transcript scan, runs
+// under one overall deadline (spc-2610161949559050 step 8): a check whose git
+// waits (here on the run checkout's configuration, a FIFO no one writes) is
+// stopped at that deadline, well before any one call's own bound, and the
+// rules it could not finish are unexamined, naming the deadline, so the copy
+// is reported apart and one hung check never stalls the run.
+func TestTheComplianceCheckStopsAtItsOverallDeadline(t *testing.T) {
+	c := newComplianceCase(t)
+	config := filepath.Join(c.src.Root(), ".git", "config")
+	if err := os.Remove(config); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c.in.Within = 2 * time.Second
+	start := time.Now()
+	got, err := checkCompliance(c.in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 30*time.Second {
+		t.Fatalf("the check took %s; want it stopped at its deadline of %s", took, c.in.Within)
+	}
+	if err := got.validate(); err != nil {
+		t.Fatalf("the stopped check's result is refused by its own record: %v", err)
+	}
+	for _, rule := range []ComplianceRule{RuleTestsKept, RuleOwnCopyOnly} {
+		if ch := ruleOf(t, got, rule); ch.State != StateUnexamined || !strings.Contains(ch.Detail, "did not finish within 2s") {
+			t.Errorf("%s = %+v; want it unexamined, naming the deadline", rule, ch)
+		}
+	}
+	if v := got.verdict(); v != StatusUnexamined {
+		t.Fatalf("the stopped check makes the copy %q; want it unexamined", v)
+	}
+}
