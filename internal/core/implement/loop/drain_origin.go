@@ -161,13 +161,16 @@ type originView struct {
 
 // lastFetchedOrigin is origin's default branch as last fetched (the ref the
 // lane's worktree is cut from, gitutil.DefaultRef), or the kind of wait and
-// why there is none.
+// why there is none. The ref's commit is resolved as stored
+// (gitutil.RunCappedAsStored), as the lane's base is (worktreeStage), so the
+// commit whose ledger is read is the one the ref names, never one a
+// refs/replace entry stands in for it.
 func lastFetchedOrigin(repoRoot string) (v originView, kind, why string) {
 	ref := gitutil.DefaultRef(repoRoot)
 	if !strings.HasPrefix(ref, "refs/remotes/"+claim.Remote+"/") {
 		return originView{}, DrainOriginHead, "this checkout names no default branch of " + claim.Remote + " (no origin/HEAD, and no origin/main, master, trunk or develop)"
 	}
-	sha, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	sha, err := gitutil.RunCappedAsStored(repoRoot, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(sha) {
 		return originView{}, DrainOriginDefaultBranch, "could not resolve " + gitutil.ShortRef(ref) + "'s commit"
 	}

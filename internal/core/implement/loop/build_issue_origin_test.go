@@ -86,6 +86,67 @@ func TestABuildOfAnIssueOnOriginAloneIsJudgedFromOrigin(t *testing.T) {
 	}
 }
 
+// TestABuildOfAnIssueOnOriginIsJudgedFromItsTipAsStored: origin's default
+// branch holds an issue whose found_at an earlier commit named otherwise, and
+// this checkout holds a refs/replace entry standing a tag of that earlier
+// commit in for origin's tip. The build judges the issue from the tip as
+// stored: it reserves the tip's found_at, and a walled stage of the run
+// declares it.
+func TestABuildOfAnIssueOnOriginIsJudgedFromItsTipAsStored(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	pushFromOtherCopy(t, bare, "file "+originIssue, func(dir string) {
+		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: dir, Text: "The drain page misses a flag (" + originIssue + ")",
+			Severity: capture.SeverityMinor, Category: capture.Category("tech-debt"), Source: "manual-test", Slug: "flag",
+			FoundDuring: "the loop's tests", FoundAt: "AGENTS.md", ForceID: originIssue, Remedy: "Name the new flag on the drain page."}); err != nil {
+			t.Fatalf("capture on origin: %v", err)
+		}
+	})
+	earlier := gitIn(t, bare, "rev-parse", "main")
+	pushFromOtherCopy(t, bare, "point "+originIssue+" at the drain page", func(dir string) {
+		matches, _ := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", "open", originIssue+"-*.md"))
+		if len(matches) != 1 {
+			t.Fatalf("origin holds no open record of %s", originIssue)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(body), "\n")
+		i := slices.IndexFunc(lines, func(l string) bool { return strings.HasPrefix(l, "found_at:") })
+		if i < 0 {
+			t.Fatalf("the record names no found_at:\n%s", body)
+		}
+		lines[i] = `found_at: "commands/drain.md"`
+		if err := os.WriteFile(matches[0], []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	tip := gitIn(t, bare, "rev-parse", "main")
+	repo.Git("fetch", "-q", "origin")
+	repo.Git("-c", "tag.gpgsign=false", "tag", "-a", "-m", "stand-in", "stand-in", earlier)
+	standIn := repo.Git("rev-parse", "refs/tags/stand-in")
+	repo.Git("update-ref", "-d", "refs/tags/stand-in")
+	repo.Git("update-ref", "refs/replace/"+tip, standIn)
+
+	start, err := Start(repo.Root(), originIssue, Options{})
+	if err != nil {
+		t.Fatalf("a build of an issue origin holds open is refused: %v", err)
+	}
+	if row := eligibleRow(t, start.Checks); !row.OK || !strings.Contains(row.Detail, "read from origin/main at "+shortSHA(tip)) {
+		t.Fatalf("the eligible row = %+v; want it read from origin's tip %s", row, shortSHA(tip))
+	}
+	if fp := footprintOf(t, bare, originIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
+		t.Fatalf("the reservation's footprint is the tip's found_at: %v", fp)
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := declaredPaths(repo.Root(), st, "nothing"); !slices.Equal(got, []string{"commands/drain.md"}) {
+		t.Fatalf("a walled stage of the run declares the tip's found_at: %v", got)
+	}
+}
+
 // TestABuildOfAnIssueFinishedOnOriginIsRefusedSayingTheCheckoutIsBehind:
 // Quinn resolves an issue on origin that Pat's checkout still holds open; the
 // build refuses it as origin's ledger reads, says the checkout is behind, and
