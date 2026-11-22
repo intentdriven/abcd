@@ -32,6 +32,7 @@ ones the command page hands them.
 | `intake` | — | shipped |
 | `triage` | — | shipped |
 | `fixed` | — | shipped |
+| `queue` | — | shipped |
 | `close` | — | shipped |
 | `check` | gate | shipped |
 | `publish` | — | shipped |
