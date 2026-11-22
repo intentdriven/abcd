@@ -1458,8 +1458,9 @@ func globOne(p, word string) (string, bool) {
 	dot := strings.HasPrefix(tail[len(tail)-1], ".")
 	var kept []string
 	for _, m := range matches {
-		if dot || !strings.HasPrefix(path.Base(m), ".") {
-			kept = append(kept, filepath.Join(dir, filepath.FromSlash(m)))
+		full := filepath.Join(dir, filepath.FromSlash(m))
+		if dot || !strings.HasPrefix(filepath.Base(full), ".") {
+			kept = append(kept, full)
 		}
 	}
 	if len(kept) != 1 {
