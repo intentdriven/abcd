@@ -282,6 +282,33 @@ the run's summary. A missing owner or secret refuses the bump by name; the
 workflow never pushes with its own token and never keeps the bot as author. The
 attribution gate is unchanged and judges the result like any other commit.
 
+**While the workflow cannot re-author a bump, a person relands it through
+abcd's launch verb**
+([iss-2611220952509874](../../../work/issues/resolved/iss-2611220952509874-with-the-dependency-re-authoring-opt-in.md)),
+and the workflow's refusal for a missing owner or secret names the sub-verb that does it.
+Bare, it asks the forge for the open pull requests a declared bot opened from a
+declared prefix in this repository, and lists them; it writes nothing. With a
+pull request it fetches origin's default branch and the pull request's branch,
+and judges the pull request with the scaffolded script's own `check` mode
+against the declaration the default branch stores, so the bound has one parser
+and one check: the bot, the actor (the account whose push last moved the branch,
+read from the forge's activity record), the prefix, one commit by the bot, and
+only the row's files at the row's directory. The script's `rows` mode prints the
+parsed declaration, which the listing and the board read. An in-bound commit is
+applied onto the default branch's tip as stored by a three-way merge from its
+own parent, with git's built-in merge in place of any configured driver and no
+working tree written, and committed under the checkout's git identity on the
+local branch `reland/pr-<number>`, with a message naming the bot's commit and
+`Supersedes #<number>`. A conflict refuses and says to redo the bump with the
+ecosystem's own tool; so do a bump outside the bound, a default branch that
+already holds the change, a machine identity and an existing branch of that
+name. The trailer is `Assisted-by: None`, or the model the caller names, which
+an agent's session must name. It pushes nothing and opens nothing, and
+names `abcd land` as the next step: it is a person's act, and the workflow never
+runs it. While the declaration has no owner, the facilitator's board adds a
+`bumps` row naming origin's branches under a declared prefix as last fetched,
+from the disk alone ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
+
 It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
 the caller confirms, and a structural fault before the writes, a missing declaration or an unknown
