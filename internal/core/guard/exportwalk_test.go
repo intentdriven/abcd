@@ -377,16 +377,18 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 		}
 	}
 	for line, id := range map[string]string{
-		`env "$PAIR" opencode run x`:                    "agent-launch-opencode-config-env",
-		`env -C "$wt" "$PAIR" opencode run x`:           "agent-launch-opencode-config-env",
-		`env -u "$v" "$PAIR" claude -p x`:               "agent-launch-claude-config-env",
-		`env -S "$s" opencode run x`:                    "agent-launch-opencode-config-env",
-		`env -C "$wt" OPENCODE_CONFIG=x opencode run x`: "agent-launch-opencode-config-env",
-		`env -u $V opencode run x`:                      "agent-launch-opencode-config-env",
-		`env -C $(cat d) opencode run x`:                "agent-launch-opencode-config-env",
-		`env --unset ${V} opencode run x`:               "agent-launch-opencode-config-env",
-		`sudo -u $U opencode run x`:                     "agent-launch-opencode-config-env",
-		`sudo -u "$u" "$PAIR" opencode run x`:           "agent-launch-opencode-config-env",
+		`env "$PAIR" opencode run x`:                       "agent-launch-opencode-config-env",
+		`env -C "$wt" "$PAIR" opencode run x`:              "agent-launch-opencode-config-env",
+		`env -u "$v" "$PAIR" claude -p x`:                  "agent-launch-claude-config-env",
+		`env -S "$s" opencode run x`:                       "agent-launch-opencode-config-env",
+		`env -C "$wt" OPENCODE_CONFIG=x opencode run x`:    "agent-launch-opencode-config-env",
+		`env -u $V opencode run x`:                         "agent-launch-opencode-config-env",
+		`env -C $(cat d) opencode run x`:                   "agent-launch-opencode-config-env",
+		`env --unset ${V} opencode run x`:                  "agent-launch-opencode-config-env",
+		`sudo -u $U opencode run x`:                        "agent-launch-opencode-config-env",
+		`sudo -u "$u" "$PAIR" opencode run x`:              "agent-launch-opencode-config-env",
+		`sudo -uroot CLAUDE_CONFIG_DIR=/tmp/c claude -p x`: "agent-launch-claude-config-env",
+		`sudo -uhttp OPENCODE_CONFIG=x opencode run x`:     "agent-launch-opencode-config-env",
 	} {
 		d, err := r.Check(line)
 		if err != nil {

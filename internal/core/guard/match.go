@@ -422,13 +422,12 @@ func envSetBefore(s segment, site int, names []string) bool {
 
 // sudoOptionValueNext reports whether the sudo option tok takes the next word
 // as its value: one of sudo's value flags (wrapperValueFlags) standing alone,
-// or a short one standing last in a cluster of short options (`-nu`).
+// or a cluster whose first value flag stands last (`-nu`), read as the
+// wrapper walk reads it (abbreviatesValueFlag): in `-uroot` the `-u` takes
+// the rest of the word, so the next word is not its value.
 func sudoOptionValueNext(tok string) bool {
 	flags := wrapperValueFlags["sudo"]
-	if strings.HasPrefix(tok, "--") {
-		return containsString(flags, tok)
-	}
-	return len(tok) >= 2 && containsString(flags, "-"+tok[len(tok)-1:])
+	return containsString(flags, tok) || abbreviatesValueFlag(tok, flags)
 }
 
 // envOptionValueNext reports whether the env option tok takes the next word
