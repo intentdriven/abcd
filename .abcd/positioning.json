@@ -27,6 +27,7 @@
       "files": [".claude-plugin/marketplace.json"],
       "kind": "regexp",
       "patterns": ["(?s)\"plugins\"\\s*:\\s*\\[\\s*\\{.*?\"description\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\""],
+      "escape": "json",
       "requires": ["listing"],
       "template": "{listing}"
     },
@@ -51,6 +52,7 @@
       "files": ["CITATION.cff"],
       "kind": "regexp",
       "patterns": ["(?m)^abstract: \"(.*)\"$"],
+      "escape": "yaml",
       "requires": ["title", "descriptor"],
       "template": "{title}: {descriptor}"
     }

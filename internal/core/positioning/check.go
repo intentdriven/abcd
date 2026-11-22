@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"go.yaml.in/yaml/v3"
 )
 
 // maxSurfaceBytes caps a guarded surface read. A README or manifest is small;
@@ -224,7 +225,18 @@ func (s Surface) locateSpan(text string) (span, bool, error) {
 			for end > start && (text[end-1] == '\n' || text[end-1] == '\r') {
 				end--
 			}
-			return span{start: start, end: end, text: text[start:end]}, true, nil
+			sp := span{start: start, end: end, text: text[start:end]}
+			if s.Escape != "" {
+				// The capture is the body of a quoted string: compare what it
+				// says, not how it is spelled, and have a proposal re-escape.
+				// A body that does not decode is compared as written, and the
+				// proposal that replaces it is escaped correctly.
+				sp.escaped = true
+				if v, ok := decodeQuoted(s.Escape, sp.text); ok {
+					sp.text = v
+				}
+			}
+			return sp, true, nil
 		}
 		return span{}, false, nil
 	}
@@ -272,6 +284,25 @@ func locateJSONField(text, field string) (span, bool, error) {
 	// Report the value with no usable range: the check still runs, the
 	// re-render declines to propose rather than splicing at a guessed offset.
 	return span{start: -1, end: -1, text: value}, true, nil
+}
+
+// decodeQuoted reads body as the inside of a quoted string in the named
+// format, reporting whether it decodes.
+func decodeQuoted(format, body string) (string, bool) {
+	var v string
+	switch format {
+	case EscapeJSON:
+		if json.Unmarshal([]byte(`"`+body+`"`), &v) != nil {
+			return "", false
+		}
+	case EscapeYAML:
+		if yaml.Unmarshal([]byte(`"`+body+`"`), &v) != nil {
+			return "", false
+		}
+	default:
+		return "", false
+	}
+	return v, true
 }
 
 // normalizeNewlines renders file bytes as the text every locator works over.

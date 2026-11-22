@@ -39,6 +39,13 @@ const (
 	// KindJSONField reads a top-level string field of a JSON manifest, so the
 	// registry is not tied to one manifest format.
 	KindJSONField = "json_field"
+
+	// EscapeJSON says a regexp surface's capture is the body of a JSON string
+	// literal.
+	EscapeJSON = "json"
+	// EscapeYAML says a regexp surface's capture is the body of a YAML
+	// double-quoted scalar.
+	EscapeYAML = "yaml"
 )
 
 // Severity levels a repo may set for the whole positioning family.
@@ -77,6 +84,14 @@ type Surface struct {
 	Patterns []string `json:"patterns,omitempty"`
 	// Field (KindJSONField) is the top-level JSON key holding the description.
 	Field string `json:"field,omitempty"`
+	// Escape (KindRegexp) names the quoted string the capture sits inside:
+	// EscapeJSON for the body of a JSON string literal, EscapeYAML for the
+	// body of a YAML double-quoted scalar. The capture is decoded before it is
+	// compared, and a proposal re-escapes the rendered text before splicing it
+	// back, so a block value holding a quote or a backslash neither breaks the
+	// file nor reads as drift that never clears. Empty means the capture is
+	// plain text. A KindJSONField surface is always decoded and re-escaped.
+	Escape string `json:"escape,omitempty"`
 	// Requires names the block fields this surface must carry (any of
 	// FieldNames). At least one is required.
 	Requires []string `json:"requires"`
@@ -264,9 +279,17 @@ func (s Surface) validate(i int) error {
 				return fmt.Errorf("%w: %s pattern %q has %d capture groups, want exactly 1", ErrConfigInvalid, where, p, n)
 			}
 		}
+		switch s.Escape {
+		case "", EscapeJSON, EscapeYAML:
+		default:
+			return fmt.Errorf("%w: %s.escape must be %q or %q, got %q", ErrConfigInvalid, where, EscapeJSON, EscapeYAML, s.Escape)
+		}
 	case KindJSONField:
 		if strings.TrimSpace(s.Field) == "" {
 			return fmt.Errorf("%w: %s.field is required for kind %q", ErrConfigInvalid, where, KindJSONField)
+		}
+		if s.Escape != "" {
+			return fmt.Errorf("%w: %s.escape applies to kind %q only; a %q surface is always decoded", ErrConfigInvalid, where, KindRegexp, KindJSONField)
 		}
 	default:
 		return fmt.Errorf("%w: %s.kind must be %q or %q, got %q", ErrConfigInvalid, where, KindRegexp, KindJSONField, s.Kind)

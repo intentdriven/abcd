@@ -95,13 +95,13 @@ func Propose(root string, cfg Config) (Proposal, error) {
 
 		replacement := s.render(rep.Block)
 		if sp.escaped {
-			// Splicing back into a JSON string literal: the canonical line must
-			// be re-escaped or the proposed manifest would not parse.
-			enc, merr := json.Marshal(replacement)
+			// Splicing back into a quoted string: the canonical line must be
+			// re-escaped or the proposed file would not parse.
+			esc, merr := escapeQuoted(replacement)
 			if merr != nil {
 				return Proposal{}, merr
 			}
-			replacement = string(enc[1 : len(enc)-1])
+			replacement = esc
 		}
 		proposed := text[:sp.start] + replacement + text[sp.end:]
 		// The locators work over newline-normalised text, but the proposal has
@@ -120,6 +120,18 @@ func Propose(root string, cfg Config) (Proposal, error) {
 		})
 	}
 	return p, nil
+}
+
+// escapeQuoted spells s as the body of a JSON string literal. The same body is
+// valid inside a YAML double-quoted scalar, whose escapes are a superset of
+// JSON's, so one spelling serves a JSON manifest field, an EscapeJSON surface
+// and an EscapeYAML surface alike.
+func escapeQuoted(s string) (string, error) {
+	enc, err := json.Marshal(s)
+	if err != nil {
+		return "", err
+	}
+	return string(enc[1 : len(enc)-1]), nil
 }
 
 // noNewlineMarker is the unified-diff notation for a final line that the file

@@ -90,7 +90,13 @@ regular expression with exactly one capture group around the text to compare, or
 a top-level JSON field), which block fields it requires, and the template a
 proposal renders from. The single group is a rule, not a convention: a pattern
 carrying two makes the whole registry invalid and the check refuses to run,
-naming the pattern and the count it found. Leaving the surface list
+naming the pattern and the count it found. A pattern whose capture sits inside a
+quoted string names that string's format with `escape`: `json` for a JSON string
+literal, `yaml` for a YAML double-quoted scalar. The check then compares what the
+string says rather than how it is escaped, and a proposal escapes the rendered
+text for that format, so a block value holding a quote or a backslash neither
+breaks the file nor reports drift that adopting the proposal cannot clear. A
+top-level JSON field is always read and proposed that way. Leaving the surface list
 empty adopts the canonical three — the README strapline, the plugin manifest
 description, and the conventions-file opening; naming any replaces them, so
 nothing is ever registered silently.
