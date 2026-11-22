@@ -1850,7 +1850,11 @@ archived. Before it removes a worktree it copies the worktree's
 `~/.abcd.noindex/notes/<root-sha>/<UTC time>-<name>/` beside a `manifest.json`,
 and the row names that entry; a file the redaction cannot vouch for (not text,
 over 4 MiB, or a secret it cannot mask) fails the archive and keeps the
-worktree. It then runs `git worktree remove` without `--force`, so git checks
+worktree. abcd's own files there, which it makes again when needed, are left
+out of the archive and go with the worktree: the binary `scripts/abcd.sh`
+builds into `bin/`, and the generated-set cache the reservation views keep at
+`reservation/generated`. Each is known by its path and by what it holds, so a
+note you write at either path is archived. It then runs `git worktree remove` without `--force`, so git checks
 the tree and the lock again and refuses a tree that changed. Files git ignores
 outside the local tier go with the worktree and are not archived, so a
 `reclaimed` or `would reclaim` row, a merged worktree's included, names them:
