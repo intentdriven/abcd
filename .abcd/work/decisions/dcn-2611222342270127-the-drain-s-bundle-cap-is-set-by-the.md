@@ -1,0 +1,6 @@
+---
+id: dcn-2611222342270127
+slug: the-drain-s-bundle-cap-is-set-by-the
+date: 2026-11-22
+---
+2026-11-22 — The drain's bundle cap is set by the person's machine and a repository may only lower it, for itd-2611201450052326, and supersedes dcn-2611201453495520's precedence clause: drain.bundle_max is read from the machine's config.json, or the bundled default when the machine sets none, and a repository's .abcd/config.json may lower it and never raise it; a repository figure above that cap is ignored and named, in the dry run's bundle_max_ignored and in the move that starts a drain, while a value outside 1 to 10 in any layer is still refused naming its file. The rest of dcn-2611201453495520 stands: 1 to 10, fixed when a drain starts and kept on its state with the layer that set it, no flag, and a bundle opening smaller when reservation.max_live leaves fewer reservations. Grounds: a repository's file is whatever its last merged commit wrote, and a merged commit must not raise how much an unattended drain bundles, which is how many of the person's own reservations one lane holds; load.preflights and reservation.max_live are the person's alone for the same reason, and a repository's launch ledger retention below the machine's is ignored and named the same way. Ruled by the integrator in security review, 22 Nov 2026.
