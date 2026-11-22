@@ -184,6 +184,33 @@ func TestReauthorBoundAdmitsAManifestAndLockBump(t *testing.T) {
 	}
 }
 
+// iss-2611220952509874: the rows mode prints the declaration as the script
+// parsed it, so `abcd launch reland` and the board read the bound through the
+// script's own parser rather than a second one, and needs no pull request.
+func TestReauthorRowsModePrintsTheParsedDeclaration(t *testing.T) {
+	rows := "ecosystem=dependabot[bot] dependabot/go_modules/ / go.mod go.sum   # the root module\n" +
+		"ecosystem = dependabot[bot]  dependabot/pip/ /docs requirements.txt\n"
+	for _, c := range []struct{ name, owner, want string }{
+		{"owner unset", "owner_name=\nowner_email=\n", "owner unset\n"},
+		{"owner declared", ownerDeclared, "owner declared\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newReauthorFixtureConf(t, c.owner+rows, nil, nil)
+			out, code := f.runScript(t, "rows", map[string]string{"PR_AUTHOR": "-", "HEAD_SHA": "-", "BASE_SHA": "-"})
+			want := c.want +
+				"row dependabot[bot] dependabot/go_modules/ / go.mod go.sum\n" +
+				"row dependabot[bot]  dependabot/pip/ /docs requirements.txt\n"
+			if code != 0 || out != want {
+				t.Fatalf("rows: exit %d, output:\n%s\nwant:\n%s", code, out, want)
+			}
+		})
+	}
+	f := newReauthorFixtureConf(t, "ecosystem=dependabot[bot] dependabot/go_modules/ go.mod\n", nil, nil)
+	if out, code := f.runScript(t, "rows", nil); code != 1 || !strings.Contains(out, "refused: ") {
+		t.Fatalf("a malformed row was not refused by the rows mode (exit %d):\n%s", code, out)
+	}
+}
+
 // Criteria 2 and 5: anything outside the bound is left alone, green, with the
 // clause it failed named.
 func TestReauthorBoundLeavesEverythingElseAloneAndNamesTheClause(t *testing.T) {

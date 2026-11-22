@@ -49,7 +49,7 @@
 #   GITHUB_API_URL GITHUB_SERVER_URL GITHUB_STEP_SUMMARY   (set by the runner)
 #   REAUTHOR_REMOTE    where the push goes (default the repository on the forge)
 #
-# Exit 0: re-authored, or left alone with the reason printed.
+# Exit 0: re-authored, left alone with the reason printed, or the rows printed.
 # Exit 1: refused — the declaration is malformed, the owner or a secret is
 #         missing, or minting or pushing failed. Nothing was pushed.
 # Exit 2: usage.
@@ -78,9 +78,9 @@ leave_alone() {
 
 mode="${1:-}"
 case "$mode" in
-check | run) ;;
+check | run | rows) ;;
 *)
-	echo "usage: dependency-reauthor.sh check|run" >&2
+	echo "usage: dependency-reauthor.sh check|run|rows" >&2
 	exit 2
 	;;
 esac
@@ -122,6 +122,20 @@ while IFS= read -r line || [ -n "$line" ]; do
 	*) refuse "$CONF line $lineno: unknown key '$key'" ;;
 	esac
 done <"$CONF"
+
+if [ "$mode" = rows ]; then
+	if [ -n "$owner_name" ] && [ -n "$owner_email" ]; then
+		echo "owner declared"
+	else
+		echo "owner unset"
+	fi
+	while IFS= read -r row; do
+		[ -z "$row" ] || printf 'row %s\n' "$row"
+	done <<EOF
+$rows
+EOF
+	exit 0
+fi
 
 # --- The bound -----------------------------------------------------------------
 : "${PR_AUTHOR:?PR_AUTHOR is required}" "${ACTOR:?ACTOR is required}" "${HEAD_REF:?HEAD_REF is required}"
