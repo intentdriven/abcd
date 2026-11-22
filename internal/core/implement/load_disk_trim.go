@@ -46,8 +46,8 @@ type floorTrim struct {
 	// deadline is when the wait's --timeout runs out: no trim starts with
 	// less than DiskTrimMinLeft before it.
 	deadline time.Time
-	say       func(string)
-	tried     bool
+	say      func(string)
+	tried    bool
 	// said is what the trim did, one sentence a step, for the report
 	// (WaitResult.DiskTrim) and the refusal; "" until it ran.
 	said string
