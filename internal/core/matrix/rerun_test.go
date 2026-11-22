@@ -180,8 +180,9 @@ func TestARerunOfARunFolderTheScreenRefusesIsRefusedAsItIsRead(t *testing.T) {
 }
 
 // A re-run reads the first run's record as writeRun screened it: a four-part
-// version, which reads as an address, is a version, so a run the lab recorded
-// cleanly is repeated, from the lab and from its carried folder alike.
+// version that is a dotted number and nothing else, which reads as an
+// address, is a version, so a run the lab recorded cleanly is repeated, from
+// the lab and from its carried folder alike.
 func TestARerunOfARunWithFourPartVersionsIsNotRefusedAsAnAddress(t *testing.T) {
 	r, home, m, first := reportLab(t, func(in *runInputs) {
 		in.Binary.Version = "1.10.2.3"
@@ -201,9 +202,10 @@ func TestARerunOfARunWithFourPartVersionsIsNotRefusedAsAnAddress(t *testing.T) {
 	}
 }
 
-// A trial is screened as a run's record is: its harness version is a version,
-// so a four-part one is written, while an address in its free text still
-// refuses it.
+// A trial is screened as a run's record is: a harness version that is a
+// dotted number and nothing else is a version, so a four-part one is written,
+// while an address in its free text, or a four-part version followed by a
+// suffix or a port, still refuses it.
 func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.T) {
 	r, _, m, rec, _ := checkLab(t)
 	tr := codeTrial(t, rec, "host-big", 1, StatusPassed)
@@ -225,6 +227,16 @@ func TestATrialWithAFourPartHarnessVersionIsWrittenAndAnAddressIsNot(t *testing.
 		tr.HarnessVersion = v
 		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:") {
 			t.Fatalf("writeTrial with the harness version %q = %v; want it refused by the network screen", v, err)
+		}
+	}
+	// The cost of that rule: a four-part version followed by a suffix or a
+	// port is not a dotted number and nothing else, so it is read as written,
+	// and its first four parts are refused as an address.
+	for i, v := range []string{"2.10.3.4-beta", "10.20.30.40:8080"} {
+		tr = codeTrial(t, rec, "host-big", 10+i, StatusPassed)
+		tr.HarnessVersion = v
+		if err := writeTrial(r.Root(), m.ID, tr); err == nil || !strings.Contains(err.Error(), "carries a net:ipv4") {
+			t.Fatalf("writeTrial with the harness version %q = %v; want it refused as a net:ipv4", v, err)
 		}
 	}
 	// A trial's unpinned names are screened as written.

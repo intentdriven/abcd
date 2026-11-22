@@ -682,10 +682,12 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	if len(js) > lab.MaxStateBytes {
 		return fmt.Errorf("the run record is %d bytes, past the %d its lab reads a record back within", len(js), lab.MaxStateBytes)
 	}
-	// A version or a digest is screened as what it is, never as an
+	// A bare version or a hex digest is screened as what it is, not as an
 	// address: a four-part version reads as an IPv4 one. So the network
-	// screen reads the record with those fields emptied, line for line the
-	// record as written, and every other screen reads the record whole.
+	// screen reads the record line for line as written, with only a version
+	// that is a dotted number and nothing else, a hex digest and a field name
+	// abcd builds emptied (withoutVersionsAndDigests), and any other value
+	// read as written; every other screen reads the record whole.
 	versionless, err := encodeRun(rec.withoutVersionsAndDigests())
 	if err != nil {
 		return err
@@ -818,7 +820,9 @@ func (rec RunRecord) asFieldName(f oracle.Field) oracle.Field {
 type screened struct {
 	lab.StateFile
 	// network is the file the network kinds (an address, a MAC, a host
-	// name) are screened in: Data with its versions and digests emptied.
+	// name) are screened in: Data with only its bare versions and hex
+	// digests (and a run record's field names abcd builds) emptied, any
+	// other value as written.
 	network []byte
 }
 
@@ -827,11 +831,12 @@ type screened struct {
 // a credential or an identity (a home path, a user or host name, an address)
 // or anything else the launch bundle's scan fails on: the record names every
 // route and launches none. The credential and personal
-// screens read the file as written; the network screen reads it with its
-// versions and digests emptied. A scanner that cannot run, runs degraded, or
-// runs without the augmenter the repository configured refuses rather than
-// reporting clean, as the launch bundle's scan does. A refusal names the file,
-// line and kind, never the value.
+// screens read the file as written; the network screen reads it with only
+// the values screened.network names emptied (its bare versions and hex
+// digests) and any other value as written. A scanner that cannot run, runs
+// degraded, or runs without the augmenter the repository configured refuses
+// rather than reporting clean, as the launch bundle's scan does. A refusal
+// names the file, line and kind, never the value.
 func screen(repoRoot string, files []screened) error {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {

@@ -64,16 +64,18 @@ type rerun struct {
 	Declaration []byte
 	files       []lab.StateFile
 	// network is each record, by its path in files, as the network screen
-	// reads it: the run's record and each trial with its versions (and the
-	// record's digests) emptied, exactly as each was screened when written.
+	// reads it: the run's record and each trial with only a version that is a
+	// dotted number and nothing else (and the record's hex digests) emptied,
+	// any other value as written, exactly as each was screened when written.
 	network map[string][]byte
 }
 
 // screens is the first run's records to screen, each under prefix: the run's
-// record and each trial are screened for network kinds with their versions
-// (and the record's digests) emptied, as when each was written, so a
-// four-part version is never read as an address; every other screen reads
-// each file whole.
+// record and each trial are screened for network kinds with only a version
+// that is a dotted number and nothing else (and the record's hex digests)
+// emptied, as when each was written, so 2.10.3.4 is not read as an address
+// while any other value is read as written; every other screen reads each
+// file whole.
 func (r rerun) screens(prefix string) ([]lab.StateFile, []screened) {
 	files := make([]lab.StateFile, 0, len(r.files))
 	sc := make([]screened, 0, len(r.files))

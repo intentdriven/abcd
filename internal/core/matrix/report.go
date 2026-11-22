@@ -300,8 +300,9 @@ func writeTrial(repoRoot, labID string, t TrialRecord) error {
 }
 
 // screenTrial is trial t as written, passed through the secret screen: the
-// network screen reads it with its versions emptied, as a run's record is
-// read, so a four-part harness version is never read as an address.
+// network screen reads it as a run's record is read, with its harness version
+// emptied only when it is a dotted number and nothing else (asVersion), so
+// 2.10.3.4 is not read as an address, and any other value read as written.
 func screenTrial(repoRoot string, t TrialRecord) ([]byte, error) {
 	data, network, err := encodeTrial(t)
 	if err != nil {

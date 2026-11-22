@@ -685,9 +685,10 @@ func TestARunWrittenPartWayLeavesNothing(t *testing.T) {
 	}
 }
 
-// A version is screened as a version, never as an address: a four-part
-// runtime, harness or binary version is written, while the token screen still
-// covers those fields and an address in free text (a route) still refuses.
+// A bare version is screened as a version, not as an address: a four-part
+// runtime, harness or binary version that is a dotted number and nothing else
+// is written, while the token screen still covers those fields and an address
+// in free text (a route) still refuses.
 func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 	root, home, m, in := matrixLab(t)
 	in.Binary.Version = "1.10.2.3"
