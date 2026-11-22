@@ -643,7 +643,7 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return len(l.m.Withdrawn) > 0 }) {
 		return s, nil
 	}
-	k := &asker{c: pushCheck{p.root, p.id, []string{j.Commit}}, links: links, complete: complete, self: p.self}
+	k := &asker{c: pushCheck{p.root, p.id, []string{j.Commit}}, links: links, complete: complete, tree: tree, self: p.self}
 	defer k.save()
 	_, holder, held, why := k.ended()
 	own := k.newest(p.self.Login)
@@ -1048,7 +1048,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		// of theirs holds one, and the act ends nothing.
 		return Settle{}, false
 	}
-	k := &asker{c: pushCheck{a.root, id, []string{t.Commit}}, links: links, complete: complete, self: a.self}
+	k := &asker{c: pushCheck{a.root, id, []string{t.Commit}}, links: links, complete: complete, tree: tree, self: a.self}
 	defer k.save()
 	rec := k.newest(a.self.Login)
 	if rec.why != "" {
@@ -1400,7 +1400,7 @@ func asCut(root string, r Reservation, now time.Time, reader Self) (cut Reservat
 	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return slices.ContainsFunc(l.m.Withdrawn, Withdrawal.unsettled) }) {
 		return r, false, ""
 	}
-	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, complete: complete, reading: true, self: reader}
+	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, complete: complete, tree: tree, reading: true, self: reader}
 	defer k.save()
 	ended, holder, h, why := k.ended()
 	switch {
@@ -1703,8 +1703,10 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 }
 
 // holdsUnsettledOf reports whether a commit of id's branch at tip, as the walk
-// reads it, records a withdrawal of reader's still to settle. It reads the
-// branch only, never the forge.
+// reads it, records a withdrawal of reader's still to settle, reading on a
+// page of maxChain commits at a time up to maxChainRead, as a reading of the
+// reader's record does (asker.deepen). It reads the branch only, never the
+// forge.
 func holdsUnsettledOf(root, id, tip string, reader Self) bool {
 	if !reader.Known() || tip == "" {
 		return false
@@ -1713,13 +1715,20 @@ func holdsUnsettledOf(root, id, tip string, reader Self) bool {
 	if err != nil {
 		return false
 	}
-	links, _, err := releaseChain(root, id, tip, tree)
-	if err != nil {
-		return false
-	}
-	return slices.ContainsFunc(links, func(l chainLink) bool {
+	holds := func(l chainLink) bool {
 		return l.readable && slices.ContainsFunc(l.m.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && reader.Owns(w.By) })
-	})
+	}
+	var links []chainLink
+	for complete := false; !complete && len(links) < maxChainRead; {
+		from := len(links)
+		if links, complete, err = chainTo(root, id, tip, tree, links, min(from+maxChain, maxChainRead)); err != nil || len(links) <= from {
+			return false
+		}
+		if slices.ContainsFunc(links[from:], holds) {
+			return true
+		}
+	}
+	return false
 }
 
 // readerRecord is the record on id's release branch at tip of the person the
@@ -1745,7 +1754,7 @@ func readerRecord(root, id, tip string, reader Self, ws *[]Withdrawal) (ownRecor
 	if err != nil {
 		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err).text + ")"})
 	}
-	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true, self: reader}
+	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, tree: tree, reading: true, self: reader}
 	defer k.save()
 	own := k.newest(reader.Login)
 	switch {

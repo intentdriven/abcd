@@ -252,3 +252,41 @@ func TestUndoPlanRestoresEverything(t *testing.T) {
 		t.Error("the undo did not restore the tree")
 	}
 }
+
+// TestTheCutWritesAndRemovesOnlyInsideTheRepository: a record path whose
+// directory is a symlink to a directory outside the repository is neither
+// rewritten nor removed there by the cut's writer, and a path inside the
+// repository is.
+func TestTheCutWritesAndRemovesOnlyInsideTheRepository(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repo")
+	outside := filepath.Join(parent, "outside")
+	for _, d := range []string{root, outside} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(outside, "record.md"), []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../outside", filepath.Join(root, "linked")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	ops := osOps{root: root}
+	if err := ops.replace("linked/record.md", []byte("rewritten\n")); err == nil {
+		t.Fatal("replace wrote through a linked directory")
+	}
+	if err := ops.remove("linked/record.md"); err == nil {
+		t.Fatal("remove deleted through a linked directory")
+	}
+	if got, err := os.ReadFile(filepath.Join(outside, "record.md")); err != nil || string(got) != "outside\n" {
+		t.Fatalf("the file outside the repository is %q, %v", got, err)
+	}
+
+	if err := ops.replace("CHANGELOG.md", []byte("inside\n")); err != nil {
+		t.Fatalf("replace inside the repository: %v", err)
+	}
+	if err := ops.remove("CHANGELOG.md"); err != nil {
+		t.Fatalf("remove inside the repository: %v", err)
+	}
+}

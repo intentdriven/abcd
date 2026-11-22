@@ -69,8 +69,9 @@ bound: the refusal says so and gives the push to run by hand.
    each issue, intent or pull request the branch's own commits (those not on
    `origin`'s default branch as just fetched) name in a `Refs:`, `Resolves:`
    or `Delivers:` trailer (a pull request written `#N`: a bare number is a
-   word of the trailer's text, as in `Refs: spc-9 step 3`), each once,
-   through `claim.AnnounceBeforePush`, the
+   word of the trailer's text, as in `Refs: spc-9 step 3`), each once, the
+   commits read as git stores them (no replace ref, graft file or
+   commit-graph in force), through `claim.AnnounceBeforePush`, the
    code `abcd announce` runs, and the push waits until each announcement has
    reached `origin` (iss-2610161645224876, dcn-2610170655202547,
    dcn-2610170704191129). So a colleague's next `abcd status` shows the
@@ -255,7 +256,7 @@ bound: the refusal says so and gives the push to run by hand.
    read arms nothing.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
-   queues it. The command names a body land composed from the branch's commits, merge commits left out (iss-220): each subject, then,
+   queues it. The command names a body land composed from the branch's commits as git stores them, merge commits left out (iss-220): each subject, then,
    once each, the trailer lines that name record ids and nothing else, which are a `Resolves:` or `Refs:` line
    naming only issue ids (`iss-N`, several separated by commas) and a `Delivers:` line naming only intent ids
    (`itd-N`, likewise). Every other `Refs:`, `Resolves:` or `Delivers:` line is dropped: `Refs: spc-9 step 3`,
@@ -453,7 +454,8 @@ read-only call, and a forge answer that cannot be read counts for nothing.
 - The merge rule is read from the ruleset mirror at `origin`'s default branch
   as just fetched, never at the branch's tip: equally out of the branch's
   reach as the merge base, and fresher, so the branch cannot change the rule
-  it lands by. (The implement loop reads it at the lane's base.)
+  it lands by. The mirror is read from that commit's tree as git stores it.
+  (The implement loop reads it at the lane's base.)
 - The forge client's and git's environments are scrubbed of `GIT_DIR` and
   `GIT_CONFIG_*`, as the networked git runner's are. A local git command (the
   read of `origin`'s URLs) runs through `gitutil.LocalGit`, which adds none of the

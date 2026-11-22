@@ -23,7 +23,7 @@ table is a gap in the table, never evidence that the capability is ungated.**
 | Test | What to check |
 |---|---|
 | Front-door wiring (CLI↔core↔plugin) | A `commands/*.md` surface shells to the binary → the CLI front door parses input → the core returns a **structured result** the door renders. Core behaviour with no front door calling it is dead scaffolding and fails the wiring check. **(staged)** the second half, that the same core call is reachable from the MCP door with no logic re-expressed (adr-23), waits on that door: `internal/surface/` holds `cli` and two listeners, the dashboard's and the brief session relay's (`session`, behind `abcd session serve`), and no MCP door |
-| ahoy idempotency | Run twice at the same version → no marker duplication, "already up to date", transparent re-confirm of visibility |
+| ahoy idempotency | Run twice at the same version → no marker duplication, "already up to date" |
 | ahoy upgrade | Bump the plugin version → the config's `meta` block updated, marker content refreshed, no duplication |
 | ahoy visibility flip | Switch private→public → the gitignore updated correctly, user shown the resulting tracked-versus-ignored list |
 | ahoy scanner probe | The scanner seam defaults to the native secret/PII scan; a missing opt-in backend falls back to the native scan and offers an install with confirmation, never a hard failure on absence |

@@ -72,9 +72,10 @@ type mergeForge struct {
 	// nil posts nothing.
 	comments PRCommenter
 	// pushers is the forge's record of who pushed each commit to a
-	// reservation branch, asked by its full ref (withdrawpush.go): what a
-	// re-arm and the launch check's exemption are held to.
-	pushers PusherLookup
+	// reservation branch, asked by its full ref one page at a time
+	// (withdrawpush.go): what a re-arm and the launch check's exemption are
+	// held to.
+	pushers pushPageLookup
 	// armGate is the merge gate (ArmGate): every arming of a withdrawn merge
 	// is held to it. nil arms nothing.
 	armGate ArmGate
@@ -112,7 +113,7 @@ var releaseForge = productionForge()
 
 // productionForge is the forge as abcd runs it: gh for every call.
 func productionForge() mergeForge {
-	return mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers,
+	return mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushPage,
 		comments: ghCommenter{graphql: ghGraphQL},
 		armGate: func(root, repo, pr, head string) (bool, string, error) {
 			if wiredArmGate == nil {

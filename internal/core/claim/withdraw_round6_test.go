@@ -82,8 +82,10 @@ func allRearmed(f *fakeForge) bool {
 // --release re-arms all three of octo's withdrawals from octo's own newest
 // push, posts one re-armed comment for each, and names the commits above it,
 // counted, once; peers lists the same count beforehand, and octo's three as
-// held. A shape that buries octo's newest push past the walk acts on
-// nothing, and says so, on the act and on peers.
+// held. Commits enough to fill the first page of the walk leave octo's newest
+// push beneath it, read on to; a shape that buries it past all the walk reads
+// on to acts on nothing, and says so, with the step left to octo, on the act
+// and on peers.
 func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *testing.T) {
 	for name, c := range map[string]struct {
 		seed   func(w *world, f *fakeForge)
@@ -127,7 +129,23 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain+1)
-			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", "65", tip)) {
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChain+1), tip)) {
+				f.pusherOf[c] = "mal"
+			}
+		}, above: maxChain + 1},
+		"a change beneath more commits than one page of the forge's record": {seed: func(w *world, f *fakeForge) {
+			m, ws := w.tipWithdrawals("rel-v0.16.0")
+			m.Withdrawn = withState(ws, 11, WithdrawnKept)
+			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, forgeActivityPage+50)
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(forgeActivityPage+50), tip)) {
+				f.pusherOf[c] = "mal"
+			}
+		}, above: forgeActivityPage + 50},
+		"a change beneath more commits than the walk reads on to": {seed: func(w *world, f *fakeForge) {
+			m, ws := w.tipWithdrawals("rel-v0.16.0")
+			m.Withdrawn = withState(ws, 11, WithdrawnKept)
+			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChainRead+1)
+			for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChainRead+1), tip)) {
 				f.pusherOf[c] = "mal"
 			}
 		}, buried: true},
@@ -148,7 +166,8 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			f.reset()
 			res, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
 			if c.buried {
-				const why = "64 commits"
+				why := fmt.Sprintf("(%d is as far down as abcd reads a release branch, a page of %d at a time); once v0.16.0 is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)",
+					maxChainRead, maxChain)
 				if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 || !strings.Contains(strings.Join(rw.Lines(), "\n"), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") {
 					t.Fatalf("listing = %+v; want octo's newest push named as not found, and nothing held", rw)
 				}
@@ -185,6 +204,35 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 				t.Fatalf("next act = %+v, %v; want nothing named again", again.Settles, err)
 			}
 		})
+	}
+}
+
+// TestARecordOfPushesPastItsReadBoundNamesTheStepLeft: the forge's record
+// of pushes to a release branch is read a page at a time up to its bound; a
+// record holding more activities than that is read short, so octo's release
+// acts on nothing and is refused with nothing pushed, and the reason, on the
+// act and on peers, names the step left to octo.
+func TestARecordOfPushesPastItsReadBoundNamesTheStepLeft(t *testing.T) {
+	w, f, octo := heldOver(t)
+	f.edit = func(ps []Push) []Push {
+		for i := range maxPushPages * forgeActivityPage {
+			ps = append(ps, Push{Before: fmt.Sprintf("%040x", i+2), After: fmt.Sprintf("%040x", i+1), Pusher: "mal"})
+		}
+		return ps
+	}
+	w.set(t0.Add(time.Minute))
+	rw := listingOf(t, w, octo, "rel-v0.16.0")
+	commented, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
+	f.reset()
+	_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
+	why := fmt.Sprintf("the forge's record of who pushed to rel-v0.16.0's branch was not read in full (%d activities is as far back as abcd reads it, a page of %d at a time); "+
+		"once v0.16.0 is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)", maxPushPages*forgeActivityPage, forgeActivityPage)
+	if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 {
+		t.Fatalf("listing = %+v; want the record named as read short, with the step left, and nothing held", rw)
+	}
+	if err == nil || !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), why) || len(f.mutations()) != 0 ||
+		w.remoteTip("rel-v0.16.0") != tip || len(f.posted()) != commented || f.pr(11).method != "" {
+		t.Fatalf("release = %v, mutations %v; want it refused with nothing pushed, re-armed or commented on", err, f.mutations())
 	}
 }
 

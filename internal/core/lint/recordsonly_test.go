@@ -16,12 +16,18 @@ import (
 // whether it classified HEAD records-only (exit 0) or the full run (exit 1).
 func recordsOnly(t *testing.T, r *gittest.Repo) (string, bool) {
 	t.Helper()
+	return recordsOnlyEnv(t, r)
+}
+
+// recordsOnlyEnv is recordsOnly with env added to r's environment.
+func recordsOnlyEnv(t *testing.T, r *gittest.Repo, env ...string) (string, bool) {
+	t.Helper()
 	script, err := filepath.Abs(filepath.Join("..", "..", "..", "scripts", "records-only.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", script)
-	cmd.Dir, cmd.Env = r.Root(), r.Env()
+	cmd.Dir, cmd.Env = r.Root(), slices.Concat(r.Env(), env)
 	out, err := cmd.CombinedOutput()
 	var exit *exec.ExitError
 	switch {
@@ -150,6 +156,91 @@ func TestRecordsOnlyDiffsAgainstOriginsDefaultBranch(t *testing.T) {
 	r.Commit("records")
 	if out, ok := recordsOnly(t, r); !ok || !strings.Contains(out, "merge base with origin/trunk") {
 		t.Fatalf("against origin/trunk = %v, %q; want records-only against it", ok, out)
+	}
+}
+
+// TestRecordsOnlyTakesTheBaseItIsGiven: a base passed in
+// ABCD_RECORDS_ONLY_BASE, the tip a caller read from origin itself, decides
+// the merge base in place of the local origin/main, wherever that ref points,
+// and the line names the merge base's full commit id.
+func TestRecordsOnlyTakesTheBaseItIsGiven(t *testing.T) {
+	r := recordsRepo(t)
+	r.Write("internal/x/x.go", "package x\n\nvar Y = 1\n")
+	r.Commit("code origin has merged")
+	tip := r.Git("rev-parse", "HEAD")
+	r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+	r.Commit("records")
+	if out, ok := recordsOnly(t, r); ok || !strings.HasPrefix(out, "full run: internal/x/x.go is outside") {
+		t.Fatalf("against the local origin/main = %v, %q; want the full run naming the code", ok, out)
+	}
+	out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+tip)
+	if want := "records-only: all 1 changed paths since the merge base with the given base " + tip + ", " + tip + ", are in the record tiers, and no test names one\n"; !ok || out != want {
+		t.Fatalf("against the given base = %v, %q; want records-only, %q", ok, out, want)
+	}
+	// The given base decides the other way too: a local origin/main moved
+	// past the code does not make the change records-only.
+	r.Git("update-ref", "refs/remotes/origin/main", tip)
+	base := r.Git("rev-parse", "HEAD~2")
+	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base); ok || !strings.HasPrefix(out, "full run: internal/x/x.go is outside") {
+		t.Fatalf("against a given base behind the code = %v, %q; want the full run naming the code", ok, out)
+	}
+}
+
+// TestRecordsOnlyTakesAGivenSHA256Base: in a SHA-256 repository the given
+// base is a 64-digit id, and the first 40 digits of one name no commit.
+func TestRecordsOnlyTakesAGivenSHA256Base(t *testing.T) {
+	r := gittest.NewRepoFormat(t, "sha256")
+	r.Write("internal/x/x.go", "package x\n")
+	r.Commit("base")
+	base := r.Git("rev-parse", "HEAD")
+	r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+	r.Commit("records")
+	if len(base) != 64 {
+		t.Fatalf("a SHA-256 repository's commit id is %q", base)
+	}
+	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base); !ok || !strings.Contains(out, "merge base with the given base "+base+", "+base+",") {
+		t.Fatalf("given a 64-digit base = %v, %q; want records-only against it", ok, out)
+	}
+	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+base[:40]); ok || !strings.Contains(out, "is not a commit present here") {
+		t.Fatalf("given 40 digits of a 64-digit base = %v, %q; want the full run", ok, out)
+	}
+}
+
+// TestRecordsOnlyRunsAGivenBaseItCannotUseInFull: a given base that is not a
+// full commit id (the word a caller passes when it could not read the tip, an
+// abbreviation, upper case), or a full id that is not a commit present here
+// (one absent, a tree, or an annotated tag, whose id peels to the commit it
+// names), is the full run, saying the given base could not be used.
+func TestRecordsOnlyRunsAGivenBaseItCannotUseInFull(t *testing.T) {
+	r := recordsRepo(t)
+	r.Write(".abcd/work/issues/open/iss-2.md", "two\n")
+	r.Commit("records")
+	base := r.Git("rev-parse", "origin/main")
+	// An annotated tag's own id names a tag object, which peels to base.
+	r.Git("tag", "-a", "-m", "a tag on the base", "v1", base)
+	tag := r.Git("rev-parse", "refs/tags/v1")
+	if tag == base || r.Git("cat-file", "-t", tag) != "tag" {
+		t.Fatalf("refs/tags/v1 is %s, not a tag object of its own", tag)
+	}
+	for _, c := range []struct{ name, value, want string }{
+		{"unverified", "unverified", "it is not a full commit id"},
+		{"abbreviated", base[:12], "it is not a full commit id"},
+		{"upper case", strings.ToUpper(base), "it is not a full commit id"},
+		{"a ref name", "HEAD", "it is not a full commit id"},
+		{"absent", strings.Repeat("0", 39) + "1", "is not a commit present here"},
+		{"a tree", r.Git("rev-parse", "HEAD^{tree}"), "is not a commit present here"},
+		{"an annotated tag", tag, "is not a commit present here"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="+c.value)
+			if ok || !strings.HasPrefix(out, "full run: the given base (ABCD_RECORDS_ONLY_BASE) could not be used: ") || !strings.Contains(out, c.want) {
+				t.Fatalf("given %q = %v, %q; want the full run, saying %q", c.value, ok, out, c.want)
+			}
+		})
+	}
+	// Empty is unset: the local origin/main decides, as without it.
+	if out, ok := recordsOnlyEnv(t, r, "ABCD_RECORDS_ONLY_BASE="); !ok || !strings.Contains(out, "merge base with origin/main, "+base+",") {
+		t.Fatalf("given an empty base = %v, %q; want records-only against origin/main", ok, out)
 	}
 }
 

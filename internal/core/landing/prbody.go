@@ -42,6 +42,11 @@ const bodyRelDir = ".abcd/.work.local/scratch/land"
 // far ahead is not one pull request's worth, and its body is not composed.
 const maxComposedCommits = 200
 
+// maxComposedLog bounds the read of those commits' messages: far past any
+// branch of maxComposedCommits commits, and an error past it, never a body
+// composed from part of the branch.
+const maxComposedLog = 16 << 20
+
 var (
 	declareLineRe  = regexp.MustCompile(`^(Resolves|Refs):[ \t]+iss-[0-9]+([ \t]*,[ \t]*iss-[0-9]+)*[ \t]*$`)
 	deliversLineRe = regexp.MustCompile(`^Delivers:[ \t]+itd-[0-9]+([ \t]*,[ \t]*itd-[0-9]+)*[ \t]*$`)
@@ -57,9 +62,11 @@ type composedBody struct {
 }
 
 // composeBody reads the commits tracking..head in the checkout at dir, oldest
-// first, merges left out.
+// first, merges left out. The commits are read as stored (RunCappedAsStored):
+// no refs/replace entry, graft file or commit-graph changes which commits the
+// branch holds or what their messages say from the commits the push sends.
 func composeBody(dir, tracking, head string) (composedBody, error) {
-	out, err := gitutil.Run(dir, "log", "--reverse", "--no-merges", fmt.Sprintf("--max-count=%d", maxComposedCommits+1),
+	out, err := gitutil.RunCappedAsStored(dir, maxComposedLog, "log", "--reverse", "--no-merges", fmt.Sprintf("--max-count=%d", maxComposedCommits+1),
 		"--format=%x1e%s%x1f%B", tracking+".."+head, "--")
 	if err != nil {
 		return composedBody{}, err

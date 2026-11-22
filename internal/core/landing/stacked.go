@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -32,6 +31,10 @@ const maxArmedPages = 10
 
 // maxRefName bounds one head branch's name in a note.
 const maxRefName = 80
+
+// maxMergeBases bounds the listing of every merge base of two heads: past it
+// the listing is refused, never read in part.
+const maxMergeBases = 64 << 10
 
 // armedNode is one open pull request as claim.ArmedPullRequestsQuery lists it.
 type armedNode struct {
@@ -150,7 +153,8 @@ func stackedOn(o Options, dir, tracking, owner, name, base string, self int, hea
 
 // sharesCommits reports whether head and pr's head have a common ancestor
 // that is not on tracking: a commit both carry that the default branch does
-// not hold. A head this checkout does not hold (the other branch moved on
+// not hold, read as the commits store their parents (no replace ref, graft or
+// commit-graph stands in). A head this checkout does not hold (the other branch moved on
 // after this one was cut from it, or was never fetched here) is fetched from
 // origin by the pull request's own ref first, its objects kept and no ref
 // written.
@@ -167,17 +171,16 @@ func sharesCommits(o Options, dir, tracking string, pr armedNode, head string) (
 				"run abcd land again (the forge may have moved #"+n+"'s head since it listed it)")
 		}
 	}
-	out, err := gitutil.Run(dir, "merge-base", "--all", pr.HeadRefOid, head)
-	var ee *exec.ExitError
+	out, unrelated, err := gitutil.RunCappedExitOneAsStored(dir, maxMergeBases, "merge-base", "--all", pr.HeadRefOid, head)
 	switch {
-	case errors.As(err, &ee) && ee.ExitCode() == 1:
-		// No common ancestor at all: unrelated histories share nothing.
-		return false, nil
 	case err != nil:
 		return false, fmt.Errorf("reading what %s shares with pull request #%s's head %s: %w", short(head), n, short(pr.HeadRefOid), err)
+	case unrelated:
+		// No common ancestor at all: unrelated histories share nothing.
+		return false, nil
 	}
-	for _, b := range strings.Fields(out) {
-		on, err := gitutil.IsAncestor(dir, b, tracking)
+	for _, b := range strings.Fields(string(out)) {
+		on, err := gitutil.IsAncestorAsStored(dir, b, tracking)
 		if err != nil {
 			return false, fmt.Errorf("placing %s on %s: %w", short(b), tracking, err)
 		}

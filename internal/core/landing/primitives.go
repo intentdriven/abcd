@@ -398,6 +398,9 @@ func gh(parent context.Context, dir string, run func(context.Context, *exec.Cmd,
 	// abcd's own recorded copy runs whatever comes first on PATH
 	// (itd-2610240918594138); otherwise PATH finds gh, as before.
 	bin, err := tools.Resolve("gh")
+	if errors.Is(err, tools.ErrInsideWorkingTree) {
+		return "", fmt.Errorf("%w: the one PATH finds is never run, because %w", ErrNoForgeClient, tools.ErrInsideWorkingTree)
+	}
 	if err != nil {
 		return "", ErrNoForgeClient
 	}
@@ -440,13 +443,15 @@ func FetchDefault(git GitFunc, dir, def string) (string, error) {
 // origin holds it (an ancestor of, or equal to, its tip): the one ancestry
 // check by which a landing proves a head merged, the implement loop's and
 // `abcd land`'s. A squash or rebase merge leaves no such ancestry; mergedAt is
-// the forge's half of the proof for it. A refused fetch is a *FetchError; any
-// other error is git unable to answer, which is not a no.
+// the forge's half of the proof for it. The ancestry is read as stored
+// (gitutil.IsAncestorAsStored): no replace ref, graft file or commit-graph
+// gives the tip a parent it does not store. A refused fetch is a *FetchError;
+// any other error is git unable to answer, which is not a no.
 func Landed(git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
 	if tracking, err = FetchDefault(git, dir, def); err != nil {
 		return tracking, false, err
 	}
-	on, err = gitutil.IsAncestor(dir, sha, tracking)
+	on, err = gitutil.IsAncestorAsStored(dir, sha, tracking)
 	return tracking, on, err
 }
 

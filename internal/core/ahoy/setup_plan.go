@@ -14,9 +14,11 @@ import (
 )
 
 // The plan screen (itd-2610240823055889, criteria 2 and 5): setup checks
-// everything first, then shows one screen listing every change it would make
-// and every default it would take, each default with where to change it, and
-// asks once: proceed, customise or cancel. Proceed approves every kind of
+// everything first, then shows one screen counting the changes it would make
+// in each place, the defaults it would take and the questions that follow,
+// and asks once: proceed, customise or cancel. Answering ? lists every change
+// and every default, each default with where to change it (PlanInFull), so
+// the screen fits abcd's rows limit at its floor (iss-2611152326582649). Proceed approves every kind of
 // change and takes the defaults listed; customise asks each kind of change and
 // each value in turn, as setup asked before the plan existed; cancel writes
 // nothing. The steps only a person can approve are listed under "asks you"
@@ -118,7 +120,7 @@ func buildSetupPlan(det DetectionResult, asksYou []string) SetupPlan {
 		plan.AsksYou = []string{}
 	}
 	if det.FolderKind == UnmanagedRepo {
-		plan.Changes = append(plan.Changes, PlanGroup{Where: planWhere["repo"], Items: []string{"adopt this repository into abcd"}})
+		plan.Changes = append(plan.Changes, PlanGroup{Where: planWhere["repo"], Items: []string{planAdoptItem}})
 	}
 	offers := map[string]bool{}
 	for _, d := range planDefaultFor {
@@ -157,14 +159,96 @@ func buildSetupPlan(det DetectionResult, asksYou []string) SetupPlan {
 // planAsk is the plan screen's one line.
 const planAsk = "Proceed with this plan?"
 
+// planAdoptItem is the change that adopts a repository abcd does not manage
+// yet: the plan's first item, which its counts name.
+const planAdoptItem = "adopt this repository into abcd"
+
+// planHelpSentence closes the plan's counts: the full list waits for ?.
+const planHelpSentence = "Answer ? to see every item."
+
 // SetupPlanQuestion is the plan screen as the shared question type: the plan
-// as its material (the changes grouped by where they land, the defaults each
-// with where to change it, and the questions that follow), the one line, and
-// the three answers, deciding later cancelling.
+// quoted as one decision, in counts (the changes in each place they land, the
+// defaults, the questions that follow), the one line, and the three answers,
+// deciding later cancelling. Every item, each default with where to change
+// it, is PlanInFull's, which ? shows, so the question fits abcd's rows limit
+// at its floor however much setup would do (iss-2611152326582649).
 func SetupPlanQuestion(n int, p SetupPlan) question.Question {
-	var material []question.Block
+	return question.Question{
+		ID:       PlanQuestionID,
+		Chip:     setupChip(n),
+		Material: []question.Block{{Kind: question.KindParagraph, Text: planSummary(p)}},
+		Ask:      planAsk,
+		Options: []question.Option{
+			{Value: string(PlanProceed), Label: "Proceed", Meaning: "Makes every change and takes every default; its questions still follow."},
+			{Value: string(PlanCustomise), Label: "Customise", Meaning: "Asks about each kind of change and each value before anything is written."},
+			{Value: string(PlanCancel), Label: "Cancel", Meaning: "Writes nothing and ends setup."},
+		},
+		Later: question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
+			Meaning: "Cancels for now, so the next setup run shows the plan again."},
+		Now:         question.Default.NotApplicable,
+		ChangeLater: "the full plan says where to change each default",
+	}
+}
+
+// planSummary is the plan in one sentence of counts, then where the full list
+// is: "Setup makes 14 changes in this repository (adopting it into abcd) and 3
+// on this machine, takes 9 defaults, and then asks you 2 questions, one each."
+func planSummary(p SetupPlan) string {
+	var places []string
 	for _, g := range p.Changes {
-		material = append(material, question.Block{Kind: question.KindParagraph, Text: g.Where + ", setup:"},
+		where := strings.ToLower(g.Where[:1]) + g.Where[1:]
+		phrase := fmt.Sprintf("%d %s", len(g.Items), where)
+		if len(places) == 0 {
+			phrase = planCount(len(g.Items), "change") + " " + where
+		}
+		if slices.Contains(g.Items, planAdoptItem) {
+			phrase += " (adopting it into abcd)"
+		}
+		places = append(places, phrase)
+	}
+	if len(places) == 0 && len(p.Defaults) == 0 && len(p.AsksYou) == 0 {
+		return "Setup has nothing to change here and no question to ask you."
+	}
+	makes := "changes nothing here"
+	if len(places) > 0 {
+		makes = "makes " + planJoin(places)
+	}
+	takes := "takes no default"
+	if len(p.Defaults) > 0 {
+		takes = "takes " + planCount(len(p.Defaults), "default")
+	}
+	sentence := "Setup " + makes + " and " + takes + "."
+	if len(p.AsksYou) > 0 {
+		sentence = "Setup " + makes + ", " + takes + ", and then asks you " + planCount(len(p.AsksYou), "question") + ", one each."
+	}
+	return sentence + " " + planHelpSentence
+}
+
+// planCount is n and noun, with an s past one.
+func planCount(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// planJoin joins phrases as a list in prose: "a", "a and b", "a, b and c".
+func planJoin(phrases []string) string {
+	if len(phrases) < 2 {
+		return strings.Join(phrases, "")
+	}
+	return strings.Join(phrases[:len(phrases)-1], ", ") + " and " + phrases[len(phrases)-1]
+}
+
+// PlanInFull is every item the plan screen counts, as the blocks ? shows
+// before the plan is asked again: the changes grouped by where they land,
+// each default with where to change it, and the questions that follow. Every
+// door says these words, so none composes its own; nil for a plan with
+// nothing in it.
+func PlanInFull(p SetupPlan) []question.Block {
+	var blocks []question.Block
+	for _, g := range p.Changes {
+		blocks = append(blocks, question.Block{Kind: question.KindParagraph, Text: g.Where + ", setup:"},
 			question.Block{Kind: question.KindList, Items: append([]string(nil), g.Items...)})
 	}
 	if len(p.Defaults) > 0 {
@@ -172,31 +256,14 @@ func SetupPlanQuestion(n int, p SetupPlan) question.Question {
 		for i, d := range p.Defaults {
 			items[i] = d.What + ": " + d.Value + " (change: " + d.ChangeWith + ")"
 		}
-		material = append(material, question.Block{Kind: question.KindParagraph, Text: "Defaults it takes:"},
+		blocks = append(blocks, question.Block{Kind: question.KindParagraph, Text: "Defaults it takes:"},
 			question.Block{Kind: question.KindList, Items: items})
 	}
 	if len(p.AsksYou) > 0 {
-		material = append(material, question.Block{Kind: question.KindParagraph, Text: "Then it asks you, one question each:"},
+		blocks = append(blocks, question.Block{Kind: question.KindParagraph, Text: "Then it asks you, one question each:"},
 			question.Block{Kind: question.KindList, Items: append([]string(nil), p.AsksYou...)})
 	}
-	if len(material) == 0 {
-		material = []question.Block{{Kind: question.KindParagraph, Text: "Setup has nothing to change here but the questions it asks you."}}
-	}
-	return question.Question{
-		ID:       PlanQuestionID,
-		Chip:     setupChip(n),
-		Material: material,
-		Ask:      planAsk,
-		Options: []question.Option{
-			{Value: string(PlanProceed), Label: "Proceed", Meaning: "Makes every change and takes every default on the plan; the questions it lists are still asked, one each."},
-			{Value: string(PlanCustomise), Label: "Customise", Meaning: "Asks about each kind of change and each value in turn before anything is written."},
-			{Value: string(PlanCancel), Label: "Cancel", Meaning: "Writes nothing and ends setup."},
-		},
-		Later: question.Option{Value: SetupLaterValue, Label: question.Default.LaterLabels[0],
-			Meaning: "Cancels for now and writes nothing, so the next setup run shows the plan again."},
-		Now:         question.Default.NotApplicable,
-		ChangeLater: "each default's own line on the plan says where to change it",
-	}
+	return blocks
 }
 
 // PlanChoiceOf is the plan answer a recorded value stands for: deciding later

@@ -33,6 +33,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/testreuse"
 )
 
@@ -77,14 +78,7 @@ func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.
 			p := implement.PreflightParallelism(os.Getenv, machineload.Read, slots)
 			return strconv.Itoa(p), implement.PreflightTimeout(os.Getenv, machineload.Read, *budget).String(), nil
 		}
-		raceGate = func() error {
-			gate := exec.CommandContext(ctx, "go", "run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h")
-			gate.Dir, gate.Stdout, gate.Stderr = wd, stdout, stderr
-			if err := gate.Run(); err != nil {
-				return fmt.Errorf("the race gate: %w", err)
-			}
-			return nil
-		}
+		raceGate = func() error { return passRaceGate(ctx, wd, stdout, stderr) }
 	}
 	return testreuse.Run(ctx, testreuse.Config{
 		Stage:         rest[0],
@@ -101,4 +95,20 @@ func run(ctx context.Context, args []string, wd, home string, stdout, stderr io.
 		Clock:         os.Getenv(testreuse.ClockEnv),
 		Uid:           os.Geteuid(),
 	})
+}
+
+// passRaceGate waits at abcd's race gate from the checkout wd, through the
+// checkout's own abcd. go is found as the stage's go lines find it
+// (testreuse): one PATH finds inside the checkout is not run.
+func passRaceGate(ctx context.Context, wd string, stdout, stderr io.Writer) error {
+	goBin, err := tools.LookPath("go", wd)
+	if err != nil {
+		return fmt.Errorf("the race gate: go was not run: %w", err)
+	}
+	gate := exec.CommandContext(ctx, goBin, "run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h")
+	gate.Dir, gate.Stdout, gate.Stderr = wd, stdout, stderr
+	if err := gate.Run(); err != nil {
+		return fmt.Errorf("the race gate: %w", err)
+	}
+	return nil
 }

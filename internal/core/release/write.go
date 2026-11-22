@@ -46,8 +46,9 @@ type fileOps interface {
 	removeIn(rel string) error
 }
 
-// osOps performs the writes inside the repository root. The archive is created
-// through an os.Root, so a symlinked ancestor cannot carry it outside the tree.
+// osOps performs the writes inside the repository root. Every write and removal
+// goes through an os.Root, so a symlinked ancestor cannot carry it outside the
+// tree.
 type osOps struct{ root string }
 
 func (o osOps) createExclusive(rel string, data []byte) error {
@@ -62,12 +63,15 @@ func (o osOps) createExclusive(rel string, data []byte) error {
 	return fsutil.CreateExclusiveIn(r, rel, data, 0o644)
 }
 
+// replace and remove resolve through an os.Root as writeIn and removeIn do, so
+// a record, the page or the changelog under a directory that links out of the
+// tree is never rewritten or removed there.
 func (o osOps) replace(rel string, data []byte) error {
-	return fsutil.WriteFileAtomicPreserveMode(filepath.Join(o.root, filepath.FromSlash(rel)), data)
+	return o.writeIn(rel, data)
 }
 
 func (o osOps) remove(rel string) error {
-	return os.Remove(filepath.Join(o.root, filepath.FromSlash(rel)))
+	return o.removeIn(rel)
 }
 
 func (o osOps) writeIn(rel string, data []byte) error {

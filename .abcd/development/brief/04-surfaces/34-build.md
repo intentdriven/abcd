@@ -683,7 +683,9 @@ merged into its branch with a merge commit, never a rebase, whose computed
 message carries the same abcd label as the pick's commit, and a fresh round
 judges the merge head. A conflicting merge is aborted with the branch unchanged
 and goes to a fresh implementer with a sync brief; its receipt must carry the
-merged sha as an ancestor of its head. A sync counts no fix round. The closing
+merged sha as an ancestor of its head, read by the parents the commits store
+(no replace ref, graft file or commit-graph in force), as every ancestry check
+of the sync and the receipt is. A sync counts no fix round. The closing
 lane reaches its landing with no step pending, no other lane open and none handed
 back; its audit reads each of the run's lanes' own diff. After a hand-back the
 siblings finish, no new lane opens, no lane closes the spec, and a lane whose
@@ -1195,7 +1197,16 @@ mode is `auto`, back at `validate`, and a sync.
    landing writes; any other is refused until the branch is restored to that head. Inside
    a store the landing still carries an edit to a record, which the reader judges, and
    a record keeps the mode its writes give it: an ordinary file's, or the executable bit
-   the judged head already had. The landing reads what it judges as the objects store it.
+   the judged head already had. An issue record the lane does not resolve is the
+   exception: the landing commits a change to it only when the change is exactly what
+   the repoint of the landing's own moves writes over the head's record, and it commits
+   such a record added, removed or moved only when it is resolved from `open/` to
+   `resolved/` and an intent the close ships names it in `related_issues` at the judged
+   head, as the close's check on what it ships lets a person settle it. Such a resolved
+   record must be what a resolve writes over the record it took out of `open/`: the same
+   frontmatter but for the fields a resolve sets (`resolution`, `impact`, `shipped_in`,
+   `resolved_by`, `production_mode`), and the same body after the repoint, with at most
+   the one grounds entry a resolve appends; any other text is refused. The landing reads what it judges as the objects store it.
    It commits them on the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
    find the records in the change. Unlike the pick's commit, whose text abcd
@@ -1288,7 +1299,7 @@ mode is `auto`, back at `validate`, and a sync.
    refused at exit 2, unarmed, since the merge queue never takes it, unless an issue lane's conflict lies in declared generated files alone, or in no file when this checkout merges, when the lane enters its sync again, or, its head already holding the default branch, waits at exit 3 for the forge's verdict
    (iss-2610110908443341). Nothing is pushed to the lane while it is armed: an issue lane's sync withdraws the arming first.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
-   is an ancestor of it; only then does it remove the lane's worktree (never
+   is an ancestor of it, read by the parents the commits store; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
    and the lane is done. The wait names the forge's verdict, and `UNKNOWN`, a
    verdict the forge computes lazily and has not computed yet, keeps it
@@ -1321,7 +1332,9 @@ mode is `auto`, back at `validate`, and a sync.
    refusal names what the checkout can say: the files a merge of the default
    branch and the pushed head conflicts in with every merge driver switched to
    git's built-in text merge (`merge-tree`, which writes no ref, index or
-   worktree), and the driver each carries at the pushed head ("GitHub reports a
+   worktree, from the merge base the commits' stored parents give, with no
+   replace ref, graft file or commit-graph in force, since the forge sees
+   none of them), and the driver each carries at the pushed head ("GitHub reports a
    conflict; locally these files carry merge drivers the forge ignores: …"), or
    that no local merge reproduces it ("GitHub reports a conflict this checkout
    cannot reproduce", a stale verdict that pushing a merge of the default

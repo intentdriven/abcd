@@ -517,7 +517,7 @@ func TestRealReadDiskCarriesTheFloor(t *testing.T) {
 	if !slices.Contains(holds, DiskHoldsWorktreeStore) {
 		t.Errorf("the worktree store's volume was not read: %+v", d)
 	}
-	if machineload.GoCacheDir() != "" && !slices.Contains(holds, DiskHoldsGoCache) {
+	if goCacheDir() != "" && !slices.Contains(holds, DiskHoldsGoCache) {
 		t.Errorf("the Go build cache's volume was not read: %+v", d)
 	}
 }

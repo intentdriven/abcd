@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -396,6 +398,11 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// and gated on the mode, not the registry (itd-2609212130146198,
 	// spc-2610030944505997); guard_question.go holds the whole of it.
 	if isQuestionTool(in.ToolName) {
+		// The gate's store reads ask git for the checkout first, with no
+		// deadline of their own, so git is asked once under the hook's.
+		if guardGitStalls(in.Cwd) {
+			return questionFailOpen(cmd.ErrOrStderr(), "%s", errors.New(guardGitTimeout("the session directory")))
+		}
 		return questionGate(cmd, in.Cwd, in.ToolInput.Questions, toolInputKeysCollide(raw))
 	}
 	// A file the host's own tools write is judged by the occupancy of the
@@ -422,11 +429,29 @@ func guardHookDecide(cmd *cobra.Command) error {
 			cwd = wd
 		}
 	}
-	// The away mode's created-branch recorder runs first and refuses
-	// nothing, so the registry's state never decides whether a branch the
-	// session cuts is seen as its own (spc-2610180914469489 step 3).
+	// The repository roots are asked first, git bound to the hook's git
+	// deadline: every later git call reads the configuration this call
+	// reads, so a git that cannot answer here is told in seconds, not at the
+	// host's timeout. The per-call workdir's root is asked too when it names
+	// an existing directory; a workdir the guard refuses is refused below.
+	gctx, cancel := context.WithTimeout(context.Background(), guardGitBudget)
+	defer cancel()
+	sessionRoot, err := rulesRootContext(gctx, cwd, cmd.ErrOrStderr())
+	if err != nil {
+		return failOpen("%s", guardGitTimeout("the session directory"))
+	}
+	workdirRoot := ""
+	if wd, werr := hookWorkdir(in.ToolInput.Workdir, cwd); werr == nil && wd.Exists {
+		if workdirRoot, err = rulesRootContext(gctx, wd.Path, cmd.ErrOrStderr()); err != nil {
+			return failOpen("%s", guardGitTimeout("the call's working directory"))
+		}
+	}
+	cancel()
+	// The away mode's created-branch recorder runs before the registry
+	// loads and refuses nothing, so the registry's state never decides
+	// whether a branch the session cuts is seen as its own
+	// (spc-2610180914469489 step 3).
 	recordCreatedBranches(cmd.ErrOrStderr(), cwd, in.SessionID, in.ToolInput.Workdir, candidate)
-	sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
 	// The fail-safe posture is decided in core (guard.LoadRepo,
 	// iss-2608291814576261); the hook only formats it. A dropped repo layer
 	// is fail-SAFE, not fail-open: the registry still holds the bundled
@@ -502,7 +527,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// registry the model chose by choosing the workdir can add a hazard
 	// and never subtract one.
 	if wd.Exists {
-		if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
+		if root := workdirRoot; root != "" && root != sessionRoot {
 			wld := loadRepoGuard(root)
 			wreg := wld.Registry.ReadingFrom(files).ProvingDeletes(prover)
 			if wld.Posture == guard.LoadRepoDropped {
@@ -571,6 +596,34 @@ func guardHookDecide(cmd *cobra.Command) error {
 		}
 		return nil // allow: silent, and cheap
 	}
+}
+
+// guardGitBudget bounds the guard hook's repository lookups, the first git
+// calls on its route: the roots of the session directory and of the call's
+// workdir for a shell command, and the checkout of the session directory for
+// a question. git answers them in milliseconds; one that has not answered in
+// this time is waiting on something that may never come. hooks/hooks.json
+// gives the hook no timeout of its own, so this budget, not the host's
+// default, is what bounds the wait on a configuration git cannot read.
+var guardGitBudget = 5 * time.Second
+
+// guardGitTimeout is the reason the hook gives when git did not answer within
+// guardGitBudget, where naming the directory it was asked about.
+func guardGitTimeout(where string) string {
+	return fmt.Sprintf("git did not answer within %s when asked which checkout holds %s, so the guard could not judge the call "+
+		"(a repository configuration that includes a file which never finishes reading, such as a named pipe, holds git this way)",
+		guardGitBudget, where)
+}
+
+// guardGitStalls reports whether git, asked for the checkout holding cwd,
+// failed to answer within guardGitBudget. A git that answers, whatever its
+// answer (not a repository included), does not stall; it is killed when the
+// budget ends.
+func guardGitStalls(cwd string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), guardGitBudget)
+	defer cancel()
+	_, err := gitutil.ToplevelContext(ctx, cwd)
+	return err != nil && ctx.Err() != nil
 }
 
 // hookToolName reads the tool_name of a hook payload the full decode refused.

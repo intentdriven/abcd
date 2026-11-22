@@ -177,7 +177,9 @@ written as HTML entities or with markdown backslash escapes; or a word whose
 line wrap inserted a hyphen that was not in it (a title word split as
 `over-` and `flow`). `--range` reads commit messages, the lines each commit
 adds and the names of the files it adds, and nothing else: branch names and
-annotated tag messages are not checked.
+annotated tag messages are not checked. Each commit is read as git stores it,
+the form a push sends: a `refs/replace/` entry, a `.git/info/grafts` file or a
+commit-graph does not change the message, the parents or the lines it reads.
 
 The check reads every embargo store under this account's home, whichever
 repository each belongs to, so a second clone, a shallow clone or a repository
@@ -208,6 +210,9 @@ and sends nothing but reads. For each advisory judged a vulnerability (the
 release defaults to the highest published release): its record resolved in
 the release, its fix commit, the first published release holding the fix, the
 patched version that gives, and the affected range in GitHub's form.
+The record, its fix commit and the tags holding the fix are read from the
+objects as git stores them, so a `refs/replace/` entry or a graft does not
+change which release the plan names.
 
 **What counts as a published release.** A `vMAJOR.MINOR.PATCH` tag counts only
 when both hold: origin holds the tag at the same object as this checkout

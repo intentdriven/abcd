@@ -10,10 +10,10 @@ package claim
 // pushed is not read; it is counted, by pusher, and named once for each tip.
 // When that newest push cannot be found or placed (the record does not read,
 // was not read in full, does not reach the tip, has a push missing, an app
-// pushed a commit above it, or it lies past the walk), abcd acts on nothing of
-// that person's and names why. A release ends when its tag is on origin, or
-// when the newest push of its holder (the person whose own push made the
-// newest reservation on the branch) is a tombstone of theirs.
+// pushed a commit above it, or it lies past what the walk reads on to), abcd
+// acts on nothing of that person's and names why. A release ends when its tag
+// is on origin, or when the newest push of its holder (the person whose own
+// push made the newest reservation on the branch) is a tombstone of theirs.
 
 import (
 	"context"
@@ -33,25 +33,40 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// reservationPushers is the forge's record of pushes to one reservation
-// branch, asked by its full ref (refs/heads/abcd-reserved/<id>): the same
-// activity record `abcd status` asks for the status branches (github.Pushers),
-// answered with ErrPartialRecord beside the pushes when its page came back
-// full.
-func reservationPushers(ctx context.Context, root, ref string) ([]Push, error) {
-	pushes, partial, err := github.Pushers(ctx, root, ref)
+// pushPageLookup asks the forge for one page of its record of pushes to a
+// reservation branch, asked by its full ref, from the cursor after ("" for
+// the newest page): the pushes, newest first, and the cursor of the page past
+// it ("" when the record ends there). ErrPartialRecord beside the pushes is a
+// page that says older activities lie past it but names no cursor to read
+// them by.
+type pushPageLookup func(ctx context.Context, root, ref, after string) (pushes []Push, next string, err error)
+
+// reservationPushPage is one page of the forge's record of pushes to one
+// reservation branch, asked by its full ref (refs/heads/abcd-reserved/<id>):
+// the same activity record `abcd status` asks for the status branches
+// (github.PushersPage), answered with ErrPartialRecord beside the pushes when
+// the page says older activities lie past it (it came back full, or its Link
+// header names a next page) and names no cursor abcd reads to them.
+func reservationPushPage(ctx context.Context, root, ref, after string) ([]Push, string, error) {
+	page, err := github.PushersPage(ctx, root, ref, after)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	out := make([]Push, 0, len(pushes))
-	for _, p := range pushes {
+	out := make([]Push, 0, len(page.Pushes))
+	for _, p := range page.Pushes {
 		out = append(out, Push{Before: p.Before, After: p.After, Pusher: p.Login, App: p.App})
 	}
-	if partial {
-		return out, ErrPartialRecord
+	if page.More() && page.Next == "" {
+		return out, "", ErrPartialRecord
 	}
-	return out, nil
+	return out, page.Next, nil
 }
+
+// maxPushPages bounds how many pages of the forge's record of pushes to a
+// release branch one ask reads: as many of its pages as the commits the walk
+// reads on to (maxChainRead) could take with one push to each, so a record
+// the walk could need is read to its end.
+const maxPushPages = (maxChainRead + github.ActivityPage - 1) / github.ActivityPage
 
 // declaredTipNote is what the other-copy back-off adds when j's holder is
 // an id the person only declares: whether the declaration pairs it with a
@@ -111,7 +126,7 @@ func tipPusher(root, id, tip string) (login, why string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
-	pushes, err := releaseForge.pushers(ctx, root, refName(id))
+	pushes, _, err := releaseForge.pushers(ctx, root, refName(id), "")
 	switch {
 	case err != nil && !errors.Is(err, ErrPartialRecord):
 		return "", "the forge's record of pushes could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"
@@ -133,14 +148,58 @@ type pushRecord struct {
 }
 
 // readPushRecord asks the forge (releaseForge.pushers) who pushed each commit
-// to id's release branch, and places each push on the commits it carried: the
-// first-parent line from its After down to its Before, at most maxChain
-// commits. A push whose Before is not on that line (a forced push, or one past
-// the walk) is placed on every commit of the line from its After down, never
-// on none; one whose After this checkout does not hold to place is placed on
-// the whole line the walk read, and leaves the record not settling any commit
-// it places nothing else on. tips are the branch's tip as this act judged it,
-// and the commit the act itself pushed over it when it pushed one first: the
+// to id's release branch (askPushes), and places each push on the commits it
+// carried (pushAnswer.place).
+func readPushRecord(root, id string, links []chainLink, tips ...string) pushRecord {
+	return askPushes(root, id).place(root, id, links, tips...)
+}
+
+// pushAnswer is the forge's answer to who pushed to one release branch, as
+// asked once: the pushes, whether the record was read short (partial), and
+// whether that was because it holds more than the maxPushPages pages read
+// (pastBound), and why it could not be asked or read at all.
+type pushAnswer struct {
+	pushes    []Push
+	partial   bool
+	pastBound bool
+	why       string
+}
+
+// askPushes asks the forge's record of pushes to id's release branch, page by
+// page, each asked by the cursor the one before it names, until the record
+// ends or maxPushPages pages are read.
+func askPushes(root, id string) pushAnswer {
+	if releaseForge.pushers == nil {
+		return pushAnswer{why: "no record of who pushed each reservation commit is read on this path"}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
+	defer cancel()
+	var all []Push
+	after := ""
+	for range maxPushPages {
+		pushes, next, err := releaseForge.pushers(ctx, root, refName(id), after)
+		partial := errors.Is(err, ErrPartialRecord)
+		if err != nil && !partial {
+			return pushAnswer{why: "the forge's record of who pushed to " + id + "'s branch could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"}
+		}
+		all = append(all, pushes...)
+		if partial || next == "" {
+			return pushAnswer{pushes: all, partial: partial}
+		}
+		after = next
+	}
+	return pushAnswer{pushes: all, partial: true, pastBound: true}
+}
+
+// place puts each push of the answer on the commits it carried: the
+// first-parent line from its After down to its Before, at most as many
+// commits as links holds (and never fewer than maxChain). A push whose Before
+// is not on that line (a forced push, or one past the walk) is placed on every
+// commit of the line from its After down, never on none; one whose After this
+// checkout does not hold to place is placed on the whole line the walk read,
+// and leaves the record not settling any commit it places nothing else on.
+// tips are the branch's tip as this act judged it, and the commit the act
+// itself pushed over it when it pushed one first: the
 // record's newest push must be one that moved the branch to one of them, or
 // the record has not caught up (or the branch was moved since by a push it
 // does not hold yet), and it settles nothing. The pushes must also run
@@ -148,20 +207,19 @@ type pushRecord struct {
 // that made the branch: the forge's activity record passes over an entry it
 // holds without a pusher or a commit name, and a record with a push missing
 // from it does not say who carried every commit, so it settles nothing either.
-func readPushRecord(root, id string, links []chainLink, tips ...string) pushRecord {
-	if releaseForge.pushers == nil {
-		return pushRecord{why: "no record of who pushed each reservation commit is read on this path"}
+func (a pushAnswer) place(root, id string, links []chainLink, tips ...string) pushRecord {
+	if a.why != "" {
+		return pushRecord{why: a.why}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
-	pushes, err := releaseForge.pushers(ctx, root, refName(id))
-	partial := errors.Is(err, ErrPartialRecord)
-	if err != nil && !partial {
-		return pushRecord{why: "the forge's record of who pushed to " + id + "'s branch could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"}
-	}
+	pushes := a.pushes
 	rec := pushRecord{by: map[string][]Push{}}
 	switch {
-	case partial:
+	case a.pastBound:
+		rec.why = "the forge's record of who pushed to " + id + "'s branch was not read in full (" + fmt.Sprint(maxPushPages*github.ActivityPage) +
+			" activities is as far back as abcd reads it, a page of " + fmt.Sprint(github.ActivityPage) + " at a time); " + handRearmStep(id)
+	case a.partial:
 		rec.why = "the forge's record of who pushed to " + id + "'s branch was not read in full"
 	case len(pushes) == 0 || !slices.Contains(tips, pushes[0].After):
 		rec.why = "the forge's record of who pushed to " + id + "'s branch does not end at the tip read here (it has not caught up yet, or the branch moved since this checkout fetched it)"
@@ -188,7 +246,7 @@ func readPushRecord(root, id string, links []chainLink, tips ...string) pushReco
 					rec.why = "a push the forge records to " + id + "'s branch is not held here to place"
 				}
 				carried = line
-			} else if carried, err = firstParentsCtx(ctx, root, refName(id), p.After, maxChain); err != nil {
+			} else if carried, err = firstParentsCtx(ctx, root, refName(id), p.After, max(maxChain, len(line))); err != nil {
 				return pushRecord{why: "the forge's record of who pushed to " + id + "'s branch was not placed (" + termsafe.Sanitize(redacted(err).text) + ")"}
 			}
 		}
@@ -344,13 +402,17 @@ type pushCheck struct {
 
 // asker reads one release branch (links, newest first, complete when the walk
 // reached its first commit) against the forge's record of pushes, asked once
-// and only when a reading needs it.
+// and only when a reading needs it. A reading that does not find what it
+// looks for within links reads on (deepen), when tree is set.
 type asker struct {
 	c        pushCheck
 	links    []chainLink
 	complete bool
-	rec      *pushRecord
-	known    *tipCache
+	// tree is the empty tree a commit read on is parsed against (releaseChain).
+	tree  string
+	asked *pushAnswer
+	rec   *pushRecord
+	known *tipCache
 	// reading is true for an asker that only reads (peers, the launch
 	// reading, the second-release refusal): it takes what the record placed
 	// on a commit from the cache kept for the tip when it holds it. An act
@@ -452,9 +514,9 @@ func (k *asker) firstPushedBy(from int, w Withdrawal, login string) bool {
 	if from < 0 || from >= len(k.links) {
 		return false
 	}
-	commit, ok := firstRecordAs(k.links[from:], k.complete, w, k.self.alike)
+	commit, ok := k.firstRecord(from, w, firstRecordWalk)
 	if !ok && w.State == WithdrawnKept {
-		commit, ok = firstKeptRecordAs(k.links[from:], k.complete, w, k.self.alike)
+		commit, ok = k.firstRecord(from, w, firstKeptRecordWalk)
 	}
 	if !ok {
 		return false
@@ -488,9 +550,42 @@ func (k *asker) cache() *tipCache {
 	return k.known
 }
 
+// firstRecord is walk (firstRecordWalk or firstKeptRecordWalk) down from
+// links[from], with the reader's own login and kept id read alike, reading on
+// (deepen) while the walk ends only because it reached the last commit read.
+func (k *asker) firstRecord(from int, w Withdrawal, walk func([]chainLink, bool, Withdrawal, func(a, b string) bool) (string, bool, bool)) (string, bool) {
+	for {
+		commit, ok, short := walk(k.links[from:], k.complete, w, k.self.alike)
+		if ok || !short || !k.deepen() {
+			return commit, ok
+		}
+	}
+}
+
+// deepen reads the branch on, one page of maxChain commits beneath links, up
+// to maxChainRead, and reports whether it read any more: false once the walk
+// reached the branch's first commit or that bound, or when the read fails or
+// has no tree to parse by. What the record of pushes placed is placed again
+// over the longer line, from the forge's answer already asked.
+func (k *asker) deepen() bool {
+	if k.complete || k.tree == "" || len(k.links) == 0 || len(k.links) >= maxChainRead {
+		return false
+	}
+	links, complete, err := chainTo(k.c.root, k.c.id, k.links[0].commit, k.tree, k.links, min(len(k.links)+maxChain, maxChainRead))
+	if err != nil || len(links) <= len(k.links) {
+		return false
+	}
+	k.links, k.complete, k.rec = links, complete, nil
+	return true
+}
+
 func (k *asker) record() *pushRecord {
 	if k.rec == nil {
-		r := readPushRecord(k.c.root, k.c.id, k.links, k.c.tips...)
+		if k.asked == nil {
+			a := askPushes(k.c.root, k.c.id)
+			k.asked = &a
+		}
+		r := k.asked.place(k.c.root, k.c.id, k.links, k.c.tips...)
 		k.rec = &r
 	}
 	return k.rec
@@ -517,13 +612,15 @@ func (k *asker) place(i int) (pushKind, string, string) {
 
 // newest is login's record on the branch (ownRecord): the walk from the tip
 // down passes over each commit one other login pushed, counting it, and stops
-// at the first one login pushed. A commit an app pushed, or the record places
-// no push or several accounts' pushes on, before it, leaves login's newest
-// push not known; so does a walk that ends before finding it.
+// at the first one login pushed, reading on past the first maxChain commits
+// (deepen) up to maxChainRead. A commit an app pushed, or the record places no
+// push or several accounts' pushes on, before it, leaves login's newest push
+// not known; so does a walk that ends before finding it.
 func (k *asker) newest(login string) (o ownRecord) {
 	counts := map[string]int{}
 	var order []string
-	for i, l := range k.links {
+	for i := 0; i < len(k.links) || k.deepen(); i++ {
+		l := k.links[i]
 		kind, who, why := k.place(i)
 		switch {
 		case why != "":
@@ -560,9 +657,26 @@ func (k *asker) newest(login string) (o ownRecord) {
 		counts[strings.ToLower(who)]++
 	}
 	if !k.complete {
-		o.why = login + "'s newest push to " + k.c.id + "'s branch is not within the " + fmt.Sprint(maxChain) + " commits read"
+		o.why = login + "'s newest push to " + k.c.id + "'s branch is not within the " + fmt.Sprint(len(k.links)) + " commits read" + pastReadTail(k.c.id, len(k.links))
 	}
 	return o
+}
+
+// pastReadTail is what a reading that ran out of the branch's line after n
+// commits adds: when n is maxChainRead, that it reads no further, and the one
+// step left to the person, since no act of abcd's can read their record there.
+func pastReadTail(id string, n int) string {
+	if n < maxChainRead {
+		return ""
+	}
+	return " (" + fmt.Sprint(maxChainRead) + " is as far down as abcd reads a release branch, a page of " + fmt.Sprint(maxChain) +
+		" at a time); " + handRearmStep(id)
+}
+
+// handRearmStep is the one step left to a person whose record on id's
+// release branch no act of abcd's can read: re-arming by hand after the cut.
+func handRearmStep(id string) string {
+	return "once " + releaseTag(id) + " is tagged, re-arm each pull request withdrawn for it by hand (gh pr merge <number> --auto)"
 }
 
 // ended is whether the release has ended by its holder's own tombstone: the
@@ -576,7 +690,8 @@ func (k *asker) newest(login string) (o ownRecord) {
 // first), which reads as not ended. A branch holding no reservation its holder
 // pushed has not ended, and names no holder.
 func (k *asker) ended() (ended bool, holder string, rec ownRecord, why string) {
-	for i, l := range k.links {
+	for i := 0; i < len(k.links) || k.deepen(); i++ {
+		l := k.links[i]
 		kind, who, why := k.place(i)
 		switch {
 		case why != "":
@@ -596,7 +711,7 @@ func (k *asker) ended() (ended bool, holder string, rec ownRecord, why string) {
 		return rec.m.released() && k.namesPusher(rec.m.Holder, who), l.m.Holder, rec, ""
 	}
 	if !k.complete {
-		return false, "", ownRecord{}, "no reservation its holder pushed is within the " + fmt.Sprint(maxChain) + " commits of " + k.c.id + "'s branch read, so whether the release has ended is not known"
+		return false, "", ownRecord{}, "no reservation its holder pushed is within the " + fmt.Sprint(len(k.links)) + " commits of " + k.c.id + "'s branch read, so whether the release has ended is not known" + pastReadTail(k.c.id, len(k.links))
 	}
 	return false, "", ownRecord{}, ""
 }
@@ -612,8 +727,12 @@ func (k *asker) save() {
 // with the persons this copy found nothing more to do for there.
 const tipCacheDirRel = stateRelDir + "/release-pushes"
 
-// maxTipCacheBytes bounds what readTipCache reads.
-const maxTipCacheBytes = 16 << 10
+// maxTipCacheBytes bounds what readTipCache reads and what save writes. One
+// placement line is at most 81 bytes (a commit, a space, a login of up to 39
+// characters and a newline), so the placements of every commit a reading
+// walks (maxChainRead, 512) come to at most 41,472 bytes, and the rest is
+// room for the marks.
+const maxTipCacheBytes = 64 << 10
 
 // tipCache is what this copy kept for one release tip: what a record read in
 // full placed on each commit beneath it (read only by a reading, never by an
@@ -770,13 +889,40 @@ func (k *tipCache) endGaveUp(now time.Time) bool {
 	return !k.endFailed.IsZero() && now.Sub(k.endFailed) > lostWindow
 }
 
-// save writes what was kept, best effort: a file lost costs only an ask.
+// save writes what was kept, best effort: a file lost costs only an ask. The
+// file is held to maxTipCacheBytes, the bound readTipCache reads within: the
+// marks are written first, then the placements while they fit, and a
+// placement left out costs an ask of the forge as a lost file does.
 func (k *tipCache) save() {
 	if !k.changed || !isRelease(k.id) || !gitutil.IsFullSHA(k.tip) {
 		return
 	}
 	var b strings.Builder
 	b.WriteString(k.tip + "\n")
+	add := func(line string) {
+		if b.Len()+len(line)+1 <= maxTipCacheBytes {
+			b.WriteString(line + "\n")
+		}
+	}
+	logins := make([]string, 0, len(k.done))
+	for l := range k.done {
+		logins = append(logins, l)
+	}
+	slices.Sort(logins)
+	for _, l := range logins {
+		add("done " + l)
+	}
+	failed := make([]string, 0, len(k.failed))
+	for l := range k.failed {
+		failed = append(failed, l)
+	}
+	slices.Sort(failed)
+	for _, l := range failed {
+		add("failed " + l + " " + k.failed[l].Format(time.RFC3339))
+	}
+	if !k.endFailed.IsZero() {
+		add("end-failed " + k.endFailed.Format(time.RFC3339))
+	}
 	commits := make([]string, 0, len(k.kinds))
 	for c := range k.kinds {
 		commits = append(commits, c)
@@ -789,26 +935,7 @@ func (k *tipCache) save() {
 				word = w
 			}
 		}
-		b.WriteString(c + " " + word + "\n")
-	}
-	logins := make([]string, 0, len(k.done))
-	for l := range k.done {
-		logins = append(logins, l)
-	}
-	slices.Sort(logins)
-	for _, l := range logins {
-		b.WriteString("done " + l + "\n")
-	}
-	failed := make([]string, 0, len(k.failed))
-	for l := range k.failed {
-		failed = append(failed, l)
-	}
-	slices.Sort(failed)
-	for _, l := range failed {
-		b.WriteString("failed " + l + " " + k.failed[l].Format(time.RFC3339) + "\n")
-	}
-	if !k.endFailed.IsZero() {
-		b.WriteString("end-failed " + k.endFailed.Format(time.RFC3339) + "\n")
+		add(c + " " + word)
 	}
 	_ = writeUnflushedIn(k.root, tipCacheDirRel, k.id, []byte(b.String()))
 }
@@ -918,7 +1045,7 @@ func (k *asker) vouches(w Withdrawal) bool {
 	if !validHolderID(w.By) {
 		return k.firstPushedBy(from, w, w.By)
 	}
-	commit, ok := firstRecordAs(k.links[from:], k.complete, w, k.self.alike)
+	commit, ok := k.firstRecord(from, w, firstRecordWalk)
 	if !ok {
 		return false
 	}

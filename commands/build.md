@@ -11,7 +11,7 @@ block: people
 Before you fill in an input for this command, run `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build`, and where its answer and this page disagree, follow the binary, since this page may be older than it.
 <!-- /generated -->
 
-Take one intent from READY towards delivered with the loop holding the run, not
+Take one intent from READY towards delivered with the implement loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
 does at most one stage, writes it and exits, so a session that stops, is
 compacted or is killed loses nothing, and the next invocation resumes where the
@@ -309,7 +309,9 @@ run as its own peer.
 the resume's own checks pass, a lane parked at its landing with its head pushed
 is closed when what it pushed is on origin's default branch as the build fetches
 it (resolved to a commit straight after the fetch, and that commit is the proof
-throughout), and the lane's branch is gone or its tip is on that branch: its
+throughout), and the lane's branch is gone or its tip is on that branch, each
+read by the parents the commits store (no replace ref, graft file or
+commit-graph stands in for them): its
 worktree is removed, its branch deleted, its landing records the merge, and the
 run goes on in a new lane, on a new branch cut from origin's default branch tip.
 A resume the checks refuse removes nothing, with one exception: a resume whose
@@ -533,7 +535,10 @@ signed where your git configuration signs every commit; one still waiting after 
 minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
-rebase or an amend. No existing entry changes, the checkout you run in is not written but
+rebase or an amend. The verifier, and the stage that finds the commit again
+after a restart, read each commit by the parents and content it stores: a
+replace ref, a graft file or a commit-graph in the repository changes neither
+answer. No existing entry changes, the checkout you run in is not written but
 for the run state, and `intent ready` keeps reporting the person's entry as the
 most recent conjecture.
 
@@ -1061,7 +1066,16 @@ A lane's stages run in order:
    landing writes; any other is refused until the branch is restored to that head. Inside
    a store the landing still carries an edit to a record, which the reader judges, and
    a record keeps the mode its writes give it: an ordinary file's, or the executable bit
-   the judged head already had. The landing reads what it judges as the objects store it.
+   the judged head already had. An issue record the lane does not resolve is the
+   exception: the landing commits a change to it only when the change is exactly what
+   the repoint of the landing's own moves writes over the head's record, and it commits
+   such a record added, removed or moved only when it is resolved from `open/` to
+   `resolved/` and an intent the close ships names it in `related_issues` at the judged
+   head, as the close's check on what it ships lets a person settle it. Such a resolved
+   record must be what a resolve writes over the record it took out of `open/`: the same
+   frontmatter but for the fields a resolve sets (`resolution`, `impact`, `shipped_in`,
+   `resolved_by`, `production_mode`), and the same body after the repoint, with at most
+   the one grounds entry a resolve appends; any other text is refused. The landing reads what it judges as the objects store it.
    It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    until then the lane is waiting for its full check (since the time the wait
@@ -1101,9 +1115,11 @@ A lane's stages run in order:
    names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
-   pushed head is an ancestor of the default branch on `origin`; stop driving
+   pushed head is an ancestor of the default branch on `origin`, by the parents
+   the commits store; stop driving
    the run and come back later. Once it is, the loop removes the lane's
-   worktree and branch, the lane is done, and the next pending step opens the
+   worktree and branch, deleting the branch only at a tip that commit stores,
+   the lane is done, and the next pending step opens the
    next lane. In a repository abcd manages, that step then sweeps on its own
    once its save is written: the provably spent part of `abcd sweep --apply`,
    with the same proofs against a fresh fetch (other merged, clean worktrees

@@ -1,10 +1,12 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,16 +33,49 @@ type Push struct {
 // nothing of one.
 var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge", "merge_queue_merge"}
 
-// activityPage is how many activities one ask reads: the forge's one page.
-const activityPage = 100
+// ActivityPage is how many activities one ask reads: the forge's one page.
+const ActivityPage = 100
 
 // Pushers is the forge's record of who pushed to ref (a full ref under
-// refs/heads/) on the repository origin names: its activity record's pushes
-// (`GET /repos/{owner}/{repo}/activity`, the newest hundred of any type, read
-// for the types in pushActivities), newest first (itd-2609151838312703 C17),
-// and whether that page came back full (partial): older activities may then
-// lie past it, unread, so a commit no push on it covers is one the record
-// was not read far enough to say about.
+// refs/heads/) on the repository origin names, its newest page alone
+// (PushersPage), and whether older activities may lie past it, unread
+// (partial: the page came back full or names a page past it, whether or not
+// abcd reads the cursor it names it by), so a commit no
+// push on it covers is one the record was not read far enough to say about.
+func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool, err error) {
+	page, err := PushersPage(ctx, cwd, ref, "")
+	if err != nil {
+		return nil, false, err
+	}
+	return page.Pushes, page.More(), nil
+}
+
+// PushPage is one page of the forge's activity record of pushes to a ref:
+// its pushes, newest first; the cursor the page names for the activities
+// past it ("" when it names none or one abcd does not read); whether the
+// page names a page past it by a link whose cursor abcd does not read
+// (NextUnread); and whether the page came back full.
+type PushPage struct {
+	Pushes     []Push
+	Next       string
+	NextUnread bool
+	Full       bool
+}
+
+// More reports whether older activities may lie past the page: it came back
+// full, or it names a page past it, by a cursor abcd reads or by one it does
+// not.
+func (p PushPage) More() bool { return p.Full || p.Next != "" || p.NextUnread }
+
+// PushersPage is one page of the forge's record of who pushed to ref (a full
+// ref under refs/heads/) on the repository origin names: its activity
+// record's pushes (`GET /repos/{owner}/{repo}/activity`, up to ActivityPage
+// activities of any type, read for the types in pushActivities), newest first
+// (itd-2609151838312703 C17), from the cursor after ("" for the newest page).
+// The cursor of the page past it is read from the answer's Link header (its
+// rel="next" link's after parameter, and nothing else of that link), so a
+// caller reads on by asking again with it; a rel="next" link whose cursor
+// abcd does not read sets NextUnread, so the page still says more lie past it.
 // The query names no type, since it takes only one and a first push or a
 // forced one would then never be answered. An entry with no actor, or a
 // commit name that is not one, says nothing and is passed over; every login is the forge's
@@ -48,20 +83,31 @@ const activityPage = 100
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
 // push made by an app (appActor) is answered with App set: the forge cannot
 // say which person it acted for, so it judges no commit, but it still names
-// the tip the record has reached. gh is killed when ctx ends (runContext).
-func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool, err error) {
-	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
+// the tip the record has reached. The read of origin's URL and gh are both
+// ended when ctx ends (runContext).
+func PushersPage(ctx context.Context, cwd, ref, after string) (PushPage, error) {
+	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
-		return nil, false, fmt.Errorf("this checkout has no origin remote to ask about")
+		return PushPage{}, fmt.Errorf("this checkout has no origin remote to ask about")
 	}
 	owner, name, err := ParseRemote(strings.TrimSpace(origin))
 	if err != nil {
-		return nil, false, err
+		return PushPage{}, err
 	}
-	q := url.Values{"ref": {ref}, "per_page": {strconv.Itoa(activityPage)}}
-	out, err := apiContext(ctx, cwd, nil, "repos/"+owner+"/"+name+"/activity?"+q.Encode())
+	if after != "" && !cursorRe.MatchString(after) {
+		return PushPage{}, fmt.Errorf("the cursor of the forge's activity record is not one abcd reads")
+	}
+	q := url.Values{"ref": {ref}, "per_page": {strconv.Itoa(ActivityPage)}}
+	if after != "" {
+		q.Set("after", after)
+	}
+	out, err := apiContext(ctx, cwd, nil, "--include", "repos/"+owner+"/"+name+"/activity?"+q.Encode())
 	if err != nil {
-		return nil, false, err
+		return PushPage{}, err
+	}
+	header, body, ok := splitIncluded(out)
+	if !ok {
+		return PushPage{}, fmt.Errorf("the forge's activity record did not parse: its answer carries no headers")
 	}
 	var acts []struct {
 		Before string `json:"before"`
@@ -72,8 +118,8 @@ func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool,
 			Type  string `json:"type"`
 		} `json:"actor"`
 	}
-	if err := json.Unmarshal(out, &acts); err != nil {
-		return nil, false, fmt.Errorf("the forge's activity record did not parse: %v", err)
+	if err := json.Unmarshal(body, &acts); err != nil {
+		return PushPage{}, fmt.Errorf("the forge's activity record did not parse: %v", err)
 	}
 	pushed := []Push{}
 	for _, a := range acts {
@@ -85,8 +131,75 @@ func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool,
 		// of who sent it: marked, so the caller judges no commit by it.
 		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login, App: appActor(a.Actor.Type, a.Actor.Login)})
 	}
-	return pushed, len(acts) >= activityPage, nil
+	next, named := nextCursor(header)
+	return PushPage{Pushes: pushed, Next: next, NextUnread: named && next == "", Full: len(acts) >= ActivityPage}, nil
 }
+
+// cursorRe is the text a cursor of the forge's activity record may hold: the
+// forge's opaque token, base64 or URL-safe base64, bounded.
+var cursorRe = regexp.MustCompile(`^[A-Za-z0-9+/=_-]{1,512}$`)
+
+// splitIncluded splits what `gh api --include` writes into the answer's
+// header lines (the status line first) and its body, at the first blank line
+// (gh ends the status line with a bare newline and each header line with a
+// carriage return and a newline).
+func splitIncluded(out []byte) (header []string, body []byte, ok bool) {
+	rest := out
+	for len(rest) > 0 {
+		i := bytes.IndexByte(rest, '\n')
+		if i < 0 {
+			break
+		}
+		line := strings.TrimSuffix(string(rest[:i]), "\r")
+		rest = rest[i+1:]
+		if line == "" {
+			return header, rest, len(header) > 0 && strings.HasPrefix(header[0], "HTTP/")
+		}
+		header = append(header, line)
+	}
+	return nil, nil, false
+}
+
+// nextCursor is the after parameter of the rel="next" link the answer's Link
+// header names, or "" when it names none or one abcd does not read
+// (cursorRe), and whether the header names a rel="next" link at all: a link
+// whose target is not in angle brackets, does not parse, holds a comma or
+// carries no after parameter abcd reads is still named. Only that parameter
+// is taken: the link's host and path are the forge's text and are never
+// asked.
+func nextCursor(header []string) (cursor string, named bool) {
+	for _, line := range header {
+		name, value, ok := strings.Cut(line, ":")
+		if !ok || !strings.EqualFold(strings.TrimSpace(name), "Link") {
+			continue
+		}
+		for _, link := range strings.Split(value, ",") {
+			target, params, ok := strings.Cut(link, ";")
+			if !ok || !slices.ContainsFunc(strings.Split(params, ";"), func(p string) bool {
+				return strings.EqualFold(strings.ReplaceAll(strings.TrimSpace(p), " ", ""), `rel="next"`)
+			}) {
+				continue
+			}
+			named = true
+			target = strings.TrimSpace(target)
+			if !strings.HasPrefix(target, "<") || !strings.HasSuffix(target, ">") {
+				continue
+			}
+			u, err := url.Parse(target[1 : len(target)-1])
+			if err != nil {
+				continue
+			}
+			if c := u.Query().Get("after"); cursorRe.MatchString(c) {
+				return c, true
+			}
+		}
+	}
+	return "", named
+}
+
+// originURLBytes bounds the read of origin's URL: a URL longer than this is
+// refused rather than cut.
+const originURLBytes = 4096
 
 // zeroSHA is the forge's name for no commit: the tip a deletion leaves.
 var zeroSHA = strings.Repeat("0", 40)

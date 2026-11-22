@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -99,11 +98,18 @@ func writableWorkflowName(name string) string {
 // are never passed: the re-authoring workflow runs on pull requests but judges
 // none, and counting it would change the release rendering the moment a
 // repository opted in. reserved, when set, is called with each such file instead, or
-// with why it could not be read. A file that cannot be read is skipped.
+// with why it could not be read. A file that cannot be read is skipped. The
+// directory and its files are read inside an os.Root on repoRoot, so a workflows
+// directory reached through a symlink out of the repository cannot be listed.
 func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(name, why string),
 	reserved func(name, src string, err error)) {
-	dir := filepath.Join(repoRoot, filepath.FromSlash(workflowsDir))
-	entries, err := os.ReadDir(dir)
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		unread(workflowsDir, "cannot be listed")
+		return
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), workflowsDir)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			unread(workflowsDir, "cannot be listed")
@@ -118,7 +124,7 @@ func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(nam
 		}
 		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath || rel == ReauthorYMLPath {
 			if reserved != nil {
-				data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
+				data, err := fsutil.ReadGuardedInRoot(root, workflowsDir+"/"+name, maxWorkflowBytes)
 				reserved(name, string(data), err)
 			}
 			continue
@@ -127,7 +133,7 @@ func forEachWorkflow(repoRoot string, fn func(name, src string), unread func(nam
 			unread(workflowsDir, fmt.Sprintf("holds more than the %d workflow files abcd reads", maxWorkflowFiles))
 			return
 		}
-		data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
+		data, err := fsutil.ReadGuardedInRoot(root, workflowsDir+"/"+name, maxWorkflowBytes)
 		if err != nil {
 			unread(name, "cannot be read safely (a link, or larger than abcd reads)")
 			continue

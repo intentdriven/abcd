@@ -30,7 +30,7 @@ import (
 // then on a catalog that does not name the newest release fails here.
 func TestCommittedTreeSatisfiesDevPolarity(t *testing.T) {
 	root := repoRootForTest(t)
-	res := CheckLockstep(TreeDev, root, filepath.Join(root, versionLocationRelPath))
+	res := CheckLockstep(TreeDev, root, root)
 	if res.Unreadable {
 		t.Fatalf("the committed version-location contract must be readable, got %s", res.Detail)
 	}
