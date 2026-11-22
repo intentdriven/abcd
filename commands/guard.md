@@ -1252,11 +1252,14 @@ well as those that turn the checks off: text that starts as an object and does
 not parse, JSON holding a part the line does not fix (a value spliced into the
 text can add any key), a value or file name the line does not wholly fix
 (`--settings "$S"`, `--settings <(…)`, a directory the line leaves unknown), a
-glob that does not match exactly one file or that holds a pattern character
-besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a backslash,
-or zsh's ranges, groups and operators) or `**` (which zsh reads as any number
-of directories, none among them, and Go's matcher as one), whose files the
-guard cannot name as the shell does, and a file the line writes before
+glob that does not match exactly one file or whose word holds a pattern
+character besides `*` and `?` (a bracket expression such as `[[:digit:]]`, a
+backslash, or zsh's ranges, groups and operators) or `**` (which zsh reads as
+any number of directories, none among them, and Go's matcher as one), whose
+files the guard cannot name as the shell does (only the word the line writes
+is read for those characters: the working directory or home it resolves
+against is matched as the literal path it is, whatever its name holds, so
+`--settings s*.json` under a directory named `a~(b)#c` is read), and a file the line writes before
 the launch or may write there by a name it does not fix (`> "$F"`, or any
 `git -C <dir>`), one that
 is not a regular file, one over 256 KiB, or one that does not hold a JSON
@@ -1291,14 +1294,21 @@ builtin, whose name a substitution prints (`env "$(true)"NAME=…`, `env
 entry names. The value of one of env's own options that take one (`env -u
 "$V"`, `env -C "$D"`, `-P`, `-a` and their long forms), or of sudo's (`sudo -u
 "$U"`), is that option's value, not an assignment, only where every
-expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"`, with no
-operator, flag, modifier, subscript or nesting. Any other expansion can yield
-several words, the ones after the first operands of their own, so the value
-is read as possibly several: an unquoted one (`env -u $V`, zsh's `$=V`), `"$@"`
-and `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `"$=V"`
-and `"${(f)V}"`, and, without the guard working out which of them yield
-several, `"$*"`, `"${V:-x}"`, `"$v:h"` and a substitution; the string
-`env -S` splits is read as env's operands.
+expansion in it is one that double quotes keep as one word: a plain quoted
+parameter, `"$NAME"` or `"${NAME}"`, or positional, `"$1"` or `"${1}"`, with no
+operator, flag, subscript or nesting; `"$!"`; a length, `"${#NAME}"`; a quoted
+substitution, `"$(…)"`, its backtick spelling or `"$((…))"`; and a `:` after
+`"$NAME"` that no zsh modifier letter follows, which is text (`sudo -p
+"Password for $USER: "`). Any other expansion can yield several words, the
+ones after the first operands of their own, so the value is read as possibly
+several: an unquoted one (`env -u $V`, `$(…)`, `$!`, zsh's `$=V`), `"$@"` and
+`"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `"$=V"` and
+`"${(f)V}"`, and, without the guard working out which of them yield several,
+`"$*"`, `"${V:-x}"`, `"${#a[@]}"` and a zsh modifier such as `"$v:h"` or
+`"$v:s/a/b/"`; the string `env -S` splits is read as env's operands. The
+guard does not know which shell runs the line, so `$=V`, `$^V` and `$~V`,
+which only zsh reads as an expansion and bash reads as text, are read as
+zsh's everywhere, a known over-refusal under bash.
 A script the line runs is judged with the environment the line
 hands it, so an export before `bash run.sh`, or an assignment before it,
 reaches the harness the script starts, and a file the line sources runs under

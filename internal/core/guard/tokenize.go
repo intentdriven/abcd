@@ -600,9 +600,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
-		// curSplit records, for the word being built, that an unquoted
-		// command substitution left its mark in it; fieldSplits rides with
-		// the segment (segment.fieldSplit).
+		// curSplit records, for the word being built, that an expansion
+		// that can yield several words left its mark in it: an unquoted
+		// command substitution, or a quoted parameter expansion other than
+		// a plain name or positional; fieldSplits rides with the segment
+		// (segment.fieldSplit).
 		curSplit    bool
 		fieldSplits map[int]bool
 		// spells rides with the segment (segment.spelled); curVarAt records,
@@ -902,11 +904,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// reading takes as the job's number (`kill $!`), and records a site on
 	// it for the written spelling alone: the number, or nothing where no job
 	// ran in the background, which leaves the text beside it, so `$!/` is
-	// also `/` to arg_values (iss-2609300057467536).
+	// also `/` to arg_values (iss-2609300057467536). An unquoted one (mask
+	// set) marks its word as one that can yield several words, or none
+	// (curSplit); a quoted one is one word.
 	addBang := func(mask byte) {
 		curVarAt = append(curVarAt, varSite{at: len(cur), texts: paramTexts("$!"), width: 2})
 		addCur([]byte("$!"), mask)
-		curSplit = true
+		if mask != 0 {
+			curSplit = true
+		}
 	}
 	// markIFSSplit files the word being built under segment.ifsSplit when its
 	// sites rest on the default IFS.
@@ -1403,11 +1409,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// split reports that the `${…}` stands unquoted, where bash splits what
 	// it prints (spellParameter).
 	//
-	// A quoted one other than a plain `${NAME}` marks its word as one an
-	// unquoted substitution stands in (curSplit): an operator, a flag, a
-	// modifier, a subscript or a nested expansion can make it yield several
-	// words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and `"${^@}"`), and
-	// the guard does not work out which do.
+	// A quoted one other than a plain `${NAME}`, a positional `${1}` or a
+	// length `${#NAME}` marks its word as one an unquoted substitution stands
+	// in (curSplit): an operator, a
+	// flag, a modifier, a subscript or a nested expansion can make it yield
+	// several words (`"${a[@]}"`, `"${1+"$@"}"`, zsh's `"${=V}"` and
+	// `"${^@}"`), and the guard does not work out which do.
 	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
@@ -1420,7 +1427,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if len(segs) > start {
 			curSub = true
 		}
-		if !split && !isName(body) {
+		if !split && !isName(body) && !allDigits(body) && !isLength(body) {
 			curSplit = true
 		}
 	}
@@ -1550,9 +1557,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
-					// Only a plain `"$NAME"` is one word: `"$@"` yields one
-					// per element, and zsh reads a subscript or a modifier
-					// after the name (`"$a[@]"`, `"$v:h"`).
+					// Only a plain `"$NAME"` or `"$1"` is one word: `"$@"`
+					// yields one per element, and zsh reads a subscript or a
+					// modifier after the name (`"$a[@]"`, `"$v:h"`).
 					if !plainParam(line, j, k) {
 						curSplit = true
 					}
@@ -1578,8 +1585,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						start := len(segs)
 						arithmetic(line[j+3 : end-1])
 						feedFrom(start)
+						// Quoted, the number it prints is one word.
 						addCur([]byte(arithmeticOperand), 0)
-						curSplit = true
 						j = end + 1
 						continue
 					}
@@ -1606,8 +1613,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					start := len(segs)
 					follow(text)
 					feedFrom(start)
+					// Quoted, what it prints is one word, however many
+					// lines or spaces it holds.
 					addCur([]byte{unknownMark}, 0)
-					curSub, curSplit = true, true
+					curSub = true
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken reads the
 					// word with that text in the output's place.
@@ -2759,13 +2768,35 @@ func simpleParamEnd(line string, i int) int {
 }
 
 // plainParam reports whether the unbraced parameter line[j:k] (the `$` at
-// j) is a plain `$NAME`: a name, not a special parameter, with no subscript
-// or modifier after it, both of which zsh reads (`$a[@]`, `$v:h`).
+// j) is a plain `$NAME` or positional `$1`: a name or a digit, not a special
+// parameter, with no subscript or modifier after it, both of which zsh reads
+// (`$a[@]`, `$v:h`). A `:` that no modifier letter follows is text in bash
+// and zsh alike (`"$USER: "`).
 func plainParam(line string, j, k int) bool {
-	if !isName(line[j+1 : k]) {
+	if name := line[j+1 : k]; !isName(name) && !allDigits(name) {
 		return false
 	}
-	return k >= len(line) || (line[k] != '[' && line[k] != ':')
+	switch {
+	case k >= len(line):
+		return true
+	case line[k] == '[':
+		return false
+	case line[k] == ':':
+		return k+1 >= len(line) || strings.IndexByte(zshModifiers, line[k+1]) < 0
+	}
+	return true
+}
+
+// zshModifiers are the characters that, after a `:` that follows an unbraced
+// parameter, zsh reads as a modifier rather than text (zshexpn(1),
+// Modifiers): `$v:h`, `$v:s/a/b/`, `$v:gs/a/b/`, `$v:&`.
+const zshModifiers = "aAcefFghlpPqQrstuwWx&"
+
+// isLength reports whether the body of a `${…}` is a length, `#` and a name
+// or a positional (`${#NAME}`, `${#1}`), which prints one number.
+func isLength(body string) bool {
+	rest, ok := strings.CutPrefix(body, "#")
+	return ok && (isName(rest) || allDigits(rest))
 }
 
 // zshParamFlags are the characters zsh reads between `$` and a parameter's

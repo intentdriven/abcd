@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -351,5 +352,49 @@ func TestGuardRefusesClaudeSettingsWhoseEnvironmentChangesWhatItRuns(t *testing.
 	runExtendCases(t, dir, []extendCase{
 		{`claude -p x --settings prefix.json`, VerdictBlock, id, ""},
 		{`claude -p x --settings plain.json`, VerdictAllow, "", ""},
+	})
+}
+
+// TestGuardReadsASettingsGlobUnderADirectoryNamedWithPatternCharacters: the
+// pattern characters a settings glob is refused for are read in the word the
+// line writes, not in the directory it resolves against, so a working
+// directory or home whose path holds `~`, `(` or `#` does not refuse every
+// glob, and the directory is matched as the literal path it is. A pattern
+// character in the word itself, a glob naming several files and settings
+// that turn the checks off are still refused there.
+func TestGuardReadsASettingsGlobUnderADirectoryNamedWithPatternCharacters(t *testing.T) {
+	const id = "agent-launch-claude-unchecked-settings"
+	root := scriptTree(t, map[string]string{
+		"sp~(x)#y/w/one/s1.json":     `{"model": "sonnet"}`,
+		"sp~(x)#y/w/two/a.json":      `{"model": "sonnet"}`,
+		"sp~(x)#y/w/two/b.json":      `{"model": "sonnet"}`,
+		"sp~(x)#y/w/bad/bypass.json": `{"permissions": {"defaultMode": "bypassPermissions"}}`,
+		"sp~(x)#y/w/lone/x/t.json":   `{}`,
+		"sp~(x)#y/acct/keep":         "",
+		"g[1]*/w/one/s1.json":        `{"model": "sonnet"}`,
+		"g[1]*/acct/keep":            "",
+		"g1A/w/one/s1.json":          `{"permissions": {"defaultMode": "bypassPermissions"}}`,
+	})
+	runExtendCases(t, filepath.Join(root, "sp~(x)#y"), []extendCase{
+		{`claude -p x --settings bad/*.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings two/*.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings one/s[1].json`, VerdictBlock, id, ""},
+		{`claude -p x --settings 'one/s~'*.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings lone/**/t.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings ~/w/bad/b*.json`, VerdictBlock, id, ""},
+		{`claude -p x --settings o*/../one/s1.json`, VerdictBlock, id, ""},
+
+		{`claude -p x --settings one/s*.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings ./one/s?.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings lone/*/t.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings ~/w/one/s*.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings ../w/one/s*.json`, VerdictAllow, "", ""},
+		{`cd one && claude -p x --settings s*.json`, VerdictAllow, "", ""},
+	})
+	// A directory whose name Go's matcher reads as a pattern is matched as
+	// its literal path, never as the pattern that names its sibling.
+	runExtendCases(t, filepath.Join(root, "g[1]*"), []extendCase{
+		{`claude -p x --settings one/s*.json`, VerdictAllow, "", ""},
+		{`claude -p x --settings ~/w/one/s?.json`, VerdictAllow, "", ""},
 	})
 }
