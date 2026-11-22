@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -1365,7 +1366,7 @@ func (r Registry) settingsTexts(rc *readCtx, segs []segment, recs []scriptSeg, i
 			return texts, true
 		}
 		if glob {
-			if p, ok = globOne(p); !ok {
+			if p, ok = globOne(p, word); !ok {
 				return texts, true
 			}
 		}
@@ -1422,35 +1423,85 @@ func settingsWritten(p string, before []writeTarget) bool {
 	return false
 }
 
-// globOne is the one file the pattern p matches as the shell expands it, a
-// name starting with a dot only where the pattern's own last component
-// does, and false where it matches none or several, or holds a pattern
-// character besides `*` and `?` (globShellOnly): Go's matcher reads a bracket
-// expression and a backslash by its own grammar, not the shell's (a POSIX
-// class such as `[[:digit:]]` names another file to it), and zsh reads more
-// characters as pattern syntax than Go does. A pattern holding `**` is
-// refused too: zsh reads `**/` as any number of directories, none among
-// them, and Go's matcher as exactly one, so `d/**/s.json` names `d/s.json`
-// to zsh and `d/x/s.json` to Go.
-func globOne(p string) (string, bool) {
-	if strings.ContainsAny(p, globShellOnly) || strings.Contains(p, "**") {
+// globOne is the one file the pattern word matches as the shell expands it,
+// where p is word resolved to an absolute path, a name starting with a dot
+// only where the pattern's own last component does, and false where it
+// matches none or several, or holds a pattern character besides `*` and `?`
+// (globShellOnly): Go's matcher reads a bracket expression and a backslash by
+// its own grammar, not the shell's (a POSIX class such as `[[:digit:]]` names
+// another file to it), and zsh reads more characters as pattern syntax than
+// Go does. A pattern holding `**` is refused too: zsh reads `**/` as any
+// number of directories, none among them, and Go's matcher as exactly one, so
+// `d/**/s.json` names `d/s.json` to zsh and `d/x/s.json` to Go.
+//
+// Only the components the word writes are read as pattern (globTail): the
+// directory it resolves against, the working directory or the home, is the
+// literal path it is, whatever characters its name holds, and the pattern is
+// matched inside it.
+func globOne(p, word string) (string, bool) {
+	tail, ok := globTail(word)
+	if !ok {
 		return "", false
 	}
-	matches, err := filepath.Glob(p)
+	parts := strings.Split(p, string(filepath.Separator))
+	if len(tail) == 0 || len(tail) >= len(parts) {
+		return "", false
+	}
+	dir := strings.Join(parts[:len(parts)-len(tail)], string(filepath.Separator))
+	if dir == "" {
+		dir = string(filepath.Separator)
+	}
+	matches, err := fs.Glob(os.DirFS(dir), strings.Join(tail, "/"))
 	if err != nil {
 		return "", false
 	}
-	dot := strings.HasPrefix(filepath.Base(p), ".")
+	dot := strings.HasPrefix(tail[len(tail)-1], ".")
 	var kept []string
 	for _, m := range matches {
-		if dot || !strings.HasPrefix(filepath.Base(m), ".") {
-			kept = append(kept, m)
+		if dot || !strings.HasPrefix(path.Base(m), ".") {
+			kept = append(kept, filepath.Join(dir, filepath.FromSlash(m)))
 		}
 	}
 	if len(kept) != 1 {
 		return "", false
 	}
 	return kept[0], true
+}
+
+// globTail is the components of the pattern word that end its resolved path,
+// in order: those after its last `..`, without the empty and `.` ones the
+// path's cleaning drops, and after a leading `~` the home stands for. ok is
+// false where any component the word writes holds a pattern character Go and
+// the shell read apart, or `**`, or one before a `..` holds any pattern
+// character, which the resolved path cannot place.
+func globTail(word string) ([]string, bool) {
+	switch {
+	case word == "~":
+		word = ""
+	case strings.HasPrefix(word, "~/"):
+		word = word[2:]
+	}
+	comps := strings.Split(word, "/")
+	last := -1
+	for i, c := range comps {
+		if strings.ContainsAny(c, globShellOnly) || strings.Contains(c, "**") {
+			return nil, false
+		}
+		if c == ".." {
+			last = i
+		}
+	}
+	var tail []string
+	for i, c := range comps {
+		switch {
+		case i < last && strings.ContainsAny(c, "*?"):
+			return nil, false
+		case i <= last || c == "" || c == ".":
+		default:
+			tail = append(tail, c)
+		}
+	}
+	return tail, true
 }
 
 // globShellOnly are the characters a pattern may hold that the shell and Go's
