@@ -3217,8 +3217,11 @@ An autonomous run's periodic check, in one command:
      reservations of an issue or an intent held from any worktree of this checkout
      that is live and half through its lease, with its own term, as abcd reserve
      --renew renews it, and only one whose latest commit the worktree holding it
-     pushed. A lapsed one is reported, never revived; one held from another clone or
-     computer, another person's and a release being cut are left alone.
+     pushed and whose worktree's branch has a pull request open, armed or queued.
+     Any other (abandoned, or a lane mid-work with no pull request yet) is reported
+     held and not renewed, with why, and lapses on its lease; a lane's own loop renews
+     its reservations. A lapsed one is reported, never revived; one held from another
+     clone or computer, another person's and a release being cut are left alone.
   2. Pull requests: reports each tracked pull request as abcd land --state does:
      merged, queued with its position, armed, open and not armed, removed from the
      merge queue with the reason, or closed. The tracked ones are your open pull

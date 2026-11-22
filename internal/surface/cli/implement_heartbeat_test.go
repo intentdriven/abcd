@@ -31,6 +31,13 @@ func TestImplementHeartbeatReportsWhatChanged(t *testing.T) {
 	if code, out, errs := reserveRun(t, p, "reserve", "iss-5", "--footprint", "a.go"); code != 0 {
 		t.Fatalf("the reservation: exit %d\n%s%s", code, out, errs)
 	}
+	// The lane's worktree is on the queued pull request's branch, so its
+	// reservation is backed; iss-5's, held from a branch with no pull request,
+	// is held and not renewed, and says why.
+	gitCmd(t, sib, "checkout", "-q", "-b", "fix-a")
+	if code, out, errs := reserveRun(t, sib, "reserve", "iss-6", "--footprint", "b.go"); code != 0 {
+		t.Fatalf("the lane's reservation: exit %d\n%s%s", code, out, errs)
+	}
 
 	queued := `"isInMergeQueue":true,"mergeQueueEntry":{"state":"QUEUED","position":1},"autoMergeRequest":null,"timelineItems":{"nodes":[]}`
 	pr := queued
@@ -38,6 +45,8 @@ func TestImplementHeartbeatReportsWhatChanged(t *testing.T) {
 	t.Cleanup(func() { heartbeatSeams = prev })
 	heartbeatSeams.Forge = func(_ string, args ...string) (string, error) {
 		switch {
+		case slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, "--head=") }):
+			return `[]`, nil
 		case slices.Contains(args, "--author=@me"):
 			return `[{"number":21,"headRefName":"fix-a","isCrossRepository":false}]`, nil
 		case slices.Contains(args, "query="+landing.PRReportQuery) && slices.Contains(args, "n=21"):
@@ -54,15 +63,20 @@ func TestImplementHeartbeatReportsWhatChanged(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("the first heartbeat: exit %d\n%s%s", code, out, errs)
 	}
-	for _, want := range []string{"iss-5: held from your worktree", "#21 (fix-a): queued in the merge queue, QUEUED, position 1", "disk: 100.0 GiB free"} {
+	for _, want := range []string{"iss-5: held from your worktree", "and not renewed: no pull request from its branch", "iss-6: held until", "#21 (fix-a): queued in the merge queue, QUEUED, position 1", "disk: 100.0 GiB free"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the first heartbeat lacks %q:\n%s%s", want, out, errs)
+		}
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "iss-6:") && strings.Contains(l, "not renewed") {
+			t.Errorf("the reservation behind the queued pull request reads as unbacked: %q", l)
 		}
 	}
 
 	code, out, errs = reserveRun(t, sib, "implement", "heartbeat")
 	if code != 0 || strings.Count(out, "\n") != 1 || !strings.Contains(out, "nothing changed since") ||
-		!strings.Contains(out, "1 reservations held") || !strings.Contains(out, "1 pull requests tracked") {
+		!strings.Contains(out, "2 reservations held") || !strings.Contains(out, "1 pull requests tracked") {
 		t.Fatalf("a heartbeat with nothing moved: exit %d\n%s%s", code, out, errs)
 	}
 
@@ -86,7 +100,7 @@ func TestImplementHeartbeatReportsWhatChanged(t *testing.T) {
 		t.Fatalf("stdout is not one JSON document: %v\n%s", err, raw)
 	}
 	if !doc.Changed || len(doc.Changes) != 1 || doc.Changes[0].Key != "#21" || doc.Changes[0].Was != "queued:QUEUED:1" ||
-		!strings.Contains(doc.Changes[0].Line, "removed from the merge queue at 2026-11-22T07:00:00Z: the checks failed") || len(doc.Items) != 3 {
+		!strings.Contains(doc.Changes[0].Line, "removed from the merge queue at 2026-11-22T07:00:00Z: the checks failed") || len(doc.Items) != 4 {
 		t.Fatalf("doc %+v", doc)
 	}
 

@@ -3,7 +3,8 @@ package cli
 // implement_heartbeat.go is the front door of `abcd implement heartbeat`
 // (iss-2611220942554289): an autonomous run's periodic check in one command,
 // where a run used to compose it by hand from a handful of shell commands each
-// time. It renews the run's reservations (claim.RenewHeld), reports each
+// time. It renews the reservations the run's open pull requests stand on
+// (claim.RenewHeld, answered by prLive), reports each
 // tracked pull request (landing.PRStates) and the free disk against the load
 // gate's floor (implement.ReadDisk), and says what changed since the last
 // heartbeat, which it keeps in the checkout's local tier
@@ -59,8 +60,11 @@ func newImplementHeartbeatCommand(asJSON *bool) *cobra.Command {
 			"     reservations of an issue or an intent held from any worktree of this checkout\n" +
 			"     that is live and half through its lease, with its own term, as abcd reserve\n" +
 			"     --renew renews it, and only one whose latest commit the worktree holding it\n" +
-			"     pushed. A lapsed one is reported, never revived; one held from another clone or\n" +
-			"     computer, another person's and a release being cut are left alone.\n" +
+			"     pushed and whose worktree's branch has a pull request open, armed or queued.\n" +
+			"     Any other (abandoned, or a lane mid-work with no pull request yet) is reported\n" +
+			"     held and not renewed, with why, and lapses on its lease; a lane's own loop renews\n" +
+			"     its reservations. A lapsed one is reported, never revived; one held from another\n" +
+			"     clone or computer, another person's and a release being cut are left alone.\n" +
 			"  2. Pull requests: reports each tracked pull request as abcd land --state does:\n" +
 			"     merged, queued with its position, armed, open and not armed, removed from the\n" +
 			"     merge queue with the reason, or closed. The tracked ones are your open pull\n" +
@@ -129,9 +133,14 @@ func heartbeat(root string, asks []landing.PRAsk) heartbeatOutput {
 	if !prevAt.IsZero() {
 		out.PreviousAt = prevAt.UTC().Format(time.RFC3339)
 	}
+	forge := heartbeatSeams.Forge
+	if forge == nil {
+		forge = landing.GH
+	}
+	prItems, states := heartbeatPRs(root, forge, asks, prev)
 	var items []autonomy.BeatItem
-	items = append(items, heartbeatReservations(root)...)
-	items = append(items, heartbeatPRs(root, asks, prev)...)
+	items = append(items, heartbeatReservations(root, prLive(root, forge, states))...)
+	items = append(items, prItems...)
 	items = append(items, heartbeatDisk())
 	out.Items = items
 	out.Changes = append(out.Changes, autonomy.HeartbeatChanges(prev, items)...)
@@ -144,9 +153,9 @@ func heartbeat(root string, asks []landing.PRAsk) heartbeatOutput {
 }
 
 // heartbeatReservations fetches the reservations and renews the person's own
-// held from this checkout, one fact each, and one forge fact for a fetch or a
-// renewal pass that failed.
-func heartbeatReservations(root string) []autonomy.BeatItem {
+// held from this checkout that live answers for, one fact each, and one forge
+// fact for a fetch or a renewal pass that failed.
+func heartbeatReservations(root string, live claim.LiveWork) []autonomy.BeatItem {
 	var items []autonomy.BeatItem
 	fetch := heartbeatSeams.Fetch
 	if fetch == nil {
@@ -156,7 +165,7 @@ func heartbeatReservations(root string) []autonomy.BeatItem {
 		items = append(items, autonomy.BeatItem{Kind: autonomy.BeatForge, Key: "reservations", State: "unfetched",
 			Line: "reservations: not fetched from origin (" + beatText(err.Error()) + "); judged as last fetched"})
 	}
-	held, err := claim.RenewHeld(root, claim.Options{})
+	held, err := claim.RenewHeld(root, live, claim.Options{})
 	if err != nil {
 		return append(items, autonomy.BeatItem{Kind: autonomy.BeatForge, Key: "renewal", State: "failed",
 			Line: "reservations: not renewed (" + beatText(err.Error()) + ")"})
@@ -173,6 +182,8 @@ func heartbeatReservations(root string) []autonomy.BeatItem {
 			it.State, it.Line = "unrenewed", h.Record+": held"+from+" until "+until+", and not renewed: "+beatText(h.Err.Error())
 		case h.State == claim.StateExpired:
 			it.State, it.Line = "lapsed", h.Record+": lapsed at "+until+from+"; reserve it again to keep it"
+		case h.Unbacked != "":
+			it.State, it.Line = "unbacked", h.Record+": held"+from+" until "+until+", and not renewed: "+beatText(h.Unbacked)+"; it lapses on its lease"
 		case h.Renewed:
 			it.State, it.Line = "held", h.Record+": renewed"+from+" until "+until
 		default:
@@ -184,13 +195,10 @@ func heartbeatReservations(root string) []autonomy.BeatItem {
 }
 
 // heartbeatPRs reports each pull request asked, or with none asked the
-// account's open ones and each prev read not yet merged or closed.
-func heartbeatPRs(root string, asks []landing.PRAsk, prev []autonomy.BeatItem) []autonomy.BeatItem {
+// account's open ones and each prev read not yet merged or closed, with the
+// states it read.
+func heartbeatPRs(root string, forge func(dir string, args ...string) (string, error), asks []landing.PRAsk, prev []autonomy.BeatItem) ([]autonomy.BeatItem, []landing.PRState) {
 	var items []autonomy.BeatItem
-	forge := heartbeatSeams.Forge
-	if forge == nil {
-		forge = landing.GH
-	}
 	if len(asks) == 0 {
 		own, err := landing.OwnOpenPRs(root, forge)
 		if err != nil {
@@ -205,11 +213,46 @@ func heartbeatPRs(root string, asks []landing.PRAsk, prev []autonomy.BeatItem) [
 		}
 		slices.SortFunc(asks, func(a, b landing.PRAsk) int { return a.Number - b.Number })
 	}
-	for _, s := range landing.PRStates(root, forge, asks) {
+	states := landing.PRStates(root, forge, asks)
+	for _, s := range states {
 		items = append(items, autonomy.BeatItem{Kind: autonomy.BeatPullRequest, Key: s.Key(), State: prBeatState(s),
 			Line: s.Line(), Terminal: s.Terminal()})
 	}
-	return items
+	return items, states
+}
+
+// prLive is the heartbeat's claim.LiveWork: a branch has live work behind it
+// when its newest pull request from this repository is open (one the merge
+// queue removed included), armed or queued. A branch among the states the
+// heartbeat already read is answered from them; any other is asked of the
+// forge once.
+func prLive(root string, forge func(dir string, args ...string) (string, error), read []landing.PRState) claim.LiveWork {
+	known := map[string]landing.PRState{}
+	for _, s := range read {
+		if s.Branch != "" && s.State != landing.PRUnread {
+			if k, ok := known[s.Branch]; !ok || s.Number > k.Number {
+				known[s.Branch] = s
+			}
+		}
+	}
+	return func(branch string) (bool, string) {
+		s, ok := known[branch]
+		if !ok {
+			s = landing.PRStates(root, forge, []landing.PRAsk{{Branch: branch}})[0]
+			known[branch] = s
+		}
+		switch s.State {
+		case landing.PROpen, landing.PRArmed, landing.PRQueued, landing.PRRemoved:
+			return true, ""
+		case landing.PRNone:
+			return false, "no pull request from its branch " + branch
+		case landing.PRMerged:
+			return false, "its branch " + branch + "'s pull request " + s.Key() + " is merged"
+		case landing.PRClosed:
+			return false, "its branch " + branch + "'s pull request " + s.Key() + " is closed"
+		}
+		return false, "its branch " + branch + "'s pull request could not be read (" + s.Unread + ")"
+	}
 }
 
 // prBeatState is the state a pull request is compared on: its state, with a
@@ -243,7 +286,7 @@ func heartbeatSummary(items []autonomy.BeatItem, prevAt string) string {
 	for _, it := range items {
 		switch it.Kind {
 		case autonomy.BeatReservation:
-			if it.State == "held" {
+			if it.State == "held" || it.State == "unbacked" {
 				res++
 			}
 			if strings.Contains(it.Line, ": renewed") {

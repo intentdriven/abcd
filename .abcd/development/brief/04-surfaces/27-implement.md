@@ -856,7 +856,13 @@ the person's own live reservations of an issue or an intent held from any
 worktree of the checkout once half through its lease, with its own term,
 through the renewal from any worktree the reserve verb's renewal form uses
 (`claim.RenewHeld`), so the worktree that took each keeps it, and only one
-whose latest commit that worktree pushed; a lapsed one is reported, never
+whose latest commit that worktree pushed and whose worktree's branch has a
+pull request open, armed or queued, as the heartbeat reads it
+(`claim.LiveWork`, which the front door answers from the forge so the core
+asks none). Any other, abandoned or a lane mid-work with no pull request yet,
+is reported held and not renewed, with why, and lapses on its lease: the
+lease's lapse stays the recovery for an abandoned reservation, and a lane's
+own loop renews its reservations itself. A lapsed one is reported, never
 revived. It reports each tracked pull request through the land verb's state
 report (`landing.PRStates`): the account's open pull requests from the
 repository's branches and each one the last heartbeat read not yet merged or
@@ -867,9 +873,10 @@ state, or gone (`autonomy.HeartbeatChanges`): a renewal that only moved a lease
 on is none, and a pull request reported merged or closed is not tracked again.
 A read it cannot make is a fact like any other, never a failure.
 
-This is also the second half of iss-2611220942285216: a run's reservations stay
-renewed while its pull requests wait in the queue because the run's heartbeat
-renews them, rather than the land verb keeping a process alive to do so.
+This is also the second half of iss-2611220942285216: the reservations a run's
+pull requests stand on stay renewed while those pull requests are open, armed or
+queued because the run's heartbeat renews them, rather than the land verb
+keeping a process alive to do so.
 
 ## The lost connection
 

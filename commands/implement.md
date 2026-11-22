@@ -2411,7 +2411,12 @@ It does three things:
   this checkout that is live and half through its lease, with its own term, as
   `abcd reserve --renew` renews it. The worktree that took each keeps it. It
   renews only a reservation whose latest commit the worktree holding it
-  pushed. A lapsed one is reported, never revived; one held from another clone
+  pushed, and only while live work stands behind it: the branch of the
+  worktree holding it has a pull request open (one the merge queue removed
+  included), armed or queued. Any other, abandoned or a lane mid-work whose
+  commits have no pull request yet, is reported held and not renewed, with
+  why, and lapses on its lease; a lane's own loop renews its reservations
+  itself. A lapsed one is reported, never revived; one held from another clone
   or computer, another person's and a release being cut are left alone.
 - **Pull requests.** It reports each tracked pull request as `abcd land
   --state` does: merged, queued with its position, armed, open and not armed,
