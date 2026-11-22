@@ -1,0 +1,56 @@
+{
+  "format_version": 1,
+  "codes": [
+    {
+      "code": "capture/grounds-refused"
+    },
+    {
+      "code": "capture/input-invalid"
+    },
+    {
+      "code": "capture/not-characterized"
+    },
+    {
+      "code": "capture/not-open"
+    },
+    {
+      "code": "capture/remedy-machine-value"
+    },
+    {
+      "code": "capture/remedy-missing"
+    },
+    {
+      "code": "capture/unknown-issue"
+    },
+    {
+      "code": "explain/unknown-code"
+    },
+    {
+      "code": "explain/unknown-input"
+    },
+    {
+      "code": "explain/unknown-path"
+    },
+    {
+      "code": "usage/bad-flag-value"
+    },
+    {
+      "code": "usage/extra-argument"
+    },
+    {
+      "code": "usage/flag-conflict"
+    },
+    {
+      "code": "usage/missing-argument"
+    },
+    {
+      "code": "usage/missing-required-flag"
+    },
+    {
+      "code": "usage/unknown-command"
+    },
+    {
+      "code": "usage/unknown-flag"
+    }
+  ]
+}

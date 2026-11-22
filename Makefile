@@ -31,7 +31,7 @@ GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 export GOFLAGS := $(strip $(filter-out -trimpath,$(GOFLAGS)) -trimpath)
 
 .PHONY: build test vet clean preflight preflight-stages precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
-	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check command-facts-sync command-facts-sync-check fmt fmt-check
+	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check command-facts-sync command-facts-sync-check refusal-codes-sync refusal-codes-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -327,6 +327,18 @@ command-facts-sync:
 
 command-facts-sync-check:
 	@go run ./cmd/command-facts-sync -check
+
+# Write the ledger of refusal codes (internal/core/refusal) into
+# .abcd/development/release/refusal-codes.json (spc-2610301431108175 step 1),
+# which the release guard reads at the last tag. Nothing in CI calls either
+# target: the drift is GATED by `go test` (TestCommittedLedgerMatchesTheRegistry
+# in internal/core/refusal); these are the read-only look at it and the
+# one-command fix.
+refusal-codes-sync:
+	@go run ./cmd/refusal-codes-sync
+
+refusal-codes-sync-check:
+	@go run ./cmd/refusal-codes-sync -check
 
 # The run's clock (iss-2611190439574731): named first, as make preflight starts
 # and before the records-only classifier below, so the run's time counts from
