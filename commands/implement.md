@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|widen|record|outage] …"
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|widen|record|outage|heartbeat] …"
 block: agents
 user-invocable: false
 ---
@@ -2037,9 +2037,33 @@ and the floor, and, when the cache's own volume is low, the cache's path and
 size and three ways to free it: `abcd ahoy worktree trim-cache` and a `find` line
 deleting the build entries unused for two days (each offered only for a directory
 with a Go build cache's shape, and keeping the fuzz corpora) and `go clean -cache`.
-The gate never deletes anything itself; abcd keeps the cache to its size limit
-when `ahoy worktree prune` removes a worktree and, detached and at most hourly,
-when the build loop makes a lane (`commands/ahoy.md`). A disk it cannot read, on a platform other than macOS and Linux or
+
+Before it refuses, a waiter whose low volume holds the Go build cache runs the
+cache trim once: the trim of each toolchain its checkout uses, told by a file
+from that toolchain's closed set at the checkout's root (`go.mod` or `go.work`
+for Go, the files `.abcd/needs.json` accepts as Go's version file). The Go build
+cache's trim is the one abcd has, the same trim as `abcd ahoy worktree
+trim-cache`, down to `load.go_cache_limit_gib` and paced by the same record
+(`~/.abcd.noindex/go-cache-trim.json`), so it runs at most once an hour across the
+account and two waiters at the floor never both run it. The waiter says on
+stderr that it is trimming, what each trim removed and freed, or why it did not
+run (paced out by a trim started in the last hour, and what that trim did if it
+finished; a pacing record it could not claim; a cache the trim skipped; or a
+checkout with no toolchain abcd trims a cache for), and the free space after.
+It reads the disk again only when the trim freed something, and refuses only
+if the volume is still under the floor, the refusal naming what the trim did;
+`disk_trim` in `--json` carries the same lines. A trim walks a large cache
+for minutes and cannot be stopped part way, so a waiter with less than five
+minutes of its `--timeout` left starts none: it says so on stderr and in
+`disk_trim`, and refuses at the floor at once, so a lane's two-minute wait
+never runs over for a trim. A waiter trims once: a disk that falls below the
+floor again while it waits is refused at the open look.
+Only the Go build cache's volume is trimmed for, so a low worktree store on a
+volume of its own is refused without a trim. A cache under its limit loses
+nothing here; lower the limit to let the trim free more. abcd also keeps the
+cache to its limit when `ahoy worktree prune` removes a worktree and, detached
+and at most hourly, when the build loop makes a lane (`commands/ahoy.md`). The
+load check never trims. A disk it cannot read, on a platform other than macOS and Linux or
 through a read that fails, is never refused, in whole or in part: one line on
 stderr says it was not checked and why (`disk_note` in `--json`). CI runners
 skip the check with the rest of the gate.
@@ -2374,6 +2398,55 @@ renewal runs through git and gh, no
 waiter counts another's git or gh child as its command, so gate make or go,
 never git or gh itself.
 
+## Take the run's heartbeat
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement heartbeat [<branch>|<pr>...] [--json]
+```
+
+`implement heartbeat` is an autonomous run's periodic check in one command
+(iss-2611220942554289), where a run used to compose it by hand from a handful
+of shell commands each time, any of which could drift or be skipped. Call it
+on the run's schedule (every half hour, say) and act only on what it reports.
+It does three things:
+
+- **Reservations.** It fetches the reservations from `origin` and renews each
+  of your own reservations of an issue or an intent held from any worktree of
+  this checkout that is live and half through its lease, with its own term, as
+  `abcd reserve --renew` renews it. The worktree that took each keeps it. It
+  renews only a reservation whose latest commit the worktree holding it
+  pushed, and only while live work stands behind it: the branch of the
+  worktree holding it has a pull request open (one the merge queue removed
+  included), armed or queued. Any other, abandoned or a lane mid-work whose
+  commits have no pull request yet, is reported held and not renewed, with
+  why, and lapses on its lease; a lane's own loop renews its reservations
+  itself. A lapsed one is reported, never revived; one held from another clone
+  or computer, another person's and a release being cut are left alone.
+- **Pull requests.** It reports each tracked pull request as `abcd land
+  --state` does: merged, queued with its position, armed, open and not armed,
+  removed from the merge queue with the forge's reason, or closed. The tracked
+  ones are your open pull requests from this repository's branches and each one
+  the last heartbeat read that was not yet merged or closed, so a merge is
+  reported once; or, when you name branches or numbers (`N` or `#N`), those
+  alone.
+- **Disk.** It reports the free space against the load gate's disk floor, read
+  as `implement load` reads it. It trims nothing; `abcd ahoy worktree
+  trim-cache` does.
+
+It keeps what it read in `.abcd/.work.local/heartbeat.json` and prints one line
+when nothing changed since the last heartbeat, and otherwise one line for each
+change: a fact that is new, in another state (named after it, `(was …)`), or
+gone. A renewal that only moved a lease on is no change. The first heartbeat in
+a checkout reports every fact. `--json` carries `at`, `previous_at`, `changed`,
+`summary`, `changes` (each with `kind`, `key`, `state`, `line`, and `was` or
+`gone` where it applies) and `items`, every fact read.
+
+It writes only the renewals and its own state file. A read it cannot make, the
+fetch, the listing of your pull requests, one pull request or the disk, is
+reported as a fact, never fatal, and a state file it cannot read or keep is
+named on stderr. Exit 2 on an operand that is neither a branch name nor a
+number, or outside a checkout.
+
 ## Wait out a lost connection
 
 ```bash
@@ -2459,6 +2532,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd implement check lane --session s-example`.
 - `abcd implement claim <record> --session <id> --lane <lane> [flags]`
   - An example call is `abcd implement claim iss-2609010000000001 --session s-example --lane cli`.
+- `abcd implement heartbeat [<branch>|<pr>...] [flags]`
+  - An example call is `abcd implement heartbeat --json`.
 - `abcd implement join --session <id> --role first|second [flags]`
   - An example call is `abcd implement join --session s-example --role first`.
 - `abcd implement leave --session <id> [flags]`

@@ -125,8 +125,7 @@ support reads them there. In the 30 days to 4 Nov 2026 the guard refused 478 of 
 in only 11 of 110; if main-session refusals more than double on comparable work, the
 most refused hazards go back into what is sent. An entry added to the registry is
 listed and enforced from the same release, with no second edit. A hazard the guard reads in code rather
-than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
-a checkout with more than one worktree), `interpreter-reads-stream` (a shell
+than from the registry, such as `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
@@ -827,8 +826,11 @@ descriptor a redirection names, zsh's `${NAME::=…}` and an assignment to an
 array the line ties to the variable with `typeset -T` among them), with an
 assignment whose name or value the line does not fix read as setting the
 variable and the value of one of env's or sudo's own options read as no
-assignment only where every expansion in it is a plain quoted `"$NAME"` or
-`"${NAME}"`, any other expansion being read as possibly several words, a
+assignment only where every expansion in it is one double quotes keep as one
+word (a plain quoted `"$NAME"`, `"${NAME}"` or positional `"$1"`, `"$!"`, a
+length `"${#NAME}"`, a quoted `"$(…)"` or `"$((…))"`, and a `:` after `"$NAME"`
+that no zsh modifier letter follows), any other expansion being read as
+possibly several words, a
 `set` whose option words it does not fix and a `SHELLOPTS` exported before a
 shell read as turning allexport on, an element of zsh's `options` array read
 as turning it off only for the exact value zsh accepts (`off`, or `on` for the
@@ -839,8 +841,9 @@ refusing settings that turn the permission checks off, grant permission rules
 or directories, declare hooks or another command claude runs, turn hooks off,
 or set an `env` variable that changes what claude runs, and settings it cannot
 read now (text that does not parse, a value, name or directory the line does
-not fix, a glob that does not match one file or holds a pattern character
-the shell and Go read apart, a bracket expression or `**` among them, a file
+not fix, a glob that does not match one file or whose word holds a pattern
+character the shell and Go read apart, a bracket expression or `**` among
+them, the directory it resolves against being matched as its literal path, a file
 the line writes first or may write by a name it does not fix, or one it
 cannot open or that is too large). The flag forms of an allow list (`--allowedTools`),
 of extra directories (`--add-dir`) and of a prompt answerer
@@ -1012,9 +1015,11 @@ with that pipe as its input — and a `pkill` or
 attached, as selecting every session under the account; `pkill`'s signal name
 is read as a signal first, in any case. Flipping a source-ledger line to
 public citation is blocked, because the ledger records that a person chose to
-cite the source, and that choice is the person's to make. In a repository with more
-than one worktree, a stash or pop that does not name its entry is warned about,
-because the stash stack is shared across worktrees. Where the reading is a
+cite the source, and that choice is the person's to make. In a repository with linked
+worktrees, every `git stash` that changes the stash list is warned about, a
+named entry included, because the list is shared across worktrees; `git stash
+list` and `git stash show` are not (`git-stash-shared-stack`, a registry entry
+whose worktree count and subcommand are read in code). Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
 A recursive delete is read by what it deletes. Of the filesystem root or the

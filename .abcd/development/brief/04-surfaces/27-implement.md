@@ -45,6 +45,7 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `outage probe` | — | shipped |
 | `outage ack` | — | shipped |
 | `outage clear` | — | shipped |
+| `heartbeat` | — | shipped |
 
 ## Where the run lives
 
@@ -375,7 +376,21 @@ gates refuse, exiting 1 without waiting, while the volume holding the Go build
 cache or the worktree store has less free space than the disk floor: 4 GiB for
 each preflight the first gate admits at once, and 8 GiB at least; a disk that
 falls below the floor while a gate waits is refused before the gate
-opens. Both gates also wait, never refuse, while the system reports memory
+opens. Before it refuses, a waiter whose low volume holds the Go build cache
+runs the cache trim of each toolchain its checkout uses once
+(iss-2611220942266387): a toolchain is told by a file from its closed set at
+the checkout's root (`go.mod` or `go.work` for Go), and the Go build cache's
+trim, the one abcd has, is the same trim a lane's start runs, down to the
+person's size limit and paced by the same hourly record, so two waiters at the
+floor never both run it. It says on stderr that it is trimming, what each trim
+freed or why it did not run (paced out, a pacing record it could not claim, a
+cache it skipped, or no known toolchain), and the free space after, and refuses
+only if the volume is still under the floor, naming what the trim did. The
+trim takes no deadline and walks a large cache for minutes, so a waiter with
+less than `implement.DiskTrimMinLeft` (five minutes) of its timeout left starts
+none, says why, and refuses at once: a lane's two-minute wait never runs over
+its timeout for a trim.
+Both gates also wait, never refuse, while the system reports memory
 pressure at or above the person's floor (itd-2611012048006057): macOS's own
 pressure level against `load.memory_floor_macos` (`warn` by default, or
 `critical`), or on Linux the share of the last ten seconds some task stalled
@@ -834,6 +849,39 @@ anything else, reserves again what a stop released, saves aside and
 names what a gone agent left, and re-tells its await; the next step starts the fresh
 agent, so nothing is started twice.
 
+## The heartbeat
+
+The heartbeat verb is an autonomous run's periodic check (iss-2611220942554289):
+before it, a run's prompt composed the check by hand every half hour, renewing
+reservations, reading each pull request and its place in the merge queue, and
+reading the free disk, and each part could drift or be skipped. The verb does
+the three deterministically and reports only what changed. It renews each of
+the person's own live reservations of an issue or an intent held from any
+worktree of the checkout once half through its lease, with its own term,
+through the renewal from any worktree the reserve verb's renewal form uses
+(`claim.RenewHeld`), so the worktree that took each keeps it, and only one
+whose latest commit that worktree pushed and whose worktree's branch has a
+pull request open, armed or queued, as the heartbeat reads it
+(`claim.LiveWork`, which the front door answers from the forge so the core
+asks none). Any other, abandoned or a lane mid-work with no pull request yet,
+is reported held and not renewed, with why, and lapses on its lease: the
+lease's lapse stays the recovery for an abandoned reservation, and a lane's
+own loop renews its reservations itself. A lapsed one is reported, never
+revived. It reports each tracked pull request through the land verb's state
+report (`landing.PRStates`): the account's open pull requests from the
+repository's branches and each one the last heartbeat read not yet merged or
+closed, or those named. It reads the disk against the load gate's own floor
+(`implement.DiskFloor`), and trims nothing. Its facts are kept in the local
+tier (`autonomy.WriteHeartbeat`), and a change is a fact new, in another
+state, or gone (`autonomy.HeartbeatChanges`): a renewal that only moved a lease
+on is none, and a pull request reported merged or closed is not tracked again.
+A read it cannot make is a fact like any other, never a failure.
+
+This is also the second half of iss-2611220942285216: the reservations a run's
+pull requests stand on stay renewed while those pull requests are open, armed or
+queued because the run's heartbeat renews them, rather than the land verb
+keeping a process alive to do so.
+
 ## The lost connection
 
 A lost connection to the network (git, gh, a download) or to the model service
@@ -882,7 +930,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement resume`, `abcd implement status`, `abcd implement step`, `abcd implement stop`, `abcd implement widen`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement heartbeat`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement outage`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement resume`, `abcd implement status`, `abcd implement step`, `abcd implement stop`, `abcd implement widen`.
 
 Flags: none.
 
@@ -905,6 +953,12 @@ Sub-verbs: none.
 | `--lease` | duration |
 | `--path` | stringArray |
 | `--session` | string |
+
+### `abcd implement heartbeat`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd implement join`
 

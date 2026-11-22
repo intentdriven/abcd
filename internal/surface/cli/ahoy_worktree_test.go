@@ -1161,6 +1161,27 @@ const trimChildEnv = "ABCD_TEST_TRIM_CHILD"
 // home; TestMain's stand-in answers in place of the trim, so no cache is touched.
 func TestSpawnCacheTrimRunsTheVerbDetached(t *testing.T) {
 	home := t.TempDir()
+	// The child is detached and released, so the test cannot wait for it: it can
+	// still be writing under the home after its answer lands, and TempDir's own
+	// removal then fails on a directory that filled again. This cleanup runs
+	// first and removes the home until a removal holds, for the child's last
+	// writes, before TempDir looks.
+	t.Cleanup(func() {
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			err := os.RemoveAll(home)
+			if err == nil {
+				if _, err = os.Stat(home); errors.Is(err, os.ErrNotExist) {
+					return
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("the detached child still writes under the home: %v", err)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
 	t.Setenv("HOME", home)
 	gittest.Env(t)
 	t.Setenv(trimChildEnv, "1")

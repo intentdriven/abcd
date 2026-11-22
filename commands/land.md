@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--approve]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--rests-on <base>] [--review-brief[=<commit>]] [--approve] | --state [<branch>|<pr>...]"
 block: people
 ---
 
@@ -354,6 +354,58 @@ to an agent in either mode; tell the user the head is ready for their
 approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
 `--record-review`.
 
+## Brief a reviewer
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --review-brief[=<commit>] [--rests-on <base>] [--json]
+```
+
+`--review-brief` prints the return a reviewer writes for the branch's head, ready
+to paste into the reviewer's brief, and writes and lands nothing. Given bare, it
+names the head of the branch (or the checkout's current branch); given as
+`--review-brief=<commit>`, with no branch, it names that commit. The brief's first
+line reads `Reviewed head: <full name>`, then comes a place for the findings, then
+the `### Verdict` heading, and under it the verdict line naming the head in full,
+its word left to the reviewer: `SHIP` or `APPROVE` when no finding is critical or
+major, otherwise `NEEDS-INPUT`, `FIX FIRST` or `BLOCK`. With `--rests-on <base>`,
+the base's full object name, the first line is the delta's instead,
+`Reviewed delta: <base>..<head>`; whether the delta stands is judged when the pair
+is recorded.
+
+The brief is built from the rule `--record-review` reads a return by, below, so
+the two cannot drift: a brief filled in with a passing verdict is recorded. A head
+or base that is not a commit the repository holds, an abbreviated base, a head
+resting on itself, and a branch given beside `--review-brief=<commit>` are each
+refused with exit 2. It takes no `--no-push`, `--no-enqueue`, `--approve` or
+`--record-review`. `--json` carries the `commit`, `rests_on` and the `brief`.
+
+## Report a pull request's state
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land --state [<branch>|<pr>...] [--json]
+```
+
+`--state` reports each pull request's state and lands nothing
+(iss-2611220942419392). With no operand it reads the current branch's newest
+pull request from this repository; otherwise each branch, or pull request
+number (`N` or `#N`), named. The forge clears a pull request's arming as the
+merge queue takes it, so a check of the arming alone reads a queued pull
+request as dropped; this reads the queue entry itself. Each line says the pull
+request is merged (with when), queued in the merge queue (with the entry's
+state and position), armed for auto-merge and not yet queued, open and not
+armed, removed from the merge queue (with the removal's time and the forge's
+reason, read from the pull request's timeline), closed without merging, or that
+the branch has none. `--json` carries `pull_requests`, each with `number`,
+`branch`, `state` (`merged`, `queued`, `armed`, `open`, `removed`, `closed`,
+`none` or `unread`), and `merged_at`, `queue_state`, `position`, `armed_at`,
+`removed_at`, `removed_reason` or `unread` where they apply.
+
+It reads the forge and writes nothing, and takes no other flag (exit 2). It
+exits 1 when a pull request could not be read, which its line names, and 2 on
+an operand that is neither a branch name nor a number, or on a detached HEAD
+with no operand. `abcd implement heartbeat` reports the tracked pull requests
+through the same read.
+
 ## Record the review pair's verdicts
 
 ```bash
@@ -472,19 +524,37 @@ exit 2, nothing is written, and the head needs a full pair:
 - Together they change at most 30 lines (added and removed, summed commit by
   commit) and 3 files. Their patches, with no context lines, also stay within 64 KiB.
 
-A merge from the default branch does not count against any of this, so merging it
-up costs a delta pair at most, whatever it brought. Each merge since `<base>` must
-take a commit already on the default branch as its second parent and hold exactly
-the tree git makes of its two parents with no conflict. Any other merge is refused,
-and so is any commit neither on the default branch nor on the first-parent line
-from the head to `<base>`.
+A merge from origin's default branch does not count against any of this, so
+merging it up after a full pair costs a delta pair at most, whatever it brought:
+what it brought was reviewed when it landed. Each merge since `<base>` must meet
+all of these, with history read as stored:
+
+- Its second parent is a commit already on origin's default branch as last
+  fetched. A local default branch does not count, since it may hold commits no
+  one has pushed, and a repository that tracks no default branch of origin
+  records no delta.
+- It holds exactly the tree git's own merge makes of its two parents, with no
+  conflict, so its resolution adds nothing beyond what its parents bring: the
+  check `git show --remerge-diff` makes, with every merge driver git's built-in
+  text merge.
+- Its parents have one merge base, so what it brings can be told apart from the
+  branch. A criss-cross merge needs a full pair.
+- What its second parent changes since that merge base touches no file the
+  branch's own commits change since `<base>`, before the merge or after it,
+  compared path by path with no rename detection. No reviewer read the two
+  together in one file, so a merge that meets the branch's own change needs a full
+  pair, however cleanly git merged it.
+
+Any other merge is refused, an octopus merge and a merge from another branch
+included, and so is any commit neither on the default branch nor on the
+first-parent line from the head to `<base>`.
 
 The merge gate asks all of this again at landing, against the default branch as
 just fetched and in the build of abcd that runs the gate, and the note says why
 when a delta no longer stands. It reads the receipts for the head in every worktree
 but a drive lane's or one under it, and a full pair in any of them counts. It counts a
 receipt with no delta only when it holds a passing pair for the head it names.
-`--rests-on` without `--record-review` is refused with exit 2.
+`--rests-on` without `--record-review` or `--review-brief` is refused with exit 2.
 
 ## Turning an act off
 

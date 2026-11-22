@@ -467,15 +467,15 @@ func ghSecurityState(cwd, repo string) (sec RemoteSecurity, merge RemoteMergeHyg
 	}
 	policy, forkErr := ghForkPRApproval(cwd, repo)
 	return RemoteSecurity{
-			SecretScanning: obj.SecurityAndAnalysis[secretScanningKey].Status,
-			PushProtection: obj.SecurityAndAnalysis[pushProtectionKey].Status,
-		}, RemoteMergeHygiene{
-			DeleteBranchOnMerge:       obj.DeleteBranchOnMerge,
-			AllowMergeCommit:          obj.AllowMergeCommit,
-			AllowSquashMerge:          obj.AllowSquashMerge,
-			AllowRebaseMerge:          obj.AllowRebaseMerge,
-			ForkPRContributorApproval: policy,
-		}, obj, forkErr, nil
+		SecretScanning: obj.SecurityAndAnalysis[secretScanningKey].Status,
+		PushProtection: obj.SecurityAndAnalysis[pushProtectionKey].Status,
+	}, RemoteMergeHygiene{
+		DeleteBranchOnMerge:       obj.DeleteBranchOnMerge,
+		AllowMergeCommit:          obj.AllowMergeCommit,
+		AllowSquashMerge:          obj.AllowSquashMerge,
+		AllowRebaseMerge:          obj.AllowRebaseMerge,
+		ForkPRContributorApproval: policy,
+	}, obj, forkErr, nil
 }
 
 // ghForkPRApproval reads the repository's fork pull-request approval policy

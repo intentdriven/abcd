@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -236,6 +238,37 @@ func QueueStep(cwd, step string, o Options) (*Record, error) {
 		}
 		return cur, nil
 	})
+}
+
+// QueueStepOnce is QueueStep for a step a caller may offer more than once:
+// the check that the record does not already hold the step (its words
+// compared as AddStep keeps them) and the append are one update under the
+// store's lock, so two callers racing queue it once. It reports whether this
+// call queued it; a step already queued writes nothing.
+func QueueStepOnce(cwd, step string, o Options) (queued bool, rec *Record, err error) {
+	root, st, err := Resolve(cwd, o)
+	if err != nil {
+		return false, nil, err
+	}
+	now := o.now()
+	want := strings.Join(strings.Fields(step), " ")
+	rec, err = st.Update(func(cur *Record) (*Record, error) {
+		if !cur.Holds(now) {
+			return nil, fmt.Errorf("%w: no away record holds, so there is no return to queue the step for; ask the person instead", ErrNotAway)
+		}
+		if slices.ContainsFunc(cur.Queue, func(q QueuedStep) bool { return q.Step == want }) {
+			return nil, nil
+		}
+		if err := cur.AddStep(step, root, now); err != nil {
+			return nil, err
+		}
+		queued = true
+		return cur, nil
+	})
+	if err != nil {
+		queued = false
+	}
+	return queued, rec, err
 }
 
 // AwayAt reads whether the person is away for the checkout at root, failing

@@ -1,37 +1,40 @@
 package guard
 
 import (
-	"strings"
 	"sync"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// The shared stash stack (iss-2609190338340796). git keeps ONE stash stack per
-// repository, not one per worktree, so in a clone with several worktrees a
-// bare `git stash` in one lane and a bare `git stash pop` in another can hand
-// the second lane the first lane's entry: the pop succeeds, the work lands in
-// the wrong tree, and neither lane has a message it can act on. That is a fact
-// about the repository, not about the command's words, so no Pattern can say
-// it; the guard raises it under a reserved id, as a warn, and only when the
-// repository it loaded for really has more than one worktree.
+// The shared stash list (iss-2609190338340796, iss-2611220942432452). git keeps
+// ONE stash list per repository, not one per worktree, so in a clone with
+// several worktrees a stash in one lane and a pop in another can hand the
+// second lane the first lane's work: the pop succeeds, the work lands in the
+// wrong tree, and neither lane has a message it can act on. Naming the entry
+// does not help, since `stash@{0}` is whatever entry is newest when the command
+// runs. The warning is the registry entry stashEntryID, so the SHELL rules
+// teach it; two of its conditions are facts the Pattern language cannot say —
+// whether the stash changes the list, and whether the repository it loaded for
+// has linked worktrees — and the matcher reads them here (stashEntryStands).
 
 const (
-	// stashEntryID is the reserved id the shared-stack warning is reported
-	// under. It names a verdict the Pattern language cannot express (it turns
-	// on the repository's worktree count), so no registry entry may claim it.
+	// stashEntryID is the registry entry that warns on a stash which changes
+	// the shared list.
 	stashEntryID = "git-stash-shared-stack"
-
-	familyStash = "git stash"
 
 	// maxWorktreeListBytes caps the worktree listing the count is read from.
 	maxWorktreeListBytes = 1 << 20
 )
 
+// stashValueFlags are git stash's own options that take the next word, so a
+// message or a pathspec file is never read as the stash's subcommand (`git
+// stash -m list` is a push).
+var stashValueFlags = []string{"-m", "--message", "--pathspec-from-file"}
+
 // worktreeCounter returns a function that counts root's working trees (bare
-// entries excluded) the first time it is asked, and 1 — a clone whose stack is
+// entries excluded) the first time it is asked, and 1 — a clone whose list is
 // not shared — when git cannot answer. Lazy because it costs a git process,
-// and only a command holding a bare stash needs the answer.
+// and only a command holding a stash that changes the list needs the answer.
 func worktreeCounter(root string) func() int {
 	var (
 		once sync.Once
@@ -57,119 +60,49 @@ func worktreeCounter(root string) func() int {
 	}
 }
 
-// sharedStashSignal returns the warning for the first bare stash segment —
-// `git stash` / `git stash push` without a message, or `git stash pop` /
-// `git stash apply` without naming the entry — when the registry's repository
-// has more than one worktree. A registry with no repository behind it (the
-// bundled defaults on their own) cannot tell, and says nothing.
-func (r Registry) sharedStashSignal(segs []segment, valueFlags []string) (payloadSignal, bool) {
-	if r.worktrees == nil {
-		return payloadSignal{}, false
+// stashEntryStands reports whether a match of entry id on segment s stands. It
+// is true for every entry but stashEntryID. That entry's pattern names `git
+// stash`, so it stands only where the stash changes the list
+// (stashChangesList) and the repository has more than one worktree. A registry
+// with no repository behind it (the bundled defaults on their own) cannot
+// count, and lets it stand: the warning's side.
+func (r Registry) stashEntryStands(id string, s segment) bool {
+	if id != stashEntryID {
+		return true
 	}
-	for _, s := range segs {
-		if !bareStash(s, valueFlags) {
-			continue
-		}
-		if r.worktrees() < 2 {
-			return payloadSignal{}, false
-		}
-		return sharedStashWarnSignal(), true
+	valueFlags := append(append([]string(nil), r.gitValueFlags()...), stashValueFlags...)
+	if !stashChangesList(s, valueFlags) {
+		return false
 	}
-	return payloadSignal{}, false
+	return r.worktrees == nil || r.worktrees() >= 2
 }
 
-// bareStash reports whether a segment is a git stash that takes or gives the
-// TOP of the shared stack without naming it. Every place git can sit and every
-// reading of its operands is read (unknown.go); readings past their bound are
-// taken as bare, the warning's fail-closed side.
-func bareStash(s segment, valueFlags []string) bool {
+// stashChangesList reports whether a segment holds a git stash that changes
+// the shared list: anything but `git stash list` and `git stash show`, which
+// only read it. Every place git can sit and every reading of its operands is
+// read (unknown.go); readings past their bound, and a subcommand the line does
+// not fix, are taken as changing it, the warning's side.
+func stashChangesList(s segment, valueFlags []string) bool {
 	for _, site := range sitesNamed(s, "git") {
 		args := s.tokens[site.idx+1:]
-		readings, complete := operandReadings(args, valueFlags, 3)
+		readings, complete := operandReadings(args, valueFlags, 2)
 		if !complete {
 			return true
 		}
 		for _, idx := range readings {
-			if bareStashReading(args, idx) {
+			if len(idx) == 0 || !wordCouldBe(args[idx[0]], "stash") {
+				continue
+			}
+			if len(idx) == 1 {
+				// `git stash [options]` is `git stash push [options]`.
+				return true
+			}
+			op := args[idx[1]]
+			// `git stash -- list` pushes the pathspec `list`.
+			if isUnknown(op) || (op != "list" && op != "show") || containsString(args[idx[0]+1:idx[1]], "--") {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-// bareStashReading reads one placing of a git command's first operands: the
-// subcommand, then stash's own first two.
-func bareStashReading(args []string, idx []int) bool {
-	if len(idx) == 0 || !wordCouldBe(args[idx[0]], "stash") {
-		return false
-	}
-	ops := make([]string, 0, len(idx)-1)
-	for _, i := range idx[1:] {
-		ops = append(ops, args[i])
-	}
-	rest := args[idx[0]+1:]
-	if len(ops) == 0 {
-		// `git stash [options]` is `git stash push [options]`.
-		return !stashHasMessage(rest)
-	}
-	switch {
-	case wordCouldBe(ops[0], "push") && !stashHasMessage(rest):
-		return true
-	case wordCouldBe(ops[0], "save") && len(ops) < 2:
-		// The deprecated form takes its message as an operand.
-		return true
-	case (wordCouldBe(ops[0], "pop") || wordCouldBe(ops[0], "apply")) && len(ops) < 2:
-		return true
-	}
-	// `git stash -- <pathspec>`, `git stash -p` and the like: a stash that
-	// pushes, with the first operand a pathspec rather than a subcommand.
-	if isUnknown(ops[0]) || !isStashSubcommand(ops[0]) {
-		return !stashHasMessage(rest)
-	}
-	return false
-}
-
-// isStashSubcommand reports whether a word is one of git stash's own
-// subcommands rather than a pathspec.
-func isStashSubcommand(w string) bool {
-	switch w {
-	case "list", "show", "drop", "pop", "apply", "branch", "push", "save", "clear", "create", "store", "export", "import":
-		return true
-	}
-	return false
-}
-
-// stashHasMessage reports whether a stash's arguments carry a message, in any
-// of the spellings git accepts.
-func stashHasMessage(args []string) bool {
-	for i, a := range args {
-		if a == "--" {
-			return false
-		}
-		switch {
-		case a == "-m" || a == "--message":
-			return i+1 < len(args)
-		case strings.HasPrefix(a, "--message="):
-			return true
-		case strings.HasPrefix(a, "-m") && len(a) > 2 && !strings.HasPrefix(a, "--"):
-			return true
-		}
-	}
-	return false
-}
-
-// sharedStashWarnSignal is the warning itself. A WARN, not a block: a stash on
-// a shared stack is only a hazard when two lanes use it at once, which the
-// guard cannot see — but the lane that pops the wrong entry never learns it did.
-func sharedStashWarnSignal() payloadSignal {
-	return payloadSignal{
-		id:      stashEntryID,
-		verdict: VerdictWarn,
-		family:  familyStash,
-		reason: "git keeps one stash stack for the whole repository, and this repository has more than one worktree, " +
-			"so a stash or pop that does not name its entry can take another worktree's work and land it in the wrong tree.",
-		successor: "Stash with a message and pop that entry by name (`git stash push -m '<lane>: <why>'`, then `git stash list` and `git stash pop stash@{N}`), " +
-			"or commit the work to a scratch commit on this worktree's own branch.",
-	}
 }

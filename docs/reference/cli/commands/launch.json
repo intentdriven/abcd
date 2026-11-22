@@ -29,6 +29,7 @@
         "archive",
         "manifests",
         "receipts",
+        "reland",
         "scaffold",
         "ship"
       ]
@@ -86,6 +87,19 @@
       "flags": [],
       "inputs": [],
       "example": "abcd launch receipts"
+    },
+    {
+      "path": "abcd launch reland",
+      "sentence": "Reland a bot's dependency bump as your own commit, or list those waiting: Writes one local branch, pushing nothing; refuses a bump outside the bound.",
+      "usage": "abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]",
+      "flags": [
+        {
+          "name": "assisted-by",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd launch reland 1618"
     },
     {
       "path": "abcd launch scaffold",

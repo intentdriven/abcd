@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -37,12 +38,189 @@ func newEmbargoCommand(asJSON *bool) *cobra.Command {
 			"token. close and publish each act on GitHub only with --approve naming the\n" +
 			"digest of exactly the text or plan they showed, and a host passes it only\n" +
 			"after the person, in that session, has seen it and said yes.\n\n" +
+			"Bare, it lists each advisory judged a vulnerability and not yet closed or\n" +
+			"published: ready to publish when a published release holds every fix commit\n" +
+			"recorded for it (`abcd embargo fixed`, or the fix commit its private record,\n" +
+			"resolved in the store, names), naming that release and the publish command\n" +
+			"that shows its plan; waiting, with why, when its fix is recorded and not yet\n" +
+			"in one; or with no fix recorded. Which release holds a fix is read from the\n" +
+			"commits as stored; origin's tags and GitHub's release are read only for a\n" +
+			"release tag that holds one. Bare writes nothing and publishes nothing; `abcd\n" +
+			"embargo queue` is the act that queues a step for the person's return.\n\n" +
 			"Exit 2 on a refusal (nothing written) and on a check finding.",
 		Args: cobra.NoArgs,
-		RunE: helpRunE,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const verb = "abcd embargo"
+			root, home, err := embargoPlace(verb)
+			if err != nil {
+				return err
+			}
+			res, err := embargo.Status(embargo.StatusRequest{Home: home, RepoRoot: root})
+			if err != nil {
+				return embargoFailure(verb, err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoStatus(w, res) })
+		},
 	}
-	cmd.AddCommand(newEmbargoIntakeCommand(asJSON), newEmbargoTriageCommand(asJSON), newEmbargoCloseCommand(asJSON),
-		newEmbargoCheckCommand(asJSON), newEmbargoPublishCommand(asJSON))
+	cmd.AddCommand(newEmbargoIntakeCommand(asJSON), newEmbargoTriageCommand(asJSON), newEmbargoFixedCommand(asJSON),
+		newEmbargoQueueCommand(asJSON), newEmbargoCloseCommand(asJSON), newEmbargoCheckCommand(asJSON), newEmbargoPublishCommand(asJSON))
+	return cmd
+}
+
+// embargoQueueOutput is `abcd embargo queue`'s output: the record id of each
+// advisory ready to publish (Ready), each whose publish step this call queued
+// for the person's return (Queued), and each whose step was queued already
+// (AlreadyQueued).
+type embargoQueueOutput struct {
+	NoStore       bool     `json:"no_store,omitempty"`
+	Ready         []string `json:"ready"`
+	Queued        []string `json:"queued"`
+	AlreadyQueued []string `json:"already_queued"`
+}
+
+// newEmbargoQueueCommand builds `abcd embargo queue`: while the person is
+// away, the act that queues one step for their return for each advisory
+// ready to publish, at most once each. Bare `abcd embargo` only lists them.
+func newEmbargoQueueCommand(asJSON *bool) *cobra.Command {
+	return &cobra.Command{
+		Use: "queue",
+		Long: "While the person is away (`abcd mode autonomous`), queue one step for their\n" +
+			"return for each advisory bare `abcd embargo` lists as ready to publish, naming\n" +
+			"its private record, the release that holds its fix and the publish command that\n" +
+			"shows its plan, never the advisory's id or title. A step already queued is not\n" +
+			"queued again: the check and the append are one write under the away store's\n" +
+			"lock, so two runs at once queue it once. It writes nothing in the embargo store\n" +
+			"and publishes nothing; `abcd mode back` prints the steps.\n\n" +
+			"Exit 2 when the person is not away or the away record cannot be read, and on a\n" +
+			"refusal; nothing is queued. Exit 1 when a step cannot be queued, naming each\n" +
+			"queued before it.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const verb = "abcd embargo queue"
+			root, home, err := embargoPlace(verb)
+			if err != nil {
+				return err
+			}
+			switch _, away, err := autonomy.AwayAt(root, autonomy.Options{}); {
+			case err != nil:
+				return &exitError{Code: 2, Msg: verb + ": the away record cannot be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); nothing queued"}
+			case !away:
+				return &exitError{Code: 2, Msg: verb + ": the person is not away (`abcd mode autonomous` says they are), so there is no return to queue a step for; nothing queued: tell them instead"}
+			}
+			res, err := embargo.Status(embargo.StatusRequest{Home: home, RepoRoot: root})
+			if err != nil {
+				return embargoFailure(verb, err)
+			}
+			out := embargoQueueOutput{NoStore: res.NoStore, Ready: []string{}, Queued: []string{}, AlreadyQueued: []string{}}
+			for _, r := range res.Ready {
+				out.Ready = append(out.Ready, r.IssueID)
+				queued, _, err := autonomy.QueueStepOnce(root, embargoPublishStep(r), autonomy.Options{})
+				switch {
+				case errors.Is(err, autonomy.ErrNotAway):
+					return &exitError{Code: 2, Msg: verb + ": the person came back before the publish step for " + r.IssueID + " was queued" + queuedSoFar(out.Queued)}
+				case err != nil:
+					return &exitError{Code: 1, Msg: verb + ": the publish step for " + r.IssueID + " could not be queued (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ")" + queuedSoFar(out.Queued)}
+				case queued:
+					out.Queued = append(out.Queued, r.IssueID)
+				default:
+					out.AlreadyQueued = append(out.AlreadyQueued, r.IssueID)
+				}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
+				switch {
+				case out.NoStore:
+					fmt.Fprintln(w, "abcd embargo queue — this repository has no embargo store on this machine; nothing queued")
+					return
+				case len(out.Ready) == 0:
+					fmt.Fprintln(w, "abcd embargo queue — no advisory is ready to publish; nothing queued")
+					return
+				}
+				if len(out.Queued) > 0 {
+					fmt.Fprintf(w, "abcd embargo queue — the person is away: queued the publish step for %s for their return (`abcd mode back` lists it); nothing was published\n",
+						strings.Join(out.Queued, ", "))
+				}
+				if len(out.AlreadyQueued) > 0 {
+					fmt.Fprintf(w, "abcd embargo queue — already queued for their return: %s; nothing queued again\n", strings.Join(out.AlreadyQueued, ", "))
+				}
+			})
+		},
+	}
+}
+
+// queuedSoFar is the clause naming the steps a queue run queued before it
+// stopped, or that it queued none.
+func queuedSoFar(ids []string) string {
+	if len(ids) == 0 {
+		return "; nothing queued"
+	}
+	return "; queued before it: " + strings.Join(ids, ", ")
+}
+
+// embargoPublishStep is the step queued for the person's return for one
+// advisory ready to publish. It names the private record and the release,
+// never the advisory's id or title, and leaves the publication to the person.
+func embargoPublishStep(r embargo.ReadyAdvisory) string {
+	return "Publish the advisory held under embargo as " + r.IssueID + ": its fix is in the published release " + r.Release +
+		". Run `" + r.PublishWith + "`, read the plan, and approve it if it is right."
+}
+
+func renderEmbargoStatus(w io.Writer, out embargo.StatusResult) {
+	if out.NoStore {
+		fmt.Fprintln(w, "abcd embargo — this repository has no embargo store on this machine, so nothing is held under embargo here")
+		fmt.Fprintln(w, "next: abcd embargo intake (reads the advisories GitHub holds in triage and draft)")
+		return
+	}
+	fmt.Fprintf(w, "abcd embargo — %s ready to publish, %s waiting on a release, %s with no fix recorded\n",
+		advisoryCount(len(out.Ready)), advisoryCount(len(out.Waiting)), advisoryCount(len(out.NoFix)))
+	for _, r := range out.Ready {
+		fmt.Fprintf(w, "  ready to publish: %s (%s), its fix in the published release %s; show the plan with: %s\n",
+			r.GHSAID, r.IssueID, r.Release, r.PublishWith)
+	}
+	for _, r := range out.Waiting {
+		fmt.Fprintf(w, "  waiting: %s (%s): %s\n", r.GHSAID, r.IssueID, termsafe.Sanitize(r.Reason))
+	}
+	for _, r := range out.NoFix {
+		fmt.Fprintf(w, "  no fix recorded: %s (%s); once its fix lands, record it with: abcd embargo fixed %s <commit>\n", r.GHSAID, r.IssueID, r.IssueID)
+	}
+}
+
+func newEmbargoFixedCommand(asJSON *bool) *cobra.Command {
+	var replace bool
+	cmd := &cobra.Command{
+		Use: "fixed <iss-N|GHSA-id> <commit>...",
+		Long: "Record the commits that fix one advisory judged a vulnerability and not yet\n" +
+			"closed or published, in the embargo store's state and nowhere else: the public\n" +
+			"ledger and this checkout are never written. Each commit is named by its id,\n" +
+			"abbreviated or full (7 to 64 lower-case hex digits; a ref name is refused), and\n" +
+			"must be a commit of this repository; it is kept by its full id. A commit already\n" +
+			"recorded is not recorded twice; --replace swaps the recorded list for the\n" +
+			"commits named.\n\n" +
+			"Bare `abcd embargo` then lists the advisory as ready to publish once a published\n" +
+			"release holds every recorded commit, and the publication plan takes them as the\n" +
+			"advisory's fix when no record of it is resolved in the release. Publishing stays\n" +
+			"yours: nothing is sent to GitHub.",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			const verb = "abcd embargo fixed"
+			root, home, err := embargoPlace(verb)
+			if err != nil {
+				return err
+			}
+			res, err := embargo.RecordFix(embargo.FixRequest{Home: home, RepoRoot: root, Target: args[0], Commits: args[1:], Replace: replace})
+			if err != nil {
+				return embargoFailure(verb, err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd embargo fixed — %s (%s) records %s in the store (%d added)\n",
+					res.GHSAID, res.IssueID, countOf(len(res.FixCommits), "fix commit"), len(res.Added))
+				for _, c := range res.FixCommits {
+					fmt.Fprintf(w, "  %s\n", c)
+				}
+				fmt.Fprintln(w, "next: abcd embargo (lists it as ready to publish once a published release holds every fix commit)")
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&replace, "replace", false, "replace the recorded fix commits with those named, instead of adding to them")
 	return cmd
 }
 

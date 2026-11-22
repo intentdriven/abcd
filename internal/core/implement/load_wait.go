@@ -409,6 +409,11 @@ type WaitRequest struct {
 	// ReadMemory reads the machine's memory pressure; nil is ReadMemory, the
 	// package's reader (machineload.ReadMemory in the binary).
 	ReadMemory func() (machineload.Memory, error)
+	// OnDiskTrim, when set, is called with each line the trim at the disk
+	// floor says (load_disk_trim.go) as it says it: that it is trimming, what
+	// each cache's trim did or why it did not run, and the free space after.
+	// The trim walks a large cache for minutes, so the lines come as it goes.
+	OnDiskTrim func(line string)
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -486,6 +491,11 @@ type WaitResult struct {
 	// (DiskCheck.Note); "" when every volume was read. The front door prints
 	// it on stderr.
 	DiskNote string `json:"disk_note,omitempty"`
+	// DiskTrim is what the trim the waiter ran at the disk floor did, its
+	// lines joined (WaitRequest.OnDiskTrim), or why it started none with
+	// less than DiskTrimMinLeft of its timeout left; "" when it reached no
+	// trim.
+	DiskTrim string `json:"disk_trim,omitempty"`
 	// Memory is the last memory reading, judged against the floor
 	// (load_memory.go); nil when no reading could be taken.
 	Memory *MemoryCheck `json:"memory,omitempty"`
@@ -529,7 +539,8 @@ type WaitResult struct {
 // refusal before any wait (a home it cannot resolve, a home inside a git
 // working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
 // load.preflights or a memory floor it cannot use, a volume holding the Go
-// build cache or the worktree store below the disk floor (diskFloorFor), or a
+// build cache or the worktree store below the disk floor (diskFloorFor) and
+// still below it after the trim it runs once first (load_disk_trim.go), or a
 // hold lock that is not a regular file), a refusal at the last look before it
 // opens when such a volume has fallen below the floor while it waited, or a
 // hold it could not give up when standing back after a wait. A disk it cannot
@@ -650,6 +661,12 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		mem.read = ReadMemory
 	}
 	var firstFloor uint64
+	// The first look that finds the volume holding the Go build cache under
+	// the floor runs the trim once before it refuses (floorTrim.at).
+	trim := &floorTrim{home: home, dir: req.Dir, now: now, deadline: start.Add(req.Timeout), say: req.OnDiskTrim}
+	if trim.say == nil {
+		trim.say = func(string) {}
+	}
 	readSlots := func(atOpen bool) (open, held bool, err error) {
 		refuse := func(err error) (bool, bool, error) {
 			if res.Polls == 0 {
@@ -677,8 +694,8 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		mem.floor = floor
 		first, shortcut := res.Polls == 0, req.Race && n <= 1
 		if first || atOpen || shortcut {
-			disk := ReadDisk(home, diskFloorFor(n))
-			res.DiskNote = disk.Note()
+			disk := trim.at(ReadDisk(home, diskFloorFor(n)), diskFloorFor(n))
+			res.DiskNote, res.DiskTrim = disk.Note(), trim.said
 			if first {
 				firstFloor = diskFloorFor(n)
 				if err := disk.Refusal(); err != nil {

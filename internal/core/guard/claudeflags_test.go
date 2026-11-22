@@ -14,9 +14,9 @@ func TestGuardRefusesClaudeFlagsThatOfferTheBypassOrWidenItsReach(t *testing.T) 
 		`claude -p x --allow-dangerously-skip-permissions`:                        "agent-launch-claude-unchecked",
 		`claude --allow-dangerously-skip-permissions -p x --permission-mode plan`: "agent-launch-claude-unchecked",
 		`npx @anthropic-ai/claude-code --allow-dangerously-skip-permissions -p x`: "agent-launch-claude-unchecked",
-		`claude -p x --add-dir /`:        "agent-launch-claude-add-dir",
-		`claude -p x --add-dir=../other`: "agent-launch-claude-add-dir",
-		`claude --add-dir "$D" -p x`:     "agent-launch-claude-add-dir",
+		`claude -p x --add-dir /`:                                                 "agent-launch-claude-add-dir",
+		`claude -p x --add-dir=../other`:                                          "agent-launch-claude-add-dir",
+		`claude --add-dir "$D" -p x`:                                              "agent-launch-claude-add-dir",
 	} {
 		d, err := r.Check(line)
 		if err != nil {

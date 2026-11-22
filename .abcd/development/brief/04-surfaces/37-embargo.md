@@ -11,8 +11,9 @@ committed, nothing public carries an advisory id or a hint of one, and closing
 or publishing an advisory takes one approval per act, bound to exactly what was
 shown.
 
-This chapter describes intake, triage, closing, the outbound check and
-publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
+This chapter describes intake, triage, recording a fix, the bare listing of
+what is ready to publish, queuing its publish step while the person is away,
+closing, the outbound check and publication. `embargo` runs no fix lane, lands no fix, requests no CVE,
 restores no redacted record and has no step for an embargo broken before
 publication; the person handles each of those, and the section below lists the
 ones the command page hands them.
@@ -30,6 +31,8 @@ ones the command page hands them.
 |---|---|---|
 | `intake` | — | shipped |
 | `triage` | — | shipped |
+| `fixed` | — | shipped |
+| `queue` | — | shipped |
 | `close` | — | shipped |
 | `check` | gate | shipped |
 | `publish` | — | shipped |
@@ -79,6 +82,35 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of
   [abcd-fixes-what-it-adds](../../principles/abcd-fixes-what-it-adds.md).
+- **fixed** records the commits that fix an advisory judged a vulnerability
+  and neither closed nor published, in the store's state and nowhere else, so
+  the link from a fix to its advisory never reaches the public ledger or the
+  checkout. Each commit is named by its id, abbreviated or full, and kept by
+  its full id once git resolves it to a single commit of this repository; a
+  ref name or anything shaped like an option is refused before git sees it.
+  A commit already recorded is not recorded twice, and a replace switch swaps
+  the list. Nothing else links a cut release to the advisories it fixes, so
+  without it publishing each one after a release is a match a person makes by
+  hand.
+- **bare** `abcd embargo` lists each advisory judged a vulnerability and
+  neither closed nor published as ready to publish, waiting, or with no fix
+  recorded. It is ready when a published release holds every fix commit
+  recorded for it (or, with none recorded, the fix commit its private record,
+  resolved in the store, names), and the listing names the first such release
+  and the publish command that shows its plan. Which tags hold a commit is
+  read from the commits as stored, and a tag counts only as a published
+  release, as publish holds; origin and GitHub are asked only about a tag that
+  holds a fix, and an answer that cannot be had leaves the advisory waiting
+  with the reason. The listing writes nothing and publishes nothing, while the
+  person is away as while they are present: a bare verb renders, and the act
+  that changes state has its own sub-verb.
+- **queue** is that act. While the person is away it queues one step for
+  their return for each ready advisory not queued already, naming the private
+  record and the release and never the advisory, so the publish waits for
+  them rather than for someone to remember it. The check for a step already
+  queued and the append are one write under the away store's lock
+  (`autonomy.QueueStepOnce`), so two runs at once queue it once; while the
+  person is present it refuses and queues nothing.
 - **close** shows the closing text and its digest and sends only a read; with
   the approval of that digest it closes the advisory with the text at the head
   of its description (GitHub offers no comment on an advisory), the reporter's
@@ -116,7 +148,9 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   was made for, so a repointed origin refuses the plan, as it refuses intake. The fix commit comes
   from the advisory's record resolved in the release, or, since the security
   rule keeps that record out of every committed tree until the advisory is
-  published, from its private record resolved in the store's own ledger. The
+  published, from the fix commits recorded for it, or else from its private
+  record resolved in the store's own ledger; recorded commits give the
+  patched version of the first published release holding every one. The
   store is a trust boundary: the plan takes a commit from it only when it is
   the full object name of a commit of this repository, as git resolves it, and
   leaves the advisory out otherwise. The command that copies a private
@@ -131,8 +165,9 @@ account's alone. `abcd peers` skips the store, counting it without its path.
 
 ## What stays the person's
 
-Every verdict, every approval, fixing and landing the fixes, resolving each
-private record in the store with its fix, requesting a CVE, restoring each
+Every verdict, every approval, fixing and landing the fixes, recording each
+fix or resolving each private record in the store with it, publishing an
+advisory the bare listing names ready, requesting a CVE, restoring each
 record into the public ledger after publication, and putting back any record
 details redacted to land a fix, once the advisory is published. The command
 page, [`commands/embargo.md`](../../../../commands/embargo.md), says so to the
@@ -146,7 +181,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd embargo`
 
-Sub-verbs: `abcd embargo check`, `abcd embargo close`, `abcd embargo intake`, `abcd embargo publish`, `abcd embargo triage`.
+Sub-verbs: `abcd embargo check`, `abcd embargo close`, `abcd embargo fixed`, `abcd embargo intake`, `abcd embargo publish`, `abcd embargo queue`, `abcd embargo triage`.
 
 Flags: none.
 
@@ -168,6 +203,14 @@ Sub-verbs: none.
 |---|---|
 | `--approve` | string |
 
+### `abcd embargo fixed`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--replace` | bool |
+
 ### `abcd embargo intake`
 
 Sub-verbs: none.
@@ -182,6 +225,12 @@ Sub-verbs: none.
 |---|---|
 | `--approve` | string |
 | `--release` | string |
+
+### `abcd embargo queue`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd embargo triage`
 

@@ -2008,7 +2008,7 @@ abcd drain --drive
 
 ### `abcd embargo`
 
-Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
+Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
 
 **Usage:** `abcd embargo`
 
@@ -2024,6 +2024,16 @@ Every remote call is the person's own `gh` against github.com; abcd holds no
 token. close and publish each act on GitHub only with --approve naming the
 digest of exactly the text or plan they showed, and a host passes it only
 after the person, in that session, has seen it and said yes.
+
+Bare, it lists each advisory judged a vulnerability and not yet closed or
+published: ready to publish when a published release holds every fix commit
+recorded for it (`abcd embargo fixed`, or the fix commit its private record,
+resolved in the store, names), naming that release and the publish command
+that shows its plan; waiting, with why, when its fix is recorded and not yet
+in one; or with no fix recorded. Which release holds a fix is read from the
+commits as stored; origin's tags and GitHub's release are read only for a
+release tag that holds one. Bare writes nothing and publishes nothing; `abcd
+embargo queue` is the act that queues a step for the person's return.
 
 Exit 2 on a refusal (nothing written) and on a check finding.
 
@@ -2104,6 +2114,37 @@ session, has seen the text and said yes to it.
 
 ```
 abcd embargo close GHSA-xxxx-xxxx-xxxx
+```
+
+#### `abcd embargo fixed`
+
+Record the commits that fix an advisory under embargo: Writes only the embargo store; refuses a commit id that is not a commit of this repository.
+
+**Usage:** `abcd embargo fixed <iss-N|GHSA-id> <commit>... [flags]`
+
+Record the commits that fix one advisory judged a vulnerability and not yet
+closed or published, in the embargo store's state and nowhere else: the public
+ledger and this checkout are never written. Each commit is named by its id,
+abbreviated or full (7 to 64 lower-case hex digits; a ref name is refused), and
+must be a commit of this repository; it is kept by its full id. A commit already
+recorded is not recorded twice; --replace swaps the recorded list for the
+commits named.
+
+Bare `abcd embargo` then lists the advisory as ready to publish once a published
+release holds every recorded commit, and the publication plan takes them as the
+advisory's fix when no record of it is resolved in the release. Publishing stays
+yours: nothing is sent to GitHub.
+
+**Flags:**
+
+```
+      --replace[=true|false]   replace the recorded fix commits with those named, instead of adding to them
+```
+
+**Example:**
+
+```
+abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc
 ```
 
 #### `abcd embargo intake`
@@ -2197,6 +2238,30 @@ after the person, in that session, has seen the plan and said yes to it.
 
 ```
 abcd embargo publish
+```
+
+#### `abcd embargo queue`
+
+Queue each ready advisory's publish step for the person's return: Writes only the away queue, each step once; refuses while the person is not away.
+
+**Usage:** `abcd embargo queue`
+
+While the person is away (`abcd mode autonomous`), queue one step for their
+return for each advisory bare `abcd embargo` lists as ready to publish, naming
+its private record, the release that holds its fix and the publish command that
+shows its plan, never the advisory's id or title. A step already queued is not
+queued again: the check and the append are one write under the away store's
+lock, so two runs at once queue it once. It writes nothing in the embargo store
+and publishes nothing; `abcd mode back` prints the steps.
+
+Exit 2 when the person is not away or the away record cannot be read, and on a
+refusal; nothing is queued. Exit 1 when a step cannot be queued, naming each
+queued before it.
+
+**Example:**
+
+```
+abcd embargo queue
 ```
 
 #### `abcd embargo triage`
@@ -3163,6 +3228,49 @@ reading corpus.
 abcd implement claim iss-2609010000000001 --session s-example --lane cli
 ```
 
+#### `abcd implement heartbeat`
+
+Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.
+
+**Usage:** `abcd implement heartbeat [<branch>|<pr>...]`
+
+An autonomous run's periodic check, in one command:
+
+  1. Reservations: fetches the reservations from origin and renews each of your own
+     reservations of an issue or an intent held from any worktree of this checkout
+     that is live and half through its lease, with its own term, as abcd reserve
+     --renew renews it, and only one whose latest commit the worktree holding it
+     pushed and whose worktree's branch has a pull request open, armed or queued.
+     Any other (abandoned, or a lane mid-work with no pull request yet) is reported
+     held and not renewed, with why, and lapses on its lease; a lane's own loop renews
+     its reservations. A lapsed one is reported, never revived; one held from another
+     clone or computer, another person's and a release being cut are left alone.
+  2. Pull requests: reports each tracked pull request as abcd land --state does:
+     merged, queued with its position, armed, open and not armed, removed from the
+     merge queue with the reason, or closed. The tracked ones are your open pull
+     requests from this repository's branches, and each the last heartbeat read that
+     was not yet merged or closed, so a merge is reported once; or the branches and
+     numbers (N or #N) named, alone.
+  3. Disk: reports the free space against the load gate's disk floor, read as
+     abcd implement load reads it.
+
+It keeps what it read in .abcd/.work.local/heartbeat.json and prints one line when
+nothing changed since the last heartbeat, and otherwise one line for each change: a
+fact that is new, in another state, or gone. A renewal that only moved a lease on
+is no change. --json carries the same: changed, summary, changes (each with was or
+gone where it applies) and every fact read (items).
+
+It writes only the reservation renewals and its own state file; it trims nothing.
+A read it cannot make (the fetch, the listing, a pull request, the disk) is reported
+as a fact, never fatal. Exit 2 on an operand that is neither a branch name nor a
+number, or outside a checkout.
+
+**Example:**
+
+```
+abcd implement heartbeat --json
+```
+
 #### `abcd implement join`
 
 Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.
@@ -3369,7 +3477,14 @@ preflight the first gate admits at once (`load.preflights`), and 8 GiB at least,
 8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
 and again just before it opens (the race gate at one preflight at a time reads
 it as it starts and at each look while memory holds it), and refuses at any such
-look. The refusal names
+look. Before it refuses, a waiter whose low volume holds the Go build cache runs
+the cache trim of each toolchain its checkout uses once (`go.mod` or `go.work` at
+its root for Go, whose build cache is the one abcd trims), paced to once an hour
+across the account as `abcd ahoy worktree trim-cache` is, says on stderr what each
+trim freed or why it did not run, and refuses only if the volume is still low.
+With less than five minutes of --timeout left it starts no trim, says so, and
+refuses at once, since a trim cannot be stopped part way.
+The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size, `abcd ahoy worktree trim-cache`, which takes it down to
 its size limit, and a command that deletes its build entries unused for two
@@ -5038,6 +5153,8 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 abcd land [<branch>] [--no-push] [--no-enqueue]
 abcd land [<branch>] --record-review <return> --record-review <return> [...] [--rests-on <base>]
 abcd land [<branch>] --approve
+abcd land [<branch>] --review-brief[=<commit>] [--rests-on <base>]
+abcd land --state [<branch>|<pr>...]
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -5188,10 +5305,23 @@ record's grounds. No part of such a path may start with a dot or begin as an ins
 name does, every file keeps its frontmatter byte for byte, and no file is added,
 removed or moved. Any other path needs a full pair, as code, open issues, decisions,
 intents, specs, the brief and the ADRs always do, and so does a corrected id. A merge
-of a default-branch commit counts for nothing when it is exactly
-the merge git makes of its parents with no conflict; any other merge is
-refused. The merge gate asks all of this again at landing. Without --rests-on, a
+of a commit on origin's default branch, as last fetched, counts for nothing when it
+is exactly the merge git makes of its parents with no conflict (an empty
+remerge-diff), its parents have one merge base, and what its second parent changes
+since that base touches no file the branch's own commits change since the base;
+any other merge is refused, an octopus or one from a local default branch
+included. The merge gate asks all of this again at landing. Without --rests-on, a
 return carrying a Reviewed delta line is refused.
+
+--review-brief prints the return a reviewer writes for the branch's head, or for
+the commit given as --review-brief=<commit>, ready to paste into the reviewer's
+brief: the Reviewed head line naming it in full, a place for the findings, the
+### Verdict heading and the verdict line naming it in full, its word left to the
+reviewer. With --rests-on <base> the first line is the delta's, Reviewed delta:
+<base>..<head>. It is built from the rule --record-review reads a return by, so a
+brief filled in with a passing verdict is recorded. It writes and lands nothing, and
+takes no --no-push, --no-enqueue, --approve or --record-review; --json carries the
+commit, rests_on and the brief.
 
 --approve records the technical facilitator's approval of the branch's head and
 lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
@@ -5199,14 +5329,28 @@ gate counts as an approval of that commit, and of no other. It is the
 facilitator's own act, for a pull request they authored (the forge refuses an
 author's approval of their own): the shell guard refuses it to an agent.
 
+--state reports each pull request's state and lands nothing: the checkout's
+current branch's newest pull request from this repository, or each branch or
+pull request number (N or #N) named. One line each says it is merged (and
+when), queued in the merge queue (with the entry's state and position), armed
+for auto-merge but not yet queued, open and not armed, removed from the merge
+queue (with the removal's time and the forge's reason, read from its timeline),
+closed, or that the branch has none. The forge clears a pull request's arming
+as the queue takes it, so this reads the queue entry itself, not the arming.
+It reads the forge and writes nothing; it takes no other flag. Exit 1 when a
+pull request could not be read, which its line names; exit 2 on an operand that
+is neither a branch name nor a number, or a detached HEAD with none named.
+
 **Flags:**
 
 ```
-      --approve[=true|false]        record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
-      --no-enqueue[=true|false]     do not arm or queue the pull request this run
-      --no-push[=true|false]        do not push the branch this run; print the push command instead
-      --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
-      --rests-on string             make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
+      --approve[=true|false]           record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
+      --no-enqueue[=true|false]        do not arm or queue the pull request this run
+      --no-push[=true|false]           do not push the branch this run; print the push command instead
+      --record-review stringArray      record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
+      --rests-on string                make --record-review a delta review resting on the full pair recorded for this commit, given by its full object name; each return also states Reviewed delta: <base>..<head>
+      --review-brief string[="HEAD"]   print the return a reviewer writes for the branch's head, or for the commit given as --review-brief=<commit>, a delta's with --rests-on; writes nothing
+      --state[=true|false]             report each pull request's state (merged, queued with its position, armed, open, or removed from the queue with the reason); lands nothing
 ```
 
 **Example:**
@@ -5402,6 +5546,50 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 ```
 abcd launch receipts
+```
+
+#### `abcd launch reland`
+
+Reland a bot's dependency bump as your own commit, or list those waiting: Writes one local branch, pushing nothing; refuses a bump outside the bound.
+
+**Usage:** `abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]`
+
+Reland a bot's dependency pull request as your own commit, the hand step the
+dependency-reauthor workflow leaves to a person while the owner in
+.abcd/config/dependency-reauthor.conf or its App is unset.
+
+Bare, it asks the forge for the open pull requests a declared bot opened from a
+declared branch prefix, and lists them; it writes nothing.
+
+With a pull request, it fetches origin's default branch and the pull request's
+branch, and judges the pull request with the workflow's own script against the
+declaration the default branch stores: the bot, the branch prefix, the run's
+actor (the account whose push last moved the branch, from the forge's activity
+record), exactly one commit by the bot, and only the row's manifests at the row's
+directory. What passes is applied onto the default branch's tip as stored, writing
+no working tree, and committed under this checkout's git identity on the local
+branch reland/pr-<number>, with "Supersedes #<number>" in its message. A machine
+identity is refused. A change that does not apply cleanly is refused: redo the bump
+with the ecosystem's own tool (go get, for example).
+
+The commit carries Assisted-by: None, or Assisted-by: <Vendor>:<model-version>
+from --assisted-by, which an agent's session must pass. It pushes nothing and opens
+nothing: switch to the branch and run abcd land. It is a person's act, so the
+workflow never runs it.
+
+Exit 0: relanded, or listed. Exit 1: refused or the forge could not answer;
+nothing was written. Exit 2: usage.
+
+**Flags:**
+
+```
+      --assisted-by string   the model that assisted, as <Vendor>:<model-version>, for the commit's Assisted-by trailer (an agent's session must pass it)
+```
+
+**Example:**
+
+```
+abcd launch reland 1618
 ```
 
 #### `abcd launch scaffold`
@@ -5939,7 +6127,9 @@ Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody
 is waiting), `facilitator` (the loop is parked on the facilitator, the person
 at the terminal running the agents), or `product-thinker` (the loop is parked
 on the product thinker, who answers on a surface of their own). An absent
-store reads as `managed`.
+store reads as `managed`. While an away record holds, a second line says when
+the away mode ends and how many steps are queued; --json carries both under
+`away`, absent otherwise.
 
 `abcd mode <state>` sets it. Two writers share the verb: the agent runs it
 when it stops for a verdict other than a question, naming whom it is
@@ -5968,8 +6158,9 @@ and nothing is written on any of them.
 
 The away mode sits beside the badge, not as a fourth word: `abcd mode
 autonomous [--until <time>] [--hold-pushes]` records that the person is away,
-`abcd mode queue "<step>"` keeps a step for their return, and `abcd mode back`
-ends it and prints what was queued and recorded. While it holds, setting
+`abcd mode queue "<step>"` keeps a step for their return, bare `abcd mode
+queue` lists what is queued and writes nothing, and `abcd mode back` ends it
+and prints what was queued and recorded. While it holds, setting
 `product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:
 a stop parked on a person who is away is a question nobody answers. The away
 mode grants no rights; the person's standing instruction decides what is pushed.
@@ -6056,17 +6247,23 @@ abcd mode back
 
 #### `abcd mode queue`
 
-Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.
+Queue one step for the person's return while away, or list the queue bare: Writes nothing bare, only the away record; refuses a step when no away record holds.
 
-**Usage:** `abcd mode queue <step>`
+**Usage:** `abcd mode queue [<step>]`
 
 Queue one step for the person's return, while the away mode holds: an act only
 the person may approve, which a session queues instead of asking, then carries on
 with other work. `abcd mode back` prints each queued step on one line.
 
-Exit 2 when no away record holds (ask the person instead), on an empty step or one
-over 500 characters, when the queue is full (it is never cut), and when the record
-or its lock is not safely this account's, with nothing written. No network request.
+Bare `abcd mode queue` lists the steps queued in a record not yet ended, one per
+line, oldest first, and writes nothing: the away mode holds as before. With no
+record, or one already ended, it prints nothing. With --json it carries the count
+and the steps.
+
+Queuing a step exits 2 when no away record holds (ask the person instead), on an
+empty step or one over 500 characters, and when the queue is full (it is never
+cut); either form exits 2 when the record or its lock is not safely this account's.
+Nothing is written on any refusal. No network request.
 
 **Example:**
 
@@ -6398,6 +6595,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve --renew <record-id> [--lease <duration>]
 abcd reserve rel-vX.Y.Z --admit <pr>
 abcd reserve <record-id> --release
 abcd reserve --holder
@@ -6480,6 +6678,16 @@ tracked files it covers on origin's default branch, or HEAD
 of a record you already hold writes its footprint in place of the one held,
 and warns on stderr, naming each held path it leaves out (dropped_footprint in
 --json): name them again to keep holding them.
+
+--renew <record-id> renews your own reservation of an issue or an intent with the
+footprint it already records, so none is named again, from the worktree that
+took it or any other worktree of this checkout. A renewal from another worktree
+keeps the reservation that worktree's (held_from in --json names it), so its own
+renewals and release go on from there. The lease is --lease, or the default 2h.
+A reservation another person holds, one held from another clone or computer,
+and one absent or released back off (exit 3) with nothing pushed; a lapsed one
+of yours is renewed. It takes no footprint, take-over, release or admission,
+and no release subject, which is renewed by reserving it again.
 
 A reservation, a renewal and a take-over consult the embargo store on this
 machine before anything is pushed, as an announcement does: a record the store
@@ -6571,6 +6779,7 @@ exit 2 when it could not run or origin refused a deletion.
       --lease duration           how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --older-than int           with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release[=true|false]     release your reservation from this copy by pushing a tombstone
+      --renew[=true|false]       renew your own reservation with the footprint it records, from any worktree of this checkout
       --sweep[=true|false]       list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over[=true|false]   move your own live reservation from another copy to this one
 ```

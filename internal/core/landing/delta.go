@@ -14,14 +14,18 @@ package landing
 // else needs a full pair (dcn-2611042205556221, dcn-2611042205556688).
 //
 // The branch's own changes are its single-parent commits, counted commit by
-// commit. A merge counts for nothing when it takes a commit already on the
-// default branch as its second parent and holds exactly the tree git makes of
-// its two parents with no conflict; every other merge is refused, and so is any
-// commit neither on the default branch nor on the first-parent line from the head
-// to the base. The merge is recomputed with every merge driver git's built-in
-// text merge, as the loop's conflict probe computes one, so it starts no program
-// a repository names. History is read as stored throughout, whatever a replace ref
-// or a graft says.
+// commit. A merge counts for nothing when it takes a commit already on origin's
+// default branch as its second parent, holds exactly the tree git makes of its two
+// parents with no conflict (so its resolution adds nothing, as an empty
+// remerge-diff shows), has one merge base, and its incoming side, what the second
+// parent changes since that base, touches no file the branch's own commits change
+// since the base head; every other merge is refused, an octopus included, and so
+// is any commit neither on the default branch nor on the first-parent line from
+// the head to the base. The merge is recomputed with every merge driver git's
+// built-in text merge, as the loop's conflict probe computes one, so it starts no
+// program a repository names. History is read as stored throughout, whatever a
+// replace ref or a graft says. RecordDeltaReview and the merge gate
+// (receiptProof) both judge a delta through judgeDelta, so the two cannot drift.
 
 import (
 	"bytes"
@@ -152,8 +156,9 @@ type deltaRecord struct {
 const restsOnItself = "a head cannot rest on itself"
 
 // reviewedDelta is a delta return's first line that is not blank, stating the delta
-// it read, exactly: nothing before the words and nothing after the range.
-var reviewedDelta = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*Reviewed delta: ([0-9a-f]+)\.\.([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
+// it read, exactly: nothing before the words and nothing after the range. Its
+// label is the one a review brief writes (ReviewBrief).
+var reviewedDelta = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*` + regexp.QuoteMeta(reviewedDeltaLabel) + `([0-9a-f]+)\.\.([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
 
 // anyDeltaLine is any line that begins by stating a delta, in any case, whatever
 // markup leads it or closes the words, by a colon or a range. A full pair's return
@@ -185,7 +190,8 @@ func statesDelta(text, base, head string) error {
 
 // reviewedHead is a full pair's return's first line that is not blank, stating
 // the head it read, exactly: nothing before the words and nothing after the name.
-var reviewedHead = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*Reviewed head: ([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
+// Its label is the one a review brief writes (ReviewBrief).
+var reviewedHead = regexp.MustCompile(`\A(?:[ \t]*\r?\n)*` + regexp.QuoteMeta(reviewedHeadLabel) + `([0-9a-f]+)[ \t]*\r?(?:\n|\z)`)
 
 // anyHeadLine is any line that begins by stating the head it reviewed, in any case,
 // whatever markup leads it. A verdict naming its head is not one.
@@ -195,7 +201,7 @@ var anyHeadLine = regexp.MustCompile(`(?mi)^[^\pL\pN\n]*reviewed[ \t]+head\b[^\p
 // its first line reads Reviewed head: <name>, naming head by at least the nine
 // characters a brief abbreviates it to, and no other line is a Reviewed head line.
 func statesHead(text, head string) error {
-	want := "Reviewed head: " + head[:reviewedCommitPrefix]
+	want := reviewedHeadLabel + head[:reviewedCommitPrefix]
 	m := reviewedHead.FindStringSubmatch(text)
 	if m == nil {
 		return fmt.Errorf("its first line does not read %s, so it cannot be told it reviewed this head", want)
@@ -243,9 +249,11 @@ func RecordDeltaReview(repoRoot, head, base string, returns []ReviewReturn) (str
 	if base == head {
 		return "", errors.New(restsOnItself)
 	}
-	tip := gitutil.DefaultRef(repoRoot)
+	// Origin's default branch alone, as last fetched: a local default branch may
+	// hold commits no one pushed, and the merge gate measures against origin's.
+	tip := gitutil.TrackedDefaultBranch(repoRoot, Remote)
 	if tip == "" {
-		return "", errors.New("this repository has no default branch to read, so a delta cannot be judged")
+		return "", errors.New("this repository tracks no default branch of origin, so a delta cannot be judged; fetch origin first")
 	}
 	reads, _, err := readReviewReceipts(repoRoot, head)
 	if err != nil {
@@ -529,7 +537,8 @@ func receiptProof(repoRoot, head, tip string, r reviewReceiptRead) reviewProof {
 
 // ownChanges walks the first-parent line from head back to base, adding up each
 // single-parent commit and proving each merge adds nothing of its own, and
-// refuses what leaves that line.
+// refuses what leaves that line. Once every own commit is counted, it refuses a
+// merge whose incoming side changes a file one of them changes (meetsOwnChange).
 func ownChanges(repoRoot, base, head, tip string) (deltaRecord, error) {
 	out, err := storedBytes(repoRoot, maxDeltaGitOutput, "rev-list", "--parents", head, "^"+base, "^"+tip)
 	if err != nil {
@@ -543,6 +552,7 @@ func ownChanges(repoRoot, base, head, tip string) (deltaRecord, error) {
 	}
 	d := deltaRecord{Base: base}
 	files := map[string]bool{}
+	var merges [][3]string
 	walked := 0
 	for cur := head; cur != base; {
 		ps, own := parents[cur]
@@ -559,6 +569,7 @@ func ownChanges(repoRoot, base, head, tip string) (deltaRecord, error) {
 			if err := provesCleanMerge(repoRoot, cur, ps[0], ps[1], tip); err != nil {
 				return deltaRecord{}, err
 			}
+			merges = append(merges, [3]string{cur, ps[0], ps[1]})
 			d.Merges++
 		default:
 			return deltaRecord{}, fmt.Errorf("the commit %s has %d parents, and only a merge of one default-branch commit counts for nothing", short(cur), len(ps))
@@ -568,7 +579,43 @@ func ownChanges(repoRoot, base, head, tip string) (deltaRecord, error) {
 	if walked != len(parents) {
 		return deltaRecord{}, fmt.Errorf("%d of the branch's commits since %s are off its first-parent line, on no default branch, so no merge accounts for them", len(parents)-walked, short(base))
 	}
+	for _, m := range merges {
+		if err := meetsOwnChange(repoRoot, base, m[0], m[1], m[2], files); err != nil {
+			return deltaRecord{}, err
+		}
+	}
 	return d, nil
+}
+
+// meetsOwnChange reports why a clean merge's incoming side cannot be told apart
+// from the branch's own change since base: git finds other than one merge base of
+// its parents, or what the second parent changes since that base touches a file
+// the branch's own commits change (own). What the default branch brought was
+// reviewed when it landed and the own change is the delta pair's to read, but no
+// reviewer read the two together in one file. Paths are compared as git names
+// them, with no rename detection, so a move touches both its paths.
+func meetsOwnChange(repoRoot, base, commit, first, second string, own map[string]bool) error {
+	out, err := storedBytes(repoRoot, maxDeltaGitOutput, "merge-base", "--all", first, second)
+	if err != nil {
+		return fmt.Errorf("git cannot name the merge %s's merge base: %w", short(commit), err)
+	}
+	bases := strings.Fields(string(out))
+	if len(bases) != 1 {
+		return fmt.Errorf("the merge %s has %d merge bases, so what it brings cannot be told apart from the branch's own change", short(commit), len(bases))
+	}
+	if !gitutil.IsFullSHA(bases[0]) {
+		return fmt.Errorf("the merge %s cannot be judged: git named no merge base", short(commit))
+	}
+	out, err = storedBytes(repoRoot, maxDeltaGitOutput, "diff-tree", "-r", "--no-renames", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--name-only", "-z", bases[0], second)
+	if err != nil {
+		return fmt.Errorf("git cannot read what the merge %s brings: %w", short(commit), err)
+	}
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" && own[p] {
+			return fmt.Errorf("the merge %s brings a change to %s, which the branch's own commits since %s also change, so no reviewer read the two together", short(commit), clip(p), short(base))
+		}
+	}
+	return nil
 }
 
 // addOwnCommit adds one single-parent commit to the delta, refusing a path off

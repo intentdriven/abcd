@@ -222,6 +222,8 @@ var sentences = map[string]string{
 		"Writes the session's record and a session_open line; refuses the other role on a resume.",
 	"abcd implement leave": "Leave the run, releasing every claim this session holds: " +
 		"Writes the releases and a session_close line; refuses without --session.",
+	"abcd implement heartbeat": "Renew the run's reservations, report its pull requests and disk, say what changed: " +
+		"Writes renewals and its state file; refuses an operand naming no branch.",
 	"abcd implement load": "Check the load before abcd's tests start, or wait for capacity: " +
 		"Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
 	"abcd implement log": "Append one of the run's events to today's run log: " +
@@ -319,12 +321,16 @@ var sentences = map[string]string{
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
 
-	"abcd embargo": "Keep private security advisories off the public ledger until closed or published: " +
+	"abcd embargo": "Keep private advisories off the public ledger, naming those ready to publish: " +
 		"Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
 	"abcd embargo check": "Check a commit range or texts for what would disclose an advisory under embargo: " +
 		"Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
 	"abcd embargo close": "Show an advisory's closing text and digest, or close it on GitHub with it: " +
 		"Writes GitHub and the store only with --approve; refuses a digest for other text.",
+	"abcd embargo fixed": "Record the commits that fix an advisory under embargo: " +
+		"Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
+	"abcd embargo queue": "Queue each ready advisory's publish step for the person's return: " +
+		"Writes only the away queue, each step once; refuses while the person is not away.",
 	"abcd embargo intake": "Take this repository's private advisories into private records in the embargo store: " +
 		"Writes only the embargo store; refuses a remote that is not on GitHub.",
 	"abcd embargo publish": "Show the publication plan with computed patched versions, or publish it: " +
@@ -365,6 +371,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
+	"abcd launch reland": "Reland a bot's dependency bump as your own commit, or list those waiting: " +
+		"Writes one local branch, pushing nothing; refuses a bump outside the bound.",
 	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
 		"Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
@@ -417,8 +425,8 @@ var sentences = map[string]string{
 		"Writes the away record; refuses an end already past or past seven days.",
 	"abcd mode back": "End the away mode, printing what was queued and recorded one line each: " +
 		"Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
-	"abcd mode queue": "Queue one step for the person's return while they are away: " +
-		"Writes the away record; refuses when no away record holds.",
+	"abcd mode queue": "Queue one step for the person's return while away, or list the queue bare: " +
+		"Writes nothing bare, only the away record; refuses a step when no away record holds.",
 
 	"abcd peers": "List what peers hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",

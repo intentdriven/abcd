@@ -41,8 +41,8 @@
     },
     {
       "path": "abcd mode queue",
-      "sentence": "Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.",
-      "usage": "abcd mode queue <step> [flags]",
+      "sentence": "Queue one step for the person's return while away, or list the queue bare: Writes nothing bare, only the away record; refuses a step when no away record holds.",
+      "usage": "abcd mode queue [<step>] [flags]",
       "flags": [],
       "inputs": [],
       "example": "abcd mode queue \"approve the embargo close for the example advisory\""

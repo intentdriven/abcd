@@ -1671,7 +1671,7 @@
       "hidden": false,
       "group": "release",
       "block": "people",
-      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "sentence": "Keep private advisories off the public ledger, naming those ready to publish: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1717,6 +1717,20 @@
       ]
     },
     {
+      "path": "abcd embargo fixed",
+      "hidden": false,
+      "sentence": "Record the commits that fix an advisory under embargo: Writes only the embargo store; refuses a commit id that is not a commit of this repository.",
+      "flags": [
+        {
+          "name": "replace",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd embargo intake",
       "hidden": false,
       "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
@@ -1742,6 +1756,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd embargo queue",
+      "hidden": false,
+      "sentence": "Queue each ready advisory's publish step for the person's return: Writes only the away queue, each step once; refuses while the person is not away.",
+      "flags": []
     },
     {
       "path": "abcd embargo triage",
@@ -2378,6 +2398,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd implement heartbeat",
+      "hidden": false,
+      "sentence": "Renew the run's reservations, report its pull requests and disk, say what changed: Writes renewals and its state file; refuses an operand naming no branch.",
+      "flags": []
     },
     {
       "path": "abcd implement join",
@@ -3438,6 +3464,20 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "review-brief",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "state",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -3569,6 +3609,20 @@
       "hidden": false,
       "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
       "flags": []
+    },
+    {
+      "path": "abcd launch reland",
+      "hidden": false,
+      "sentence": "Reland a bot's dependency bump as your own commit, or list those waiting: Writes one local branch, pushing nothing; refuses a bump outside the bound.",
+      "flags": [
+        {
+          "name": "assisted-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd launch scaffold",
@@ -4165,7 +4219,7 @@
     {
       "path": "abcd mode queue",
       "hidden": false,
-      "sentence": "Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.",
+      "sentence": "Queue one step for the person's return while away, or list the queue bare: Writes nothing bare, only the away record; refuses a step when no away record holds.",
       "flags": []
     },
     {
@@ -4378,6 +4432,13 @@
         },
         {
           "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "renew",
           "shorthand": "",
           "type": "bool",
           "required": false,

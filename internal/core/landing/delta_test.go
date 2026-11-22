@@ -117,12 +117,18 @@ func (w *deltaWorld) onMain(rel, body string) string {
 }
 
 // has puts a file on the default branch and merges it up, so a commit after it
-// changes a file the branch already holds.
+// changes a file the branch already holds, and moves the base to the merge with a
+// full pair for it: a merge whose incoming side changes a file the branch's own
+// commits change since the base needs a full pair.
 func (w *deltaWorld) has(rel, body string) {
 	w.t.Helper()
 	w.onMain(rel, body)
 	if err := w.merge("--no-edit", deltaDefault); err != nil {
 		w.t.Fatal(err)
+	}
+	w.base = w.head()
+	if _, err := RecordReview(w.repo.Root(), w.base, fullPair(w.base)); err != nil {
+		w.t.Fatalf("the full pair for the merged head was refused: %v", err)
 	}
 }
 
@@ -569,17 +575,88 @@ func TestAMergeFromTheDefaultBranchDoesNotCount(t *testing.T) {
 			t.Fatalf("a merge from an older tip counted: %v", err)
 		}
 	})
-	t.Run("a merge that takes both sides of one file", func(t *testing.T) {
+	t.Run("a merge whose incoming side changes a file the base already held", func(t *testing.T) {
+		w := newDeltaWorld(t)
+		w.fix()
+		w.onMain("docs/how-to/f0.md", "changed on main\n")
+		if err := w.merge("--no-edit", deltaDefault); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.record(); err != nil {
+			t.Fatalf("a merge touching no file the branch changes was refused: %v", err)
+		}
+	})
+}
+
+// What the default branch brought was reviewed when it landed, and the branch's
+// own change since the base is the delta pair's to read; a file where the two meet
+// was read together by no reviewer, so a merge whose incoming side changes a file
+// the branch's own commits change since the base needs a full pair, however
+// cleanly git merges it.
+func TestAMergeMeetingTheBranchsOwnChangeNeedsAFullPair(t *testing.T) {
+	t.Run("both sides of one file, the fix first", func(t *testing.T) {
 		w := newDeltaWorld(t)
 		w.fix()
 		w.onMain("docs/how-to/a.md", strings.Replace(numberedLines(60), "line 50\n", "line fifty\n", 1))
 		if err := w.merge("--no-edit", deltaDefault); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.record(); err != nil {
-			t.Fatalf("a clean content merge was refused: %v", err)
-		}
+		w.wantRefused(`"docs/how-to/a.md", which the branch's own commits since`)
 	})
+	t.Run("the fix after the merge, in the file main changed", func(t *testing.T) {
+		w := newDeltaWorld(t)
+		w.onMain("docs/how-to/a.md", strings.Replace(numberedLines(60), "line 50\n", "line fifty\n", 1))
+		if err := w.merge("--no-edit", deltaDefault); err != nil {
+			t.Fatal(err)
+		}
+		w.fix()
+		w.wantRefused(`"docs/how-to/a.md", which the branch's own commits since`)
+	})
+}
+
+// A merge counts for nothing only when what it brings can be told apart from the
+// branch: two merge bases, a criss-cross, leave git's incoming side a virtual
+// commit, so the merge needs a full pair.
+func TestAMergeWithTwoMergeBasesNeedsAFullPair(t *testing.T) {
+	w := newDeltaWorld(t)
+	w.repo.Git("checkout", "-q", "main")
+	w.repo.Write("one.txt", "x\n")
+	w.repo.Commit("a change on the default branch")
+	m1 := w.head()
+	if err := w.merge("--no-edit", w.base); err != nil {
+		t.Fatal(err)
+	}
+	w.repo.Git("update-ref", deltaDefault, "HEAD")
+	w.repo.Git("checkout", "-q", "feat/x")
+	if err := w.merge("--no-edit", m1); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.merge("--no-edit", deltaDefault); err != nil {
+		t.Fatal(err)
+	}
+	w.wantRefused("2 merge bases")
+}
+
+// A merge counts for nothing only when it takes a commit of origin's default
+// branch, as last fetched: with no such branch tracked, a merge from a local
+// default branch, which may hold commits no one has pushed, is refused.
+func TestAMergeFromALocalDefaultBranchNeedsAFullPair(t *testing.T) {
+	w := newDeltaWorld(t)
+	w.repo.Git("update-ref", "-d", deltaDefault)
+	w.repo.Git("checkout", "-q", "main")
+	w.repo.Write("big.txt", numberedLines(100))
+	w.repo.Commit("an unpushed change on the local default branch")
+	w.repo.Git("checkout", "-q", "feat/x")
+	if err := w.merge("--no-edit", "main"); err != nil {
+		t.Fatal(err)
+	}
+	err := w.record()
+	if err == nil || !strings.Contains(err.Error(), "origin") {
+		t.Fatalf("err = %v; want a refusal naming origin's default branch", err)
+	}
+	if got, _ := reviewReceipt(w.repo.Root(), w.head()); got != "" {
+		t.Fatalf("a refused delta left a receipt at %s", got)
+	}
 }
 
 func (w *deltaWorld) delta(head string) deltaRecord {
@@ -822,10 +899,7 @@ func TestADeltaChangesNoLineInsideACodeFence(t *testing.T) {
 	world := func(t *testing.T, body string) *deltaWorld {
 		t.Helper()
 		w := newDeltaWorld(t)
-		w.onMain(page, body)
-		if err := w.merge("--no-edit", deltaDefault); err != nil {
-			t.Fatal(err)
-		}
+		w.has(page, body)
 		return w
 	}
 	const fenced = "Before it.\n\n```\nrun this\n```\n\nAfter it.\n"
@@ -1149,10 +1223,7 @@ func TestADeltaKeepsEveryFilesFrontmatter(t *testing.T) {
 	world := func(t *testing.T, rel, text string) *deltaWorld {
 		t.Helper()
 		w := newDeltaWorld(t)
-		w.onMain(rel, text)
-		if err := w.merge("--no-edit", deltaDefault); err != nil {
-			t.Fatal(err)
-		}
+		w.has(rel, text)
 		return w
 	}
 	for _, rel := range []string{".abcd/development/roadmap/rfcs/x.md", ".abcd/development/plans/x.md", "docs/how-to/x.md"} {

@@ -24,7 +24,7 @@ person's records group beside `build`, and its page is on a person's `/abcd:` me
 
 ## The steps
 
-The verb takes at most one operand, the branch, and lands the checkout's
+A landing takes at most one operand, the branch, and lands the checkout's
 current branch without one, and is refused on the default branch, on a
 detached HEAD and on a tree with uncommitted changes. A named branch is landed from the worktree that
 has it checked out, because the preflight runs in the branch's own checkout.
@@ -36,6 +36,21 @@ environment and credentials, so the verb is for branches whose content the
 person trusts. With `land.push` and `land.enqueue` both off nothing runs. With
 `land.push` off and `land.enqueue` on the gate still runs, by design: arming a
 pull request says its head is ready to merge, and readiness is the gate.
+
+The state report lands nothing (iss-2611220942419392): it takes any number of
+operands, each a branch or a pull request number, or none for the current
+branch, and says of each pull request whether it is merged and when, queued in
+the merge queue with the entry's state and position, armed and not yet queued,
+open and not armed, removed from the queue with the removal's time and the
+forge's reason from the pull request's timeline, closed, or absent. The forge
+clears a pull request's arming as the queue takes it, so a reader of the arming
+alone takes a queued pull request for a dropped one; the report reads the queue
+entry itself. It is one listing to resolve a branch and one GraphQL read for
+each pull request (`landing.PRStates`), every field pinned in
+`internal/ghcontract`, and it writes nothing. A pull request it cannot read is
+reported so, never left out, and exits 1. The implement verb's heartbeat
+([`27-implement.md`](27-implement.md)) reads its tracked pull requests through
+the same primitive.
 
 Before the steps, the origin and the forge's default branch are checked (see
 the trust boundaries), and then `origin`'s default branch is fetched. A head
@@ -376,13 +391,25 @@ Its inputs:
   for byte, and no file is added, removed or moved. Anything
   else needs a full pair: code and tests, `commands/`, `agents/`, `.claude*` and
   `.abcd/*.json`, the release record and gate, the rest of `docs/`, open issues and
-  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a default-branch commit counts for nothing, so merging the
-  default branch up needs no full pair, when it is exactly the merge git makes of
-  its two parents with no conflict; any other merge is refused. The gate judges
+  decisions, whose bodies later steps read, and the intents, the specs, this brief, the principles, the research and the ADRs. A merge of a commit on origin's default branch, as last
+  fetched, counts for nothing, so merging the default branch up needs no full pair,
+  when it is exactly the merge git makes of its two parents with no conflict (so its
+  resolution adds nothing, as an empty remerge-diff shows), its parents have one
+  merge base, and what its second parent changes since that base touches no file
+  the branch's own commits change since the base head; any other merge is refused,
+  an octopus merge and one from a local default branch included. The gate judges
   all of this again at landing, reads the receipts for the head in every worktree
   but a drive lane's (and none when it runs from one or lands a branch checked
   out in one), and counts a receipt with no delta only when it
   holds a passing pair for the head it names.
+- **A review brief**, the return a reviewer writes, printed before the review so
+  the reviewer is told the shape and not left to learn it from a refusal. The act
+  names the branch's head, or a commit, and prints the first line naming it in full
+  (the delta's line when a base is named), a place for the findings, the one
+  Verdict heading and the verdict line naming the head in full, its word left to
+  the reviewer. It is built from the rule the review act reads a return by, so the
+  two cannot drift: a brief filled in with a passing verdict is recorded. It writes
+  and lands nothing.
 
 The decision, in order:
 
@@ -575,5 +602,7 @@ Sub-verbs: none.
 | `--no-push` | bool |
 | `--record-review` | stringArray |
 | `--rests-on` | string |
+| `--review-brief` | string |
+| `--state` | bool |
 
 <!-- surface-appendix:end -->

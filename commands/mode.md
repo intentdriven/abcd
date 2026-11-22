@@ -30,6 +30,12 @@ Bare invocation is read-only. Run:
 
 Then tell the user the `state`. An absent store reads as `managed`; outside any git checkout the print form refuses (exit 2), because there is no repository whose state could be read.
 
+While an away record holds (below), the JSON also carries `away`: `until`,
+the time the away mode ends, `open_ended`, and `queued`, how many steps wait
+for the person's return; the plain form prints them on a second line, as
+`away until 2026-10-19 09:00 BST, 2 queued`. Tell the user both. With no away
+record holding, `away` is absent and the plain form prints the state alone.
+
 ## Set the state — two writers, one verb
 
 **The agent, at a question.** abcd's question is headed with its number
@@ -139,6 +145,17 @@ return instead of asked, and you carry on with other work:
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode queue "<step>" --json
 ```
 
+To read what is queued without ending the mode, run it bare:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" mode queue --json
+```
+
+It lists the steps queued in a record not yet ended, oldest first (one per
+line in the plain form; `queued` and `steps` in the JSON), and writes
+nothing: it takes no lock, and the away mode holds as before. With no record,
+or one already ended, it lists nothing and exits 0.
+
 A queue with no away record holding is refused (exit 2): ask the person
 instead, the product thinker or the technical facilitator, whichever the
 question is for. While the mode holds, `mode product-thinker` and `mode facilitator`
@@ -204,7 +221,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd mode autonomous --until 09:00`.
 - `abcd mode back [flags]`
   - An example call is `abcd mode back`.
-- `abcd mode queue <step> [flags]`
+- `abcd mode queue [<step>] [flags]`
   - An example call is `abcd mode queue "approve the embargo close for the example advisory"`.
 <!-- /generated -->
 

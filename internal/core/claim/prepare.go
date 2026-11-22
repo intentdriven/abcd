@@ -101,6 +101,14 @@ type Request struct {
 	// record anew and never takes one over. It keeps the tip's footprint, so
 	// Footprint must be empty.
 	Renew bool
+	// AnyWorktree, with Renew, also renews the person's own reservation that
+	// another worktree of this checkout holds (iss-2611220942285216): the
+	// renewal keeps that worktree's copy, so the reservation stays its own and
+	// its renewals and release go on from there, and the note of the last
+	// push (notePushed) is kept in that worktree's local tier. A copy on
+	// another computer or in another clone is still refused as another
+	// copy's, and so is another person's reservation.
+	AnyWorktree bool
 	// Narrow, with Renew, is the footprint the renewal writes in place of the
 	// tip's, when every path of it lies within the tip's footprint (equal to
 	// one of its paths or beneath one): a hold that narrows never widens
@@ -199,6 +207,12 @@ type prepared struct {
 	// login whose own newest push records them (asker.vouched), set by
 	// ownRelease: with self's own, what the act may act on (acts).
 	vouched map[Withdrawal]bool
+	// heldBy is the root of each other worktree of this checkout keeping the
+	// copy key a renewal asked for from any worktree (Request.AnyWorktree)
+	// renews for, and heldFrom names that worktree as a person reads it; both
+	// are empty for every act renewing or reserving for this copy.
+	heldBy   []string
+	heldFrom string
 }
 
 // acts reports whether the act may re-arm, withdraw again or admit w
@@ -228,6 +242,9 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
 		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)
+	}
+	if req.AnyWorktree && !req.Renew {
+		return nil, refuse("only a renewal renews from any worktree of the checkout; %s", nothingPushed)
 	}
 	if len(req.Narrow) > 0 && !req.Renew {
 		return nil, refuse("only a renewal narrows its reservation's footprint; %s", nothingPushed)

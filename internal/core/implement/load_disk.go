@@ -3,6 +3,7 @@ package implement
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -33,10 +34,14 @@ import (
 // than waits, since nothing frees disk while it sleeps. The refusal names
 // each low volume, its free space and the floor, and, when the cache's own
 // volume is low, the cache's path and size and the age-based trim a person
-// can run. The gate never trims the cache itself: deleting another tool's
-// files is not its call. abcd does so to a size limit in `ahoy worktree prune`,
-// after it removes a worktree, in `ahoy worktree trim-cache`, and, detached and
-// at most hourly, when the build loop makes a lane (worktree.TrimGoCache).
+// can run. Before it refuses, the waiter runs the paced trim of the caches
+// its checkout's toolchains fill once, and refuses only if the volume is still
+// low after it (load_disk_trim.go, iss-2611220942266387); the trim deletes only
+// the Go build cache's own entries, down to the person's size limit
+// (worktree.TrimGoCache). abcd also trims to that limit in `ahoy worktree
+// prune`, after it removes a worktree, in `ahoy worktree trim-cache`, and,
+// detached and at most hourly, when the build loop makes a lane. The load
+// check (CheckLoad) never trims.
 //
 // A platform whose free space abcd cannot read (other than macOS and Linux),
 // or a read that fails, is reported and never refused.
@@ -81,6 +86,11 @@ func diskFloorAt(getenv func(string) string, home string) uint64 {
 	}
 	return diskFloorFor(slots)
 }
+
+// DiskFloor is the floor the load gate judges the disk by for the account
+// whose home is home ("" is the machine home): the heartbeat reports the free
+// space against it (iss-2611220942554289), so both read one floor.
+func DiskFloor(home string) uint64 { return diskFloorAt(os.Getenv, home) }
 
 // The disk statuses.
 const (
@@ -141,6 +151,9 @@ type DiskCheck struct {
 	goCacheMeasured  bool
 	goCacheTrimmable bool
 	goCacheHome      bool
+	// trimNote is what the waiter's trim at the floor did, or why none ran
+	// (floorTrim.at), for the refusal to name; "" outside a wait.
+	trimNote string
 }
 
 // ReadDisk judges the free space for the account whose home is home ("" is
@@ -307,6 +320,42 @@ func (d DiskCheck) Note() string {
 	return ""
 }
 
+// Line is the check as one line, for a report that names the disk beside
+// other facts (the heartbeat): each low volume's free space and the floor, the
+// least free space read and the floor when there is room, or why the disk was
+// not checked.
+func (d DiskCheck) Line() string {
+	switch d.Status {
+	case DiskLow:
+		var low []string
+		for _, v := range d.Volumes {
+			if !v.Low {
+				continue
+			}
+			where := "a volume"
+			if v.Mount != "" {
+				where = "the volume mounted at " + v.Mount
+			}
+			low = append(low, bytesText(v.FreeBytes)+" free on "+where)
+		}
+		return "low: " + strings.Join(low, ", ") + ", below the load gate's floor of " + bytesText(d.FloorBytes) +
+			"; the gate admits no run until there is more room"
+	case DiskOK:
+		least, read := uint64(0), false
+		for _, v := range d.Volumes {
+			if !read || v.FreeBytes < least {
+				least, read = v.FreeBytes, true
+			}
+		}
+		l := bytesText(least) + " free, above the load gate's floor of " + bytesText(d.FloorBytes)
+		if d.Reason != "" {
+			l += "; checked only in part: " + d.Reason
+		}
+		return l
+	}
+	return "not checked: " + orUnread(d.Reason)
+}
+
 // orUnread is reason, or a stand-in when there is none.
 func orUnread(reason string) string {
 	if reason == "" {
@@ -398,6 +447,9 @@ func (d DiskCheck) describe() string {
 	}
 	if storeLow {
 		b.WriteString("  Remove the store worktrees no longer in use (git worktree remove <path>), or free space on that volume otherwise.\n")
+	}
+	if d.trimNote != "" {
+		fmt.Fprintf(&b, "  %s\n", d.trimNote)
 	}
 	if d.Reason != "" {
 		fmt.Fprintf(&b, "  Also: %s.\n", d.Reason)

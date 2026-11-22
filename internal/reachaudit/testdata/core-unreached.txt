@@ -64,11 +64,9 @@ internal/core/launch.ResolveInstallSurface
 internal/core/launch.Ship
 internal/core/launch.SmokeDeep
 internal/core/launch.SmokeLight
-internal/core/launch/scaffold.AbcdSubstitutions
 internal/core/launch/scaffold.BareSubstitutions
 internal/core/launch/scaffold.DeriveCIChecks
 internal/core/launch/scaffold.GateSubstitutions
-internal/core/launch/scaffold.Render
 internal/core/lifeboat.ManifestSHA256
 internal/core/lint.CitationAgeSummaryAt
 internal/core/lint.LintAt

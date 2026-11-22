@@ -402,13 +402,15 @@ func TestGuardReadsTheValueOfEnvsOwnOptionsAsNoAssignment(t *testing.T) {
 
 // TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName:
 // the value of one of env's or sudo's options is one word only where every
-// expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"`, with
-// no operator, flag, modifier, subscript or nesting. Any other expansion can
+// expansion in it is a plain quoted parameter, `"$NAME"` or `"${NAME}"` or a
+// positional such as `"$1"`, with no operator, flag, modifier, subscript or
+// nesting. Any other expansion can
 // yield several words, the ones after the first operands of env or sudo of
 // their own, so as an option value it can set a variable: `"$@"` and
 // `"${a[@]}"`, a nested `"${1+"$@"}"`, zsh's `"${=V}"`, `"${^@}"`, `$=V`,
 // `"$^@"` and `"${(f)V}"`, and, read the same way without listing which
-// yield several, `"$*"`, `"${v:-x}"` and a substitution.
+// yield several, `"$*"` and `"${v:-x}"`. A quoted substitution, `"$(…)"` or
+// `"$((…))"`, and a quoted `"$!"`, are one word.
 func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t *testing.T) {
 	r := Defaults()
 	for line, id := range map[string]string{
@@ -439,9 +441,6 @@ func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t 
 		`env -u "$*" opencode run x`:               "agent-launch-opencode-config-env",
 		`env -u "${a[*]}" opencode run x`:          "agent-launch-opencode-config-env",
 		`env -u "${v:-x}" opencode run x`:          "agent-launch-opencode-config-env",
-		`env -u "$(cat v)" opencode run x`:         "agent-launch-opencode-config-env",
-		`env -u "$((n))" opencode run x`:           "agent-launch-opencode-config-env",
-		`env -u "$!" opencode run x`:               "agent-launch-opencode-config-env",
 		`env -u x"$@" opencode run x`:              "agent-launch-opencode-config-env",
 		`env -u "$v$@" opencode run x`:             "agent-launch-opencode-config-env",
 		`env -C "$wt" -u "$@" claude -p x`:         "agent-launch-claude-config-env",
@@ -469,6 +468,9 @@ func TestGuardReadsAnOptionValueAsSeveralWordsUnlessEachExpansionIsAPlainName(t 
 		`env -u x"$v" opencode run x`,
 		`sudo -u "$u" opencode run x`,
 		`sudo -u "${u}" opencode run x`,
+		`env -u "$(cat v)" opencode run x`,
+		`env -u "$((n))" opencode run x`,
+		`env -u "$!" opencode run x`,
 	} {
 		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)

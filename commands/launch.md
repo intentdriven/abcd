@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | reland [<pull request>] [--assisted-by <Vendor>:<model-version>] | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -1382,7 +1382,43 @@ Tell the operator what stays theirs: set the owner in the declaration, create a
 GitHub App with `Contents: read and write` on the repository, install it, and
 store its id and private key as the **Dependabot** secrets
 `DEPENDENCY_REAUTHOR_APP_ID` and `DEPENDENCY_REAUTHOR_APP_KEY`. Until all of
-that is done an in-bound bump is refused by name and stays a person's to land.
+that is done an in-bound bump is refused by name and stays a person's to land,
+and the refusal names `abcd launch reland`.
+
+### Relanding a bump by hand (`launch reland`)
+
+`launch reland` is how a person lands a bot's bump while the workflow cannot.
+Bare, it asks the forge for the open pull requests a declared bot opened from a
+declared branch prefix in this repository and lists each with the command that
+relands it; it writes nothing, and in a repository without the declaration it
+says so. `launch reland <number>` fetches origin's default branch and the pull
+request's branch, then judges the pull request with the workflow's own script
+against the declaration the default branch stores: the same clauses, with the
+actor read from the forge's activity record of the branch. An in-bound bump's
+commit is applied onto the default branch's tip as stored, with no working tree
+written, and committed under the checkout's own git identity on the local branch
+`reland/pr-<number>`; its message names the bot's commit and carries
+`Supersedes #<number>`. It refuses, with exit 1 and nothing written:
+
+- a bump outside the bound, naming the clause it failed;
+- a change that conflicts with the default branch: tell the operator to redo the
+  bump on the default branch with the ecosystem's own tool (`go get` and
+  `go mod tidy`, for example) and commit it as their own;
+- a default branch that already holds the change;
+- a machine identity as author or committer (the attribution gate's list);
+- a branch `reland/pr-<number>` already there, which it never moves.
+
+The commit carries `Assisted-by: None`, or the model `--assisted-by
+<Vendor>:<model-version>` names. Inside an agent's session the flag is required
+(exit 2 without it), so pass the model you run, never `Co-Authored-By`. It pushes
+nothing and opens nothing: relay the next step it prints, `git switch
+reland/pr-<number>` then `abcd land`, after which the bot closes its own pull
+request. The workflow never runs it.
+
+While the declaration has no owner, the status board's facilitator view adds a
+`bumps` row naming origin's branches under a declared prefix as this checkout
+last fetched them. It reads the disk alone; `launch reland` is the forge's
+answer.
 
 The check names come from the repo's workflows triggered by `pull_request` or
 `merge_group`; a name only a run knows (a matrix job, an expression-named job, a
@@ -1447,6 +1483,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd launch manifests --tree public`.
 - `abcd launch receipts [flags]`
   - An example call is `abcd launch receipts`.
+- `abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]`
+  - An example call is `abcd launch reland 1618`.
 - `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
   - An example call is `abcd launch scaffold`.
 - `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`

@@ -481,12 +481,12 @@ func TestWaitSkipsOnCI(t *testing.T) {
 // its unit pass, with the arguments the process table shows for it.
 func otherAccountsPreflight(pid int) ([]machineload.Proc, map[int][]string) {
 	return []machineload.Proc{
-			{PID: pid, PPID: 1, PGID: pid, UID: 502, Age: 4 * time.Minute, Name: "make"},
-			{PID: pid + 1, PPID: pid, PGID: pid, UID: 502, Age: time.Minute, Name: "go"},
-		}, map[int][]string{
-			pid:     {"preflight"},
-			pid + 1: {"test", "./..."},
-		}
+		{PID: pid, PPID: 1, PGID: pid, UID: 502, Age: 4 * time.Minute, Name: "make"},
+		{PID: pid + 1, PPID: pid, PGID: pid, UID: 502, Age: time.Minute, Name: "go"},
+	}, map[int][]string{
+		pid:     {"preflight"},
+		pid + 1: {"test", "./..."},
+	}
 }
 
 // TestWaitSeesAnotherAccountsPreflight is the cross-account gap
@@ -704,12 +704,12 @@ func TestPreflightTimeout(t *testing.T) {
 func pairWaiter(pid int, uid uint32, age time.Duration) ([]machineload.Proc, map[int][]string) {
 	words := []string{"implement", "load", "--wait", "--", "sh", "-c", "work"}
 	return []machineload.Proc{
-			{PID: pid - 1, PPID: 1, PGID: pid - 1, UID: uid, Age: age + time.Second, Name: "go"},
-			{PID: pid, PPID: pid - 1, PGID: pid - 1, UID: uid, Age: age, Name: "abcd"},
-		}, map[int][]string{
-			pid - 1: append([]string{"run", "./cmd/abcd"}, words...),
-			pid:     words,
-		}
+		{PID: pid - 1, PPID: 1, PGID: pid - 1, UID: uid, Age: age + time.Second, Name: "go"},
+		{PID: pid, PPID: pid - 1, PGID: pid - 1, UID: uid, Age: age, Name: "abcd"},
+	}, map[int][]string{
+		pid - 1: append([]string{"run", "./cmd/abcd"}, words...),
+		pid:     words,
+	}
 }
 
 // TestWaitTwoWaitersAcrossAPidWrapOpenInStartOrder: a waiter that started
