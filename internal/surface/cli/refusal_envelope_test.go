@@ -92,11 +92,11 @@ func TestRefusalTextFormAddsOneLine(t *testing.T) {
 // reaches it, whatever the refusal.
 func TestRefusalNextNeverCarriesTheCallersArguments(t *testing.T) {
 	_ = captureLedgerRepo(t)
-	const secret = "zebra-operand-1234"
+	const operand = "zebra-operand-1234"
 	for _, args := range [][]string{
-		{"capture", "the " + secret + " drops a line"},
-		{"capture", "list", "--" + secret},
-		{"capture", "resolve", secret},
+		{"capture", "the " + operand + " drops a line"},
+		{"capture", "list", "--" + operand},
+		{"capture", "resolve", operand},
 	} {
 		code, env, out := codedRefusal(t, args...)
 		if code != 2 || env.Code == "" {

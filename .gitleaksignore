@@ -41,3 +41,10 @@ dc0ed2c62fad1ed5fef836e4472c677ab3ac23d2:.gitleaksignore:generic-api-key:27
 # runtime with testsecret.Synthetic instead.
 0233e528a788db58909e68dcf61b9fdd76b4872e:internal/core/matrix/cell_test.go:github-pat:151
 0233e528a788db58909e68dcf61b9fdd76b4872e:internal/core/matrix/cell_test.go:generic-api-key:151
+
+# Commit 46425fc70 added the refusal envelope's operand test
+# (itd-2610301428378830). Its constant, named for a secret, held a made-up
+# word the test types as an operand to prove no refusal's next command repeats
+# it, and generic-api-key read the assignment as a credential. It was never a
+# credential, and the constant is renamed at the branch tip.
+46425fc70b6b56292fbbf32968966ec962686a1d:internal/surface/cli/refusal_envelope_test.go:generic-api-key:95
