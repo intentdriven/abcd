@@ -26,6 +26,8 @@ Every figure the page needs is, or is about to be, a record fact. Merged pull re
 
 The place was the hard part, and the product thinker settled it with the stop switch's (dcn-2611041550139264): the page is a dated file in the shared folder chosen as an option at setup, on a machine no other person shares, the one file family outside abcd's owner-only rule beside the stop; a page served over a private network comes later. iss-2610121528179959 names the same gap for handovers, and the choice answers it for this page.
 
+Built on by itd-2611221049176607, the postmortem every unattended run ends with, which may live beside this page or in it (its first open question).
+
 ## Mechanism
 
 We expect the page to be right where the hand-written one was wrong because every line on it is derived from a record (the ledger, the run states, the log, the forge's merged pull requests, the mode's queue) by the first abcd move after the day's boundary, with nothing typed by an agent; a fact abcd cannot source is absent, not estimated. The claim is shown wrong if a page carries a figure no record holds, or if two pages are written for one day.

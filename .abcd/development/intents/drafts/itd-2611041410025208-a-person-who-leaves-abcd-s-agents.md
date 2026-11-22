@@ -70,6 +70,8 @@ abcd should do next.
 - Scores, targets and per-person figures.
 - Tuning configuration from the results, which is itd-64.
 
+Built on by itd-2611221049176607, the postmortem every unattended run ends with, which groups one run's hand-backs and stalls by cause where this record counts them across runs.
+
 ## Mechanism
 
 - We expect hand logs of autonomous runs to stop being needed, because most stalls
