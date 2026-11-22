@@ -1648,9 +1648,16 @@ func handIn(repoRoot, runID, receipt string, steps Stages, o Options, route *run
 			if err != nil {
 				return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 			}
-			if rc, err := decodeReceipt(repoRoot, data, await.Receipt, lane.ID); err == nil && rc.HandBack != nil {
-				rf := refuse("receipt", "", lane.ID, await.Receipt+" hands the lane back, which a step does not do on its own",
-					"to hand the lane back, run `abcd implement receipt "+await.Receipt+"`")
+			// A hand-back of the lane, or of any issue alone in a run with
+			// members, discards work or releases an issue: a decision, which
+			// a step does not take on its own (receipt_standing.go).
+			if rc, err := decodeReceipt(repoRoot, data, await.Receipt, lane.ID); err == nil && (rc.HandBack != nil || len(rc.HandBacks) > 0) {
+				what, hand := "hands the lane back", "to hand the lane back"
+				if rc.HandBack == nil {
+					what, hand = "hands issues back in handbacks", "to hand them back"
+				}
+				rf := refuse("receipt", "", lane.ID, await.Receipt+" "+what+", which a step does not do on its own",
+					hand+", run `abcd implement receipt "+await.Receipt+"`")
 				rf.handBack = true
 				return false, rf
 			}

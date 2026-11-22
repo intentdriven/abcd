@@ -238,7 +238,7 @@ func stoppedNote(laneID, receipt, reason string) string {
 // stoppedHandBackNote is stoppedNote for a receipt that hands its lane back, which
 // correcting does not cure and no step takes.
 func stoppedHandBackNote(laneID, receipt string) string {
-	return fmt.Sprintf("the receipt at %s hands %s back, which a step does not do on its own; %s is stopped and no runner is started over it. "+
+	return fmt.Sprintf("the receipt at %s hands %s, or an issue of it, back, which a step does not do on its own; %s is stopped and no runner is started over it. "+
 		"To hand it back, run `abcd implement receipt %s`; or start over with `abcd implement step --restart %s`, which sets the receipt aside",
 		receipt, laneID, laneID, receipt, laneID)
 }

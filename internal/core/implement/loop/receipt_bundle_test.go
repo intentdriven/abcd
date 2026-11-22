@@ -408,3 +408,47 @@ func viewAt(t *testing.T, repo *gittest.Repo, now time.Time) claim.Snapshot {
 	}
 	return snap
 }
+
+// TestAStandingBundleReceiptHandingIssuesBackIsNotTakenByAStep: a receipt that
+// stood at its path, collected by a step or a stop rather than handed in, is
+// not taken when its `handbacks` names any issue, every issue or one: a
+// hand-back discards work or releases an issue, which is a decision a step
+// does not make on its own (receipt_standing.go). The lane, its worktree and
+// every reservation stay as they were.
+func TestAStandingBundleReceiptHandingIssuesBackIsNotTakenByAStep(t *testing.T) {
+	for name, mut := range map[string]func(*LaneReceipt, string, string){
+		"every issue": func(rc *LaneReceipt, _, _ string) {
+			rc.Resolves = nil
+			rc.HandBacks = []IssueHandBack{handingBack(bundleLead), handingBack(bundleTwo), handingBack(bundleThree)}
+		},
+		"one issue": func(rc *LaneReceipt, a, b string) {
+			rc.Resolves = []Resolution{resolving(bundleLead, a), resolving(bundleTwo, b)}
+			rc.HandBacks = []IssueHandBack{handingBack(bundleThree)}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, bare, runID, l, dir := bundleAwaiting(t)
+			a, b := bundleFix(t, repo, l, bundleLead), bundleFix(t, repo, l, bundleTwo)
+			rc := goodReceipt(t, runID, l, dir, a, b)
+			mut(&rc, a, b)
+			path := writeReceipt(t, dir, rc)
+			_, err := handIn(repo.Root(), runID, path, DefaultStages(), Options{}, nil, true)
+			r := mustRefusal(t, err)
+			if !r.handBack || !strings.Contains(r.Reason, "a step does not do on its own") {
+				t.Fatalf("the standing receipt is refused as a hand-back a step does not make: %+v", r)
+			}
+			st, _ := ReadState(repo.Root(), runID)
+			if lane := st.Lanes[0]; lane.Stage != StageImplement || lane.HandBack != nil || len(st.Issues()) != 3 {
+				t.Fatalf("the lane and its issues stand as they were: %+v %v", lane, st.Issues())
+			}
+			if _, err := os.Stat(l.Worktree); err != nil {
+				t.Fatalf("the lane's worktree is kept: %v", err)
+			}
+			for _, id := range bundleIssues {
+				if r := tipOf(t, bare, id); r.released {
+					t.Fatalf("%s is still held: %+v", id, r)
+				}
+			}
+		})
+	}
+}
