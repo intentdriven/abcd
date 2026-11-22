@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -109,14 +110,32 @@ func TestNoClearStateRecordsNoVerdict(t *testing.T) {
 	}
 }
 
-// TestDecodeKeepsTheVerdictMember: a recorded statement reads back, its absent
-// verdict reads as no clear state, and a verdict the entries do not support is
-// refused.
+// TestDecodeKeepsTheVerdictMember: a recorded statement reads back with every
+// entry it carried, its absent verdict reads as no clear state, and a verdict
+// the entries do not support is refused.
 func TestDecodeKeepsTheVerdictMember(t *testing.T) {
-	for _, s := range []Statement{
-		{LookedAt: []Looked{looked("worktrees", 0)}, CouldNotCheck: []Gap{gap("forge", "", ReasonUnreachable)}},
-		{NoClearState: true, LookedAt: []Looked{looked("open_issues", 1)}},
-	} {
+	full := Statement{
+		LookedAt: []Looked{looked("worktrees", 0), looked("local_branches", 0)},
+		NotLookedAt: []NotLooked{
+			leftOut("reservations", CauseNothingToRead),
+			{ID: "embargo", Label: "embargo store", Source: SourceExclusion},
+			{ID: "scratch", Label: "scratch folders", Source: SourceListed},
+		},
+		CouldNotCheck: []Gap{gap("process check", "worktrees", ReasonToolMissing), gap("forge", "", ReasonUnreachable)},
+		Depth: []Depth{
+			{Role: "validator", Lane: "itd-1",
+				Class:  &Told{Values: []string{"strong", "standard"}, From: OriginRunState},
+				Runs:   Runs{Count: 2, From: OriginRunState},
+				Effort: &Told{Values: []string{"high"}, From: OriginReceipt}},
+			{Role: "drain judge", Issue: "iss-1", Class: &Told{Mark: MarkNoneAsked}, Runs: Runs{Count: 1, From: OriginRunState}, Effort: &Told{Mark: MarkNoneAsked}},
+			{Role: "receipts", Class: &Told{Mark: MarkNotTold}, Runs: Runs{Mark: MarkNotTold}, Effort: &Told{Mark: MarkNotTold}},
+			{Role: "validator", Lane: "itd-2", Runs: Runs{Count: 0, From: OriginRunState}},
+		},
+	}
+	drive := full
+	drive.NoClearState = true
+	drive.LookedAt = []Looked{looked("open_issues", 1)}
+	for _, s := range []Statement{full, drive} {
 		b, err := json.Marshal(s)
 		if err != nil {
 			t.Fatal(err)
@@ -125,8 +144,8 @@ func TestDecodeKeepsTheVerdictMember(t *testing.T) {
 		if err := json.Unmarshal(b, &back); err != nil {
 			t.Fatalf("decode %s: %v", b, err)
 		}
-		if back.NoClearState != s.NoClearState {
-			t.Fatalf("decode %s: NoClearState = %v, want %v", b, back.NoClearState, s.NoClearState)
+		if !reflect.DeepEqual(back, s) {
+			t.Fatalf("decode %s:\n got %+v\nwant %+v", b, back, s)
 		}
 	}
 	var s Statement
@@ -261,13 +280,15 @@ func TestDepthEncodesWhereEachValueCameFrom(t *testing.T) {
 	}
 
 	bad := map[string]Depth{
-		"unknown origin":            {Role: "r", Runs: Runs{Count: 1, From: Origin("guess")}},
-		"unknown mark":              {Role: "r", Runs: Runs{Mark: Mark("unknown")}},
-		"value and mark both":       {Role: "r", Runs: Runs{Count: 1, From: OriginRunState, Mark: MarkNotTold}},
-		"neither value nor mark":    {Role: "r", Runs: Runs{Count: 1}},
-		"class with no run":         {Role: "r", Runs: Runs{Count: 0, From: OriginRunState}, Class: &Told{Values: []string{"strong"}, From: OriginRunState}},
-		"class values with no from": {Role: "r", Runs: Runs{Count: 1, From: OriginRunState}, Class: &Told{Values: []string{"strong"}}},
-		"lane and issue both":       {Role: "r", Lane: "itd-1", Issue: "iss-1", Runs: Runs{Count: 1, From: OriginRunState}},
+		"unknown origin":              {Role: "r", Runs: Runs{Count: 1, From: Origin("guess")}},
+		"unknown mark":                {Role: "r", Runs: Runs{Mark: Mark("unknown")}},
+		"value and mark both":         {Role: "r", Runs: Runs{Count: 1, From: OriginRunState, Mark: MarkNotTold}},
+		"neither value nor mark":      {Role: "r", Runs: Runs{Count: 1}},
+		"class with no run":           {Role: "r", Runs: Runs{Count: 0, From: OriginRunState}, Class: &Told{Values: []string{"strong"}, From: OriginRunState}},
+		"class values with no from":   {Role: "r", Runs: Runs{Count: 1, From: OriginRunState}, Class: &Told{Values: []string{"strong"}}},
+		"lane and issue both":         {Role: "r", Lane: "itd-1", Issue: "iss-1", Runs: Runs{Count: 1, From: OriginRunState}},
+		"runs and no class":           {Role: "r", Runs: Runs{Count: 2, From: OriginRunState}, Effort: &Told{Values: []string{"high"}, From: OriginRunState}},
+		"runs not told and no effort": {Role: "r", Runs: Runs{Mark: MarkNotTold}, Class: &Told{Mark: MarkNotTold}},
 	}
 	for name, d := range bad {
 		s := Statement{LookedAt: []Looked{looked("k", 0)}, Depth: []Depth{d}}
@@ -310,8 +331,12 @@ func TestIdentifiersOnlyGrow(t *testing.T) {
 	if len(golden) == 0 {
 		t.Fatalf("%s holds no identifier", identifiersGolden)
 	}
-	if missing := missingIdentifiers(golden, identifiers()); len(missing) > 0 {
-		t.Fatalf("identifiers renamed or removed (recorded results carry them, so they may not change; add a new one instead): %v", missing)
+	removed, unrecorded := identifierDrift(golden, identifiers())
+	if len(removed) > 0 {
+		t.Errorf("identifiers renamed or removed (recorded results carry them, so they may not change; add a new one instead): %v", removed)
+	}
+	if len(unrecorded) > 0 {
+		t.Errorf("identifiers the package encodes and %s does not hold; append each so it may not change later: %v", identifiersGolden, unrecorded)
 	}
 }
 
@@ -319,11 +344,19 @@ func TestIdentifiersOnlyGrow(t *testing.T) {
 // itself: a renamed identifier is reported, an added one is not.
 func TestTheGoldenCheckRefusesARenameAndAdmitsAnAddition(t *testing.T) {
 	golden := []string{"reason unreadable", "cause not_armed"}
-	if missing := missingIdentifiers(golden, []string{"reason unreadable", "cause not_configured"}); len(missing) != 1 || missing[0] != "cause not_armed" {
-		t.Fatalf("a rename gave %v, want [cause not_armed]", missing)
+	removed, unrecorded := identifierDrift(golden, []string{"reason unreadable", "cause not_configured"})
+	if len(removed) != 1 || removed[0] != "cause not_armed" {
+		t.Fatalf("a rename gave removed %v, want [cause not_armed]", removed)
 	}
-	if missing := missingIdentifiers(golden, []string{"reason unreadable", "cause not_armed", "reason rate_limited"}); len(missing) != 0 {
-		t.Fatalf("an addition gave %v, want nothing", missing)
+	if len(unrecorded) != 1 || unrecorded[0] != "cause not_configured" {
+		t.Fatalf("a rename gave unrecorded %v, want [cause not_configured]", unrecorded)
+	}
+	added := []string{"reason unreadable", "cause not_armed", "reason rate_limited"}
+	if removed, unrecorded := identifierDrift(golden, added); len(removed) != 0 || len(unrecorded) != 1 || unrecorded[0] != "reason rate_limited" {
+		t.Fatalf("an addition the golden lacks gave removed %v, unrecorded %v; want only [reason rate_limited] unrecorded", removed, unrecorded)
+	}
+	if removed, unrecorded := identifierDrift(append(golden, "reason rate_limited"), added); len(removed) != 0 || len(unrecorded) != 0 {
+		t.Fatalf("an addition written to both gave removed %v, unrecorded %v; want nothing", removed, unrecorded)
 	}
 	// Every identifier the package encodes is accepted by its own encoder.
 	for _, id := range identifiers() {
@@ -352,9 +385,9 @@ func TestDecodeRefusesUnknownFields(t *testing.T) {
 		"looked-at":     `{"looked_at":[{"id":"k","label":"k","count":0,"extra":1}],"not_looked_at":[],"could_not_check":[],"verdict":"clear"}`,
 		"not-looked-at": `{"looked_at":[],"not_looked_at":[{"id":"k","label":"k","source":"listed","extra":1}],"could_not_check":[],"verdict":"none"}`,
 		"gap":           `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[{"check":"c","reason":"unreadable","text":"t","extra":1}],"verdict":"clear_except_gaps"}`,
-		"depth":         `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"extra":1}]}`,
-		"told":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"class":{"mark":"not_told","extra":1}}]}`,
-		"runs":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state","extra":1}}]}`,
+		"depth":         `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"class":{"mark":"none_asked"},"effort":{"mark":"none_asked"},"extra":1}]}`,
+		"told":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state"},"class":{"mark":"not_told","extra":1},"effort":{"mark":"not_told"}}]}`,
+		"runs":          `{"looked_at":[{"id":"k","label":"k","count":0}],"not_looked_at":[],"could_not_check":[],"verdict":"clear","depth":[{"role":"r","runs":{"count":1,"from":"run_state","extra":1},"class":{"mark":"none_asked"},"effort":{"mark":"none_asked"}}]}`,
 	}
 	for name, doc := range cases {
 		var s Statement

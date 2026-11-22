@@ -11,8 +11,14 @@
 //
 // Every identifier a recorded statement carries comes from a closed set, and
 // encoding refuses one outside it. The reasons and causes are held by
-// testdata/identifiers.golden: a release may add one and never rename or
-// remove one (criterion 24).
+// testdata/identifiers.golden: a release may add one, written there as well,
+// and never rename or remove one (criterion 24).
+//
+// Decoding is strict: an identifier outside its set is refused, and with it
+// the whole statement. A build reading a statement written by a later release
+// that added an identifier therefore refuses it. Whether a reader should
+// tolerate an identifier it does not know is left open here, for the step
+// that first stores statements where another build reads them back.
 package extent
 
 import (
@@ -322,7 +328,9 @@ func (s Statement) Verdict() (Verdict, bool) {
 // its set, a kind both looked at and not looked at (criterion 12) or named
 // twice, a cause on an entry not left out in this run or none on one that is,
 // an entry missing its identifier, label, check or text, or a depth entry
-// that gives a value and a mark at once, or neither.
+// that gives a value and a mark at once, or neither, for any of its three
+// values: a role that ran judging runs gives its class and its effort too, and
+// only a role that ran none gives neither.
 func (s Statement) Validate() error {
 	seen := map[string]string{}
 	claim := func(id, where string) error {
@@ -405,11 +413,13 @@ func (d Depth) validate() error {
 		name string
 		told *Told
 	}{{"class", d.Class}, {"effort", d.Effort}} {
-		if part.told == nil {
-			continue
-		}
-		if noRun {
+		switch {
+		case noRun && part.told != nil:
 			return fmt.Errorf("extent: depth entry %q ran no judging run and gives a %s", d.Role, part.name)
+		case noRun:
+			continue
+		case part.told == nil:
+			return fmt.Errorf("extent: depth entry %q, %s: gives neither a value nor a mark", d.Role, part.name)
 		}
 		t := part.told
 		if err := oneOf(t.From, t.Mark, (t.Mark == "") == (len(t.Values) > 0)); err != nil {
@@ -531,14 +541,21 @@ func identifiers() []string {
 	return out
 }
 
-// missingIdentifiers returns the golden identifiers current no longer holds:
-// each is a rename or a removal. An identifier current adds is not reported.
-func missingIdentifiers(golden, current []string) []string {
-	var out []string
+// identifierDrift compares the golden identifiers with the ones the package
+// encodes today: removed are golden lines the package no longer holds (a
+// rename or a removal), and unrecorded are identifiers the package holds and
+// the golden lacks (an addition not yet written down). An addition written to
+// both is neither.
+func identifierDrift(golden, current []string) (removed, unrecorded []string) {
 	for _, g := range golden {
 		if !slices.Contains(current, g) {
-			out = append(out, g)
+			removed = append(removed, g)
 		}
 	}
-	return out
+	for _, c := range current {
+		if !slices.Contains(golden, c) {
+			unrecorded = append(unrecorded, c)
+		}
+	}
+	return removed, unrecorded
 }
