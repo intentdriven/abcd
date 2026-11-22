@@ -827,8 +827,11 @@ descriptor a redirection names, zsh's `${NAME::=…}` and an assignment to an
 array the line ties to the variable with `typeset -T` among them), with an
 assignment whose name or value the line does not fix read as setting the
 variable and the value of one of env's or sudo's own options read as no
-assignment only where every expansion in it is a plain quoted `"$NAME"` or
-`"${NAME}"`, any other expansion being read as possibly several words, a
+assignment only where every expansion in it is one double quotes keep as one
+word (a plain quoted `"$NAME"`, `"${NAME}"` or positional `"$1"`, `"$!"`, a
+length `"${#NAME}"`, a quoted `"$(…)"` or `"$((…))"`, and a `:` after `"$NAME"`
+that no zsh modifier letter follows), any other expansion being read as
+possibly several words, a
 `set` whose option words it does not fix and a `SHELLOPTS` exported before a
 shell read as turning allexport on, an element of zsh's `options` array read
 as turning it off only for the exact value zsh accepts (`off`, or `on` for the
@@ -839,8 +842,9 @@ refusing settings that turn the permission checks off, grant permission rules
 or directories, declare hooks or another command claude runs, turn hooks off,
 or set an `env` variable that changes what claude runs, and settings it cannot
 read now (text that does not parse, a value, name or directory the line does
-not fix, a glob that does not match one file or holds a pattern character
-the shell and Go read apart, a bracket expression or `**` among them, a file
+not fix, a glob that does not match one file or whose word holds a pattern
+character the shell and Go read apart, a bracket expression or `**` among
+them, the directory it resolves against being matched as its literal path, a file
 the line writes first or may write by a name it does not fix, or one it
 cannot open or that is too large). The flag forms of an allow list (`--allowedTools`),
 of extra directories (`--add-dir`) and of a prompt answerer
