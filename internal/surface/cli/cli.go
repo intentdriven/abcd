@@ -369,7 +369,7 @@ func NewRootCommand() *cobra.Command {
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
 			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd), Bumps: boardBumps(cwd, cmd.ErrOrStderr())}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -600,6 +600,10 @@ func NewRootCommand() *cobra.Command {
 	// auto-release.yml, runbook) into a managed repo that lacks it (itd-93). It
 	// extends 04-launch because launch already owns how a release is cut and gated.
 	launchCmd.AddCommand(newLaunchScaffoldCommand(&asJSON))
+	// `reland` is the person's way to land a bot's dependency bump while the
+	// workflow `scaffold --dependency-reauthor` lays cannot re-author it
+	// (iss-2611220952509874): judged by that workflow's own script.
+	launchCmd.AddCommand(newLaunchRelandCommand(&asJSON))
 	// `receipts` runs the release job's semantic-receipt gate locally, before
 	// the merge, through the same reader the job runs (itd-93 AC7).
 	launchCmd.AddCommand(newLaunchReceiptsCommand(&asJSON))

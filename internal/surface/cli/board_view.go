@@ -105,5 +105,8 @@ func boardRows(st core.StatusInfo, b boardOutput) []board.Row {
 	if r := reviewsRow(b.Reviews); r != nil {
 		rows = append(rows, *r)
 	}
+	if r := bumpsRow(b.Bumps); r != nil {
+		rows = append(rows, *r)
+	}
 	return rows
 }

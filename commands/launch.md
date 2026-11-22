@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | reland [<pull request>] [--assisted-by <Vendor>:<model-version>] | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -1447,6 +1447,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd launch manifests --tree public`.
 - `abcd launch receipts [flags]`
   - An example call is `abcd launch receipts`.
+- `abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]`
+  - An example call is `abcd launch reland 1618`.
 - `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
   - An example call is `abcd launch scaffold`.
 - `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`

@@ -1066,7 +1066,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch archive`, `abcd launch manifests`, `abcd launch receipts`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
+Sub-verbs: `abcd launch archive`, `abcd launch manifests`, `abcd launch receipts`, `abcd launch reland`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
 
 | Flag | Type |
 |---|---|
@@ -1100,6 +1100,14 @@ Sub-verbs: none.
 Sub-verbs: none.
 
 Flags: none.
+
+### `abcd launch reland`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--assisted-by` | string |
 
 ### `abcd launch scaffold`
 

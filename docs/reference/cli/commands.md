@@ -5205,6 +5205,50 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 abcd launch receipts
 ```
 
+#### `abcd launch reland`
+
+Reland a bot's dependency bump as your own commit, or list those waiting: Writes one local branch, pushing nothing; refuses a bump outside the bound.
+
+**Usage:** `abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]`
+
+Reland a bot's dependency pull request as your own commit, the hand step the
+dependency-reauthor workflow leaves to a person while the owner in
+.abcd/config/dependency-reauthor.conf or its App is unset.
+
+Bare, it asks the forge for the open pull requests a declared bot opened from a
+declared branch prefix, and lists them; it writes nothing.
+
+With a pull request, it fetches origin's default branch and the pull request's
+branch, and judges the pull request with the workflow's own script against the
+declaration the default branch stores: the bot, the branch prefix, the run's
+actor (the account whose push last moved the branch, from the forge's activity
+record), exactly one commit by the bot, and only the row's manifests at the row's
+directory. What passes is applied onto the default branch's tip as stored, writing
+no working tree, and committed under this checkout's git identity on the local
+branch reland/pr-<number>, with "Supersedes #<number>" in its message. A machine
+identity is refused. A change that does not apply cleanly is refused: redo the bump
+with the ecosystem's own tool (go get, for example).
+
+The commit carries Assisted-by: None, or Assisted-by: <Vendor>:<model-version>
+from --assisted-by, which an agent's session must pass. It pushes nothing and opens
+nothing: switch to the branch and run abcd land. It is a person's act, so the
+workflow never runs it.
+
+Exit 0: relanded, or listed. Exit 1: refused or the forge could not answer;
+nothing was written. Exit 2: usage.
+
+**Flags:**
+
+```
+      --assisted-by string   the model that assisted, as <Vendor>:<model-version>, for the commit's Assisted-by trailer (an agent's session must pass it)
+```
+
+**Example:**
+
+```
+abcd launch reland 1618
+```
+
 #### `abcd launch scaffold`
 
 Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.

@@ -355,6 +355,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
+	"abcd launch reland": "Reland a bot's dependency bump as your own commit, or list those waiting: " +
+		"Writes one local branch, pushing nothing; refuses a bump outside the bound.",
 	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
 		"Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +

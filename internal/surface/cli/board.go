@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/launch/reland"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reviews"
@@ -59,6 +60,11 @@ type boardOutput struct {
 	// the layer and origin that set it, or the read's refusal as Error
 	// (spc-2610161609350616); present in a managed checkout only.
 	Facilitator *boardFacilitator `json:"facilitator,omitempty"`
+	// Bumps is origin's bot dependency branches, as last fetched, waiting on a
+	// person because the repository declares re-authoring with no owner
+	// (iss-2611220952509874); omitted otherwise. Read from disk alone (adr-38):
+	// `abcd launch reland` asks the forge.
+	Bumps *reland.Fetched `json:"dependency_bumps,omitempty"`
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
 	Status *statusblock.Block `json:"status,omitempty"`
