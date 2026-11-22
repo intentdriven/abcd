@@ -292,6 +292,163 @@ func TestPruneStillJudgesWhatIsNotTheBuildInTheTiersBin(t *testing.T) {
 	})
 }
 
+// generatedSet is a generated-set cache as the reservation views keep it
+// (internal/core/claim/generatedcache.go): its magic, format, key and outcome,
+// then each path, every field ended by a NUL. It is written out here rather than
+// through claim, so the archive is held to the bytes on disk.
+var generatedSet = []byte("abcd generated set\x001\x00" + strings.Repeat("ab", 32) + "\x00set\x00go.sum\x00")
+
+// writeTierFile writes data at the tier-relative rel of the worktree at p.
+func writeTierFile(t *testing.T, p, rel string, data []byte) {
+	t.Helper()
+	f := filepath.Join(p, ".abcd", ".work.local", filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPruneLeavesTheGeneratedSetCacheOutOfTheNotes: the generated-set cache is
+// abcd's own, re-derived on the next reservation view, and its fields are
+// NUL-separated, so the redaction pass cannot vouch for it. The archive leaves
+// it out rather than keeping every merged worktree a view ever ran in
+// (iss-2611181412255215, iss-2611221058212814); the reservation files beside it
+// and the person's notes are still archived, and a dry run reports the reclaim
+// a real run makes.
+func TestPruneLeavesTheGeneratedSetCacheOutOfTheNotes(t *testing.T) {
+	repo, home := pruneFixture(t)
+	p := mergedWorktree(t, repo, "cached")
+	writeTierFile(t, p, "reservation/generated", generatedSet)
+	writeTierFile(t, p, "reservation/copy-key", []byte(strings.Repeat("c", 32)+"\n"))
+	writeTierFile(t, p, "NEXT.md", []byte("next: land it\n"))
+
+	dry := pruneRow(t, prune(t, repo, worktree.PruneOptions{DryRun: true}), "cached")
+	if dry.Outcome != "would reclaim" || dry.Notes != "2 files" {
+		t.Fatalf("a dry run would reclaim the worktree, archiving its two notes: %+v", dry)
+	}
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "cached")
+	if r.Outcome != "reclaimed" || r.Notes != "2 files" {
+		t.Fatalf("a merged, clean worktree whose tier holds the generated-set cache is reclaimed: %+v", r)
+	}
+	if exists(p) {
+		t.Fatal("the reclaimed worktree is gone")
+	}
+	entries := notesEntries(t, repo, home)
+	if len(entries) != 1 {
+		t.Fatalf("one archive entry: %v", entries)
+	}
+	entry := filepath.Join(abcdhome.Path(home, "notes", gittest.RootCommit(t, repo.Root())), entries[0])
+	for _, rel := range []string{"NEXT.md", "reservation/copy-key"} {
+		if _, err := os.Stat(filepath.Join(entry, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("%s beside the cache is archived: %v", rel, err)
+		}
+	}
+	if exists(filepath.Join(entry, "reservation", "generated")) {
+		t.Fatal("the generated-set cache is left out of the archive")
+	}
+	manifest, err := os.ReadFile(filepath.Join(entry, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(manifest), "reservation/generated") {
+		t.Fatalf("the manifest does not list the cache: %s", manifest)
+	}
+}
+
+// TestPruneReclaimsATierHoldingOnlyTheGeneratedSetCache: with the cache the
+// tier's only file, there is nothing to archive and no entry is written.
+func TestPruneReclaimsATierHoldingOnlyTheGeneratedSetCache(t *testing.T) {
+	repo, home := pruneFixture(t)
+	p := mergedWorktree(t, repo, "cache-only")
+	writeTierFile(t, p, "reservation/generated", generatedSet)
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "cache-only")
+	if r.Outcome != "reclaimed" || r.Notes != "none" {
+		t.Fatalf("a worktree whose tier holds only the cache is reclaimed with no notes: %+v", r)
+	}
+	if entries := notesEntries(t, repo, home); len(entries) != 0 {
+		t.Fatalf("no archive entry for a tier with no notes: %v", entries)
+	}
+}
+
+// TestPruneArchivesTextAtTheGeneratedSetsName: the cache is never text, so text
+// at its path is what a person wrote, even text that opens like the cache, and
+// removing the worktree would delete its only copy.
+func TestPruneArchivesTextAtTheGeneratedSetsName(t *testing.T) {
+	repo, home := pruneFixture(t)
+	p := mergedWorktree(t, repo, "text-at-cache")
+	writeTierFile(t, p, "reservation/generated", []byte("abcd generated set\nkept by hand\n"))
+	r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "text-at-cache")
+	if r.Outcome != "reclaimed" || r.Notes != "1 file" {
+		t.Fatalf("a merged, clean worktree whose tier holds text at the cache's path is reclaimed: %+v", r)
+	}
+	entries := notesEntries(t, repo, home)
+	if len(entries) != 1 {
+		t.Fatalf("one archive entry: %v", entries)
+	}
+	entry := filepath.Join(abcdhome.Path(home, "notes", gittest.RootCommit(t, repo.Root())), entries[0])
+	b, err := os.ReadFile(filepath.Join(entry, "reservation", "generated"))
+	if err != nil || !strings.Contains(string(b), "kept by hand") {
+		t.Fatalf("the text at the cache's path is archived as written: %q, %v", b, err)
+	}
+}
+
+// TestPruneStillJudgesWhatIsNotTheGeneratedSetCache: only a file at the
+// cache's own path that opens with its magic and the NUL ending it is left
+// out. Bytes the pass cannot vouch for anywhere else, or at that path without
+// the magic, keep the worktree and are named, so nothing a person keeps there is
+// dropped.
+func TestPruneStillJudgesWhatIsNotTheGeneratedSetCache(t *testing.T) {
+	for _, tc := range []struct {
+		name, rel string
+		data      []byte
+	}{
+		{"binary at the cache's path", "reservation/generated", []byte{0, 1, 2}},
+		{"the magic without its NUL", "reservation/generated", []byte("abcd generated set\xff\x00")},
+		{"the cache's bytes elsewhere", "scratch/generated", generatedSet},
+		{"the cache's bytes at a sibling name", "reservation/generated.old", generatedSet},
+		{"the cache's bytes a level deeper", "scratch/reservation/generated", generatedSet},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, _ := pruneFixture(t)
+			p := mergedWorktree(t, repo, "not-the-cache")
+			writeTierFile(t, p, tc.rel, tc.data)
+			r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "not-the-cache")
+			if r.Outcome != "kept" || !strings.Contains(r.Reason, tc.rel+": not text") {
+				t.Fatalf("%s keeps the worktree, naming it: %+v", tc.rel, r)
+			}
+			if !exists(p) {
+				t.Fatal("the kept worktree is still there")
+			}
+		})
+	}
+	t.Run("a link at the cache's path", func(t *testing.T) {
+		repo, home := pruneFixture(t)
+		p := mergedWorktree(t, repo, "linked-cache")
+		dir := filepath.Join(p, ".abcd", ".work.local", "reservation")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("elsewhere", filepath.Join(dir, "generated")); err != nil {
+			t.Fatal(err)
+		}
+		r := pruneRow(t, prune(t, repo, worktree.PruneOptions{}), "linked-cache")
+		if r.Outcome != "reclaimed" || r.Notes != "1 file" {
+			t.Fatalf("a link at the cache's path is archived as a link: %+v", r)
+		}
+		entries := notesEntries(t, repo, home)
+		if len(entries) != 1 {
+			t.Fatalf("one archive entry: %v", entries)
+		}
+		entry := filepath.Join(abcdhome.Path(home, "notes", gittest.RootCommit(t, repo.Root())), entries[0])
+		manifest, err := os.ReadFile(filepath.Join(entry, "manifest.json"))
+		if err != nil || !strings.Contains(string(manifest), `"reservation/generated"`) {
+			t.Fatalf("the link is in the manifest: %s, %v", manifest, err)
+		}
+	})
+}
+
 // TestNotesDirReadsOrMakesTheLanesArchive: without create, an archive not yet
 // made is absent and nothing is made; with create, each level is made the
 // caller's alone and the lane's directory answered; a symlink standing in for

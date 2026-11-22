@@ -65,14 +65,15 @@ import (
 // and a failure leaves the reader's answer as it was.
 
 const (
-	// generatedKeptRel is the kept file, in the reservations' state.
-	generatedKeptRel = stateRelDir + "/generated"
+	// generatedKeptRel is the kept file, in the reservations' state; the
+	// notes archive knows it by this path and the magic below.
+	generatedKeptRel = localtier.GeneratedSetRel
 	// generatedKeptCap bounds the kept file read or written; a set past it is
 	// not kept.
 	generatedKeptCap = 16 << 20
 	// generatedKeptMagic and generatedKeptFormat open the kept file; a change
 	// to its form changes the format.
-	generatedKeptMagic  = "abcd generated set"
+	generatedKeptMagic  = localtier.GeneratedSetMagic
 	generatedKeptFormat = "1"
 	// The kept outcomes: the set, or a match past its budget.
 	keptSet   = "set"
