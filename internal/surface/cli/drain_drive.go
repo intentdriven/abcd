@@ -956,8 +956,9 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 // drivePreflight runs the repository's preflight in checkout, the drive's own
 // checkout of a lane's head, whose full commit id is head, behind the load gate, as a process group of its
 // own, so the terminal's interrupt does not reach it, and with only what a
-// stage carries of the environment, since the lane's own files decide what it
-// runs (preflightGoEnv). The records-only check takes its merge base with the
+// stage carries of the environment, Go caches of its own in place of the ones
+// a stage is told (runner.PreflightEnv), since the lane's own files decide
+// what it runs (preflightGoEnv). The records-only check takes its merge base with the
 // tip origin reports for its default branch, read by the drive itself in its
 // own checkout at repoRoot (originDefaultTip) just before the preflight
 // starts, so it does not rest on a local remote-tracking ref; a tip it could

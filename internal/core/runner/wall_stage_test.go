@@ -245,7 +245,7 @@ func TestAGitIdentityBehindAnIncludeIsFound(t *testing.T) {
 
 // TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate: nothing beyond the
 // list, under the stage's home, with the person's home named for the load gate
-// and the Go caches kept.
+// and Go caches of its own (TestAPreflightsGoCachesAreItsOwn).
 func TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate(t *testing.T) {
 	p := wallProfile(t)
 	for _, k := range []string{"GH_TOKEN", "SSH_AUTH_SOCK", "AWS_SECRET_ACCESS_KEY"} {
@@ -574,7 +574,8 @@ func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
 // replays a result for the next run, for a fresh worktree of that commit and for a
 // later commit that leaves the test's inputs alone. A test that reads the home takes
 // part, since the home's value is in go test's key. The check directory is not written
-// again, and the build cache lies outside the home.
+// again, and the build cache is the preflight's own, outside the home and not the one a
+// stage is told.
 func TestADrivesPreflightReusesWhatTheOneBeforeItPassed(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no go")
@@ -697,8 +698,8 @@ func TestReadsATrackedFileAndTheHome(t *testing.T) {
 		}
 	}
 	env := PreflightEnv(p)
-	if !slices.Contains(env, "GOCACHE="+caches[0]) || fsutil.PathWithin(caches[0], p.ShellHome, false) {
-		t.Errorf("the build cache is not the one kept outside the home %s: %q", p.ShellHome, env)
+	if got, _ := envValue(env, "GOCACHE"); got == caches[0] || !fsutil.PathWithin(got, p.StageRoot, false) || fsutil.PathWithin(got, p.ShellHome, false) {
+		t.Errorf("the build cache %q is not the preflight's own, beside the stage's files and outside the home %s: %q", got, p.ShellHome, env)
 	}
 }
 

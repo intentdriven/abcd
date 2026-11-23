@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/fs"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -549,10 +550,57 @@ func ownerAccess(root *os.Root, rel string, fi fs.FileInfo) {
 }
 
 // PreflightEnv is the environment a lane's preflight runs in: what a stage
-// carries, under its home, with the person's home named for the load gate and the
-// Go caches kept. Nothing else of the parent's passes.
+// carries, under its home, with the person's home named for the load gate, and
+// Go caches of the preflight's own (preflightGoSeal). Nothing else of the
+// parent's passes.
 func PreflightEnv(p Profile) []string {
-	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), stageSeal(p))
+	carried := stageEnv(gitutil.ScrubbedEnv())
+	return sealedEnv(carried, preflightGoSeal(p, carried))
+}
+
+// preflightGoLeaf is the folder beside a stage's home that holds a preflight's
+// Go caches: its build cache, module cache and GOPATH, kept from one preflight
+// to the next and never named to a stage.
+const preflightGoLeaf = "preflight-go"
+
+// defaultGoProxy is the proxy list Go uses when GOPROXY is unset.
+const defaultGoProxy = "https://proxy.golang.org,direct"
+
+// preflightGoSeal is stageSeal with the person's Go caches, which a stage is
+// told, replaced by the preflight's own under preflightGoLeaf. Where the person's
+// module cache is known, GOPROXY reads its downloads first, as a file proxy
+// ahead of the list carried (or Go's default list), so a module the preflight's
+// cache lacks is copied from the person's cache only through Go's own download,
+// which checks it against go.sum, or the checksum database, before unpacking
+// it; a module the downloads lack is fetched as before. A module cache whose
+// path a proxy list cannot hold (one with a comma or a bar) is not read.
+func preflightGoSeal(p Profile, carried []string) []string {
+	dir := filepath.Join(p.StageRoot, preflightGoLeaf)
+	var seal []string
+	personMod := ""
+	for _, kv := range stageSeal(p) {
+		k, v, _ := strings.Cut(kv, "=")
+		switch k {
+		case "GOCACHE", "GOPATH":
+			continue
+		case "GOMODCACHE":
+			personMod = v
+			continue
+		}
+		seal = append(seal, kv)
+	}
+	seal = append(seal, "GOCACHE="+filepath.Join(dir, "build"), "GOMODCACHE="+filepath.Join(dir, "mod"), "GOPATH="+filepath.Join(dir, "path"))
+	if personMod == "" || !filepath.IsAbs(personMod) || strings.ContainsAny(personMod, ",|") {
+		return seal
+	}
+	proxy := defaultGoProxy
+	for _, kv := range carried {
+		if v, ok := strings.CutPrefix(kv, "GOPROXY="); ok && v != "" {
+			proxy = v
+		}
+	}
+	downloads := (&url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(personMod, "cache", "download"))}).String()
+	return append(seal, "GOPROXY="+downloads+","+proxy)
 }
 
 // stageGoExports are the Go caches as they stand in the person's own environment,

@@ -621,7 +621,12 @@ The driver's commit, merge and reset hooks, and any filter run inside those comm
 the same variables and home as a stage, and read the git configuration the drive wrote
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
-with what a stage carries too, with Go's own settings file off (`GOENV=off`) and
+with what a stage carries too, but with Go caches of its own in place of the
+person's Go caches a stage is told: a build cache, a module cache and a `GOPATH` kept beside
+the stage's files from one preflight to the next and never named to a stage. A
+module its cache lacks comes through the person's module downloads, read as a
+proxy ahead of the proxy it carries, and Go checks it against `go.sum` or the
+checksum database before unpacking it. It runs with Go's own settings file off (`GOENV=off`) and
 `GOWORK` left unset when the head tracks a `go.work` at its root, so Go finds the
 nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
 otherwise, and never in the lane's worktree: just before it the drive
