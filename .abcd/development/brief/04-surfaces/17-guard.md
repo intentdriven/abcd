@@ -507,10 +507,9 @@ on to the guard's own judgement, and a checkout abcd does not manage (no
 not exist, and the away mode's reading ignores it.
 
 The hook reads only git command lines, so a branch the worktree store's add
-verb makes or checks out (`abcd ahoy worktree add`) never reaches it. That verb
-records its branch itself once the worktree stands, in the same list under the
-session copy's key, with the host session its environment names
-(iss-2611211734561033).
+verb makes or checks out never reaches it. That verb records its branch itself
+once the worktree stands, in the same list under the session copy's key, with
+the host session its environment names (iss-2611211734561033).
 
 The away mode's reading treats each record as evidence of whose a branch is.
 A branch recorded with the stopping session as its creator stays that
@@ -529,8 +528,8 @@ another live session works in the same copy, stays owed, so the session's own
 unrecorded work is still caught. The stop names it as owed only if this session
 made it, and says that otherwise it is a peer's and must be left untouched:
 never committed to, merged or pushed. It gives no push or queue instruction for
-that branch, with or without `--hold-pushes`. A branch whose creator is
-recorded keeps the usual instruction.
+that branch, whether or not the person has said pushes wait. A branch whose
+creator is recorded keeps the usual instruction.
 
 ## Fail-open-loud
 
