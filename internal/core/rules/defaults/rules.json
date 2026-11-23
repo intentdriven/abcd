@@ -83,6 +83,14 @@
         "Before writing a helper script, check whether an abcd command already does the job: `abcd --help` lists the commands and each command page says what one does. A preflight, for one, is a plain `make preflight`, which gates itself at `abcd implement load --wait`, and a lone race run outside it is `abcd implement load --wait -- go test -race ./...`, never a hand-written waiter; LOAD's waiter rule says what the gate waits on. Write your own only when no command does it, keep it in the main checkout's .abcd/.work.local/scratch/ as the rule above says, and capture the gap as an issue so abcd can add the command."
       ]
     },
+    "LEAVING": {
+      "state": "active",
+      "recall": ["away", "overnight"],
+      "aliases": ["back at", "back by", "back tomorrow", "back in the morning", "do not wait", "don't wait", "dont wait", "carry on without me", "work on without me", "keep going without me", "while i am out", "while i'm out", "while i am gone", "while i'm gone"],
+      "rules": [
+        "When the person says they are leaving and sessions should work on without them (away, back at a time, overnight, do not wait, carry on without me), set the away mode on the person's word in this session, without asking first: `abcd mode autonomous --until <the end they gave>`, a clock time or a timestamp, adding `--hold-pushes` only when they said pushes wait for their return. Where they name no end, leave out `--until`, which sets the longest window the mode allows (open-ended, seven days at most), and say so. Then say its terms back to them as the verb prints them. The mode adds checks and grants nothing: their own standing instruction still decides what is committed, pushed and merged, and the mode ends at its time or with `abcd mode back`, run only on the person's word."
+      ]
+    },
     "PII": {
       "state": "active",
       "recall": ["secret", "token", "credential", "pii", "redact", "hostname", "email", "ip", "ips", "ipv4", "ipv6", "vpn", "tailscale", "tailnet", "wireguard", "firewall", "network", "reachability", "reachable", "unreachable", "dns", "ssh", "subnet"],

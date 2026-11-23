@@ -66,6 +66,15 @@ holder name reservations resolve without a network read, else git's
 lives in `~/.abcd.noindex/away/<root-sha>/`, keyed on the root commit as the worktree
 store is.
 
+**Set on the person's word.** The person runs it, or tells a session they
+are leaving and the session runs it on that word, in that session. The bundled
+`LEAVING` rules domain recalls on the words of leaving (away, overnight, back
+at a time, do not wait, carry on without me) and has the session set the mode
+with the end the person gave, or, where they gave none, the longest window the
+mode allows, open-ended and seven days at most, say so, and say its terms back
+(iss-2611211733065807). The mode adds checks and grants nothing, so a session
+setting it on the person's word widens nothing.
+
 **When it ends.** The end is a clock time (its next occurrence, local time)
 or a timestamp, or nothing, which leaves the record open-ended. Every record
 ends seven days after it was set at most, so an end past that, or one already

@@ -76,7 +76,7 @@ command alone, or waits a turn.
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`, `LEAVING`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the

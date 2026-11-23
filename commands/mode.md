@@ -123,7 +123,10 @@ stays what decides whether a session commits, pushes, or opens or merges a
 pull request, exactly as before. Never read the away mode as permission.
 
 Set it when the person says they are away — they run it themselves, or you
-run it on their word in this session:
+run it on their word in this session, without asking first (the bundled
+`LEAVING` rules domain says so on the words of leaving). Pass the end they
+gave; where they gave none, leave out `--until`, which sets the longest
+window the mode allows, and say so:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode autonomous --until 09:00 --json
