@@ -95,7 +95,7 @@ Given the ADR flag and the quoted title as its one operand, the JSON form emits
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
 and writes that one file, laying the store's directories down first where the
 checkout does not already hold them. Nothing else lands on disk. The plain render
-names the same four values and the status the record lands with. Exit 0 when the record lands, exit 2 for
+names the id, title, date and path, and the status the record lands with, leaving the slug to the path. Exit 0 when the record lands, exit 2 for
 an operand fault — the ADR flag with no title, or a title with nothing slug-able in
 it — with nothing written.
 
