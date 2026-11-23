@@ -147,7 +147,10 @@
 // checked out (git refuses that command, which runs after the recorder) or
 // names nothing git resolves, and a BranchMoved rename carrying a record by
 // whole name, its creator with it. Each name added keeps the session that
-// created it (Options.SessionID), when the hook had one. The list
+// created it (Options.SessionID), when the hook had one. The worktree store's
+// add verb, whose branch no git command line shows the hook, records it
+// through RecordAdded once the worktree stands, with the session its
+// environment names (iss-2611211734561033). The list
 // is createdFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
@@ -210,7 +213,15 @@
 // worktree it started in (its occupancy marker), and a reservation only its
 // runs are for. The session's own evidence wins over another's: a branch it
 // recorded creating, or a lane of a run it drives, stays its own. An item
-// whose holder cannot be told stays owed: a record with no session kept, a
+// whose holder cannot be told stays owed: a record with no session kept
+// (unless it is checked out in a worktree of the machine-scoped store other
+// than this copy while another live session works in the repository: then it
+// is left out, and a note says to leave it unless this session made it;
+// anywhere else (this copy, a worktree outside the store, or nowhere) while
+// another live session works in this copy, it stays owed but marked
+// OwedItem.Unclaimed, and the stop names it as owed only if this session made
+// it, tells that session how to push it or queue the push, and tells any
+// other to leave it untouched, iss-2611211734561033), a
 // lane of a run no session drives (unless a live session started in the
 // worktree it is checked out in, or a live drive holds it, below), a
 // reservation made by hand, a holder that has ended (its work returns to the

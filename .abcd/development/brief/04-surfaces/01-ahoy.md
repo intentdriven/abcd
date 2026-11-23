@@ -343,7 +343,13 @@ The appendix lists the sub-verbs and their options.
   repository's content filters and checkout hook run, bounded at 60 minutes.
   The new directory is narrowed to `0700`, the branch's start commit is
   recorded in the lane (`.starts/<name>`) for the merged judgement, and the
-  worktree's local tier is laid. Every refusal before git runs writes nothing.
+  worktree's local tier is laid. The branch, made or checked out, is recorded
+  in the away mode's created-branch list under the session copy's key, with
+  the host session the environment names
+  ([`17-guard.md` § The created-branch recorder](17-guard.md#the-created-branch-recorder)),
+  so the stop check counts its unfinished work as that session's
+  (iss-2611211734561033); a record it cannot write leaves one stderr line and
+  the worktree stands. Every refusal before git runs writes nothing.
   The path is printed with the home as `~`, and the JSON form gives the name,
   the branch and the path.
 - **Listing**, which the bare sub-verb also does, shows every worktree git

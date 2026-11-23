@@ -2,12 +2,14 @@ package autonomy
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 )
@@ -389,5 +391,193 @@ func TestSharedCopyBreachNamedWithNoClaim(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Errorf("the live sessions were read %d times; once a check", reads)
+	}
+}
+
+// storeWorktreeWith adds a worktree called wtName in this repository's lane
+// of the machine-scoped worktree store under f.home, on a new branch name
+// holding one commit of this checkout's, not pushed, and returns its path,
+// symlinks resolved: the place a session works in apart from its peers.
+func (f *fx) storeWorktreeWith(name, wtName string) string {
+	f.t.Helper()
+	sha := strings.TrimSpace(f.git("rev-list", "--max-parents=0", "HEAD"))
+	lane := filepath.Join(f.home, filepath.FromSlash(worktree.StoreRel), sha)
+	if err := os.MkdirAll(lane, 0o700); err != nil {
+		f.t.Fatal(err)
+	}
+	wt := filepath.Join(lane, wtName)
+	f.git("worktree", "add", "-q", "-b", name, wt)
+	if err := os.WriteFile(filepath.Join(wt, "w.txt"), []byte(name+"\n"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	f.git("-C", wt, "add", "w.txt")
+	f.git("-C", wt, "commit", "-q", "-m", "work on "+name)
+	real, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return real
+}
+
+// TestKeylessBranchInAPeersStoreWorktreeIsNotOwed is the detector of
+// iss-2611211734561033: three sessions started in the main checkout, and one
+// of them made branches, committed to them in worktrees of its own in the
+// machine-scoped store and did not push them; the created-branch record holds
+// the names with no session, as an older release wrote every entry. The
+// stopping session neither made them nor works there, so they are not owed
+// here: with this session's own branch owed, the stop names that one next,
+// never a store branch, and its note names every store branch, whole, and
+// says to leave it unless this session made it. A peer started in another
+// worktree of the repository counts as one that may have made them. The
+// boundary holds: the same branch recorded with this session's key stays
+// owed, and so does the keyless one when no other live session works in this
+// repository, or the live sessions cannot be read.
+func TestKeylessBranchInAPeersStoreWorktreeIsNotOwed(t *testing.T) {
+	f := newFx(t)
+	store := []string{"feat/peer-store", "feat/peer-store-second-branch-with-a-long-name", "feat/peer-store-third-branch-with-a-long-name"}
+	for i, name := range store {
+		f.storeWorktreeWith(name, fmt.Sprintf("peer-store-%d", i))
+		f.recordCreated(name, "")
+	}
+	f.worktreeWith("feat/mine-too")
+	f.recordCreated("feat/mine-too", sessMe)
+	read := func(live func() ([]occupancy.Session, error)) Owed {
+		o := f.opts()
+		o.Record = f.awayRecord(false)
+		o.SessionID = sessMe
+		o.LiveSessions = live
+		return f.readWith(o)
+	}
+	reads := 0
+	three := liveAs(&reads,
+		occupancy.Session{ID: sessMe, Checkout: f.root},
+		occupancy.Session{ID: sessPeer, Checkout: f.root},
+		occupancy.Session{ID: sessWT, Checkout: f.root})
+
+	owed := read(three)
+	for _, it := range owed.Items {
+		if strings.HasPrefix(it.Branch, "feat/peer-store") {
+			t.Fatalf("a branch in another session's store worktree, recorded with no session, is owed here: %s", describe(owed))
+		}
+	}
+	if !has(owed, OwedUnpushed, "feat/mine-too") {
+		t.Fatalf("this session's own branch must stay owed: %s", describe(owed))
+	}
+	notes := strings.Join(owed.Notes, "\n")
+	for _, want := range []string{"leave it unless this session made it", "with no recorded session, or a pull-request head never recorded"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("the notes do not say %q:\n%s", want, notes)
+		}
+	}
+	if reads != 1 {
+		t.Errorf("the live sessions were read %d times; once a check", reads)
+	}
+	v := Judge(f.awayRecord(false), owed, StopInput{SessionID: sessMe}, SessionState{}, f.now)
+	if !v.Block || v.Row != 2 {
+		t.Fatalf("this session's own owed branch must block its stop: row %d block %v", v.Row, v.Block)
+	}
+	if !strings.Contains(v.Reason, "Next: branch feat/mine-too") || strings.Contains(v.Reason, "Next: branch feat/peer-store") {
+		t.Fatalf("the stop names a store branch as the work to do next:\n%s", v.Reason)
+	}
+	for _, name := range store {
+		if !strings.Contains(v.Reason, name+",") && !strings.HasSuffix(v.Reason, name) && !strings.Contains(v.Reason, name+" ") {
+			t.Errorf("the stop's note does not name %s whole, so the note was cut:\n%s", name, v.Reason)
+		}
+	}
+
+	elsewhere := f.worktreeWith("feat/peer-home")
+	fromSibling := read(liveAs(&reads,
+		occupancy.Session{ID: sessMe, Checkout: f.root},
+		occupancy.Session{ID: sessPeer, Checkout: elsewhere}))
+	if has(fromSibling, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("a peer started in another worktree of the repository may have made the store branch, so it is not owed here: %s", describe(fromSibling))
+	}
+
+	alone := read(liveAs(&reads, occupancy.Session{ID: sessMe, Checkout: f.root}))
+	if !has(alone, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("with no other live session in this repository, the keyless branch stays owed: %s", describe(alone))
+	}
+	unread := read(func() ([]occupancy.Session, error) { return nil, errors.New("no process table") })
+	if !has(unread, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("with the live sessions unread, the keyless branch stays owed: %s", describe(unread))
+	}
+	f.recordCreated("feat/peer-store", sessMe)
+	mine := read(three)
+	if !has(mine, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("the branch this session recorded creating stays owed to it beside its peers: %s", describe(mine))
+	}
+}
+
+// TestKeylessBranchOutsideTheStoreIsOwedOnlyIfMine (iss-2611211734561033):
+// a branch no record names a session for, while another live session works in
+// this copy, stays owed wherever it sits outside the store (checked out in a
+// worktree beside the checkout, in this shared copy itself, or nowhere), so a
+// session's own unrecorded work is still caught. The stop names it as owed
+// only if this session made it; tells the session that did how to discharge
+// it (push it if its standing instruction allows, or with --hold-pushes queue
+// the push naming the branch); says that otherwise it is a peer's and must be
+// left untouched; and drops the generic push sentences. The shared-copy
+// sentence stays. A branch whose creator is known keeps today's text.
+func TestKeylessBranchOutsideTheStoreIsOwedOnlyIfMine(t *testing.T) {
+	for _, place := range []string{"outside", "nowhere", "here"} {
+		for _, hold := range []bool{false, true} {
+			f := newFx(t)
+			name := "feat/" + place
+			switch place {
+			case "outside":
+				f.worktreeWith(name)
+			case "nowhere":
+				f.git("branch", name)
+				f.commitOn(name, "work on "+name, "")
+			case "here":
+				f.git("checkout", "-q", "-b", name)
+				f.commitOn(name, "work on "+name, "")
+			}
+			f.recordCreated(name, "")
+			reads := 0
+			o := f.opts()
+			o.Record = f.awayRecord(hold)
+			o.SessionID = sessMe
+			o.LiveSessions = f.bothLive(&reads)
+			owed := f.readWith(o)
+			it, ok := find(owed, OwedUnpushed, name)
+			if !ok || !it.Unclaimed {
+				t.Fatalf("%s, hold %v: the keyless branch must stay owed, marked unclaimed: %+v %s", place, hold, it, describe(owed))
+			}
+			v := Judge(o.Record, owed, StopInput{SessionID: sessMe}, SessionState{}, f.now)
+			if !v.Block {
+				t.Fatalf("%s, hold %v: the owed branch must block: row %d", place, hold, v.Row)
+			}
+			want := []string{name, "only if this session made it", "If this session made it", "a peer's", "leave it untouched", "never commit to it, merge it or push it", "one session per checkout"}
+			if hold {
+				want = append(want, "abcd mode queue 'push "+name+"'")
+			} else {
+				want = append(want, "push it if your standing instruction allows")
+			}
+			for _, w := range want {
+				if !strings.Contains(v.Reason, w) {
+					t.Errorf("%s, hold %v: the stop does not say %q:\n%s", place, hold, w, v.Reason)
+				}
+			}
+			for _, banned := range []string{"Do the local work, then push if your standing instruction allows; queue only", "A push you may not send stays owed", "With --hold-pushes the person has said pushes wait: finish"} {
+				if strings.Contains(v.Reason, banned) {
+					t.Errorf("%s, hold %v: the stop still gives the generic push sentence %q for a branch that may be a peer's:\n%s", place, hold, banned, v.Reason)
+				}
+			}
+		}
+	}
+
+	g := newFx(t)
+	g.worktreeWith("feat/known")
+	g.recordCreated("feat/known", sessMe)
+	reads := 0
+	o := g.opts()
+	o.Record = g.awayRecord(false)
+	o.SessionID = sessMe
+	o.LiveSessions = g.bothLive(&reads)
+	owed := g.readWith(o)
+	v := Judge(o.Record, owed, StopInput{SessionID: sessMe}, SessionState{}, g.now)
+	if !strings.Contains(v.Reason, "Do the local work, then push") || strings.Contains(v.Reason, "only if this session made it") {
+		t.Errorf("a branch this session recorded creating keeps today's text:\n%s", v.Reason)
 	}
 }

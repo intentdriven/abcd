@@ -270,14 +270,17 @@ func owedReason(rec *Record, owed Owed, tail string) string {
 	item, _ := owed.Next()
 	var b strings.Builder
 	fmt.Fprintf(&b, "abcd: the person is away and work is owed (%s). Next: %s.", count(len(owed.Items), "item", "items"), describeItem(item))
-	if needsPush(item.Kind) {
+	switch {
+	case item.Unclaimed:
+		b.WriteString(" " + unclaimedWords(rec, item))
+	case needsPush(item.Kind):
 		b.WriteString(" " + pushWords(rec, item))
 	}
 	if tail != "" {
 		b.WriteString(" " + tail)
 	}
 	for _, n := range owed.Notes {
-		b.WriteString(" " + termsafe.CleanProseLine(n, 256))
+		b.WriteString(" " + termsafe.CleanProseLine(n, maxReasonNote))
 	}
 	return b.String()
 }
@@ -304,6 +307,31 @@ func pushWords(rec *Record, item OwedItem) string {
 		return fmt.Sprintf("With --hold-pushes the person has said pushes wait: finish the local work (the merge from the base, the preflight), then queue the push naming the branch, as `abcd mode queue %s`.", shellWord("push "+target))
 	}
 	return "Do the local work, then push if your standing instruction allows; queue only if the person has said pushes wait. A push you may not send stays owed: queue it with `abcd mode queue \"<step>\"` for the person and take another item meanwhile."
+}
+
+// maxReasonNote bounds each note the stop's reason carries. A note naming up
+// to maxHeldNamed branches whole needs more than 256 bytes once the names are
+// long, so it is 512, the bound the away mode's own report gives each note.
+const maxReasonNote = 512
+
+// unclaimedWords is the reason's words for an item owed only if this session
+// made its branch (OwedItem.Unclaimed, iss-2611211734561033), in place of
+// pushWords: it says the item is owed only on that condition, tells the
+// session that made it how to discharge it as pushWords would (push it if its
+// standing instruction allows, or, with --hold-pushes, queue the push naming
+// the branch, the queued step the hand-back releases), and tells any other
+// session that the branch is a peer's, to be left untouched.
+func unclaimedWords(rec *Record, item OwedItem) string {
+	made := "If this session made it, do the local work, then push it if your standing instruction allows."
+	if rec != nil && rec.HoldPushes {
+		target := "<branch>"
+		if item.Branch != "" {
+			target = clean(item.Branch)
+		}
+		made = fmt.Sprintf("If this session made it, the person has said pushes wait: finish the local work, then queue the push as usual, as `abcd mode queue %s`.", shellWord("push "+target))
+	}
+	return "This branch is owed only if this session made it: no record names the session that did, and another live session works in this copy. " +
+		made + " If this session did not make it, it is a peer's: leave it untouched, and never commit to it, merge it or push it."
 }
 
 // shellWord is s as one word of a command the reason suggests: as it is when

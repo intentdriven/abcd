@@ -506,6 +506,33 @@ on to the guard's own judgement, and a checkout abcd does not manage (no
 `.abcd/` at its root or at its main worktree's) records nothing. A record made for a command that then fails names a branch that does
 not exist, and the away mode's reading ignores it.
 
+The hook reads only git command lines, so a branch the worktree store's add
+verb makes or checks out never reaches it. That verb records its branch itself
+once the worktree stands, in the same list under the session copy's key, with
+the host session its environment names (iss-2611211734561033).
+
+The away mode's reading treats each record as evidence of whose a branch is.
+A branch recorded with the stopping session as its creator stays that
+session's. A branch recorded with another live session as its creator is that
+session's, and the stop check leaves it out and names the holder. A record with
+no session says nothing of whose the branch is; it was written before sessions
+were kept, or by a hook with no session id. Such a branch stays owed, with one
+exception. When it is checked out in a worktree of the machine-scoped store
+other than the stopping session's copy, and another live session works in the
+repository, the branch is left out of the owed work. A note names it and says
+to leave it unless this session made it. A store worktree is where one session
+works apart from its peers, and nothing ties it to the stopping session, so the
+stop never tells that session to finish or push its branch. A branch with no
+session recorded that sits anywhere else (checked out in the same copy, in a
+worktree outside the store, or nowhere), while another live session works in
+the same copy, stays owed, so the session's own unrecorded work is still
+caught. The stop names it as owed only if this session made it. It tells the
+session that made it to push it if its standing instruction allows, or, when
+the person has said pushes wait, to queue the push naming the branch. It says
+that otherwise the branch is a peer's and must be left untouched: never
+committed to, merged or pushed. A branch whose creator is recorded keeps the
+usual instruction.
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/landing"
@@ -137,6 +138,16 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		liveRead: o.LiveSessions,
 		heldRes:  map[string]string{},
 	}
+	if home != "" {
+		r.storeHomes = append(r.storeHomes, home)
+	}
+	if o.Home == "" {
+		// The worktree store's verb keys on the machine home, which a
+		// staged process's own home is not.
+		if mh, err := abcdhome.MachineHome(); err == nil && mh != "" && mh != home {
+			r.storeHomes = append(r.storeHomes, mh)
+		}
+	}
 	r.procTable = o.ProcTable
 	if r.liveRead == nil {
 		r.liveRead = func() ([]occupancy.Session, error) {
@@ -185,6 +196,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.scope()
 	owned := r.ownedRefs()
 	r.branchItems()
+	r.markUnclaimed()
 	r.reservationItems()
 	r.handBack()
 	r.readLiveWork()
@@ -277,6 +289,10 @@ type owedReader struct {
 	recordedBy map[string]string         // a recorded branch -> the session that created it, "" when none was kept
 	runDrivers map[string][]runDriverRec // a live run's key -> each unfinished run's recorded driver
 	elsewhere  map[string]string         // a branch -> the other worktree it is checked out in
+	worktrees  []string                  // every worktree of the repository, this copy's included
+	rootSHA    string                    // the root commit the away store is keyed on, "" when unread
+	storeHomes []string                  // the homes whose worktree store a worktree may stand in
+	unclaimed  []string                  // own branches left out as possibly a peer's, for their note
 	heldRes    map[string]string         // a reservation -> the live session or drive whose run it is for
 	driveHeld  map[string][]string       // a live drive's process -> the items it holds, for its note
 	held       map[string]*holding       // by session: what another live session holds
@@ -720,6 +736,7 @@ func (r *owedReader) recordedBranches() []string {
 		r.cutShort(true)
 		return nil
 	}
+	r.rootSHA = st.RootSHA()
 	list, err := st.CreatedBranches(key)
 	if err != nil {
 		r.note("this copy's created-branch list could not be read (%s)", err)
@@ -870,6 +887,7 @@ func (r *owedReader) checkedOutElsewhere() map[string]string {
 	}
 	here, _ := os.Stat(r.root)
 	for _, wt := range wts {
+		r.worktrees = append(r.worktrees, wt.Path)
 		name, ok := strings.CutPrefix(wt.Branch, "refs/heads/")
 		if !ok {
 			continue

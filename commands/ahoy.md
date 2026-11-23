@@ -1786,8 +1786,12 @@ directory is made private to the account (`0700`) and gets its local tier,
 writes nothing: a name that is not a plain segment, a path already occupied, a
 repository with no commits, or a store level that is a symbolic link, belongs to
 another account or that others can write. If git made the worktree and the
-checkout hook then failed, the refusal says the worktree stands. It exits 0 on
-success and 2 on a refusal or fault.
+checkout hook then failed, the refusal says the worktree stands. Once the
+worktree stands, `add` records its branch, made or checked out, in the away
+mode's list of the branches this session created, with the host session its
+environment names, so the stop check counts that branch's unfinished work as
+this session's. A record it cannot write leaves one line on stderr and the
+worktree stands. It exits 0 on success and 2 on a refusal or fault.
 
 `list`, and bare `abcd ahoy worktree`, show one row for each worktree git reports
 for the repository, the main checkout excepted, and one for each directory in the

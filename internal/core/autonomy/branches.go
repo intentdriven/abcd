@@ -225,6 +225,12 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 			keep = append(keep, c)
 		}
 	}
+	return recordKept(st, copyRoot, keep, o)
+}
+
+// recordKept records changes already judged under the copy's key, each added
+// name with the session o names as its creator.
+func recordKept(st Store, copyRoot string, keep []BranchChange, o Options) error {
 	if len(keep) == 0 {
 		return nil
 	}
@@ -238,6 +244,38 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 		return err
 	}
 	return st.RecordBranches(key, keep, o.now())
+}
+
+// RecordAdded records the branch a verb has just checked out in a worktree it
+// added, the worktree store's add verb (iss-2611211734561033), which the
+// guard's recorder never sees, since it reads only git command lines: made, a
+// branch the verb created, recorded as a creation (a name recorded before is
+// this creation's now); otherwise an existing branch it checked out, added
+// once. It runs after the worktree is made, so it judges nothing against the
+// repository: the verb's own refusals did. Each name keeps the session o
+// names (Options.SessionID) as its creator. A checkout abcd does not manage,
+// or with no root commit, records nothing and is no error; the error is a
+// store it could not write, which never undoes the worktree.
+func RecordAdded(copyRoot, branch string, made bool, o Options) error {
+	if branch == "" || !Managed(copyRoot) {
+		return nil
+	}
+	home, err := o.home()
+	if err != nil {
+		return err
+	}
+	st, err := openStore(home, copyRoot)
+	if errors.Is(err, ErrNoRootCommit) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	kind := BranchCheckedOut
+	if made {
+		kind = BranchCreated
+	}
+	return recordKept(st, copyRoot, []BranchChange{{Kind: kind, Name: branch}}, o)
 }
 
 // worktreeBranches are the branches the repository's worktrees have checked
