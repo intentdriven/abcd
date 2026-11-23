@@ -164,13 +164,14 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 		case opts && t == "--":
 			opts = false
 		case opts && strings.HasPrefix(t, "--"):
-			if isUnknown(t) || strings.ContainsRune(t, varMark) {
+			name, _, glued := strings.Cut(t[2:], "=")
+			if isUnknown(name) || strings.ContainsRune(name, varMark) {
+				// the name may be any option's, -t's among them
 				r.unsure = true
 			}
 			if stop {
 				r.fails = true
 			}
-			name, _, glued := strings.Cut(t[2:], "=")
 			full := o.resolveLong(name)
 			if full == "" {
 				continue
@@ -187,15 +188,19 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 			}
 			r.long[full] = append(r.long[full], v)
 		case opts && strings.HasPrefix(t, "-") && t != "-":
-			if isUnknown(t) || strings.ContainsRune(t, varMark) {
-				r.unsure = true
-			}
 			values := o.values
 			if stop {
 				values = o.mac
 			}
 			for j := 1; j < len(t); j++ {
 				c := t[j]
+				if c == unknownMark || c == varMark {
+					// a letter no line fixes may be any option's, -t's
+					// among them; a value glued to a letter before it is
+					// read before this one is reached
+					r.unsure = true
+					break
+				}
 				if stop && (c == 't' || c == 'T') && strings.IndexByte(values, c) < 0 {
 					r.fails = true
 					continue

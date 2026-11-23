@@ -1418,6 +1418,23 @@ func gitConfigWrite(args []string, env map[string]string) (string, bool) {
 	return "", false
 }
 
+// unfixedTreeRefusal is the refusal of a stage's write or removal u below a
+// tree the command by placed earlier on the line, whose contents the line
+// does not fix: any name in it may be a link leading anywhere.
+func unfixedTreeRefusal(u pathUse, by string) Approval {
+	verb := "writes"
+	if u.remove {
+		verb = "removes"
+	}
+	what := "a path"
+	if u.written != "" {
+		what = termsafe.Sanitize(u.written)
+	}
+	return refusal(unfixedPathEntryID,
+		"this "+verb+" "+what+" below what "+termsafe.Sanitize(by)+" placed earlier on the same line, whose contents the line does not fix: any name in it may be a link leading out of the working tree, which the guard cannot read before the line runs.",
+		"run the write as a separate command, after "+termsafe.Sanitize(by)+" has run, so the guard reads what it placed.")
+}
+
 // lineLink is a link a command on the line makes, at path, made by segment
 // seg of the placed line: where it leads (target), with ok false where the
 // line does not fix that; anyName marks links made in the directory path under
@@ -1440,6 +1457,8 @@ type lineTree struct {
 	srcOK, in bool
 	top       string
 	seg       int
+	// by is the command that placed it, as a refusal names it.
+	by string
 }
 
 // lineMoves is what the line's commands move about before a later command
@@ -1465,7 +1484,7 @@ func lineLinks(rc *readCtx, placed []placedSeg) lineMoves {
 			for _, a := range commandSites(p.seg) {
 				name := strings.ToLower(path.Base(p.seg.tokens[a.idx]))
 				switch name {
-				case "ln", "cp", "mv":
+				case "ln", "cp", "mv", "install":
 					m.linksAt(rc, p.seg, st, a, name, k)
 				}
 				m.treesAt(rc, p.seg, st, a, name, k)
@@ -1482,6 +1501,15 @@ func (m *lineMoves) linksAt(rc *readCtx, seg segment, st *shellState, a arrival,
 	var pairs []linkPair
 	symbolic := false
 	for _, r := range readOptsEach(s, a.idx+1, copySpec(name)) {
+		if name == "install" {
+			// macOS install -l makes a link to each source instead of a
+			// copy, whatever its flags: a symbolic link's text is the source
+			// made absolute or relative, so it leads where the source is.
+			if v, ok := r.last('l', ""); !ok || !v.ok {
+				continue
+			}
+			symbolic = true
+		}
 		symbolic = symbolic || (name == "ln" && r.has('s', "symbolic")) || (name == "cp" && r.has('s', "symbolic-link"))
 		pairs = append(pairs, w.linkPairs(r, name == "ln")...)
 	}
@@ -1501,6 +1529,8 @@ func (m *lineMoves) linksAt(rc *readCtx, seg segment, st *shellState, a arrival,
 		case !fixed && (name == "ln" || symbolic):
 		case !fixed:
 			continue
+		case name == "install":
+			target, l.ok = st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
 		case symbolic && !filepath.IsAbs(tok) && !strings.HasPrefix(tok, "~"):
 			target, l.ok = filepath.Join(dir, tok), true
 			l.text, l.rel = tok, true
@@ -1554,13 +1584,13 @@ func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival,
 	case "git":
 		w := writerArgs{rc: rc, s: seg, st: st, from: a.idx + 1}
 		for _, t := range w.gitTrees() {
-			m.trees = append(m.trees, lineTree{at: t.path, seg: k})
+			m.trees = append(m.trees, lineTree{at: t.path, seg: k, by: "git"})
 		}
 		fallthrough
 	default:
 		for _, t := range siteTargets(rc, seg, st, a) {
 			if t.ok && t.tree {
-				m.trees = append(m.trees, lineTree{at: t.path, in: t.in, top: t.top, seg: k})
+				m.trees = append(m.trees, lineTree{at: t.path, in: t.in, top: t.top, seg: k, by: name})
 			}
 		}
 		return
@@ -1582,7 +1612,7 @@ func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival,
 				}
 				base := path.Base(tok)
 				if !ok || strings.HasSuffix(tok, "/") || base == ".." || base == "/" {
-					m.trees = append(m.trees, lineTree{at: p.dest.path, in: true, seg: k})
+					m.trees = append(m.trees, lineTree{at: p.dest.path, in: true, seg: k, by: name})
 					continue
 				}
 				var ats []string
@@ -1618,7 +1648,7 @@ func (m *lineMoves) place(t lineTree, fold bool) {
 			continue
 		}
 		if !e.srcOK {
-			m.trees = append(m.trees, lineTree{at: t.at, in: true, seg: t.seg})
+			m.trees = append(m.trees, lineTree{at: t.at, in: true, seg: t.seg, by: e.by})
 			return
 		}
 		t.src = filepath.Join(e.src, rel)
@@ -1694,6 +1724,15 @@ func (w writerArgs) linkPairs(r optRead, ln bool) []linkPair {
 // or, in a stage, lies below a tree whose contents the line does not fix,
 // any name in which may be a link. A removal of a link itself passes none.
 func (m lineMoves) through(u pathUse, seg int, stage, fold bool) (v pathUse, through, unfixed bool) {
+	v, through, unfixed, _ = m.follow(u, seg, stage, fold)
+	return v, through, unfixed
+}
+
+// follow is through, also naming the command that placed the tree whose
+// contents the line does not fix (by), where that is what stopped it; a
+// removal of a single name directly below such a tree removes that name, a
+// link there included, and passes nothing.
+func (m lineMoves) follow(u pathUse, seg int, stage, fold bool) (v pathUse, through, unfixed bool, by string) {
 	v = u
 	for range len(m.links) + len(m.trees) + 8 {
 		moved := false
@@ -1709,10 +1748,10 @@ func (m lineMoves) through(u pathUse, seg int, stage, fold bool) (v pathUse, thr
 				if !strings.Contains(filepath.ToSlash(rel), "/") {
 					continue
 				}
-				return v, true, true
+				return v, true, true, ""
 			}
 			if !l.ok {
-				return v, true, true
+				return v, true, true, ""
 			}
 			v.path = filepath.Join(l.target, rel)
 			moved, through = true, true
@@ -1730,8 +1769,8 @@ func (m lineMoves) through(u pathUse, seg int, stage, fold bool) (v pathUse, thr
 				continue
 			}
 			if !t.srcOK {
-				if stage {
-					return v, true, true
+				if stage && !(v.remove && !strings.Contains(filepath.ToSlash(rel), "/")) {
+					return v, true, true, t.by
 				}
 				continue
 			}
@@ -1741,10 +1780,10 @@ func (m lineMoves) through(u pathUse, seg int, stage, fold bool) (v pathUse, thr
 			}
 		}
 		if !moved {
-			return v, through, false
+			return v, through, false, ""
 		}
 	}
-	return v, through, true
+	return v, through, true, ""
 }
 
 // standing is the path rel below tree t's place leads to through a link

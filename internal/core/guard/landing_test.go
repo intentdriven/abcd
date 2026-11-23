@@ -3,6 +3,7 @@ package guard
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -384,5 +385,47 @@ func TestAGitCommandThatWritesTheWorkingTreeMayPlaceALink(t *testing.T) {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
 		}
+	}
+}
+
+// TestAStageWriteBelowAnUnfixedTreeSaysWhyAndHowToSplitIt: macOS install -l
+// makes a link the line follows as it follows ln's; a value glued to an
+// option that takes one names no destination; a removal of a single name
+// directly below a tree whose contents the line does not fix removes that
+// name, not what it may link to; and a write deeper below such a tree is
+// refused for that tree, with running the write as its own command as the way
+// through.
+func TestAStageWriteBelowAnUnfixedTreeSaysWhyAndHowToSplitIt(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`install -l s .abcd/.work.local L && mkdir L/approvals`,
+		`install -l sr .abcd/.work.local L && mkdir L/approvals`,
+		`install -l $K .abcd/.work.local L && mkdir L/approvals`,
+		`tar -xf x/a.tar -C build && rm -rf build/L/approvals`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+	plain := NewFiles(tree)
+	for _, line := range []string{
+		`install -m"$MODE" x/notes.txt build/`,
+		`cp --backup=$B x/notes.txt build/`,
+		`cp --suffix=.$EXT -b x/notes.txt build/`,
+		`unzip -o x/a.zip -d build && rm -rf build/tmp`,
+		`tar -xf x/a.tar -C build && rm build/junk.txt`,
+		`install -l s build/a build/b`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused in a stage: %s", line, a.Reason)
+		}
+		if a := approveShell(clean(), plain, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	a := approveShell(clean(), stage, `tar -xf x/a.tar -C build && printf x > build/sub/VERSION`)
+	if a.Allow || !strings.Contains(a.Reason, "does not fix") || !strings.Contains(a.Reason, "separate command") {
+		t.Errorf("a write below an unpacked tree: allow %v, reason %q; want it refused for the tree, with the write run as a separate command", a.Allow, a.Reason)
 	}
 }

@@ -497,14 +497,19 @@ A shell command is approved only when the guard reads it whole and clears it:
   `--no-t`), and where macOS's command reads them otherwise (`cp -S` and
   `install -S` take no value there, and every word after the first operand
   is an operand there, so `cp f -t d x .abcd/` copies `x` into `.abcd/`)
-  both readings are judged; an option word the line does not fix may name the
-  destination itself (`-t` with a directory glued on), so it is not placed. A write through
-  a link the same line makes (`ln -s`, `cp -s`, or a move or copy of a link) is
+  both readings are judged; an option letter or long option name the line does
+  not fix may name the destination itself (`-t` with a directory glued on), so
+  the destination is not placed, while a value the line does not fix glued to
+  an option that takes one (`-m"$MODE"`, `--suffix=.$EXT`) names none. A write through
+  a link the same line makes (`ln -s`, `cp -s`, macOS's `install -l`, or a move or copy of a link) is
   judged where the link leads, and so is one through a link inside a directory
   the line moved or copied first, made on the line or standing there now; in a
   stage, a write below a tree whose contents the line does not fix (from
   `rsync`, `ditto`, an archive, a clone or a source `xargs` supplies) is not
-  placed, since any name in it may be a link. A listing, a test or a dry run (`unzip -l`,
+  placed, since any name in it may be a link, and the refusal says to run the
+  write as a separate command, which then follows the links standing there; a
+  removal of a single name directly below such a tree removes that name and is
+  judged as it is. A listing, a test or a dry run (`unzip -l`,
   `tar -t`, `patch --dry-run`) writes nothing. A line that only names one of
   them, to read it, is not a write;
 - no removal reaches outside the working tree (`removal-outside-tree`): a
