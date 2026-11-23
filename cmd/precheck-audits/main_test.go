@@ -422,7 +422,7 @@ func waitForFile(t *testing.T, path string) {
 	t.Fatalf("%s was never written", path)
 }
 
-func noGoFlags() (string, error) { return "", nil }
+func noGoFlags([]string) (string, error) { return "", nil }
 
 // TestAFailingAuditRunStopsTheWholeRun (iss-2611232155447855): an audit run
 // that fails stops the command beside it, the whole run's gate and stages, at
@@ -434,21 +434,21 @@ func TestAFailingAuditRunStopsTheWholeRun(t *testing.T) {
 	gate := func(r auditRun) []string {
 		if r.packages[0] == "./a" {
 			waitForFile(t, commandPid)
-			return sh("echo the audit failed; exit 3", "")
+			return sh(`printf -- '--- FAIL: TestX (0.00s)\nFAIL\n'; printf 'FAIL\t./a\t0.1s\n'; exit 1`, "")
 		}
 		return sh("exec sleep 60", filepath.Join(dir, "other"))
 	}
 	var out lockedBuffer
 	began := time.Now()
 	code := beside(context.Background(), plan, sh("exec sleep 60", commandPid), &out, &out, besideOptions{gate: gate, goFlags: noGoFlags})
-	if code != 3 {
-		t.Fatalf("exit %d, want the audit run's 3:\n%s", code, out.String())
+	if code != 1 {
+		t.Fatalf("exit %d, want the audit run's 1:\n%s", code, out.String())
 	}
 	if took := time.Since(began); took > 30*time.Second {
 		t.Fatalf("the failure took %s to stop the run", took)
 	}
 	gone(t, commandPid)
-	if s := out.String(); !strings.Contains(s, "the audit failed") || !strings.Contains(s, "FAILED: go test -timeout 20m ./a") {
+	if s := out.String(); !strings.Contains(s, "--- FAIL: TestX") || !strings.Contains(s, "FAILED: go test -timeout 20m ./a") {
 		t.Fatalf("the failing run's output and the stop are not said:\n%s", s)
 	}
 }
@@ -493,14 +493,16 @@ func TestPassingAuditsLeaveTheVerdictToTheWholeRun(t *testing.T) {
 	}
 }
 
-// TestAnEffectiveGoFlagsRunsTheWholeRunAlone: with GOFLAGS set no run is
-// narrow, and each would wait as a whole run behind this one, so none starts.
+// TestAnEffectiveGoFlagsRunsTheWholeRunAlone: with a flag in GOFLAGS that no
+// narrow run may carry, each would wait as a whole run behind this one, so none
+// starts.
 func TestAnEffectiveGoFlagsRunsTheWholeRunAlone(t *testing.T) {
+	t.Setenv("GOFLAGS", "-mod=mod")
 	gate := func(auditRun) []string { t.Error("an audit run started"); return sh("exit 0", "") }
 	var out lockedBuffer
 	code := beside(context.Background(), []auditRun{{packages: []string{"./a"}}}, sh("exit 0", ""), &out, &out,
-		besideOptions{gate: gate, goFlags: func() (string, error) { return "-mod=mod", nil }})
-	if code != 0 || !strings.Contains(out.String(), `the effective GOFLAGS is "-mod=mod"`) {
+		besideOptions{gate: gate, goFlags: envGoFlags})
+	if code != 0 || !strings.Contains(out.String(), `the effective GOFLAGS "-mod=mod" holds a flag no narrow run may carry`) {
 		t.Fatalf("exit %d:\n%s", code, out.String())
 	}
 }
@@ -588,5 +590,230 @@ func TestALeaderOutsideItsOwnGroupRunsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("the command ran")
+	}
+}
+
+// envGoFlags reads GOFLAGS the way go env does for the environment alone.
+func envGoFlags(env []string) (string, error) {
+	flags := ""
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "GOFLAGS="); ok {
+			flags = v
+		}
+	}
+	return flags, nil
+}
+
+// TestTheMakefilesTrimpathKeepsTheAudits: make exports GOFLAGS=-trimpath to
+// every recipe (Makefile), a flag a narrow run may carry, so the audit runs go
+// ahead with it on their command line and GOFLAGS empty, which is what the
+// narrow gate admits. Watched failing while any GOFLAGS dropped the plan.
+func TestTheMakefilesTrimpathKeepsTheAudits(t *testing.T) {
+	t.Setenv("GOFLAGS", "-trimpath")
+	dir := t.TempDir()
+	seen := filepath.Join(dir, "goflags")
+	var words []string
+	gate := func(r auditRun) []string {
+		words = r.goTest()
+		return sh(`printf '[%s]' "$GOFLAGS" > '`+seen+`'`, "")
+	}
+	var out lockedBuffer
+	code := beside(context.Background(), []auditRun{{packages: []string{"./a"}}}, sh("sleep 1", ""), &out, &out,
+		besideOptions{gate: gate, goFlags: envGoFlags})
+	if code != 0 || strings.Contains(out.String(), "no audit run is narrow") {
+		t.Fatalf("exit %d:\n%s", code, out.String())
+	}
+	if !slices.Equal(words, []string{"go", "test", "-trimpath", "-timeout", timeout, "./a"}) || !machineload.IsNarrowCommand(words) {
+		t.Fatalf("the audit run is %q, want -trimpath on its command line, narrow", words)
+	}
+	if raw, err := os.ReadFile(seen); err != nil || string(raw) != "[]" {
+		t.Fatalf("the audit run saw GOFLAGS %q (%v), want it empty", raw, err)
+	}
+}
+
+// TestTheMakefilesOwnGOFLAGSLeavesEveryRunNarrow: the GOFLAGS the Makefile
+// gives make preflight, read from make's own database rather than written
+// here, moves onto every run of the live plan through go's own go env, so no
+// stub can stand between the plan and what make sets.
+func TestTheMakefilesOwnGOFLAGSLeavesEveryRunNarrow(t *testing.T) {
+	env, flags := makePreflightEnv(t)
+	root := filepath.Join("..", "..")
+	whole, named, pattern := precheckLists(t)
+	plan, err := preflightPlan(root, whole, named, pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, why := narrowed(plan, env, effectiveGoFlags)
+	if why != "" || len(got) != len(plan) {
+		t.Fatalf("under make preflight's GOFLAGS %q the plan keeps %d of %d runs: %s", flags, len(got), len(plan), why)
+	}
+	for _, r := range got {
+		if !machineload.IsNarrowCommand(r.goTest()) || !slices.Equal(r.flags, strings.Fields(flags)) {
+			t.Errorf("%q is not narrow, or does not carry GOFLAGS %q", r.goTest(), flags)
+		}
+	}
+
+	// What the narrow gate judges is the waiter's own `go env GOFLAGS`
+	// (narrowRefused): beside starts each run with it empty.
+	seen := filepath.Join(t.TempDir(), "seen")
+	gate := func(auditRun) []string { return sh(`go env GOFLAGS > '`+seen+`'`, "") }
+	var out lockedBuffer
+	if code := beside(context.Background(), plan[:1], sh("sleep 30", ""), &out, &out, besideOptions{gate: gate, env: env}); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out.String())
+	}
+	if raw, err := os.ReadFile(seen); err != nil || strings.TrimSpace(string(raw)) != "" {
+		t.Fatalf("an audit run's waiter reads GOFLAGS %q (%v), which the narrow gate refuses:\n%s", raw, err, out.String())
+	}
+}
+
+// makePreflightEnv is this test's environment with the GOFLAGS the Makefile
+// exports to make preflight's recipe, read from make's own database, and those
+// flags; it skips where go env -w sets GOFLAGS, which no run can shed.
+func makePreflightEnv(t *testing.T) ([]string, string) {
+	t.Helper()
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make unavailable")
+	}
+	var env []string
+	for _, kv := range os.Environ() {
+		// A make above this test (make precheck, make preflight) passes its own
+		// flags down, which a second make would read as its own.
+		if k, _, _ := strings.Cut(kv, "="); k != "MAKEFLAGS" && k != "MFLAGS" && k != "MAKELEVEL" && k != "GOFLAGS" {
+			env = append(env, kv)
+		}
+	}
+	dry := exec.Command("make", "-pn", "preflight", "PREFLIGHT_RECORDS_ONLY=")
+	dry.Dir, dry.Env = filepath.Join("..", ".."), env
+	raw, err := dry.Output()
+	if err != nil {
+		t.Fatalf("make -pn preflight: %v", err)
+	}
+	m := regexp.MustCompile(`(?m)^GOFLAGS := (.*)$`).FindSubmatch(raw)
+	if m == nil {
+		t.Fatal("make's database for preflight holds no GOFLAGS")
+	}
+	flags := strings.TrimSpace(string(m[1]))
+	if !strings.Contains(flags, "-trimpath") {
+		t.Fatalf("the Makefile gives preflight GOFLAGS %q; this test holds the -trimpath it exports", flags)
+	}
+	if left, err := effectiveGoFlags(withGoFlags(env, "")); err != nil || left != "" {
+		t.Skipf("go env -w sets GOFLAGS %q on this machine (%v), which no run can shed", left, err)
+	}
+	return withGoFlags(env, flags), flags
+}
+
+// gateE2E names the variable that runs TestAnAuditRunOpensAtTheNarrowGate. It
+// waits at the machine's real narrow gate, so it runs only when asked, under a
+// whole-run gate: inside a narrow run it would wait for a second narrow place
+// its own run may be holding.
+const gateE2E = "ABCD_PRECHECK_AUDITS_GATE_E2E"
+
+// TestAnAuditRunOpensAtTheNarrowGate runs one planned audit run through the
+// real gate command, beside a command, under make preflight's GOFLAGS, and
+// expects the narrow gate to open for it. Run it from the repository root:
+//
+//	ABCD_PRECHECK_AUDITS_GATE_E2E=1 scripts/abcd.sh implement load --wait --timeout 30m -- go test -trimpath -count=1 -run TestAnAuditRunOpensAtTheNarrowGate ./cmd/precheck-audits/
+func TestAnAuditRunOpensAtTheNarrowGate(t *testing.T) {
+	if os.Getenv(gateE2E) != "1" {
+		t.Skipf("set %s=1 to wait at the real narrow gate", gateE2E)
+	}
+	env, flags := makePreflightEnv(t)
+	t.Chdir(filepath.Join("..", ".."))
+	plan, why := narrowed([]auditRun{{run: "^TestALeaderOutsideItsOwnGroupRunsNothing$", packages: []string{"./cmd/precheck-audits"}}}, env, effectiveGoFlags)
+	if why != "" {
+		t.Fatalf("under make preflight's GOFLAGS %q: %s", flags, why)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var out lockedBuffer
+	done := make(chan int, 1)
+	go func() { done <- beside(ctx, plan, sh("sleep 1800", ""), &out, &out, besideOptions{env: env}) }()
+	for deadline := time.Now().Add(20 * time.Minute); ; time.Sleep(time.Second) {
+		s := out.String()
+		if strings.Contains(s, "passed 1 of 1") || strings.Contains(s, "could not run") || strings.Contains(s, "FAILED") ||
+			strings.Contains(s, "no audit run is narrow") || time.Now().After(deadline) {
+			break
+		}
+	}
+	cancel()
+	<-done
+	if s := out.String(); !strings.Contains(s, "passed 1 of 1") || !strings.Contains(s, "precheck-audits:   narrow gate open after") {
+		t.Fatalf("the audit run did not pass through the narrow gate under GOFLAGS %q:\n%s", flags, s)
+	}
+	t.Log(out.String())
+}
+
+// TestAGoFlagsSetByGoEnvRunsTheWholeRunAlone: GOFLAGS that stay set with the
+// variable empty (go env -w) cannot move onto the command line, and the narrow
+// gate would refuse every run under them.
+func TestAGoFlagsSetByGoEnvRunsTheWholeRunAlone(t *testing.T) {
+	gate := func(auditRun) []string { t.Error("an audit run started"); return sh("exit 0", "") }
+	var out lockedBuffer
+	code := beside(context.Background(), []auditRun{{packages: []string{"./a"}}}, sh("exit 0", ""), &out, &out,
+		besideOptions{gate: gate, goFlags: func([]string) (string, error) { return "-trimpath", nil }})
+	if code != 0 || !strings.Contains(out.String(), "go env -w") {
+		t.Fatalf("exit %d:\n%s", code, out.String())
+	}
+}
+
+// TestAGateRefusalLeavesTheWholeRunAlone: an audit run that ends without go
+// test's own verdict (the gate timed out, refused at the disk floor or a bad
+// setting, or could not start) says why and stops the audits, and the whole
+// run decides; only a test that failed stops it.
+func TestAGateRefusalLeavesTheWholeRunAlone(t *testing.T) {
+	for name, script := range map[string]string{
+		"a timeout":   "echo 'LOAD GATE TIMED OUT after 12h: still load'; exit 1",
+		"a refusal":   "echo 'abcd implement load --wait: the disk is below its floor'; exit 1",
+		"a bad start": "echo 'abcd implement load --wait: the command could not be started'; exit 127",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var started int
+			gate := func(auditRun) []string { started++; return sh(script, "") }
+			var out lockedBuffer
+			plan := []auditRun{{packages: []string{"./a"}}, {packages: []string{"./b"}}, {packages: []string{"./c"}}}
+			code := beside(context.Background(), plan, sh("sleep 1; exit 0", ""), &out, &out, besideOptions{gate: gate, goFlags: noGoFlags})
+			if code != 0 {
+				t.Fatalf("exit %d, want the whole run's 0:\n%s", code, out.String())
+			}
+			if s := out.String(); !strings.Contains(s, "could not run") || strings.Contains(s, "FAILED") || started != 1 {
+				t.Fatalf("started %d audit runs, want the first alone, and the reason said:\n%s", started, s)
+			}
+		})
+	}
+}
+
+// TestAStopLetsTheRunsCleanUp: a stop, for a failed audit or an interrupt,
+// interrupts each group first, as Ctrl-C at the terminal did, so go test removes
+// its work directory, and kills it only after the grace.
+func TestAStopLetsTheRunsCleanUp(t *testing.T) {
+	dir := t.TempDir()
+	cleaned, ready := filepath.Join(dir, "cleaned"), filepath.Join(dir, "ready")
+	command := sh(`trap 'echo yes > `+cleaned+`; exit 0' INT; touch `+ready+`; while :; do sleep 0.05; done`, "")
+	gate := func(auditRun) []string {
+		waitForFile(t, ready)
+		return sh(`printf 'FAIL\t./a\t0.1s\n'; exit 1`, "")
+	}
+	var out lockedBuffer
+	_ = beside(context.Background(), []auditRun{{packages: []string{"./a"}}}, command, &out, &out, besideOptions{gate: gate, goFlags: noGoFlags})
+	if raw, err := os.ReadFile(cleaned); err != nil || strings.TrimSpace(string(raw)) != "yes" {
+		t.Fatalf("the whole run was not interrupted before it was killed (%v):\n%s", err, out.String())
+	}
+}
+
+// TestOneAuditRunAtATime: the audits leave the account's other narrow places
+// free, so a drive lane's short narrow check is not crowded out behind them.
+func TestOneAuditRunAtATime(t *testing.T) {
+	dir := t.TempDir()
+	busy, overlap := filepath.Join(dir, "busy"), filepath.Join(dir, "overlap")
+	gate := func(auditRun) []string {
+		return sh(`mkdir `+busy+` 2>/dev/null || echo x >> `+overlap+`; sleep 0.3; rmdir `+busy+` 2>/dev/null; :`, "")
+	}
+	plan := []auditRun{{packages: []string{"./a"}}, {packages: []string{"./b"}}, {packages: []string{"./c"}}}
+	var out lockedBuffer
+	if code := beside(context.Background(), plan, sh("sleep 3", ""), &out, &out, besideOptions{gate: gate, goFlags: noGoFlags}); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out.String())
+	}
+	if _, err := os.Stat(overlap); err == nil {
+		t.Fatalf("two audit runs ran at once:\n%s", out.String())
 	}
 }

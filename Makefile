@@ -474,16 +474,21 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # everywhere else) as narrow runs of at most three packages, each through `abcd
 # implement load --wait --narrow`, which admits them beside a running preflight.
 # An audit test a preflight would fail after an hour's queue fails in minutes:
-# the first audit run that fails stops the gate's command and every other run,
-# each through the process group it leads, and the line exits with that run's
+# the first audit run whose tests fail stops the gate's command and every other
+# run, each through the process group it leads (interrupted, so go test removes
+# its work directory, and killed five seconds on), and the line exits with that run's
 # failure, so no receipt is minted. When the command ends first, its verdict
 # decides, and the audit runs still going stop, since its unit and race stages
 # run every one of their tests. The audits run beside the wait rather than ahead
 # of it because a make preflight with no waiter queued beneath it is a running
 # preflight to every other run's first gate: run ahead, they would hold every
-# other preflight shut for as long as they took. Each audit run's go test has
-# precheck's own flags, so a result a precheck of the same tree left in go's
-# test cache replays.
+# other preflight shut for as long as they took. One audit run goes at a time,
+# leaving the account's other narrow places to a drive lane's short check. An
+# audit run the gate refuses, at the disk floor, an unusable setting or its
+# timeout, is no verdict on the tree: it says why, the rest stop, and the whole
+# run decides. A run of precheck's first two lines has that line's own flags, so
+# a result precheck left in go's test cache can replay; the third line's runs
+# each name only their own packages' audits, so they rerun.
 preflight:
 	go run ./cmd/precheck-audits -whole '$(PRECHECK_AUDIT_PACKAGES)' -named '$(PRECHECK_NAMED_PACKAGES)' -run '$(PRECHECK_AUDIT_TESTS)' -- go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"

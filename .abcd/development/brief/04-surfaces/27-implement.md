@@ -279,7 +279,7 @@ refuses, waits or signals anything. With its wait flag, which takes no site flag
 concurrent sessions gate a preflight or a race run with, and `make preflight`
 waits at it once, as one whole run (a records-only change takes a shorter
 rule that waits at no gate), running `make precheck`'s audit tests beside that
-wait as narrow runs, the first of which to fail stops the run with no receipt
+wait as narrow runs, the first whose tests fail stopping the run with no receipt
 (iss-2611232155447855): it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
