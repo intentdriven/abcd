@@ -959,10 +959,15 @@ func driveLog(repoRoot string, w io.Writer) (say func(string), detail io.Writer,
 // stage carries of the environment, since the lane's own files decide what it
 // runs (preflightGoEnv). Its Go build cache and GOPATH are made for it alone
 // once the stage's home is emptied (runner.MakePreflightGo) and removed when
-// it ends; its module cache is the person's own, which `go mod verify` checks
-// before the preflight starts (runner.VerifyModules): a module changed since
-// Go unpacked it, or a verification that cannot be made, stops the preflight
-// before any stage of it runs. The records-only check takes its merge base with the
+// it ends; its module cache is the person's own, in which `go mod verify`
+// checks the repository's own dependencies before the preflight starts
+// (runner.VerifyModules): a dependency changed since Go unpacked it, or a
+// verification that cannot be made, stops the preflight before any stage of it
+// runs, and a checkout whose build reads nothing from the module cache, or has
+// no root go.mod, is said to have had nothing verified. The verification runs
+// before the load gate, which the preflight program itself waits at, as a
+// process of its own. The toolchain, a tool installed by version, and any
+// program on PATH are not checked. The records-only check takes its merge base with the
 // tip origin reports for its default branch, read by the drive itself in its
 // own checkout at repoRoot (originDefaultTip) just before the preflight
 // starts, so it does not rest on a local remote-tracking ref; a tip it could
@@ -986,8 +991,12 @@ func drivePreflight(w io.Writer, p runner.Profile, repoRoot string) func(ctx con
 			}
 		}()
 		env := preflightGoEnv(runner.PreflightEnv(p, goDir), checkout, head)
-		if err := runner.VerifyModules(ctx, checkout, env); err != nil {
+		note, err := runner.VerifyModules(ctx, checkout, env)
+		if err != nil {
 			return err
+		}
+		if note != "" {
+			fmt.Fprintln(w, "abcd drain --drive: "+note)
 		}
 		tip := originDefaultTip(repoRoot)
 		// #nosec G204 -- program is the running binary; the arguments are fixed.

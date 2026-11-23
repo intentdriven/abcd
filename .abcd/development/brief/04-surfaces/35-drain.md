@@ -626,18 +626,30 @@ place of the person's a stage is told: both are made afresh for each preflight, 
 the stage's home is emptied, in a folder beside the stage's files that the drive makes
 under a new name (an entry already at that name, a link included, refuses it), and
 removed when the preflight ends, so nothing a stage built is reused and no test result
-is replayed from one preflight to the next. Its module cache is the person's own, as a
-stage is told it, so a module that cache holds, a private one included, needs no
-network and no credentials; before the preflight's first stage the drive runs `go mod
-verify` there with the preflight's environment and `GOFLAGS=-mod=mod`, first with
-`GOPROXY=off`, so Go checks every module the cache holds against the hash it recorded
-when it unpacked it, and passes over one the cache does not hold. Where the cache lacks a
-module's metadata, the verification runs again through the proxy the preflight carries,
-which fetches that metadata and no module's source. A module changed since Go unpacked
-it stops the preflight, naming it; so does a verification that cannot be made, in Go's
-words, and one that leaves `go.mod`, `go.sum`, `go.work` or `go.work.sum` other than it
-found them, each put back first. What a process that outlives its stage does to the
-person's caches is not fenced. It runs with Go's own settings file off (`GOENV=off`) and
+is replayed from one preflight to the next: every preflight is a cold build. Its module
+cache is the person's own, as a stage is told it, so a dependency that cache holds, a
+private one included, needs no network and no credentials. Before the preflight starts,
+the drive checks the repository's own dependencies there with `go mod verify`, run with
+the preflight's environment, first with `GOPROXY=off`, and with `GOFLAGS=-mod=mod` in
+module mode (in workspace mode, which takes no `-mod=mod`, with the preflight's
+`GOFLAGS` less any `-mod`): each module of the build list whose folder or zip the cache
+holds is held to the hash Go recorded when it unpacked it, and the build then holds that
+hash to `go.sum`; a module the cache does not hold is passed over and left to the
+build's own download, which checks it against `go.sum`. Where the cache lacks a module's
+metadata, the check runs again through the proxy the preflight carries, which fetches
+that metadata and can download a toolchain the checkout selects. Each run is bounded at
+five minutes, so the check adds up to two such runs to a preflight. A dependency changed
+since Go unpacked it stops the preflight, naming it; so does a check that cannot be
+made, in Go's words, and one that leaves `go.mod`, `go.sum`, `go.work` or `go.work.sum`
+other than it found them, each put back first. Nothing is checked, and the preflight's
+output says so, where the build reads its dependencies from `vendor/` (a
+`vendor/modules.txt` beside the `go.mod` with a go directive of 1.14 or later, or beside
+the `go.work` with 1.22 or later, and no `-mod` in the preflight's `GOFLAGS`, or
+`-mod=vendor`), and where the checkout has no `go.mod` at its root. The check runs before
+the load gate the preflight program waits at. What it does not cover stays open until
+stages are confined: the Go toolchain a `go.mod` or `GOTOOLCHAIN` selects, a tool `go
+install` or `go run` takes by version, and any other program this account can write that
+the preflight runs, as does whatever a process that outlives its stage does. It runs with Go's own settings file off (`GOENV=off`) and
 `GOWORK` left unset when the head tracks a `go.work` at its root, so Go finds the
 nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
 otherwise, and never in the lane's worktree: just before it the drive

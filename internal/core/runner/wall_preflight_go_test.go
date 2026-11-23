@@ -235,7 +235,7 @@ func TestAPreflightBuildsFromThePersonsModuleCacheWithNoNetwork(t *testing.T) {
 	// this test's cleanup.
 	goIn(t, module, env, "telemetry", "off")
 
-	if err := VerifyModules(context.Background(), module, env); err != nil {
+	if _, err := VerifyModules(context.Background(), module, env); err != nil {
 		t.Fatalf("the person's module cache, unchanged, does not verify: %v", err)
 	}
 	for name, was := range map[string][]byte{"go.mod": gomod, "go.sum": sum} {
@@ -262,11 +262,11 @@ func TestAPreflightBuildsFromThePersonsModuleCacheWithNoNetwork(t *testing.T) {
 			t.Fatal(err)
 		}
 		var mce *ModuleCacheError
-		if err := VerifyModules(context.Background(), lacking, env); !errors.As(err, &mce) || len(mce.Modified) != 0 || mce.Changed != "" {
+		if _, err := VerifyModules(context.Background(), lacking, env); !errors.As(err, &mce) || len(mce.Modified) != 0 || mce.Changed != "" {
 			t.Fatalf("a module neither the cache nor the proxy carried can serve refuses in go's words alone: %v", err)
 		}
 		reach := withEnv(env, "GOPROXY=file://"+filepath.ToSlash(proxy), "GONOSUMDB=*.invalid")
-		if err := VerifyModules(context.Background(), lacking, reach); err != nil {
+		if _, err := VerifyModules(context.Background(), lacking, reach); err != nil {
 			t.Fatalf("a module the cache lacks, its metadata at the proxy carried, refuses: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(modcache, "absent.invalid", "gone@v1.0.0")); !os.IsNotExist(err) {
@@ -288,7 +288,7 @@ func TestAPreflightBuildsFromThePersonsModuleCacheWithNoNetwork(t *testing.T) {
 				dir = filepath.Join(work, "lacking")
 			}
 			var mce *ModuleCacheError
-			err := VerifyModules(context.Background(), dir, e)
+			_, err := VerifyModules(context.Background(), dir, e)
 			if !errors.As(err, &mce) || !slices.Contains(mce.Modified, "private.invalid/mod@v1.0.0") || !strings.Contains(err.Error(), "private.invalid/mod@v1.0.0") {
 				t.Errorf("%s: a changed module directory does not refuse the preflight naming it: %v", name, err)
 			}
@@ -312,7 +312,7 @@ func TestAVerificationThatWritesTheModuleFilesIsRefusedAndPutBack(t *testing.T) 
 	}
 	stubGo(t, 0o755, `printf 'rewritten\n' > go.sum; printf 'go.work\n' > go.work; echo 'all modules verified'`)
 	var mce *ModuleCacheError
-	if err := VerifyModules(context.Background(), dir, os.Environ()); !errors.As(err, &mce) || mce.Changed == "" {
+	if _, err := VerifyModules(context.Background(), dir, os.Environ()); !errors.As(err, &mce) || mce.Changed == "" {
 		t.Fatalf("a verification that wrote the module files is not refused: %v", err)
 	}
 	if raw, err := os.ReadFile(filepath.Join(dir, "go.sum")); err != nil || string(raw) != "as it was\n" {
@@ -321,7 +321,119 @@ func TestAVerificationThatWritesTheModuleFilesIsRefusedAndPutBack(t *testing.T) 
 	if _, err := os.Stat(filepath.Join(dir, "go.work")); !os.IsNotExist(err) {
 		t.Fatalf("a go.work the verification wrote stands: %v", err)
 	}
-	if err := VerifyModules(context.Background(), t.TempDir(), os.Environ()); err != nil {
+	if _, err := VerifyModules(context.Background(), t.TempDir(), os.Environ()); err != nil {
 		t.Fatalf("a directory with no go.mod is verified: %v", err)
+	}
+}
+
+// seededModule lays out, in a directory of its own, a module requiring
+// private.invalid/mod with its go.sum, and a module cache holding that module,
+// filled from a local proxy alone; it returns the module, the cache, and the
+// environment a verification runs under, offline (GOPROXY=off) and in module
+// mode (GOWORK=off).
+func seededModule(t *testing.T) (module, modcache string, env []string) {
+	t.Helper()
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("no go")
+	}
+	work := t.TempDir()
+	proxy := filepath.Join(work, "proxy")
+	writeModuleProxy(t, proxy, "private.invalid/mod", map[string]string{
+		"go.mod": "module private.invalid/mod\n\ngo 1.21\n",
+		"p.go":   "package mod\n\nconst Word = \"private\"\n",
+	}, true)
+	module, modcache = filepath.Join(work, "module"), filepath.Join(work, "modcache")
+	if err := os.MkdirAll(module, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"go.mod":  "module example.com/fixture\n\ngo 1.21\n",
+		"main.go": "package main\n\nimport \"private.invalid/mod\"\n\nfunc main() { println(mod.Word) }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(module, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env = withEnv(os.Environ(), "GOMODCACHE="+modcache, "GOCACHE="+filepath.Join(work, "build"), "GOPATH="+filepath.Join(work, "path"),
+		"GOPROXY=off", "GONOSUMDB=*.invalid", "GOPRIVATE=", "GOFLAGS=", "GOTOOLCHAIN=local", "GOWORK=off", "GOENV=off", "GOTELEMETRY=off")
+	goIn(t, module, withEnv(env, "GOPROXY=file://"+filepath.ToSlash(proxy), "GOFLAGS=-modcacherw"), "get", "private.invalid/mod@v1.0.0")
+	return module, modcache, env
+}
+
+// withoutEnv is env with no entry for key.
+func withoutEnv(env []string, key string) []string {
+	return slices.DeleteFunc(slices.Clone(env), func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
+}
+
+// TestAVendoredBuildIsNotVerifiedAgainstTheModuleCache: a module whose build
+// reads vendor/ (vendor/modules.txt, a go directive at 1.14 or later, and no
+// -mod in GOFLAGS, or -mod=vendor) builds with an empty module cache and no
+// network; its preflight is not stopped for the cache, and the note says the
+// module cache was not verified. A GOFLAGS of -mod=mod reads the cache again,
+// and is verified.
+func TestAVendoredBuildIsNotVerifiedAgainstTheModuleCache(t *testing.T) {
+	module, _, env := seededModule(t)
+	goIn(t, module, env, "mod", "vendor")
+	empty := withEnv(env, "GOMODCACHE="+filepath.Join(t.TempDir(), "empty"))
+	for _, proxy := range []string{"off", "http://127.0.0.1:9"} {
+		for _, flags := range []string{"", "-mod=vendor"} {
+			e := withEnv(empty, "GOPROXY="+proxy, "GOFLAGS="+flags)
+			goIn(t, module, e, "list", "-deps", ".")
+			note, err := VerifyModules(context.Background(), module, e)
+			if err != nil || !strings.Contains(note, "vendor") {
+				t.Errorf("GOPROXY=%s GOFLAGS=%q: a vendored build is stopped for the module cache, or not said to be passed over: %q %v", proxy, flags, note, err)
+			}
+		}
+	}
+	var mce *ModuleCacheError
+	if _, err := VerifyModules(context.Background(), module, withEnv(empty, "GOFLAGS=-mod=mod")); !errors.As(err, &mce) {
+		t.Errorf("a build told -mod=mod reads the module cache, and is verified: %v", err)
+	}
+}
+
+// TestAWorkspaceIsVerifiedWithoutAModFlag: with a go.work in force, the
+// verification runs in workspace mode, which takes no -mod=mod, and still
+// names a changed module; a checkout with no go.mod at its root has nothing
+// verified, and the note says so.
+func TestAWorkspaceIsVerifiedWithoutAModFlag(t *testing.T) {
+	module, modcache, env := seededModule(t)
+	if err := os.WriteFile(filepath.Join(module, "go.work"), []byte("go 1.21\n\nuse .\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws := withoutEnv(env, "GOWORK")
+	if note, err := VerifyModules(context.Background(), module, ws); err != nil {
+		t.Fatalf("an unchanged workspace does not verify: %q %v", note, err)
+	}
+	changed := filepath.Join(modcache, "private.invalid", "mod@v1.0.0", "p.go")
+	if err := os.Chmod(changed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, []byte("package mod\n\nconst Word = \"changed\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var mce *ModuleCacheError
+	if _, err := VerifyModules(context.Background(), module, ws); !errors.As(err, &mce) || !slices.Contains(mce.Modified, "private.invalid/mod@v1.0.0") {
+		t.Fatalf("a changed module in a workspace is not named: %v", err)
+	}
+
+	// What go is told: the person's GOFLAGS less any -mod in workspace mode,
+	// -mod=mod in module mode.
+	flags := filepath.Join(t.TempDir(), "flags")
+	stubGo(t, 0o755, `if [ "$1" = env ]; then if [ "$GOWORK" = off ]; then echo off; else echo `+module+`/go.work; fi; exit 0; fi; printf '%s\n' "$GOFLAGS" >> `+flags+`; echo 'all modules verified'`)
+	for _, e := range [][]string{withEnv(ws, "GOFLAGS=-mod=mod -p=1"), env} {
+		if _, err := VerifyModules(context.Background(), module, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if raw, _ := os.ReadFile(flags); string(raw) != "-p=1\n-mod=mod\n" {
+		t.Errorf("go mod verify was told GOFLAGS %q, want no -mod in workspace mode and -mod=mod in module mode", raw)
+	}
+
+	none := t.TempDir()
+	if err := os.WriteFile(filepath.Join(none, "go.work"), []byte("go 1.21\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if note, err := VerifyModules(context.Background(), none, env); err != nil || !strings.Contains(note, "no go.mod") {
+		t.Errorf("a checkout with no root go.mod is not said to have nothing verified: %q %v", note, err)
 	}
 }

@@ -123,31 +123,39 @@ func (e *ModuleCacheError) Error() string {
 	return "the module cache could not be verified with `go mod verify`, so the preflight was not run: " + strings.Join(e.Lines, "; ")
 }
 
-// VerifyModules runs `go mod verify` in dir under env, the preflight's own, with
-// GOFLAGS=-mod=mod in place of any it carries: Go checks each module of the
-// build list its cache holds, directory and zip, against the hash it recorded
-// on download, and passes over one it does not hold. It runs first with
-// GOPROXY=off, so a cache that holds the module graph is read with no network.
-// Where that run stops only because the cache lacks a module's metadata
-// (`module lookup disabled by GOPROXY=off`), it runs again with the GOPROXY
-// env carries, which fetches that metadata and never a module's source, so
-// the modules the cache holds are verified and the rest are left to the
-// preflight's own download, which checks them against go.sum. A module go
-// reports changed refuses the preflight and is named; so does any other
-// failure, in go's words, and a run that leaves go.mod, go.sum, go.work or
-// go.work.sum in dir other than it found them, each put back first. A dir with
-// no go.mod, or no go on PATH, has nothing to verify. go is the one PATH finds,
-// held to the in-checkout rule (tools.LookPath).
-func VerifyModules(ctx context.Context, dir string, env []string) error {
+// VerifyModules checks, with `go mod verify` in dir under env, the preflight's
+// own, the repository's own dependencies the person's module cache holds: each
+// module of the main module's build list (every workspace module's, with a
+// go.work in force) whose directory or zip the cache holds is held to the hash
+// Go recorded when it unpacked it, and Go's build then holds that hash to
+// go.sum. A module the cache does not hold is passed over. Nothing else in the
+// cache is checked: not the Go toolchain a go.mod or GOTOOLCHAIN selects, not a
+// tool `go install` or `go run` takes by version, and no program on PATH.
+//
+// It runs first with GOPROXY=off, so a cache that holds the module graph is read
+// with no network, and with GOFLAGS=-mod=mod in module mode, so go.sum is read
+// and not written; in workspace mode, which refuses -mod=mod, with the GOFLAGS
+// env carries less any -mod. Where that run stops only because the cache lacks
+// a module's metadata (`module lookup disabled by GOPROXY=off`), it runs again
+// with the GOPROXY env carries, which fetches that metadata, and can download a
+// toolchain the checkout selects. Each run is bounded by verifyTimeout.
+//
+// A module go reports changed refuses the preflight and is named; so does any
+// other failure, in go's words, and a run that leaves go.mod, go.sum, go.work
+// or go.work.sum in dir other than it found them, each put back first. Nothing
+// is verified, and note says why, where the build reads no dependency from the
+// module cache (vendorMode), where dir holds no go.mod, and where no go is on
+// PATH. go is the one PATH finds, held to the in-checkout rule (tools.LookPath).
+func VerifyModules(ctx context.Context, dir string, env []string) (note string, err error) {
 	if fi, err := os.Lstat(filepath.Join(dir, "go.mod")); err != nil || !fi.Mode().IsRegular() {
-		return nil
+		return "the checkout has no go.mod at its root, so no module in the module cache was verified", nil
 	}
 	goBin, err := tools.LookPath("go", dir)
 	if errors.Is(err, tools.ErrInsideWorkingTree) {
-		return &ModuleCacheError{Lines: []string{"the go PATH finds lies inside a working tree, so it is never run"}}
+		return "", &ModuleCacheError{Lines: []string{"the go PATH finds lies inside a working tree, so it is never run"}}
 	}
 	if err != nil {
-		return nil
+		return "no go is on PATH, so no module in the module cache was verified", nil
 	}
 	before := map[string][]byte{}
 	for _, name := range verifiedFiles {
@@ -155,15 +163,30 @@ func VerifyModules(ctx context.Context, dir string, env []string) error {
 			before[name] = raw
 		}
 	}
-	out, err := verifyOnce(ctx, goBin, dir, withEnv(env, "GOFLAGS=-mod=mod", "GOPROXY=off"))
+	work, err := goWork(ctx, goBin, dir, env)
+	if changed := putBack(dir, before); changed != "" {
+		return "", &ModuleCacheError{Changed: changed}
+	}
+	if err != nil {
+		return "", &ModuleCacheError{Lines: []string{"go could not say whether a go.work is in force: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}}
+	}
+	flags := envFlags(env)
+	if vendorMode(dir, work, flags) {
+		return "the build reads its dependencies from vendor/, not the module cache, so no module in the module cache was verified", nil
+	}
+	mode := "GOFLAGS=-mod=mod"
+	if work != "" {
+		mode = "GOFLAGS=" + strings.Join(slices.DeleteFunc(slices.Clone(flags), isModFlag), " ")
+	}
+	out, err := verifyOnce(ctx, goBin, dir, withEnv(env, mode, "GOPROXY=off"))
 	if err != nil && strings.Contains(out, "module lookup disabled by GOPROXY=off") && !modifiedLine(out) {
-		out, err = verifyOnce(ctx, goBin, dir, withEnv(env, "GOFLAGS=-mod=mod"))
+		out, err = verifyOnce(ctx, goBin, dir, withEnv(env, mode))
 	}
 	if changed := putBack(dir, before); changed != "" {
-		return &ModuleCacheError{Changed: changed}
+		return "", &ModuleCacheError{Changed: changed}
 	}
 	if err == nil {
-		return nil
+		return "", nil
 	}
 	e := &ModuleCacheError{}
 	for _, line := range strings.Split(out, "\n") {
@@ -181,7 +204,109 @@ func VerifyModules(ctx context.Context, dir string, env []string) error {
 	if len(e.Lines) == 0 {
 		e.Lines = []string{termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
-	return e
+	return "", e
+}
+
+// goWork is the go.work go finds in force for dir under env (`go env GOWORK`),
+// "" in module mode.
+func goWork(parent context.Context, goBin, dir string, env []string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, verifyTimeout)
+	defer cancel()
+	// #nosec G204 -- goBin is the go PATH finds, held to the in-checkout rule;
+	// the arguments are fixed.
+	cmd := exec.CommandContext(ctx, goBin, "env", "GOWORK")
+	cmd.Dir, cmd.Env, cmd.Stdin = dir, env, nil
+	var buf bytes.Buffer
+	w := &bounded{w: &buf, remaining: verifyOutputCap}
+	cmd.Stdout, cmd.Stderr = w, w
+	procgroup.Lead(cmd)
+	cmd.Cancel = func() error { return procgroup.Kill(cmd) }
+	cmd.WaitDelay = pipeGrace
+	err := cmd.Run()
+	procgroup.KillLeft(cmd)
+	if err != nil {
+		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(buf.String()))
+	}
+	switch v := strings.TrimSpace(buf.String()); v {
+	case "", "off":
+		return "", nil
+	default:
+		return v, nil
+	}
+}
+
+// envFlags are the flags of the last GOFLAGS env carries, split on blanks.
+func envFlags(env []string) []string {
+	var flags []string
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "GOFLAGS="); ok {
+			flags = strings.Fields(v)
+		}
+	}
+	return flags
+}
+
+// isModFlag says whether a GOFLAGS flag sets -mod.
+func isModFlag(f string) bool {
+	return strings.HasPrefix(f, "-mod=") || strings.HasPrefix(f, "--mod=")
+}
+
+// vendorMode says whether Go builds from vendor/ rather than the module cache,
+// as Go decides it: a -mod=vendor in flags, or no -mod at all with
+// vendor/modules.txt beside the go.mod (dir's) or the go.work in force (work)
+// and that file's go directive at 1.14 or later (1.22 for a go.work).
+func vendorMode(dir, work string, flags []string) bool {
+	mod := ""
+	for _, f := range flags {
+		if isModFlag(f) {
+			_, mod, _ = strings.Cut(f, "=")
+		}
+	}
+	switch mod {
+	case "vendor":
+		return true
+	case "":
+	default:
+		return false
+	}
+	root, file, least := dir, filepath.Join(dir, "go.mod"), 14
+	if work != "" {
+		root, file, least = filepath.Dir(work), work, 22
+	}
+	if fi, err := os.Lstat(filepath.Join(root, "vendor", "modules.txt")); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	return goDirectiveMinor(file) >= least
+}
+
+// goDirectiveMinor is the minor version of the go directive in the go.mod or
+// go.work at path (21 for `go 1.21.3`), 16 when it states none, as Go then
+// assumes, and 0 when the file cannot be read.
+func goDirectiveMinor(path string) int {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || f[0] != "go" {
+			continue
+		}
+		rest, ok := strings.CutPrefix(f[1], "1.")
+		if !ok {
+			return 0
+		}
+		minor, _, _ := strings.Cut(rest, ".")
+		n := 0
+		for _, r := range minor {
+			if r < '0' || r > '9' {
+				break
+			}
+			n = n*10 + int(r-'0')
+		}
+		return n
+	}
+	return 16
 }
 
 // verifyOnce runs `go mod verify` once, as a process group of its own killed
