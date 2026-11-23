@@ -69,11 +69,11 @@ questions prints it.
 ## One refusal code
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture/remedy-missing
+"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture/missing-remedy
 ```
 
 When abcd refuses a call, the refusal carries a short code, such as
-`capture/remedy-missing` or `usage/unknown-flag`: the verb, a slash and the
+`capture/missing-remedy` or `usage/unknown-flag`: the verb, a slash and the
 reason. A word holding a slash is read as a code, and `explain` prints:
 
 - the code and its one-line summary, the hint the refusal showed;
@@ -141,7 +141,7 @@ error object every verb prints on stdout, with its code:
   wrong; a word after a command that takes no sub-command is refused the same
   way (`explain/unknown-path`);
 - `--input` naming a flag the command reads no input through, naming the inputs
-  it does read (`explain/unknown-input`);
+  it does read (`explain/unrecognized-input`);
 - `--input` with no command named (`usage/missing-argument`), or with a code
   (`usage/flag-conflict`);
 - a code this binary does not register, naming the nearest registered code

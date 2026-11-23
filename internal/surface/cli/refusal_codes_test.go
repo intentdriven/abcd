@@ -187,7 +187,7 @@ func TestExitWithCarriesUncodedForAnUncodedRefusal(t *testing.T) {
 	if got := exitWith(1, refusal.None, "x").ref; got != refusal.None {
 		t.Errorf("exitWith(1, None) carries %q, want none", got)
 	}
-	if got := exitWith(2, refusal.CaptureRemedyMissing, "x").ref; got != refusal.CaptureRemedyMissing {
+	if got := exitWith(2, refusal.CaptureMissingRemedy, "x").ref; got != refusal.CaptureMissingRemedy {
 		t.Errorf("exitWith kept %q, want the code given", got)
 	}
 }
@@ -238,14 +238,14 @@ func TestExplainRefusesAnUnknownCodeNamingTheNearest(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("not one envelope: %v\n%s", err, stdout.String())
 	}
-	if env.Code != string(refusal.ExplainUnknownCode) || !strings.Contains(env.Error, "`capture/remedy-missing`") {
-		t.Errorf("envelope = %+v, want explain/unknown-code naming capture/remedy-missing", env)
+	if env.Code != string(refusal.ExplainUnknownCode) || !strings.Contains(env.Error, "`capture/missing-remedy`") {
+		t.Errorf("envelope = %+v, want explain/unknown-code naming capture/missing-remedy", env)
 	}
 	if strings.Contains(stdout.String(), "misisng") {
 		t.Errorf("the refusal repeats the word:\n%s", stdout.String())
 	}
 	// A code with --input reads no input.
-	if code := Run([]string{"explain", "capture/remedy-missing", "--input", "x"}, &stdout, &stderr); code != 2 {
+	if code := Run([]string{"explain", "capture/missing-remedy", "--input", "x"}, &stdout, &stderr); code != 2 {
 		t.Errorf("explain <code> --input exited %d, want 2", code)
 	}
 }
@@ -321,8 +321,8 @@ func TestUsageWordingCodes(t *testing.T) {
 		{"unknown flag: --zz", refusal.UsageUnknownFlag},
 		{"unknown shorthand flag: 'z' in -z", refusal.UsageUnknownFlag},
 		{"bad flag syntax: ---x", refusal.UsageUnknownFlag},
-		{"flag needs an argument: --remedy", refusal.UsageBadFlagValue},
-		{`invalid argument for "--limit" flag: it takes a value of type int`, refusal.UsageBadFlagValue},
+		{"flag needs an argument: --remedy", refusal.UsageInvalidFlagValue},
+		{`invalid argument for "--limit" flag: it takes a value of type int`, refusal.UsageInvalidFlagValue},
 		{"abcd capture: the issue text is a thing", refusal.None},
 	}
 	for _, c := range cases {
@@ -434,21 +434,21 @@ func TestUsageRefusalsCarryTheirCodes(t *testing.T) {
 	cases := []struct {
 		args []string
 		exit int
-		want refusal.Code
+		want string // the code as a reader matches it, so a path that switches code fails
 	}{
-		{[]string{"zzz-not-a-verb"}, 2, refusal.UsageUnknownCommand},
-		{[]string{"update", "--check", "--yes"}, 2, refusal.UsageFlagConflict},
-		{[]string{"capture", "list", "--open", "--all"}, 2, refusal.UsageFlagConflict},
-		{[]string{"capture", "list"}, 2, refusal.UsageMissingRequiredFlag},
-		{[]string{"capture", "resolve"}, 2, refusal.UsageMissingArgument},
-		{[]string{"drain", "--max", "not-a-number"}, 2, refusal.UsageBadFlagValue},
-		{[]string{"capture", "a thing that happened", "--severity", "enormous", "--remedy", "fix it"}, 2, refusal.UsageBadFlagValue},
-		{[]string{"guard", "hook", "--zzz-not-a-flag"}, 1, refusal.UsageUnknownFlag},
-		{[]string{"hook", "zzz-not-a-subverb"}, 1, refusal.UsageUnknownCommand},
+		{[]string{"zzz-not-a-verb"}, 2, "usage/unknown-command"},
+		{[]string{"update", "--check", "--yes"}, 2, "usage/flag-conflict"},
+		{[]string{"capture", "list", "--open", "--all"}, 2, "usage/flag-conflict"},
+		{[]string{"capture", "list"}, 2, "usage/missing-required-flag"},
+		{[]string{"capture", "resolve"}, 2, "usage/missing-argument"},
+		{[]string{"drain", "--max", "not-a-number"}, 2, "usage/invalid-flag-value"},
+		{[]string{"capture", "a thing that happened", "--severity", "enormous", "--remedy", "fix it"}, 2, "usage/invalid-flag-value"},
+		{[]string{"guard", "hook", "--zzz-not-a-flag"}, 1, "usage/unknown-flag"},
+		{[]string{"hook", "zzz-not-a-subverb"}, 1, "usage/unknown-command"},
 	}
 	for _, c := range cases {
 		code, env, out := codedRefusal(t, c.args...)
-		if code != c.exit || env.Code != string(c.want) {
+		if code != c.exit || env.Code != c.want {
 			t.Errorf("abcd %s: exit %d code %q, want exit %d code %q:\n%s", strings.Join(c.args, " "), code, env.Code, c.exit, c.want, out)
 		}
 	}
@@ -514,7 +514,7 @@ func TestTheRefusalCodeCheckRecordsAnUncodedRefusal(t *testing.T) {
 	var got []string
 	record := func(line string) { got = append(got, line) }
 	lenient, strict := checkRefusalCodeForTest(false, record), checkRefusalCodeForTest(true, record)
-	lenient(2, refusal.CaptureRemedyMissing, nil)
+	lenient(2, refusal.CaptureMissingRemedy, nil)
 	lenient(2, refusal.None, nil)
 	lenient(1, refusal.UsageUnknownFlag, nil)
 	lenient(1, refusal.None, nil)
@@ -523,7 +523,7 @@ func TestTheRefusalCodeCheckRecordsAnUncodedRefusal(t *testing.T) {
 	}
 	lenient(2, refusal.Uncoded, nil)
 	lenient(2, "capture/never-registered", nil)
-	lenient(1, refusal.CaptureRemedyMissing, nil)
+	lenient(1, refusal.CaptureMissingRemedy, nil)
 	strict(3, refusal.None, nil)
 	if len(got) != 4 {
 		t.Fatalf("the check recorded %d violations, want 4: %q", len(got), got)

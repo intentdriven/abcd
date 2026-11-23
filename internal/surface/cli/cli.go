@@ -5972,12 +5972,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// person, so it always means one of abcd's automatic filers wrote
 			// the record (ruling H12). Refused before anything is written.
 			if strings.TrimSpace(remedy) == "" {
-				return refused(2, refusal.CaptureRemedyMissing, fmt.Sprintf(
+				return refused(2, refusal.CaptureMissingRemedy, fmt.Sprintf(
 					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
 						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy))
 			}
 			if issueschema.IsMachineRemedy(remedy) {
-				return refused(2, refusal.CaptureRemedyMachineValue, fmt.Sprintf(
+				return refused(2, refusal.CaptureRemedyMachineSpecific, fmt.Sprintf(
 					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
 						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy))
 			}
@@ -6021,7 +6021,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// the flag and the set it accepts (iss-2608290810037524).
 				var fv *capture.FieldValueError
 				if errors.As(err, &fv) {
-					return refused(2, refusal.UsageBadFlagValue, fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
+					return refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
 						fv.Field, enumHelp(fv.Accepted)))
 				}
 				return captureRefusal("", err)
@@ -6791,11 +6791,11 @@ func captureRefusalCode(err error) refusal.Code {
 	case errors.Is(err, capture.ErrTransitionConflict):
 		return refusal.CaptureNotOpen
 	case errors.Is(err, capture.ErrGroundsRefused):
-		return refusal.CaptureGroundsRefused
+		return refusal.CaptureInsufficientGrounds
 	case errors.Is(err, capture.ErrNotCharacterised):
 		return refusal.CaptureNotCharacterized
 	}
-	return refusal.CaptureInputInvalid
+	return refusal.CaptureInvalidInput
 }
 
 // emitRedactionNote says, on the human surface, that the written text differs
@@ -7107,7 +7107,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, refused(2, refusal.UsageBadFlagValue, fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1))
+			return nil, refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1))
 		}
 		ids = append(ids, tok)
 	}

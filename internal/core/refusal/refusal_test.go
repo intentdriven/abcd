@@ -36,13 +36,13 @@ func TestEveryCodeFollowsTheGrammar(t *testing.T) {
 			t.Errorf("code %q is not <verb>/<reason> in lower-case kebab-case", e.Code)
 		}
 	}
-	for _, bad := range []string{"", "capture", "Capture/remedy-missing", "capture/remedy_missing",
+	for _, bad := range []string{"", "capture", "Capture/missing-remedy", "capture/missing_remedy",
 		"capture/-remedy", "capture//remedy", "capture/remedy/missing", "capture/remedy-", "/remedy"} {
 		if validName(bad) {
 			t.Errorf("validName(%q) = true, want false", bad)
 		}
 	}
-	for _, good := range []string{"capture/remedy-missing", "usage/unknown-flag", "explain/unknown-code"} {
+	for _, good := range []string{"capture/missing-remedy", "usage/unknown-flag", "explain/unknown-code"} {
 		if !validName(good) {
 			t.Errorf("validName(%q) = false, want true", good)
 		}
@@ -95,7 +95,7 @@ func TestUncodedIsNeverRegistered(t *testing.T) {
 // wrapped on the way out.
 func TestWrapIsFoundThroughErrorsAs(t *testing.T) {
 	base := errors.New("the remedy is missing")
-	wrapped := Wrap(CaptureRemedyMissing, base)
+	wrapped := Wrap(CaptureMissingRemedy, base)
 	if wrapped.Error() != base.Error() {
 		t.Errorf("Wrap changed the message: %q", wrapped.Error())
 	}
@@ -103,17 +103,17 @@ func TestWrapIsFoundThroughErrorsAs(t *testing.T) {
 		t.Error("Wrap does not unwrap to the error it wraps")
 	}
 	outer := fmt.Errorf("abcd capture: %w", wrapped)
-	if got := CodeOf(outer); got != CaptureRemedyMissing {
-		t.Errorf("CodeOf through fmt.Errorf = %q, want %q", got, CaptureRemedyMissing)
+	if got := CodeOf(outer); got != CaptureMissingRemedy {
+		t.Errorf("CodeOf through fmt.Errorf = %q, want %q", got, CaptureMissingRemedy)
 	}
 	joined := errors.Join(errors.New("other"), outer)
-	if got := CodeOf(joined); got != CaptureRemedyMissing {
-		t.Errorf("CodeOf through errors.Join = %q, want %q", got, CaptureRemedyMissing)
+	if got := CodeOf(joined); got != CaptureMissingRemedy {
+		t.Errorf("CodeOf through errors.Join = %q, want %q", got, CaptureMissingRemedy)
 	}
 	if got := CodeOf(base); got != None {
 		t.Errorf("CodeOf of an uncoded error = %q, want none", got)
 	}
-	if Wrap(CaptureRemedyMissing, nil) != nil {
+	if Wrap(CaptureMissingRemedy, nil) != nil {
 		t.Error("Wrap of a nil error must be nil")
 	}
 }
@@ -437,4 +437,26 @@ func mustEncode(t *testing.T, l Ledger) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// TestTheRenamedCodesAreTheRegisteredOnes pins the six names the product
+// thinker settled on 2026-11-23, before any release carried a code: each is
+// registered, and the name it replaced is not (no release carried it, so it is
+// renamed, not retired).
+func TestTheRenamedCodesAreTheRegisteredOnes(t *testing.T) {
+	for old, renamed := range map[Code]Code{
+		"capture/remedy-missing":       "capture/missing-remedy",
+		"capture/input-invalid":        "capture/invalid-input",
+		"usage/bad-flag-value":         "usage/invalid-flag-value",
+		"capture/grounds-refused":      "capture/insufficient-grounds",
+		"capture/remedy-machine-value": "capture/remedy-machine-specific",
+		"explain/unknown-input":        "explain/unrecognized-input",
+	} {
+		if _, ok := Lookup(renamed); !ok {
+			t.Errorf("%s is not registered", renamed)
+		}
+		if _, ok := Lookup(old); ok {
+			t.Errorf("%s is still registered; it was renamed %s", old, renamed)
+		}
+	}
 }

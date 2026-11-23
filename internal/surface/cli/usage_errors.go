@@ -496,12 +496,12 @@ func flagErrorCode(err error) refusal.Code {
 	case errors.As(err, &missing), errors.As(err, &syntax):
 		return refusal.UsageUnknownFlag
 	case errors.As(err, &needs), errors.As(err, &invalid):
-		return refusal.UsageBadFlagValue
+		return refusal.UsageInvalidFlagValue
 	}
 	if c := usageWordingCode(err.Error()); c != refusal.None {
 		return c
 	}
-	return refusal.UsageBadFlagValue
+	return refusal.UsageInvalidFlagValue
 }
 
 // The wordings of cobra's positional validators (cobra args.go), each count
@@ -551,7 +551,7 @@ func usageWordingCode(msg string) refusal.Code {
 		strings.HasPrefix(msg, "bad flag syntax: "):
 		return refusal.UsageUnknownFlag
 	case strings.HasPrefix(msg, "flag needs an argument: "), strings.HasPrefix(msg, "invalid argument ") && strings.Contains(msg, " flag: "):
-		return refusal.UsageBadFlagValue
+		return refusal.UsageInvalidFlagValue
 	}
 	return refusal.None
 }

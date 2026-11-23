@@ -10,7 +10,7 @@
 //
 // A code is a short name, never a number (adr-2610301638558260): the verb, a
 // slash and the reason, in lower-case kebab-case, such as
-// capture/remedy-missing, or usage/... for the command framework's own
+// capture/missing-remedy, or usage/... for the command framework's own
 // refusals. Once a release has carried a code it is never renamed and never
 // given to a different refusal: a refusal that changes meaning gets a new
 // code, and one that goes away keeps its entry, marked retired, so explain
@@ -68,24 +68,24 @@ const (
 	UsageExtraArgument       Code = "usage/extra-argument"
 	UsageFlagConflict        Code = "usage/flag-conflict"
 	UsageMissingRequiredFlag Code = "usage/missing-required-flag"
-	UsageBadFlagValue        Code = "usage/bad-flag-value"
+	UsageInvalidFlagValue    Code = "usage/invalid-flag-value"
 
 	// capture's own refusals.
-	CaptureRemedyMissing      Code = "capture/remedy-missing"
-	CaptureRemedyMachineValue Code = "capture/remedy-machine-value"
-	CaptureUnknownIssue       Code = "capture/unknown-issue"
+	CaptureMissingRemedy         Code = "capture/missing-remedy"
+	CaptureRemedyMachineSpecific Code = "capture/remedy-machine-specific"
+	CaptureUnknownIssue          Code = "capture/unknown-issue"
 	// CaptureUnknownReadingRecord is an id the reading ledger does not hold:
 	// a reading item, an admission, a disposition or a reframe.
 	CaptureUnknownReadingRecord Code = "capture/unknown-reading-record"
 	CaptureNotOpen              Code = "capture/not-open"
-	CaptureGroundsRefused       Code = "capture/grounds-refused"
-	CaptureInputInvalid         Code = "capture/input-invalid"
+	CaptureInsufficientGrounds  Code = "capture/insufficient-grounds"
+	CaptureInvalidInput         Code = "capture/invalid-input"
 	CaptureNotCharacterized     Code = "capture/not-characterized"
 
 	// explain's own refusals.
-	ExplainUnknownPath  Code = "explain/unknown-path"
-	ExplainUnknownInput Code = "explain/unknown-input"
-	ExplainUnknownCode  Code = "explain/unknown-code"
+	ExplainUnknownPath       Code = "explain/unknown-path"
+	ExplainUnrecognizedInput Code = "explain/unrecognized-input"
+	ExplainUnknownCode       Code = "explain/unknown-code"
 )
 
 // Entry is one registered code.
@@ -171,7 +171,7 @@ var entries = []Entry{
 		Next: explainCommand,
 	},
 	{
-		Code:    UsageBadFlagValue,
+		Code:    UsageInvalidFlagValue,
 		Summary: "a flag's value is missing, or is not one the flag takes",
 		Explanation: "The flag needs a value and none followed it, or the value does not parse as the\n" +
 			"flag's type or is not one of the values it accepts. The refusal names the flag\n" +
@@ -179,7 +179,7 @@ var entries = []Entry{
 		Next: explainCommand,
 	},
 	{
-		Code:    CaptureRemedyMissing,
+		Code:    CaptureMissingRemedy,
 		Summary: "a new issue needs --remedy, the fix it proposes, in one line",
 		Explanation: "Every new issue carries the fix it proposes. Give it with --remedy \"<fix>\" in\n" +
 			"one line; nothing was captured. `abcd capture remedy <iss-N> <text>` rewrites it\n" +
@@ -188,7 +188,7 @@ var entries = []Entry{
 		RaisedBy: []string{"abcd capture"},
 	},
 	{
-		Code:    CaptureRemedyMachineValue,
+		Code:    CaptureRemedyMachineSpecific,
 		Summary: "the --remedy given is the value only abcd's automatic filers write",
 		Explanation: "That value marks an issue an automatic filer wrote with no fix, and a drain skips\n" +
 			"such an issue. Name the fix the issue proposes instead; nothing was captured.",
@@ -227,7 +227,7 @@ var entries = []Entry{
 		RaisedBy: []string{"abcd capture resolve", "abcd capture wontfix", "abcd capture defer", "abcd capture remedy"},
 	},
 	{
-		Code:    CaptureGroundsRefused,
+		Code:    CaptureInsufficientGrounds,
 		Summary: "the grounds given are missing, outside their vocabulary or too thin",
 		Explanation: "The verb records the grounds for what it does, and those given were absent, not one\n" +
 			"of the accepted kinds, malformed, or below the substance floor. Nothing was\n" +
@@ -237,7 +237,7 @@ var entries = []Entry{
 			"abcd capture resolve", "abcd capture surprise", "abcd capture wontfix"},
 	},
 	{
-		Code:    CaptureInputInvalid,
+		Code:    CaptureInvalidInput,
 		Summary: "a value the request carries is outside its shape or names nothing",
 		Explanation: "An impact outside its set, a provenance reference that is malformed or names no\n" +
 			"record, a release tag or a production mode that is not one: the refusal names\n" +
@@ -267,7 +267,7 @@ var entries = []Entry{
 		RaisedBy: []string{"abcd explain"},
 	},
 	{
-		Code:    ExplainUnknownInput,
+		Code:    ExplainUnrecognizedInput,
 		Summary: "the command reads no filled-in input through that flag",
 		Explanation: "--input names a flag through which the command reads a filled-in JSON input. The\n" +
 			"refusal names the inputs the command does read, or says it reads none.",

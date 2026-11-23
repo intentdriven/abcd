@@ -32,7 +32,7 @@ func TestEmitRefusesACutThatDropsAPublishedRefusalCode(t *testing.T) {
 	writeSurface(t, r, liveSurface())
 	r.Write("CHANGELOG.md", "# Changelog\n\n## [0.4.0] - 2026-07-01\n\n### Added\n\n- the base.\n")
 	r.Write(shippedDir+"README.md", "# shipped\n")
-	writeRefusalLedger(t, r, "capture/remedy-missing", "usage/unknown-flag")
+	writeRefusalLedger(t, r, "capture/missing-remedy", "usage/unknown-flag")
 	r.Commit("the released state")
 	r.Git("tag", "v0.4.0")
 	r.Write(shippedDir+"itd-73-derived-versioning.md",
@@ -55,7 +55,7 @@ func TestEmitRefusesACutThatDropsAPublishedRefusalCode(t *testing.T) {
 	if got == nil || cut.Ready {
 		t.Fatalf("the cut did not refuse under %s: %v", RefusalRefusalCodes, refusalKinds(cut))
 	}
-	if !strings.Contains(got.Reason, "capture/remedy-missing") {
+	if !strings.Contains(got.Reason, "capture/missing-remedy") {
 		t.Fatalf("the refusal does not name the dropped code: %s", got.Reason)
 	}
 }

@@ -2375,7 +2375,7 @@ passes the command's own check. --json prints the command's facts as JSON, or wi
 --input the input's shape.
 
 A word holding a slash is a refusal code, the `code` a refusal carries (such as
-capture/remedy-missing): explain prints its summary, its explanation, the command to
+capture/missing-remedy): explain prints its summary, its explanation, the command to
 try next, the commands that raise it and, for a retired code, the release that
 retired it. --json prints the code's entry.
 

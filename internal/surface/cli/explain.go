@@ -42,7 +42,7 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 			"passes the command's own check. --json prints the command's facts as JSON, or with\n" +
 			"--input the input's shape.\n\n" +
 			"A word holding a slash is a refusal code, the `code` a refusal carries (such as\n" +
-			"capture/remedy-missing): explain prints its summary, its explanation, the command to\n" +
+			"capture/missing-remedy): explain prints its summary, its explanation, the command to\n" +
 			"try next, the commands that raise it and, for a retired code, the release that\n" +
 			"retired it. --json prints the code's entry.\n\n" +
 			"Run it before filling in an input for a command: where it and a page disagree, the\n" +
@@ -88,7 +88,7 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 			if flag != "" {
 				shape, err := explainInput(at, flag)
 				if err != nil {
-					return refused(2, refusal.ExplainUnknownInput, prefix+err.Error())
+					return refused(2, refusal.ExplainUnrecognizedInput, prefix+err.Error())
 				}
 				return render(cmd.OutOrStdout(), *asJSON, shape, func(w io.Writer) { renderExplainInput(w, shape, hidden) })
 			}

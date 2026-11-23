@@ -14,10 +14,14 @@ import (
 // by driving each command into the refusal rather than kept by hand
 // (spc-2610301431108175 step 1).
 
-// raiserProbe is one refused call and the code it must carry.
+// raiserProbe is one refused call and the code it must carry. The code is
+// written out as the string a reader matches on, not as the registry's
+// constant, so a path that switches to another code fails here, and so does
+// a code whose name changes: the release guard sees only a code that goes
+// missing from the ledger (adr-2610301638558260).
 type raiserProbe struct {
 	args []string
-	want refusal.Code
+	want string
 }
 
 // Ids no fixture writes, one per record kind a capture verb looks up.
@@ -78,65 +82,66 @@ func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
 	writeWideningFixture(t, repo, false)
 
 	probes := []raiserProbe{
-		{[]string{"capture", "the parser drops a line"}, refusal.CaptureRemedyMissing},
-		{[]string{"capture", "the parser drops a line", "--remedy", "none (filed automatically)"}, refusal.CaptureRemedyMachineValue},
+		{[]string{"capture", "the parser drops a line"}, "capture/missing-remedy"},
+		{[]string{"capture", "the parser drops a line", "--remedy", "none (filed automatically)"}, "capture/remedy-machine-specific"},
 
-		{[]string{"capture", "defer", unknownIssueID, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, refusal.CaptureUnknownIssue},
-		{[]string{"capture", "link", unknownIssueID, "--blocked-by", open}, refusal.CaptureUnknownIssue},
-		{[]string{"capture", "promote", unknownIssueID}, refusal.CaptureUnknownIssue},
-		{[]string{"capture", "remedy", unknownIssueID, "make the map before the first write"}, refusal.CaptureUnknownIssue},
-		{[]string{"capture", "resolve", unknownIssueID, "fixed by the parser change", "--impact", "fix"}, refusal.CaptureUnknownIssue},
-		{[]string{"capture", "wontfix", unknownIssueID, "the behaviour is the documented one"}, refusal.CaptureUnknownIssue},
+		{[]string{"capture", "defer", unknownIssueID, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, "capture/unknown-issue"},
+		{[]string{"capture", "link", unknownIssueID, "--blocked-by", open}, "capture/unknown-issue"},
+		{[]string{"capture", "promote", unknownIssueID}, "capture/unknown-issue"},
+		{[]string{"capture", "remedy", unknownIssueID, "make the map before the first write"}, "capture/unknown-issue"},
+		{[]string{"capture", "resolve", unknownIssueID, "fixed by the parser change", "--impact", "fix"}, "capture/unknown-issue"},
+		{[]string{"capture", "wontfix", unknownIssueID, "the behaviour is the documented one"}, "capture/unknown-issue"},
 
-		{[]string{"capture", "admit", unknownReadingItem, "--grounds", "the widened configuration is one the next release serves"}, refusal.CaptureUnknownReadingRecord},
-		{[]string{"capture", "disposition", unknownReadingItem, "--state", "accepted", "--grounds", probeGrounds}, refusal.CaptureUnknownReadingRecord},
-		{[]string{"capture", "promote", unknownReadingItem}, refusal.CaptureUnknownReadingRecord},
-		{[]string{"capture", "reframe", "--complete", unknownReframeID}, refusal.CaptureUnknownReadingRecord},
-		{[]string{"capture", "reframe", "--occasioned-by", unknownReadingItem, "--grounds", probeGrounds, "--open"}, refusal.CaptureUnknownReadingRecord},
-		{[]string{"capture", "surprise", "--occasioned-by", unknownReadingItem, probeText}, refusal.CaptureUnknownReadingRecord},
+		{[]string{"capture", "admit", unknownReadingItem, "--grounds", "the widened configuration is one the next release serves"}, "capture/unknown-reading-record"},
+		{[]string{"capture", "disposition", unknownReadingItem, "--state", "accepted", "--grounds", probeGrounds}, "capture/unknown-reading-record"},
+		{[]string{"capture", "promote", unknownReadingItem}, "capture/unknown-reading-record"},
+		{[]string{"capture", "reframe", "--complete", unknownReframeID}, "capture/unknown-reading-record"},
+		{[]string{"capture", "reframe", "--occasioned-by", unknownReadingItem, "--grounds", probeGrounds, "--open"}, "capture/unknown-reading-record"},
+		{[]string{"capture", "surprise", "--occasioned-by", unknownReadingItem, probeText}, "capture/unknown-reading-record"},
 
-		{[]string{"capture", "resolve", closed, "fixed by the writer change", "--impact", "fix"}, refusal.CaptureNotOpen},
-		{[]string{"capture", "wontfix", closed, "the behaviour is the documented one"}, refusal.CaptureNotOpen},
-		{[]string{"capture", "defer", closed, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, refusal.CaptureNotOpen},
-		{[]string{"capture", "remedy", closed, "make the map before the first write"}, refusal.CaptureNotOpen},
+		{[]string{"capture", "resolve", closed, "fixed by the writer change", "--impact", "fix"}, "capture/not-open"},
+		{[]string{"capture", "wontfix", closed, "the behaviour is the documented one"}, "capture/not-open"},
+		{[]string{"capture", "defer", closed, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, "capture/not-open"},
+		{[]string{"capture", "remedy", closed, "make the map before the first write"}, "capture/not-open"},
 
-		{[]string{"capture", "resolve", open, "fixed by the parser change", "--impact", "fix", "--grounds", "bogus"}, refusal.CaptureGroundsRefused},
-		{[]string{"capture", "wontfix", open, "the behaviour is the documented one", "--grounds", "bogus"}, refusal.CaptureGroundsRefused},
-		{[]string{"capture", "promote", open, "--grounds", "bogus"}, refusal.CaptureGroundsRefused},
-		{[]string{"capture", "admit", unknownReadingItem, "--grounds", "thin"}, refusal.CaptureGroundsRefused},
-		{[]string{"capture", "surprise", "--occasioned-by", unknownReadingItem, "thin"}, refusal.CaptureGroundsRefused},
-		{[]string{"capture", "reframe", "--occasioned-by", unknownReadingItem, "--grounds", "thin", "--open"}, refusal.CaptureGroundsRefused},
+		{[]string{"capture", "resolve", open, "fixed by the parser change", "--impact", "fix", "--grounds", "bogus"}, "capture/insufficient-grounds"},
+		{[]string{"capture", "wontfix", open, "the behaviour is the documented one", "--grounds", "bogus"}, "capture/insufficient-grounds"},
+		{[]string{"capture", "promote", open, "--grounds", "bogus"}, "capture/insufficient-grounds"},
+		{[]string{"capture", "admit", unknownReadingItem, "--grounds", "thin"}, "capture/insufficient-grounds"},
+		{[]string{"capture", "surprise", "--occasioned-by", unknownReadingItem, "thin"}, "capture/insufficient-grounds"},
+		{[]string{"capture", "reframe", "--occasioned-by", unknownReadingItem, "--grounds", "thin", "--open"}, "capture/insufficient-grounds"},
 
-		{[]string{"capture", "the third thing breaks on empty input", "--remedy", cliTestRemedy, "--found-at", "../elsewhere"}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "mentions", "--ref", "zzz-no-such-ref"}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "resolve", open, "fixed by the parser change", "--impact", "fix", "--shipped-in", "not-a-tag"}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "link", open, "--blocked-by", open}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "defer", minor, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "remedy", open, ""}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "surprise", "--occasioned-by", open, probeText}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "reframe", "--occasioned-by", unknownReframeID, "--grounds", probeGrounds, "--open"}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "disposition", detectionItem, "--state", "bogus", "--grounds", probeGrounds}, refusal.CaptureInputInvalid},
-		{[]string{"capture", "admit", detectionItem, "--grounds", "the widened configuration is one the next release serves"}, refusal.CaptureInputInvalid},
+		{[]string{"capture", "the third thing breaks on empty input", "--remedy", cliTestRemedy, "--found-at", "../elsewhere"}, "capture/invalid-input"},
+		{[]string{"capture", "mentions", "--ref", "zzz-no-such-ref"}, "capture/invalid-input"},
+		{[]string{"capture", "resolve", open, "fixed by the parser change", "--impact", "fix", "--shipped-in", "not-a-tag"}, "capture/invalid-input"},
+		{[]string{"capture", "link", open, "--blocked-by", open}, "capture/invalid-input"},
+		{[]string{"capture", "defer", minor, "--after", "v0.1.0", "--reason", "the fix needs the parser rewrite"}, "capture/invalid-input"},
+		{[]string{"capture", "remedy", open, ""}, "capture/invalid-input"},
+		{[]string{"capture", "surprise", "--occasioned-by", open, probeText}, "capture/invalid-input"},
+		{[]string{"capture", "reframe", "--occasioned-by", unknownReframeID, "--grounds", probeGrounds, "--open"}, "capture/invalid-input"},
+		{[]string{"capture", "disposition", detectionItem, "--state", "bogus", "--grounds", probeGrounds}, "capture/invalid-input"},
+		{[]string{"capture", "admit", detectionItem, "--grounds", "the widened configuration is one the next release serves"}, "capture/invalid-input"},
 
-		{[]string{"capture", "disposition", admitItem, "--state", "accepted", "--grounds", probeGrounds}, refusal.CaptureNotCharacterized},
-		{[]string{"capture", "admit", admitItem, "--grounds", "the widened configuration is one the next release serves"}, refusal.CaptureNotCharacterized},
+		{[]string{"capture", "disposition", admitItem, "--state", "accepted", "--grounds", probeGrounds}, "capture/not-characterized"},
+		{[]string{"capture", "admit", admitItem, "--grounds", "the widened configuration is one the next release serves"}, "capture/not-characterized"},
 
-		{[]string{"explain", "zzz-no-such-verb"}, refusal.ExplainUnknownPath},
-		{[]string{"explain", "capture", "--input", "zzz"}, refusal.ExplainUnknownInput},
-		{[]string{"explain", "zzz/no-such-code"}, refusal.ExplainUnknownCode},
+		{[]string{"explain", "zzz-no-such-verb"}, "explain/unknown-path"},
+		{[]string{"explain", "capture", "--input", "zzz"}, "explain/unrecognized-input"},
+		{[]string{"explain", "zzz/no-such-code"}, "explain/unknown-code"},
 	}
 
 	seen := map[refusal.Code]map[string]bool{}
 	for _, p := range probes {
 		code, env, out := codedRefusal(t, p.args...)
-		if code != 2 || refusal.Code(env.Code) != p.want {
+		if code != 2 || env.Code != p.want {
 			t.Errorf("abcd %s: exit %d code %q, want exit 2 and %s:\n%s", strings.Join(p.args, " "), code, env.Code, p.want, out)
 			continue
 		}
-		if seen[p.want] == nil {
-			seen[p.want] = map[string]bool{}
+		want := refusal.Code(p.want)
+		if seen[want] == nil {
+			seen[want] = map[string]bool{}
 		}
-		seen[p.want][raiserPath(p.args)] = true
+		seen[want][raiserPath(p.args)] = true
 	}
 	if t.Failed() {
 		return

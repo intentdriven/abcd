@@ -62,7 +62,7 @@ Grounding, read on 30 October 2026:
 1. **The refusal registry.** A new core package, `internal/core/refusal`,
    holds `type Code string` and one table of entries. Each entry has:
    - the code (`<verb>/<reason>`, lower-case kebab-case, such as
-     `capture/remedy-missing`, or `usage/…` for the framework's refusals);
+     `capture/missing-remedy`, or `usage/…` for the framework's refusals);
    - a summary of one line;
    - an explanation of a few lines;
    - a next-command template (`abcd capture "<text>" --remedy "<fix>"`), or
@@ -104,7 +104,7 @@ Grounding, read on 30 October 2026:
    - `usage/extra-argument`;
    - `usage/flag-conflict`;
    - `usage/missing-required-flag`;
-   - `usage/bad-flag-value`.
+   - `usage/invalid-flag-value`.
    The next command is `abcd explain <the path that resolved>`. On the hook
    plane, that path is a hidden command, which `explain` answers marked
    `(hidden)` (spc-2610301431075964, approach 3).
@@ -199,7 +199,7 @@ Grounding, read on 30 October 2026:
   - the test-only `run` check over the tree-wide refusal tests, so no exit 2
     or 3 leaves without a code;
   - an envelope test, where a refused `capture` with no `--remedy` has
-    `code: capture/remedy-missing`, a hint, and `next` naming `abcd capture`;
+    `code: capture/missing-remedy`, a hint, and `next` naming `abcd capture`;
   - an `explain` test over every registered code;
   - the next-template test;
   - the ledger drift test, and a release-guard test that removes a code from

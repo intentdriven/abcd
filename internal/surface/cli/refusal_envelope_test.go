@@ -34,7 +34,7 @@ func envelopeKeys(t *testing.T, doc string) []string {
 }
 
 // TestRefusedCaptureCarriesItsCodeHintAndNext is the step's acceptance: a
-// refused `capture` with no --remedy carries capture/remedy-missing, its
+// refused `capture` with no --remedy carries capture/missing-remedy, its
 // hint, and a next command naming `abcd capture`, after the three keys every
 // reader of the envelope already reads, which keep their order and values.
 func TestRefusedCaptureCarriesItsCodeHintAndNext(t *testing.T) {
@@ -51,12 +51,12 @@ func TestRefusedCaptureCarriesItsCodeHintAndNext(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatal(err)
 	}
-	entry, _ := refusal.Lookup(refusal.CaptureRemedyMissing)
+	entry, _ := refusal.Lookup(refusal.CaptureMissingRemedy)
 	if env.Abcd != "error" || env.ExitCode != 2 || !strings.Contains(env.Error, "--remedy is required") {
 		t.Errorf("the envelope's first three keys changed: %+v", env)
 	}
-	if env.Code != string(refusal.CaptureRemedyMissing) || env.Hint != entry.Summary {
-		t.Errorf("code %q hint %q, want %s with its summary", env.Code, env.Hint, refusal.CaptureRemedyMissing)
+	if env.Code != string(refusal.CaptureMissingRemedy) || env.Hint != entry.Summary {
+		t.Errorf("code %q hint %q, want %s with its summary", env.Code, env.Hint, refusal.CaptureMissingRemedy)
 	}
 	if !strings.HasPrefix(env.Next, "abcd capture ") {
 		t.Errorf("next = %q, want a command naming abcd capture", env.Next)
@@ -75,10 +75,10 @@ func TestRefusalTextFormAddsOneLine(t *testing.T) {
 	if code := Run([]string{"capture", "the parser drops a line"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("exit %d, want 2:\n%s", code, stderr.String())
 	}
-	entry, _ := refusal.Lookup(refusal.CaptureRemedyMissing)
+	entry, _ := refusal.Lookup(refusal.CaptureMissingRemedy)
 	lines := strings.Split(strings.TrimRight(stderr.String(), "\n"), "\n")
 	last := lines[len(lines)-1]
-	want := "abcd: " + entry.Summary + " — fill in and run: " + entry.Next + " (abcd explain capture/remedy-missing)"
+	want := "abcd: " + entry.Summary + " — fill in and run: " + entry.Next + " (abcd explain capture/missing-remedy)"
 	if last != want {
 		t.Fatalf("the refusal's last line is\n%q\nwant\n%q", last, want)
 	}
@@ -97,7 +97,7 @@ func TestRefusalTextFormSaysWhetherNextRunsAsItStands(t *testing.T) {
 		t.Errorf("a runnable next reads %q, want it offered with try:", line)
 	}
 	env = newErrorEnvelope("abcd capture: refused", 2)
-	env.withRefusal(refusal.CaptureRemedyMissing, nil)
+	env.withRefusal(refusal.CaptureMissingRemedy, nil)
 	if line := env.refusalLine(); strings.Contains(line, "try:") || !strings.Contains(line, " — fill in and run: abcd capture ") {
 		t.Errorf("a template next reads %q, want it offered as one to fill in", line)
 	}
@@ -163,7 +163,7 @@ func TestRefusalWithNoNextCommandSaysSo(t *testing.T) {
 // TestExplainSaysWhenNextIsATemplate: explain's "Try next" line marks a
 // template as one to fill in, and leaves a runnable command unmarked.
 func TestExplainSaysWhenNextIsATemplate(t *testing.T) {
-	out := string(runCLI(t, "explain", string(refusal.CaptureRemedyMissing)))
+	out := string(runCLI(t, "explain", string(refusal.CaptureMissingRemedy)))
 	if !strings.Contains(out, `Try next: abcd capture "<text>" --remedy "<fix>" (a template: fill in each word in angle brackets)`) {
 		t.Errorf("explain of a template next:\n%s", out)
 	}
