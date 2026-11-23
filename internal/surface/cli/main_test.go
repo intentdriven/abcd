@@ -186,7 +186,14 @@ func TestMain(m *testing.M) {
 	if cwd, err := os.Getwd(); err == nil {
 		pinEnclosingRoutingLayer(cwd)
 	}
+	// Every refusal a test runs through Run is held to the refusal registry
+	// (spc-2610301431108175 approach 5): one leaving with a code no reader
+	// can resolve fails the binary (refusal_codes_test.go).
+	refusalCodesBroken := installRefusalCodeCheck()
 	code := m.Run()
+	if refusalCodesBroken() && code == 0 {
+		code = 1
+	}
 	_ = os.RemoveAll(emptyHome)
 	showGHLogin()
 	builtAbcd.Remove()

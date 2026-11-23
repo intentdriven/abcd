@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -96,11 +97,50 @@ func unknownCommandLine(t *testing.T, path ...string) string {
 		"\" (the first argument, not repeated here; its sub-commands are " + strings.Join(names, ", ") + ")"
 }
 
+// The refusal-code line Run adds last (spc-2610301431108175) is cut from the
+// stderr returned, after checking it is the last line, so these tests assert
+// the refusal's own lines; refusal_envelope_test.go asserts that line.
 func runMain(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
 	code = Run(args, &out, &errb)
-	return code, out.String(), errb.String()
+	return code, out.String(), withoutRefusalCodeLine(errb.String())
+}
+
+// withoutRefusalCodeLine cuts the refusal-code line from the end of a
+// refusal's stderr, leaving everything before it as it was. The line is cut
+// only from after at least one line of the refusal's own: a stderr that is
+// nothing but the code line is returned whole, so an assertion that stderr is
+// empty still catches it.
+func withoutRefusalCodeLine(stderr string) string {
+	body := strings.TrimSuffix(stderr, "\n")
+	i := strings.LastIndex(body, "\n")
+	if i < 0 {
+		return stderr
+	}
+	last := body[i+1:]
+	if strings.HasPrefix(last, "abcd: ") && refusalCodeLineRe.MatchString(last) {
+		return body[:i+1]
+	}
+	return stderr
+}
+
+// refusalCodeLineRe is the refusal-code line's ending: the call that explains
+// the code.
+var refusalCodeLineRe = regexp.MustCompile(`\(abcd explain [a-z0-9-]+/[a-z0-9-]+\)$`)
+
+// TestRunMainKeepsALoneRefusalCodeLine: the helper cuts the code line only
+// from after the refusal's own lines. A stderr holding nothing but that line
+// is returned whole, so a test asserting an empty stderr (under --json, say)
+// still sees the line leak.
+func TestRunMainKeepsALoneRefusalCodeLine(t *testing.T) {
+	const line = "abcd: a flag given is not one this command takes — try: abcd explain abcd (abcd explain usage/unknown-flag)\n"
+	if got := withoutRefusalCodeLine(line); got != line {
+		t.Errorf("a lone code line became %q, want it kept", got)
+	}
+	if got := withoutRefusalCodeLine("abcd: unknown flag: --yes\n" + line); got != "abcd: unknown flag: --yes\n" {
+		t.Errorf("the code line after the refusal's own was not cut: %q", got)
+	}
 }
 
 func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {

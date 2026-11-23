@@ -647,7 +647,9 @@ Exit codes gate the flow:
   consequential finding this cycle captured and never answered, or an open
   issue record left uncommitted (see *The findings gate* below), or a record
   citing a record the tree being cut does not hold (`unlanded-reference`, see
-  *The references gate* below). A refusal is a result to relay, not a crash, and not
+  *The references gate* below), or a refusal code the last release carried and
+  the tree being cut has dropped or brought back from retirement
+  (`refusal-codes`). A refusal is a result to relay, not a crash, and not
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
 

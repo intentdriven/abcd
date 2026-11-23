@@ -37,7 +37,7 @@ and staleness it reports are unchanged.
 ```
       --agent[=true|false]      with --help, list the verbs agents and hosts call as well, each naming the page to read next
       --format string           the board's form: text | markdown (default text); markdown is a list a host session pastes unchanged
-      --json[=true|false]       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
+      --json[=true|false]       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, with "code", "hint" and "next" once the refusal is coded (abcd explain <code>), and exits non-zero
       --no-color[=true|false]   render the banner and the board without color
       --version[=true|false]    print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
       --view string             the board's view: product | facilitator (default product)
@@ -2360,9 +2360,9 @@ abcd embark probe ../lifeboat
 
 ### `abcd explain`
 
-Print how to call one command, or the shape of one input it reads: Writes nothing; refuses a command path the tree does not have.
+Print how to call one command, an input's shape, or what a refusal code means: Writes nothing; refuses a command path or a code the binary does not have.
 
-**Usage:** `abcd explain [<verb> [<sub-verb>...]] [flags]`
+**Usage:** `abcd explain [<verb> [<sub-verb>...] | <code>] [flags]`
 
 Print how to call one command, from the binary that runs it: its sentence, its usage
 line, each flag with its type, its allowed values, its default and whether it is
@@ -2374,11 +2374,17 @@ A hidden command is answered too, marked (hidden) on its first line.
 passes the command's own check. --json prints the command's facts as JSON, or with
 --input the input's shape.
 
+A word holding a slash is a refusal code, the `code` a refusal carries (such as
+capture/missing-remedy): explain prints its summary, its explanation, the command to
+try next, the commands that raise it and, for a retired code, the release that
+retired it. --json prints the code's entry.
+
 Run it before filling in an input for a command: where it and a page disagree, the
 binary is right, since a page may be older. Bare, it prints this help. It reads
 only and writes nothing. Exit 2 on a refusal: a command path the tree does not have,
-naming the nearest real path or the sub-commands where the path went wrong, or an
-input the command does not read, naming the inputs it does.
+naming the nearest real path or the sub-commands where the path went wrong, an
+input the command does not read, naming the inputs it does, or a code this binary
+does not register, naming the nearest one.
 
 **Flags:**
 

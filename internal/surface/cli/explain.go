@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +32,7 @@ const explainMaxLines = 40
 func newExplainCommand(asJSON *bool) *cobra.Command {
 	var input string
 	cmd := &cobra.Command{
-		Use: "explain [<verb> [<sub-verb>...]]",
+		Use: "explain [<verb> [<sub-verb>...] | <code>]",
 		Long: "Print how to call one command, from the binary that runs it: its sentence, its usage\n" +
 			"line, each flag with its type, its allowed values, its default and whether it is\n" +
 			"required, the flags it inherits, each filled-in input it reads with that input's\n" +
@@ -40,32 +41,54 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 			"--input <flag> prints one input's schema version, its fields and an example that\n" +
 			"passes the command's own check. --json prints the command's facts as JSON, or with\n" +
 			"--input the input's shape.\n\n" +
+			"A word holding a slash is a refusal code, the `code` a refusal carries (such as\n" +
+			"capture/missing-remedy): explain prints its summary, its explanation, the command to\n" +
+			"try next, the commands that raise it and, for a retired code, the release that\n" +
+			"retired it. --json prints the code's entry.\n\n" +
 			"Run it before filling in an input for a command: where it and a page disagree, the\n" +
 			"binary is right, since a page may be older. Bare, it prints this help. It reads\n" +
 			"only and writes nothing. Exit 2 on a refusal: a command path the tree does not have,\n" +
-			"naming the nearest real path or the sub-commands where the path went wrong, or an\n" +
-			"input the command does not read, naming the inputs it does.",
+			"naming the nearest real path or the sub-commands where the path went wrong, an\n" +
+			"input the command does not read, naming the inputs it does, or a code this binary\n" +
+			"does not register, naming the nearest one.",
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd explain: "
 			flag := strings.TrimLeft(input, "-")
 			if len(args) == 0 {
 				if flag != "" {
-					return &exitError{Code: 2, Msg: prefix + "--input names an input of one command, so name the command first, " +
-						"as in `abcd explain ideate record --input verdict-json`"}
+					return refused(2, refusal.UsageMissingArgument, prefix+"--input names an input of one command, so name the command first, "+
+						"as in `abcd explain ideate record --input verdict-json`")
 				}
 				return cmd.Help()
+			}
+			// A word holding a slash names a refusal code, never a command
+			// (spc-2610301431108175 approach 6).
+			if len(args) == 1 && strings.Contains(args[0], "/") {
+				if flag != "" {
+					return refused(2, refusal.UsageFlagConflict, prefix+"--input names an input of one command, and a refusal code reads none; "+
+						"run `abcd explain <code>` alone")
+				}
+				entry, err := explainCode(args[0])
+				if err != nil {
+					return refused(2, refusal.ExplainUnknownCode, prefix+err.Error())
+				}
+				return render(cmd.OutOrStdout(), *asJSON, entry, func(w io.Writer) {
+					for _, line := range explainCodeLines(entry) {
+						fmt.Fprintln(w, line)
+					}
+				})
 			}
 			facts := CommandFacts()
 			at, err := explainResolve(facts, args)
 			if err != nil {
-				return &exitError{Code: 2, Msg: prefix + err.Error()}
+				return refused(2, refusal.ExplainUnknownPath, prefix+err.Error())
 			}
 			hidden := explainHidden(facts, at.Path)
 			if flag != "" {
 				shape, err := explainInput(at, flag)
 				if err != nil {
-					return &exitError{Code: 2, Msg: prefix + err.Error()}
+					return refused(2, refusal.ExplainUnrecognizedInput, prefix+err.Error())
 				}
 				return render(cmd.OutOrStdout(), *asJSON, shape, func(w io.Writer) { renderExplainInput(w, shape, hidden) })
 			}
@@ -405,4 +428,47 @@ func renderExplainFields(w io.Writer, fields []surface.Field, depth int) {
 		fmt.Fprintln(w, line)
 		renderExplainFields(w, f.Fields, depth+1)
 	}
+}
+
+// explainCode is the registered entry of the code word names. An unknown
+// code is refused naming the nearest registered code, never repeating the
+// word, which the error boundary would withhold in any case.
+func explainCode(word string) (refusal.Entry, error) {
+	if entry, ok := refusal.Lookup(refusal.Code(word)); ok {
+		return entry, nil
+	}
+	best, bestDist := refusal.Code(""), -1
+	for _, e := range refusal.Entries() {
+		if d := levenshtein(word, string(e.Code)); bestDist < 0 || d < bestDist {
+			best, bestDist = e.Code, d
+		}
+	}
+	return refusal.Entry{}, fmt.Errorf("this binary registers no refusal code by that name; the nearest registered code is `%s` "+
+		"(a code from a newer release is unknown to an older binary)", best)
+}
+
+// explainCodeLines is one code's text answer: the code and its summary, its
+// explanation, the command to try next, the commands that raise it and, for
+// a retired code, the release that retired it. The next command's slot is
+// the refused call's own command, so it is shown as a placeholder here.
+func explainCodeLines(e refusal.Entry) []string {
+	out := []string{string(e.Code) + " — " + e.Summary}
+	out = append(out, strings.Split(e.Explanation, "\n")...)
+	next := strings.ReplaceAll(e.Next, refusal.CommandSlot, "<the refused command>")
+	switch {
+	case e.Next == refusal.NoNext:
+		next = "none: no command gets past it; the explanation says what to do"
+	case refusal.IsTemplate(e.Next):
+		next += " (a template: fill in each word in angle brackets)"
+	}
+	out = append(out, "Try next: "+next)
+	if len(e.RaisedBy) == 0 {
+		out = append(out, "Raised by: every command, from the command framework's own check")
+	} else {
+		out = append(out, "Raised by: "+strings.Join(e.RaisedBy, ", "))
+	}
+	if e.Retired != "" {
+		out = append(out, "Retired in "+e.Retired+": no refusal raises it any more, and the name is never given to another")
+	}
+	return out
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/readingitem"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 )
 
 // TestCaptureSentinelsWrapLocator holds capture's locator as a thin wrapper over
@@ -30,6 +31,14 @@ func TestCaptureSentinelsWrapLocator(t *testing.T) {
 	_, err = findReadingItem(ir, absent)
 	if !errors.Is(err, ErrUnknownIssueID) || !errors.Is(err, readingitem.ErrUnknown) {
 		t.Errorf("an absent item: err = %v, want both ErrUnknownIssueID and readingitem.ErrUnknown", err)
+	}
+	// It carries the reading ledger's own refusal code, not the issue
+	// ledger's (spc-2610301431108175): `abcd capture list` cannot show it.
+	if got := refusal.CodeOf(err); got != refusal.CaptureUnknownReadingRecord {
+		t.Errorf("an absent item carries code %q, want %s", got, refusal.CaptureUnknownReadingRecord)
+	}
+	if _, _, _, rerr := readReframeRecord(ir, "rfm-2608300000000077"); !errors.Is(rerr, ErrUnknownIssueID) || refusal.CodeOf(rerr) != refusal.CaptureUnknownReadingRecord {
+		t.Errorf("an absent reframe: err = %v code %q, want ErrUnknownIssueID carrying %s", rerr, refusal.CodeOf(rerr), refusal.CaptureUnknownReadingRecord)
 	}
 	if err != nil && err.Error() != "unknown issue id: "+absent+" is not a reading item this ledger holds" {
 		t.Errorf("the message moved: %q", err.Error())

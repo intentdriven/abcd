@@ -1,0 +1,462 @@
+package refusal
+
+import (
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// TestNoTwoEntriesShareACode is the uniqueness test adr-2610301638558260
+// names: two branches that each add a code collide only when they pick the
+// same name, and this test, run in the merge queue like every test, is what
+// catches that case before either branch lands.
+func TestNoTwoEntriesShareACode(t *testing.T) {
+	seen := map[Code]bool{}
+	for _, e := range Entries() {
+		if seen[e.Code] {
+			t.Errorf("two registry entries share the code %q", e.Code)
+		}
+		seen[e.Code] = true
+	}
+}
+
+// TestEveryCodeFollowsTheGrammar: a code is the verb, a slash and the reason,
+// lower-case kebab-case (adr-2610301638558260).
+func TestEveryCodeFollowsTheGrammar(t *testing.T) {
+	for _, e := range Entries() {
+		if !validName(string(e.Code)) {
+			t.Errorf("code %q is not <verb>/<reason> in lower-case kebab-case", e.Code)
+		}
+	}
+	for _, bad := range []string{"", "capture", "Capture/missing-remedy", "capture/missing_remedy",
+		"capture/-remedy", "capture//remedy", "capture/remedy/missing", "capture/remedy-", "/remedy"} {
+		if validName(bad) {
+			t.Errorf("validName(%q) = true, want false", bad)
+		}
+	}
+	for _, good := range []string{"capture/missing-remedy", "usage/unknown-flag", "explain/unknown-code"} {
+		if !validName(good) {
+			t.Errorf("validName(%q) = false, want true", good)
+		}
+	}
+}
+
+// TestEveryEntryIsComplete: each entry has its one-line summary, its
+// explanation and a next command or the explicit word none, and a retired
+// entry names a release tag.
+func TestEveryEntryIsComplete(t *testing.T) {
+	for _, e := range Entries() {
+		if strings.TrimSpace(e.Summary) == "" || strings.Contains(e.Summary, "\n") {
+			t.Errorf("%s: the summary must be one non-empty line, got %q", e.Code, e.Summary)
+		}
+		if strings.TrimSpace(e.Explanation) == "" {
+			t.Errorf("%s: the explanation is empty", e.Code)
+		}
+		if e.Next != NoNext && !strings.HasPrefix(e.Next, "abcd ") {
+			t.Errorf("%s: the next command must be an abcd command or %q, got %q", e.Code, NoNext, e.Next)
+		}
+		if e.Retired != "" && !strings.HasPrefix(e.Retired, "v") {
+			t.Errorf("%s: retired must name a release tag, got %q", e.Code, e.Retired)
+		}
+		usage := strings.HasPrefix(string(e.Code), "usage/")
+		if usage != (len(e.RaisedBy) == 0) {
+			t.Errorf("%s: only a usage code is raised by every command and names no raiser; raised_by = %q", e.Code, e.RaisedBy)
+		}
+		for _, p := range e.RaisedBy {
+			if !strings.HasPrefix(p, "abcd") {
+				t.Errorf("%s: raised_by %q is not a command path", e.Code, p)
+			}
+		}
+	}
+}
+
+// TestUncodedIsNeverRegistered: internal/uncoded is what a refusal built
+// without a code carries, so that the gates fail on it; registering it would
+// make it resolve and pass.
+func TestUncodedIsNeverRegistered(t *testing.T) {
+	if _, ok := Lookup(Uncoded); ok {
+		t.Fatalf("%s is registered; it must never resolve", Uncoded)
+	}
+	if _, ok := Lookup(None); ok {
+		t.Fatal("the empty code is registered")
+	}
+}
+
+// TestWrapIsFoundThroughErrorsAs: a core package names the code where the
+// refusal is decided, and the front door finds it however the error was
+// wrapped on the way out.
+func TestWrapIsFoundThroughErrorsAs(t *testing.T) {
+	base := errors.New("the remedy is missing")
+	wrapped := Wrap(CaptureMissingRemedy, base)
+	if wrapped.Error() != base.Error() {
+		t.Errorf("Wrap changed the message: %q", wrapped.Error())
+	}
+	if !errors.Is(wrapped, base) {
+		t.Error("Wrap does not unwrap to the error it wraps")
+	}
+	outer := fmt.Errorf("abcd capture: %w", wrapped)
+	if got := CodeOf(outer); got != CaptureMissingRemedy {
+		t.Errorf("CodeOf through fmt.Errorf = %q, want %q", got, CaptureMissingRemedy)
+	}
+	joined := errors.Join(errors.New("other"), outer)
+	if got := CodeOf(joined); got != CaptureMissingRemedy {
+		t.Errorf("CodeOf through errors.Join = %q, want %q", got, CaptureMissingRemedy)
+	}
+	if got := CodeOf(base); got != None {
+		t.Errorf("CodeOf of an uncoded error = %q, want none", got)
+	}
+	if Wrap(CaptureMissingRemedy, nil) != nil {
+		t.Error("Wrap of a nil error must be nil")
+	}
+}
+
+// TestFillNextUsesTheCommandPathOnly: the next command is filled from the
+// refused call's command path, and from nothing else.
+func TestFillNextUsesTheCommandPathOnly(t *testing.T) {
+	cases := []struct{ next, path, want string }{
+		{"abcd explain {command}", "abcd capture remedy", "abcd explain capture remedy"},
+		{"abcd explain {command}", "abcd", "abcd explain abcd"},
+		{`abcd capture "<text>" --remedy "<fix>"`, "abcd capture", `abcd capture "<text>" --remedy "<fix>"`},
+		{NoNext, "abcd capture", NoNext},
+	}
+	for _, c := range cases {
+		if got := FillNext(c.next, c.path); got != c.want {
+			t.Errorf("FillNext(%q, %q) = %q, want %q", c.next, c.path, got, c.want)
+		}
+	}
+}
+
+// TestLedgerRoundTripsAndIsSorted: the ledger lists every registered code,
+// retired ones included, sorted, and decodes to what was encoded.
+func TestLedgerRoundTripsAndIsSorted(t *testing.T) {
+	l := BuildLedger()
+	if len(l.Codes) != len(Entries()) {
+		t.Fatalf("the ledger lists %d codes, the registry %d", len(l.Codes), len(Entries()))
+	}
+	for i := 1; i < len(l.Codes); i++ {
+		if l.Codes[i-1].Code >= l.Codes[i].Code {
+			t.Fatalf("the ledger is not sorted at %q, %q", l.Codes[i-1].Code, l.Codes[i].Code)
+		}
+	}
+	data, err := EncodeLedger(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := DecodeLedger(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := EncodeLedger(back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(data) {
+		t.Fatalf("the ledger does not round-trip:\n%s\n---\n%s", data, again)
+	}
+	if _, err := DecodeLedger([]byte(`{"format_version": 99, "codes": []}`)); err == nil {
+		t.Error("a ledger of an unknown format version decoded")
+	}
+	if _, err := DecodeLedger([]byte(`{"format_version": 1, "codes": [{"code": "Not A Code"}]}`)); err == nil {
+		t.Error("a ledger holding a malformed code decoded")
+	}
+}
+
+// TestCommittedLedgerMatchesTheRegistry is the drift test: the ledger the
+// release guard reads at a tag is written from the registry by
+// cmd/refusal-codes-sync, and a registry change that is not written into it
+// fails here.
+func TestCommittedLedgerMatchesTheRegistry(t *testing.T) {
+	path := filepath.Join("..", "..", "..", filepath.FromSlash(LedgerPath))
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the committed ledger: %v (run `make refusal-codes-sync`)", err)
+	}
+	want, err := EncodeLedger(BuildLedger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("%s is out of date with the registry; run `make refusal-codes-sync`.\ncommitted:\n%s\nwant:\n%s", LedgerPath, got, want)
+	}
+}
+
+// TestEveryWrapInCoreNamesARegisteredConstant: a core package names a
+// refusal's code with refusal.Wrap where the refusal is decided, and the code
+// it names is one of this package's constants, registered here. A string, a
+// conversion or a variable could name a code the registry never heard of.
+func TestEveryWrapInCoreNamesARegisteredConstant(t *testing.T) {
+	consts := constantCodes(t)
+	coreDir := filepath.Join("..")
+	err := filepath.WalkDir(coreDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if filepath.Base(filepath.Dir(path)) == "refusal" {
+			return nil
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		alias := importName(f, "github.com/intentdriven/abcd/internal/core/refusal")
+		if alias == "" {
+			return nil
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || !isSelector(call.Fun, alias, "Wrap") || len(call.Args) == 0 {
+				return true
+			}
+			sel, ok := call.Args[0].(*ast.SelectorExpr)
+			if !ok || !isIdent(sel.X, alias) {
+				t.Errorf("%s: refusal.Wrap must name a code constant of the refusal package", fset.Position(call.Pos()))
+				return true
+			}
+			code, known := consts[sel.Sel.Name]
+			if !known {
+				t.Errorf("%s: refusal.%s is not a code constant", fset.Position(call.Pos()), sel.Sel.Name)
+				return true
+			}
+			if _, ok := Lookup(code); !ok {
+				t.Errorf("%s: refusal.%s (%s) is not registered", fset.Position(call.Pos()), sel.Sel.Name, code)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestEveryConstantIsRegistered: a code constant the registry does not hold
+// would be raised and resolve to nothing; internal/uncoded is the one
+// exception, by design.
+func TestEveryConstantIsRegistered(t *testing.T) {
+	for name, code := range constantCodes(t) {
+		if code == None || code == Uncoded {
+			continue
+		}
+		if _, ok := Lookup(code); !ok {
+			t.Errorf("constant %s (%s) is not registered", name, code)
+		}
+	}
+}
+
+// constantCodes reads this package's source for every constant declared as a
+// Code, by name.
+func constantCodes(t *testing.T) map[string]Code {
+	t.Helper()
+	fset := token.NewFileSet()
+	out := map[string]Code{}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, e.Name(), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				vs := spec.(*ast.ValueSpec)
+				if !isIdent(vs.Type, "Code") {
+					continue
+				}
+				for i, name := range vs.Names {
+					lit, ok := vs.Values[i].(*ast.BasicLit)
+					if !ok {
+						t.Fatalf("constant %s is not a string literal", name.Name)
+					}
+					s, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					out[name.Name] = Code(s)
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("no Code constants found")
+	}
+	return out
+}
+
+func importName(f *ast.File, path string) string {
+	for _, imp := range f.Imports {
+		if p, _ := strconv.Unquote(imp.Path.Value); p == path {
+			if imp.Name != nil {
+				return imp.Name.Name
+			}
+			return "refusal"
+		}
+	}
+	return ""
+}
+
+func isSelector(e ast.Expr, x, sel string) bool {
+	s, ok := e.(*ast.SelectorExpr)
+	return ok && isIdent(s.X, x) && s.Sel.Name == sel
+}
+
+func isIdent(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+// TestNextIsACommandATemplateOrNone: every next command is the word none, a
+// command to run as it stands, or a template whose only angle-bracketed words
+// are placeholders the caller fills in. IsTemplate tells the last two apart,
+// and the front door and explain read it.
+func TestNextIsACommandATemplateOrNone(t *testing.T) {
+	sawTemplate, sawCommand := false, false
+	for _, e := range Entries() {
+		if e.Next == NoNext {
+			if IsTemplate(e.Next) {
+				t.Errorf("%s: none is not a template", e.Code)
+			}
+			continue
+		}
+		if !strings.HasPrefix(e.Next, "abcd ") {
+			t.Errorf("%s: next %q is not an abcd command", e.Code, e.Next)
+		}
+		bare := placeholderRe.ReplaceAllString(e.Next, "")
+		if strings.ContainsAny(bare, "<>") {
+			t.Errorf("%s: next %q holds an angle bracket that is not a placeholder", e.Code, e.Next)
+		}
+		if IsTemplate(e.Next) != (bare != e.Next) {
+			t.Errorf("%s: IsTemplate(%q) = %v", e.Code, e.Next, IsTemplate(e.Next))
+		}
+		if IsTemplate(e.Next) {
+			sawTemplate = true
+		} else {
+			sawCommand = true
+		}
+	}
+	if !sawTemplate || !sawCommand {
+		t.Errorf("the registry holds a template: %v, a runnable command: %v; want both, so both forms stay tested", sawTemplate, sawCommand)
+	}
+	if !IsTemplate(`abcd capture "<text>" --remedy "<fix>"`) || IsTemplate("abcd capture list --all") || IsTemplate(NoNext) {
+		t.Error("IsTemplate misreads a known next")
+	}
+}
+
+// TestLedgerRecordsARetiredCodesReplacement: a retired code may name the code
+// that replaced it, and the ledger carries it as replaced_by, so a reader
+// matching on the old code learns which one to match on instead
+// (adr-2610301638558260).
+func TestLedgerRecordsARetiredCodesReplacement(t *testing.T) {
+	l := ledgerOf([]Entry{
+		{Code: "demo/new-name"},
+		{Code: "demo/old-name", Retired: "v1.2.0", ReplacedBy: "demo/new-name"},
+	})
+	data, err := EncodeLedger(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"replaced_by": "demo/new-name"`) {
+		t.Fatalf("the ledger does not carry the replacement:\n%s", data)
+	}
+	back, err := DecodeLedger(data)
+	if err != nil {
+		t.Fatalf("a ledger with a replacement does not decode: %v", err)
+	}
+	if back.Codes[1].ReplacedBy != "demo/new-name" {
+		t.Errorf("decoded replacement = %q", back.Codes[1].ReplacedBy)
+	}
+}
+
+// TestDecodeLedgerRefusesABadReplacement: replaced_by is held to the same
+// rules as the code it names: only a retired code is replaced, by a code the
+// same ledger lists, never by itself, and only by a name that is a code.
+func TestDecodeLedgerRefusesABadReplacement(t *testing.T) {
+	for name, codes := range map[string]string{
+		"on a live code":       `{"code":"demo/a","replaced_by":"demo/b"},{"code":"demo/b"}`,
+		"naming a code absent": `{"code":"demo/a","retired":"v1.0.0","replaced_by":"demo/zzz"}`,
+		"naming itself":        `{"code":"demo/a","retired":"v1.0.0","replaced_by":"demo/a"}`,
+		"naming no code":       `{"code":"demo/a","retired":"v1.0.0","replaced_by":"Not A Code"},{"code":"Not A Code"}`,
+	} {
+		data := []byte(`{"format_version":1,"codes":[` + codes + `]}`)
+		if _, err := DecodeLedger(data); err == nil {
+			t.Errorf("%s: a ledger with replaced_by %s decoded", name, codes)
+		}
+	}
+}
+
+// TestEveryReplacementIsARegisteredCode: in the registry itself, an entry
+// that names a replacement is retired, and the replacement is another
+// registered code.
+func TestEveryReplacementIsARegisteredCode(t *testing.T) {
+	for _, e := range Entries() {
+		if e.ReplacedBy == None {
+			continue
+		}
+		if e.Retired == "" {
+			t.Errorf("%s: names replacement %s but is not retired", e.Code, e.ReplacedBy)
+		}
+		if _, ok := Lookup(e.ReplacedBy); !ok || e.ReplacedBy == e.Code {
+			t.Errorf("%s: replacement %s is not another registered code", e.Code, e.ReplacedBy)
+		}
+	}
+	if _, err := DecodeLedger(mustEncode(t, BuildLedger())); err != nil {
+		t.Errorf("the registry's own ledger does not decode: %v", err)
+	}
+}
+
+func mustEncode(t *testing.T, l Ledger) []byte {
+	t.Helper()
+	data, err := EncodeLedger(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// TestTheRenamedCodesAreTheRegisteredOnes pins the six names the product
+// thinker settled on 2026-11-23, before any release carried a code: each is
+// registered, and the name it replaced is not (no release carried it, so it is
+// renamed, not retired).
+func TestTheRenamedCodesAreTheRegisteredOnes(t *testing.T) {
+	for old, renamed := range map[Code]Code{
+		"capture/remedy-missing":       "capture/missing-remedy",
+		"capture/input-invalid":        "capture/invalid-input",
+		"usage/bad-flag-value":         "usage/invalid-flag-value",
+		"capture/grounds-refused":      "capture/insufficient-grounds",
+		"capture/remedy-machine-value": "capture/remedy-machine-specific",
+		"explain/unknown-input":        "explain/unrecognized-input",
+	} {
+		if _, ok := Lookup(renamed); !ok {
+			t.Errorf("%s is not registered", renamed)
+		}
+		if _, ok := Lookup(old); ok {
+			t.Errorf("%s is still registered; it was renamed %s", old, renamed)
+		}
+	}
+}

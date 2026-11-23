@@ -51,6 +51,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/record/match"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -69,15 +70,45 @@ import (
 // command sets SilenceErrors, so main inspects this to choose the exit code and
 // (when Msg is non-empty) print a single diagnostic line. An empty Msg means the
 // command already rendered its output and only the exit code should propagate.
+//
+// A refusal (exit 2, or 3 when someone else holds what the call needs) also
+// carries its refusal code (internal/core/refusal), which Run turns into the
+// hint and the next command (spc-2610301431108175). It is built only through
+// refused or exitWith. The files listed in refusalUncodedPath still build
+// literals while the migration runs, and the literal test exempts only those
+// (refusal_codes_test.go); once the list is gone the two fields below become
+// unexported with it.
 type exitError struct {
 	Code int
 	Msg  string
+	// ref is the refusal code, refusal.None for a fault or for a refusal
+	// built by a file the migration has not reached.
+	ref refusal.Code
 	// wall says a comparison ended a drive, which another attempt must not write over.
 	wall bool
 }
 
 func (e *exitError) Error() string { return e.Msg }
 func (e *exitError) ExitCode() int { return e.Code }
+
+// refused builds a refusal at exit 2, or 3 when someone else holds what the
+// call needs, carrying the registered code ref. The literal test holds that
+// ref names a registered constant.
+func refused(exit int, ref refusal.Code, msg string) *exitError {
+	return &exitError{Code: exit, Msg: msg, ref: ref}
+}
+
+// exitWith builds an exit whose code is known only at run time. ref is
+// required: it may be refusal.None only when the exit turns out to be 1, a
+// fault. An exit of 2 or 3 with refusal.None is still returned, carrying
+// refusal.Uncoded, which is never registered, so the tests that hold the
+// registry and the front door fail on it.
+func exitWith(exit int, ref refusal.Code, msg string) *exitError {
+	if ref == refusal.None && (exit == 2 || exit == 3) {
+		ref = refusal.Uncoded
+	}
+	return &exitError{Code: exit, Msg: msg, ref: ref}
+}
 
 // helpRunE is the RunE every sub-verb parent carries. A cobra parent with no RunE
 // is not Runnable, so cobra prints help and exits 0 WITHOUT running the command's
@@ -395,7 +426,7 @@ func NewRootCommand() *cobra.Command {
 	// the other without reading prose (iss-2609100519128005). It is the one line
 	// the generated reference page carries about the contract.
 	root.PersistentFlags().BoolVar(&asJSON, "json", false,
-		`emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero`)
+		`emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, with "code", "hint" and "next" once the refusal is coded (abcd explain <code>), and exits non-zero`)
 	// Root-local by design: colour exists only on the bare invocation, so a
 	// persistent flag would be dead surface on every subcommand (itd-112).
 	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner and the board without color")
@@ -699,7 +730,13 @@ func NewRootCommand() *cobra.Command {
 // stops at the first bad flag, so a --json after it is never read and the
 // persistent flag still reads false when Run renders the refusal. It unwraps to
 // the refusal each flag-error function chose, whose exit code and wording stand.
-type flagParseError struct{ err error }
+//
+// It also carries the refusal's usage code, read from the parser's own error
+// type before any pass rewords it (usage_errors.go, flagErrorCode).
+type flagParseError struct {
+	err  error
+	code refusal.Code
+}
 
 func (e *flagParseError) Error() string { return e.err.Error() }
 func (e *flagParseError) Unwrap() error { return e.err }
@@ -711,7 +748,7 @@ func markFlagParseErrors(c *cobra.Command) {
 	inner := c.FlagErrorFunc()
 	c.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		if out := inner(cmd, err); out != nil {
-			return &flagParseError{err: out}
+			return &flagParseError{err: out, code: flagErrorCode(err)}
 		}
 		return nil
 	})
@@ -5907,18 +5944,18 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// and with the sub-verb list when none is, because a far miss is a
 			// subcommand call too (iss-2609091647589392). Genuine prose still files.
 			if hint := recordReadHint("capture", args); hint != "" {
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand (the first argument, not repeated here); %s (nothing captured)", hint)}
+				return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
+					"unknown capture subcommand (the first argument, not repeated here); %s (nothing captured)", hint))
 			}
 			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 				if sug == "" {
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
+					return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
 						"unknown capture subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
-						strings.Join(subverbNames(cmd), ", "))}
+						strings.Join(subverbNames(cmd), ", ")))
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
+				return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
 					"unknown capture subcommand (the first argument, not repeated here); did you mean %q? (nothing captured — reword the text if you meant to file it)",
-					sug)}
+					sug))
 			}
 			// Guard: a lone bare word near NO sub-verb fell through the
 			// did-you-mean above and was filed as an issue
@@ -5926,23 +5963,23 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// shape; only prose is issue text.
 			if loneBareToken(args) {
 				if args[0] == "" {
-					return &exitError{Code: 2, Msg: "abcd capture: the issue text is empty (nothing captured)"}
+					return refused(2, refusal.UsageMissingArgument, "abcd capture: the issue text is empty (nothing captured)")
 				}
-				return &exitError{Code: 2, Msg: "unknown capture subcommand (the first argument, not repeated here; nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)"}
+				return refused(2, refusal.UsageUnknownCommand, "unknown capture subcommand (the first argument, not repeated here; nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)")
 			}
 			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
 			// fix it proposes, one line. The machine value is refused from a
 			// person, so it always means one of abcd's automatic filers wrote
 			// the record (ruling H12). Refused before anything is written.
 			if strings.TrimSpace(remedy) == "" {
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
+				return refused(2, refusal.CaptureMissingRemedy, fmt.Sprintf(
 					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
-						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy)}
+						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy))
 			}
 			if issueschema.IsMachineRemedy(remedy) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
+				return refused(2, refusal.CaptureRemedyMachineSpecific, fmt.Sprintf(
 					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
-						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy)}
+						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy))
 			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
@@ -5984,8 +6021,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// the flag and the set it accepts (iss-2608290810037524).
 				var fv *capture.FieldValueError
 				if errors.As(err, &fv) {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
-						fv.Field, enumHelp(fv.Accepted))}
+					return refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
+						fv.Field, enumHelp(fv.Accepted)))
 				}
 				return captureRefusal("", err)
 			}
@@ -6467,7 +6504,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(surpriseOccasion) == "" {
-				return &exitError{Code: 2, Msg: "abcd capture surprise: --occasioned-by <rdi-N|adm-N|dsp-N> is required — a surprise is keyed to the record that occasioned it (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd capture surprise: --occasioned-by <rdi-N|adm-N|dsp-N> is required — a surprise is keyed to the record that occasioned it (nothing written)")
 			}
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
@@ -6507,10 +6544,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if reframeComplete == "" && strings.TrimSpace(reframeOccasion) == "" {
-				return &exitError{Code: 2, Msg: "abcd capture reframe: --occasioned-by <rdi-N|dsp-N|srp-N> is required, or --complete <rfm-N> to finish an open record (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd capture reframe: --occasioned-by <rdi-N|dsp-N|srp-N> is required, or --complete <rfm-N> to finish an open record (nothing written)")
 			}
 			if reframeComplete != "" && (reframeOccasion != "" || reframeGrounds != "" || reframeOpen) {
-				return &exitError{Code: 2, Msg: "abcd capture reframe: --complete takes the record id alone; the occasion and the ground are the first half's (nothing written)"}
+				return refused(2, refusal.UsageFlagConflict, "abcd capture reframe: --complete takes the record id alone; the occasion and the ground are the first half's (nothing written)")
 			}
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
@@ -6720,7 +6757,9 @@ func captureRefusal(verb string, err error) error {
 		return err
 	}
 	msg := scrubPaths(err)
-	// The peer-held refusal already names the verb.
+	// The peer-held refusal already names the verb. It is raised by every
+	// verb that looks a record up (peers.go), so its code is named with the
+	// rest of those verbs' refusals, not here (spc-2610301431108175 step 3).
 	var held *peerHeldError
 	if errors.As(err, &held) {
 		return &exitError{Code: 2, Msg: msg}
@@ -6735,7 +6774,28 @@ func captureRefusal(verb string, err error) error {
 	if verb != "" {
 		msg = strings.TrimPrefix(msg, verb+": ")
 	}
-	return &exitError{Code: 2, Msg: "abcd " + name + ": " + msg}
+	return exitWith(2, captureRefusalCode(err), "abcd "+name+": "+msg)
+}
+
+// captureRefusalCode is the code of a refusal the capture core decided: the
+// code the core put on the error where it named one (refusal.Wrap), and
+// otherwise the one the front door maps the sentinel captureRefusal refuses
+// on to.
+func captureRefusalCode(err error) refusal.Code {
+	if c := refusal.CodeOf(err); c != refusal.None {
+		return c
+	}
+	switch {
+	case errors.Is(err, capture.ErrUnknownIssueID):
+		return refusal.CaptureUnknownIssue
+	case errors.Is(err, capture.ErrTransitionConflict):
+		return refusal.CaptureNotOpen
+	case errors.Is(err, capture.ErrGroundsRefused):
+		return refusal.CaptureInsufficientGrounds
+	case errors.Is(err, capture.ErrNotCharacterised):
+		return refusal.CaptureNotCharacterized
+	}
+	return refusal.CaptureInvalidInput
 }
 
 // emitRedactionNote says, on the human surface, that the written text differs
@@ -6789,10 +6849,10 @@ func listState(open, resolved, wontfix, all bool) (capture.State, error) {
 		chosen, n = capture.StateAll, n+1
 	}
 	if n == 0 {
-		return "", &exitError{Code: 2, Msg: "capture list: choose a filter: --open / --resolved / --wontfix / --all"}
+		return "", refused(2, refusal.UsageMissingRequiredFlag, "capture list: choose a filter: --open / --resolved / --wontfix / --all")
 	}
 	if n > 1 {
-		return "", &exitError{Code: 2, Msg: "capture list: the filter flags are mutually exclusive"}
+		return "", refused(2, refusal.UsageFlagConflict, "capture list: the filter flags are mutually exclusive")
 	}
 	return chosen, nil
 }
@@ -7047,7 +7107,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1)}
+			return nil, refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1))
 		}
 		ids = append(ids, tok)
 	}
@@ -7635,7 +7695,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			defer layHomeIgnore(stderr, quiet)
 		}
 	}
-	err := root.Execute()
+	called, err := root.ExecuteC()
 	if err == nil {
 		return 0
 	}
@@ -7648,6 +7708,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		code = coded.ExitCode()
 	}
 	if msg := scrubPaths(err); msg != "" {
+		// The refusal's code, read before the message is reworded below, so
+		// cobra's own wording is still there for the usage classifier
+		// (spc-2610301431108175 approaches 2 and 3).
+		ref := refusalCodeOf(err, msg, code)
+		if refusalCodeCheck != nil {
+			refusalCodeCheck(code, ref, args)
+		}
 		// An unknown command or flag on a binary that can prove it is stale
 		// names the staleness and the way out, on a second line, from disk
 		// alone; otherwise the refusal line stands alone (iss-2608230943088357,
@@ -7681,12 +7748,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		if !asJSON && errors.As(err, &parseErr) {
 			asJSON = jsonRequestedIn(args)
 		}
+		env := newErrorEnvelope(msg, code)
+		env.withRefusal(ref, called)
 		if asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
-			_ = enc.Encode(newErrorEnvelope(msg, code))
+			_ = enc.Encode(env)
 		} else {
 			fmt.Fprintln(stderr, "abcd:", msg)
+			if line := env.refusalLine(); line != "" {
+				fmt.Fprintln(stderr, "abcd:", line)
+			}
 		}
 	}
 	return code
@@ -7723,12 +7795,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // refusal is always the LAST of them, because Run writes it after the command has
 // returned. A consumer decoding a stream (encoding/json's Decoder, or jq) reads
 // them all and finds the outcome at the end.
+//
+// A refusal that carries a code (spc-2610301431108175) adds three keys after
+// those three, which stay exactly as they were: `code`, the registered refusal
+// code; `hint`, its one-line summary; and `next`, the command to try next, or
+// the word `none` where no command can help. A `next` holding a word in angle
+// brackets is a template whose bracketed words the caller fills in
+// (refusal.IsTemplate); any other runs as it stands. `abcd explain <code>` prints the
+// code's explanation. A refusal not yet coded carries none of the three.
 type errorEnvelope struct {
 	// Abcd is always "error". It leads the struct so it leads the encoded
 	// object, where a reader — human or machine — meets it first.
 	Abcd     string `json:"abcd"`
 	Error    string `json:"error"`
 	ExitCode int    `json:"exit_code"`
+	Code     string `json:"code,omitempty"`
+	Hint     string `json:"hint,omitempty"`
+	Next     string `json:"next,omitempty"`
 }
 
 // newErrorEnvelope builds the refusal envelope, so the discriminator is stated

@@ -136,6 +136,11 @@ const (
 	// intent shipped since the tag, no saved docs review names the commit
 	// being cut or the review confirms a false sentence.
 	RefusalDocFidelity RefusalKind = "doc-fidelity"
+	// RefusalRefusalCodes: a refusal code the last release carried is missing
+	// from HEAD's ledger, or a code it carried as retired is live again
+	// (adr-2610301638558260). A published code is never renamed, removed or
+	// handed to a different refusal.
+	RefusalRefusalCodes RefusalKind = "refusal-codes"
 )
 
 // Refusal is one reason a cut cannot proceed. It always names something
@@ -278,6 +283,14 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 			Kind:   RefusalSurfaceGuard,
 			Reason: guard.Reason,
 		})
+	}
+
+	codes, err := changelog.GuardRefusalCodes(root, derivation.BaseTag)
+	if err != nil {
+		return Cut{}, err
+	}
+	if codes.Status != changelog.RefusalCodeGuardPassed {
+		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalRefusalCodes, Reason: codes.Reason})
 	}
 
 	findings, err := changelog.GuardFindings(root, derivation.BaseTag)

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -304,4 +305,124 @@ func newCommands(baseline, current surface.Snapshot) []string {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// RefusalCodeGuardStatus is the refusal-code guard's verdict on a cut.
+type RefusalCodeGuardStatus string
+
+// The two verdicts. The string values are what a machine-readable front door
+// emits.
+const (
+	RefusalCodeGuardPassed RefusalCodeGuardStatus = "passed"
+	RefusalCodeGuardFailed RefusalCodeGuardStatus = "failed"
+)
+
+// RefusalCodeGuard is the outcome of the refusal-code guard at a release cut
+// (adr-2610301638558260, spc-2610301431108175 step 1).
+type RefusalCodeGuard struct {
+	// BaseTag is the release tag whose ledger was read.
+	BaseTag string `json:"base_tag"`
+	// Status is the verdict.
+	Status RefusalCodeGuardStatus `json:"status"`
+	// Missing is every code the tag's ledger lists that HEAD's does not,
+	// sorted: a code renamed or removed since the release that carried it.
+	Missing []refusal.Code `json:"missing,omitempty"`
+	// Revived is every code the tag's ledger lists as retired that HEAD's
+	// lists as live, sorted: a retired name handed to a refusal again.
+	Revived []refusal.Code `json:"revived,omitempty"`
+	// Reason names what to fix; empty on a pass.
+	Reason string `json:"reason,omitempty"`
+}
+
+// GuardRefusalCodes compares the ledger of refusal codes at baseTag with the
+// one committed at HEAD and writes nothing. Once a release has carried a code,
+// the code stays: it is never renamed or removed, and a code retired stays
+// retired, so the name is never handed to a different refusal. A cut that
+// breaks either refuses, naming every code.
+//
+// The ledger is read out of the tag for the reason GuardSurface reads the
+// snapshot out of it: the committed ledger is held equal to the registry by a
+// drift test, so comparing it with the registry would compare a file with
+// itself. HEAD is read rather than the working tree, as ShippedSince reads it,
+// so a dirty tree cannot change what the gate concludes.
+//
+// A tag whose tree carries no ledger passes: that release carried no codes, so
+// there is no code to keep, and the rule binds from the first tag whose ledger
+// lists them (adr-2610301638558260, consequences). A ledger present at the tag
+// that cannot be read is an error, never an empty list.
+func GuardRefusalCodes(root, baseTag string) (RefusalCodeGuard, error) {
+	g := RefusalCodeGuard{BaseTag: baseTag, Status: RefusalCodeGuardPassed}
+	atTag, found, err := refusalLedgerAt(root, baseTag)
+	if err != nil {
+		return RefusalCodeGuard{}, err
+	}
+	if !found {
+		return g, nil
+	}
+	atHead, _, err := refusalLedgerAt(root, "HEAD")
+	if err != nil {
+		return RefusalCodeGuard{}, err
+	}
+	live := make(map[refusal.Code]bool, len(atHead.Codes))
+	for _, c := range atHead.Codes {
+		live[c.Code] = c.Retired == ""
+	}
+	for _, c := range atTag.Codes {
+		isLive, present := live[c.Code]
+		switch {
+		case !present:
+			g.Missing = append(g.Missing, c.Code)
+		case c.Retired != "" && isLive:
+			g.Revived = append(g.Revived, c.Code)
+		}
+	}
+	slices.Sort(g.Missing)
+	slices.Sort(g.Revived)
+	var reasons []string
+	if len(g.Missing) > 0 {
+		reasons = append(reasons, fmt.Sprintf("refusal codes %s carried are missing from %s at HEAD: %s; "+
+			"a published code is never renamed or removed, so restore it in internal/core/refusal "+
+			"(mark it retired if its refusal is gone) and run `make refusal-codes-sync`",
+			baseTag, refusal.LedgerPath, joinCodes(g.Missing)))
+	}
+	if len(g.Revived) > 0 {
+		reasons = append(reasons, fmt.Sprintf("refusal codes %s carried as retired are live again at HEAD: %s; "+
+			"a retired code is never handed to a refusal again, so give the refusal a new code",
+			baseTag, joinCodes(g.Revived)))
+	}
+	if len(reasons) > 0 {
+		g.Status = RefusalCodeGuardFailed
+		g.Reason = strings.Join(reasons, "\n")
+	}
+	return g, nil
+}
+
+func joinCodes(codes []refusal.Code) string {
+	out := make([]string, len(codes))
+	for i, c := range codes {
+		out[i] = string(c)
+	}
+	return strings.Join(out, ", ")
+}
+
+// refusalLedgerAt reads the committed ledger of refusal codes out of ref's
+// tree, probing for it first, as surfaceSnapshotAt does, so a missing path is
+// told apart from a ref git cannot read.
+func refusalLedgerAt(root, ref string) (refusal.Ledger, bool, error) {
+	listed, err := gitutil.RunCappedAsStored(root, maxSnapshotListing, "ls-tree", "-z", "--name-only", ref, "--", refusal.LedgerPath)
+	if err != nil {
+		return refusal.Ledger{}, false, fmt.Errorf("looking for %s at %s: %w", refusal.LedgerPath, ref, err)
+	}
+	if strings.Trim(listed, "\x00") == "" {
+		return refusal.Ledger{}, false, nil
+	}
+	blob, err := gitutil.RunCappedAsStored(root, maxSnapshotBytes, "cat-file", "blob", ref+":"+refusal.LedgerPath)
+	if err != nil {
+		return refusal.Ledger{}, false, fmt.Errorf("reading %s at %s: %w", refusal.LedgerPath, ref, err)
+	}
+	l, err := refusal.DecodeLedger([]byte(blob))
+	if err != nil {
+		return refusal.Ledger{}, false, fmt.Errorf("decoding %s at %s: %w", refusal.LedgerPath, ref, err)
+	}
+	return l, true, nil
 }

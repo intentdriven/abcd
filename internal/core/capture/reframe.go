@@ -33,6 +33,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -789,7 +790,8 @@ func readReframeRecord(issuesRoot, id string) (string, map[string]any, string, e
 	content, err := readRecordGuarded(p)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil, "", fmt.Errorf("%w: %s is not a reframe this ledger holds (nothing written)", ErrUnknownIssueID, id)
+			return "", nil, "", refusal.Wrap(refusal.CaptureUnknownReadingRecord,
+				fmt.Errorf("%w: %s is not a reframe this ledger holds (nothing written)", ErrUnknownIssueID, id))
 		}
 		return "", nil, "", err
 	}

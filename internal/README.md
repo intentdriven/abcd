@@ -108,6 +108,14 @@ plugin surface, and a future MCP server share one engine.
   reports each rewrite. A leaf on the `core/mdrecord` precedent: three record
   families move, and a repoint spelled per family is one that misses a link
   class the others catch.
+- **`core/refusal/`** — the registry of refusal codes (itd-2610301428378830).
+  One table holds each code (`<verb>/<reason>`, never a number), its one-line
+  hint, its explanation and the command to try next; the front door reads the
+  hint and the next command from it for the refusal envelope and `abcd explain
+  <code>` prints the explanation. `Wrap` lets a core package name a code where
+  it decides a refusal, and `CodeOf` finds it through any wrapping. It also
+  encodes the ledger of codes the release guard in `core/changelog` reads at the
+  last tag (adr-2610301638558260). A leaf: it imports nothing of abcd's.
 - **`core/provenance/`** — the record's disclosure vocabulary: where an item came
   from (`origin`) and how its text was produced (`production_mode`), plus the one
   parser that reads and renders them. It is a leaf for the same reason
