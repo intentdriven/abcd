@@ -477,14 +477,24 @@ A shell command is approved only when the guard reads it whole and clears it:
   the like). A removal of a directory holding one counts, and so does a write
   that places a whole tree above one: `cp`, `mv`, `install` and `ln` land each
   source under its own last name when the destination is a directory (named by
-  `-t`, spelled with a trailing slash, one of several sources, or a directory
-  standing there now), so `cp -R x/.git ./` writes `.git`, and a source spelled
-  as a glob lands under each name the glob matches; a directory's contents
-  copied (`cp -R src/. dir/`, `rsync -a src/ dir/`, `ditto src dir`), an archive
-  unpacked (`tar -x`, `unzip -d`), a patch applied with no file named, or a
-  source the line does not spell out can write any path below the directory
-  it lands in, so `rsync -a src/ ./` at the root of a working tree reaches its
-  `.git`. A line that only names one of them, to read it, is not a write;
+  `-t`, one of several sources, or a directory standing there now), so
+  `cp -R x/.git ./` writes `.git`; a destination spelled with a trailing slash
+  that does not exist yet becomes the source's tree itself, so both readings
+  are judged; a source spelled as a glob lands under each name the glob
+  matches; a directory's contents copied (`cp -R src/. dir/`, `rsync -a src/
+  dir/`, `ditto src dir`), an archive unpacked (`tar -x`, `unzip -d`), a patch
+  applied with no file named, a source the line does not spell out, or one
+  `xargs` supplies can write any path below the directory it lands in, so
+  `rsync -a src/ ./` at the root of a working tree reaches its `.git`; and an
+  archive whose members keep their absolute or parent paths (`tar -P`,
+  `--absolute-names`, `unzip -:`) can write anywhere. The options are read as
+  GNU getopt reads them (a clustered `-Rt dir`, an abbreviated `--t dir` or
+  `--no-t`), and where macOS's command reads a letter otherwise (`cp -S` and
+  `install -S` take no value there) both readings are judged. A write through
+  a link the same line makes (`ln -s`, `cp -s`, or a move or copy of a link) is
+  judged where the link leads. A listing, a test or a dry run (`unzip -l`,
+  `tar -t`, `patch --dry-run`) writes nothing. A line that only names one of
+  them, to read it, is not a write;
 - no removal reaches outside the working tree (`removal-outside-tree`): a
   removal (`rm`, `rmdir`, `unlink`, `mv`'s sources, a `find` that deletes, an
   `rsync --delete`) whose target lies outside the launched working tree, the

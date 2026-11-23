@@ -754,9 +754,14 @@ its text:
   list protects in any working tree. A write that places a whole tree counts
   for every protected path below where it lands: a source moved, copied or
   linked into a directory lands under its own last name there, or under each
-  name its glob matches, and a directory's contents copied, an archive
-  unpacked or a patch applied with no file named can write any path below
-  the directory. A line that only names one of them is not a write;
+  name its glob matches (into a slash-spelled destination that does not exist
+  yet, as that destination itself), and a directory's contents copied, a
+  source xargs supplies, an archive unpacked or a patch applied with no file
+  named can write any path below the directory; an archive keeping absolute
+  or parent paths can write anywhere. Options are read as GNU getopt reads
+  them, with macOS's other reading of a letter judged too, and a write through
+  a link the same line makes is judged where the link leads. A line that only
+  names one of them is not a write;
 - a removal whose fixed target lies outside the launched working tree, the
   run's own directories (the brief's and the receipt's, which the runner names
   to the approver) and the temporary directory. Writes outside the working tree are judged by

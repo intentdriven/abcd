@@ -362,13 +362,20 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "mv":
 			// The sources leave where they were: every operand with -t,
-			// else every one but the destination.
-			idx := w.operandIdx([]string{"-S", "--suffix", "-t", "--target-directory"})
-			if !has("-t", "--target-directory") && len(idx) > 0 {
-				idx = idx[:len(idx)-1]
-			}
-			for _, i := range idx {
-				out = append(out, at(i, true))
+			// else every one but the destination, read as mv reads its
+			// options and the words an xargs before it adds.
+			view := xargsView(s, a.idx)
+			r := readOpts(view, a.idx+1, mvOpts)
+			for _, i := range copySources(r, r.operands) {
+				if i >= len(s.tokens) {
+					out = append(out, pathUse{remove: true})
+					continue
+				}
+				u := at(i, true)
+				if view.tokens[i] != s.tokens[i] {
+					u = pathUse{remove: true, written: tokenBase(view.tokens[i])}
+				}
+				out = append(out, u)
 			}
 		case "sed":
 			// The files a sed script's w commands write, as sed opens them:
@@ -386,9 +393,10 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "ln":
 			// A link to a protected path is a way to write it.
-			idx := w.operandIdx([]string{"-S", "--suffix", "-t", "--target-directory"})
-			if !has("-t", "--target-directory") && len(idx) > 1 {
-				idx = idx[:len(idx)-1]
+			r := readOpts(s, a.idx+1, lnOpts)
+			idx := r.operands
+			if len(idx) > 1 {
+				idx = copySources(r, idx)
 			}
 			for _, i := range idx {
 				out = append(out, at(i, false))
@@ -1408,4 +1416,154 @@ func gitConfigWrite(args []string, env map[string]string) (string, bool) {
 		return "this sets " + key + " in git's configuration, a setting that starts a program the guard does not read.", true
 	}
 	return "", false
+}
+
+// lineLink is a link a command on the line makes, at path, made by segment
+// seg of the placed line: where it leads (target), with ok false where the
+// line does not fix that; anyName marks links made in the directory path under
+// names the line does not fix.
+type lineLink struct {
+	path, target string
+	ok, anyName  bool
+	seg          int
+}
+
+// lineLinks is every link the placed line's commands make: what `ln` makes
+// (a symbolic link leads where its text names, read from the link's own
+// directory; a hard link is the file it names), what `cp -s` makes, and a
+// link `cp` or `mv` places by copying or moving one, standing now or made
+// earlier on the line, to where that one leads. They are read in text order,
+// so a link moved after it is made is followed to the first one's target.
+func lineLinks(rc *readCtx, placed []placedSeg) []lineLink {
+	var links []lineLink
+	for k, p := range placed {
+		for _, st := range p.states {
+			for _, a := range commandSites(p.seg) {
+				name := strings.ToLower(path.Base(p.seg.tokens[a.idx]))
+				if name != "ln" && name != "cp" && name != "mv" {
+					continue
+				}
+				s := xargsView(p.seg, a.idx)
+				w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
+				r := readOpts(s, a.idx+1, copySpec(name))
+				symbolic := (name == "ln" && r.has('s', "symbolic")) || (name == "cp" && r.has('s', "symbolic-link"))
+				for _, pr := range w.linkPairs(r, name == "ln") {
+					if !pr.at.ok {
+						continue
+					}
+					l := lineLink{path: pr.at.path, anyName: pr.at.in, seg: k}
+					dir := filepath.Dir(l.path)
+					if l.anyName {
+						dir = l.path
+					}
+					tok, fixed := fixedToken(s, pr.src)
+					var target string
+					switch {
+					case !fixed && (name == "ln" || symbolic):
+					case !fixed:
+						continue
+					case symbolic && !filepath.IsAbs(tok) && !strings.HasPrefix(tok, "~"):
+						target, l.ok = filepath.Join(dir, tok), true
+					case name == "ln" || symbolic:
+						target, l.ok = st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+					default:
+						src, ok := st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+						if !ok {
+							continue
+						}
+						if t, through, unfixed := throughLinks(pathUse{path: src, ok: true}, links, -1, approveFoldsCase()); through || unfixed {
+							target, l.ok = t.path, !unfixed
+						} else if fi, err := os.Lstat(src); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+							target, l.ok = src, true
+						} else {
+							continue
+						}
+					}
+					if l.ok {
+						if t, through, unfixed := throughLinks(pathUse{path: target, ok: true}, links, -1, approveFoldsCase()); unfixed {
+							l.ok = false
+						} else if through {
+							target = t.path
+						}
+						l.target = fsutil.RealExistingPath(target)
+					}
+					links = append(links, l)
+				}
+			}
+		}
+	}
+	return links
+}
+
+// linkPair is a link a command places at at, made from its operand src.
+type linkPair struct {
+	at  writeTarget
+	src int
+}
+
+// linkPairs is each link a move, copy or link command read by r places, by
+// copyPlan's reading; ln with a single operand links it in the directory it
+// runs in under its own name.
+func (w writerArgs) linkPairs(r optRead, ln bool) []linkPair {
+	if _, target := r.last('t', "target-directory"); ln && len(r.operands) == 1 && !target {
+		i := r.operands[0]
+		tok, ok := fixedToken(w.s, i)
+		if !ok {
+			return nil
+		}
+		return []linkPair{{writeAt(w.rc, w.st, path.Base(tok), false), i}}
+	}
+	min := 1
+	if ln {
+		min = 2
+	}
+	p := w.planCopy(r, r.operands, min)
+	if !p.ok || !p.dest.ok {
+		return nil
+	}
+	var out []linkPair
+	for _, i := range p.srcs {
+		if p.into {
+			out = append(out, linkPair{w.landingIn(p.dest, i), i})
+		} else {
+			out = append(out, linkPair{p.dest, i})
+		}
+	}
+	return out
+}
+
+// throughLinks is u reached through the links the line makes (lineLinks), but
+// those segment seg makes itself: its path where each link it passes leads, in
+// turn. through is false where it passes none; unfixed says it passes one that
+// leads where the line does not fix. A removal of a link itself passes none.
+func throughLinks(u pathUse, links []lineLink, seg int, fold bool) (v pathUse, through, unfixed bool) {
+	v = u
+	for range len(links) + 1 {
+		moved := false
+		for _, l := range links {
+			if l.seg == seg {
+				continue
+			}
+			rel, ok := fsutil.RelWithin(l.path, v.path, fold)
+			if !ok || (rel == "." && (v.remove || l.anyName)) {
+				continue
+			}
+			if l.anyName {
+				if !strings.Contains(filepath.ToSlash(rel), "/") {
+					continue
+				}
+				return v, true, true
+			}
+			if !l.ok {
+				return v, true, true
+			}
+			v.path = filepath.Join(l.target, rel)
+			moved, through = true, true
+			break
+		}
+		if !moved {
+			return v, through, false
+		}
+	}
+	return v, through, true
 }
