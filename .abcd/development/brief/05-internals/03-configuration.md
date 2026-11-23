@@ -893,9 +893,9 @@ review-queue entry snapshots the effective mode and budget at enqueue time, so a
 mid-loop edit cannot change an in-flight loop. The loop terminal and the gate
 belong in a drainer layer that does not exist.
 
-Schema versioning and cross-version migration come in a later phase: a
-configuration record carries `schema_version: 1`, and migrators are added if a
-later phase changes the shape (itd-9). The stamp is a convention rather than a
+Schema versioning and cross-version migration are **staged**: a configuration
+record carries `schema_version: 1`, and migrators are added if a later intent
+changes the shape (itd-9). The stamp is a convention rather than a
 held rule, and the tree is not uniform — eleven of the seventeen committed records
 carry it (`config.json` in its `meta` block), and six do not, the record-lint
 and docs-lint configuration among them. Nothing refuses an unstamped record, so
@@ -2206,7 +2206,7 @@ door takes a local file or an https URL rather than a harvested directory.
 
 Two triggers are drawn: an implicit one at disembark's first phase, and a manual
 CLI refresh. Per-source enable flags would default to on for a private repo and off
-for a public one. Scheduled sync comes in a later phase (itd-13).
+for a public one. Scheduled sync is **staged** (itd-13).
 
 > **Open question (adr-35):** the implicit trigger is stated against the old model,
 > in which disembark packed *this* repo. adr-35 makes disembark read-only against
