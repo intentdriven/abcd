@@ -989,7 +989,9 @@ over each of the run's lanes' own diff.
    already marks it; a commit doing only that declares
    `Assisted-by: abcd:<version>`). On
    the lane that closes the spec it runs `spec close` in the lane's worktree
-   and ingests the verdict of the audit that lane took, and for each capture the
+   and ingests the verdict of the audit that lane took, read as the bytes the
+   loop recorded it from (one whose digest is not the one recorded with it is
+   refused, and nothing is committed), and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
    intent) and `Resolves:` trailers, an `Admitted-by:` naming the rule the run

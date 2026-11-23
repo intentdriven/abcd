@@ -378,10 +378,23 @@ const lockFileName = ".lock"
 // version wrote, and is refused naming it. Releases that write version 29
 // refuse a version-30 file as a newer abcd's before any strict decode.
 //
+// Version 31 kept the digest of each validator's return as the loop read it
+// when it recorded the verdict: a validator's `return_sha256`, which the
+// landing holds every later read of that return to (recordedReturn). Version
+// 30 is its strict subset, read as a run whose verdicts were recorded with no
+// digest, whose returns the landing reads as they stand, and written back at
+// version 31; a file of version 30 or lower carrying a digest is not one its
+// version wrote, and is refused naming it. Releases that write version 30
+// refuse a version-31 file as a newer abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 30
+const SchemaVersion = 31
+
+// schemaVersionUndigested is the last version before a validator kept the
+// digest of the return its verdict was recorded from: read, never written.
+const schemaVersionUndigested = 30
 
 // schemaVersionUnbundled is the last version before a run carried members:
 // read, never written.
@@ -976,6 +989,11 @@ type ValidatorRun struct {
 	ReviewerModel    string   `json:"reviewer_model,omitempty"`
 	ReviewerNamed    string   `json:"reviewer_named,omitempty"`
 	ModelsUnrecorded bool     `json:"models_unrecorded,omitempty"`
+	// ReturnSHA256 is the SHA-256 of the return, in hex, as the loop read it
+	// when it recorded the verdict: every later read of the return the
+	// landing makes is held to it (recordedReturn). Absent while the
+	// validator is out, and on a verdict recorded before version 31.
+	ReturnSHA256 string `json:"return_sha256,omitempty"`
 }
 
 // The statuses of a reviewer's model.
@@ -1191,6 +1209,36 @@ func (s State) issueOn(id string) string {
 		return id
 	}
 	return ""
+}
+
+// digested reports the first validator, in a state, that carries the digest of
+// its return, which only version 31 and later write; "" when there is none.
+func (s State) digested() string {
+	for _, l := range s.Lanes {
+		for _, r := range l.Validation {
+			for _, v := range r.Validators {
+				if v.ReturnSHA256 != "" {
+					return fmt.Sprintf("`return_sha256` on %s's round %d %s", l.ID, r.Round, v.Role)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// returnDigestsWritten reports whether every validator's digest of its return
+// is one the loop writes: absent, or a SHA-256 in lower-case hex.
+func (s State) returnDigestsWritten() bool {
+	for _, l := range s.Lanes {
+		for _, r := range l.Validation {
+			for _, v := range r.Validators {
+				if v.ReturnSHA256 != "" && !sha256Hex(v.ReturnSHA256) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // bundled reports the first thing, in a state, that only version 30 and later
@@ -1664,6 +1712,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnjudged, carries: State.judged},
 	{highest: schemaVersionUnreasoned, carries: State.strikesKept},
 	{highest: schemaVersionUnbundled, carries: State.bundled},
+	{highest: schemaVersionUndigested, carries: State.digested},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1876,9 +1925,10 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 		// it, and this read writes nothing.
 		st.keepStrikes()
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion == schemaVersionUnbundled:
-		// Read as the current version, a run with no members. The next write
-		// carries it, and this read writes nothing.
+	case st.SchemaVersion >= schemaVersionUnbundled && st.SchemaVersion <= schemaVersionUndigested:
+		// Read as the current version, a run with no members at version 29 and
+		// no digest of a validator's return at either. The next write carries
+		// it, and this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -1951,6 +2001,10 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 		return State{}, 0, refuse("state", "", "", rel+" carries a judge or a strike the loop never writes: a judge on a run whose judge was not active, "+
 			"at another class, over roles whose reviewers did not disagree, at another path or count, a strike on a finding no ruling judge was handed, or with no plain reason, "+
 			"or a strike kept on a judge other than the ones it struck, as its round's findings carry them while it keeps them",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	if !st.returnDigestsWritten() {
+		return State{}, 0, refuse("state", "", "", rel+" carries a digest of a validator's return the loop never writes: one that is not a SHA-256 in lower-case hex",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	if !st.handBacksWritten() {

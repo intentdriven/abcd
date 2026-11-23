@@ -1041,7 +1041,9 @@ A lane's stages run in order:
    `Assisted-by: abcd:<version>`, so a
    later build or a `--remainder` close does not take the step again); on the
    lane that closes the spec it runs `spec close` in the lane's worktree
-   and ingests the audit that lane took, and it runs `capture resolve` for each
+   and ingests the audit that lane took, read as the bytes the loop recorded its
+   verdict from (a verdict whose digest is not the one recorded with it is
+   refused, and nothing is committed), and it runs `capture resolve` for each
    capture the receipts named in `resolves`, with that commit, committing them
    on the lane's branch with `Delivers:` and `Resolves:` trailers and an
    `Assisted-by:` naming the model the lane's receipts reported, the

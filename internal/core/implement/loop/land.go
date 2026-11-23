@@ -370,14 +370,32 @@ func branchTip(c Context, lane Lane) (string, error) {
 // passingAudit is the return of the intent-auditor the lane's passing round
 // recorded, relative to the checkout root, or "" when the round took none.
 func passingAudit(lane Lane) string {
+	v, _ := passingAuditor(lane)
+	return v.Return
+}
+
+// passingAuditor is the intent-auditor the lane's passing round recorded, and
+// whether the round took one.
+func passingAuditor(lane Lane) (ValidatorRun, bool) {
 	if n := len(lane.Validation); n > 0 {
 		for _, v := range lane.Validation[n-1].Validators {
 			if v.Role == RoleAuditor && v.Pass {
-				return v.Return
+				return v, true
 			}
 		}
 	}
-	return ""
+	return ValidatorRun{}, false
+}
+
+// passingVerdict is the verdict of the intent-auditor the lane's passing round
+// recorded, as the bytes the loop recorded it from (recordedReturn).
+func passingVerdict(c Context, lane Lane) ([]byte, error) {
+	v, ok := passingAuditor(lane)
+	if !ok {
+		return nil, refuse(string(StageLand), "", lane.ID, "this lane closes the spec, and its passing round recorded no fidelity audit to ingest at the close",
+			"restore the run's state file; the validate stage records the audit on the lane that closes the spec")
+	}
+	return recordedReturn(c.RepoRoot, lane, v)
 }
 
 // landPrepare is the landing's first step.
@@ -579,6 +597,15 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		done = append(done, "carried the change to "+st.Spec+" left in the lane's worktree")
 	}
 	wrote := false
+	// The verdict the close ingests is read once, before anything in the worktree
+	// moves, as the bytes the loop recorded the audit from.
+	var verdict []byte
+	if ld.Closes {
+		var err error
+		if verdict, err = passingVerdict(c, *lane); err != nil {
+			return Outcome{}, err
+		}
+	}
 	// The step is marked before the close moves the spec, since only an open spec takes
 	// a mark, so a closed spec carries every step's mark. A close refused on what the
 	// judged head holds takes the mark back with it: the hand-back leaves the worktree
@@ -646,8 +673,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the close parked no fidelity receipt for the audit to answer: "+fsutil.RedactHome(res.AuditEmitError),
 				"settle what the emit names, then run `abcd implement step` again")
 		}
-		verdict := abs(c.RepoRoot, passingAudit(*lane))
-		ing, err := intent.IngestVerdict(wt, verdict)
+		ing, err := intent.IngestVerdictBytes(wt, verdict)
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, "the audit's verdict did not ingest at the close: "+fsutil.RedactHome(err.Error()),
 				"the verdict is the one the closing lane's audit returned; restore it, then run `abcd implement step` again")
@@ -1839,9 +1865,9 @@ func foundCommitLacks(c Context, lane Lane, tip, raw string) (string, error) {
 			}
 		}
 		delivers = len(members) > 0 && members[0].bucket == intent.BucketShipped
-		verdict, err := intent.ReadVerdict(abs(c.RepoRoot, passingAudit(lane)))
+		verdict, err := passingVerdict(c, lane)
 		if err != nil {
-			return "the audit on the record of " + st.Intent + ", whose verdict cannot be read", nil
+			return "the audit on the record of " + st.Intent + ", whose verdict cannot be read as the loop recorded it", nil
 		}
 		holds := false
 		for _, r := range intents {
@@ -2915,7 +2941,7 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 		if v.Role == RoleAuditor {
 			continue
 		}
-		text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+		text, err := recordedReturn(c.RepoRoot, lane, v)
 		if err != nil {
 			return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 		}
