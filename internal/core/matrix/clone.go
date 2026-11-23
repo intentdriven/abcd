@@ -61,13 +61,15 @@ func cloneDir(store, run, alias string) string { return filepath.Join(store, run
 // clone in the clone store.
 var ErrNotACopyClone = errors.New("not a model-matrix copy's clone in the clone store")
 
-// CopyClone refuses dir unless it is a copy's clone in the clone store under
-// home, the account's home directory: exactly cloneDir(cloneStore(home,
-// <root-sha>), <run>, <alias>), each part of its own shape. Both the store and
-// dir are read through their symbolic links, so a link into the store names
-// the clone it leads to and a link out of it names where it leads. A store
-// that does not stand holds no clone.
-func CopyClone(home, dir string) error {
+// CopyClone refuses dir unless it is a copy's clone of frozen in the clone
+// store under home, the account's home directory: exactly
+// cloneDir(cloneStore(home, <root-sha>), <run>, <alias>), each part of its own
+// shape, holding what makeClone made (cloneHolds). Both the store and dir are
+// read through their symbolic links, so a link into the store names the clone
+// it leads to and a link out of it names where it leads. A store that does
+// not stand holds no clone. lanes is the branch-name prefix of the branches
+// the trial's own lanes cut in the clone, the only refs it may hold.
+func CopyClone(home, dir, frozen, lanes string) error {
 	if !filepath.IsAbs(home) {
 		return fmt.Errorf("%w: the home directory is not an absolute path", ErrNotACopyClone)
 	}
@@ -86,6 +88,37 @@ func CopyClone(home, dir string) error {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	if len(parts) != 3 || !gitutil.IsFullSHA(parts[0]) || !runIDRe.MatchString(parts[1]) || !aliasRe.MatchString(parts[2]) {
 		return ErrNotACopyClone
+	}
+	return cloneHolds(real, frozen, lanes)
+}
+
+// cloneHolds refuses a clone at dir that does not hold what makeClone makes:
+// a repository of its own, its .git a directory (a linked worktree's .git is
+// a file naming another repository's), shallow at exactly frozen, borrowing
+// no objects, and holding no ref but the branches under refs/heads/<lanes>
+// its trial's lanes cut.
+func cloneHolds(dir, frozen, lanes string) error {
+	gitDir := filepath.Join(dir, ".git")
+	if fi, err := os.Lstat(gitDir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: its .git is not a repository's own directory", ErrNotACopyClone)
+	}
+	if !gitutil.IsFullSHA(frozen) {
+		return fmt.Errorf("%w: no frozen commit is named for it", ErrNotACopyClone)
+	}
+	if shallow, err := os.ReadFile(filepath.Join(gitDir, "shallow")); err != nil || strings.TrimSpace(string(shallow)) != frozen {
+		return fmt.Errorf("%w: it is not shallow at exactly its frozen commit", ErrNotACopyClone)
+	}
+	if _, err := os.Lstat(filepath.Join(gitDir, "objects", "info", "alternates")); !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: it borrows objects from another repository", ErrNotACopyClone)
+	}
+	refs, err := git("-C", dir, "for-each-ref", "--format=%(refname)")
+	if err != nil {
+		return fmt.Errorf("%w: its refs could not be read", ErrNotACopyClone)
+	}
+	for _, ref := range strings.Split(refs, "\n") {
+		if ref != "" && (lanes == "" || !strings.HasPrefix(ref, "refs/heads/"+lanes)) {
+			return fmt.Errorf("%w: it holds a ref no copy's clone holds", ErrNotACopyClone)
+		}
 	}
 	return nil
 }

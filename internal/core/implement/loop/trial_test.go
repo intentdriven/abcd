@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -295,11 +296,11 @@ func standInClone(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trialInCopyClone = func(repoRoot string) error {
+	trialInCopyClone = func(repoRoot, frozen string) error {
 		if p, err := filepath.EvalSymlinks(repoRoot); err == nil && p == want {
 			return nil
 		}
-		return prev(repoRoot)
+		return prev(repoRoot, frozen)
 	}
 	t.Cleanup(func() { trialInCopyClone = prev })
 }
@@ -310,7 +311,9 @@ func cloneStoreHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	prev := trialInCopyClone
-	trialInCopyClone = func(repoRoot string) error { return matrix.CopyClone(home, repoRoot) }
+	trialInCopyClone = func(repoRoot, frozen string) error {
+		return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix)
+	}
 	t.Cleanup(func() { trialInCopyClone = prev })
 	return home
 }
@@ -394,39 +397,73 @@ func TestATrialStartNamesItsFrozenCommit(t *testing.T) {
 	})
 }
 
-// TestATrialRunsOnlyInACopysClone: a trial whose checkout's head is its frozen
-// commit is still refused unless the checkout is a copy's clone in the clone
-// store: the person's own checkout, a clone of the frozen commit kept anywhere
-// else, and a directory of the store's shape under another folder are refused,
-// naming the clone store, and nothing is written.
+// TestATrialRunsOnlyInACopysClone: with the clone store standing, a trial
+// whose checkout's head is its frozen commit is still refused unless the
+// checkout is a copy's clone in that store, and the refusal comes from where
+// the checkout is or what it holds, not from a missing store. Refused, with
+// nothing written: the person's own checkout; a clone of the frozen commit
+// kept anywhere else; a directory of the store's shape under another folder;
+// a symbolic link at a clone's place in the store leading to the person's
+// checkout; a linked worktree of the person's checkout, a full clone of it,
+// and a clone holding a tag, each at a clone's place in the store.
 func TestATrialRunsOnlyInACopysClone(t *testing.T) {
 	src := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	home := cloneStoreHome(t)
-	elsewhere := gittest.NewRepo(t)
 	frozen := src.Git("rev-parse", "HEAD")
-	elsewhere.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
-	elsewhere.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
-	shaped := filepath.Join(home, "elsewhere", gittest.RootCommit(t, src.Root()), "mx-261123000000-ab12", "copy_"+strings.Repeat("5a", 16))
-	if err := os.MkdirAll(shaped, 0o700); err != nil {
+	rootSHA := gittest.RootCommit(t, src.Root())
+	store := abcdhome.Path(home, "matrix", rootSHA)
+	n := 0
+	place := func(t *testing.T, under string) string {
+		t.Helper()
+		n++
+		dir := filepath.Join(under, "mx-261123000000-ab12", fmt.Sprintf("copy_%032x", n))
+		if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	shallow := func(t *testing.T, dir string) *gittest.Repo {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		c := gittest.NewRepoAt(t, dir)
+		c.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
+		c.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+		return c
+	}
+	elsewhere := shallow(t, filepath.Join(t.TempDir(), "elsewhere"))
+	misplaced := shallow(t, place(t, filepath.Join(home, "elsewhere", rootSHA)))
+	link := place(t, store)
+	if err := os.Symlink(src.Root(), link); err != nil {
 		t.Fatal(err)
 	}
-	misplaced := gittest.NewRepoAt(t, shaped)
-	misplaced.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
-	misplaced.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
-	for _, c := range []*gittest.Repo{elsewhere, misplaced} {
-		if err := os.MkdirAll(filepath.Join(c.Root(), filepath.FromSlash(TierRelDir)), 0o700); err != nil {
+	linked := place(t, store)
+	src.Git("worktree", "add", "-q", "--detach", linked, frozen)
+	full := place(t, store)
+	src.Git("clone", "-q", "--no-checkout", src.Root(), full)
+	gittest.OpenRepo(t, full).Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+	tagged := shallow(t, place(t, store))
+	tagged.Git("tag", "kept", frozen)
+	for _, root := range []string{elsewhere.Root(), misplaced.Root(), linked, full, tagged.Root()} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(TierRelDir)), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for name, root := range map[string]string{
-		"the person's own checkout":      src.Root(),
-		"a clone outside the store":      elsewhere.Root(),
-		"a store-shaped path outside it": misplaced.Root(),
+		"the person's own checkout":                src.Root(),
+		"a clone outside the store":                elsewhere.Root(),
+		"a store-shaped path outside it":           misplaced.Root(),
+		"a link in the store to the checkout":      link,
+		"a linked worktree of the checkout":        linked,
+		"a full clone of the checkout":             full,
+		"a clone in the store holding another ref": tagged.Root(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Start(root, "itd-10", Options{Trial: true, Frozen: frozen})
-			if r := mustRefusal(t, err); !strings.Contains(r.Reason, "clone store") {
-				t.Fatalf("the refusal says a trial runs in a copy's clone in the clone store: %+v", r)
+			r := mustRefusal(t, err)
+			if !strings.Contains(r.Reason, "clone store") || strings.Contains(r.Reason, "no clone store stands") {
+				t.Fatalf("the refusal says the checkout is no copy's clone in the standing clone store: %+v", r)
 			}
 			runTierAbsent(t, root)
 		})
@@ -435,10 +472,13 @@ func TestATrialRunsOnlyInACopysClone(t *testing.T) {
 
 // TestATrialLaneIsCutOnlyInACopysClone: a trial run's lane is cut only in a
 // copy's clone in the clone store, so a trial's state found in any other
-// checkout cuts no lane there.
+// checkout cuts no lane there, with the store standing.
 func TestATrialLaneIsCutOnlyInACopysClone(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
-	cloneStoreHome(t)
+	home := cloneStoreHome(t)
+	if err := os.MkdirAll(abcdhome.Path(home, "matrix", gittest.RootCommit(t, repo.Root())), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	frozen := repo.Git("rev-parse", "HEAD")
 	prev := trialInCopyClone
 	standInClone(t, repo.Root())
@@ -453,8 +493,9 @@ func TestATrialLaneIsCutOnlyInACopysClone(t *testing.T) {
 	}
 	lane := st.Lanes[0]
 	_, err = worktreeStage(Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}, &lane)
-	if r := worktreeRefused(t, err, "clone store"); r == nil {
-		t.Fatal("no refusal")
+	r := worktreeRefused(t, err, "clone store")
+	if strings.Contains(r.Reason, "no clone store stands") {
+		t.Fatalf("the refusal comes from the checkout, not a missing store: %+v", r)
 	}
 	if lane.BaseSHA != "" {
 		t.Fatalf("no lane is cut outside a copy's clone: %+v", lane)

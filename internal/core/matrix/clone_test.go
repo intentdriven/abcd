@@ -3,6 +3,7 @@ package matrix
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -273,5 +274,76 @@ func TestAFrozenCommitTrackingALocalTierFileIsRefused(t *testing.T) {
 	}
 	if _, serr := os.Stat(filepath.Join(store, cloneRun, "widget", "cheap", "1")); !os.IsNotExist(serr) {
 		t.Fatalf("the refused clone is removed: %v (%s)", serr, dir)
+	}
+}
+
+// TestOnlyACloneTheMatrixMadeIsACopysClone: a directory at a clone's place in
+// the store is a copy's clone only when it is a repository of its own (its
+// .git a directory, not a linked worktree's file), shallow at exactly the
+// frozen commit, borrowing no objects, and holding no ref but its lanes'
+// branches. A linked worktree of the source, a full clone of it, a clone at
+// another commit, one borrowing the source's objects and one holding another
+// ref are refused.
+func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
+	src, frozen := cloneSource(t)
+	home := t.TempDir()
+	store := cloneStore(home, gittest.RootCommit(t, src.Root()))
+	n := 0
+	made := func(t *testing.T) string {
+		t.Helper()
+		n++
+		key := TrialKey{Task: "widget", Cell: "cheap", Repeat: n}
+		dir, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	place := func(t *testing.T) string {
+		t.Helper()
+		n++
+		dir := cloneDir(store, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: n}))
+		if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	env := src.Env()
+	ok := made(t)
+	if err := CopyClone(home, ok, frozen, "build/"); err != nil {
+		t.Fatalf("the clone the matrix made is a copy's clone: %v", err)
+	}
+	gitOut(t, env, ok, "branch", "build/lane-1", frozen)
+	if err := CopyClone(home, ok, frozen, "build/"); err != nil {
+		t.Fatalf("a clone holding its lanes' branches is a copy's clone: %v", err)
+	}
+	if err := CopyClone(home, ok, strings.Repeat("a", len(frozen)), "build/"); err == nil {
+		t.Fatal("a clone is a copy's clone of its own frozen commit only")
+	}
+
+	linked := place(t)
+	gitOut(t, env, src.Root(), "worktree", "add", "-q", "--detach", linked, frozen)
+	full := place(t)
+	gitOut(t, env, filepath.Dir(full), "clone", "-q", "--no-checkout", src.Root(), full)
+	gitOut(t, env, full, "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+	tagged := made(t)
+	gitOut(t, env, tagged, "tag", "kept", frozen)
+	borrowing := made(t)
+	if err := os.MkdirAll(filepath.Join(borrowing, ".git", "objects", "info"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(borrowing, ".git", "objects", "info", "alternates"),
+		[]byte(filepath.Join(src.Root(), ".git", "objects")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, dir := range map[string]string{
+		"a linked worktree of the source": linked,
+		"a full clone of the source":      full,
+		"a clone holding another ref":     tagged,
+		"a clone borrowing objects":       borrowing,
+	} {
+		if err := CopyClone(home, dir, frozen, "build/"); !errors.Is(err, ErrNotACopyClone) {
+			t.Errorf("%s at a clone's place in the store is refused: %v", name, err)
+		}
 	}
 }

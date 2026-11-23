@@ -98,7 +98,7 @@ func trialFrozen(repoRoot string, o Options) error {
 		return refuse(StageTrial, "", "", "a trial names the full id of its frozen commit, which every lane is cut from, and this one names "+
 			quoteOrNone(shortSHA(o.Frozen)), "start the trial with its frozen commit's full id; nothing was written")
 	}
-	if err := trialInCopyClone(repoRoot); err != nil {
+	if err := trialInCopyClone(repoRoot, o.Frozen); err != nil {
 		return notInCopyClone(StageTrial, "", err, "start the trial in the copy's clone the model matrix made for it; nothing was written")
 	}
 	head, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--")
@@ -123,7 +123,7 @@ func trialSteps(chk CheckResult) error {
 // a copy's clone in the clone store, as the trial's start found it, so a
 // trial's state in any other checkout cuts no lane there.
 func trialBase(c Context, laneID string) (string, error) {
-	if err := trialInCopyClone(c.RepoRoot); err != nil {
+	if err := trialInCopyClone(c.RepoRoot, c.State.Frozen); err != nil {
 		return "", notInCopyClone(string(StageWorktree), laneID, err, "run the trial in the copy's clone the model matrix made for it; no lane was cut")
 	}
 	frozen := c.State.Frozen
@@ -143,12 +143,12 @@ func trialBase(c Context, laneID string) (string, error) {
 // model-matrix copy's clone in the clone store under the account's abcd home
 // (matrix.CopyClone): the one place a copy's clone is made, after its
 // admission. A test names its own judge.
-var trialInCopyClone = func(repoRoot string) error {
+var trialInCopyClone = func(repoRoot, frozen string) error {
 	home, err := abcdhome.MachineHome()
 	if err != nil {
 		return err
 	}
-	return matrix.CopyClone(home, repoRoot)
+	return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix)
 }
 
 // notInCopyClone is a trial's refusal of a checkout trialInCopyClone refuses,
