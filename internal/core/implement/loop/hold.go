@@ -56,7 +56,7 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 		if ld.Merge != "" {
 			if ld.Armed {
 				if def, err := defaultBranch(c, *lane); err == nil {
-					if on, err := gitutil.IsAncestor(c.RepoRoot, ld.Pushed, "refs/remotes/"+Remote+"/"+def); err == nil && on {
+					if on, err := gitutil.IsAncestorAsStored(c.RepoRoot, ld.Pushed, "refs/remotes/"+Remote+"/"+def); err == nil && on {
 						return landStage(c, lane)
 					}
 				}
