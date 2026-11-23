@@ -836,7 +836,13 @@ git command that writes the working tree from a patch or the object store
 pull, a branch switched to, checkout-index, read-tree -u) is not judged by the
 files it writes, and in a stage counts as placing a tree of unfixed contents
 over the working tree (over each path `git checkout -- P` or `git restore P`
-names), so a later write below it on the same line is not placed; and
+names), so a later write below it on the same line is not placed, while one
+that writes no file (a branch made at HEAD, restore --staged, submodule status
+or summary, bisect log) places nothing; git apply or am with --unsafe-paths,
+or with a --directory the line does not fix, is not placed, and a fixed
+--directory is judged as a tree landing there; in a stage an undocumented git
+subcommand, which may be an alias, is not placed, and XDG_CONFIG_HOME on a git
+line is refused as GIT_CONFIG_GLOBAL is; and
 the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the

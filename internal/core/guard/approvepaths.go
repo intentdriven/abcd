@@ -1093,7 +1093,7 @@ func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool, c
 			// Set on the command itself, the same reading already raised the
 			// guard's own warning; carried from an earlier command, only here.
 			return refusal(gitConfigWriteEntryID,
-				"this git command reads configuration the guard does not read (a file GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM names, or one an include pulls in), which may set a program git starts.",
+				"this git command reads configuration the guard does not read (a file GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM names, a global configuration XDG_CONFIG_HOME moves, or one an include pulls in), which may set a program git starts or an alias for another command.",
 				"the same git command without the variable or the setting."), true
 		}
 		if name, ok := programEnvRefused(read.env, clean); ok {

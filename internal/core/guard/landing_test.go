@@ -429,3 +429,57 @@ func TestAStageWriteBelowAnUnfixedTreeSaysWhyAndHowToSplitIt(t *testing.T) {
 		t.Errorf("a write below an unpacked tree: allow %v, reason %q; want it refused for the tree, with the write run as a separate command", a.Allow, a.Reason)
 	}
 }
+
+// TestAGitApplyIsJudgedWhereItsPathsCanLand: git apply (and am) given
+// --unsafe-paths may write anywhere, and given a --directory the line does
+// not fix may write anywhere in the working tree, so neither is placed; a
+// fixed --directory places the patch's paths below it, judged there. A git
+// line that reads its global configuration from somewhere the line names
+// (XDG_CONFIG_HOME, HOME) may hold an alias, and so may a subcommand git does
+// not document: in a stage such a subcommand places a tree whose contents the
+// line does not fix, and writes where the guard cannot say.
+func TestAGitApplyIsJudgedWhereItsPathsCanLand(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`git apply --unsafe-paths x/p.diff`,
+		`git am --unsafe-paths x/p.mbox`,
+		`git apply --directory=$D x/p.diff`,
+		`git apply --directory .abcd/.work.local x/p.diff`,
+		`git apply --directory=.abcd/.work.local/approvals x/p.diff`,
+		`XDG_CONFIG_HOME=x git a x/p.diff`,
+		`env XDG_CONFIG_HOME=x git status`,
+		`HOME=x git a x/p.diff`,
+		`git a x/p.diff`,
+		`git a x/p.diff && cp x/notes.txt L/0123abcd`,
+		`git checkout -b feat origin/main && printf x > notes.txt`,
+		`git submodule foreach true && printf x > notes.txt`,
+		`git restore --staged --worktree L && printf x > L/a`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+	for _, line := range []string{
+		`git apply --directory=build x/p.diff`,
+		`git apply x/p.diff`,
+		`git status`,
+		// commands that write no working-tree file leave a later write open
+		`git checkout -b feat && printf x > notes.txt`,
+		`git checkout -B feat && printf x > notes.txt`,
+		`git checkout --orphan feat && printf x > notes.txt`,
+		`git switch -c feat && printf x > notes.txt`,
+		`git switch -C feat && printf x > notes.txt`,
+		`git submodule status && printf x > notes.txt`,
+		`git submodule summary && printf x > notes.txt`,
+		`git bisect log && printf x > notes.txt`,
+		`git bisect visualize && printf x > notes.txt`,
+		`git bisect view && printf x > notes.txt`,
+		`git restore --staged L && printf x > L/a`,
+		`git checkout main -- L && printf x > main/a`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+}

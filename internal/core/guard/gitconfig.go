@@ -338,6 +338,11 @@ func readGitConfigIn(carried map[string]string, prefix, args, valueFlags []strin
 	if _, ok := env["GIT_CONFIG_SYSTEM"]; ok {
 		c.unread = true
 	}
+	// git reads its global configuration, aliases among it, from
+	// $XDG_CONFIG_HOME/git/config as well as $HOME/.gitconfig.
+	if _, ok := env["XDG_CONFIG_HOME"]; ok {
+		c.unread = true
+	}
 	// The GIT_CONFIG_COUNT/KEY_n/VALUE_n triple. The keys present are read
 	// rather than the count trusted: a count that undersells what is set would
 	// otherwise hide a declaration from the guard while git still applies it.

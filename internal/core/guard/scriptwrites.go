@@ -131,20 +131,176 @@ func siteTargets(rc *readCtx, s segment, st *shellState, a arrival) []writeTarge
 	return out
 }
 
+// applyTargets is what git apply or git am, whose options w reads, writes
+// beyond the working tree's own paths, which the guard does not read from the
+// patch: with --unsafe-paths, any path at all, which the guard cannot place;
+// with --directory, the patch's paths below that directory of the working
+// tree (root), a tree of names the line does not fix there, and not placed
+// where the line does not fix the directory.
+func (w writerArgs) applyTargets(root string) []writeTarget {
+	toks := w.s.tokens
+	for i := w.from; i < len(toks); i++ {
+		t := toks[i]
+		switch {
+		case t == "--":
+			return nil
+		case isUnknown(t) || strings.ContainsRune(t, varMark):
+			if strings.HasPrefix(t, "-") {
+				return []writeTarget{unplacedWrite("")}
+			}
+		case t == "--unsafe-paths":
+			return []writeTarget{unplacedWrite("")}
+		case t == "--directory" || strings.HasPrefix(t, "--directory="):
+			v, skip := i+1, 0
+			if t != "--directory" {
+				v, skip = i, len("--directory=")
+			}
+			if v >= len(toks) {
+				return []writeTarget{unplacedWrite("")}
+			}
+			word, ok := w.wordOf(optVal{idx: v, skip: skip, ok: true})
+			if !ok {
+				return []writeTarget{unplacedWrite("")}
+			}
+			return []writeTarget{asTreeIn(writeTarget{path: filepath.Join(root, word), ok: true, wrote: true})}
+		}
+	}
+	return nil
+}
+
 // gitTrees is where the git command w reads may write working-tree files
 // from a patch or from the object store, any of which may be a link: the
 // working tree it runs in (whole) for apply, am, a stash applied or pushed,
 // a hard, merge or keep reset, merge, cherry-pick, revert, rebase, pull, a
 // branch switched to, checkout-index, read-tree -u, bisect, sparse-checkout
 // and submodule; for checkout and restore, each path they name after their
-// options (checkout's first word, before any --, may be a branch, and so
-// counts as the whole tree too). The working tree is the session's own when
+// options (checkout's first word, with no --, may be a branch, and so counts
+// as the whole tree too; with a --, only the paths after it). A subcommand
+// git does not document may be an alias, and counts as the whole tree. A
+// branch made at HEAD with no start point (checkout -b, -B or --orphan,
+// switch -c or -C), restore --staged without --worktree, submodule status
+// and summary, and bisect log, visualize and view write no file. The working tree is the session's own when
 // the command runs inside it, else the root of the filesystem; with --work-tree
 // or -C, or an option word the line does not fix, it is not fixed, read as
 // the root too; a subcommand or a path the line does not fix counts as the
 // whole tree. A tree is returned with ok set; nothing for a command that
 // writes no working-tree file.
 func (w writerArgs) gitTrees() []writeTarget {
+	toks := w.s.tokens
+	i, elsewhere := w.gitSub()
+	if i >= len(toks) {
+		return nil
+	}
+	whole := []writeTarget{{path: w.gitRoot(elsewhere), ok: true, wrote: true, tree: true}}
+	rest := toks[i+1:]
+	has := func(words ...string) bool {
+		for _, t := range rest {
+			if t == "--" {
+				return false
+			}
+			for _, x := range words {
+				if t == x || strings.HasPrefix(t, x+"=") {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	first := ""
+	if len(rest) > 0 {
+		first = rest[0]
+	}
+	sub := w
+	sub.from = i + 1
+	if isUnknown(toks[i]) || strings.ContainsRune(toks[i], varMark) || !gitSubcommands[toks[i]] {
+		// a subcommand git does not document may be an alias for any
+		return whole
+	}
+	switch toks[i] {
+	case "apply":
+		if has("--cached") || (has("--check", "--stat", "--numstat", "--summary") && !has("--apply")) {
+			return nil
+		}
+		return whole
+	case "stash":
+		switch first {
+		case "list", "show", "create", "store", "drop", "clear":
+			return nil
+		}
+		return whole
+	case "reset":
+		if has("--hard", "--merge", "--keep") {
+			return whole
+		}
+		return nil
+	case "read-tree":
+		if has("-u") {
+			return whole
+		}
+		return nil
+	case "submodule":
+		if first == "status" || first == "summary" {
+			return nil
+		}
+		return whole
+	case "bisect":
+		if first == "log" || first == "visualize" || first == "view" {
+			return nil
+		}
+		return whole
+	case "switch":
+		// a branch made at HEAD, with no start point, changes no file
+		create := []string{"-c", "-C", "--create", "--force-create", "--orphan"}
+		if has(create...) && len(sub.operandIdx(create)) == 0 {
+			return nil
+		}
+		return whole
+	case "am", "merge", "cherry-pick", "revert", "rebase", "pull", "checkout-index", "sparse-checkout":
+		return whole
+	case "checkout", "restore":
+		values := []string{"-b", "-B", "--orphan", "-s", "--source", "--conflict", "--pathspec-from-file"}
+		idx := sub.operandIdx(values)
+		dashes := -1
+		for j := i + 1; j < len(toks); j++ {
+			if toks[j] == "--" {
+				dashes = j
+				break
+			}
+		}
+		if toks[i] == "restore" && has("--staged", "-S") && !has("--worktree", "-W") {
+			return nil // the index alone
+		}
+		if toks[i] == "checkout" && has("-b", "-B", "--orphan") && len(idx) == 0 {
+			return nil // a branch made at HEAD, with no start point
+		}
+		if has("--pathspec-from-file") || (toks[i] == "checkout" && dashes < 0) {
+			return whole
+		}
+		var out []writeTarget
+		for _, j := range idx {
+			if toks[i] == "checkout" && j < dashes {
+				continue // the tree-ish the paths come from
+			}
+			t := w.at(j)
+			if !t.ok {
+				return whole
+			}
+			t.tree = true
+			out = append(out, t)
+		}
+		if len(out) == 0 {
+			return whole
+		}
+		return out
+	}
+	return nil
+}
+
+// gitSub is where the subcommand of the git command w reads stands, after
+// git's own options, and whether those options move the working tree
+// somewhere the line does not fix (-C, --work-tree, --git-dir, or an option
+// word the line does not fix).
+func (w writerArgs) gitSub() (int, bool) {
 	toks := w.s.tokens
 	i := w.from
 	elsewhere := false
@@ -161,78 +317,19 @@ func (w writerArgs) gitTrees() []writeTarget {
 			elsewhere = true
 		}
 	}
-	if i >= len(toks) {
-		return nil
-	}
-	root := "/"
+	return i, elsewhere
+}
+
+// gitRoot is the working tree a git command runs on: the session's own when
+// the command runs inside it and nothing moves it elsewhere, else the root of
+// the filesystem.
+func (w writerArgs) gitRoot(elsewhere bool) string {
 	if d := w.rc.files.dir; d != "" && !elsewhere && w.st.dirOK {
 		if _, in := fsutil.RelWithin(d, w.st.dir, approveFoldsCase()); in {
-			root = d
+			return d
 		}
 	}
-	whole := []writeTarget{{path: root, ok: true, wrote: true, tree: true}}
-	rest := toks[i+1:]
-	has := func(words ...string) bool {
-		for _, t := range rest {
-			for _, x := range words {
-				if t == x || strings.HasPrefix(t, x+"=") {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	if isUnknown(toks[i]) || strings.ContainsRune(toks[i], varMark) {
-		return whole
-	}
-	switch toks[i] {
-	case "apply":
-		if has("--cached") || (has("--check", "--stat", "--numstat", "--summary") && !has("--apply")) {
-			return nil
-		}
-		return whole
-	case "stash":
-		if len(rest) > 0 && (rest[0] == "list" || rest[0] == "show" || rest[0] == "create" || rest[0] == "store" || rest[0] == "drop" || rest[0] == "clear") {
-			return nil
-		}
-		return whole
-	case "reset":
-		if has("--hard", "--merge", "--keep") {
-			return whole
-		}
-		return nil
-	case "read-tree":
-		if has("-u") {
-			return whole
-		}
-		return nil
-	case "am", "merge", "cherry-pick", "revert", "rebase", "pull", "switch", "checkout-index", "bisect", "sparse-checkout", "submodule":
-		return whole
-	case "checkout", "restore":
-		sub := w
-		sub.from = i + 1
-		idx := sub.operandIdx([]string{"-b", "-B", "--orphan", "-s", "--source", "--conflict", "--pathspec-from-file"})
-		dashes := false
-		for _, t := range rest {
-			if t == "--" {
-				dashes = true
-			}
-		}
-		if len(idx) == 0 || has("--pathspec-from-file") || (toks[i] == "checkout" && !dashes) {
-			return whole
-		}
-		var out []writeTarget
-		for _, j := range idx {
-			if t := w.at(j); t.ok {
-				t.tree = true
-				out = append(out, t)
-			} else {
-				return whole
-			}
-		}
-		return out
-	}
-	return nil
+	return "/"
 }
 
 // rsyncTarget is the destination rsync writes into: the last of two or more
@@ -809,7 +906,15 @@ func (w writerArgs) gitTargets() []writeTarget {
 	}
 	sub := w
 	sub.from = i + 1
+	if w.rc.files.stageHome != "" && (isUnknown(toks[i]) || strings.ContainsRune(toks[i], varMark) || !gitSubcommands[toks[i]]) {
+		// in a stage, a subcommand git does not document may be an alias
+		// for any command, writing where the guard cannot say
+		return []writeTarget{unplacedWrite("")}
+	}
 	switch toks[i] {
+	case "apply", "am":
+		_, elsewhere := w.gitSub()
+		return sub.applyTargets(w.gitRoot(elsewhere))
 	case "checkout", "restore":
 		return sub.operands([]string{"-b", "-B", "--orphan", "-s", "--source", "--conflict", "--pathspec-from-file"}, nil)
 	case "clone":

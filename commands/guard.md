@@ -656,7 +656,17 @@ or pull, a branch switched to, `git checkout-index`, `git read-tree -u`) is
 not judged by the files it writes; in a stage it counts as placing a tree of
 contents the line does not fix over the working tree, as `git checkout -- P`
 and `git restore P` do over each path they name, so a later write below it on
-the same line, which may pass through a link it made, is not placed.
+the same line, which may pass through a link it made, is not placed. A branch
+made at HEAD with no start point, `git restore --staged` without
+`--worktree`, `git submodule status` or `summary`, and `git bisect log`,
+`visualize` or `view` write no file. `git apply` or `git am` with
+`--unsafe-paths` may write anywhere, so it is not approved unattended, nor is
+one with a `--directory` the line does not fix; a fixed `--directory` is
+judged as a tree landing in that directory of the working tree. In a stage, a
+git subcommand git does not document may be an alias for any command, so it
+is not approved, and a git command run with `XDG_CONFIG_HOME` set, which moves
+the configuration its aliases come from, is refused as one with
+`GIT_CONFIG_GLOBAL` set is.
 
 What the approver does not cover, plainly. The file tools the role is granted
 on the launch (`--allowedTools`: reading, editing and writing files) write
