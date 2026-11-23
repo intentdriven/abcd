@@ -99,6 +99,10 @@ func TestACopyIntoADirectoryIsJudgedForTheProtectedPathsBelowIt(t *testing.T) {
 		`tar -xf x/a.tar`,
 		`unzip x/a.zip -d .`,
 		`ditto x/staging .`,
+		`patch -p0 -d .git config -i ../x/a.diff`,
+		`patch -p0 -d .git -o config -i ../x/a.diff`,
+		`patch -p1 < x/a.diff`,
+		`unzip -Pl x/a.zip`,
 	} {
 		if a := approveShell(clean(), f, line); a.Allow {
 			t.Errorf("a line was approved: %s", line)
@@ -112,6 +116,8 @@ func TestACopyIntoADirectoryIsJudgedForTheProtectedPathsBelowIt(t *testing.T) {
 		`cp x/staging/*.go sub/`,
 		`cp x/notes.txt .`,
 		`patch a.go x/a.diff`,
+		`patch -p0 -d build out.go -i ../x/a.diff`,
+		`patch -p1 -d build < x/a.diff`,
 	} {
 		if a := approveShell(clean(), f, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
@@ -148,6 +154,18 @@ func TestAStageCopyIsReadAsEachPlatformParsesItsWords(t *testing.T) {
 		`patch --debug 0 -p1 -d .abcd/.work.local -i x/a.diff`,
 		`patch --read-only ignore -p1 -d .abcd/.work.local -i x/a.diff`,
 		`patch --reject-format unified -p1 -d .abcd/.work.local -i x/a.diff`,
+		`patch -p0 -d .githooks pre-push -i ../x/a.diff`,
+		`patch -p0 -d .githooks -o pre-push -i ../x/a.diff`,
+		`patch -p0 -d .abcd/.work.local/approvals ok -i ../x/a.diff`,
+		`patch -r .abcd/.work.local/approvals/x a.go x/a.diff`,
+		`patch -b -B .abcd/.work.local/approvals/ a.go x/a.diff`,
+		`patch -d .abcd -r .work.local/approvals/x a.go -i ../x/a.diff`,
+		`cp -R -S x/review-receipts -t x/old .abcd/.work.local`,
+		`install -S x/f/review-receipts -t x/old .abcd/.work.local/`,
+		`cp -R -$X .abcd/.work.local x/review-receipts`,
+		`cp -R --$X .abcd/.work.local x/review-receipts`,
+		`install -M .abcd/.work.local/approvals/x x/notes.txt build/`,
+		`install -cM.abcd/.work.local/approvals/x x/notes.txt build/`,
 	} {
 		if a := approveShell(clean(), stage, line); a.Allow {
 			t.Errorf("a stage's line was approved: %s", line)
@@ -160,6 +178,11 @@ func TestAStageCopyIsReadAsEachPlatformParsesItsWords(t *testing.T) {
 		`install -m 644 x/notes.txt build/`,
 		`mv -ft x/old x/notes.txt`,
 		`patch -x 0 -p1 -d build -i x/a.diff`,
+		`patch -p0 -d build out.go -i ../x/a.diff`,
+		`patch -r build/a.rej a.go x/a.diff`,
+		`patch -b -B build/ a.go x/a.diff`,
+		`install -M build/install.log x/notes.txt build/`,
+		`cp -t build x/notes.txt`,
 	} {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
@@ -199,6 +222,11 @@ func TestAnArchiveIsReadForWhereItsMembersCanLand(t *testing.T) {
 		`unzip -o: x/a.zip -d sub`,
 		`unzip -qd .abcd/.work.local x/a.zip`,
 		`unzip -q x/a.zip -d.abcd/.work.local`,
+		`unzip -Pl x/a.zip -d .abcd/.work.local`,
+		`cd sub && unzip -Pt ../x/a.zip -d ../.abcd/.work.local`,
+		`unzip -P l x/a.zip -d .abcd/.work.local`,
+		`cd sub && tar -xf ../x/a.tar --cd ../.abcd/.work.local`,
+		`cd sub && tar -xf ../x/a.tar --cd=../.abcd/.work.local`,
 	} {
 		if a := approveShell(clean(), stage, line); a.Allow {
 			t.Errorf("a stage's line was approved: %s", line)
@@ -208,6 +236,8 @@ func TestAnArchiveIsReadForWhereItsMembersCanLand(t *testing.T) {
 		`tar -xf x/a.tar -C sub`,
 		`tar xCf sub x/a.tar`,
 		`unzip -qd sub x/a.zip`,
+		`unzip -P secret x/a.zip -d sub`,
+		`tar -xf x/a.tar --cd sub`,
 	} {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)

@@ -758,7 +758,10 @@ its text:
   yet, as that destination itself), and a directory's contents copied, a
   source xargs supplies, an archive unpacked or a patch applied with no file
   named can write any path below the directory; an archive keeping absolute
-  or parent paths can write anywhere. Options are read as GNU getopt reads
+  or parent paths can write anywhere. patch reads its file names inside its
+  `-d` directory, and its reject file, its backups' prefix and macOS
+  `install -M`'s log are writes too; a patch with no file named at the root of
+  a working tree is not approved unattended. Options are read as GNU getopt reads
   them, with macOS's other reading judged too (a letter that takes no value
   there, and an option word after the first operand read as an operand), and a write through
   a link the same line makes, or through one inside a directory the line moved

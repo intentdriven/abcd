@@ -21,11 +21,12 @@ const (
 
 // optSpec is one command's options: the short letters that take a value, the
 // letters whose value word another platform's command reads as an operand
-// (macOS's cp and install read -S as a plain flag), and its long options by
-// name, without the dashes.
+// (macOS's cp and install read -S as a plain flag), the letters macOS's
+// command reads with a value (mac), and its long options by name, without the
+// dashes.
 type optSpec struct {
-	values, maybeOperand string
-	long                 map[string]int
+	values, maybeOperand, mac string
+	long                      map[string]int
 }
 
 // GNU coreutils 9 long options of the writers, and GNU patch's.
@@ -45,7 +46,7 @@ var (
 		"strip-trailing-slashes": optFlag, "suffix": optValue, "target-directory": optValue, "update": optOptional,
 		"verbose": optFlag, "help": optFlag, "version": optFlag,
 	}}
-	installOpts = optSpec{values: "Stmog", maybeOperand: "S", long: map[string]int{
+	installOpts = optSpec{values: "Stmog", maybeOperand: "S", mac: "BDfghlMmNoT", long: map[string]int{
 		"backup": optOptional, "compare": optFlag, "debug": optFlag, "directory": optFlag, "group": optValue,
 		"mode": optValue, "owner": optValue, "preserve-timestamps": optFlag, "strip": optFlag,
 		"strip-program": optValue, "suffix": optValue, "target-directory": optValue, "no-target-directory": optFlag,
@@ -87,6 +88,9 @@ type optRead struct {
 	short           map[byte][]optVal
 	long            map[string][]optVal
 	unsure          bool
+	// fails marks a reading as macOS's command reads the words in which it
+	// refuses an option it does not have before it copies anything.
+	fails bool
 }
 
 // has reports whether the short option c or the long option name was given.
@@ -129,11 +133,11 @@ func (o optSpec) resolveLong(name string) string {
 
 // readOptsEach is each reading of s's words from index from by o: as GNU's
 // command reads them, options anywhere among the operands, and, where it
-// differs, as macOS's reads them, every word from the first operand on an
-// operand (as GNU's does under POSIXLY_CORRECT).
+// differs (always, for a command whose letters macOS reads with other
+// values), as macOS's reads them (readOptsStop).
 func readOptsEach(s segment, from int, o optSpec) []optRead {
 	gnu, bsd := readOpts(s, from, o), readOptsStop(s, from, o, true)
-	if slices.Equal(gnu.operands, bsd.operands) {
+	if bsd.fails || o.mac == "" && slices.Equal(gnu.operands, bsd.operands) {
 		return []optRead{gnu}
 	}
 	return []optRead{gnu, bsd}
@@ -144,8 +148,12 @@ func readOpts(s segment, from int, o optSpec) optRead {
 	return readOptsStop(s, from, o, false)
 }
 
-// readOptsStop is readOpts, reading every word from the first operand on as
-// an operand when stop is set.
+// readOptsStop is readOpts, or, when stop is set, as macOS's command reads
+// them: every word from the first operand on an operand, the letters o.mac
+// names taking a value and every other letter none. macOS's cp, mv, install
+// and ln have no long option, no -t, and no -T but install's, so a reading
+// that meets one before the first operand fails, as the command does before
+// it copies anything.
 func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 	r := optRead{short: map[byte][]optVal{}, long: map[string][]optVal{}}
 	toks := s.tokens
@@ -158,6 +166,9 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 		case opts && strings.HasPrefix(t, "--"):
 			if isUnknown(t) || strings.ContainsRune(t, varMark) {
 				r.unsure = true
+			}
+			if stop {
+				r.fails = true
 			}
 			name, _, glued := strings.Cut(t[2:], "=")
 			full := o.resolveLong(name)
@@ -179,9 +190,17 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 			if isUnknown(t) || strings.ContainsRune(t, varMark) {
 				r.unsure = true
 			}
+			values := o.values
+			if stop {
+				values = o.mac
+			}
 			for j := 1; j < len(t); j++ {
 				c := t[j]
-				if strings.IndexByte(o.values, c) < 0 {
+				if stop && (c == 't' || c == 'T') && strings.IndexByte(values, c) < 0 {
+					r.fails = true
+					continue
+				}
+				if strings.IndexByte(values, c) < 0 {
 					r.short[c] = append(r.short[c], optVal{})
 					continue
 				}
@@ -191,7 +210,7 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 					v = optVal{idx: i, skip: j + 1, ok: true}
 				case i+1 < len(toks):
 					v = optVal{idx: i + 1, ok: true}
-					if strings.IndexByte(o.maybeOperand, c) >= 0 {
+					if !stop && strings.IndexByte(o.maybeOperand, c) >= 0 {
 						r.maybe = append(r.maybe, i+1)
 					}
 					i++
@@ -423,7 +442,7 @@ func readTar(s segment, from int) tarRead {
 					if !glued && at("--to-command", len("--to-c")) {
 						i++
 					}
-				case at("--directory", len("--di")):
+				case at("--directory", len("--di")) || name == "--cd":
 					v := longValue()
 					if reading == 0 {
 						r.dirs = append(r.dirs, v)
@@ -499,6 +518,12 @@ func (w writerArgs) unzipTargets() []writeTarget {
 			switch {
 			case c == ':':
 				absolute = true
+			case c == 'P':
+				// the password: the rest of the word, else the next one
+				if j+1 == len(t) {
+					i++
+				}
+				j = len(t)
 			case strings.IndexByte(unzipReading, c) >= 0:
 				reading = true
 			case c == 'd':

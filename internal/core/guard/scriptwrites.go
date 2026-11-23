@@ -383,6 +383,9 @@ func (w writerArgs) dirTarget(flags []string) writeTarget {
 func (w writerArgs) copyTarget(name string) []writeTarget {
 	var out []writeTarget
 	for _, r := range readOptsEach(w.s, w.from, copySpec(name)) {
+		if v, ok := r.last('M', ""); ok && v.ok && name == "install" {
+			out = append(out, w.valueOf(v)) // macOS install's metalog
+		}
 		if name == "install" && r.has('d', "directory") {
 			for _, i := range r.operands {
 				out = append(out, w.at(i))
@@ -463,9 +466,9 @@ func (w writerArgs) planCopy(r optRead, operands []int, min int) copyPlan {
 // (copyPlan). A source whose last name is a glob lands under any name it
 // matches; one ending in a slash, `.` or a name no line fixes, under any name
 // at all, since the copy may be of a directory's contents. An option word no
-// line fixes may be -T, and an operand no line fixes may be -t, naming the
-// word after it as the destination: each is read as a tree of any names
-// landing there.
+// line fixes may be -t with its destination glued on, so the destination is
+// not placed; an operand no line fixes may be -t, naming the word after it as
+// the destination, which is read as a tree of any names landing there.
 func (w writerArgs) sourceLandings(r optRead, min int) []writeTarget {
 	var out []writeTarget
 	for _, operands := range r.readings() {
@@ -483,7 +486,7 @@ func (w writerArgs) sourceLandings(r optRead, min int) []writeTarget {
 		}
 		out = append(out, dest)
 		if r.unsure {
-			out = append(out, asTreeIn(p.dest))
+			out = append(out, unplacedWrite(""))
 		}
 		if p.into {
 			for _, i := range p.srcs {
@@ -529,23 +532,80 @@ func isDir(p string) bool {
 // patchTargets is what patch writes: nothing on a dry run (--dry-run, or
 // Apple patch's -C and --check); the -o file where one is named; else the
 // file its first operand names, which it patches alone; else every file the
-// patch names, a tree of names no line fixes in the directory -d names or the
-// one it runs in. Its options are read as getopt reads them (patchOpts).
+// patch names, a tree of names no line fixes in the directory it works in;
+// and the reject file (-r) and the backups a prefix (-B, -Y) or a suffix
+// holding a slash (-z) names. patch changes to the -d directory before it
+// opens any file, so a relative name is read inside it. Its options are read
+// as getopt reads them (patchOpts).
 func (w writerArgs) patchTargets() []writeTarget {
 	r := readOpts(w.s, w.from, patchOpts)
 	if r.has('C', "dry-run") || r.has(0, "check") {
 		return nil
 	}
-	if v, ok := r.last('o', "output"); ok {
-		return []writeTarget{w.valueOf(v)}
-	}
-	if len(r.operands) > 0 {
-		return []writeTarget{w.at(r.operands[0])}
-	}
+	dir, under := w.dirTarget(nil), false
 	if v, ok := r.last('d', "directory"); ok {
-		return []writeTarget{asTreeIn(w.valueOf(v))}
+		dir, under = w.valueOf(v), true
 	}
-	return []writeTarget{asTreeIn(w.dirTarget(nil))}
+	at := func(word string, ok bool) writeTarget {
+		tilde := strings.HasPrefix(word, "~")
+		switch {
+		case !ok:
+			return unplacedWrite("")
+		case !under || filepath.IsAbs(word) || tilde:
+			return writeAt(w.rc, w.st, word, tilde)
+		case !dir.ok:
+			return unplacedWrite("")
+		}
+		return writeTarget{path: filepath.Join(dir.path, word), ok: true, wrote: true}
+	}
+	var out []writeTarget
+	if v, ok := r.last('r', "reject-file"); ok {
+		out = append(out, at(w.wordOf(v)))
+	}
+	if v, ok := r.last('B', "prefix"); ok {
+		word, fixed := w.wordOf(v)
+		t := at(word, fixed)
+		if t.ok {
+			// each backup is the prefix and the patched file's name
+			top := filepath.Base(word) + "*"
+			if strings.HasSuffix(word, "/") {
+				top = ""
+			} else {
+				t.path = filepath.Dir(t.path)
+			}
+			t.tree, t.in, t.top = true, true, top
+		}
+		out = append(out, t)
+	}
+	if _, ok := r.last('Y', "basename-prefix"); ok {
+		out = append(out, asTreeIn(dir))
+	}
+	if v, ok := r.last('z', "suffix"); ok {
+		if word, fixed := w.wordOf(v); !fixed || strings.Contains(word, "/") {
+			out = append(out, asTreeIn(dir))
+		}
+	}
+	switch v, ok := r.last('o', "output"); {
+	case ok:
+		out = append(out, at(w.wordOf(v)))
+	case len(r.operands) > 0:
+		out = append(out, at(w.wordOf(optVal{idx: r.operands[0], ok: true})))
+	default:
+		out = append(out, asTreeIn(dir))
+	}
+	return out
+}
+
+// wordOf is the text of the value v carries, and whether the line fixes it.
+func (w writerArgs) wordOf(v optVal) (string, bool) {
+	if !v.ok || v.idx >= len(w.s.tokens) {
+		return "", false
+	}
+	tok := w.s.tokens[v.idx]
+	if isUnknown(tok) || w.s.globAt(v.idx) || strings.ContainsRune(tok, varMark) {
+		return "", false
+	}
+	return tok[v.skip:], true
 }
 
 // curlTargets is curl's -o value, and with -O the last path segment of each

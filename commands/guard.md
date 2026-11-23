@@ -485,14 +485,20 @@ A shell command is approved only when the guard reads it whole and clears it:
   dir/`, `ditto src dir`), an archive unpacked (`tar -x`, `unzip -d`), a patch
   applied with no file named, a source the line does not spell out, or one
   `xargs` supplies can write any path below the directory it lands in, so
-  `rsync -a src/ ./` at the root of a working tree reaches its `.git`; and an
+  `rsync -a src/ ./` at the root of a working tree reaches its `.git`, and a
+  patch applied there with no file named (`patch -p1 < x.diff`) is not
+  approved unattended; and an
   archive whose members keep their absolute or parent paths (`tar -P`,
-  `--absolute-names`, `unzip -:`) can write anywhere. The options are read as
+  `--absolute-names`, `unzip -:`) can write anywhere. patch opens every file
+  inside its `-d` directory, the patched file, its `-o` output, its `-r`
+  reject file and the backups a `-B` prefix names among them, and macOS's
+  `install -M` writes its log file; `tar --cd` names tar's directory. The options are read as
   GNU getopt reads them (a clustered `-Rt dir`, an abbreviated `--t dir` or
   `--no-t`), and where macOS's command reads them otherwise (`cp -S` and
   `install -S` take no value there, and every word after the first operand
   is an operand there, so `cp f -t d x .abcd/` copies `x` into `.abcd/`)
-  both readings are judged. A write through
+  both readings are judged; an option word the line does not fix may name the
+  destination itself (`-t` with a directory glued on), so it is not placed. A write through
   a link the same line makes (`ln -s`, `cp -s`, or a move or copy of a link) is
   judged where the link leads, and so is one through a link inside a directory
   the line moved or copied first, made on the line or standing there now; in a
