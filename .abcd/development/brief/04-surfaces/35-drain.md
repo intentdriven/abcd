@@ -621,12 +621,23 @@ The driver's commit, merge and reset hooks, and any filter run inside those comm
 the same variables and home as a stage, and read the git configuration the drive wrote
 rather than any a stage left in that home; its network commands, its other filters and its
 forge calls keep the person's environment. A preflight runs
-with what a stage carries too, but with Go caches of its own in place of the
-person's Go caches a stage is told: a build cache, a module cache and a `GOPATH` kept beside
-the stage's files from one preflight to the next and never named to a stage. A
-module its cache lacks comes through the person's module downloads, read as a
-proxy ahead of the proxy it carries, and Go checks it against `go.sum` or the
-checksum database before unpacking it. It runs with Go's own settings file off (`GOENV=off`) and
+with what a stage carries too, but with a build cache and a `GOPATH` of its own in
+place of the person's a stage is told: both are made afresh for each preflight, once
+the stage's home is emptied, in a folder beside the stage's files that the drive makes
+under a new name (an entry already at that name, a link included, refuses it), and
+removed when the preflight ends, so nothing a stage built is reused and no test result
+is replayed from one preflight to the next. Its module cache is the person's own, as a
+stage is told it, so a module that cache holds, a private one included, needs no
+network and no credentials; before the preflight's first stage the drive runs `go mod
+verify` there with the preflight's environment and `GOFLAGS=-mod=mod`, first with
+`GOPROXY=off`, so Go checks every module the cache holds against the hash it recorded
+when it unpacked it, and passes over one the cache does not hold. Where the cache lacks a
+module's metadata, the verification runs again through the proxy the preflight carries,
+which fetches that metadata and no module's source. A module changed since Go unpacked
+it stops the preflight, naming it; so does a verification that cannot be made, in Go's
+words, and one that leaves `go.mod`, `go.sum`, `go.work` or `go.work.sum` other than it
+found them, each put back first. What a process that outlives its stage does to the
+person's caches is not fenced. It runs with Go's own settings file off (`GOENV=off`) and
 `GOWORK` left unset when the head tracks a `go.work` at its root, so Go finds the
 nearest one the head tracks, never above the checkout for a Go command started in it, and off (`GOWORK=off`)
 otherwise, and never in the lane's worktree: just before it the drive
