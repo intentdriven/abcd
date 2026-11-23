@@ -529,6 +529,19 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 		case "mv":
 			ops = eachSources(readOptsEach(s, a.idx+1, mvOpts)) // the destination stays
 			ownLink = true
+		case "git":
+			// git mv moves as mv does; git rm removes, but for --cached or
+			// --dry-run.
+			if _, reads, kind, ok := moverReads(s, a); ok && kind == "mv" {
+				ops, ownLink = eachSources(reads), true
+			} else if j, elsewhere := (writerArgs{s: s, from: a.idx + 1}).gitSub(); !elsewhere && j < len(s.tokens) && s.tokens[j] == "rm" {
+				if r, _ := (writerArgs{s: s, from: a.idx + 1}).gitRead(j); !r.has(0, "cached") && !r.has('n', "dry-run") {
+					ops, ownLink = r.operands, true
+				}
+			}
+			if ops == nil {
+				continue
+			}
 		case "rsync":
 			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {
 				continue

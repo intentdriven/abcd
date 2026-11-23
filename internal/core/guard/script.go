@@ -944,6 +944,9 @@ type writeTarget struct {
 	tree bool
 	in   bool
 	top  string
+	// why, where set, is why a write the guard cannot place is refused,
+	// in the writer's own words (whyUnplaced).
+	why *writeWhy
 }
 
 // treeLanding is where a tree a write places lands, read at c, a spelling of

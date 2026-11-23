@@ -27,6 +27,11 @@ const (
 type optSpec struct {
 	values, maybeOperand, mac string
 	long                      map[string]int
+	// optional names the letters that take a value only glued on, ending
+	// their cluster (git am's -S<key>), and negate reads `--no-<name>` as
+	// name's negation, as git's parse-options does.
+	optional string
+	negate   bool
 }
 
 // GNU coreutils 9 long options of the writers, and GNU patch's.
@@ -88,6 +93,11 @@ type optRead struct {
 	short           map[byte][]optVal
 	long            map[string][]optVal
 	unsure          bool
+	// unknown marks an option word that names no option of the command, or
+	// more than one, which the command refuses; end is the index of the
+	// `--` that ends the options, 0 where none does.
+	unknown bool
+	end     int
 	// fails marks a reading as macOS's command reads the words in which it
 	// refuses an option it does not have before it copies anything.
 	fails bool
@@ -162,7 +172,7 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 		t := toks[i]
 		switch {
 		case opts && t == "--":
-			opts = false
+			opts, r.end = false, i
 		case opts && strings.HasPrefix(t, "--"):
 			name, _, glued := strings.Cut(t[2:], "=")
 			if isUnknown(name) || strings.ContainsRune(name, varMark) {
@@ -173,7 +183,14 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 				r.fails = true
 			}
 			full := o.resolveLong(name)
+			if full == "" && o.negate && strings.HasPrefix(name, "no-") && !glued {
+				if f := o.resolveLong(name[len("no-"):]); f != "" {
+					r.long["no-"+f] = append(r.long["no-"+f], optVal{})
+					continue
+				}
+			}
 			if full == "" {
+				r.unknown = true
 				continue
 			}
 			v := optVal{}
@@ -205,6 +222,14 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 					r.fails = true
 					continue
 				}
+				if !stop && strings.IndexByte(o.optional, c) >= 0 {
+					v := optVal{}
+					if j+1 < len(t) {
+						v = optVal{idx: i, skip: j + 1, ok: true}
+					}
+					r.short[c] = append(r.short[c], v)
+					break
+				}
 				if strings.IndexByte(values, c) < 0 {
 					r.short[c] = append(r.short[c], optVal{})
 					continue
@@ -233,6 +258,27 @@ func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 		}
 	}
 	return r
+}
+
+// only reports whether every option r read is one of the letters short or
+// one of the long options long (a negation spelled "no-<name>"), with no
+// option word the command does not have and none the line does not fix: an
+// allowlist, so any other option voids what it permits.
+func (r optRead) only(short string, long ...string) bool {
+	if r.unsure || r.unknown {
+		return false
+	}
+	for c := range r.short {
+		if strings.IndexByte(short, c) < 0 {
+			return false
+		}
+	}
+	for name := range r.long {
+		if !slices.Contains(long, name) {
+			return false
+		}
+	}
+	return true
 }
 
 // readings is each list of operands r can stand for: as read, and with the

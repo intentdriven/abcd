@@ -226,6 +226,8 @@ type pathUse struct {
 	// a whole tree, judged for every path it can reach below where it lands.
 	tree, in bool
 	top      string
+	// why is the writer's own reason for a write the guard cannot place.
+	why *writeWhy
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -279,7 +281,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		if !w.ok {
 			written = w.base
 		}
-		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top})
+		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top, why: w.why})
 	}
 	at := func(i int, remove bool) pathUse {
 		tok, ok := fixedToken(s, i)
@@ -375,6 +377,25 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 					u = pathUse{remove: true, written: tokenBase(view.tokens[i])}
 				}
 				out = append(out, u)
+			}
+		case "git":
+			// git mv's sources leave where they were, as mv's do, and git
+			// rm removes the files it names, but for --cached (the index
+			// alone) or --dry-run.
+			if _, reads, kind, ok := moverReads(s, a); ok && kind == "mv" {
+				for _, i := range eachSources(reads) {
+					out = append(out, at(i, true))
+				}
+				break
+			}
+			if j, elsewhere := w.gitSub(); !elsewhere && j < len(s.tokens) && s.tokens[j] == "rm" {
+				r, _ := w.gitRead(j)
+				if r.has(0, "cached") || r.has('n', "dry-run") {
+					break
+				}
+				for _, i := range r.operands {
+					out = append(out, at(i, true))
+				}
 			}
 		case "sed":
 			// The files a sed script's w commands write, as sed opens them:
@@ -496,8 +517,11 @@ func shellGlobMatch(pattern, name string) bool {
 }
 
 // unfixedRefusal is the refusal of a write or a removal whose target the line
-// does not fix.
+// does not fix, in the writer's own words where it gives them (why).
 func unfixedRefusal(u pathUse) Approval {
+	if u.why != nil {
+		return refusal(unfixedPathEntryID, u.why.reason, u.why.remedy)
+	}
 	what := "a path"
 	if u.written != "" {
 		what = "a path ending " + termsafe.Sanitize(u.written)
@@ -1483,9 +1507,8 @@ func lineLinks(rc *readCtx, placed []placedSeg) lineMoves {
 		for _, st := range p.states {
 			for _, a := range commandSites(p.seg) {
 				name := strings.ToLower(path.Base(p.seg.tokens[a.idx]))
-				switch name {
-				case "ln", "cp", "mv", "install":
-					m.linksAt(rc, p.seg, st, a, name, k)
+				if s, reads, kind, ok := moverReads(p.seg, a); ok {
+					m.linksAt(rc, s, st, a, kind, reads, k)
 				}
 				m.treesAt(rc, p.seg, st, a, name, k)
 			}
@@ -1494,13 +1517,34 @@ func lineLinks(rc *readCtx, placed []placedSeg) lineMoves {
 	return m
 }
 
-// linksAt adds the links the cp, mv or ln at a in segment k of the line makes.
-func (m *lineMoves) linksAt(rc *readCtx, seg segment, st *shellState, a arrival, name string, k int) {
-	s := xargsView(seg, a.idx)
+// moverReads is how the command at a in seg moves, copies or links its
+// operands, where it is one that does (cp, mv, install, ln, and git mv, which
+// moves as mv does): the segment as the command receives its words
+// (xargsView), each reading of them, and the command's kind; ok is false for
+// any other command, and for a git that -C or --work-tree moves elsewhere,
+// whose writes are not placed at all.
+func moverReads(seg segment, a arrival) (s segment, reads []optRead, kind string, ok bool) {
+	switch name := strings.ToLower(path.Base(seg.tokens[a.idx])); name {
+	case "cp", "mv", "install", "ln":
+		s = xargsView(seg, a.idx)
+		return s, readOptsEach(s, a.idx+1, copySpec(name)), name, true
+	case "git":
+		w := writerArgs{s: seg, from: a.idx + 1}
+		if j, elsewhere := w.gitSub(); !elsewhere && j < len(seg.tokens) && seg.tokens[j] == "mv" {
+			r, _ := w.gitRead(j)
+			return seg, []optRead{r}, "mv", true
+		}
+	}
+	return seg, nil, "", false
+}
+
+// linksAt adds the links the cp, mv, install or ln at a in segment s of the
+// line, k, makes, read as reads (moverReads).
+func (m *lineMoves) linksAt(rc *readCtx, s segment, st *shellState, a arrival, name string, reads []optRead, k int) {
 	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
 	var pairs []linkPair
 	symbolic := false
-	for _, r := range readOptsEach(s, a.idx+1, copySpec(name)) {
+	for _, r := range reads {
 		if name == "install" {
 			// macOS install -l makes a link to each source instead of a
 			// copy, whatever its flags: a symbolic link's text is the source
@@ -1571,17 +1615,18 @@ func (m *lineMoves) add(l lineLink, target string, fold bool) {
 }
 
 // treesAt adds the trees the command at a in segment k of the line places:
-// for cp and mv, each source's tree where it lands (copyPlan), with the links
+// for cp and mv (git mv among them, moverReads), each source's tree where it lands (copyPlan), with the links
 // made earlier below the source carried along; for any other writer that
 // places a tree (rsync, ditto, an archive unpacked, a clone), a tree whose
 // contents the line does not fix. ln places a link, which linksAt reads, and
 // install copies files, not trees.
 func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival, name string, k int) {
-	switch name {
-	case "ln", "install":
+	s, reads, kind, mover := moverReads(seg, a)
+	switch {
+	case kind == "ln" || kind == "install":
 		return
-	case "cp", "mv":
-	case "git":
+	case mover:
+	case name == "git":
 		w := writerArgs{rc: rc, s: seg, st: st, from: a.idx + 1}
 		for _, t := range w.gitTrees() {
 			m.trees = append(m.trees, lineTree{at: t.path, seg: k, by: "git"})
@@ -1595,10 +1640,9 @@ func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival,
 		}
 		return
 	}
-	s := xargsView(seg, a.idx)
 	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
 	fold := approveFoldsCase()
-	for _, r := range readOptsEach(s, a.idx+1, copySpec(name)) {
+	for _, r := range reads {
 		for _, operands := range r.readings() {
 			p := w.planCopy(r, operands, 1)
 			if !p.ok || !p.dest.ok {

@@ -837,12 +837,21 @@ pull, a branch switched to, checkout-index, read-tree -u) is not judged by the
 files it writes, and in a stage counts as placing a tree of unfixed contents
 over the working tree (over each path `git checkout -- P` or `git restore P`
 names), so a later write below it on the same line is not placed, while one
-that writes no file (a branch made at HEAD, restore --staged, submodule status
-or summary, bisect log) places nothing; git apply or am with --unsafe-paths,
-or with a --directory the line does not fix, is not placed, and a fixed
---directory is judged as a tree landing there; in a stage an undocumented git
-subcommand, which may be an alias, is not placed, and XDG_CONFIG_HOME on a git
-line is refused as GIT_CONFIG_GLOBAL is; and
+that writes no file (a branch made at HEAD, restore --staged, a soft or mixed
+reset, read-tree without -u, submodule status or summary, bisect log) places
+nothing, and only while every option it is given is one its allowlist names;
+git's options are read as git's parse-options reads them (a long option by any
+prefix naming no other, a negation, short options in clusters); in a stage git
+apply and am are judged as a tree landing at the working tree's root, or in a
+fixed --directory, and with --unsafe-paths, or a --directory the line does not
+fix, are not placed; the files git's own options name (--output, format-patch
+-o, archive -o, bundle create, read-tree --index-output, interpret-trailers
+--in-place, merge-file, init) are judged as writes, git mv as mv, and git rm
+as a removal; in a stage an undocumented git subcommand is the git-<name>
+program PATH finds, judged as any program, where it lies outside the session's
+own directories and the configuration defines no alias of that name, and is
+otherwise not placed, as an alias; and XDG_CONFIG_HOME on a git line is
+refused as GIT_CONFIG_GLOBAL is; and
 the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the

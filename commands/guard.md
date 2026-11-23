@@ -656,17 +656,39 @@ or pull, a branch switched to, `git checkout-index`, `git read-tree -u`) is
 not judged by the files it writes; in a stage it counts as placing a tree of
 contents the line does not fix over the working tree, as `git checkout -- P`
 and `git restore P` do over each path they name, so a later write below it on
-the same line, which may pass through a link it made, is not placed. A branch
-made at HEAD with no start point, `git restore --staged` without
-`--worktree`, `git submodule status` or `summary`, and `git bisect log`,
-`visualize` or `view` write no file. `git apply` or `git am` with
-`--unsafe-paths` may write anywhere, so it is not approved unattended, nor is
-one with a `--directory` the line does not fix; a fixed `--directory` is
-judged as a tree landing in that directory of the working tree. In a stage, a
-git subcommand git does not document may be an alias for any command, so it
-is not approved, and a git command run with `XDG_CONFIG_HOME` set, which moves
-the configuration its aliases come from, is refused as one with
-`GIT_CONFIG_GLOBAL` set is.
+the same line, which may pass through a link it made, is not placed. A git
+subcommand's options are read as git reads them: a long option by its whole
+name or by a prefix that names no other (`--unsafe` is `--unsafe-paths`,
+`--dir=` is `--directory=`), a negation as `--no-<name>`, short options in
+clusters (`-mu` is `-m -u`), and a value glued on or as the next word. A
+branch made at HEAD with no start point, `git restore --staged` without
+`--worktree`, `git reset` with no option but `--soft`, `--mixed`, `-q`, `-p`
+or `-N`, `git read-tree` without `-u`, `git apply` with `--cached`, or with
+`--check` or `--stat` and no `--apply`, the stash commands that list or show,
+`git submodule status` or `summary`, and `git bisect log`, `visualize` or
+`view` write no file, each only while every option it is given is one that
+leaves the files alone: any other voids it (`git checkout -f -b topic`
+restores deleted files, so it counts as placing the tree), and so does a word
+the line does not fix. In a stage, `git apply` and `git am` are judged as a
+tree landing at the working tree's root, as `patch` is, or in the directory a
+fixed `--directory` names. With `--unsafe-paths` either may write anywhere, so
+it is not approved unattended, and the refusal says to drop it; nor is one
+with a `--directory` the line does not fix. The files git's own options name
+are judged as any write is: the `--output` of a command that shows a diff or
+a log, `git format-patch -o`, `git archive -o`, `git bundle create`, `git
+read-tree --index-output`, `git apply --build-fake-ancestor`, `git
+interpret-trailers --in-place`, `git merge-file`, the directory `git init`
+makes, and where `git mv` moves its sources, read as `mv` is; `git rm` removes
+the files it names. In a stage, a subcommand git does not document is the
+`git-<name>` program git finds on PATH, which git 2.52 runs before any alias
+of that name, and is judged as any program is (`git lfs pull` is approved),
+when that program lies outside the working tree, the run's own directories
+and the temporary directory, and the configuration git reads (`git config
+--get alias.<name>`, under the stage's home) defines no alias of that name.
+Otherwise it may be an alias for any command, so it is not approved, and the
+refusal says which of these it met. A git command run with `XDG_CONFIG_HOME`
+set, which moves the configuration its aliases come from, is refused as one
+with `GIT_CONFIG_GLOBAL` set is.
 
 What the approver does not cover, plainly. The file tools the role is granted
 on the launch (`--allowedTools`: reading, editing and writing files) write

@@ -380,7 +380,7 @@ func TestAGitCommandThatWritesTheWorkingTreeMayPlaceALink(t *testing.T) {
 		`git apply --check x/p.diff && printf x > x/notes.txt`,
 		`git stash list && printf x > x/notes.txt`,
 		`git reset HEAD~1 && printf x > x/notes.txt`,
-		`printf x > x/notes.txt && git apply x/p.diff`,
+		`printf x > x/notes.txt && git apply --cached x/p.diff`,
 	} {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
@@ -462,7 +462,6 @@ func TestAGitApplyIsJudgedWhereItsPathsCanLand(t *testing.T) {
 	}
 	for _, line := range []string{
 		`git apply --directory=build x/p.diff`,
-		`git apply x/p.diff`,
 		`git status`,
 		// commands that write no working-tree file leave a later write open
 		`git checkout -b feat && printf x > notes.txt`,
@@ -481,5 +480,185 @@ func TestAGitApplyIsJudgedWhereItsPathsCanLand(t *testing.T) {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)
 		}
+	}
+}
+
+// TestAGitCommandsWordsAreReadAsGitParsesThem: a git subcommand's options are
+// read as git reads them, a long option by any prefix that names no other and
+// short options in clusters, so an abbreviated --unsafe-paths or --directory,
+// a clustered -u or -f, or any option a no-file exemption does not name, is
+// judged as the option it is; the same reading admits the abbreviations of
+// what the exemptions do name.
+func TestAGitCommandsWordsAreReadAsGitParsesThem(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`git apply --unsafe x/p.diff`,
+		`git apply --unsafe-p x/p.diff`,
+		`git apply --uns --cached x/p.diff`,
+		`git apply --dir=.abcd/.work.local x/p.diff`,
+		`git apply --direc .abcd/.work.local x/p.diff`,
+		`git apply --d=.abcd/.work.local/approvals x/p.diff`,
+		`git am --dir=.abcd/.work.local x/p.mbox`,
+		`git checkout -f -b feat && printf x > notes.txt`,
+		`git checkout -f -B feat && printf x > notes.txt`,
+		`git checkout -fb feat && printf x > notes.txt`,
+		`git checkout --force -b feat && printf x > notes.txt`,
+		`git checkout --forc -B feat && printf x > notes.txt`,
+		`git checkout -b feat --merge && printf x > notes.txt`,
+		`git checkout -mb feat && printf x > notes.txt`,
+		`git checkout --over -b feat && printf x > notes.txt`,
+		`git checkout --orphan feat -f && printf x > notes.txt`,
+		`git switch -fc feat && printf x > notes.txt`,
+		`git switch -c feat --disc && printf x > notes.txt`,
+		`git switch --for -C feat && printf x > notes.txt`,
+		`git read-tree -mu HEAD && printf x > notes.txt`,
+		`git read-tree -um HEAD && printf x > notes.txt`,
+		`git read-tree -vu HEAD && printf x > notes.txt`,
+		`git read-tree -m $U HEAD && printf x > notes.txt`,
+		`git reset --har HEAD && printf x > notes.txt`,
+		`git reset -q --ke HEAD && printf x > notes.txt`,
+		`git apply --stat --app x/p.diff && printf x > notes.txt`,
+		`git restore --staged --work L && printf x > L/a`,
+		`git restore -SW L && printf x > L/a`,
+		`git stash list -p --output=x/o && printf x > notes.txt`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+	for _, line := range []string{
+		`git checkout -qb feat && printf x > notes.txt`,
+		`git checkout -b feat --quiet && printf x > notes.txt`,
+		`git checkout --orph feat && printf x > notes.txt`,
+		`git switch --quiet -c feat && printf x > notes.txt`,
+		`git switch --cre feat && printf x > notes.txt`,
+		`git read-tree -m HEAD && printf x > notes.txt`,
+		`git read-tree -mi HEAD && printf x > notes.txt`,
+		`git reset --soft HEAD && printf x > notes.txt`,
+		`git reset -q && printf x > notes.txt`,
+		`git apply --cached x/p.diff && printf x > notes.txt`,
+		`git apply --cach x/p.diff && printf x > notes.txt`,
+		`git apply --stat x/p.diff && printf x > notes.txt`,
+		`git restore -S L && printf x > L/a`,
+		`git restore --stag L && printf x > L/a`,
+		`git apply --dir=build x/p.diff`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	if a := approveShell(clean(), stage, `git apply --unsafe x/p.diff`); !strings.Contains(a.Reason, "--unsafe-paths") {
+		t.Errorf("the refusal of an abbreviated --unsafe-paths does not name it: %s", a.Reason)
+	}
+}
+
+// TestAGitCommandIsJudgedForTheFilesItsOwnWordsName: what git writes at a
+// path its words name (an --output, an output directory or file, a file
+// rewritten in place, a directory git mv moves or git init makes) and what a
+// stage's git apply or git am writes across the working tree are judged as
+// any other write is, so a protected path reached that way is refused.
+func TestAGitCommandIsJudgedForTheFilesItsOwnWordsName(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`git diff --output=.abcd/.work.local/approvals HEAD`,
+		`git log --output .abcd/.work.local/approvals`,
+		`git rev-list --output=.abcd/.work.local/approvals HEAD`,
+		`git format-patch -o .abcd/.work.local HEAD~`,
+		`git format-patch -ko.abcd/.work.local HEAD~`,
+		`git archive -o .abcd/.work.local/approvals HEAD`,
+		`git archive --output=.abcd/.work.local/approvals HEAD`,
+		`git bundle create .abcd/.work.local/approvals HEAD`,
+		`git read-tree --index-output=.abcd/.work.local/approvals HEAD`,
+		`git apply --check --build-fake-ancestor=.abcd/.work.local/approvals x/p.diff`,
+		`git interpret-trailers --in-place .abcd/.work.local/approvals`,
+		`git merge-file .abcd/.work.local/approvals x/b x/c`,
+		`git mv x/review-receipts .abcd/.work.local/`,
+		`git mv -k x/review-receipts .abcd/.work.local`,
+		`git mv .abcd/.work.local/approvals x/`,
+		`git init .abcd/.work.local/approvals`,
+		`git apply x/p.diff`,
+		`git apply -p1 x/p.diff`,
+		`git am x/0001.patch`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+	for _, line := range []string{
+		`git diff --output=build/d.diff HEAD`,
+		`git log -- --output=x`,
+		`git mv x/old sub/`,
+		`git format-patch -o build HEAD~`,
+		`git apply --check x/p.diff`,
+		`git am --show-current-patch`,
+		`git rm --cached x/notes.txt`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+}
+
+// TestAGitExtensionOnPathIsJudgedAsTheProgramItRuns: git runs a git-<name>
+// program it finds on PATH before any alias of that name, so a stage's
+// undocumented subcommand with such a program outside the session's own
+// directories is that program, and may write as any program does; one with
+// no such program, one whose program the session could have written, and one
+// the configuration defines as an alias are refused, saying so.
+func TestAGitExtensionOnPathIsJudgedAsTheProgramItRuns(t *testing.T) {
+	tree := landingTree(t)
+	bin := t.TempDir()
+	for _, name := range []string{"git-lfs", "git-absorb"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inside := filepath.Join(tree, "x", "bin")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inside, "git-made"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	temps := approveTempDirs
+	t.Cleanup(func() { approveTempDirs = temps })
+	elsewhere := t.TempDir()
+	approveTempDirs = func() []string { return []string{elsewhere} }
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+inside+string(os.PathListSeparator)+os.Getenv("PATH"))
+	home := filepath.Join(t.TempDir(), "stage")
+	stage := NewFiles(tree).WithStage(home, nil, nil)
+	for _, line := range []string{
+		`git lfs pull`,
+		`git lfs ls-files`,
+		`git lfs install --local`,
+		`git absorb --and-rebase`,
+		`git lfs fetch && git lfs checkout`,
+		`git lfs pull && go build -o bin/tool ./cmd/tool`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	for line, want := range map[string]string{
+		`git zzfoo`:                          "no git-zzfoo program",
+		`git made`:                           "where this session can write it",
+		`git zzfoo && printf x > notes.txt`:  "no git-zzfoo program",
+		`git lfs pull && git zzfoo x/p.diff`: "no git-zzfoo program",
+	} {
+		a := approveShell(clean(), stage, line)
+		if a.Allow || !strings.Contains(a.Reason, want) {
+			t.Errorf("%q: want a refusal saying %q, got allow=%v: %s", line, want, a.Allow, a.Reason)
+		}
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[alias]\n\tabsorb = !true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if a := approveShell(clean(), stage, `git absorb`); a.Allow || !strings.Contains(a.Reason, "alias.absorb") {
+		t.Errorf("an extension the configuration also defines as an alias: allow=%v: %s", a.Allow, a.Reason)
 	}
 }
