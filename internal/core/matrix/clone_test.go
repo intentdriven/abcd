@@ -427,7 +427,7 @@ func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
 	// A made clone with a lane branch at a commit that does not descend
 	// from the frozen commit.
 	unrelated := made(t)
-	orphan := gitOut(t, env, unrelated, "commit-tree", "-m", "unrelated", frozen+"^{tree}")
+	orphan := gitOut(t, env, unrelated, "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture", "commit-tree", "-m", "unrelated", frozen+"^{tree}")
 	gitOut(t, env, unrelated, "update-ref", "refs/heads/build/lane-1", orphan)
 	for name, dir := range map[string]string{
 		"a clone whose .git names a common directory":        redirected,
