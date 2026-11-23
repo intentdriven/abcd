@@ -3,6 +3,8 @@ package ghcontract
 import (
 	_ "embed"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -45,6 +47,84 @@ var gqlSchema, gqlUnions = func() (map[string]map[string]gqlField, map[string]ma
 	return s, u
 }()
 
+// The arguments of each pinned field: one a line, "<Type>.<field> <argument>
+// <type> [default]", and a line "one <Type>.<field> <argument>..." for a field
+// the forge refuses without at least one of them, read by introspection
+// (graphql-args.txt says how).
+//
+//go:embed graphql-args.txt
+var graphqlArgs string
+
+// gqlArg is one pinned argument: its type as a query writes it, and whether
+// the schema gives it a default.
+type gqlArg struct {
+	typ        string
+	hasDefault bool
+}
+
+// required reports whether a query must pass the argument: a non-null type
+// with no default, as GraphQL's validation holds it.
+func (a gqlArg) required() bool { return strings.HasSuffix(a.typ, "!") && !a.hasDefault }
+
+// gqlArgs is graphqlArgs by type, then field, then argument; gqlOneOf is each
+// field's "one" lines, every set of arguments of which a query passes one.
+var gqlArgs, gqlOneOf = func() (map[string]map[string]map[string]gqlArg, map[string]map[string][][]string) {
+	a, o := map[string]map[string]map[string]gqlArg{}, map[string]map[string][][]string{}
+	malformed := func(line string) {
+		panic("ghcontract: graphql-args.txt: malformed line " + fmt.Sprintf("%q", line))
+	}
+	pinned := func(line, ref string) (string, string) {
+		typ, field, ok := strings.Cut(ref, ".")
+		if !ok {
+			malformed(line)
+		}
+		if _, ok := gqlSchema[typ][field]; !ok {
+			panic("ghcontract: graphql-args.txt: " + ref + " is not a field graphql-fields.txt pins")
+		}
+		return typ, field
+	}
+	for _, line := range strings.Split(graphqlArgs, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		if f[0] == "one" {
+			if len(f) < 4 {
+				malformed(line)
+			}
+			typ, field := pinned(line, f[1])
+			if o[typ] == nil {
+				o[typ] = map[string][][]string{}
+			}
+			o[typ][field] = append(o[typ][field], f[2:])
+			continue
+		}
+		if len(f) != 3 && (len(f) != 4 || f[3] != "default") {
+			malformed(line)
+		}
+		typ, field := pinned(line, f[0])
+		if a[typ] == nil {
+			a[typ] = map[string]map[string]gqlArg{}
+		}
+		if a[typ][field] == nil {
+			a[typ][field] = map[string]gqlArg{}
+		}
+		a[typ][field][f[1]] = gqlArg{f[2], len(f) == 4}
+	}
+	for typ, fields := range o {
+		for field, sets := range fields {
+			for _, set := range sets {
+				for _, name := range set {
+					if _, ok := a[typ][field][name]; !ok {
+						panic("ghcontract: graphql-args.txt: " + typ + "." + field + " has no argument " + name + " for its \"one\" line")
+					}
+				}
+			}
+		}
+	}
+	return a, o
+}()
+
 // typenameField is GraphQL's meta-field naming a selection's concrete type.
 const typenameField = "__typename"
 
@@ -56,16 +136,19 @@ func GraphQLField(typ, field string) (string, bool) {
 }
 
 // CheckGraphQL refuses a GraphQL query that selects a field its type does not
-// have in the pinned schema, as the forge refuses it. It parses the shape
-// abcd's queries take, and refuses any other: an optional `query` keyword,
-// name and variable definitions, then nested selections of plain fields, each
-// with optional arguments, and inline fragments (`... on Type { }`) on a
-// union the type is pinned to be, or on the selection's own type. An alias
-// (`p12: pullRequest(number:12)`) is read past to the field it names, which is
-// checked as any other. `__typename`, the meta-field every selection may take,
-// is read bare (no alias, arguments or selection). A named fragment, a
-// directive or a mutation is refused as not parsed rather than passed
-// unchecked; arguments are not checked.
+// have in the pinned schema, as the forge refuses it, or passes a field an
+// argument the field does not take, or leaves out one it requires (a
+// non-null argument with no default, or one of a set the forge needs one of).
+// It parses the shape abcd's queries take, and refuses any other: an optional
+// `query` keyword, name and variable definitions, then nested selections of
+// plain fields, each with optional arguments, and inline fragments
+// (`... on Type { }`) on a union the type is pinned to be, or on the
+// selection's own type. An alias (`p12: pullRequest(number:12)`) is read past
+// to the field it names, which is checked as any other. `__typename`, the
+// meta-field every selection may take, is read bare (no alias, arguments or
+// selection). A named fragment, a directive or a mutation is refused as not
+// parsed rather than passed unchecked. An argument's name is checked, its
+// value only parsed: a value of the wrong type is not refused.
 func CheckGraphQL(query string) error {
 	p := &gqlParser{s: query}
 	p.skip()
@@ -163,6 +246,117 @@ func (p *gqlParser) args() error {
 	return fmt.Errorf("graphql: unbalanced parentheses in %q", p.s)
 }
 
+// fieldArgs reads a field's arguments, `(name: value, ...)`, at i, and returns
+// the names passed. A value is parsed, not judged: a variable, a string, a
+// number, a name (true, false, null or an enum value), a list or an object.
+func (p *gqlParser) fieldArgs() (map[string]bool, error) {
+	p.i++
+	passed := map[string]bool{}
+	for p.skip(); p.peek() != ')'; p.skip() {
+		name := p.name()
+		if p.skip(); name == "" || p.peek() != ':' {
+			return nil, p.unparsed()
+		}
+		p.i++
+		p.skip()
+		if err := p.value(); err != nil {
+			return nil, err
+		}
+		passed[name] = true
+	}
+	if len(passed) == 0 {
+		// GraphQL's grammar takes one or more arguments in the parentheses.
+		return nil, p.unparsed()
+	}
+	p.i++
+	return passed, nil
+}
+
+// value reads one argument value at i.
+func (p *gqlParser) value() error {
+	switch c := p.peek(); {
+	case c == '$':
+		p.i++
+		if p.name() == "" {
+			return p.unparsed()
+		}
+	case strings.HasPrefix(p.s[p.i:], `"""`):
+		end := strings.Index(strings.ReplaceAll(p.s[p.i+3:], `\"""`, "xxxx"), `"""`)
+		if end < 0 {
+			return p.unparsed()
+		}
+		p.i += 3 + end + 3
+	case c == '"':
+		for p.i++; p.i < len(p.s) && p.s[p.i] != '"' && p.s[p.i] != '\n'; p.i++ {
+			if p.s[p.i] == '\\' {
+				p.i++
+			}
+		}
+		if p.peek() != '"' {
+			return p.unparsed()
+		}
+		p.i++
+	case c == '-' || c >= '0' && c <= '9':
+		j := p.i
+		for p.i++; p.i < len(p.s) && strings.IndexByte("0123456789.eE+-", p.s[p.i]) >= 0; p.i++ {
+		}
+		if !strings.ContainsAny(p.s[j:p.i], "0123456789") {
+			p.i = j
+			return p.unparsed()
+		}
+	case nameStart(c):
+		p.name()
+	case c == '[':
+		p.i++
+		for p.skip(); p.peek() != ']'; p.skip() {
+			if err := p.value(); err != nil {
+				return err
+			}
+		}
+		p.i++
+	case c == '{':
+		p.i++
+		for p.skip(); p.peek() != '}'; p.skip() {
+			name := p.name()
+			if p.skip(); name == "" || p.peek() != ':' {
+				return p.unparsed()
+			}
+			p.i++
+			p.skip()
+			if err := p.value(); err != nil {
+				return err
+			}
+		}
+		p.i++
+	default:
+		return p.unparsed()
+	}
+	return nil
+}
+
+// checkArgs refuses the arguments passed to typ.field (none when passed is
+// nil) as the forge refuses them: one the field does not take, a required one
+// left out, or none of a set the forge needs one of.
+func checkArgs(typ, field string, passed map[string]bool) error {
+	pins := gqlArgs[typ][field]
+	for _, name := range slices.Sorted(maps.Keys(passed)) {
+		if _, ok := pins[name]; !ok {
+			return fmt.Errorf("graphql: %s.%s takes no argument %q (the forge's schema as ghcontract pins it)", typ, field, name)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(pins)) {
+		if a := pins[name]; a.required() && !passed[name] {
+			return fmt.Errorf("graphql: %s.%s needs the argument %q, a %s (the forge's schema as ghcontract pins it)", typ, field, name, a.typ)
+		}
+	}
+	for _, set := range gqlOneOf[typ][field] {
+		if !slices.ContainsFunc(set, func(name string) bool { return passed[name] }) {
+			return fmt.Errorf("graphql: %s.%s needs one of the arguments %s, which the forge refuses it without", typ, field, strings.Join(set, ", "))
+		}
+	}
+	return nil
+}
+
 func (p *gqlParser) unparsed() error {
 	return fmt.Errorf("graphql: %q at byte %d is not parsed by ghcontract's checker (only plain fields with arguments are)", p.s[p.i:min(p.i+16, len(p.s))], p.i)
 }
@@ -218,11 +412,16 @@ func (p *gqlParser) selection(typ string) error {
 			return fmt.Errorf("graphql: %s has no field %q (the forge's schema as ghcontract pins it)", typ, name)
 		}
 		n++
+		var passed map[string]bool
 		if p.peek() == '(' {
-			if err := p.args(); err != nil {
+			var err error
+			if passed, err = p.fieldArgs(); err != nil {
 				return err
 			}
 			p.skip()
+		}
+		if err := checkArgs(typ, name, passed); err != nil {
+			return err
 		}
 		composite := f.kind == "OBJECT" || f.kind == "INTERFACE" || f.kind == "UNION"
 		switch {

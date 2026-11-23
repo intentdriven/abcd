@@ -135,3 +135,62 @@ func TestCheckGraphQLRefusesAFieldTheForgeLacks(t *testing.T) {
 		}
 	}
 }
+
+// Each field's arguments are held to the forge's (graphql-args.txt): one the
+// field lacks, or a required one left out, is refused as the forge refuses it,
+// and a dropped isRequired(pullRequestNumber:$n), which the forge refuses when
+// it runs the query, fails here too (iss-2610151411351873).
+func TestCheckGraphQLHoldsEachFieldToItsArguments(t *testing.T) {
+	const pr = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){%s}}}`
+	const ctx = "statusCheckRollup{contexts(first:1){nodes{%s}}}"
+	for _, c := range []struct {
+		sel, refusal string
+	}{
+		{strings.Replace(ctx, "%s", `... on CheckRun{isRequired(pullRequestNumber:$n)} ... on StatusContext{isRequired(pullRequestId:"x")}`, 1), ""},
+		{strings.Replace(ctx, "%s", "... on CheckRun{name isRequired}", 1), "pullRequestNumber"},
+		{strings.Replace(ctx, "%s", "... on StatusContext{isRequired}", 1), "pullRequestNumber"},
+		{strings.Replace(ctx, "%s", "... on StatusContext{isRequired()}", 1), "not parsed"},
+		{strings.Replace(ctx, "%s", "... on CheckRun{isRequired(number:$n)}", 1), `"number"`},
+		{strings.Replace(ctx, "%s", `... on CheckRun{isRequired(pullRequestId:{a:[1,{b:"}"}],c:null}, pullRequestNumber:$n)}`, 1), ""},
+		{"statusCheckRollup{contexts(frist:1){totalCount}}", `"frist"`},
+		{"number(x:1)", `"x"`},
+		{"timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{reason}}}", ""},
+		{"reviews(last:100,states:[APPROVED, CHANGES_REQUESTED]){totalCount}", ""},
+		{"reviews(last:-1){totalCount} commits(first:1.5e2){totalCount}", ""},
+		{"reviews(last:){totalCount}", "not parsed"},
+		{"reviews(last 1){totalCount}", "not parsed"},
+		{"reviews(last:1{totalCount}", "not parsed"},
+		{"author{avatarUrl(size:40)}", ""},
+		{"projectV2{id}", `"number"`},
+	} {
+		q := strings.Replace(pr, "%s", c.sel, 1)
+		err := ghcontract.CheckGraphQL(q)
+		switch {
+		case c.refusal == "" && err != nil:
+			t.Fatalf("CheckGraphQL(%q) = %v, want it to pass", c.sel, err)
+		case c.refusal != "" && (err == nil || !strings.Contains(err.Error(), c.refusal)):
+			t.Fatalf("CheckGraphQL(%q) = %v, want a refusal naming %s", c.sel, err, c.refusal)
+		}
+	}
+	for _, c := range []struct{ q, refusal string }{
+		{`{repository(owner:"o",name:"r",followRenames:true){pullRequest(number:1){number}}}`, ""},
+		{`{repository(owner:"o"){pullRequest(number:1){number}}}`, `"name"`},
+		{`{repository(owner:"o",name:"r"){pullRequest{number}}}`, `"number"`},
+		{`{repository(owner:"o",name:"r"){p1:pullRequest{number}}}`, `"number"`},
+		{`{repository(owner:"o",name:"r"){pullRequest(number:1,id:"x"){number}}}`, `"id"`},
+		{`query($c:ID!){node(id:$c){... on IssueComment{body}}}`, ""},
+		{`{node{... on IssueComment{body}}}`, `"id"`},
+		{`{repository(owner:"""o"" \""" ) """,name:"r\"),"){pullRequest(number:1){number}}}`, ""},
+		{`{repository(owner:"o,name:"r"){pullRequest(number:1){number}}}`, "not parsed"},
+		{`{repository(owner:"""o,name:"r"){pullRequest(number:1){number}}}`, "not parsed"},
+		{`{viewer(login:"x"){login}}`, `"login"`},
+	} {
+		err := ghcontract.CheckGraphQL(c.q)
+		switch {
+		case c.refusal == "" && err != nil:
+			t.Fatalf("CheckGraphQL(%q) = %v, want it to pass", c.q, err)
+		case c.refusal != "" && (err == nil || !strings.Contains(err.Error(), c.refusal)):
+			t.Fatalf("CheckGraphQL(%q) = %v, want a refusal naming %s", c.q, err, c.refusal)
+		}
+	}
+}
