@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
@@ -35,6 +36,14 @@ import (
 //     session's occupancy marker), the work a peer has taken up there;
 //   - a reservation only runs another session drives are for.
 //
+// One item is left out with no holder named (peersWorktree,
+// iss-2611211734561033): a branch no record names a session for, checked out
+// in a worktree of the machine-scoped store other than this copy, while
+// another live session works in the repository. A store worktree is where one
+// session works apart from its peers and nothing ties it to this one, so its
+// branch is not this session's to finish or push; a note names it and says
+// to leave it unless this session made it.
+//
 // A run whose control record names a process and no session, a drive
 // started in a plain terminal (`abcd drain --drive`, which records its own
 // process), is that process's while it runs, when it is neither the
@@ -45,8 +54,9 @@ import (
 // an id abcd keys on, since it reads no session.
 //
 // Whatever the evidence cannot tell stays owed: a branch recorded before
-// sessions were kept, a lane of a run with no session as its driver whose
-// process has ended, is this check's own or one above it, or cannot be read,
+// sessions were kept (outside the store worktree case above), a lane of a
+// run with no session as its driver whose process has ended, is this check's
+// own or one above it, or cannot be read,
 // or with no driver at all, unless a live session started in the worktree
 // the lane is checked out in (that session's, as above), a reservation made
 // by hand, an item whose holder has ended, and every session's item when the
@@ -189,6 +199,11 @@ func (r *owedReader) sessionScope() {
 			delete(r.own, name)
 			delete(r.lanes, name)
 			r.hold(c.session, fmt.Sprintf("%s (%s)", name, c.why))
+			continue
+		}
+		if r.peersWorktree(name) {
+			delete(r.own, name)
+			r.unclaimed = append(r.unclaimed, name)
 		}
 	}
 	for _, res := range r.mine {
@@ -216,6 +231,65 @@ func (r *owedReader) sessionScope() {
 			r.hold(c.session, fmt.Sprintf("the reservation of %s (%s)", res.Record, c.why))
 		}
 	}
+}
+
+// peersWorktree reports whether an own branch no evidence names a session
+// for is the work of whichever peer took up the worktree it is checked out in
+// (iss-2611211734561033): no session is recorded creating it (a record an
+// older release wrote, or none), it is no lane of a run in this copy, it is
+// checked out in a worktree of the machine-scoped store other than this copy,
+// and another live session works in this repository, started in this copy or
+// in any of its worktrees. A store worktree is the place one session works
+// apart from its peers, and nothing says it is this session's, so its branch
+// is not this session's to finish or push. With no other live session in the
+// repository, or the live sessions unread, it stays owed: only this session,
+// or one that has ended, can have made it.
+func (r *owedReader) peersWorktree(name string) bool {
+	if r.recordedBy[name] != "" {
+		return false
+	}
+	if _, lane := r.lanes[name]; lane {
+		return false
+	}
+	wt := r.elsewhere[name]
+	if wt == "" || !r.inWorktreeStore(wt) {
+		return false
+	}
+	live, ok := r.liveSessions()
+	if !ok {
+		return false
+	}
+	for id, checkout := range live {
+		if id == r.me {
+			continue
+		}
+		if sameDir(checkout, r.root) {
+			return true
+		}
+		for _, p := range r.worktrees {
+			if sameDir(checkout, p) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// inWorktreeStore reports whether the worktree at path stands in this
+// repository's lane of the machine-scoped worktree store
+// (~/.abcd.noindex/worktrees/<root-sha>/<name>/) under one of the homes the
+// check reads; false when the root commit was not read.
+func (r *owedReader) inWorktreeStore(path string) bool {
+	if r.rootSHA == "" {
+		return false
+	}
+	parent := filepath.Dir(filepath.Clean(path))
+	for _, h := range r.storeHomes {
+		if sameDir(parent, filepath.Join(h, filepath.FromSlash(worktree.StoreRel), r.rootSHA)) {
+			return true
+		}
+	}
+	return false
 }
 
 // holder is the first claimant that is another session running now; false
@@ -282,6 +356,13 @@ func (r *owedReader) holdNotes() {
 			named, more = named[:maxHeldNamed], fmt.Sprintf(" and %d more", len(items)-maxHeldNamed)
 		}
 		r.note("live session %s holds %s%s: that session's work, not owed here", s, strings.Join(named, ", "), more)
+	}
+	if len(r.unclaimed) > 0 {
+		named, more := r.unclaimed, ""
+		if len(named) > maxHeldNamed {
+			named, more = named[:maxHeldNamed], fmt.Sprintf(" and %d more", len(r.unclaimed)-maxHeldNamed)
+		}
+		r.note("possibly another live session's work, so not owed here; leave it unless this session made it (checked out in a store worktree not this copy, recorded with no session): %s%s", strings.Join(named, ", "), more)
 	}
 	procs := make([]string, 0, len(r.driveHeld))
 	for p := range r.driveHeld {

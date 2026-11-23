@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/occupancy"
 )
@@ -389,5 +390,91 @@ func TestSharedCopyBreachNamedWithNoClaim(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Errorf("the live sessions were read %d times; once a check", reads)
+	}
+}
+
+// storeWorktreeWith adds a worktree called wtName in this repository's lane
+// of the machine-scoped worktree store under f.home, on a new branch name
+// holding one commit of this checkout's, not pushed, and returns its path,
+// symlinks resolved: the place a session works in apart from its peers.
+func (f *fx) storeWorktreeWith(name, wtName string) string {
+	f.t.Helper()
+	sha := strings.TrimSpace(f.git("rev-list", "--max-parents=0", "HEAD"))
+	lane := filepath.Join(f.home, filepath.FromSlash(worktree.StoreRel), sha)
+	if err := os.MkdirAll(lane, 0o700); err != nil {
+		f.t.Fatal(err)
+	}
+	wt := filepath.Join(lane, wtName)
+	f.git("worktree", "add", "-q", "-b", name, wt)
+	if err := os.WriteFile(filepath.Join(wt, "w.txt"), []byte(name+"\n"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	f.git("-C", wt, "add", "w.txt")
+	f.git("-C", wt, "commit", "-q", "-m", "work on "+name)
+	real, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return real
+}
+
+// TestKeylessBranchInAPeersStoreWorktreeIsNotOwed is the detector of
+// iss-2611211734561033: three sessions started in the main checkout, and one
+// of them made a branch, committed to it in a worktree of its own in the
+// machine-scoped store and did not push it; the created-branch record holds
+// the name with no session, as an older release wrote every entry. The
+// stopping session neither made it nor works there, so it is not owed here:
+// the stop never tells this session to finish or push it, and a note names it
+// and says to leave it unless this session made it. The boundary holds: the
+// same branch recorded with this session's key stays owed, and so does the
+// keyless one when no other live session works in this repository, or the
+// live sessions cannot be read.
+func TestKeylessBranchInAPeersStoreWorktreeIsNotOwed(t *testing.T) {
+	f := newFx(t)
+	f.storeWorktreeWith("feat/peer-store", "peer-store")
+	f.recordCreated("feat/peer-store", "")
+	read := func(live func() ([]occupancy.Session, error)) Owed {
+		o := f.opts()
+		o.Record = f.awayRecord(false)
+		o.SessionID = sessMe
+		o.LiveSessions = live
+		return f.readWith(o)
+	}
+	reads := 0
+	three := liveAs(&reads,
+		occupancy.Session{ID: sessMe, Checkout: f.root},
+		occupancy.Session{ID: sessPeer, Checkout: f.root},
+		occupancy.Session{ID: sessWT, Checkout: f.root})
+
+	owed := read(three)
+	for _, it := range owed.Items {
+		if it.Branch == "feat/peer-store" {
+			t.Fatalf("a branch in another session's store worktree, recorded with no session, is owed here: %s", describe(owed))
+		}
+	}
+	notes := strings.Join(owed.Notes, "\n")
+	if !strings.Contains(notes, "feat/peer-store") || !strings.Contains(notes, "leave it unless this session made it") {
+		t.Errorf("the notes do not name the branch left out and say to leave it unless this session made it:\n%s", notes)
+	}
+	if reads != 1 {
+		t.Errorf("the live sessions were read %d times; once a check", reads)
+	}
+	v := Judge(f.awayRecord(false), owed, StopInput{SessionID: sessMe}, SessionState{}, f.now)
+	if strings.Contains(v.Reason, "feat/peer-store") && strings.Contains(v.Reason, "push") {
+		t.Fatalf("the stop tells this session to push another session's branch: row %d: %s", v.Row, v.Reason)
+	}
+
+	alone := read(liveAs(&reads, occupancy.Session{ID: sessMe, Checkout: f.root}))
+	if !has(alone, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("with no other live session in this repository, the keyless branch stays owed: %s", describe(alone))
+	}
+	unread := read(func() ([]occupancy.Session, error) { return nil, errors.New("no process table") })
+	if !has(unread, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("with the live sessions unread, the keyless branch stays owed: %s", describe(unread))
+	}
+	f.recordCreated("feat/peer-store", sessMe)
+	mine := read(three)
+	if !has(mine, OwedUnpushed, "feat/peer-store") {
+		t.Errorf("the branch this session recorded creating stays owed to it beside its peers: %s", describe(mine))
 	}
 }

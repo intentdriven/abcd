@@ -199,3 +199,34 @@ func TestBranchRecorderSkipsBranchCheckedOutElsewhere(t *testing.T) {
 		t.Errorf("a branch no worktree has checked out was not recorded: %v", got)
 	}
 }
+
+// TestWorktreeStoreAddRecordsItsBranch (iss-2611211734561033): the guard's
+// recorder reads only git command lines, so a branch the worktree store's add
+// verb makes or checks out was never recorded, and the stop check told the
+// session that made it that nothing was owed. The verb records it under the
+// session copy's key, with the host session its environment names, whether
+// it makes the branch or checks an existing one out.
+func TestWorktreeStoreAddRecordsItsBranch(t *testing.T) {
+	root := awayCheckout(t)
+	t.Setenv(hostSessionIDEnv, "sess-maker")
+	if text, code := runWorktree(t, false, "add", "feat-made"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, text)
+	}
+	gitAt(t, root, "branch", "topic")
+	if text, code := runWorktree(t, false, "add", "wt-topic", "--branch", "topic"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, text)
+	}
+	got, err := awayStore(t, root).CreatedBranches(claim.OwnCopyKey(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]string{}
+	for _, b := range got {
+		by[b.Name] = b.Session
+	}
+	for _, name := range []string{"feat-made", "topic"} {
+		if s, ok := by[name]; !ok || s != "sess-maker" {
+			t.Errorf("the store's add verb did not record %s with its session: %+v", name, got)
+		}
+	}
+}

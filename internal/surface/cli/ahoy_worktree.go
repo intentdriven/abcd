@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -163,6 +164,11 @@ func newAhoyWorktreeAddCommand(asJSON *bool) *cobra.Command {
 				}
 			}
 			got, err := worktree.Add(root, opts)
+			// A refusal that comes with the worktree standing (its checkout
+			// hook failed) made the branch too, so it is recorded as well.
+			if got.Branch != "" {
+				recordAddedBranch(cmd.ErrOrStderr(), root, got.Branch, !opts.Existing)
+			}
 			if err != nil {
 				return worktreeFault("add", err)
 			}
@@ -176,6 +182,33 @@ func newAhoyWorktreeAddCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&branch, "branch", "", "check out this existing local branch instead of making a new one")
 	return cmd
+}
+
+// recordAddedBranch records the branch `add` made or checked out in the away
+// mode's created-branch list (autonomy.RecordAdded, iss-2611211734561033),
+// under the session copy's key (awayCopyRoot) and with the host session the
+// environment names, as the checklist verb reads it: the guard's recorder
+// reads only git command lines and never sees this verb's branch, so the stop
+// check would tell the session that made it that nothing is owed. It refuses
+// nothing: a store it cannot write leaves one line on w, and the worktree
+// stands.
+func recordAddedBranch(w io.Writer, root, branch string, made bool) {
+	session := os.Getenv(hostSessionIDEnv)
+	if !autonomy.ValidSessionID(session) {
+		session = ""
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = root
+	}
+	copyRoot, ok := awayCopyRoot(cwd, session)
+	if !ok {
+		return
+	}
+	if err := autonomy.RecordAdded(copyRoot, branch, made, autonomy.Options{SessionID: session}); err != nil {
+		diagnosticLine(w, "abcd ahoy worktree add: the branch %s was not recorded for the away mode (%s); the worktree stands",
+			termsafe.Sanitize(branch), scrubPaths(err))
+	}
 }
 
 // branchTaken refuses a new branch whose name a local branch already holds,
