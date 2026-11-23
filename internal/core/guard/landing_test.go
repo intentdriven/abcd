@@ -350,3 +350,39 @@ func TestALinkMadeEarlierOnTheLineIsFollowed(t *testing.T) {
 		}
 	}
 }
+
+// TestAGitCommandThatWritesTheWorkingTreeMayPlaceALink: a git command that
+// writes the working tree from a patch or from the object store (apply, a
+// stash popped, a branch checked out, a path restored) may place a link the
+// line does not fix, so in a stage a later write below what it writes is not
+// placed; a write elsewhere, and a git command that writes no working-tree
+// file, stay open.
+func TestAGitCommandThatWritesTheWorkingTreeMayPlaceALink(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`git apply x/p.diff && cp x/notes.txt L/0123abcd`,
+		`git stash pop && cp x/notes.txt L/0123abcd`,
+		`git checkout feature && mkdir L/approvals`,
+		`git restore L && cp x/notes.txt L/0123abcd`,
+		`git checkout -- L && printf x > L/a`,
+		`git reset --hard origin/main && printf x > L/a`,
+		`git am x/p.mbox && printf x > L/a`,
+	} {
+		if a := approveShell(clean(), stage, line); a.Allow {
+			t.Errorf("a stage's line was approved: %s", line)
+		}
+	}
+	for _, line := range []string{
+		`git restore L && printf x > x/notes.txt`,
+		`git checkout -- L && printf x > x/notes.txt`,
+		`git apply --check x/p.diff && printf x > x/notes.txt`,
+		`git stash list && printf x > x/notes.txt`,
+		`git reset HEAD~1 && printf x > x/notes.txt`,
+		`printf x > x/notes.txt && git apply x/p.diff`,
+	} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+}

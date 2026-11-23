@@ -642,10 +642,16 @@ per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards
 as everywhere, but the checks above read the line itself, not the script's own
 writes, and a command that writes into a directory (`tar -x`, `unzip -d`,
-`cp -r`, `git apply`, `git checkout`) is judged by that directory and, for the
-writers the protected-path rule above names, by every protected path below it,
-not by the names of the files that land inside it, which the guard does not
-read.
+`cp -r`) is judged by that directory and, for the writers the protected-path
+rule above names, by every protected path below it, not by the names of the
+files that land inside it, which the guard does not read. A git command that
+writes the working tree from a patch or from the object store (`git apply`,
+`git am`, a stash applied, a hard reset, a merge, cherry-pick, revert, rebase
+or pull, a branch switched to, `git checkout-index`, `git read-tree -u`) is
+not judged by the files it writes; in a stage it counts as placing a tree of
+contents the line does not fix over the working tree, as `git checkout -- P`
+and `git restore P` do over each path they name, so a later write below it on
+the same line, which may pass through a link it made, is not placed.
 
 What the approver does not cover, plainly. The file tools the role is granted
 on the launch (`--allowedTools`: reading, editing and writing files) write

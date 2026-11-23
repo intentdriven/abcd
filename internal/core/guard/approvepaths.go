@@ -1551,6 +1551,12 @@ func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival,
 	case "ln", "install":
 		return
 	case "cp", "mv":
+	case "git":
+		w := writerArgs{rc: rc, s: seg, st: st, from: a.idx + 1}
+		for _, t := range w.gitTrees() {
+			m.trees = append(m.trees, lineTree{at: t.path, seg: k})
+		}
+		fallthrough
 	default:
 		for _, t := range siteTargets(rc, seg, st, a) {
 			if t.ok && t.tree {

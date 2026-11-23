@@ -830,7 +830,13 @@ on the launch (the contract's tools other than the shell, which the runner
 grants without a prompt) write without asking the approver, so the protected
 paths bound only the shell's writes; a script the line runs writes unread, and
 a command that writes into a directory is judged by that directory and every
-protected path below it, not by the names of the files that land inside it; and
+protected path below it, not by the names of the files that land inside it; a
+git command that writes the working tree from a patch or the object store
+(apply, am, a stash applied, a hard reset, merge, cherry-pick, revert, rebase,
+pull, a branch switched to, checkout-index, read-tree -u) is not judged by the
+files it writes, and in a stage counts as placing a tree of unfixed contents
+over the working tree (over each path `git checkout -- P` or `git restore P`
+names), so a later write below it on the same line is not placed; and
 the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
