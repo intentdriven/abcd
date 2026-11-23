@@ -58,20 +58,20 @@ const (
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
 //
-// It stays on the deadline-free finder rather than calling ReceiptContext
+// It stays on the deadline-free finder rather than calling receiptContext
 // with a Background context, which the hook git audit would count as a new
 // deadline-free call (dcn-2611101237202451).
 func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
 
-// ReceiptContext is Receipt with its git calls (the worktree listing and each
+// receiptContext is Receipt with its git calls (the worktree listing and each
 // receipt's tracked check) bound to ctx, for a reader on a deadline, the away
 // mode's stop check among them: a ctx already ended starts no git and
 // refuses with its own error, and one that ends while git runs kills it.
-func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
+func receiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 	return findReceiptContext(ctx, repoRoot, ReceiptsRelDir, sha)
 }
 
-// ReceiptOutsideLanes is Receipt passing over a receipt found in a drive
+// receiptOutsideLanes is Receipt passing over a receipt found in a drive
 // lane's worktree, and every one when repoRoot is itself a lane's worktree or
 // lies inside one (insideDriveLane): the drive runs model stages in a lane's
 // worktree, and they can write any file there, so only a checkout outside the
@@ -79,12 +79,12 @@ func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 // it skips its own preflight, and the away mode's owed reading reads it. The
 // drive's own landing keeps Receipt, with its check that the receipt is one
 // its own preflight minted.
-func ReceiptOutsideLanes(repoRoot, sha string) (string, error) {
+func receiptOutsideLanes(repoRoot, sha string) (string, error) {
 	return firstReceipt(outsideLanes(repoRoot)(findReceipts(repoRoot, ReceiptsRelDir, sha)))
 }
 
-// ReceiptOutsideLanesContext is ReceiptOutsideLanes with its git calls bound
-// to ctx, as ReceiptContext binds Receipt's.
+// ReceiptOutsideLanesContext is receiptOutsideLanes with its git calls bound
+// to ctx, as receiptContext binds Receipt's.
 func ReceiptOutsideLanesContext(ctx context.Context, repoRoot, sha string) (string, error) {
 	return firstReceipt(outsideLanes(repoRoot)(findReceiptsContext(ctx, repoRoot, ReceiptsRelDir, sha)))
 }

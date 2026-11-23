@@ -16,8 +16,8 @@ func TestAPreflightReceiptInADriveLanesWorktreeDoesNotSkipTheGate(t *testing.T) 
 	if err := f.mint(lane); err != nil {
 		t.Fatal(err)
 	}
-	if p, err := ReceiptOutsideLanes(f.repo.Root(), f.head()); err != nil || p != "" {
-		t.Fatalf("ReceiptOutsideLanes = %q, %v; want the lane's receipt passed over", p, err)
+	if p, err := receiptOutsideLanes(f.repo.Root(), f.head()); err != nil || p != "" {
+		t.Fatalf("receiptOutsideLanes = %q, %v; want the lane's receipt passed over", p, err)
 	}
 	if p, err := Receipt(f.repo.Root(), f.head()); err != nil || p == "" {
 		t.Fatalf("Receipt = %q, %v; want the lane's receipt found", p, err)
@@ -42,11 +42,11 @@ func TestAPreflightReceiptInsideALaneCountsForNothingFromIt(t *testing.T) {
 	if err := f.mint(f.repo.Root()); err != nil {
 		t.Fatal(err)
 	}
-	if p, err := ReceiptOutsideLanes(lane, f.head()); err != nil || p != "" {
-		t.Fatalf("ReceiptOutsideLanes from the lane = %q, %v; want none", p, err)
+	if p, err := receiptOutsideLanes(lane, f.head()); err != nil || p != "" {
+		t.Fatalf("receiptOutsideLanes from the lane = %q, %v; want none", p, err)
 	}
-	if p, err := ReceiptOutsideLanes(f.repo.Root(), f.head()); err != nil || p == "" {
-		t.Fatalf("ReceiptOutsideLanes = %q, %v; want the main checkout's receipt", p, err)
+	if p, err := receiptOutsideLanes(f.repo.Root(), f.head()); err != nil || p == "" {
+		t.Fatalf("receiptOutsideLanes = %q, %v; want the main checkout's receipt", p, err)
 	}
 	if _, err := os.Stat(filepath.Join(f.repo.Root(), filepath.FromSlash(ReceiptsRelDir), f.head())); err != nil {
 		t.Fatal(err)
