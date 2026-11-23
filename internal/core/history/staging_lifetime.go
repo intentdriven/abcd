@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // StagedTTL is how long a staged raw transcript may sit before it is reported
@@ -475,7 +476,7 @@ func SurveyBacklog() ([]RepoBacklog, error) {
 		// Only a directory whose name IS a root-commit SHA is a repository key.
 		// index.json, meta files and anything else a future version drops here
 		// are not, and a survey that tried to read them would report noise.
-		if !e.IsDir() || !rootSHARe.MatchString(e.Name()) {
+		if !e.IsDir() || !gitutil.IsFullSHA(e.Name()) {
 			continue
 		}
 		// The corpus moved out of ahoy's namespace but the per-repo meta.json
@@ -546,7 +547,7 @@ func registeredRoots() map[string]string {
 		if strings.HasPrefix(p, "~/") {
 			p = filepath.Join(home, filepath.FromSlash(p[2:]))
 		}
-		if rootSHARe.MatchString(r.RootCommit) && filepath.IsAbs(p) {
+		if gitutil.IsFullSHA(r.RootCommit) && filepath.IsAbs(p) {
 			out[r.RootCommit] = p
 		}
 	}

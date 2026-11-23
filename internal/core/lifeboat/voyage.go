@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // voyageDirPerm is the mode the voyage store's own directories are created with.
@@ -16,13 +16,6 @@ import (
 // which repositories they packed and where they wrote them. An already-existing
 // directory keeps the mode the caller gave it.
 const voyageDirPerm = abcdhome.DirMode
-
-// rootSHARe is the operator-store key: a lowercase hex commit SHA, 40 chars for
-// git's SHA-1 object format or 64 for SHA-256. Accepting only 40 silently
-// dropped every voyage from a SHA-256 repository. A source without a root SHA (an
-// empty or non-git repo) cannot key a voyage, so its pack is not logged rather
-// than logged under a forged key.
-var rootSHARe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // voyageEntry is one line of the append-only disembark ledger. It carries no
 // oracle verdict or shared_with field — nothing produces them yet, and an empty
@@ -50,8 +43,15 @@ type voyageEntry struct {
 // fails the pack, because the written lifeboat's _provenance.json is
 // authoritative and the ledger is only a log.
 func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int) (appended bool, note string) {
+	// The operator-store key is the source's root-commit SHA, checked by
+	// gitutil.IsFullSHA: 40 lowercase hex chars for git's SHA-1 object format or
+	// 64 for SHA-256. Accepting only 40 silently dropped every voyage from a
+	// SHA-256 repository, so the package keeps no private copy of the check
+	// (iss-2610140813542607). A source without a root SHA (an empty or non-git
+	// repo) cannot key a voyage, so its pack is not logged rather than logged
+	// under a forged key.
 	rootSHA := lb.Coverage.Repo.RootSHA
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return false, "skipped: source has no root-commit SHA to key the voyage"
 	}
 	home, err := os.UserHomeDir()

@@ -56,6 +56,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 var (
@@ -128,7 +129,7 @@ type Resolution struct {
 // below discard them, because a verb that printed would be a core package
 // speaking to a terminal.
 func Resolve(repoRoot, rootSHA string) (Resolution, error) {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return Resolution{}, errors.New(rootSHAErrMsg)
 	}
 	home, err := os.UserHomeDir()

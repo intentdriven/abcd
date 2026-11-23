@@ -220,7 +220,7 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 	if dest.RepoRoot == "" {
 		return IngestResult{}, errors.New("history: ingest needs an explicit destination repository root; it is never derived from the working directory, because a transcript must be redacted under the configuration of the repository it is stored in")
 	}
-	if !rootSHARe.MatchString(dest.RootSHA) {
+	if !gitutil.IsFullSHA(dest.RootSHA) {
 		return IngestResult{}, errors.New(rootSHAErrMsg)
 	}
 	if err := dest.verify(); err != nil {
@@ -673,7 +673,7 @@ func storeSessionIndex() ownerIndex {
 		return index
 	}
 	for _, e := range entries {
-		if !e.IsDir() || !rootSHARe.MatchString(e.Name()) {
+		if !e.IsDir() || !gitutil.IsFullSHA(e.Name()) {
 			continue
 		}
 		seen := map[string]struct{}{}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestPackAppendsVoyageForGitSource: a git-backed source (has a root-commit SHA)
@@ -54,7 +55,7 @@ func TestPackAppendsVoyageForGitSource(t *testing.T) {
 	if e.Event != "disembark" || e.ManifestSHA256 != res.ManifestSHA256 {
 		t.Errorf("ledger entry mismatch: %+v vs manifest %s", e, res.ManifestSHA256)
 	}
-	if !rootSHARe.MatchString(e.SourceRootSHA) {
+	if !gitutil.IsFullSHA(e.SourceRootSHA) {
 		t.Errorf("ledger source_root_sha is not a 40-hex SHA: %q", e.SourceRootSHA)
 	}
 	// The ledger path must be keyed on that same root SHA.

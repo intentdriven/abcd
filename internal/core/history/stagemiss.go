@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // stageMissFilename is the marker, beside the staging directory, that counts
@@ -58,7 +59,7 @@ func stageMissPath(repoRoot, rootSHA string) (string, error) {
 // apart from a bound on the reason, and every reader sanitises them before
 // printing.
 func NoteStageMiss(repoRoot, rootSHA, who, reason string) error {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
 	path, err := stageMissPath(repoRoot, rootSHA)
@@ -138,7 +139,7 @@ func noteMissAt(path, who, reason string) error {
 // StageMiss reads the marker. A missing marker is not an error: no transcript
 // has been missed.
 func StageMiss(repoRoot, rootSHA string) (StageMissNote, bool, error) {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return StageMissNote{}, false, errors.New(rootSHAErrMsg)
 	}
 	path, err := stageMissPath(repoRoot, rootSHA)

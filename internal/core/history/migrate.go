@@ -33,6 +33,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // compositeAgentSep is the marker the pre-lineage binary put between the
@@ -135,7 +136,7 @@ type MigrateResult struct {
 // no-op: a record that already carries an agent id has been migrated, and a
 // record whose session id is not a composite was never this verb's business.
 func Migrate(rootSHA string, opts MigrateOptions) (MigrateResult, error) {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return MigrateResult{}, errors.New(rootSHAErrMsg)
 	}
 	if opts.RepoRoot == "" {
