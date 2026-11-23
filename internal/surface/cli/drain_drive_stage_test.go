@@ -1339,3 +1339,37 @@ func TestAStagesQuestionCheckKeepsTheDefaultLimits(t *testing.T) {
 		}
 	}
 }
+
+// TestAStagesRulesCarryNoLeaving: a drive's stage loads no LEAVING domain,
+// whether its rules come from the lane's base or from the working tree, since
+// a lane's prompt is abcd's composition around an issue body and never the
+// person's word that they are leaving (the security review of
+// away-blockers-1123). Another session keeps it.
+func TestAStagesRulesCarryNoLeaving(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write(".abcd/rules.json", `{"schema_version":1,"disabled":false,"domains":{}}`)
+	repo.Commit("the base")
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	for name, env := range map[string][2]string{
+		"walled writes":   {runner.StageWritesEnv, repo.Root()},
+		"the lane's base": {runner.StageBaseEnv, base},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(env[0], env[1])
+			rs, err := rulesForHook(repo.Root(), io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := rs.Domains[rules.LeavingDomain]; ok {
+				t.Fatalf("a stage's rules hold %s", rules.LeavingDomain)
+			}
+		})
+	}
+	rs, err := rulesForHook(repo.Root(), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := rs.Domains[rules.LeavingDomain]; !ok {
+		t.Fatalf("another session lost %s", rules.LeavingDomain)
+	}
+}

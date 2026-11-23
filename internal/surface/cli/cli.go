@@ -1635,11 +1635,19 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 // the commit its lane was cut from, since what the lane writes is not what the
 // agents reading its work are told. There GRILL keeps abcd's default question
 // limits, since the working tree's .abcd/config.json is the lane's own writing.
+// On any stage (a walled launch, or a base to read the rules at) the domains
+// no stage carries are dropped (rules.RuleSet.ForStage): LEAVING acts on the
+// person's word, and a lane's prompt is never that.
 func rulesForHook(root string, errOut io.Writer) (rules.RuleSet, error) {
 	if base := os.Getenv(runner.StageBaseEnv); base != "" {
-		return rules.LoadAt(root, base)
+		rs, err := rules.LoadAt(root, base)
+		return rs.ForStage(), err
 	}
-	return rulesWithLimits(root, errOut)
+	rs, err := rulesWithLimits(root, errOut)
+	if stageActive() {
+		rs = rs.ForStage()
+	}
+	return rs, err
 }
 
 // rulesWithLimits loads the rules for root with the GRILL domain stating the

@@ -693,6 +693,9 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 	}
 	stars := parseStarCommands(prompt)
 	idx := indexPrompt(prompt)
+	// The domains matched against the person's own words alone (OwnWords)
+	// share one index of that text, built only when one of them is in play.
+	var own *promptIndex
 
 	names := make([]string, 0, len(rs.Domains))
 	for name := range rs.Domains {
@@ -710,7 +713,15 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 		if d.State == StateDormant {
 			continue
 		}
-		if idx.hit(d) {
+		match := idx
+		if ownWordsDomains[name] {
+			if own == nil {
+				o := indexPrompt(OwnWords(prompt))
+				own = &o
+			}
+			match = *own
+		}
+		if match.hit(d) {
 			out = append(out, rs.resolved(name))
 		}
 	}
@@ -1332,7 +1343,7 @@ func Hits(d ResolvedDomain, prompt string) []string {
 	if parseStarCommands(prompt)[d.Name] {
 		return []string{"*" + d.Name}
 	}
-	hit := TermMatcher(prompt)
+	hit := TermMatcher(ownWordsPrompt(d.Name, prompt))
 	var out []string
 	for _, terms := range [][]string{d.Recall, d.Aliases} {
 		for _, term := range terms {

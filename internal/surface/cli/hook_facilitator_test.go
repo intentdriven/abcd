@@ -77,7 +77,8 @@ func TestPromptRouterFacilitatorLineBesideAway(t *testing.T) {
 
 // TestPromptRouterNoFacilitatorLineUnlessAuto: human, no configuration, and
 // an auto written only in the working tree send no line: the setting is read
-// as the merge gate reads it, so a branch cannot switch the line on.
+// the way the status line reads it, from the last-fetched default branch and
+// the machine layer, so a branch cannot switch the line on.
 func TestPromptRouterNoFacilitatorLineUnlessAuto(t *testing.T) {
 	for name, c := range map[string]struct{ committed, worktree string }{
 		"human":                {committed: `{"facilitator": {"mode": "human"}}`},
