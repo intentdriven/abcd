@@ -280,3 +280,60 @@ func TestPromptRouterLapsedWindowLine(t *testing.T) {
 		})
 	}
 }
+
+// TestPromptRouterLapsedWindowTellsTheSession pins iss-2611211733085834: while
+// a record has ended unclosed with something unread, the case in which the
+// person is shown the lapsed line, every prompt gives the session one line as
+// well, saying the window ended, that the checks the away mode adds no longer
+// hold, and that the mode is set again only on the person's word; the line the
+// person is shown says that consequence too. A record that ended with nothing
+// unread says nothing to anyone, and one closed by `abcd mode back` says
+// nothing again.
+func TestPromptRouterLapsedWindowTellsTheSession(t *testing.T) {
+	root := awayCheckout(t)
+	st := awayStore(t, root)
+	lapse := func(queue bool) {
+		t.Helper()
+		past := time.Now().Add(-3 * time.Hour)
+		o := autonomy.Options{Home: os.Getenv("HOME"), Now: func() time.Time { return past }, Who: func(string) string { return "Alice" }}
+		if _, err := autonomy.SetAway(root, past.Add(time.Hour).Format(time.RFC3339), false, o); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Update(func(r *autonomy.Record) (*autonomy.Record, error) {
+			if queue {
+				_ = r.AddStep("push feat/x", root, past)
+			}
+			return r, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessionWants := []string{"away window ended", "no longer hold", "only on the person's word"}
+
+	lapse(true)
+	for _, prompt := range []string{"one", "two"} {
+		so, _, _ := runSplit(t, awayPromptPayload("e1", root, prompt), "hook", "prompt-router")
+		out := decodePromptHook(t, so)
+		for _, want := range sessionWants {
+			if !strings.Contains(out.Context, want) {
+				t.Errorf("prompt %q: the session is not told %q:\n%s", prompt, want, out.Context)
+			}
+		}
+		if !strings.Contains(out.Message, "sessions ask and stop again") {
+			t.Errorf("prompt %q: the person's line does not say sessions ask and stop again: %q", prompt, out.Message)
+		}
+	}
+	if _, _, err := runSplit(t, "", "mode", "back"); err != nil {
+		t.Fatal(err)
+	}
+	so, _, _ := runSplit(t, awayPromptPayload("e1", root, "after"), "hook", "prompt-router")
+	if out := decodePromptHook(t, so); strings.Contains(out.Context, "away window ended") {
+		t.Errorf("after mode back the session is still told the window ended:\n%s", out.Context)
+	}
+
+	lapse(false)
+	so, _, _ = runSplit(t, awayPromptPayload("e2", root, "quiet"), "hook", "prompt-router")
+	if out := decodePromptHook(t, so); strings.Contains(out.Context, "away window ended") || out.Message != "" {
+		t.Errorf("a record that ended with nothing unread spoke: context %q, message %q", out.Context, out.Message)
+	}
+}

@@ -24,7 +24,8 @@ import (
 // outside the rules loader's dedup ledger, add the away block to the agent's
 // context while the record holds; the prompt hook also shows the person one
 // line (a systemMessage) saying so, or, once the window has lapsed unclosed
-// with anything unread, one line naming `abcd mode back`.
+// with anything unread, one line naming `abcd mode back`, and the agent one
+// line saying the away checks no longer hold (iss-2611211733085834).
 //
 // The block's words come from the away record, which lives in the away store
 // under the home folder (owner-only, checked as rules.json is), never from a
@@ -79,9 +80,18 @@ func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView 
 	case holds:
 		return awayView{Block: awayBlock(rec), Message: rec.PersonLine()}
 	case rec.Lapsed(now):
-		return awayView{Message: rec.LapsedLine()}
+		return awayView{Block: asBlock(rec.LapsedSessionLine()), Message: rec.LapsedLine()}
 	}
 	return awayView{}
+}
+
+// asBlock ends a one-line block with its newline, as every block the prompt
+// hook joins ends; an empty line stays empty.
+func asBlock(line string) string {
+	if line == "" {
+		return ""
+	}
+	return line + "\n"
 }
 
 // readAwayFailOpen is the hooks' read of the away record: ok false when there

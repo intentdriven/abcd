@@ -185,6 +185,13 @@ it; a lock not had in time is gone around. Each is named on its own line:
 relay those too. A queue that is full is refused (exit 2) and never cut: say
 so, and carry on with other work.
 
+Once the away time has passed with a step or stop unread and the record not
+yet closed, every prompt gives you one line saying the window ended and that
+its checks no longer hold: questions and turn ends are judged as when the
+person is present. Do not set the mode again on that line; set it only on the
+person's word in this session. The person's own line says the same and points
+at `back`.
+
 ## Where the host has no status surface
 
 The set form prints one line naming whose answer is owed — for example `abcd:

@@ -69,6 +69,18 @@ the host's cap labelled "possibly forced by the cap"), records who ended it and
 from which working copy, and closes the record, on a record whose time has
 passed as on one that holds.
 
+**What the sessions are told, and when it ends.** While the record holds,
+the session-start hook (every source, a compaction included) and the prompt
+hook (every prompt, outside the rules loader's dedup ledger) give the session
+the away block, and the prompt hook shows the person one line naming
+`abcd mode back`. Once its time has passed while the record is not yet closed
+and holds a queued step or a recorded stop, the person's line says what is
+unread and that sessions ask and stop again, and every prompt gives the
+session one line as well: the window ended, the checks the away mode adds (a
+question refused, a turn's end checked) no longer hold, and the mode is set
+again only on the person's word (iss-2611211733085834). A record that ended
+with nothing unread says nothing to anyone.
+
 **Reading it without ending it.** While the record holds, bare `abcd mode`
 prints a second line under the badge's state saying when the away mode ends
 and how many steps are queued, and its JSON carries both under `away`.

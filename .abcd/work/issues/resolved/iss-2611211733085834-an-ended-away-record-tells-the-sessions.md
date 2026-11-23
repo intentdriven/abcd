@@ -10,6 +10,14 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/hook_away.go"
 remedy: "While a record has ended and is not yet closed, with a queued step, a recorded stop or a refused attempt unread, which is the case in which the person is shown a line today, give the session one line as well, on every prompt as the person's line is: the away window ended at its time, the checks the away mode adds no longer hold, and the mode is set again only on the person's word. Have the line the person is shown say that consequence too, not only what is unread. A record that ended with nothing unread says nothing to anyone today, and that is left as it is. Grounds: dcn-2610181003474765 (the line to the person) and loud-staging."
+resolution: "While an away record has ended unclosed with a queued step or a recorded stop unread, every prompt now gives the session one line too: the window ended, the checks the away mode adds no longer hold, and the mode is set again only on the person's word. The person's lapsed line now says that sessions ask and stop again. A record that ended with nothing unread still says nothing."
+impact: fix
+resolved_by:
+  intent: "itd-2610180912189125"
 ---
 
 An away record that has ended tells the sessions nothing. When a record ends at its time or at its seven-day cap with a queued step, a recorded stop or a refused attempt unread, the prompt hook gives the person one line on every prompt and gives the session no block, so a session cannot tell that its questions and turn ends are no longer checked. The line the person is shown says the window ended and what is unread; it does not say that sessions have gone back to asking and stopping. On this machine the record set on 2026-11-07 ended at its cap on 2026-11-14 with 15 steps queued and was never closed; an autonomous run was declared the next day and extended on 2026-11-21, and no record held during it until a session set one that evening. Read at commit 71e07e7ea in lab-261121170045-71e07e7 (the prompt hook's away view and the record's lapsed line).
+
+## Grounds
+
+- pursued: a session given the ended line stops treating its questions and turn ends as checked and does not set the mode again on its own; shown wrong if a session that read the line still waits as if away or sets the mode without the person's word
