@@ -1610,7 +1610,8 @@ whose target is this plugin's binary, or whose target has gone when it is the
 link a plugin update stranded or the one the `path-entry` file names. The
 recorded dangling link needs no plugin root to be recognised, so uninstall finds
 it on `PATH` and removes it with its provenance file on a machine where abcd itself is
-gone. Anything else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
+gone. Anything else is foreign and is left where it stands. It leaves the
+entire `.abcd/` namespace, the history registry and the transcript store intact.
 
 **Uninstall then install is a tested round-trip invariant**: afterwards the
 detection pass must report zero actionable gaps, and the resulting state must be
