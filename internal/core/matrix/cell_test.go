@@ -396,3 +396,39 @@ func TestAProviderBoundCloneWhoseCommitCarriesASecretIsRefused(t *testing.T) {
 		t.Fatalf("a clone with no commit to read is refused: %v", err)
 	}
 }
+
+// TestTheFrozenCommitIsScannedWhateverPathsTheConfigurationLeavesOut: the
+// frozen commit is no file of the tree, so no path the repository's scanner
+// configuration skips or excludes leaves it out: a clean commit passes and a
+// commit carrying a secret-shaped value is refused under a configuration that
+// skips and excludes paths.
+func TestTheFrozenCommitIsScannedWhateverPathsTheConfigurationLeavesOut(t *testing.T) {
+	scanRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(scanRoot, ".abcd", "config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	conf := `{"skip_extensions": [".txt"], "skip_path_fragments": ["commit"], ` +
+		`"exclude_path_fragments": [{"fragment": ".txt", "reason": "golden outputs"}, {"fragment": "frozen-commit", "reason": "a name"}]}`
+	if err := os.WriteFile(filepath.Join(scanRoot, ".abcd", "config", "pii.json"), []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src, frozen := cloneSource(t)
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	clean, err := makeClone(src.Root(), filepath.Join(t.TempDir(), "matrix-store"), cloneRun, frozen, key, keyAlias(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admitClone(scanRoot, clean, openRouterPin); err != nil {
+		t.Fatalf("a clean commit passes whatever paths the configuration leaves out: %v", err)
+	}
+	r := gittest.NewRepo(t)
+	r.Write("main.go", "package main\n")
+	r.Commit("frozen\n\ntoken = " + "gh" + "p_" + testsecret.Synthetic(313, 36))
+	carrying, err := makeClone(r.Root(), filepath.Join(t.TempDir(), "matrix-store"), cloneRun, r.Git("rev-parse", "HEAD"), key, keyAlias(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admitClone(scanRoot, carrying, openRouterPin); err == nil || !strings.Contains(err.Error(), "frozen commit") {
+		t.Fatalf("a commit carrying a secret-shaped value is refused whatever paths the configuration leaves out: %v", err)
+	}
+}

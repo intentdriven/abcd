@@ -11,11 +11,8 @@ package matrix
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -134,26 +131,18 @@ func admitClone(scanRoot, clone string, pin CellPin) error {
 	return nil
 }
 
-// frozenCommitName is the name the frozen commit's object is scanned under.
-const frozenCommitName = "frozen-commit.txt"
+// frozenCommitName is the name the frozen commit's object is scanned under,
+// which its findings carry.
+const frozenCommitName = "frozen commit"
 
 // scanFrozenCommit passes the commit object at the clone's HEAD, as git
-// prints it, through the launch bundle's scan, and returns what the scan
-// refuses it on. The object is written for the scan to a private temporary
-// directory outside the clone, removed before it returns.
+// prints it, through the launch bundle's scan as text (launch.ScanText), so
+// no path the repository's scanner configuration skips or excludes leaves it
+// out, and returns what the scan refuses it on.
 func scanFrozenCommit(scanRoot, clone string) ([]string, error) {
 	obj, err := gitRaw("-C", clone, "cat-file", "commit", "HEAD")
 	if err != nil {
 		return nil, err
 	}
-	dir, err := os.MkdirTemp("", "abcd-matrix-commit-")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(dir)
-	p := filepath.Join(dir, frozenCommitName)
-	if err := os.WriteFile(p, obj, 0o600); err != nil {
-		return nil, err
-	}
-	return launch.ScanFiles(scanRoot, []scanner.BundleFile{{LogicalPath: frozenCommitName, ResolvedPath: p}}), nil
+	return launch.ScanText(scanRoot, frozenCommitName, obj), nil
 }
