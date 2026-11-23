@@ -601,8 +601,8 @@ no handed-back lane still armed) releases the run's reservation once it is
 written, and only one provably the run's own: its history reaches a
 reservation the run's record logs through renewals alone. One released,
 lapsed or taken over since is left standing to lapse, and one the checkout's
-view shows absent or released is not released again. With
-`--accept-config-change`, a discard, a release or a restart writes the
+view shows absent or released is not released again. When the person
+accepts a configuration change, a discard, a release or a restart writes the
 acceptance in its own write, so one refused writes nothing
 (iss-2611231404326060); a plain step writes the acceptance first. An issue run logs
 each refused step on its lane, until its pull request is armed or left open, the stage, the check, the reason and a count,
