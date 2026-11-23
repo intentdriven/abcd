@@ -357,13 +357,49 @@ func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
 		[]byte(filepath.Join(src.Root(), ".git", "objects")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Built by hand to look like a made clone: every branch of the source
+	// fetched, HEAD detached at the frozen commit, every ref deleted and the
+	// shallow file written, so its objects still hold the source's history.
+	history := place(t)
+	if err := os.MkdirAll(history, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, env, history, "init", "-q", "--template=")
+	gitOut(t, env, history, "config", "core.logAllRefUpdates", "false")
+	gitOut(t, env, history, "fetch", "-q", "--no-tags", src.Root(), "+refs/heads/*:refs/heads/*")
+	gitOut(t, env, history, "-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+	for _, ref := range strings.Fields(gitOut(t, env, history, "for-each-ref", "--format=%(refname)")) {
+		gitOut(t, env, history, "update-ref", "-d", ref)
+	}
+	if err := os.WriteFile(filepath.Join(history, ".git", "shallow"), []byte(frozen+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A made clone whose object store is a link to the source's.
+	linkedObjects := made(t)
+	if err := os.RemoveAll(filepath.Join(linkedObjects, ".git", "objects")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(src.Root(), ".git", "objects"), filepath.Join(linkedObjects, ".git", "objects")); err != nil {
+		t.Fatal(err)
+	}
+	// A made clone holding one object nothing in it reaches.
+	stray := made(t)
+	loose := filepath.Join(t.TempDir(), "loose.txt")
+	if err := os.WriteFile(loose, []byte("content no commit of the clone holds\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, env, stray, "hash-object", "-w", loose)
 	for name, dir := range map[string]string{
-		"a linked worktree of the source": linked,
-		"a full clone of the source":      full,
-		"a clone holding another ref":     tagged,
-		"a clone borrowing objects":       borrowing,
+		"a linked worktree of the source":           linked,
+		"a full clone of the source":                full,
+		"a clone holding another ref":               tagged,
+		"a clone borrowing objects":                 borrowing,
+		"a clone holding the source's history":      history,
+		"a clone whose objects are the source's":    linkedObjects,
+		"a clone holding an object nothing reaches": stray,
 	} {
-		if err := CopyClone(home, dir, frozen, "build/"); !errors.Is(err, ErrNotACopyClone) {
+		err := CopyClone(home, dir, frozen, "build/")
+		if !errors.Is(err, ErrNotACopyClone) {
 			t.Errorf("%s at a clone's place in the store is refused: %v", name, err)
 		}
 	}

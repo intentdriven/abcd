@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
 )
@@ -92,32 +93,72 @@ func CopyClone(home, dir, frozen, lanes string) error {
 	return cloneHolds(real, frozen, lanes)
 }
 
-// cloneHolds refuses a clone at dir that does not hold what makeClone makes:
-// a repository of its own, its .git a directory (a linked worktree's .git is
-// a file naming another repository's), shallow at exactly frozen, borrowing
-// no objects, and holding no ref but the branches under refs/heads/<lanes>
-// its trial's lanes cut.
+// cloneHolds refuses a clone at dir that does not hold what makeClone makes.
+// It checks exactly this:
+//   - dir/.git is a directory, not a symbolic link or the file a linked
+//     worktree's .git is;
+//   - dir/.git/objects is a directory, not a symbolic link;
+//   - no objects/info/alternates file is reached at that path, through any
+//     link on the way to it, so no other object store is borrowed;
+//   - dir/.git/shallow, read as a regular file of at most 4096 bytes, names
+//     exactly frozen;
+//   - every ref is a branch under refs/heads/<lanes>, the branches its
+//     trial's lanes cut;
+//   - every object the clone holds is reached from frozen or from one of
+//     those branches' tips, read as stored (gitAsStored), so no history
+//     fetched and then cut loose, and no stray object, is left in it.
+//
+// A refusal names which of these failed and nothing of any object's content.
 func cloneHolds(dir, frozen, lanes string) error {
 	gitDir := filepath.Join(dir, ".git")
 	if fi, err := os.Lstat(gitDir); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%w: its .git is not a repository's own directory", ErrNotACopyClone)
 	}
+	objects := filepath.Join(gitDir, "objects")
+	if fi, err := os.Lstat(objects); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: its object store is not a directory of its own", ErrNotACopyClone)
+	}
+	if _, err := os.Lstat(filepath.Join(objects, "info", "alternates")); !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: it borrows objects from another repository", ErrNotACopyClone)
+	}
 	if !gitutil.IsFullSHA(frozen) {
 		return fmt.Errorf("%w: no frozen commit is named for it", ErrNotACopyClone)
 	}
-	if shallow, err := os.ReadFile(filepath.Join(gitDir, "shallow")); err != nil || strings.TrimSpace(string(shallow)) != frozen {
+	if shallow, err := fsutil.ReadGuarded(filepath.Join(gitDir, "shallow"), 4096); err != nil || strings.TrimSpace(string(shallow)) != frozen {
 		return fmt.Errorf("%w: it is not shallow at exactly its frozen commit", ErrNotACopyClone)
 	}
-	if _, err := os.Lstat(filepath.Join(gitDir, "objects", "info", "alternates")); !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%w: it borrows objects from another repository", ErrNotACopyClone)
-	}
-	refs, err := git("-C", dir, "for-each-ref", "--format=%(refname)")
+	refs, err := gitAsStored("-C", dir, "for-each-ref", "--format=%(objectname) %(refname)")
 	if err != nil {
 		return fmt.Errorf("%w: its refs could not be read", ErrNotACopyClone)
 	}
-	for _, ref := range strings.Split(refs, "\n") {
-		if ref != "" && (lanes == "" || !strings.HasPrefix(ref, "refs/heads/"+lanes)) {
+	tips := []string{frozen}
+	for _, line := range strings.Split(strings.TrimSpace(string(refs)), "\n") {
+		if line == "" {
+			continue
+		}
+		oid, ref, _ := strings.Cut(line, " ")
+		if lanes == "" || !strings.HasPrefix(ref, "refs/heads/"+lanes) || !gitutil.IsFullSHA(oid) {
 			return fmt.Errorf("%w: it holds a ref no copy's clone holds", ErrNotACopyClone)
+		}
+		tips = append(tips, oid)
+	}
+	reachable, err := gitAsStored(append(append([]string{"-C", dir, "rev-list", "--objects"}, tips...), "--")...)
+	if err != nil {
+		return fmt.Errorf("%w: what its frozen commit and its lanes' branches reach could not be read", ErrNotACopyClone)
+	}
+	reached := map[string]bool{}
+	for _, line := range strings.Split(string(reachable), "\n") {
+		if oid, _, _ := strings.Cut(line, " "); oid != "" {
+			reached[oid] = true
+		}
+	}
+	held, err := gitAsStored("-C", dir, "cat-file", "--batch-all-objects", "--batch-check=%(objectname)")
+	if err != nil {
+		return fmt.Errorf("%w: the objects it holds could not be listed", ErrNotACopyClone)
+	}
+	for _, oid := range strings.Fields(string(held)) {
+		if !reached[oid] {
+			return fmt.Errorf("%w: it holds objects that neither its frozen commit nor its lanes' branches reach", ErrNotACopyClone)
 		}
 	}
 	return nil
@@ -410,10 +451,27 @@ func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
 // gitRawCtx is gitRawWithin under parent too: git is killed when parent ends
 // or past limit, whichever comes first, and the refusal names which.
 func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]byte, error) {
+	return gitRawEnvCtx(parent, limit, gitutil.IsolatedEnv(), args...)
+}
+
+// cloneCheckBound bounds each git command cloneHolds runs: listing a clone's
+// objects and what reaches them scales with the frozen tree, so the bound is
+// there only so a git that waits never holds the trial forever.
+const cloneCheckBound = 10 * time.Minute
+
+// gitAsStored is git within cloneCheckBound in the isolated environment, made
+// to read objects as stored (gitutil.AsStoredEnv): no replace ref, graft file
+// or commit-graph stands in for what the repository holds.
+func gitAsStored(args ...string) ([]byte, error) {
+	return gitRawEnvCtx(context.Background(), cloneCheckBound, gitutil.AsStoredEnv(gitutil.IsolatedEnv()), args...)
+}
+
+// gitRawEnvCtx is gitRawCtx with git's environment env.
+func gitRawEnvCtx(parent context.Context, limit time.Duration, env []string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parent, limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = gitutil.IsolatedEnv()
+	cmd.Env = env
 	// git leads its own group and the bound kills the whole of it, so a
 	// helper git started (a remote helper, a pager) ends with it.
 	procgroup.Bound(cmd, time.Second)
