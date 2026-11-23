@@ -216,7 +216,10 @@
 // whose holder cannot be told stays owed: a record with no session kept
 // (unless it is checked out in a worktree of the machine-scoped store other
 // than this copy while another live session works in the repository: then it
-// is left out, and a note says to leave it unless this session made it,
+// is left out, and a note says to leave it unless this session made it;
+// checked out in a worktree outside the store while another live session
+// works in this copy, it stays owed but marked OwedItem.Unclaimed, and the
+// stop names it as owed only if this session made it, with no push or queue,
 // iss-2611211734561033), a
 // lane of a run no session drives (unless a live session started in the
 // worktree it is checked out in, or a live drive holds it, below), a

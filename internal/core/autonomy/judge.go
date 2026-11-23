@@ -270,7 +270,10 @@ func owedReason(rec *Record, owed Owed, tail string) string {
 	item, _ := owed.Next()
 	var b strings.Builder
 	fmt.Fprintf(&b, "abcd: the person is away and work is owed (%s). Next: %s.", count(len(owed.Items), "item", "items"), describeItem(item))
-	if needsPush(item.Kind) {
+	switch {
+	case item.Unclaimed:
+		b.WriteString(" " + unclaimedWords())
+	case needsPush(item.Kind):
 		b.WriteString(" " + pushWords(rec, item))
 	}
 	if tail != "" {
@@ -304,6 +307,14 @@ func pushWords(rec *Record, item OwedItem) string {
 		return fmt.Sprintf("With --hold-pushes the person has said pushes wait: finish the local work (the merge from the base, the preflight), then queue the push naming the branch, as `abcd mode queue %s`.", shellWord("push "+target))
 	}
 	return "Do the local work, then push if your standing instruction allows; queue only if the person has said pushes wait. A push you may not send stays owed: queue it with `abcd mode queue \"<step>\"` for the person and take another item meanwhile."
+}
+
+// unclaimedWords is the reason's sentence for an item owed only if this
+// session made its branch (OwedItem.Unclaimed, iss-2611211734561033), in
+// place of pushWords, with or without --hold-pushes: it names no push and no
+// queue, since the branch may be a peer's.
+func unclaimedWords() string {
+	return "This branch is owed only if this session made it: no record names the session that did, and another live session works in this copy. If this session did not make it, it is a peer's: leave it untouched, and never commit to it, merge it or push it."
 }
 
 // shellWord is s as one word of a command the reason suggests: as it is when

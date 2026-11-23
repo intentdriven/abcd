@@ -196,6 +196,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.scope()
 	owned := r.ownedRefs()
 	r.branchItems()
+	r.markUnclaimed()
 	r.reservationItems()
 	r.handBack()
 	r.readLiveWork()

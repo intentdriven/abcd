@@ -523,7 +523,14 @@ other than the stopping session's copy, and another live session works in the
 repository, the branch is left out of the owed work. A note names it and says
 to leave it unless this session made it. A store worktree is where one session
 works apart from its peers, and nothing ties it to the stopping session, so the
-stop never tells that session to finish or push its branch.
+stop never tells that session to finish or push its branch. A branch with no
+session recorded that is checked out in a worktree outside the store, while
+another live session works in the same copy, stays owed, so the session's own
+unrecorded work is still caught. The stop names it as owed only if this session
+made it, and says that otherwise it is a peer's and must be left untouched:
+never committed to, merged or pushed. It gives no push or queue instruction for
+that branch, with or without `--hold-pushes`. A branch whose creator is
+recorded keeps the usual instruction.
 
 ## Fail-open-loud
 

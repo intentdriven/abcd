@@ -478,3 +478,55 @@ func TestKeylessBranchInAPeersStoreWorktreeIsNotOwed(t *testing.T) {
 		t.Errorf("the branch this session recorded creating stays owed to it beside its peers: %s", describe(mine))
 	}
 }
+
+// TestKeylessBranchOutsideTheStoreIsOwedOnlyIfMine (iss-2611211734561033):
+// a branch no record names a session for, checked out in a worktree outside
+// the store, while another live session works in this copy, stays owed, so a
+// session's own unrecorded work is still caught; but the stop names it as
+// owed only if this session made it, says that otherwise it is a peer's and
+// must be left untouched, and drops the push and queue sentences for it, with
+// and without --hold-pushes. The shared-copy sentence stays. A branch whose
+// creator is known keeps the push sentence.
+func TestKeylessBranchOutsideTheStoreIsOwedOnlyIfMine(t *testing.T) {
+	f := newFx(t)
+	f.worktreeWith("feat/outside")
+	f.recordCreated("feat/outside", "")
+	reads := 0
+	for _, hold := range []bool{false, true} {
+		o := f.opts()
+		o.Record = f.awayRecord(hold)
+		o.SessionID = sessMe
+		o.LiveSessions = f.bothLive(&reads)
+		owed := f.readWith(o)
+		if !has(owed, OwedUnpushed, "feat/outside") {
+			t.Fatalf("hold %v: the keyless branch outside the store must stay owed: %s", hold, describe(owed))
+		}
+		v := Judge(o.Record, owed, StopInput{SessionID: sessMe}, SessionState{}, f.now)
+		if !v.Block {
+			t.Fatalf("hold %v: the owed branch must block: row %d", hold, v.Row)
+		}
+		for _, want := range []string{"feat/outside", "only if this session made it", "a peer's", "leave it untouched", "never commit to it, merge it or push it", "one session per checkout"} {
+			if !strings.Contains(v.Reason, want) {
+				t.Errorf("hold %v: the stop does not say %q:\n%s", hold, want, v.Reason)
+			}
+		}
+		for _, banned := range []string{"Do the local work", "push if your standing instruction", "abcd mode queue", "queue the push"} {
+			if strings.Contains(v.Reason, banned) {
+				t.Errorf("hold %v: the stop still says %q for a branch that may be a peer's:\n%s", hold, banned, v.Reason)
+			}
+		}
+	}
+
+	g := newFx(t)
+	g.worktreeWith("feat/known")
+	g.recordCreated("feat/known", sessMe)
+	o := g.opts()
+	o.Record = g.awayRecord(false)
+	o.SessionID = sessMe
+	o.LiveSessions = g.bothLive(&reads)
+	owed := g.readWith(o)
+	v := Judge(o.Record, owed, StopInput{SessionID: sessMe}, SessionState{}, g.now)
+	if !strings.Contains(v.Reason, "Do the local work, then push") || strings.Contains(v.Reason, "only if this session made it") {
+		t.Errorf("a branch this session recorded creating keeps today's text:\n%s", v.Reason)
+	}
+}

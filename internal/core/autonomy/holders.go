@@ -42,7 +42,11 @@ import (
 // another live session works in the repository. A store worktree is where one
 // session works apart from its peers and nothing ties it to this one, so its
 // branch is not this session's to finish or push; a note names it and says
-// to leave it unless this session made it.
+// to leave it unless this session made it. The same branch checked out in a
+// worktree outside the store, while another live session works in this copy,
+// stays owed, its items marked Unclaimed (markUnclaimed): the stop names it
+// as owed only if this session made it, says that otherwise it is a peer's
+// to leave untouched, and names no push or queue for it.
 //
 // A run whose control record names a process and no session, a drive
 // started in a plain terminal (`abcd drain --drive`, which records its own
@@ -270,6 +274,57 @@ func (r *owedReader) peersWorktree(name string) bool {
 			if sameDir(checkout, p) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// markUnclaimed marks each branch item owed only if this session made the
+// branch (OwedItem.Unclaimed, iss-2611211734561033): no record names a
+// session for the branch and it is no lane of a run in this copy, it is
+// checked out in a worktree outside the store (the store case is left out,
+// peersWorktree), and another live session started in this copy, where the
+// record that keeps the branch was written. It stays owed, so this session's
+// own unrecorded work is still caught; only the stop's words change. A branch
+// whose creator is known, or a check with no session id, is left as it is.
+func (r *owedReader) markUnclaimed() {
+	if !ValidSessionID(r.me) {
+		return
+	}
+	memo := map[string]bool{}
+	for i := range r.items {
+		name := r.items[i].Branch
+		if name == "" {
+			continue
+		}
+		un, seen := memo[name]
+		if !seen {
+			un = r.unclaimedHere(name)
+			memo[name] = un
+		}
+		r.items[i].Unclaimed = un
+	}
+}
+
+// unclaimedHere reports whether the branch name meets markUnclaimed's case.
+func (r *owedReader) unclaimedHere(name string) bool {
+	if r.recordedBy[name] != "" {
+		return false
+	}
+	if _, lane := r.lanes[name]; lane {
+		return false
+	}
+	wt := r.elsewhere[name]
+	if wt == "" || r.inWorktreeStore(wt) {
+		return false
+	}
+	live, ok := r.liveSessions()
+	if !ok {
+		return false
+	}
+	for id, checkout := range live {
+		if id != r.me && sameDir(checkout, r.root) {
+			return true
 		}
 	}
 	return false
