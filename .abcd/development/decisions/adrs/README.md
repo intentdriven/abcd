@@ -235,7 +235,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610290238168123](2610290238168123-the-brief-states-the-design-and-why-each.md) | The brief states the design and why; each command's page states what abcd does, once, and is the copy checked against the code (supersedes adr-2609231028044006) | accepted | 2026-10-29 |
 | [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
 | [adr-2610300908239458](2610300908239458-ideate-verdicts-are-private-unless-the.md) | Ideate verdicts are private unless the person says public (supersedes adr-2610142116480836) | accepted | 2026-10-30 |
-| [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | proposed | 2026-10-30 |
+| [adr-2610301638558260](2610301638558260-a-published-refusal-code-is-never.md) | A published refusal code is never renamed or reused | accepted | 2026-10-30 |
 | [adr-2610310235000654](2610310235000654-an-unattended-plan-stands-in-for-the.md) | An unattended plan stands in for the sign-off only on a recorded, reviewed, unchanged draft | proposed | 2026-10-31 |
 | [adr-2611011153058085](2611011153058085-a-re-render-never-discards-hand-written.md) | A re-render never discards hand-written text unasked | proposed | 2026-11-01 |
 | [adr-2611011231015519](2611011231015519-abcd-never-spends-a-person-s-money-past.md) | The launches abcd makes spend a person's money only within the budget they set, past it only through named residuals | accepted | 2026-11-01 |
