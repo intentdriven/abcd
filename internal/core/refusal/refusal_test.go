@@ -367,3 +367,74 @@ func TestNextIsACommandATemplateOrNone(t *testing.T) {
 		t.Error("IsTemplate misreads a known next")
 	}
 }
+
+// TestLedgerRecordsARetiredCodesReplacement: a retired code may name the code
+// that replaced it, and the ledger carries it as replaced_by, so a reader
+// matching on the old code learns which one to match on instead
+// (adr-2610301638558260).
+func TestLedgerRecordsARetiredCodesReplacement(t *testing.T) {
+	l := ledgerOf([]Entry{
+		{Code: "demo/new-name"},
+		{Code: "demo/old-name", Retired: "v1.2.0", ReplacedBy: "demo/new-name"},
+	})
+	data, err := EncodeLedger(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"replaced_by": "demo/new-name"`) {
+		t.Fatalf("the ledger does not carry the replacement:\n%s", data)
+	}
+	back, err := DecodeLedger(data)
+	if err != nil {
+		t.Fatalf("a ledger with a replacement does not decode: %v", err)
+	}
+	if back.Codes[1].ReplacedBy != "demo/new-name" {
+		t.Errorf("decoded replacement = %q", back.Codes[1].ReplacedBy)
+	}
+}
+
+// TestDecodeLedgerRefusesABadReplacement: replaced_by is held to the same
+// rules as the code it names: only a retired code is replaced, by a code the
+// same ledger lists, never by itself, and only by a name that is a code.
+func TestDecodeLedgerRefusesABadReplacement(t *testing.T) {
+	for name, codes := range map[string]string{
+		"on a live code":       `{"code":"demo/a","replaced_by":"demo/b"},{"code":"demo/b"}`,
+		"naming a code absent": `{"code":"demo/a","retired":"v1.0.0","replaced_by":"demo/zzz"}`,
+		"naming itself":        `{"code":"demo/a","retired":"v1.0.0","replaced_by":"demo/a"}`,
+		"naming no code":       `{"code":"demo/a","retired":"v1.0.0","replaced_by":"Not A Code"},{"code":"Not A Code"}`,
+	} {
+		data := []byte(`{"format_version":1,"codes":[` + codes + `]}`)
+		if _, err := DecodeLedger(data); err == nil {
+			t.Errorf("%s: a ledger with replaced_by %s decoded", name, codes)
+		}
+	}
+}
+
+// TestEveryReplacementIsARegisteredCode: in the registry itself, an entry
+// that names a replacement is retired, and the replacement is another
+// registered code.
+func TestEveryReplacementIsARegisteredCode(t *testing.T) {
+	for _, e := range Entries() {
+		if e.ReplacedBy == None {
+			continue
+		}
+		if e.Retired == "" {
+			t.Errorf("%s: names replacement %s but is not retired", e.Code, e.ReplacedBy)
+		}
+		if _, ok := Lookup(e.ReplacedBy); !ok || e.ReplacedBy == e.Code {
+			t.Errorf("%s: replacement %s is not another registered code", e.Code, e.ReplacedBy)
+		}
+	}
+	if _, err := DecodeLedger(mustEncode(t, BuildLedger())); err != nil {
+		t.Errorf("the registry's own ledger does not decode: %v", err)
+	}
+}
+
+func mustEncode(t *testing.T, l Ledger) []byte {
+	t.Helper()
+	data, err := EncodeLedger(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}

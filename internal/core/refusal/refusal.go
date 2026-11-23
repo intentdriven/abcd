@@ -109,6 +109,9 @@ type Entry struct {
 	// Retired is the release tag the code was retired in, empty while the
 	// code is live. A retired entry stays in the table for good.
 	Retired string `json:"retired,omitempty"`
+	// ReplacedBy is, for a retired code, the code that took its place, if
+	// one did.
+	ReplacedBy Code `json:"replaced_by,omitempty"`
 }
 
 // explainCommand is the next command of every usage code: the refused
@@ -379,15 +382,19 @@ type Ledger struct {
 
 // LedgerEntry is one code of the ledger.
 type LedgerEntry struct {
-	Code    Code   `json:"code"`
-	Retired string `json:"retired,omitempty"`
+	Code       Code   `json:"code"`
+	Retired    string `json:"retired,omitempty"`
+	ReplacedBy Code   `json:"replaced_by,omitempty"`
 }
 
 // BuildLedger is the ledger of the registry, sorted by code.
-func BuildLedger() Ledger {
+func BuildLedger() Ledger { return ledgerOf(entries) }
+
+// ledgerOf is the ledger of entries, sorted by code.
+func ledgerOf(entries []Entry) Ledger {
 	l := Ledger{FormatVersion: LedgerFormatVersion, Codes: make([]LedgerEntry, 0, len(entries))}
 	for _, e := range entries {
-		l.Codes = append(l.Codes, LedgerEntry{Code: e.Code, Retired: e.Retired})
+		l.Codes = append(l.Codes, LedgerEntry{Code: e.Code, Retired: e.Retired, ReplacedBy: e.ReplacedBy})
 	}
 	slices.SortFunc(l.Codes, func(a, b LedgerEntry) int { return strings.Compare(string(a.Code), string(b.Code)) })
 	return l
@@ -403,7 +410,9 @@ func EncodeLedger(l Ledger) ([]byte, error) {
 }
 
 // DecodeLedger reads a committed ledger, refusing a format version it does
-// not know and a code that does not follow the grammar.
+// not know, a code that does not follow the grammar, and a replaced_by that
+// is set on a live code, names itself, or names a code the ledger does not
+// list.
 func DecodeLedger(data []byte) (Ledger, error) {
 	var l Ledger
 	if err := json.Unmarshal(data, &l); err != nil {
@@ -412,9 +421,20 @@ func DecodeLedger(data []byte) (Ledger, error) {
 	if l.FormatVersion != LedgerFormatVersion {
 		return Ledger{}, fmt.Errorf("the refusal-code ledger is format version %d; this binary reads %d", l.FormatVersion, LedgerFormatVersion)
 	}
+	listed := make(map[Code]bool, len(l.Codes))
 	for _, c := range l.Codes {
 		if !validName(string(c.Code)) {
 			return Ledger{}, fmt.Errorf("the refusal-code ledger holds %q, which is not a code", c.Code)
+		}
+		listed[c.Code] = true
+	}
+	for _, c := range l.Codes {
+		switch {
+		case c.ReplacedBy == None:
+		case c.Retired == "":
+			return Ledger{}, fmt.Errorf("the refusal-code ledger names a replacement for %s, which is not retired", c.Code)
+		case c.ReplacedBy == c.Code || !listed[c.ReplacedBy]:
+			return Ledger{}, fmt.Errorf("the refusal-code ledger replaces %s with a code it does not otherwise list", c.Code)
 		}
 	}
 	return l, nil
