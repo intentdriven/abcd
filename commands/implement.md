@@ -2029,14 +2029,18 @@ table. The pause never carries the wait past six times `--timeout` from its
 start, so `make preflight`'s race gate gives up after two hours of a stalled
 queue or twelve in all. Each race gate's waiting line ends by saying whether
 the clock is paused (`the race queue ahead is progressing, so the timeout's
-clock is paused`) or runs, with how much of the timeout it has counted, and a
-timeout's closing line says how much of the wait was paused. The first gate and
+clock is paused`) or runs, with how much of the timeout it has counted (once
+the wait has reached its ceiling, a progressing queue reads `but the wait has
+reached its 12h0m0s ceiling, so the timeout's clock runs`), and a timeout's
+closing line says how much of the wait was paused. The first gate and
 the narrow gate count wall-clock time. `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
 (`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, `backoffs` when it stood
-back, and at the race gate `paused_s` once its clock has been paused and
-`progress` while the last look found the queue progressing.
+back, and at the race gate `paused_s` once its clock has been paused,
+`progress` when the last look paused it, and `at_ceiling` when the last look
+found the queue progressing but the wait already at its ceiling, so the clock
+ran.
 
 A command after `--` named by a path runs as given. One named by its name alone
 runs as `PATH` finds it, unless that program lies inside the working tree the

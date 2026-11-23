@@ -371,8 +371,11 @@ look count. The deadline never moves past six times the timeout from the
 wait's start (`implement.WaitRaceCeilingFactor`), so `make preflight`'s two
 hours at its race gate are two hours of a stalled queue and twelve in all.
 Each race gate's waiting line says whether the clock is paused or runs and how
-much of the timeout it has counted, the JSON result carries `progress` and
-`paused_s`, and a timeout's closing line says how much of the wait was paused.
+much of the timeout it has counted, or, once the deadline sits at the ceiling,
+that the queue is progressing but the clock runs; the JSON result carries
+`progress` (the last look paused the clock), `at_ceiling` (it found the queue
+progressing at the ceiling, so the clock ran) and `paused_s`, and a timeout's
+closing line says how much of the wait was paused.
 The first gate and the narrow gate keep a wall-clock timeout: a whole run
 queues behind whole runs whose length their CPU does not tell. Inside `make preflight` each test stage then
 takes a `go test -p` derived from the online cores and the load as the stage

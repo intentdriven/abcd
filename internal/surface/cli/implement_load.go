@@ -990,7 +990,8 @@ func timedOutLine(res implement.WaitResult) string {
 
 // raceClockText says, on a race gate's waiting line, whether its timeout's
 // clock is paused because the race queue ahead is progressing, or runs, and
-// how much of the timeout it has counted (implement.WaitResult.Progress), so a
+// how much of the timeout it has counted (implement.WaitResult.Progress and
+// AtCeiling: a progressing queue at the ceiling no longer pauses it), so a
 // person reading the log sees why the wait has not timed out. It says nothing
 // at another gate or with no timeout.
 func raceClockText(res implement.WaitResult, timeout time.Duration) string {
@@ -1004,6 +1005,10 @@ func raceClockText(res implement.WaitResult, timeout time.Duration) string {
 			counted, timeout, paused, implement.WaitRaceCeilingFactor*timeout)
 	}
 	text := fmt.Sprintf("; nothing ahead is progressing, so the timeout's clock runs: %s of the %s timeout counted", counted, timeout)
+	if res.AtCeiling {
+		text = fmt.Sprintf("; the race queue ahead is progressing, but the wait has reached its %s ceiling, so the timeout's clock runs: %s of the %s timeout counted",
+			implement.WaitRaceCeilingFactor*timeout, counted, timeout)
+	}
 	if paused > 0 {
 		text += fmt.Sprintf(", %s paused before", paused)
 	}

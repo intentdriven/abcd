@@ -3,6 +3,7 @@ package cli
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 )
@@ -44,5 +45,16 @@ func TestImplementLoadRaceGateSaysItsClockRuns(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestRaceClockTextAtTheCeiling: a race queue still progressing once the wait
+// has reached its ceiling is said as such, with the clock running.
+func TestRaceClockTextAtTheCeiling(t *testing.T) {
+	res := implement.WaitResult{Gate: implement.GateRace, AtCeiling: true, WaitedS: 11 * 3600, PausedS: 10 * 3600}
+	got := raceClockText(res, 2*time.Hour)
+	want := "; the race queue ahead is progressing, but the wait has reached its 12h0m0s ceiling, so the timeout's clock runs: 1h0m0s of the 2h0m0s timeout counted, 10h0m0s paused before"
+	if got != want {
+		t.Fatalf("raceClockText = %q, want %q", got, want)
 	}
 }

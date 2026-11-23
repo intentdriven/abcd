@@ -544,12 +544,15 @@ type WaitResult struct {
 	// its tree has used little CPU for QuietSpan (load_quiet.go). It is said,
 	// never acted on.
 	Quiet *QuietHolder `json:"quiet_holder,omitempty"`
-	// Progress says the last look found the race queue ahead progressing, so
-	// the race gate's clock was paused (raceQueueProgress), and PausedS is how
-	// long the clock has been paused in all; both stay zero at every other
-	// gate and at a race gate given no timeout.
-	Progress bool    `json:"progress,omitempty"`
-	PausedS  float64 `json:"paused_s,omitempty"`
+	// Progress says the last look found the race queue ahead progressing and
+	// paused the race gate's clock (raceQueueProgress), and PausedS is how
+	// long the clock has been paused in all. AtCeiling says the last look found
+	// the queue progressing but the deadline already at the ceiling
+	// (WaitRaceCeilingFactor), so the clock ran: Progress is then false. All
+	// three stay zero at every other gate and at a race gate given no timeout.
+	Progress  bool    `json:"progress,omitempty"`
+	AtCeiling bool    `json:"at_ceiling,omitempty"`
+	PausedS   float64 `json:"paused_s,omitempty"`
 	// Holders is each holder ahead at the last look, in pid order, the hold
 	// record's first (GateHolder, load_quiet.go).
 	Holders []GateHolder `json:"holders,omitempty"`
@@ -871,7 +874,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		storeCarry(root, e, e.Last)
 	}
 	for {
-		res.Progress = false
+		res.Progress, res.AtCeiling = false, false
 		open, held, err := readSlots(false)
 		if err != nil || open {
 			return res, err
@@ -967,7 +970,12 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		if paused {
 			t := now()
-			if res.Progress && deadline.Before(ceiling) {
+			// A progressing queue with the deadline already at the ceiling
+			// pauses nothing: the clock runs, and the result says why.
+			if res.Progress && !deadline.Before(ceiling) {
+				res.Progress, res.AtCeiling = false, true
+			}
+			if res.Progress {
 				moved := deadline.Add(t.Sub(lastLook))
 				if moved.After(ceiling) {
 					moved = ceiling

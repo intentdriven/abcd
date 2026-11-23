@@ -168,3 +168,25 @@ func TestRaceQueueProgress(t *testing.T) {
 		}
 	}
 }
+
+// TestWaitRaceGateSaysItsClockRunsAtTheCeiling: once the deadline has reached
+// the ceiling, a look that finds the queue still progressing pauses nothing,
+// so the result says the clock runs at the ceiling, not that it is paused.
+func TestWaitRaceGateSaysItsClockRunsAtTheCeiling(t *testing.T) {
+	req, _ := raceQueueReq(t, 10*time.Minute, 2.5, 0)
+	var lines []WaitResult
+	req.OnWait = func(r WaitResult) { lines = append(lines, r) }
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || res.Progress || !res.AtCeiling {
+		t.Fatalf("result %+v; want a timeout at the ceiling saying the clock ran there, not that it was paused", res)
+	}
+	// The line said once the deadline sits at the ceiling (50 minutes in,
+	// the ceiling reached at 50 minutes counted 0 of the 10) says so too.
+	last := lines[len(lines)-1]
+	if last.WaitedS < (50*time.Minute).Seconds() || last.Progress || !last.AtCeiling {
+		t.Fatalf("last waiting line %+v; want it past the ceiling's reach saying the clock runs", last)
+	}
+}
