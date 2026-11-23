@@ -524,8 +524,7 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 		case "find":
 			ops, critical = findDeletes(s, a.idx+1), f.homeOrAbove
 		case "mv":
-			r := readOpts(s, a.idx+1, mvOpts)
-			ops = copySources(r, r.operands) // the destination stays
+			ops = eachSources(readOptsEach(s, a.idx+1, mvOpts)) // the destination stays
 			ownLink = true
 		case "rsync":
 			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {

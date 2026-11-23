@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -126,8 +127,26 @@ func (o optSpec) resolveLong(name string) string {
 	return found
 }
 
-// readOpts reads s's words from index from by o.
+// readOptsEach is each reading of s's words from index from by o: as GNU's
+// command reads them, options anywhere among the operands, and, where it
+// differs, as macOS's reads them, every word from the first operand on an
+// operand (as GNU's does under POSIXLY_CORRECT).
+func readOptsEach(s segment, from int, o optSpec) []optRead {
+	gnu, bsd := readOpts(s, from, o), readOptsStop(s, from, o, true)
+	if slices.Equal(gnu.operands, bsd.operands) {
+		return []optRead{gnu}
+	}
+	return []optRead{gnu, bsd}
+}
+
+// readOpts reads s's words from index from by o, as GNU's getopt does.
 func readOpts(s segment, from int, o optSpec) optRead {
+	return readOptsStop(s, from, o, false)
+}
+
+// readOptsStop is readOpts, reading every word from the first operand on as
+// an operand when stop is set.
+func readOptsStop(s segment, from int, o optSpec, stop bool) optRead {
 	r := optRead{short: map[byte][]optVal{}, long: map[string][]optVal{}}
 	toks := s.tokens
 	opts := true
@@ -183,6 +202,9 @@ func readOpts(s segment, from int, o optSpec) optRead {
 				break
 			}
 		default:
+			if stop {
+				opts = false
+			}
 			r.operands = append(r.operands, i)
 		}
 	}
@@ -197,12 +219,21 @@ func (r optRead) readings() [][]int {
 		return out
 	}
 	merged := append(append([]int(nil), r.operands...), r.maybe...)
-	for i := 1; i < len(merged); i++ {
-		for j := i; j > 0 && merged[j] < merged[j-1]; j-- {
-			merged[j], merged[j-1] = merged[j-1], merged[j]
+	slices.Sort(merged)
+	return append(out, merged)
+}
+
+// eachSources is copySources under each of reads, every operand any of
+// them reads as leaving where it is, once and in order.
+func eachSources(reads []optRead) []int {
+	var out []int
+	for _, r := range reads {
+		for _, op := range r.readings() {
+			out = append(out, copySources(r, op)...)
 		}
 	}
-	return append(out, merged)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // valueOf is the path value v carries, as a write.

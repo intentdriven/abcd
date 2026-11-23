@@ -759,7 +759,8 @@ its text:
   source xargs supplies, an archive unpacked or a patch applied with no file
   named can write any path below the directory; an archive keeping absolute
   or parent paths can write anywhere. Options are read as GNU getopt reads
-  them, with macOS's other reading of a letter judged too, and a write through
+  them, with macOS's other reading judged too (a letter that takes no value
+  there, and an option word after the first operand read as an operand), and a write through
   a link the same line makes is judged where the link leads. A line that only
   names one of them is not a write;
 - a removal whose fixed target lies outside the launched working tree, the

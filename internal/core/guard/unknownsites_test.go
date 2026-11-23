@@ -218,7 +218,7 @@ var wordReaders = map[string]string{
 	"operandIdx":         "exempt: steps a writer's literal options; each operand goes through resolveToken, which refuses an unknown word (the writer list is incomplete by design, adr-2610091150447054 decision 6)",
 	"flagValues":         "exempt: reads a writer's literal options; each value goes through resolveToken or valueAt, which refuse an unknown word",
 	"lnTarget":           "exempt: reads ln's literal options; a single operand that is unknown, globbed or a variable is an unplaced write, and the others go through resolveToken, which refuses an unknown word",
-	"readOpts":           "isUnknown: an option word no line fixes may be -T, so the destination is also judged as a tree of any names (sourceLandings)",
+	"readOptsStop":       "isUnknown: an option word no line fixes may be -T, so the destination is also judged as a tree of any names (sourceLandings)",
 	"readTar":            "isUnknown: a word no line fixes may be -P, so the archive is judged as able to land anywhere",
 	"unzipTargets":       "exempt: reads unzip's literal option letters; a word no line fixes is read as the archive, and -d's value goes through resolveToken or valueAt, which refuse an unknown word",
 	"xargsReplacement":   "isUnknown: an option word no line fixes may name a replacement string, so every word of the command is read as unknown (xargsView)",

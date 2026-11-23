@@ -121,8 +121,9 @@ func TestACopyIntoADirectoryIsJudgedForTheProtectedPathsBelowIt(t *testing.T) {
 
 // TestAStageCopyIsReadAsEachPlatformParsesItsWords: a clustered or abbreviated
 // target directory, -T spelled long or short, a mode or owner abbreviated, an
-// exact --strip, macOS's -S that takes no value, and a word no line fixes
-// that may be -t, each read as the commands read them, so the source still
+// exact --strip, macOS's -S that takes no value, options after the first
+// operand that macOS reads as operands, and a word no line fixes that may be
+// -t, each read as the commands read them, so the source still
 // lands where it lands; a move that names the local tier as a source removes
 // it however -t is spelled.
 func TestAStageCopyIsReadAsEachPlatformParsesItsWords(t *testing.T) {
@@ -136,6 +137,8 @@ func TestAStageCopyIsReadAsEachPlatformParsesItsWords(t *testing.T) {
 		`install x/f/review-receipts .abcd/.work.local --m 600`,
 		`install --strip-program=true --strip x/f/review-receipts .abcd/.work.local/`,
 		`cp -R $X .abcd/.work.local x/f/review-receipts`,
+		`cp -R x/notes.txt -t x/old x/f/review-receipts .abcd/.work.local`,
+		`cp -R x/notes.txt -T x/f/review-receipts .abcd/.work.local/`,
 		`mv -ft x/old .abcd/.work.local`,
 		`mv --target-dir=x/old .abcd/.work.local`,
 		`mv --targ=x/old .abcd/.work.local`,
@@ -152,6 +155,7 @@ func TestAStageCopyIsReadAsEachPlatformParsesItsWords(t *testing.T) {
 	}
 	for _, line := range []string{
 		`cp -S x/notes.txt .abcd/.work.local/`,
+		`cp a.go b.go -v`,
 		`cp --t .abcd/.work.local x/notes.txt`,
 		`install -m 644 x/notes.txt build/`,
 		`mv -ft x/old x/notes.txt`,

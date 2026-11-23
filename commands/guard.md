@@ -489,8 +489,10 @@ A shell command is approved only when the guard reads it whole and clears it:
   archive whose members keep their absolute or parent paths (`tar -P`,
   `--absolute-names`, `unzip -:`) can write anywhere. The options are read as
   GNU getopt reads them (a clustered `-Rt dir`, an abbreviated `--t dir` or
-  `--no-t`), and where macOS's command reads a letter otherwise (`cp -S` and
-  `install -S` take no value there) both readings are judged. A write through
+  `--no-t`), and where macOS's command reads them otherwise (`cp -S` and
+  `install -S` take no value there, and every word after the first operand
+  is an operand there, so `cp f -t d x .abcd/` copies `x` into `.abcd/`)
+  both readings are judged. A write through
   a link the same line makes (`ln -s`, `cp -s`, or a move or copy of a link) is
   judged where the link leads. A listing, a test or a dry run (`unzip -l`,
   `tar -t`, `patch --dry-run`) writes nothing. A line that only names one of

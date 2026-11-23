@@ -365,8 +365,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			// else every one but the destination, read as mv reads its
 			// options and the words an xargs before it adds.
 			view := xargsView(s, a.idx)
-			r := readOpts(view, a.idx+1, mvOpts)
-			for _, i := range copySources(r, r.operands) {
+			for _, i := range eachSources(readOptsEach(view, a.idx+1, mvOpts)) {
 				if i >= len(s.tokens) {
 					out = append(out, pathUse{remove: true})
 					continue
@@ -393,13 +392,14 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "ln":
 			// A link to a protected path is a way to write it.
-			r := readOpts(s, a.idx+1, lnOpts)
-			idx := r.operands
-			if len(idx) > 1 {
-				idx = copySources(r, idx)
-			}
-			for _, i := range idx {
-				out = append(out, at(i, false))
+			for _, r := range readOptsEach(s, a.idx+1, lnOpts) {
+				idx := r.operands
+				if len(idx) > 1 {
+					idx = copySources(r, idx)
+				}
+				for _, i := range idx {
+					out = append(out, at(i, false))
+				}
 			}
 		}
 	}
@@ -1445,9 +1445,13 @@ func lineLinks(rc *readCtx, placed []placedSeg) []lineLink {
 				}
 				s := xargsView(p.seg, a.idx)
 				w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
-				r := readOpts(s, a.idx+1, copySpec(name))
-				symbolic := (name == "ln" && r.has('s', "symbolic")) || (name == "cp" && r.has('s', "symbolic-link"))
-				for _, pr := range w.linkPairs(r, name == "ln") {
+				var pairs []linkPair
+				symbolic := false
+				for _, r := range readOptsEach(s, a.idx+1, copySpec(name)) {
+					symbolic = symbolic || (name == "ln" && r.has('s', "symbolic")) || (name == "cp" && r.has('s', "symbolic-link"))
+					pairs = append(pairs, w.linkPairs(r, name == "ln")...)
+				}
+				for _, pr := range pairs {
 					if !pr.at.ok {
 						continue
 					}

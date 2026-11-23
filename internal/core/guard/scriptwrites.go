@@ -374,15 +374,17 @@ func (w writerArgs) dirTarget(flags []string) writeTarget {
 // each source places (sourceLandings). install -d makes every operand a
 // directory.
 func (w writerArgs) copyTarget(name string) []writeTarget {
-	r := readOpts(w.s, w.from, copySpec(name))
-	if name == "install" && r.has('d', "directory") {
-		var out []writeTarget
-		for _, i := range r.operands {
-			out = append(out, w.at(i))
+	var out []writeTarget
+	for _, r := range readOptsEach(w.s, w.from, copySpec(name)) {
+		if name == "install" && r.has('d', "directory") {
+			for _, i := range r.operands {
+				out = append(out, w.at(i))
+			}
+			continue
 		}
-		return out
+		out = append(out, w.sourceLandings(r, 1)...)
 	}
-	return w.sourceLandings(r, 1)
+	return out
 }
 
 // lnTarget is the link ln makes: the -t value, else the last of two or more
@@ -390,18 +392,23 @@ func (w writerArgs) copyTarget(name string) []writeTarget {
 // directory ln runs in (`ln -s /path/s.sh` writes ./s.sh). Each is read as
 // sourceLandings reads a copy, since a link to a directory places its tree.
 func (w writerArgs) lnTarget() []writeTarget {
-	r := readOpts(w.s, w.from, lnOpts)
-	if _, ok := r.last('t', "target-directory"); len(r.operands) == 1 && !ok {
-		i := r.operands[0]
-		tok := w.s.tokens[i]
-		if isUnknown(tok) || w.s.globAt(i) || strings.ContainsRune(tok, varMark) {
-			return []writeTarget{unplacedWrite("")}
+	var out []writeTarget
+	for _, r := range readOptsEach(w.s, w.from, lnOpts) {
+		if _, ok := r.last('t', "target-directory"); len(r.operands) == 1 && !ok {
+			i := r.operands[0]
+			tok := w.s.tokens[i]
+			if isUnknown(tok) || w.s.globAt(i) || strings.ContainsRune(tok, varMark) {
+				out = append(out, unplacedWrite(""))
+				continue
+			}
+			t := writeAt(w.rc, w.st, path.Base(tok), false)
+			t.tree = t.ok
+			out = append(out, t)
+			continue
 		}
-		t := writeAt(w.rc, w.st, path.Base(tok), false)
-		t.tree = t.ok
-		return []writeTarget{t}
+		out = append(out, w.sourceLandings(r, 2)...)
 	}
-	return w.sourceLandings(r, 2)
+	return out
 }
 
 // copyPlan is where a move, copy or link of operands lands: its destination,
