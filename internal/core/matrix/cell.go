@@ -11,8 +11,11 @@ package matrix
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -102,6 +105,12 @@ func runCopy(ctx context.Context, pin CellPin, tries int, wait func(ctx context.
 // skip the scan; an OpenRouter or other provider cell is scanned, and so is a
 // pin whose source is empty or unknown. scanRoot is the checkout whose
 // scanner configuration applies: the run's own.
+//
+// The scan reads what a copy can read in its clone: the checked-out tree, and
+// the frozen commit's own object (its message, author and committer), which
+// `git log` shows there. The clone holds no other commit and keeps no reflog
+// (fillClone); the rest of its git directory is the tree's index and names of
+// objects.
 func admitClone(scanRoot, clone string, pin CellPin) error {
 	if pin.Source == SourceLocal || pin.Source == SourceHost {
 		return nil
@@ -114,5 +123,37 @@ func admitClone(scanRoot, clone string, pin CellPin) error {
 		return fmt.Errorf("cell %s is refused: its clone fails the launch bundle's secret scan, so it is not sent to %s: %s",
 			pin.Cell, pin.Source, strings.Join(refusals, "; "))
 	}
+	refusals, err = scanFrozenCommit(scanRoot, clone)
+	if err != nil {
+		return fmt.Errorf("cell %s is refused: its clone's frozen commit could not be scanned before it is sent to %s: %w", pin.Cell, pin.Source, err)
+	}
+	if len(refusals) > 0 {
+		return fmt.Errorf("cell %s is refused: its clone's frozen commit (its message, author or committer) fails the launch bundle's secret scan, "+
+			"so it is not sent to %s: %s", pin.Cell, pin.Source, strings.Join(refusals, "; "))
+	}
 	return nil
+}
+
+// frozenCommitName is the name the frozen commit's object is scanned under.
+const frozenCommitName = "frozen-commit.txt"
+
+// scanFrozenCommit passes the commit object at the clone's HEAD, as git
+// prints it, through the launch bundle's scan, and returns what the scan
+// refuses it on. The object is written for the scan to a private temporary
+// directory outside the clone, removed before it returns.
+func scanFrozenCommit(scanRoot, clone string) ([]string, error) {
+	obj, err := gitRaw("-C", clone, "cat-file", "commit", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	dir, err := os.MkdirTemp("", "abcd-matrix-commit-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	p := filepath.Join(dir, frozenCommitName)
+	if err := os.WriteFile(p, obj, 0o600); err != nil {
+		return nil, err
+	}
+	return launch.ScanFiles(scanRoot, []scanner.BundleFile{{LogicalPath: frozenCommitName, ResolvedPath: p}}), nil
 }

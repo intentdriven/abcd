@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
@@ -344,11 +345,54 @@ func TestAProviderBoundCloneWithASecretIsRefused(t *testing.T) {
 			t.Fatalf("source %q: a clone whose source is not known to stay here is scanned and refused: %v", src, err)
 		}
 	}
-	clean := t.TempDir()
-	if err := os.WriteFile(filepath.Join(clean, "main.go"), []byte("package main\n"), 0o600); err != nil {
+	src, frozen := cloneSource(t)
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	clean, err := makeClone(src.Root(), filepath.Join(t.TempDir(), "matrix-store"), cloneRun, frozen, key, keyAlias(key))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := admitClone(scanRoot, clean, openRouterPin); err != nil {
 		t.Fatalf("a clean clone passes: %v", err)
+	}
+}
+
+// TestAProviderBoundCloneWhoseCommitCarriesASecretIsRefused: the scan reads
+// the frozen commit's own message, author and committer as well as its tree,
+// since a copy can read them in its clone; a secret-shaped value in the
+// message refuses a provider cell, naming the commit and never the value. A
+// clone that holds no commit to read is refused too. A local or host cell's
+// clone is not scanned.
+func TestAProviderBoundCloneWhoseCommitCarriesASecretIsRefused(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("main.go", "package main\n")
+	// A GitHub-token-shaped value, built at runtime so no literal reaches
+	// the source (principles/secret-shaped-fixtures-at-runtime.md).
+	secret := "gh" + "p_" + testsecret.Synthetic(312, 36)
+	r.Commit("frozen\n\ntoken = " + secret)
+	frozen := r.Git("rev-parse", "HEAD")
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	clone, err := makeClone(r.Root(), filepath.Join(t.TempDir(), "matrix-store"), cloneRun, frozen, key, keyAlias(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanRoot := t.TempDir()
+	err = admitClone(scanRoot, clone, openRouterPin)
+	if err == nil || !strings.Contains(err.Error(), "frozen commit") || !strings.Contains(err.Error(), "scan") {
+		t.Fatalf("a clone whose commit message carries a secret-shaped value refuses its cell: %v", err)
+	}
+	if strings.Contains(err.Error(), secret) || strings.Contains(err.Error(), "gh"+"p_") {
+		t.Fatalf("the refusal never carries the value: %v", err)
+	}
+	for _, src := range []Source{SourceLocal, SourceHost} {
+		if err := admitClone(scanRoot, clone, CellPin{Cell: "here", Source: src}); err != nil {
+			t.Fatalf("%s: a clone that is not sent is not scanned: %v", src, err)
+		}
+	}
+	bare := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bare, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := admitClone(scanRoot, bare, openRouterPin); err == nil || !strings.Contains(err.Error(), "frozen commit") {
+		t.Fatalf("a clone with no commit to read is refused: %v", err)
 	}
 }

@@ -207,6 +207,9 @@ func fillClone(repoRoot, dir, frozen string) error {
 	steps := [][]string{
 		// An empty template: no hooks, and nothing of the person's.
 		{"init", "-q", "--template=", dir},
+		// No reflog, now or later: an entry names the account and machine
+		// that moved HEAD, which nothing a copy reads should carry.
+		{"-C", dir, "config", "core.logAllRefUpdates", "false"},
 		// One commit deep: the frozen commit and its tree, and none of its
 		// ancestors.
 		{"-C", dir, "fetch", "-q", "--depth=1", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", repoRoot, frozen},

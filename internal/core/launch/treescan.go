@@ -17,9 +17,9 @@ import (
 // step 3), so what the release gate keeps off the public never leaves the
 // machine in a clone either. The scanner's configuration is read at repoRoot,
 // the checkout the run belongs to, whose local tier the clone does not hold.
-// Git's own directory is not read, so a caller whose tree must be covered
-// whole hands it a tree whose repository holds nothing past its checked-out
-// files: a model-matrix clone holds its frozen commit alone.
+// Git's own directory is not read: a caller whose repository holds more than
+// its checked-out files scans the rest itself (ScanFiles), as a model-matrix
+// clone's admission scans its frozen commit's message and identities.
 //
 // An entry is never followed: a symbolic link or any other non-regular entry
 // is handed to the scanner as itself, which leaves it unscanned and so
@@ -52,10 +52,18 @@ func ScanTree(repoRoot, dir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the tree to scan could not be listed: %w", err)
 	}
+	return ScanFiles(repoRoot, files), nil
+}
+
+// ScanFiles is ScanTree's scan over files alone, each read at its resolved
+// path and named by its logical one: what the launch bundle's gate would
+// refuse them on (scanRefusals), with the scanner's configuration read at
+// repoRoot.
+func ScanFiles(repoRoot string, files []scanner.BundleFile) []string {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
-		return scanRefusals(scanner.ScanResult{Unavailable: true, UnavailableReason: err.Error()}), nil
+		return scanRefusals(scanner.ScanResult{Unavailable: true, UnavailableReason: err.Error()})
 	}
 	res, _ := sc.ScanBundle(files)
-	return scanRefusals(res), nil
+	return scanRefusals(res)
 }

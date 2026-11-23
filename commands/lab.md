@@ -156,8 +156,9 @@ judgement, and never with a digest the person did not see. The run then hands
 off every pilot copy: `copies` lists each one's `key`, `state`, `clone` (its own
 clone of the frozen commit under a random alias, outside every checkout) and
 `brief` (what the copy is asked, naming no task id, cell, route or model). A
-clone bound for a provider passes the launch bundle's secret scan first, and a
-hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
+clone bound for a provider passes the launch bundle's secret scan first, over
+its checked-out tree and the frozen commit's own message, author and committer,
+and a hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
 make, below. A runner cell's copy is `awaiting_runner`: abcd does not launch a
 runner in a clone yet, and nothing stands in for it, so never make it yourself
 and tell the person plainly that those cells wait. Refused, exit 2, with nothing

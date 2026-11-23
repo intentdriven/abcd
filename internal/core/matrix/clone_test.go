@@ -184,6 +184,25 @@ func TestACopyIsNeverMadeWhereGitGivesNoAnswer(t *testing.T) {
 	}
 }
 
+// TestACloneKeepsNoReflog: making the clone writes no reflog, so its git
+// directory names no one who checked it out; the frozen commit is the only
+// commit it holds.
+func TestACloneKeepsNoReflog(t *testing.T) {
+	src, frozen := cloneSource(t)
+	store := filepath.Join(t.TempDir(), "matrix-store")
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	dir, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git", "logs")); !os.IsNotExist(err) {
+		t.Fatalf("the clone keeps a reflog: %v", err)
+	}
+	if v := gitOut(t, src.Env(), dir, "config", "--get", "core.logAllRefUpdates"); v != "false" {
+		t.Fatalf("the clone writes no reflog later either: core.logAllRefUpdates is %q", v)
+	}
+}
+
 // TestACopyIsMadeOnce: a key whose clone already exists is refused, so a copy
 // never starts from another attempt's leftovers.
 func TestACopyIsMadeOnce(t *testing.T) {
