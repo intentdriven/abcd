@@ -89,7 +89,7 @@ func renewParkedDue(repoRoot string, now time.Time, passed []string) []string {
 	var due []State
 	read := false
 	for _, run := range runs {
-		if slices.Contains(passed, run.RunID) || parkedAtLand(run) < 0 || run.ReservedAt == nil {
+		if slices.Contains(passed, run.RunID) || parkedAtLand(run) < 0 || !run.holdsAny() {
 			continue
 		}
 		if !read {
@@ -98,8 +98,7 @@ func renewParkedDue(repoRoot string, now time.Time, passed []string) []string {
 			}
 			read = true
 		}
-		// A run with members is due when any issue it holds is (renewalDueAny).
-		if _, d, lost := renewalDue(run, snap, now); d || lost != "" || (run.hasMembers() && renewalDueAny(run, snap, now)) {
+		if parkedDue(run, snap, now) {
 			due = append(due, run)
 		}
 	}
@@ -131,8 +130,22 @@ func renewParkedDue(repoRoot string, now time.Time, passed []string) []string {
 }
 
 // renewable reports whether the drain's move renews run's reservation: it
-// holds one, and its lane is in progress and not parked at land.
+// holds one, the lead's or, in a run with members, any member's (holdsAny),
+// and its lane is in progress and not parked at land.
 func renewable(run State) bool {
 	outcome, _, _ := laneOutcome(run)
-	return run.ReservedAt != nil && outcome == DrainLaneInProgress && parkedAtLand(run) < 0
+	return run.holdsAny() && outcome == DrainLaneInProgress && parkedAtLand(run) < 0
+}
+
+// parkedDue reports whether a parked run's reservation is due for a renewal,
+// or held by another person or copy, as the view snap shows it: the run's key
+// in a run with no members, and in a run with members each issue it still
+// holds (renewalDueAny), so a lead handed back alone, a person's again, is no
+// longer read (spc-2611201455051897 step 2).
+func parkedDue(run State, snap claim.Snapshot, now time.Time) bool {
+	if run.hasMembers() {
+		return renewalDueAny(run, snap, now)
+	}
+	_, due, lost := renewalDue(run, snap, now)
+	return due || lost != ""
 }

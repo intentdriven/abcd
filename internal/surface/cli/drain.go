@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -87,7 +88,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"last fetched, and says how old that view is, how many commits the checkout is\n" +
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
-			"back.\n\n" +
+			"back. Under drain.bundle_max above 1 (1 by default; 1 to 10, set in " + abcdhome.Display("config.json") + ",\n" +
+			"which a repository's .abcd/config.json may lower and never raise), it shows under each issue that would lead the members of its\n" +
+			"category and directory its next lane would take, which the judgements, the\n" +
+			"reservations and reservation.max_live may make fewer.\n\n" +
 			"--drive makes the moves itself, from a plain terminal with no host session: it refuses\n" +
 			"before anything is reserved when the claude runner is not enabled or admitted, when\n" +
 			"it has no profile directory under " + abcdhome.Display("profiles") + "/ to run on, logged in, when a\n" +
@@ -369,7 +373,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			pv.OriginUnread = fsutil.RedactHome(pv.OriginUnread)
 			out := drainOutput{DryRun: true, DrainPreview: pv}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, out, func(w io.Writer) {
-				renderDrainPlan(w, pv.DrainPlan)
+				renderDrainPlanBundled(w, pv.DrainPlan, pv.Bundles)
+				renderDrainBundles(w, pv)
 				renderDrainOrigin(w, pv.Origin, pv.OriginUnread)
 			})
 		},
@@ -637,7 +642,11 @@ var drainOutcomes = []capture.DrainOutcome{
 
 // renderDrainPlan is the dry run's text: the rule's record, the order, one
 // line per open issue, and the counts. Every runtime string is sanitised.
-func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
+func renderDrainPlan(w io.Writer, plan capture.DrainPlan) { renderDrainPlanBundled(w, plan, nil) }
+
+// renderDrainPlanBundled is renderDrainPlan with, under each issue that would
+// lead a bundle, the members its next lane would take.
+func renderDrainPlanBundled(w io.Writer, plan capture.DrainPlan, bundles []loop.DrainBundlePreview) {
 	fmt.Fprintf(w, "abcd drain --dry-run: %d open issue(s) classified by field; writes nothing\n", len(plan.Dispositions))
 	fmt.Fprintf(w, "  rule:  %s, this repository's own record (which issues need no decision)\n", termsafe.Sanitize(plan.Record))
 	if len(plan.Loosened) == 0 {
@@ -665,6 +674,10 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 			kind = " (" + kind + ")"
 		}
 		fmt.Fprintf(w, "  %-10s %s%s — %s\n", v.Outcome, termsafe.Sanitize(v.ID), termsafe.Sanitize(kind), termsafe.Sanitize(v.Reason))
+		if i := slices.IndexFunc(bundles, func(b loop.DrainBundlePreview) bool { return b.Lead == v.ID }); i >= 0 {
+			fmt.Fprintf(w, "  %-10s its lane would also take %s, one pull request for %d issues\n", "",
+				termsafe.Sanitize(strings.Join(bundles[i].Members, ", ")), len(bundles[i].Members)+1)
+		}
 	}
 	counts := make([]string, 0, len(drainOutcomes))
 	for _, o := range drainOutcomes {
@@ -674,6 +687,26 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 	if plan.Counts[capture.DrainEligible] > 0 {
 		fmt.Fprintln(w, "  the host judgement over each eligible remedy has not run; it can only hand an issue back")
 	}
+}
+
+// renderDrainBundles is the dry run's line on bundling: the cap the next move
+// bundles under and where it came from, and what may make each bundle
+// smaller; nothing under a cap of 1, where every lane takes one issue as
+// before.
+func renderDrainBundles(w io.Writer, pv loop.DrainPreview) {
+	if pv.BundleMaxIgnored != "" {
+		fmt.Fprintf(w, "  bundle cap: %s\n", termsafe.Sanitize(pv.BundleMaxIgnored))
+	}
+	if pv.BundleMax.Value <= 1 {
+		return
+	}
+	fmt.Fprintf(w, "  bundles: drain.bundle_max is %d (%s, %s): a lane takes up to %d issues of one kind in one place",
+		pv.BundleMax.Value, termsafe.Sanitize(pv.BundleMax.Layer), termsafe.Sanitize(fsutil.RedactHome(pv.BundleMax.Origin)), pv.BundleMax.Value)
+	if len(pv.Bundles) == 0 {
+		fmt.Fprintln(w, "; no eligible issue has another of its kind in its place")
+		return
+	}
+	fmt.Fprintf(w, "; %s\n", termsafe.Sanitize(pv.BundleNote))
 }
 
 // renderDrainOrigin is the view of origin's default branch a plan was read

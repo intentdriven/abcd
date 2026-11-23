@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -112,6 +113,44 @@ type DrainPreview struct {
 	// each group is drawn at its first move, which mints the key, and the
 	// dry run, which writes nothing, mints none.
 	OrderDrawnAtFirstMove bool `json:"order_drawn_at_first_move"`
+	// BundleMax is the cap the next move bundles under: a running drain's
+	// own, or the one a drain started now would take from the files.
+	// Bundles are the lanes with members the plan would open under it, each
+	// leading issue with the members its next lane would take, and
+	// BundleNote what may make each smaller; both empty under a cap of 1
+	// (drain_bundle.go).
+	BundleMax  PaceValue            `json:"bundle_max"`
+	Bundles    []DrainBundlePreview `json:"bundles,omitempty"`
+	BundleNote string               `json:"bundle_note,omitempty"`
+	// BundleMaxIgnored names a repository's drain.bundle_max above the cap
+	// it may only lower, which the files' cap ignored; "" when none was.
+	BundleMaxIgnored string `json:"bundle_max_ignored,omitempty"`
+}
+
+// previewBundleCap is the cap the next move bundles under: a running drain's,
+// which it keeps, or the files' for a drain the move would start. A drain
+// state that cannot be read is the move's to refuse; the preview reads the
+// files then, as it plans without the state.
+func previewBundleCap(repoRoot string) (PaceValue, string, error) {
+	if st, live, err := readDrain(repoRoot); err == nil && live && st.BundleMax != nil {
+		return *st.BundleMax, "", nil
+	}
+	roots, _ := layered.RootsFor(repoRoot)
+	return resolveBundleMax(roots)
+}
+
+// withBundles is pv with the bundles its plan would open.
+func withBundles(repoRoot string, pv DrainPreview) (DrainPreview, error) {
+	limit, ignored, err := previewBundleCap(repoRoot)
+	if err != nil {
+		return DrainPreview{}, err
+	}
+	pv.BundleMax, pv.BundleMaxIgnored = limit, ignored
+	pv.Bundles = previewBundles(pv.DrainPlan, limit.Value, planArea(repoRoot, pv.DrainPlan))
+	if len(pv.Bundles) > 0 {
+		pv.BundleNote = bundleSmallerNote
+	}
+	return pv, nil
 }
 
 // DrainDryRun plans the drain as its next move would, from origin's default
@@ -146,12 +185,14 @@ func DrainDryRun(repoRoot string, now time.Time) (DrainPreview, error) {
 				plan.Order += "; this copy has no key yet, so this preview takes each group oldest first: its own order within each group is drawn at this copy's first move"
 			}
 			pv.DrainPlan, pv.Origin = plan, origin
-			return pv, nil
+			return withBundles(repoRoot, pv)
 		}
 		pv.OriginUnread = why + "; this plan reads the checkout's own ledger, and a drain move plans nothing until origin's default branch can be read"
 	}
-	pv.DrainPlan, err = capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
-	return pv, err
+	if pv.DrainPlan, err = capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot}); err != nil {
+		return pv, err
+	}
+	return withBundles(repoRoot, pv)
 }
 
 // originView is origin's default branch as this checkout last fetched it.

@@ -224,7 +224,7 @@ func renewalRuns(root, runID string) ([]State, []RunRenewal) {
 // handed back that still owes its arming's withdrawal is renewed: its
 // reservation is kept until the forge reports no arming (handedBackIssue).
 func renewsWhereItWaits(st State) bool {
-	if st.ReservedAt == nil || st.Complete() || parkedAtLand(st) >= 0 {
+	if !st.holdsAny() || st.Complete() || parkedAtLand(st) >= 0 {
 		return false
 	}
 	return !handedBackIssue(st)

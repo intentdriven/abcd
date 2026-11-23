@@ -841,11 +841,29 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("  the commits you made; when you rejected every finding and made none, the branch's tip),\n")
 	p("  `definition_of_done` (`command`, `exit_code`, `output`), `report`, and `model`, the model id\n")
 	p("  your harness reports (required: the landing's Assisted-by: trailer names it).\n")
+	if c.State.hasMembers() {
+		p("  In this run, also `resolves` and `handbacks`, as below.\n")
+	}
 	p("  No verdict: a verdict is the loop's to record from a validator's return.\n")
+	if c.State.hasMembers() {
+		writeFixBundle(p, c.State)
+	}
 	if err := writeRoundFile(c.RepoRoot, brief, b.Bytes()); err != nil {
 		return "", "", err
 	}
 	return brief, receipt, nil
+}
+
+// writeFixBundle is the fix brief's paragraph for a run with members: every
+// receipt names each issue the run still holds exactly once, so a fix round's
+// does too (bundleReceiptGaps), with each resolution's commit named afresh.
+func writeFixBundle(p func(string, ...any), st State) {
+	p("\nThis lane fixes several issues of one kind in one place: %s. Name each of them exactly once in this receipt,\n", andList(st.Issues()))
+	p("as in every receipt of the lane: in `resolves`, as `{\"issue\", \"commit\", \"note\", \"impact\", \"grounds\"}` with the commit that fixes it\n")
+	p("as the branch stands now, whether you made it in this round or it stands from an earlier one (list that commit in `commits`\n")
+	p("too); or in `handbacks`, as `{\"issue\", \"kind\", \"reason\", \"home\"}`, for an issue that is a person's to decide, once its\n")
+	p("changes are off the branch. A receipt that leaves one out, names one in both lists or twice, names an issue outside the\n")
+	p("run or one already handed back, or carries a top-level `handback` is refused.\n")
 }
 
 // reportPathOf is the report a verified receipt names, as an absolute path, or

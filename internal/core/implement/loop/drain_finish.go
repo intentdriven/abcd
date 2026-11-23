@@ -283,11 +283,10 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 	// own fetch and push are made for that run alone.
 	if snap, err := claim.View(repoRoot, now); err == nil {
 		for _, run := range renewing {
-			if run.ReservedAt == nil {
-				continue
-			}
-			// A run with members is due when any issue it holds is (renewalDueAny).
-			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" && !(run.hasMembers() && renewalDueAny(run, snap, now)) {
+			// A run with members holds its members whether or not the lead's
+			// reserved_at is set, and is due when any issue it holds is
+			// (parkedDue).
+			if !run.holdsAny() || !parkedDue(run, snap, now) {
 				continue
 			}
 			// The save is the reservation's alone (mutateReservation): a parked run in this

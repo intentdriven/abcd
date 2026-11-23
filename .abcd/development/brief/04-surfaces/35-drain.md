@@ -170,6 +170,51 @@ that has none yet it takes each group oldest first and says, in `order` and in
 `order_drawn_at_first_move`, that the copy's own order is drawn at its first
 move.
 
+## Bundles: the cap and who joins
+
+A lane may take several issues of one kind in one place, one branch and one
+pull request for all of them (itd-2611201450052326). `drain.bundle_max` caps
+it: the most issues one lane takes, a whole number from 1 to 10, under a
+`drain` namespace read through the layered configuration as the pace's keys
+are, except that a repository may only lower it: the machine's
+`~/.abcd.noindex/config.json` over the bundled default sets the cap, and the
+repository's `.abcd/config.json` may lower it and never raise it, since the
+repository's file is whatever its last committer wrote and the cap bounds how
+many of the person's own reservations one lane holds. A repository figure
+above the cap is ignored and named, in the dry run's `bundle_max_ignored` and
+in the move that starts a drain. The default is 1 for
+now, so a drain bundles only where a person sets the key; it rises once a
+failed bundle can be split and the drain's figures exist. The namespace is
+claimed, so a misspelt key is refused naming the file that holds it, as 0 and
+11 are. The cap is read once, when a drain starts, and kept on the drain's
+state as `bundle_max` with its layer and origin, as the pace is; a running
+drain keeps it (`internal/core/implement/loop/drain_bundle.go`).
+
+Who joins is a pure rule over the plan (`bundleCandidates`): the issues after
+the lead in the drain order that are eligible, have exactly the lead's
+category, and have the lead's area, which is the directory holding the path
+the issue's `found_at` names, or that path itself when it is a directory in
+the checkout. A `security` issue never joins, and neither does an issue whose
+area is the repository's root. A member's severity may differ from its lead's,
+so a member may be taken ahead of an older or a `nitpick` issue in another
+area (the amendment of 20 Nov 2026 to adr-2609291342092738). The lead must
+pass the same tests of area and category to take members at all; otherwise
+its lane opens alone.
+
+The dry run shows, under each eligible issue that would lead, the members its
+next lane would take, and says that the judgements, the reservations and
+`reservation.max_live` may make the bundle smaller; its payload carries
+`bundle_max` and `bundles`. The drain itself does not yet form a lane with
+members: whatever the cap, it opens one issue's lane at a time.
+
+The drain's state is version 4, which holds every field bundling needs: the
+drain's `bundle_max` and `forming`, and a lane's `bundle`, `split` and
+`ci_minutes`, each written only once the drain uses it. A version-3 state is
+read as a drain that started with the bundled cap, its layer recorded as
+`bundled`, and is written back at 4; a version-3 file carrying any of those
+fields is refused naming it, and releases that write version 3 refuse a
+version-4 file as a newer abcd's.
+
 ## Loud loosening
 
 Every floor a repository's record loosens is named, measured against the
