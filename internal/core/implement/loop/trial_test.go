@@ -296,11 +296,11 @@ func standInClone(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trialInCopyClone = func(repoRoot, frozen string) error {
+	trialInCopyClone = func(repoRoot, frozen string, fresh bool) error {
 		if p, err := filepath.EvalSymlinks(repoRoot); err == nil && p == want {
 			return nil
 		}
-		return prev(repoRoot, frozen)
+		return prev(repoRoot, frozen, fresh)
 	}
 	t.Cleanup(func() { trialInCopyClone = prev })
 }
@@ -311,8 +311,8 @@ func cloneStoreHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	prev := trialInCopyClone
-	trialInCopyClone = func(repoRoot, frozen string) error {
-		return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix)
+	trialInCopyClone = func(repoRoot, frozen string, fresh bool) error {
+		return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix, fresh)
 	}
 	t.Cleanup(func() { trialInCopyClone = prev })
 	return home
@@ -499,5 +499,35 @@ func TestATrialLaneIsCutOnlyInACopysClone(t *testing.T) {
 	}
 	if lane.BaseSHA != "" {
 		t.Fatalf("no lane is cut outside a copy's clone: %+v", lane)
+	}
+}
+
+// TestATrialResumesAfterItsLaneLeftObjectsBehind: a trial started in a copy's
+// clone cuts its lane, and work in the lane's worktree (a commit, then a file
+// staged and the commit amended) leaves objects no branch reaches in the
+// clone's object store, which the lane shares. Starting the trial again
+// resumes it: only a clone that holds no trial yet is judged by every object
+// it holds.
+func TestATrialResumesAfterItsLaneLeftObjectsBehind(t *testing.T) {
+	src := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	clone, frozen := trialClone(t, src)
+	start, err := Start(clone.Root(), "itd-10", Options{Trial: true, Frozen: frozen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := advance(clone.Root(), start.RunID, DefaultStages(), Options{})
+	if err != nil || res.PerformedStage != StageWorktree {
+		t.Fatalf("the trial's lane is cut in its clone: %+v %v", res, err)
+	}
+	lane := gittest.OpenRepo(t, laneAt(t, clone, start.RunID).Worktree)
+	lane.Write("work.txt", "first\n")
+	lane.Git("add", "work.txt")
+	lane.Git("commit", "-q", "--no-verify", "-m", "work")
+	lane.Write("work.txt", "second\n")
+	lane.Git("add", "work.txt")
+	lane.Git("commit", "-q", "--no-verify", "--amend", "-m", "work, amended")
+	again, err := Start(clone.Root(), "itd-10", Options{Trial: true, Frozen: frozen})
+	if err != nil || !again.Resumed || again.RunID != start.RunID {
+		t.Fatalf("starting the trial again resumes it: %+v %v", again, err)
 	}
 }

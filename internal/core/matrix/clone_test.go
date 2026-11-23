@@ -331,14 +331,14 @@ func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
 	}
 	env := src.Env()
 	ok := made(t)
-	if err := CopyClone(home, ok, frozen, "build/"); err != nil {
+	if err := CopyClone(home, ok, frozen, "build/", true); err != nil {
 		t.Fatalf("the clone the matrix made is a copy's clone: %v", err)
 	}
 	gitOut(t, env, ok, "branch", "build/lane-1", frozen)
-	if err := CopyClone(home, ok, frozen, "build/"); err != nil {
+	if err := CopyClone(home, ok, frozen, "build/", true); err != nil {
 		t.Fatalf("a clone holding its lanes' branches is a copy's clone: %v", err)
 	}
-	if err := CopyClone(home, ok, strings.Repeat("a", len(frozen)), "build/"); err == nil {
+	if err := CopyClone(home, ok, strings.Repeat("a", len(frozen)), "build/", true); err == nil {
 		t.Fatal("a clone is a copy's clone of its own frozen commit only")
 	}
 
@@ -389,16 +389,57 @@ func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitOut(t, env, stray, "hash-object", "-w", loose)
+	// A made clone of a frozen commit with history behind it, whose .git
+	// names a common directory: its own objects emptied and its shallow file
+	// left as a decoy, while the common directory holds that whole history
+	// fetched, its refs deleted.
+	deep := gittest.NewRepo(t)
+	deep.Write("earlier.txt", "content only an earlier commit holds\n")
+	deep.Commit("earlier")
+	deep.Write("README.md", "frozen\n")
+	deep.Commit("frozen")
+	deepFrozen := deep.Git("rev-parse", "HEAD")
+	n++
+	deepKey := TrialKey{Task: "widget", Cell: "cheap", Repeat: n}
+	redirected, err := makeClone(deep.Root(), store, cloneRun, deepFrozen, deepKey, keyAlias(deepKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	common := filepath.Join(t.TempDir(), "common.git")
+	gitOut(t, env, filepath.Dir(common), "init", "-q", "--bare", "--template=", common)
+	gitOut(t, env, common, "fetch", "-q", "--no-tags", deep.Root(), "+refs/heads/*:refs/heads/*")
+	for _, ref := range strings.Fields(gitOut(t, env, common, "for-each-ref", "--format=%(refname)")) {
+		gitOut(t, env, common, "update-ref", "-d", ref)
+	}
+	if err := os.RemoveAll(filepath.Join(redirected, ".git", "objects")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(redirected, ".git", "objects"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(redirected, ".git", "commondir"), []byte(common+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CopyClone(home, redirected, deepFrozen, "build/", true); !errors.Is(err, ErrNotACopyClone) {
+		t.Errorf("a clone whose .git names a common directory holding the history is refused: %v", err)
+	}
+	// A made clone with a lane branch at a commit that does not descend
+	// from the frozen commit.
+	unrelated := made(t)
+	orphan := gitOut(t, env, unrelated, "commit-tree", "-m", "unrelated", frozen+"^{tree}")
+	gitOut(t, env, unrelated, "update-ref", "refs/heads/build/lane-1", orphan)
 	for name, dir := range map[string]string{
-		"a linked worktree of the source":           linked,
-		"a full clone of the source":                full,
-		"a clone holding another ref":               tagged,
-		"a clone borrowing objects":                 borrowing,
-		"a clone holding the source's history":      history,
-		"a clone whose objects are the source's":    linkedObjects,
-		"a clone holding an object nothing reaches": stray,
+		"a clone whose .git names a common directory":        redirected,
+		"a lane branch not descended from the frozen commit": unrelated,
+		"a linked worktree of the source":                    linked,
+		"a full clone of the source":                         full,
+		"a clone holding another ref":                        tagged,
+		"a clone borrowing objects":                          borrowing,
+		"a clone holding the source's history":               history,
+		"a clone whose objects are the source's":             linkedObjects,
+		"a clone holding an object nothing reaches":          stray,
 	} {
-		err := CopyClone(home, dir, frozen, "build/")
+		err := CopyClone(home, dir, frozen, "build/", true)
 		if !errors.Is(err, ErrNotACopyClone) {
 			t.Errorf("%s at a clone's place in the store is refused: %v", name, err)
 		}

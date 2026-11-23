@@ -69,8 +69,10 @@ var ErrNotACopyClone = errors.New("not a model-matrix copy's clone in the clone 
 // read through their symbolic links, so a link into the store names the clone
 // it leads to and a link out of it names where it leads. A store that does
 // not stand holds no clone. lanes is the branch-name prefix of the branches
-// the trial's own lanes cut in the clone, the only refs it may hold.
-func CopyClone(home, dir, frozen, lanes string) error {
+// the trial's own lanes cut in the clone, the only refs it may hold. fresh is
+// set where the clone holds no trial yet, before any lane shares its object
+// store, and only then is every object it holds judged.
+func CopyClone(home, dir, frozen, lanes string, fresh bool) error {
 	if !filepath.IsAbs(home) {
 		return fmt.Errorf("%w: the home directory is not an absolute path", ErrNotACopyClone)
 	}
@@ -90,29 +92,41 @@ func CopyClone(home, dir, frozen, lanes string) error {
 	if len(parts) != 3 || !gitutil.IsFullSHA(parts[0]) || !runIDRe.MatchString(parts[1]) || !aliasRe.MatchString(parts[2]) {
 		return ErrNotACopyClone
 	}
-	return cloneHolds(real, frozen, lanes)
+	return cloneHolds(real, frozen, lanes, fresh)
 }
 
 // cloneHolds refuses a clone at dir that does not hold what makeClone makes.
 // It checks exactly this:
 //   - dir/.git is a directory, not a symbolic link or the file a linked
-//     worktree's .git is;
+//     worktree's .git is, and holds no commondir or gitdir file;
 //   - dir/.git/objects is a directory, not a symbolic link;
 //   - no objects/info/alternates file is reached at that path, through any
 //     link on the way to it, so no other object store is borrowed;
+//   - git, as stored and isolated, puts the common directory, the object
+//     store and the shallow file at dir/.git, dir/.git/objects and
+//     dir/.git/shallow;
 //   - dir/.git/shallow, read as a regular file of at most 4096 bytes, names
 //     exactly frozen;
 //   - every ref is a branch under refs/heads/<lanes>, the branches its
-//     trial's lanes cut;
-//   - every object the clone holds is reached from frozen or from one of
-//     those branches' tips, read as stored (gitAsStored), so no history
-//     fetched and then cut loose, and no stray object, is left in it.
+//     trial's lanes cut, and each names a commit descended from frozen;
+//   - where fresh is set (the clone holds no trial yet, so no lane's
+//     worktree has written to its object store), every object the clone
+//     holds is reached from frozen or one of those branches' tips, read as
+//     stored, so no history fetched and then cut loose is left in it.
 //
-// A refusal names which of these failed and nothing of any object's content.
-func cloneHolds(dir, frozen, lanes string) error {
+// These checks judge what the clone is, not where it came from: they are the
+// bar until a trial has a front door, and then the trial is owed a token from
+// the step that made and scanned the clone (admitClone). A refusal names which
+// check failed and nothing of any object's content.
+func cloneHolds(dir, frozen, lanes string, fresh bool) error {
 	gitDir := filepath.Join(dir, ".git")
 	if fi, err := os.Lstat(gitDir); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%w: its .git is not a repository's own directory", ErrNotACopyClone)
+	}
+	for _, name := range []string{"commondir", "gitdir"} {
+		if _, err := os.Lstat(filepath.Join(gitDir, name)); !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: its .git names another repository's directory", ErrNotACopyClone)
+		}
 	}
 	objects := filepath.Join(gitDir, "objects")
 	if fi, err := os.Lstat(objects); err != nil || !fi.IsDir() {
@@ -127,6 +141,20 @@ func cloneHolds(dir, frozen, lanes string) error {
 	if shallow, err := fsutil.ReadGuarded(filepath.Join(gitDir, "shallow"), 4096); err != nil || strings.TrimSpace(string(shallow)) != frozen {
 		return fmt.Errorf("%w: it is not shallow at exactly its frozen commit", ErrNotACopyClone)
 	}
+	paths, err := gitAsStored("-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "objects", "--git-path", "shallow")
+	if err != nil {
+		return fmt.Errorf("%w: where git keeps its repository could not be read", ErrNotACopyClone)
+	}
+	got := strings.Split(strings.TrimSpace(string(paths)), "\n")
+	want := []string{gitDir, objects, filepath.Join(gitDir, "shallow")}
+	if len(got) != len(want) {
+		return fmt.Errorf("%w: where git keeps its repository could not be read", ErrNotACopyClone)
+	}
+	for i := range want {
+		if !samePath(got[i], want[i]) {
+			return fmt.Errorf("%w: git keeps its repository outside its .git", ErrNotACopyClone)
+		}
+	}
 	refs, err := gitAsStored("-C", dir, "for-each-ref", "--format=%(objectname) %(refname)")
 	if err != nil {
 		return fmt.Errorf("%w: its refs could not be read", ErrNotACopyClone)
@@ -140,7 +168,13 @@ func cloneHolds(dir, frozen, lanes string) error {
 		if lanes == "" || !strings.HasPrefix(ref, "refs/heads/"+lanes) || !gitutil.IsFullSHA(oid) {
 			return fmt.Errorf("%w: it holds a ref no copy's clone holds", ErrNotACopyClone)
 		}
+		if _, err := gitAsStored("-C", dir, "merge-base", "--is-ancestor", frozen, oid); err != nil {
+			return fmt.Errorf("%w: a lane's branch names a commit not descended from its frozen commit", ErrNotACopyClone)
+		}
 		tips = append(tips, oid)
+	}
+	if !fresh {
+		return nil
 	}
 	reachable, err := gitAsStored(append(append([]string{"-C", dir, "rev-list", "--objects"}, tips...), "--")...)
 	if err != nil {
@@ -452,6 +486,17 @@ func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
 // or past limit, whichever comes first, and the refusal names which.
 func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]byte, error) {
 	return gitRawEnvCtx(parent, limit, gitutil.IsolatedEnv(), args...)
+}
+
+// samePath reports whether a and b name one file or directory, both read
+// through their symbolic links; a path that cannot be read is no match.
+func samePath(a, b string) bool {
+	ra, err := filepath.EvalSymlinks(a)
+	if err != nil {
+		return false
+	}
+	rb, err := filepath.EvalSymlinks(b)
+	return err == nil && ra == rb
 }
 
 // cloneCheckBound bounds each git command cloneHolds runs: listing a clone's

@@ -32,7 +32,7 @@ func TestACloneWhoseShallowFileIsAPipeIsRefusedAtOnce(t *testing.T) {
 		t.Skipf("no named pipe can be made here: %v", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- CopyClone(home, dir, frozen, "build/") }()
+	go func() { done <- CopyClone(home, dir, frozen, "build/", true) }()
 	select {
 	case err := <-done:
 		if !errors.Is(err, ErrNotACopyClone) {

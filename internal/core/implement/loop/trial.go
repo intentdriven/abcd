@@ -25,6 +25,7 @@ package loop
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/matrix"
@@ -98,7 +99,7 @@ func trialFrozen(repoRoot string, o Options) error {
 		return refuse(StageTrial, "", "", "a trial names the full id of its frozen commit, which every lane is cut from, and this one names "+
 			quoteOrNone(shortSHA(o.Frozen)), "start the trial with its frozen commit's full id; nothing was written")
 	}
-	if err := trialInCopyClone(repoRoot, o.Frozen); err != nil {
+	if err := trialInCopyClone(repoRoot, o.Frozen, trialFresh(repoRoot)); err != nil {
 		return notInCopyClone(StageTrial, "", err, "start the trial in the copy's clone the model matrix made for it; nothing was written")
 	}
 	head, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--")
@@ -123,7 +124,7 @@ func trialSteps(chk CheckResult) error {
 // a copy's clone in the clone store, as the trial's start found it, so a
 // trial's state in any other checkout cuts no lane there.
 func trialBase(c Context, laneID string) (string, error) {
-	if err := trialInCopyClone(c.RepoRoot, c.State.Frozen); err != nil {
+	if err := trialInCopyClone(c.RepoRoot, c.State.Frozen, false); err != nil {
 		return "", notInCopyClone(string(StageWorktree), laneID, err, "run the trial in the copy's clone the model matrix made for it; no lane was cut")
 	}
 	frozen := c.State.Frozen
@@ -142,13 +143,36 @@ func trialBase(c Context, laneID string) (string, error) {
 // trialInCopyClone refuses a trial's checkout at repoRoot unless it is a
 // model-matrix copy's clone in the clone store under the account's abcd home
 // (matrix.CopyClone): the one place a copy's clone is made, after its
-// admission. A test names its own judge.
-var trialInCopyClone = func(repoRoot, frozen string) error {
+// admission. fresh is set at a start in a checkout that holds no run yet,
+// the one moment every object the clone holds is judged: once a lane is cut,
+// work in its worktree (a commit amended, a file staged and dropped) leaves
+// objects no branch reaches, so a resume and a lane cut skip that judgement
+// and keep the rest. A test names its own judge.
+var trialInCopyClone = func(repoRoot, frozen string, fresh bool) error {
 	home, err := abcdhome.MachineHome()
 	if err != nil {
 		return err
 	}
-	return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix)
+	return matrix.CopyClone(home, repoRoot, frozen, BranchPrefix, fresh)
+}
+
+// trialFresh reports whether the checkout at repoRoot holds no run yet: no
+// directory under its run directory holds a state file, so no lane has been
+// cut and no lane's worktree has written to the clone's object store, and the
+// clone is judged by every object it holds (matrix.CopyClone). The lock file
+// a refused start may leave is not a run.
+func trialFresh(repoRoot string) bool {
+	dir := filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	for _, e := range entries {
+		if _, err := os.Lstat(filepath.Join(dir, e.Name(), StateFileName)); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // notInCopyClone is a trial's refusal of a checkout trialInCopyClone refuses,
