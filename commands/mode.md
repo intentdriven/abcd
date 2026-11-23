@@ -202,9 +202,10 @@ so, and carry on with other work.
 Once the away time has passed with a step or stop unread and the record not
 yet closed, every prompt gives you one line saying the window ended and that
 its checks no longer hold: questions and turn ends are judged as when the
-person is present. Do not set the mode again on that line; set it only on the
-person's word in this session. The person's own line says the same and points
-at `back`.
+person is present. Do not set the mode again on that line; set it only when
+the product thinker or the technical facilitator says in this session that
+they are away again. The person's own line says the same and points at
+`back`.
 
 ## Where the host has no status surface
 

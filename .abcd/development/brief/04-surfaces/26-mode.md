@@ -94,8 +94,8 @@ passed as on one that holds.
 **What the sessions are told, and when it ends.** While the record holds,
 the session-start hook (every source, a compaction included) and the prompt
 hook (every prompt, outside the rules loader's dedup ledger) give the session
-the away block, and the prompt hook shows the person one line naming
-`abcd mode back`. Once its time has passed while the record is not yet closed
+the away block, and the prompt hook shows the person one line naming the
+verb that ends it. Once its time has passed while the record is not yet closed
 and holds a queued step or a recorded stop, the person's line says what is
 unread and that sessions ask and stop again, and every prompt gives the
 session one line as well: the window ended, the checks the away mode adds (a
