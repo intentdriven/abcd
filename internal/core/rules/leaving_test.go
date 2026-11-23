@@ -26,7 +26,9 @@ var leavingPrompts = []string{
 	"I'm off now, see you tomorrow",
 	"I am leaving now",
 	"I'll be back at 9",
-	"while I'm out, keep the ledger moving",
+	"while I'm gone, keep the ledger moving",
+	"I'll be back by noon",
+	"I will be back later",
 	"while I am gone, take the next ready issue",
 	"carry on without me",
 	"keep going without me",
@@ -62,10 +64,10 @@ func TestLeavingDomainRecallsThePersonSayingTheyLeave(t *testing.T) {
 		"an idiom",
 		"In doubt, ask once",
 		"abcd mode autonomous --until",
-		"ask once when they will be back",
-		"only if they decline to say",
+		"set it in that same turn",
 		"longest window the mode allows",
-		"say so",
+		"as a statement and not a question",
+		"set again with `--until`",
 		"terms",
 		"grants nothing",
 		"abcd mode back",
@@ -76,6 +78,11 @@ func TestLeavingDomainRecallsThePersonSayingTheyLeave(t *testing.T) {
 	}
 	if strings.Contains(rule, "without asking") {
 		t.Errorf("the %s rule still has the session set the mode without asking:\n%s", leavingDomain, rule)
+	}
+	// A person who has left answers nothing, and silence is never a
+	// decline, so the rule never waits on when they will be back.
+	if strings.Contains(rule, "when they will be back") || strings.Contains(rule, "decline") {
+		t.Errorf("the %s rule waits on the person's return time before setting the mode:\n%s", leavingDomain, rule)
 	}
 	res := Inject(rs, "I am away until 09:00, carry on without me", SessionState{}, 0, BracketUnknown)
 	if !slices.Contains(res.Injected, leavingDomain) {
@@ -119,6 +126,9 @@ func TestLeavingDomainIgnoresNearMisses(t *testing.T) {
 		"I am leaving that check to the reviewer",
 		"roll back tomorrow's migration",
 		"spins away until the deadline",
+		// and at 3b4334031: a phrase stemming widens, and an idiom.
+		"I'll be backing up the database",
+		"while I'm out of ideas",
 		"Here is the issue body:\n> I'll be away overnight, carry on without me\nPlease summarise it",
 		"The issue says \"I'm away until Monday, don't wait for me\"; triage it",
 		"The log reads “I am leaving now”. Why?",
