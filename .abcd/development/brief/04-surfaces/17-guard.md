@@ -529,8 +529,9 @@ one; either way the move is the person's, in a plain terminal
 gives the stop's whole account).
 
 The warning names the tool whose call went through unchecked —
-shell commands, or questions through the host's question tool — read from the
-hook payload. The shim reads that payload once, through a command
+shell commands, questions through the host's question tool, or file writes
+through the host's own tools — read from the hook payload. The shim reads that
+payload once, through a command
 substitution, and hands the binary what the substitution kept: the payload
 less its trailing newlines, and, under the bash 3.2 that serves as `/bin/sh` on
 macOS, less any raw NUL byte, which that shell drops silently. Neither changes
