@@ -6,20 +6,27 @@ package loop
 // had no verb that ended it: it kept its worktree and branch, prune counted it
 // held, and its run stayed in progress. Every discard saves the lane's commits
 // not on the default branch to a bundle in the run's directory before it
-// removes anything (saveLaneBundle), and once no lane of the run is left at
-// work or held it releases what the run still holds (releaseOnDiscard).
+// removes anything (saveLaneBundle), and once nothing of the run is left to
+// land or settle it releases what the run still holds and still owns
+// (releaseOnDiscard).
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // atWork reports whether l is at one of the lane stages a step performs:
@@ -125,12 +132,17 @@ func runLive(repoRoot string, root *os.Root, st State, laneID string, o Options,
 
 // unheldPR asks the forge what became of the lane's pull request: one open,
 // armed or not, is refused, since its work can still merge; one merged has
-// landed, which a step records; one closed is reported as such. A lane with
-// none, or handed back as closed, asks nothing. While the network is down the
-// read waits on the shared probe.
+// landed, which a step records; one closed is reported as such. A lane whose
+// state records none but whose branch was pushed at its landing may have one
+// the state never took (opened, then not read back, which the landing keeps
+// for its next step to find): the forge is asked for the branch's open pull
+// request, and one listed, or a listing that cannot be read, is refused. A
+// lane never pushed, or handed back as closed, asks nothing. While the network
+// is down either read waits on the shared probe.
 func unheldPR(c Context, lane Lane, g *outageGate) (closed bool, err error) {
+	again := "`abcd implement step --run " + c.State.RunID + " --discard " + lane.ID + "`"
 	if lane.PR <= 0 {
-		return false, nil
+		return false, unrecordedPR(c, lane, g, again)
 	}
 	if lane.HandBack != nil && lane.HandBack.Kind == HandBackClosed {
 		return true, nil
@@ -146,7 +158,6 @@ func unheldPR(c Context, lane Lane, g *outageGate) (closed bool, err error) {
 		}
 		return false, err
 	}
-	again := "`abcd implement step --run " + c.State.RunID + " --discard " + lane.ID + "`"
 	switch strings.TrimSpace(out) {
 	case "CLOSED":
 		return true, nil
@@ -162,44 +173,151 @@ func unheldPR(c Context, lane Lane, g *outageGate) (closed bool, err error) {
 		"close it on the forge (`gh pr close "+n+"`), or let the run land it; then run "+again+" again; nothing was changed")
 }
 
+// unrecordedPR is unheldPR's read for a lane whose state records no pull
+// request: nil for a lane never pushed at its landing, or whose branch the
+// forge lists no open pull request for; a refusal for one listed, and the
+// forge's own error for a listing that cannot be read.
+func unrecordedPR(c Context, lane Lane, g *outageGate, again string) error {
+	if lane.Branch == "" || lane.Landing == nil || lane.Landing.Pushed == "" {
+		return nil
+	}
+	if g.down(implement.ServiceNetwork) {
+		return g.networkWait(string(StageHeld), lane.ID, fmt.Sprintf("the discard of %s (listing its branch's pull requests)", lane.ID))
+	}
+	found, err := findPR(c, lane)
+	if err != nil {
+		if r, ok := AsRefusal(err); ok {
+			g.take(r)
+		}
+		return err
+	}
+	if found == nil {
+		return nil
+	}
+	n := strconv.Itoa(found.Number)
+	return refuse(string(StageHeld), "", lane.ID, fmt.Sprintf("%s's branch has pull request #%s open on the forge, which its state never recorded, so its work can still merge", lane.ID, n),
+		"close it on the forge (`gh pr close "+n+"`), or let the run land it; then run "+again+" again; nothing was changed")
+}
+
+// saveBundle is saveLaneBundle; a test stands one in.
+var saveBundle = saveLaneBundle
+
 // saveLaneBundle saves the commits of the lane's branch that the default
 // branch does not hold (origin's, as gitutil.DefaultRef resolves it; the whole
 // branch where none resolves) to a git bundle in the run's own directory,
 // named for the lane and its tip, before a discard removes the branch. It
-// returns the bundle's path relative to the checkout and how many commits it
-// holds; "" and 0 when the lane names no branch, the branch is gone, or it
-// holds no commit of its own. History is read as stored, so no graft or
-// replace ref hides a commit from the bundle.
-func saveLaneBundle(repoRoot, runID string, lane Lane) (rel string, n int, err error) {
+// returns the bundle's path relative to the repository root and how many
+// commits it holds, "" and 0 when the lane names no branch, the branch is
+// gone, or it holds no commit of its own; and tip, the branch's tip as read
+// once here, which the bundle holds and at which alone the caller deletes the
+// branch, "" when the branch is gone. History is read as stored, so no graft
+// or replace ref hides a commit from the bundle.
+//
+// The file is created through root, the checkout's handle, as a new file in
+// the run's directory: a name already there, a link included, refuses the
+// save, and git writes the bundle to the open file on its standard output,
+// never opening a path of its own. The bundle's header must list the branch at
+// tip and nothing else, or the file is removed and the save refused: the
+// branch moved while it was read.
+func saveLaneBundle(root *os.Root, repoRoot, runID string, lane Lane) (rel string, n int, tip string, err error) {
 	if lane.Branch == "" {
-		return "", 0, nil
+		return "", 0, "", nil
 	}
 	ref := "refs/heads/" + lane.Branch
-	tip, err := gitutil.RunCappedAsStored(repoRoot, maxGitOutput, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	tip, err = gitutil.RunCappedAsStored(repoRoot, maxGitOutput, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(tip) {
-		return "", 0, nil
+		return "", 0, "", nil
 	}
-	revs := []string{ref}
+	not := []string{}
 	if def := gitutil.DefaultRef(repoRoot); def != "" && def != ref {
-		revs = append(revs, "^"+def)
+		not = append(not, "^"+def)
 	}
-	count, err := gitutil.RunCappedAsStored(repoRoot, 64, append(append([]string{"rev-list", "--count"}, revs...), "--")...)
+	count, err := gitutil.RunCappedAsStored(repoRoot, 64, append(append([]string{"rev-list", "--count", tip}, not...), "--")...)
 	if err != nil {
-		return "", 0, fmt.Errorf("counting %s's commits not on the default branch: %w", lane.Branch, err)
+		return "", 0, "", fmt.Errorf("counting %s's commits not on the default branch: %w", lane.Branch, err)
 	}
-	if n, err = strconv.Atoi(strings.TrimSpace(count)); err != nil || n == 0 {
-		return "", 0, err
+	if n, err = strconv.Atoi(strings.TrimSpace(count)); err != nil {
+		return "", 0, "", err
+	}
+	if n == 0 {
+		return "", 0, tip, nil
 	}
 	name := "lane"
 	if ValidLaneID(lane.ID) {
 		name = lane.ID
 	}
-	rel = runRel(runID) + "/" + name + "-" + tip[:12] + ".bundle"
-	abs := filepath.Join(repoRoot, filepath.FromSlash(rel))
-	if _, err := gitutil.RunCappedAsStored(repoRoot, maxGitOutput, append([]string{"bundle", "create", "-q", abs}, revs...)...); err != nil {
-		return "", 0, fmt.Errorf("saving %s's commits to %s: %w", lane.Branch, rel, err)
+	file := name + "-" + tip[:12] + ".bundle"
+	rel = runRel(runID) + "/" + file
+	dir, err := root.OpenRoot(runRel(runID))
+	if err != nil {
+		return "", 0, "", fmt.Errorf("opening the run's directory: %w", err)
 	}
-	return rel, n, nil
+	defer dir.Close()
+	f, err := dir.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return "", 0, "", fmt.Errorf("%s already exists, and a discard writes its bundle only to a file of its own making", rel)
+	}
+	if err != nil {
+		return "", 0, "", fmt.Errorf("creating %s: %w", rel, err)
+	}
+	head := &bundleHeader{}
+	err = gitutil.StreamAsStored(repoRoot, io.MultiWriter(f, head), append([]string{"bundle", "create", "-q", "-", ref}, not...)...)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil && !head.listsOnly(tip+" "+ref) {
+		err = fmt.Errorf("%s moved from %s while its commits were saved", lane.Branch, shortSHA(tip))
+	}
+	if err != nil {
+		_ = dir.Remove(file)
+		return "", 0, "", fmt.Errorf("saving %s's commits to %s: %w", lane.Branch, rel, err)
+	}
+	return rel, n, tip, nil
+}
+
+// maxBundleHeader bounds the bundle header bundleHeader keeps.
+const maxBundleHeader = 1 << 20
+
+// bundleHeader keeps a bundle's header as git writes it: the lines before
+// the first blank line, up to maxBundleHeader bytes. Everything after passes
+// by.
+type bundleHeader struct {
+	buf  []byte
+	done bool
+	over bool
+}
+
+func (h *bundleHeader) Write(p []byte) (int, error) {
+	if h.done || h.over {
+		return len(p), nil
+	}
+	h.buf = append(h.buf, p...)
+	if i := bytes.Index(h.buf, []byte("\n\n")); i >= 0 {
+		h.buf, h.done = h.buf[:i+1], true
+	} else if len(h.buf) > maxBundleHeader {
+		h.buf, h.over = nil, true
+	}
+	return len(p), nil
+}
+
+// listsOnly reports whether the header, read whole, lists exactly one ref,
+// line ("<sha> <refname>"): its signature line first, then its prerequisites
+// ("-") and capabilities ("@"), which are passed over.
+func (h *bundleHeader) listsOnly(line string) bool {
+	if !h.done {
+		return false
+	}
+	lines := strings.Split(strings.TrimSuffix(string(h.buf), "\n"), "\n")
+	if !strings.HasPrefix(lines[0], "# v") {
+		return false
+	}
+	var refs []string
+	for _, l := range lines[1:] {
+		if !strings.HasPrefix(l, "-") && !strings.HasPrefix(l, "@") {
+			refs = append(refs, l)
+		}
+	}
+	return len(refs) == 1 && refs[0] == line
 }
 
 // bundleNote is the discard record's clause for a saved bundle.
@@ -209,21 +327,31 @@ func bundleNote(rel string, n int, branch string) string {
 
 // releaseOnDiscard registers, on the state a discard's callback has just
 // changed, the release of every reservation the run still holds once that
-// state is written, under the same lock (State.afterWritten), when no lane of
-// the run is left at work or held: nothing of the run will land, so the
-// record is no longer the run's to hold. A reservation the record already
-// shows released since it was taken is not released again. An issue run's
-// release publishes the discarded lane's hand-back, where it carries one, as
-// releaseOnHandBack would have. Each release is written to the run record, and
-// the run's reserved_at cleared, by a second write under the same hold, as a
-// stop's release is. *said is what the releases came to, "" for none.
-func releaseOnDiscard(repoRoot string, st *State, laneID string, now time.Time, said *string) {
+// state is written, under the same lock (State.afterWritten), when nothing of
+// the run is left to land or to settle: no lane at work or held, no spec step
+// pending (which the next step would open a lane for), and no lane handed back
+// with its pull request still armed (armingOwed), the rule completesRun keeps
+// for a landing. A reservation the record already shows released since it was
+// taken is not released again, and each is released only while it is still
+// the run's own (releaseOwn). An issue run's release publishes the discarded
+// lane's hand-back, where it carries one, as releaseOnHandBack would have.
+// Each release is written to the run record, and the run's reserved_at
+// cleared, by a second write under the same hold, as a stop's release is.
+// held and stage are lastHeld and renewalStage of the state before the
+// discard changed it. *said is what the releases came to, "" for none.
+func releaseOnDiscard(repoRoot string, st *State, laneID string, held time.Time, stage string, now time.Time, said *string) {
 	st.afterWritten(func(s *State, rewrite func() error) {
+		if len(s.Pending) > 0 {
+			return
+		}
 		kind := ""
 		for _, l := range s.Lanes {
 			switch l.Stage {
 			case StageDone, StageDiscarded, StageHandedBack:
 			default:
+				return
+			}
+			if armingOwed(l) {
 				return
 			}
 			if l.ID == laneID && l.HandBack != nil && s.Issue() != "" {
@@ -235,14 +363,14 @@ func releaseOnDiscard(repoRoot string, st *State, laneID string, now time.Time, 
 			if releasedThisHoldFor(*s, id) {
 				continue
 			}
-			clause, failed := releaseReservation(repoRoot, id, kind, now)
-			stage := StageReservationReleased
+			clause, failed := releaseOwn(repoRoot, id, kind, held, stage, now)
+			logged := StageReservationReleased
 			if failed {
 				tail, _, _ := lapseTail(repoRoot, s.forIssue(id), now)
 				clause += tail
-				stage = StageReservationReleaseFailed
+				logged = StageReservationReleaseFailed
 			}
-			s.Record = append(s.Record, Entry{At: now, Stage: stage, Note: clause, Issue: s.issueOn(id)})
+			s.Record = append(s.Record, Entry{At: now, Stage: logged, Note: clause, Issue: s.issueOn(id)})
 			out = append(out, clause)
 		}
 		if len(out) == 0 {
@@ -258,4 +386,55 @@ func releaseOnDiscard(repoRoot string, st *State, laneID string, now time.Time, 
 			*said += "; the run record could not take this: " + err.Error()
 		}
 	})
+}
+
+// lastHeld is the latest moment the run's state shows it acting on its
+// reservations: its last write, the times it reserved, and each reservation
+// or renewal its record logs. Every reservation or renewal the run makes is
+// followed by a write of its state, short of one a refused step made at the
+// land fence (renewIssueAtFence), which names the stage the run's lane was at.
+func lastHeld(st State) time.Time {
+	t := st.UpdatedAt
+	later := func(p *time.Time) {
+		if p != nil && p.After(t) {
+			t = *p
+		}
+	}
+	later(st.ReservedAt)
+	for i := range st.Bundle {
+		later(st.Bundle[i].ReservedAt)
+	}
+	for i := range st.Record {
+		if st.Record[i].Stage == StageReservation || st.Record[i].Stage == StageReservationRenewed {
+			later(&st.Record[i].At)
+		}
+	}
+	return t
+}
+
+// releaseOwn releases the reservation on id while it is still the run's own,
+// and says what came of it as releaseReservation does. The tip, as this
+// checkout last saw it, is read first: one of this copy's claimed after held
+// (lastHeld) that does not name stage, the stage the run's own renewal at its
+// land fence names, was made since by another hand (this person's own reserve,
+// or another run's start) and is left as it stands; any other of this copy's
+// is released fenced on that commit (releaseReservationAt), so a tip that
+// moves on before the push is left too. A tip that is not this copy's, or is
+// already released, goes to claim's own judgement, which leaves another's.
+func releaseOwn(repoRoot, id, kind string, held time.Time, stage string, now time.Time) (clause string, failed bool) {
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return "the reservation on " + id + " was not released: the reservations as last fetched here could not be read (" +
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ")", true
+	}
+	r, ok := snap.Lookup(id)
+	if !ok || r.Copy != claim.CopyThis || (r.State != claim.StateLive && r.State != claim.StateExpired) {
+		return releaseReservation(repoRoot, id, kind, now)
+	}
+	ownRenewal := stage != "" && r.Stage == stage
+	if r.ClaimedAt.After(held) && !ownRenewal {
+		return "left the reservation on " + id + " as it stands: it was reserved again from this copy at " + stamp(r.ClaimedAt) +
+			", after this run last held it", false
+	}
+	return releaseReservationAt(repoRoot, id, r.Commit, kind, now)
 }

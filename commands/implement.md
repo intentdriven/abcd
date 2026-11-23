@@ -951,18 +951,27 @@ changed or could not be read too, finding the pull request by the lane's branch;
 
 Either is refused at exit 2 while the lane's pull request is open, armed or not
 (close it on the forge first, or let the run land it), or merged (a step records
-the landing); one the forge reports closed is not closed again.
+the landing); one the forge reports closed is not closed again. A lane whose
+branch was pushed at its landing but whose state records no pull request (one
+opened and not read back) is refused while the forge lists one open for its
+branch, and while that listing cannot be read.
 
 Every discard, of any lane, first saves the lane's commits that the default
 branch does not hold to a git bundle in the run's own directory,
 `.abcd/.work.local/run/<run-id>/<lane-id>-<tip>.bundle`, before it removes
 anything; the result names it under `bundle`, the run record names it, and
 `git fetch <bundle> <branch>` restores the branch. A branch with no commits of
-its own saves none, and a bundle git cannot write refuses the discard with
-nothing removed. A discard that leaves no lane of the run at work or held
-releases every reservation the run still holds, an issue run's with the
-discarded lane's hand-back where it carries one, once the discard is written;
-the result says what came of it under `released`, and the record logs it at
+its own saves none. The bundle is always a new file: a file or link already at
+its name, or a bundle git cannot write, refuses the discard with nothing
+removed. The branch is deleted only at the tip that was saved, so a branch that
+moved since is refused rather than deleted. A discard that leaves nothing of
+the run to land or settle (no lane at work or held, no spec step pending, and
+no lane handed back with its pull request still armed) releases every
+reservation the run still holds, an issue run's with the discarded lane's
+hand-back where it carries one, once the discard is written. Each release
+takes only the run's own reservation: one reserved again from this copy since
+the run last held it is left as it stands, and said so. The result says what
+came of it under `released`, and the record logs it at
 `reservation_released` or `reservation_release_failed`. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its

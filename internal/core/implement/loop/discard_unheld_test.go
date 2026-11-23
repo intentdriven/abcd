@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -319,5 +320,280 @@ func TestARefusedReleaseWritesNoAcceptance(t *testing.T) {
 	}
 	if !bytes.Equal(state, stateBytes(t, repo.Root(), runID)) || !bytes.Equal(fp, fingerprintBytes(t, repo, runID)) {
 		t.Fatal("a refused release wrote its acceptance")
+	}
+}
+
+// wantNothingRemoved wants a refused discard to have left the lane's worktree
+// and branch and the run's state as they were.
+func wantNothingRemoved(t *testing.T, repo *gittest.Repo, runID string, l Lane, state []byte) {
+	t.Helper()
+	if !bytes.Equal(state, stateBytes(t, repo.Root(), runID)) {
+		t.Fatal("a refused discard changed the run's state")
+	}
+	if _, err := os.Stat(l.Worktree); err != nil {
+		t.Fatalf("a refused discard removes no worktree: %v", err)
+	}
+	if err := gitErr(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+l.Branch); err != nil {
+		t.Fatalf("a refused discard deletes no branch: %v", err)
+	}
+}
+
+// TestDiscardWritesNoBundleOverANameAlreadyTaken: a link standing at the
+// bundle's name in the run's directory is never written through: the discard
+// is refused before anything is removed, and the file the link names keeps
+// what it held.
+func TestDiscardWritesNoBundleOverANameAlreadyTaken(t *testing.T) {
+	repo, runID, l, _ := issueAwaiting(t)
+	tip := laneCommit(t, repo, l, "one.txt")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("kept\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repo.Root(), filepath.FromSlash(runRel(runID)), l.ID+"-"+tip[:12]+".bundle")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	state := stateBytes(t, repo.Root(), runID)
+	_, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID))
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "already exists") || !strings.Contains(r.Remedy, "nothing was removed") {
+		t.Fatalf("the discard is refused, naming the name already taken: %+v", r)
+	}
+	if b, err := os.ReadFile(target); err != nil || string(b) != "kept\n" {
+		t.Fatalf("the file the link names was written: %q %v", b, err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link at the bundle's name was replaced: %v %v", fi, err)
+	}
+	wantNothingRemoved(t, repo, runID, l, state)
+}
+
+// TestDiscardDeletesTheBranchOnlyAtTheTipItSaved: a branch that moves after
+// its commits were saved is not deleted: the discard is refused, the branch
+// keeps its new commit, and the bundle holds the tip that was saved.
+func TestDiscardDeletesTheBranchOnlyAtTheTipItSaved(t *testing.T) {
+	repo, runID, l, _ := issueAwaiting(t)
+	tip := laneCommit(t, repo, l, "one.txt")
+	old := saveBundle
+	t.Cleanup(func() { saveBundle = old })
+	moved := ""
+	saveBundle = func(root *os.Root, repoRoot, id string, lane Lane) (string, int, string, error) {
+		rel, n, at, err := old(root, repoRoot, id, lane)
+		moved = laneCommit(t, repo, l, "two.txt")
+		return rel, n, at, err
+	}
+	_, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID))
+	mustRefusal(t, err)
+	if got := repo.Git("rev-parse", "refs/heads/"+l.Branch); got != moved {
+		t.Fatalf("the branch that moved is kept at its new tip %s: %q", moved, got)
+	}
+	b := bundlesIn(t, repo, runID)
+	if len(b) != 1 {
+		t.Fatalf("the saved tip's bundle stays in the run's directory: %v", b)
+	}
+	heads := repo.Git("bundle", "list-heads", filepath.Join(repo.Root(), filepath.FromSlash(runRel(runID)), b[0]))
+	if !strings.Contains(heads, tip) {
+		t.Fatalf("the bundle holds the tip that was saved, %s: %s", tip, heads)
+	}
+}
+
+// reservedIssueAwaiting is a reserving issue run whose lane awaits its
+// implementer.
+func reservedIssueAwaiting(t *testing.T) (repo *gittest.Repo, bare, runID string, l Lane) {
+	t.Helper()
+	repo, bare = reservingDrainRepo(t, "commands/drain.md")
+	res, err := startedOnce(t, repo, secondIssue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range len(Sequence) {
+		if currentLane(t, repo, res.RunID).awaiting() != nil {
+			break
+		}
+		if _, err := advance(repo.Root(), res.RunID, DefaultStages(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.commit == "" || tomb.released {
+		t.Fatalf("premise: the run holds its reservation: %+v", tomb)
+	}
+	return repo, bare, res.RunID, currentLane(t, repo, res.RunID)
+}
+
+// TestDiscardLeavesAReservationMadeAgainSinceTheRunHeldIt: the run's
+// reservation lapsed and this person reserved the issue again from this copy;
+// the discard that ends the run leaves that newer reservation as it stands
+// and says so.
+func TestDiscardLeavesAReservationMadeAgainSinceTheRunHeldIt(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	o := pastTheLease(t, repo, runID)
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(o.Now().Add(-time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	res, err := Discard(repo.Root(), runID, l.ID, o)
+	if err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if now := originReservation(t, bare, claim.RefPrefix+secondIssue); now.commit != mine.commit || now.released {
+		t.Fatalf("the reservation made since is left as it stands: %+v, was %+v", now, mine)
+	}
+	if note := recordNote(t, repo, runID, StageReservationReleased); !strings.Contains(note, "as it stands") {
+		t.Fatalf("the run record says the reservation was left as it stands: %q", note)
+	}
+}
+
+// TestDiscardReleasesTheRunsOwnReservation: the same discard, with nothing
+// reserved since, releases the run's own reservation.
+func TestDiscardReleasesTheRunsOwnReservation(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	if _, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID)); err != nil {
+		t.Fatal(err)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released {
+		t.Fatalf("the run's own reservation is released: %+v", tomb)
+	}
+}
+
+// TestDiscardRefusesALaneAtLandWhosePullRequestItsStateNeverRecorded: a lane
+// pushed at land whose state records no pull request (opened, then not read
+// back) is refused while the forge lists one open for its branch, and while
+// that listing cannot be read; once the forge lists none, it is discarded.
+func TestDiscardRefusesALaneAtLandWhosePullRequestItsStateNeverRecorded(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.toArmOnce(t)
+	if l.Landing == nil || l.Landing.Pushed == "" {
+		t.Fatalf("premise: the lane is pushed: %+v", l)
+	}
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].PR = 0
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := stateBytes(t, f.repo.Root(), f.runID)
+	_, err := Discard(f.repo.Root(), f.runID, l.ID, Options{})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "#7") || !strings.Contains(r.Reason, "open") {
+		t.Fatalf("the discard is refused, naming the pull request the forge lists: %+v", r)
+	}
+	wantNothingRemoved(t, f.repo, f.runID, l, state)
+	if err := os.WriteFile(filepath.Join(f.gh, "refuse-list"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Discard(f.repo.Root(), f.runID, l.ID, Options{})
+	mustRefusal(t, err)
+	wantNothingRemoved(t, f.repo, f.runID, l, state)
+	if err := os.Remove(filepath.Join(f.gh, "refuse-list")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.gh, "pr.json"), []byte("[]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("a lane whose branch has no pull request is discarded: %+v %v", res, err)
+	}
+}
+
+// closedAtLand is the land fixture's lane at land, its run holding its
+// reservation and its pull request closed on the forge, so a discard takes it.
+func closedAtLand(t *testing.T) (*landFixture, Lane) {
+	t.Helper()
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.toArmOnce(t)
+	reserveRun(t, f.repo, f.runID, "itd-10", time.Now().UTC().Truncate(time.Second), "internal/widget")
+	if err := os.WriteFile(filepath.Join(f.gh, "state"), []byte("CLOSED\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return f, l
+}
+
+// TestDiscardOfTheRunsLastLaneReleasesItsReservation: with nothing pending
+// and no lane owing anything, the discard of the run's last lane releases its
+// reservation.
+func TestDiscardOfTheRunsLastLaneReleasesItsReservation(t *testing.T) {
+	f, l := closedAtLand(t)
+	if _, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if tomb := originReservation(t, f.bare, reservedRef); !tomb.released {
+		t.Fatalf("the run's reservation is released: %+v", tomb)
+	}
+}
+
+// TestDiscardKeepsTheReservationWhileAStepIsPending: a step of the spec still
+// waiting for a lane will be taken up by the next step, so the discard of the
+// run's only lane releases nothing.
+func TestDiscardKeepsTheReservationWhileAStepIsPending(t *testing.T) {
+	f, l := closedAtLand(t)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Pending = append(st.Pending, PendingStep{Number: 2, Title: "the second step", Needs: []int{1}})
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, f.bare, reservedRef); tomb.released {
+		t.Fatalf("a run with a step pending keeps its reservation: %+v", tomb)
+	}
+	if note := recordNote(t, f.repo, f.runID, StageReservationReleased); note != "" {
+		t.Fatalf("the run record logs no release: %q", note)
+	}
+}
+
+// TestDiscardKeepsTheReservationWhileAHandedBackLaneIsStillArmed: a sibling
+// handed back with its pull request still armed owes the arming's withdrawal,
+// so the discard of the other lane releases nothing.
+func TestDiscardKeepsTheReservationWhileAHandedBackLaneIsStillArmed(t *testing.T) {
+	f, l := closedAtLand(t)
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		sib := st.Lanes[0]
+		sib.ID, sib.Branch, sib.Worktree, sib.Awaits, sib.Stage, sib.PR = "lane-2", "", "", nil, StageHandedBack, 8
+		landing := *st.Lanes[0].Landing
+		landing.Armed = true
+		sib.Landing = &landing
+		sib.HandBack = &HandBack{At: time.Now().UTC().Truncate(time.Second), Verdict: VerdictUnachievable, Round: 2, FixRounds: 1,
+			Verdicts: "ruthless-reviewer: not passed"}
+		if !armingOwed(sib) {
+			t.Fatalf("premise: the sibling owes its arming's withdrawal: %+v", sib)
+		}
+		st.Lanes = append(st.Lanes, sib)
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Discard(f.repo.Root(), f.runID, l.ID, Options{}); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, f.bare, reservedRef); tomb.released {
+		t.Fatalf("a run whose handed-back lane is still armed keeps its reservation: %+v", tomb)
+	}
+}
+
+// TestTheBundleHeaderMustListTheSavedTipAlone: a bundle is kept only when its
+// header, read whole across the writes git makes, lists the branch at the
+// tip that was read and no other ref.
+func TestTheBundleHeaderMustListTheSavedTipAlone(t *testing.T) {
+	tip := strings.Repeat("a", 40)
+	line := tip + " refs/heads/build/x"
+	for _, c := range []struct {
+		name, header string
+		want         bool
+	}{
+		{"the tip alone", "# v2 git bundle\n-" + strings.Repeat("b", 40) + " base\n" + line + "\n\nPACK", true},
+		{"a moved tip", "# v2 git bundle\n" + strings.Repeat("c", 40) + " refs/heads/build/x\n\nPACK", false},
+		{"a second ref", "# v3 git bundle\n@object-format=sha1\n" + line + "\n" + tip + " refs/heads/other\n\nPACK", false},
+		{"no end to the header", "# v2 git bundle\n" + line + "\n", false},
+	} {
+		h := &bundleHeader{}
+		for _, b := range []byte(c.header) {
+			if _, err := h.Write([]byte{b}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := h.listsOnly(line); got != c.want {
+			t.Errorf("%s: listsOnly = %v; want %v", c.name, got, c.want)
+		}
 	}
 }

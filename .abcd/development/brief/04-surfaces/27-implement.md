@@ -590,10 +590,15 @@ than the caller's session is its driver and no agent of the run is running or
 may still be in its call, a host's agent counting as gone a reservation lease
 after it was handed out (iss-2611231404319245). A live run is refused as
 contention, and a lane whose pull request is open, armed or not, or merged is
-refused naming it; one closed is not closed again. Every discard saves the
-lane's commits the default branch does not hold to a bundle in the run's own
-directory before it removes anything, and one that leaves no lane of the run at
-work or held releases the run's reservation once it is written. With
+refused naming it, as is a pushed lane whose branch the forge lists an open pull
+request for that its state never recorded, or whose listing cannot be read; one
+closed is not closed again. Every discard saves the lane's commits the default
+branch does not hold to a bundle in the run's own directory before it removes
+anything, written as a new file git streams into (a name already taken refuses
+the discard), and deletes the branch only at the tip it saved. One that leaves
+nothing of the run to land or settle (no lane at work or held, no step pending,
+no handed-back lane still armed) releases the run's own reservation once it is
+written, leaving one reserved again from this copy since the run last held it. With
 `--accept-config-change`, a discard, a release or a restart writes the
 acceptance in its own write, so one refused writes nothing
 (iss-2611231404326060); a plain step writes the acceptance first. An issue run logs

@@ -285,6 +285,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		now := o.now()
 		lane := st.Lanes[i]
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
+		held, stage := lastHeld(*st), renewalStage(*st)
 		closed := false
 		if unheldOnly(repoRoot, *st, lane) {
 			if closed, err = mayEndUnheld(c, root, lane, g, o); err != nil {
@@ -311,7 +312,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		did := []string{}
 		// The lane's own commits are saved before anything is removed, so a
 		// discard never deletes work that exists nowhere else.
-		bundle, n, err := saveLaneBundle(repoRoot, st.RunID, lane)
+		bundle, n, tip, err := saveBundle(root, repoRoot, st.RunID, lane)
 		if err != nil {
 			return false, refuse(string(StageHeld), "", lane.ID, "the lane's commits could not be saved before its branch is deleted: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again; nothing was removed")
@@ -321,19 +322,24 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		}
 		if lane.Worktree != "" {
 			if err := removeLaneWorktree(c, lane, "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
+				// The branch still holds what the bundle saved, and the retry
+				// saves it again under the same name, so the bundle this call
+				// made goes with the refusal.
+				if bundle != "" {
+					_ = root.Remove(bundle)
+				}
 				return false, err
 			}
 			did = append(did, "removed its worktree")
 		}
-		if lane.Branch != "" {
-			tip, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")
-			if err == nil && gitutil.IsFullSHA(tip) {
-				if _, err := gitutil.Run(repoRoot, "update-ref", "-d", "refs/heads/"+lane.Branch, tip); err != nil {
-					return false, refuse(string(StageHeld), "", lane.ID, "git could not delete "+lane.Branch+": "+fsutil.RedactHome(err.Error()),
-						"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again")
-				}
-				did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
+		// The branch is deleted only at the tip its commits were saved from, so
+		// one that moved since is refused rather than deleted.
+		if tip != "" {
+			if _, err := gitutil.Run(repoRoot, "update-ref", "-d", "refs/heads/"+lane.Branch, tip); err != nil {
+				return false, refuse(string(StageHeld), "", lane.ID, "git could not delete "+lane.Branch+" at "+shortSHA(tip)+", the tip its commits were saved from: "+fsutil.RedactHome(err.Error()),
+					"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again")
 			}
+			did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
 		}
 		// A lane handed back as closed has a pull request already closed.
 		pr := lane.PR
@@ -370,7 +376,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "discard",
 			Note: discardNote(*st, lane, did)})
 		st.UpdatedAt = now
-		releaseOnDiscard(repoRoot, st, lane.ID, now, &released)
+		releaseOnDiscard(repoRoot, st, lane.ID, held, stage, now, &released)
 		res = laneResult(*st, lane, "", nil)
 		res.AcceptedConfigChange, res.Bundle = accepted, bundle
 		afterAccept = pa
