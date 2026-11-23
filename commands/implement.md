@@ -2013,11 +2013,30 @@ it first finds the machine free, and nothing more until it opens, and gives up
 after `--timeout` (6 hours by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
 on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory`,
-`whole-run` or `unreadable`). `--json` reports `status`
+`whole-run` or `unreadable`). At the race gate `--timeout` counts only the time
+the race queue ahead is stalled (iss-2611232155470105), so a preflight that
+passed its unit stages is not thrown away while it waits its turn behind race
+stages that are working. A look at which a race run, a race waiter ahead or the
+race gate's hold keeps the gate shut and that queue is progressing pauses the
+clock for the time since the previous look: a holder ahead whose tree used more
+than a tenth of a core over the last ten minutes, or that this waiter has not
+yet watched ten minutes (granted once per holder), a race run or race waiter
+ahead starting or ending, or a settle hold in force. The load or memory holding
+the gate shut as well does not stop the pause. Without such a queue the time
+counts: the load limit or memory alone, waiters ahead held by them, a holder
+quiet for ten minutes (a hung run), or a look that could not read the process
+table. The pause never carries the wait past six times `--timeout` from its
+start, so `make preflight`'s race gate gives up after two hours of a stalled
+queue or twelve in all. Each race gate's waiting line ends by saying whether
+the clock is paused (`the race queue ahead is progressing, so the timeout's
+clock is paused`) or runs, with how much of the timeout it has counted, and a
+timeout's closing line says how much of the wait was paused. The first gate and
+the narrow gate count wall-clock time. `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, and `backoffs` when it stood
-back.
+(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, `backoffs` when it stood
+back, and at the race gate `paused_s` once its clock has been paused and
+`progress` while the last look found the queue progressing.
 
 A command after `--` named by a path runs as given. One named by its name alone
 runs as `PATH` finds it, unless that program lies inside the working tree the

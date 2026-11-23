@@ -3625,6 +3625,15 @@ narrow wait in the same lane (the same command, worktree and drive stage), until
 first try's timeouts has passed since the last gave up, in your account's own
 `~/.abcd.noindex/load-wait-narrow-carry.json`; a try that opens clears it.
 
+At the race gate --timeout counts only the time the race queue ahead is stalled.
+A look at which a race run, a race waiter ahead or the race gate's hold keeps it shut
+and that queue is progressing pauses the clock: a holder ahead that used more than
+10% of a core over the last 10m0s, or that the waiter has not yet
+watched that long, a race run or waiter ahead starting or ending, or a settle hold.
+The load, memory, waiters held by them and a quiet holder count against the timeout.
+Each waiting line says whether the clock is paused or runs, and the
+pause stops at 6 times --timeout from the start, so nothing waits for ever.
+
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
 naming how long it waited and that nothing ran, so a pipe that loses the exit
 code still shows it; with --json that line is the last on stderr.
@@ -3635,7 +3644,7 @@ code still shows it; with --json that line is the last on stderr.
       --narrow[=true|false]      with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs
       --race-gate[=true|false]   wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string              where the check runs: preflight | eval-harness
-      --timeout duration         with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
+      --timeout duration         with --wait or --race-gate, give up after this long and exit 1; at the race gate only time the race queue ahead is not progressing counts, up to 6 times this in all (default 6h0m0s)
       --wait[=true|false]        wait until the load is below the wait limit and no other go test -race run is live
 ```
 

@@ -356,7 +356,25 @@ The later start stands back whatever the pids; the earlier one stands back from
 a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,
 forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
-what it was still waiting on. Inside `make preflight` each test stage then
+what it was still waiting on. At the race gate the timeout counts only the time
+the race queue ahead is stalled (iss-2611232155470105): a look at which a race
+run, a race waiter ahead or the race gate's hold keeps the gate shut, and that
+queue is progressing, adds the time since the previous look to the deadline. It
+is progressing when a holder ahead is not quiet (its tree used more than a
+tenth of a core over the last ten minutes, or this waiter has not yet watched
+it that long, which each holder is granted once), when the race runs and
+waiters ahead differ from the previous readable look's, or when a settle hold
+is in force; the load or memory shutting the gate as well does not stop the
+pause, since the progressing race run alone would keep it shut. The load limit
+or memory alone, waiters ahead held by them, a quiet holder and an unreadable
+look count. The deadline never moves past six times the timeout from the
+wait's start (`implement.WaitRaceCeilingFactor`), so `make preflight`'s two
+hours at its race gate are two hours of a stalled queue and twelve in all.
+Each race gate's waiting line says whether the clock is paused or runs and how
+much of the timeout it has counted, the JSON result carries `progress` and
+`paused_s`, and a timeout's closing line says how much of the wait was paused.
+The first gate and the narrow gate keep a wall-clock timeout: a whole run
+queues behind whole runs whose length their CPU does not tell. Inside `make preflight` each test stage then
 takes a `go test -p` derived from the online cores and the load as the stage
 starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
 the cores, at least a quarter of them), and on a CI runner the gate opens at

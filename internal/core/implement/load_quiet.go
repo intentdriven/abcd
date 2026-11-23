@@ -205,6 +205,11 @@ type holderWatch struct {
 	// standing aside so far (standAside).
 	asideLast  time.Time
 	asideSpent time.Duration
+	// raceQueue is the race runs and race waiters ahead at the last readable
+	// look at the race gate, sorted, and raceSeen says there was one
+	// (raceQueueProgress).
+	raceQueue []int
+	raceSeen  bool
 }
 
 // cpuMeter follows one holder's tree between a waiter's looks: when it was

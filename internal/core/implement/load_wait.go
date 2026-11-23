@@ -133,6 +133,39 @@ import (
 //     one slot a command that is not a race run takes the plain form's settle
 //     hold instead, so the account's next slot opens once the load shows the
 //     work, as it did when a preflight's own plain gate admitted its tests.
+//
+// The race gate's timeout counts only the time its queue is stalled
+// (iss-2611232155470105). A preflight reaches its race gate having passed its
+// gates and unit stages, and above one slot it queues there behind other
+// preflights' race stages, one at a time; on 2026-11-23 one gave up at its two
+// hours behind race runs that were all progressing, and threw away the stages
+// it had passed. So at the race gate, with a timeout, a look at which the race
+// queue holds the gate shut (a race run, a race waiter ahead, or the race
+// gate's hold) and that queue is progressing pauses the clock: the time since
+// the previous look is added to the deadline (raceQueueProgress). The queue is
+// progressing when a holder ahead (WaitResult.Holders: the race runs, and a
+// race command's command hold) is not quiet, that is, its tree has used more
+// than QuietShare of a core over the last QuietSpan or this waiter has not yet
+// watched it that long, which each holder is granted once; when the race runs
+// and waiters ahead differ from the previous readable look's (one opened,
+// started or finished); or when the hold in force is a settle hold (a race
+// waiter of the account opened within WaitSettle). The load or memory holding
+// the gate shut as well does not stop the pause: while a race run progresses
+// ahead, it alone would keep the gate shut. Without a progressing queue every
+// look's time counts: the load limit or memory alone, waiters ahead held by
+// them, a holder quiet for a span (a hung run at little CPU), and a look that
+// could not read the process table or the hold, which judges nothing. Nothing
+// waits for ever: the pause never carries the deadline past
+// WaitRaceCeilingFactor times the timeout from the wait's start. The first gate
+// and the narrow gate keep a wall-clock timeout: a whole run queues behind
+// whole runs whose length the waiter cannot judge from their CPU, and the 12
+// hours `make preflight` gives its first gate are already a ceiling.
+
+// WaitRaceCeilingFactor bounds the race gate's paused clock: a race waiter
+// whose queue keeps progressing gives up once this many times its timeout has
+// passed since it started, so `make preflight`'s two hours stretch to twelve
+// at most, its first gate's own timeout.
+const WaitRaceCeilingFactor = 6
 
 // The waiter's statuses.
 const (
@@ -511,6 +544,12 @@ type WaitResult struct {
 	// its tree has used little CPU for QuietSpan (load_quiet.go). It is said,
 	// never acted on.
 	Quiet *QuietHolder `json:"quiet_holder,omitempty"`
+	// Progress says the last look found the race queue ahead progressing, so
+	// the race gate's clock was paused (raceQueueProgress), and PausedS is how
+	// long the clock has been paused in all; both stay zero at every other
+	// gate and at a race gate given no timeout.
+	Progress bool    `json:"progress,omitempty"`
+	PausedS  float64 `json:"paused_s,omitempty"`
 	// Holders is each holder ahead at the last look, in pid order, the hold
 	// record's first (GateHolder, load_quiet.go).
 	Holders []GateHolder `json:"holders,omitempty"`
@@ -737,6 +776,13 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return false, false, nil
 	}
 	deadline := start.Add(req.Timeout)
+	// At the race gate with a timeout, a look at which the race queue holds
+	// the gate shut and is progressing moves the deadline on by the time since
+	// the previous look, never past the ceiling (the race gate's timeout,
+	// above); lastLook is the previous look's moment.
+	paused := req.Race && req.Timeout > 0
+	ceiling := start.Add(WaitRaceCeilingFactor * req.Timeout)
+	lastLook := start
 	announced, settled := false, false
 	// crossedSince is the first look of the run of looks at which crossed
 	// waiters alone held the gate shut, zero outside one, crossedN how many
@@ -825,6 +871,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		storeCarry(root, e, e.Last)
 	}
 	for {
+		res.Progress = false
 		open, held, err := readSlots(false)
 		if err != nil || open {
 			return res, err
@@ -917,6 +964,18 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			if !slices.Contains(res.WaitedOn, c) {
 				res.WaitedOn = append(res.WaitedOn, c)
 			}
+		}
+		if paused {
+			t := now()
+			if res.Progress && deadline.Before(ceiling) {
+				moved := deadline.Add(t.Sub(lastLook))
+				if moved.After(ceiling) {
+					moved = ceiling
+				}
+				res.PausedS += moved.Sub(deadline).Seconds()
+				deadline, trim.deadline = moved, moved
+			}
+			lastLook = t
 		}
 		// A waiting line is said at the first look that finds the gate shut,
 		// and again once every QuietSpan while it stays shut, so the holders'
@@ -1025,7 +1084,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	}
 	t := now()
 	res.lookedAt = t
-	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
+	res.Holder, res.RaceRuns, res.Reason, res.Progress = nil, []int{}, "", false
 	res.Preflights, res.Waiters, res.UngatedTests, res.Overdue = nil, nil, nil, nil
 	if readErr != nil {
 		res.Reason = termsafe.Sanitize(readErr.Error())
@@ -1321,6 +1380,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			slots = narrowRunning
 		}
 		res.Holders = measureHolders(watch, res.Holder, slots, snap, req.Self, args, t)
+		if req.Race {
+			queue := slices.Concat(racing, raceAhead)
+			slices.Sort(queue)
+			queue = slices.Compact(queue)
+			res.Progress = raceQueueProgress(shut, res.Holders, res.Holder, queue, watch.raceQueue, watch.raceSeen)
+			watch.raceQueue, watch.raceSeen = queue, true
+		}
 	}
 	if len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter}))) {
 		crossedOnly = crossedLook{n: len(crossed), crossed: crossed, queued: queued}
@@ -1330,6 +1396,25 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	}
 	res.Status = WaitOpen
 	return nil, true, crossedOnly, nil
+}
+
+// raceQueueProgress judges one readable look at the race gate: whether the
+// race queue holds the gate shut and is progressing, which pauses the race
+// gate's clock (see the race gate's timeout above). shut is what held the gate
+// shut, holders the holders ahead as this look measured them, holder the hold
+// in force, queue the race runs and race waiters ahead, sorted, and prev the
+// queue at the previous readable look, which seen says there was.
+func raceQueueProgress(shut []string, holders []GateHolder, holder *WaitHolder, queue, prev []int, seen bool) bool {
+	if !slices.Contains(shut, WaitOnRaceRun) && !slices.Contains(shut, WaitOnWaiter) && !slices.Contains(shut, WaitOnLock) {
+		return false
+	}
+	if seen && !slices.Equal(queue, prev) {
+		return true
+	}
+	if slices.ContainsFunc(holders, func(h GateHolder) bool { return !h.Measured || !h.Quiet }) {
+		return true
+	}
+	return holder != nil && holder.Form == HoldSettle && slices.Contains(shut, WaitOnLock)
 }
 
 // holdInForce judges a hold at time t against the snapshot. Past its Until it
