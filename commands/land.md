@@ -87,7 +87,8 @@ and no push; nor does a listing of 20 merged pull requests from branches of
 that name with none at this head, since the proof may lie past the bound.
 
 1. **gate**: skipped when a preflight receipt already names the branch's head,
-   in any worktree, as the pre-push hook looks for one. Otherwise `make
+   in any worktree but a drive lane's, whose stages can write any file in it
+   (none counts when `abcd land` runs from inside a lane). Otherwise `make
    preflight` runs in the branch's checkout (it waits on the machine's load
    itself), its output on stderr, and the head must be unchanged and a receipt
    present after it, and `origin`'s URLs exactly as they were checked (the

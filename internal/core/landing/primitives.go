@@ -71,6 +71,41 @@ func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 	return findReceiptContext(ctx, repoRoot, ReceiptsRelDir, sha)
 }
 
+// ReceiptOutsideLanes is Receipt passing over a receipt found in a drive
+// lane's worktree, and every one when repoRoot is itself a lane's worktree or
+// lies inside one (insideDriveLane): the drive runs model stages in a lane's
+// worktree, and they can write any file there, so only a checkout outside the
+// lanes vouches that a preflight passed. A person's `abcd land` reads it before
+// it skips its own preflight, and the away mode's owed reading reads it. The
+// drive's own landing keeps Receipt, with its check that the receipt is one
+// its own preflight minted.
+func ReceiptOutsideLanes(repoRoot, sha string) (string, error) {
+	return firstReceipt(outsideLanes(repoRoot)(findReceipts(repoRoot, ReceiptsRelDir, sha)))
+}
+
+// ReceiptOutsideLanesContext is ReceiptOutsideLanes with its git calls bound
+// to ctx, as ReceiptContext binds Receipt's.
+func ReceiptOutsideLanesContext(ctx context.Context, repoRoot, sha string) (string, error) {
+	return firstReceipt(outsideLanes(repoRoot)(findReceiptsContext(ctx, repoRoot, ReceiptsRelDir, sha)))
+}
+
+// outsideLanes marks each receipt found in a drive lane's worktree, or every
+// one when repoRoot is in a lane, as one passed over.
+func outsideLanes(repoRoot string) func([]foundReceipt, error) ([]foundReceipt, error) {
+	return func(found []foundReceipt, err error) ([]foundReceipt, error) {
+		if err != nil {
+			return nil, err
+		}
+		inLane := insideDriveLane(repoRoot)
+		for i := range found {
+			if inLane || insideDriveLane(found[i].path) {
+				found[i] = foundReceipt{path: found[i].path, lane: true}
+			}
+		}
+		return found, nil
+	}
+}
+
 // findReceipt finds the receipt file named sha under rel in any worktree git
 // lists for the repository at repoRoot: a regular file, never a symlink, and
 // that worktree's own: one git tracks came with a commit, and is refused

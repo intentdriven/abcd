@@ -484,9 +484,11 @@ func dirtyTree(dir string) (bool, error) {
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
-// gate is step 4.
+// gate is step 4. A receipt found only in a drive lane's worktree does not
+// skip the preflight (ReceiptOutsideLanes); once the preflight has passed
+// here, the receipt it mints counts wherever it stands.
 func gate(res *Result, o Options, dir, head string) error {
-	rcp, err := Receipt(dir, head)
+	rcp, err := ReceiptOutsideLanes(dir, head)
 	if err != nil {
 		return err
 	}

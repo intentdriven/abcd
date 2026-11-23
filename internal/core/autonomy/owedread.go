@@ -530,7 +530,7 @@ func (r *owedReader) hasReceipt(head string) bool {
 	if head == "" {
 		return false
 	}
-	p, err := landing.ReceiptContext(r.ctx, r.root, head)
+	p, err := landing.ReceiptOutsideLanesContext(r.ctx, r.root, head)
 	// A read the deadline ended is not "no receipt names it": marked, so
 	// the stop fails open rather than owing a preflight the receipt shows.
 	r.cutShort(err != nil)
