@@ -130,12 +130,12 @@ func TestARunWithNoMembersWritesNoBundleAndNoIssueOnItsLines(t *testing.T) {
 	}
 }
 
-// TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAt30: version 29
-// is version 30's strict subset, read as a run with no members, and the run's
-// next write takes it to version 30.
-func TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAt30(t *testing.T) {
-	if SchemaVersion != schemaVersionUnbundled+1 || schemaVersionUnbundled != schemaVersionUnreasoned+1 {
-		t.Fatalf("a run's members are the version after %d: %d", schemaVersionUnbundled, SchemaVersion)
+// TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAtTheCurrentVersion:
+// version 29 is version 30's strict subset, read as a run with no members, and
+// the run's next write takes it to the current version.
+func TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAtTheCurrentVersion(t *testing.T) {
+	if schemaVersionUndigested != schemaVersionUnbundled+1 || schemaVersionUnbundled != schemaVersionUnreasoned+1 {
+		t.Fatalf("a run's members are the version after %d: %d", schemaVersionUnbundled, schemaVersionUndigested)
 	}
 	repo, _ := bundleRepo(t)
 	start, err := Start(repo.Root(), bundleLead, Options{})

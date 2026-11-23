@@ -58,8 +58,12 @@ func TestTheCloseIngestsOnlyTheVerdictTheRoundRecorded(t *testing.T) {
 
 // A state of version 31 carrying a digest of a validator's return that is not a
 // SHA-256 in hex is refused as one the loop never writes, and one of version 30
-// carrying any digest as one its version never wrote.
+// carrying any digest as one its version never wrote; a version-30 file with
+// none reads as the current version, its verdicts recorded with no digest.
 func TestAReturnDigestIsReadOnlyAsTheLoopWritesIt(t *testing.T) {
+	if SchemaVersion != schemaVersionUndigested+1 {
+		t.Fatalf("a return's digest is the version after %d: %d", schemaVersionUndigested, SchemaVersion)
+	}
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	l := f.validated(t)
 	v, _ := passingAuditor(l)
@@ -68,6 +72,17 @@ func TestAReturnDigestIsReadOnlyAsTheLoopWritesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("a version-30 file with no digest", func(t *testing.T) {
+		t.Cleanup(func() { _ = os.WriteFile(path, good, 0o600) })
+		stateAtVersion(t, f.repo.Root(), f.runID, schemaVersionUndigested)
+		st, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil || st.SchemaVersion != SchemaVersion {
+			t.Fatalf("it reads as the current version: %v", err)
+		}
+		if got, _ := passingAuditor(st.Lanes[0]); got.Verdict == "" || got.ReturnSHA256 != "" {
+			t.Fatalf("its audit keeps its verdict and no digest: %+v", got)
+		}
+	})
 	for name, c := range map[string]struct {
 		data   []byte
 		reason string

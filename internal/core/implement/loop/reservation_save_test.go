@@ -39,6 +39,11 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 		t.Fatalf("the state file is not at version %d:\n%s", SchemaVersion, data)
 	}
 	data = bytes.Replace(data, []byte(from), []byte(fmt.Sprintf(`"schema_version": %d,`, version)), 1)
+	if version <= schemaVersionUndigested {
+		// A validator's digest of its return joined at version 31, so an
+		// older driver's file carries none.
+		data = returnDigestField.ReplaceAll(data, nil)
+	}
 	if version <= schemaVersionUnadmitted {
 		// The admission joined at version 26, so an older driver's file carries
 		// none. It is cut while the file is laid out as writeState lays it.
@@ -62,6 +67,10 @@ func stateAtVersion(t *testing.T, root, runID string, version int) []byte {
 	}
 	return data
 }
+
+// returnDigestField is a validator's `return_sha256`, its last field, as
+// writeState lays it out.
+var returnDigestField = regexp.MustCompile(`,\n *"return_sha256": "[0-9a-f]{64}"`)
 
 // admittedField is a state file's top-level `admitted`, as writeState lays it out.
 var admittedField = regexp.MustCompile(`\n  "admitted": \{[^{}]*\},`)

@@ -679,8 +679,8 @@ func TestTheModelsAreVersion27s(t *testing.T) {
 	data := stateBytes(t, repo.Root(), id)
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
 	at := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	if SchemaVersion != schemaVersionUnmodelled+4 || !strings.Contains(string(data), at) || !strings.Contains(string(data), `"writer_models"`) {
-		t.Fatalf("premise: the file is the current version, four after version 26 (version 28 added the judge, 29 its kept strikes, 30 a run's members), and carries the fields: %s", data)
+	if SchemaVersion != schemaVersionUnmodelled+5 || !strings.Contains(string(data), at) || !strings.Contains(string(data), `"writer_models"`) {
+		t.Fatalf("premise: the file is the current version, five after version 26 (version 28 added the judge, 29 its kept strikes, 30 a run's members, 31 a return's digest), and carries the fields: %s", data)
 	}
 	older := strings.Replace(string(data), at, fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnmodelled), 1)
 	if err := os.WriteFile(path, []byte(older), 0o600); err != nil {
