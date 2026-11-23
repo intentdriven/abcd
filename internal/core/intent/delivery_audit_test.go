@@ -62,7 +62,7 @@ func TestTheDeliveryAuditIsTheOneTheCloseConsumes(t *testing.T) {
 		t.Fatalf("the close parks receipt %s, the delivery audit issued %s", res.ReceiptID, a.ReceiptID)
 	}
 	vp := writeVerdictRaw(t, root, verdict)
-	ing, err := IngestVerdict(root, vp)
+	ing, err := ingestVerdict(root, vp)
 	if err != nil || ing.Status != "ingested" {
 		t.Fatalf("the close consumes the delivery audit's verdict: %+v %v", ing, err)
 	}

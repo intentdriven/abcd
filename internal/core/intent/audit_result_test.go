@@ -41,7 +41,7 @@ func TestIngestResultJSONCarriesARollupOnlyForARecordedVerdict(t *testing.T) {
 		stampedCondition(condTwo, "holds below 10k records"),
 	)
 	bad := verdictWithConditions(t, rcp, dispositionOf(condOne, "MET"), dispositionOf(condTwo, "survived"))
-	dl, err := IngestVerdict(root, writeVerdict(t, root, bad))
+	dl, err := ingestVerdict(root, writeVerdict(t, root, bad))
 	if err != nil || dl.Status != "dead_letter" {
 		t.Fatalf("setup: want a dead_letter, got %+v, %v", dl, err)
 	}
@@ -64,7 +64,7 @@ func TestIngestResultJSONCarriesARollupOnlyForARecordedVerdict(t *testing.T) {
 	root = t.TempDir()
 	rcp = shipOne(t, root)
 	vp := writeVerdict(t, root, validVerdict(rcp))
-	ok, err := IngestVerdict(root, vp)
+	ok, err := ingestVerdict(root, vp)
 	if err != nil || ok.Status != "ingested" {
 		t.Fatalf("setup: want ingested, got %+v, %v", ok, err)
 	}
@@ -81,7 +81,7 @@ func TestIngestResultJSONCarriesARollupOnlyForARecordedVerdict(t *testing.T) {
 		t.Errorf("the ingested JSON carries the quarantine's member: %v", m)
 	}
 
-	noop, err := IngestVerdict(root, vp)
+	noop, err := ingestVerdict(root, vp)
 	if err != nil || noop.Status != "noop" {
 		t.Fatalf("setup: want noop, got %+v, %v", noop, err)
 	}
@@ -120,7 +120,7 @@ func TestReEmitOfAnOwedReceiptSaysItRewroteTheRequest(t *testing.T) {
 		t.Fatalf("the re-emit reported a request it did not write: %v", err)
 	}
 
-	if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(rcp))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(rcp))); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(reqPath); err != nil {

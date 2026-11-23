@@ -61,7 +61,7 @@ func TestIngestRefusesPolicyHashesTheHostDidNotIssue(t *testing.T) {
 	// so the fixture writer's host-issued substitution does not repair them.
 	vp := writeVerdictRaw(t, root, validVerdict(rcp))
 
-	_, err := IngestVerdict(root, vp)
+	_, err := ingestVerdict(root, vp)
 	if err == nil {
 		t.Fatal("ingest accepted policy hashes the host never issued; the attestation attests nothing")
 	}
@@ -105,7 +105,7 @@ func TestIngestAcceptsPolicyHashesTheRequestIssued(t *testing.T) {
 		"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		issued["prompt_hash"], 1)
 
-	res, err := IngestVerdict(root, writeVerdictRaw(t, root, payload))
+	res, err := ingestVerdict(root, writeVerdictRaw(t, root, payload))
 	if err != nil {
 		t.Fatalf("ingest refused the very hashes its own request issued: %v", err)
 	}

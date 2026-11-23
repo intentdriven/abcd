@@ -974,6 +974,7 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 			return err
 		}
 		v.Verdict, v.Pass = word.word, word.pass
+		v.ReturnSHA256 = answerDigest(raw)
 		if unsent {
 			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
@@ -1009,6 +1010,7 @@ func recordAudit(c Context, lane *Lane, v *ValidatorRun, raw []byte) error {
 	// An undecided criterion fails the round as a not-met one does (DQ1a).
 	v.Verdict, v.Pass = got.Worst, len(got.NotMet) == 0 && len(got.Inconclusive) == 0
 	v.Audit.Worst, v.Audit.NotMet, v.Audit.Inconclusive = got.Worst, got.NotMet, got.Inconclusive
+	v.ReturnSHA256 = answerDigest(raw)
 	return nil
 }
 
@@ -1031,6 +1033,23 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 			fmt.Sprintf("write the return as a regular file of at most %d bytes", maxReturnBytes))
 	}
 	return data, nil
+}
+
+// recordedReturn reads v's return again as the bytes the loop recorded its
+// verdict from: a return whose digest is not the one recorded with the verdict
+// (ValidatorRun.ReturnSHA256) is refused, so what the landing ingests, records
+// or names is what the loop judged. A verdict recorded with no digest, by an
+// abcd before state version 31, has its return read as it stands.
+func recordedReturn(repoRoot string, lane Lane, v ValidatorRun) ([]byte, error) {
+	raw, err := readReturn(repoRoot, v.Return, lane.ID)
+	if err != nil {
+		return nil, err
+	}
+	if v.ReturnSHA256 != "" && answerDigest(raw) != v.ReturnSHA256 {
+		return nil, refuse(string(StageLand), "", lane.ID, v.Return+" is not the return the loop recorded "+v.Role+"'s verdict from: its content changed after the verdict was recorded",
+			"put back the return exactly as the "+v.Role+" handed it back, then run `abcd implement step` again; a verdict that has to change is a new round's")
+	}
+	return raw, nil
 }
 
 // reviewedHeadLine is what a reviewer's brief and a routed request say first of a
@@ -1587,6 +1606,20 @@ func placeReturn(repoRoot, runID, rel, route string, ret string, o Options) (boo
 func answerDigest(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// sha256Hex reports whether s is a SHA-256 in lower-case hex, as answerDigest
+// writes one.
+func sha256Hex(s string) bool {
+	if len(s) != 2*sha256.Size {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // validatorRoute is the route the verifier recorded on the current round's

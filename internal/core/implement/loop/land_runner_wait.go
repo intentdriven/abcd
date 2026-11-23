@@ -451,7 +451,7 @@ func ownReviewEntries(repoRoot string, lane Lane) ([]ownReviewEntry, string) {
 		if v.Role == RoleAuditor {
 			continue
 		}
-		text, err := readReturn(repoRoot, v.Return, lane.ID)
+		text, err := recordedReturn(repoRoot, lane, v)
 		if err != nil {
 			return nil, refusalReason(err)
 		}

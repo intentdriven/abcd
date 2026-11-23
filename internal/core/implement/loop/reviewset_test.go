@@ -411,6 +411,9 @@ func unreviewOlder(doc map[string]any) {
 	default:
 		return
 	}
+	if v <= schemaVersionUndigested {
+		undigestOlder(doc)
+	}
 	if v <= schemaVersionUnreviewed {
 		delete(doc, "review")
 	}
@@ -425,6 +428,25 @@ func unreviewOlder(doc map[string]any) {
 	}
 	if v <= schemaVersionUnrenamed {
 		unrenameOlder(doc)
+	}
+}
+
+// undigestOlder rewrites a state document as a version before 31 wrote it:
+// no validator keeps a digest of its return.
+func undigestOlder(doc map[string]any) {
+	lanes, _ := doc["lanes"].([]any)
+	for _, l := range lanes {
+		lm, _ := l.(map[string]any)
+		rounds, _ := lm["validation"].([]any)
+		for _, r := range rounds {
+			rm, _ := r.(map[string]any)
+			vs, _ := rm["validators"].([]any)
+			for _, v := range vs {
+				if vm, ok := v.(map[string]any); ok {
+					delete(vm, "return_sha256")
+				}
+			}
+		}
 	}
 }
 

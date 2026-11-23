@@ -116,8 +116,8 @@ func TestARunWithNoMembersWritesNoBundleAndNoIssueOnItsLines(t *testing.T) {
 	if _, ok := top["lead_hand_back"]; ok {
 		t.Fatalf("a run with no members writes a lead's hand-back:\n%s", data)
 	}
-	if !strings.Contains(string(data), fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)) || SchemaVersion != 30 {
-		t.Fatalf("the file states the current version, 30:\n%s", data)
+	if !strings.Contains(string(data), fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)) || SchemaVersion != 31 {
+		t.Fatalf("the file states the current version, 31:\n%s", data)
 	}
 	lines := recordLines(t, data)
 	if !slices.ContainsFunc(lines, func(l map[string]any) bool { return l["stage"] == StageReservation }) {
@@ -130,12 +130,12 @@ func TestARunWithNoMembersWritesNoBundleAndNoIssueOnItsLines(t *testing.T) {
 	}
 }
 
-// TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAt30: version 29
-// is version 30's strict subset, read as a run with no members, and the run's
-// next write takes it to version 30.
-func TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAt30(t *testing.T) {
-	if SchemaVersion != schemaVersionUnbundled+1 || schemaVersionUnbundled != schemaVersionUnreasoned+1 {
-		t.Fatalf("a run's members are the version after %d: %d", schemaVersionUnbundled, SchemaVersion)
+// TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAtTheCurrentVersion:
+// version 29 is version 30's strict subset, read as a run with no members, and
+// the run's next write takes it to the current version.
+func TestAVersion29FileReadsAsARunWithNoMembersAndIsWrittenBackAtTheCurrentVersion(t *testing.T) {
+	if schemaVersionUndigested != schemaVersionUnbundled+1 || schemaVersionUnbundled != schemaVersionUnreasoned+1 {
+		t.Fatalf("a run's members are the version after %d: %d", schemaVersionUnbundled, schemaVersionUndigested)
 	}
 	repo, _ := bundleRepo(t)
 	start, err := Start(repo.Root(), bundleLead, Options{})

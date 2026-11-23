@@ -41,7 +41,7 @@ func TestStalePolicyRefusalNamesTheReEmit(t *testing.T) {
 	t.Run("fidelity", func(t *testing.T) {
 		root := t.TempDir()
 		rcp := shipOne(t, root)
-		_, err := IngestVerdict(root, writeVerdictRaw(t, root, validVerdict(rcp)))
+		_, err := ingestVerdict(root, writeVerdictRaw(t, root, validVerdict(rcp)))
 		assertReEmitRemedy(t, err, "`abcd intent audit itd-10`")
 	})
 }

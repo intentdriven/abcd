@@ -911,8 +911,10 @@ handed-back lane), the `head` its round judged and `before`, the landing step it
 stopped before (`push`, or `arm` once its pull request is open; an armed one is
 disarmed with `gh pr merge <n> --disable-auto`). Where the forge refuses the
 withdrawal, `step` refuses naming the pull request, moves no other lane, and the
-person decides it on the forge; an armed pull request the forge reports merged
-had landed before the hand-back and is recorded as landed. Once nothing is left to move,
+person decides it on the forge; an armed pull request the forge reports merged,
+or whose pushed head the tip origin itself reports for its default branch holds
+(never the local remote-tracking ref), had landed before the hand-back and is
+recorded as landed. Once nothing is left to move,
 every `step` refuses at the `handed-back` stage naming the hand-back and each
 held lane. The person decides each held lane, one per invocation, once no lane
 has work left:
@@ -989,7 +991,9 @@ over each of the run's lanes' own diff.
    already marks it; a commit doing only that declares
    `Assisted-by: abcd:<version>`). On
    the lane that closes the spec it runs `spec close` in the lane's worktree
-   and ingests the verdict of the audit that lane took, and for each capture the
+   and ingests the verdict of the audit that lane took, read as the bytes the
+   loop recorded it from (one whose digest is not the one recorded with it is
+   refused, and nothing is committed), and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
    intent) and `Resolves:` trailers, an `Admitted-by:` naming the rule the run
