@@ -213,7 +213,7 @@ wrapper script and a renamed copy are all refused (`go run ./cmd/abcd` is read
 as abcd, and the entry refuses it). A flag word a
 substitution prints is not read. The person's other acts are refused under any
 program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
-flipping a source-ledger line (`abcd-source-ledger-flip-any-program`, and
+flipping a sources ledger line (`abcd-source-ledger-flip-any-program`, and
 `abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
 or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
 stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
@@ -1014,8 +1014,8 @@ document and every command its output is piped on to; and into a substitution in
 with that pipe as its input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name
-is read as a signal first, in any case. Flipping a source-ledger line to
-public citation is blocked, because the ledger records that a person chose to
+is read as a signal first, in any case. Flipping a sources ledger line to
+public citation is blocked, because the sources ledger records that a person chose to
 cite the source, and that choice is the person's to make. In a repository with linked
 worktrees, every `git stash` that changes the stash list is warned about, a
 named entry included, because the list is shared across worktrees; `git stash
