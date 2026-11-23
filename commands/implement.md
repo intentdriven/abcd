@@ -911,8 +911,10 @@ handed-back lane), the `head` its round judged and `before`, the landing step it
 stopped before (`push`, or `arm` once its pull request is open; an armed one is
 disarmed with `gh pr merge <n> --disable-auto`). Where the forge refuses the
 withdrawal, `step` refuses naming the pull request, moves no other lane, and the
-person decides it on the forge; an armed pull request the forge reports merged
-had landed before the hand-back and is recorded as landed. Once nothing is left to move,
+person decides it on the forge; an armed pull request the forge reports merged,
+or whose pushed head the tip origin itself reports for its default branch holds
+(never the local remote-tracking ref), had landed before the hand-back and is
+recorded as landed. Once nothing is left to move,
 every `step` refuses at the `handed-back` stage naming the hand-back and each
 held lane. The person decides each held lane, one per invocation, once no lane
 has work left:

@@ -699,7 +699,8 @@ back; its audit reads each of the run's lanes' own diff. After a hand-back the
 siblings finish, no new lane opens, no lane closes the spec, and a lane whose
 round passes is held before its push or its arming (an armed one is disarmed;
 where the forge refuses the withdrawal the move refuses naming the pull request,
-and one the forge reports merged is recorded as landed), until the person
+and one the forge reports merged, or whose pushed head the tip origin reports for
+its default branch holds, is recorded as landed), until the person
 releases or discards it (ruling DR6c). A discard removes the lane's worktree and
 branch before it closes the pull request, so a refused removal leaves nothing
 half done.

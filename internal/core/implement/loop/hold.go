@@ -13,6 +13,7 @@ package loop
 // <lane>` (it does not land), once no lane of the run has anything left to do.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -45,20 +46,19 @@ func handedBackCause(st State) string {
 
 // holdLane holds a lane at its landing after a sibling's hand-back. An armed
 // lane is disarmed through the forge client first; one whose pushed head the
-// default branch already holds, or whose pull request the forge reports merged,
-// had landed before the hand-back, and its landing runs on to record it. The
-// forge is asked because the local tracking ref is not fetched for the hold and
-// may lag the merge.
+// default branch's tip origin reports already holds (onOriginsTip), or whose
+// pull request the forge reports merged, had landed before the hand-back, and
+// its landing runs on to record it. The local tracking ref is never read for
+// the answer: it is not fetched for the hold, may lag the merge, and anything
+// that can write the repository can move it.
 func holdLane(c Context, lane *Lane) (Outcome, error) {
 	before := HoldBeforePush
 	if ld := lane.Landing; ld != nil && ld.Pushed != "" {
 		before = HoldBeforeArm
 		if ld.Merge != "" {
 			if ld.Armed {
-				if def, err := defaultBranch(c, *lane); err == nil {
-					if on, err := gitutil.IsAncestorAsStored(c.RepoRoot, ld.Pushed, "refs/remotes/"+Remote+"/"+def); err == nil && on {
-						return landStage(c, lane)
-					}
+				if def, err := defaultBranch(c, *lane); err == nil && onOriginsTip(c, def, ld.Pushed) {
+					return landStage(c, lane)
 				}
 				n := strconv.Itoa(lane.PR)
 				state, err := forge(c, *lane, "pr", "view", n, "--json", "state", "--jq", ".state")
@@ -103,6 +103,25 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 	note := fmt.Sprintf("%s held after %s's hand-back: its passing round judged %s, and it stopped before its %s; nothing merges until the person decides (%s)",
 		lane.ID, cause, shortSHA(lane.Hold.Head), before, heldWayOut(lane.ID))
 	return Outcome{Goto: StageHeld, Note: note}, nil
+}
+
+// onOriginsTip reports whether the tip origin itself reports for its default
+// branch def (git ls-remote --symref, asked within originAskTimeout) holds
+// pushed, as stored (gitutil.IsAncestorAsStored). An ask that fails, a default
+// branch other than def, or a tip this repository does not hold yet answers
+// no, and the hold asks the forge for the pull request's state instead.
+func onOriginsTip(c Context, def, pushed string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
+	defer cancel()
+	branch, tip, err := remoteHeadTip(ctx, nil, c.RepoRoot, Remote)
+	if err != nil || branch != def {
+		return false
+	}
+	if _, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
+		return false
+	}
+	on, err := gitutil.IsAncestorAsStored(c.RepoRoot, pushed, tip)
+	return err == nil && on
 }
 
 // busyLanes names the lanes of the run with work left: an agent out or a stage
