@@ -373,3 +373,57 @@ func TestPublicTrackPrintsCaptureCommand(t *testing.T) {
 		t.Errorf("result %+v", res)
 	}
 }
+
+// TestTriageFailedSaveLeavesTheDraftAsItWas: a triage whose state cannot be
+// saved leaves the closing draft as the saved verdict drafted it, so the
+// verdict and its text never part: a vulnerability verdict does not remove
+// a public-track draft (close would otherwise draft the public-track text
+// again from the stored reason), and another closing verdict does not
+// replace it.
+func TestTriageFailedSaveLeavesTheDraftAsItWas(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only folder")
+	}
+	for name, req := range map[string]TriageRequest{
+		"vulnerability":       {Verdict: VerdictVulnerability, By: "Bob"},
+		"not-a-vulnerability": {Verdict: VerdictNotAVulnerability, By: "Bob", Reason: "on a closer look, documented"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sd := seedStore(t)
+			first, err := sd.triage(TriageRequest{Target: sd.issID, Verdict: VerdictPublicTrack, By: "Alice", Reason: "it discloses nothing"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if req.Verdict == VerdictVulnerability {
+				// The ledger has no reopen: the person moves the record back by hand.
+				m, _ := filepath.Glob(filepath.Join(sd.s.Root, ".abcd", "work", "issues", "wontfix", sd.issID+"-*.md"))
+				if len(m) != 1 {
+					t.Fatal("no wontfix record")
+				}
+				if err := os.Rename(m[0], filepath.Join(sd.s.Root, ".abcd", "work", "issues", "open", filepath.Base(m[0]))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stateDir := filepath.Dir(sd.s.StatePath())
+			if err := os.Chmod(stateDir, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
+
+			req.Target = sd.issID
+			if _, err := sd.triage(req); err == nil {
+				t.Fatal("a triage whose state could not be saved succeeded")
+			}
+			if err := os.Chmod(stateDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if a := sd.state(t); a.Verdict == nil || *a.Verdict != VerdictPublicTrack {
+				t.Fatalf("the saved verdict changed: %+v", a)
+			}
+			data, err := os.ReadFile(sd.draftPath())
+			if err != nil || string(data) != first.Draft {
+				t.Fatalf("the public-track draft did not survive the failed save (%v):\n%s", err, data)
+			}
+		})
+	}
+}

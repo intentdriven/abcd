@@ -1,6 +1,7 @@
 package embargo
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,6 +150,9 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	if endsPrivateTrack(&req.Verdict) {
 		draft = closingDraft(req.Verdict, reason, strings.TrimSpace(req.ExistsWithout), strings.TrimSpace(req.CannotHelp))
 	}
+	// The draft as the saved verdict left it, put back if the state cannot
+	// be saved, so a verdict and its closing text never part.
+	prevDraft, hadDraft := s.keptDraft(a.GHSAID)
 
 	if req.Verdict != VerdictVulnerability && status == string(capture.StateOpen) {
 		note := map[string]string{
@@ -173,8 +177,6 @@ func Triage(req TriageRequest) (TriageResult, error) {
 		if err := s.writeDraft(a.GHSAID, draft); err != nil {
 			return TriageResult{}, err
 		}
-	} else if err := s.removeDraft(a.GHSAID); err != nil {
-		return TriageResult{}, err
 	}
 
 	if req.Verdict == VerdictPublicTrack {
@@ -201,7 +203,22 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	}
 	st.Advisories[i] = a
 	if err := s.SaveState(st); err != nil {
+		if draft != "" {
+			if rerr := s.restoreDraft(a.GHSAID, prevDraft, hadDraft); rerr != nil {
+				return TriageResult{}, fmt.Errorf("embargo: the verdict could not be saved (%w), and the closing draft could not be put back as it was: "+
+					"record the verdict again with `abcd embargo triage` once the store is writable", err)
+			}
+		}
 		return TriageResult{}, err
+	}
+	// A verdict that drafts nothing drops a stale draft only once it is
+	// saved: dropped before, a failed save would leave the earlier verdict
+	// without its text.
+	if draft == "" {
+		if err := s.removeDraft(a.GHSAID); err != nil {
+			return TriageResult{}, refuse("the verdict was recorded, but the earlier verdict's closing draft could not be removed from the store",
+				"check the store's permissions, then record the verdict again")
+		}
 	}
 
 	res := TriageResult{GHSAID: a.GHSAID, IssueID: a.IssueID, Verdict: verdict, DecidedBy: by, DecidedAt: now,

@@ -102,6 +102,31 @@ func (s Store) removeDraft(ghsa string) error {
 	return nil
 }
 
+// keptDraft is the draft of one advisory as it is now, before a triage
+// changes it, for restoreDraft; had is false when there is none. It reads
+// through readDraft's trust checks, and a draft that fails them counts as
+// none: triage is the remedy readDraft names for it, so it must not refuse
+// over it, and putting it back would restore what close refuses anyway.
+func (s Store) keptDraft(ghsa string) (text string, had bool) {
+	if _, err := os.Lstat(s.draftPath(ghsa)); errors.Is(err, fs.ErrNotExist) {
+		return "", false
+	}
+	text, err := s.readDraft(ghsa)
+	if err != nil {
+		return "", false
+	}
+	return text, true
+}
+
+// restoreDraft puts a draft back as keptDraft read it: rewritten when there
+// was one, removed when there was none.
+func (s Store) restoreDraft(ghsa, text string, had bool) error {
+	if had {
+		return s.writeDraft(ghsa, text)
+	}
+	return s.removeDraft(ghsa)
+}
+
 // readDraft reads a closing draft back through the same trust checks as the
 // state: a regular file this account alone can write, within its cap.
 func (s Store) readDraft(ghsa string) (string, error) {
