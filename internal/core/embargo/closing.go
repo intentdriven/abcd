@@ -17,13 +17,20 @@ const DraftDirRel = ".abcd/.work.local/embargo/close"
 // maxDraftBytes bounds a draft read back for closing.
 const maxDraftBytes = 64 << 10
 
-// closingDraft composes the explanation a closing verdict posts to the
-// reporter, for the person to read and approve. It names neither the advisory
-// nor who decided: the advisory is where it is posted, and the decider is the
-// store's private record. The "not abcd's" text states both halves of
-// abcd-fixes-what-it-adds in the person's own words: why the problem would
-// exist without abcd, and why abcd cannot help without changing how the
-// repository works.
+// publicTrackPrefix begins the reason the state keeps for a public-track
+// verdict, ahead of the person's own words.
+const publicTrackPrefix = "moved to the public track: "
+
+// closingDraft composes the explanation a verdict that ends the private track
+// posts to the reporter, for the person to read and approve. It names neither
+// the advisory nor who decided: the advisory is where it is posted, and the
+// decider is the store's private record. The "not abcd's" text states both
+// halves of abcd-fixes-what-it-adds in the person's own words: why the problem
+// would exist without abcd, and why abcd cannot help without changing how the
+// repository works. The public-track text says the work moved to the public
+// track and why; it names no public issue, since the store keeps none (the
+// person files it with the capture command triage prints, in their own
+// words).
 func closingDraft(verdict, reason, existsWithout, cannotHelp string) string {
 	switch verdict {
 	case VerdictNotAbcds:
@@ -39,8 +46,36 @@ func closingDraft(verdict, reason, existsWithout, cannotHelp string) string {
 		return "Thank you for reporting this privately.\n\n" +
 			"We looked into it and judged that it is not a security vulnerability, so we are closing this advisory.\n\n" +
 			"Why:\n\n" + reason + "\n"
+	case VerdictPublicTrack:
+		return "Thank you for reporting this privately.\n\n" +
+			"We looked into it and judged that it does not need to stay private, so we have moved it to the public track: " +
+			"the work is tracked in the open, described in our own words and without the details of your report, " +
+			"and we are closing this advisory.\n\n" +
+			"Why:\n\n" + reason + "\n"
 	}
 	return ""
+}
+
+// closingText is the text close shows and posts for advisory a: its draft,
+// read back through readDraft. A public-track verdict recorded before triage
+// drafted one for it has none, so its text is drafted here from the reason
+// the state keeps, the same text triage drafts now; one with no reason kept
+// refuses. Either way the caller scans the text before it is shown.
+func (s Store) closingText(a Advisory) (string, error) {
+	if a.Verdict != nil && *a.Verdict == VerdictPublicTrack {
+		if _, err := os.Lstat(s.draftPath(a.GHSAID)); errors.Is(err, fs.ErrNotExist) {
+			why := ""
+			if a.Reason != nil {
+				why = strings.TrimSpace(strings.TrimPrefix(*a.Reason, publicTrackPrefix))
+			}
+			if why == "" {
+				return "", refuse("there is no closing draft for this advisory, and the store keeps no reason to draft one from",
+					"record its verdict again with `abcd embargo triage` to draft one")
+			}
+			return closingDraft(VerdictPublicTrack, why, "", ""), nil
+		}
+	}
+	return s.readDraft(a.GHSAID)
 }
 
 // draftPath is the closing draft of one advisory.

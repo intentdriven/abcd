@@ -94,7 +94,7 @@ func (sd seeded) snapshot(t *testing.T) string {
 
 // TestTriageEachVerdict: each of the four verdicts is kept with who decided it
 // and when, from the clock; the three verdicts that end the private track move
-// the record to wontfix/ in the store, and the two closing ones draft text.
+// the record to wontfix/ in the store and draft the text close posts.
 func TestTriageEachVerdict(t *testing.T) {
 	for _, tc := range []struct {
 		req       TriageRequest
@@ -105,7 +105,7 @@ func TestTriageEachVerdict(t *testing.T) {
 		{TriageRequest{Verdict: VerdictVulnerability, By: "Alice"}, false, false, ""},
 		{TriageRequest{Verdict: VerdictNotAbcds, By: "Alice", ExistsWithout: "plain git runs it", CannotHelp: "only by switching off the repository's own hooks"}, true, true, "plain git runs it"},
 		{TriageRequest{Verdict: VerdictNotAVulnerability, By: "Alice", Reason: "the behaviour is documented"}, true, true, "the behaviour is documented"},
-		{TriageRequest{Verdict: VerdictPublicTrack, By: "Alice", Reason: "it discloses nothing"}, true, false, "it discloses nothing"},
+		{TriageRequest{Verdict: VerdictPublicTrack, By: "Alice", Reason: "it discloses nothing"}, true, true, "it discloses nothing"},
 	} {
 		t.Run(tc.req.Verdict, func(t *testing.T) {
 			sd := seedStore(t)
@@ -338,7 +338,8 @@ func TestTriageRefusesWithoutStore(t *testing.T) {
 
 // TestPublicTrackPrintsCaptureCommand: moving an advisory to the public track
 // prints the capture command for the person to run in the public checkout,
-// carrying the record's severity and none of the advisory's id or title.
+// carrying the record's severity and none of the advisory's id or title, and
+// drafts the text `abcd embargo close` posts.
 func TestPublicTrackPrintsCaptureCommand(t *testing.T) {
 	sd := seedStore(t)
 	res, err := sd.triage(TriageRequest{Target: sd.issID, Verdict: VerdictPublicTrack, By: "Alice", Reason: "it discloses nothing"})
@@ -357,5 +358,18 @@ func TestPublicTrackPrintsCaptureCommand(t *testing.T) {
 	a := sd.state(t)
 	if a.Reason == nil || !strings.Contains(*a.Reason, "moved to the public track") {
 		t.Fatalf("reason %v", a.Reason)
+	}
+	// The closing text says the report moved to the public track and why,
+	// and names neither the advisory nor who decided.
+	if !strings.Contains(res.Draft, "public track") || !strings.Contains(res.Draft, "it discloses nothing") {
+		t.Errorf("the closing draft lacks the move or its reason:\n%s", res.Draft)
+	}
+	for _, leak := range []string{sd.ghsa, seededTitle, sd.issID, "Alice"} {
+		if strings.Contains(res.Draft, leak) {
+			t.Errorf("the closing draft carries %q", leak)
+		}
+	}
+	if !strings.HasPrefix(res.CaptureCommand, "abcd capture ") || res.DraftPath == "" {
+		t.Errorf("result %+v", res)
 	}
 }

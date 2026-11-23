@@ -2093,11 +2093,12 @@ Show an advisory's closing text and digest, or close it on GitHub with it: Write
 
 **Usage:** `abcd embargo close <iss-N|GHSA-id> [flags]`
 
-Close one advisory whose verdict is not-abcds or not-a-vulnerability on
-GitHub, with the closing explanation its triage drafted. GitHub offers no
-comment on a repository advisory, so the explanation is posted at the head of
-the advisory's description, with the reporter's own text kept whole below a
-separator line.
+Close one advisory whose verdict is not-abcds, not-a-vulnerability or
+public-track on GitHub, with the closing explanation its triage drafted; a
+public-track verdict recorded before triage drafted one has it drafted now
+from the reason the store keeps. GitHub offers no comment on a repository
+advisory, so the explanation is posted at the head of the advisory's
+description, with the reporter's own text kept whole below a separator line.
 
 Without --approve it reads the advisory and shows exactly the text that would
 be posted and the digest that approves it; nothing but that read is sent. With
@@ -2283,9 +2284,9 @@ when (the clock, never typed). The verdicts:
   public-track         needs --reason; prints the `abcd capture` command to
                        run in the public checkout
 
-The two closing verdicts move the record to the store's wontfix/ and draft
-the closing explanation, printed here, for `abcd embargo close`. A second
-triage of the same advisory keeps the earlier verdict in its history. An
+Every verdict but vulnerability moves the record to the store's wontfix/ and
+drafts the closing explanation, printed here, for `abcd embargo close`. A
+second triage of the same advisory keeps the earlier verdict in its history. An
 unknown verdict, or one missing its reason, is refused with nothing written.
 
 **Flags:**

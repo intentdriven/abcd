@@ -12,8 +12,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/banlist"
 )
 
-// CloseRequest closes one advisory on GitHub with the explanation its closing
-// verdict drafted. Without Approve it only shows the text and its digest;
+// CloseRequest closes one advisory on GitHub with the explanation its verdict
+// drafted. Without Approve it only shows the text and its digest;
 // with Approve equal to that digest it closes the advisory. A host passes
 // Approve only after the person, in that session, has seen the text and said
 // yes to it (adr-2610120558328615, decision 4). Now is the clock; nil is the
@@ -134,8 +134,9 @@ func closeDigest(ghsa, text, description string) string {
 }
 
 // Close shows, and on approval posts, the closing explanation of an advisory
-// whose verdict is not-abcds or not-a-vulnerability and which is neither
-// closed nor published. Without approval the only request is one read of the
+// whose verdict ends its private track (endsPrivateTrack: not-abcds,
+// not-a-vulnerability or public-track) and which is neither closed nor
+// published. Without approval the only request is one read of the
 // advisory. With it, the draft and the advisory are read again and the digest
 // recomputed; any difference refuses with nothing sent. On a match one PATCH
 // sets the advisory closed with the composed description, and a read-back must
@@ -160,13 +161,13 @@ func Close(req CloseRequest) (CloseResult, error) {
 	switch {
 	case a.ClosedAt != nil || a.PublishedAt != nil:
 		return CloseResult{}, refuse("this advisory is already closed or published; nothing was sent", "there is nothing left to close")
-	case a.Verdict == nil || !isClosingVerdict(*a.Verdict):
-		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds or not-a-vulnerability is closed, and this one's verdict is not; nothing was sent",
-			"record a closing verdict with `abcd embargo triage` first")
+	case !endsPrivateTrack(a.Verdict):
+		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds, not-a-vulnerability or public-track is closed, and this one's verdict is not; nothing was sent",
+			"record one of those verdicts with `abcd embargo triage` first")
 	case st.Repo == "":
 		return CloseResult{}, refuse("the embargo store does not name its repository; nothing was sent", "run `abcd embargo intake` once, then run it again")
 	}
-	text, err := s.readDraft(a.GHSAID)
+	text, err := s.closingText(a)
 	if err != nil {
 		return CloseResult{}, err
 	}

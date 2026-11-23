@@ -3,7 +3,6 @@ package embargo
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -31,8 +30,9 @@ type TriageRequest struct {
 }
 
 // TriageResult is the verdict recorded. Draft is the closing text drafted for
-// a closing verdict, as written to DraftPath; CaptureCommand is the command a
-// public-track verdict hands the person to run in the public checkout.
+// a verdict that ends the private track, as written to DraftPath;
+// CaptureCommand is the command a public-track verdict hands the person to run
+// in the public checkout.
 type TriageResult struct {
 	GHSAID         string    `json:"ghsa_id"`
 	IssueID        string    `json:"issue_id"`
@@ -45,12 +45,6 @@ type TriageResult struct {
 	DraftPath      string    `json:"draft_path,omitempty"`
 	CaptureCommand string    `json:"capture_command,omitempty"`
 }
-
-// closingVerdicts are the verdicts that close the advisory on GitHub.
-var closingVerdicts = []string{VerdictNotAbcds, VerdictNotAVulnerability}
-
-// isClosingVerdict reports whether v closes its advisory on GitHub.
-func isClosingVerdict(v string) bool { return slices.Contains(closingVerdicts, v) }
 
 // findAdvisory is the index of the entry target names: the private record's
 // iss-N, or the advisory's GHSA id in any case. The refusal does not repeat
@@ -112,9 +106,9 @@ func triageFields(req TriageRequest) (reason string, err error) {
 // it and when (from the clock). A second verdict replaces the first and keeps
 // it in the entry's history. A verdict that ends the private track
 // (not-abcds, not-a-vulnerability, public-track) moves the private record to
-// wontfix/ in the store through the ledger's own code; the two closing
-// verdicts draft the explanation `abcd embargo close` posts on approval, and
-// public-track hands back the capture command for the public checkout.
+// wontfix/ in the store through the ledger's own code and drafts the
+// explanation `abcd embargo close` posts on approval, and public-track also
+// hands back the capture command for the public checkout.
 //
 // Every refusal writes nothing: the request is judged before the store is
 // opened, and the store's facts before anything in it changes.
@@ -152,7 +146,7 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	}
 
 	draft := ""
-	if isClosingVerdict(req.Verdict) {
+	if endsPrivateTrack(&req.Verdict) {
 		draft = closingDraft(req.Verdict, reason, strings.TrimSpace(req.ExistsWithout), strings.TrimSpace(req.CannotHelp))
 	}
 
@@ -160,7 +154,7 @@ func Triage(req TriageRequest) (TriageResult, error) {
 		note := map[string]string{
 			VerdictNotAbcds:          "not abcd's: " + reason,
 			VerdictNotAVulnerability: "not a vulnerability: " + reason,
-			VerdictPublicTrack:       "moved to the public track: " + reason,
+			VerdictPublicTrack:       publicTrackPrefix + reason,
 		}[req.Verdict]
 		moved, err := capture.Wontfix(capture.WontfixRequest{RepoRoot: s.Root, ID: a.IssueID, Reason: note})
 		if err != nil {
@@ -184,7 +178,7 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	}
 
 	if req.Verdict == VerdictPublicTrack {
-		reason = "moved to the public track: " + reason
+		reason = publicTrackPrefix + reason
 	}
 	if a.Verdict != nil {
 		h := HistoryEntry{Verdict: *a.Verdict, DecidedAt: now}

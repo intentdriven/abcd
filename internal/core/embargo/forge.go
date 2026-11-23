@@ -167,15 +167,18 @@ const advisoryNotShown = "GitHub reports no such advisory to this account (it ma
 const everyNotShown = "GitHub reports no such advisory to this account for every advisory the store holds, " +
 	"and refuses the repository's advisory listing, which is what a token without the advisory scope meets; nothing was recorded: " + scopeRead
 
+// privateTrackEnds are the verdicts that end an advisory's private track.
+var privateTrackEnds = []string{VerdictNotAbcds, VerdictNotAVulnerability, VerdictPublicTrack}
+
 // endsPrivateTrack reports whether the store's verdict (nil when
 // untriaged) already ends the advisory's private track, so a close GitHub
 // reports for it is consistent with the store's own decision and is
 // recorded: a closing verdict (not-abcds, not-a-vulnerability), or the
 // public track, whose triage moves the record to wontfix/ and whose title
-// the check already treats as public. It is not close's rule: close sends a
-// closing text only for a closing verdict (isClosingVerdict).
+// the check already treats as public. It is close's rule too: close sends a
+// closing text for each of these verdicts and for no other.
 func endsPrivateTrack(verdict *string) bool {
-	return verdict != nil && (isClosingVerdict(*verdict) || *verdict == VerdictPublicTrack)
+	return verdict != nil && slices.Contains(privateTrackEnds, *verdict)
 }
 
 // closedUnjudged is the reason a held advisory GitHub reports closed is
