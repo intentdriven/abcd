@@ -829,4 +829,10 @@ func TestTheGatesOwnGoRunCarriesTheMovedFlags(t *testing.T) {
 	if at < 0 || !slices.Contains(got[:at], "-trimpath") {
 		t.Fatalf("the gate's go run %q builds abcd without the moved flags", got)
 	}
+	// A test-only flag stays on the go test alone: go run refuses it.
+	got = gateCommand(auditRun{flags: []string{"-count=1", "-trimpath"}})
+	at = slices.Index(got, "./cmd/abcd")
+	if at < 0 || slices.Contains(got[:at], "-count=1") || !slices.Contains(got[at:], "-count=1") {
+		t.Fatalf("the gate's go run %q carries a test-only flag, or the go test lost it", got)
+	}
 }

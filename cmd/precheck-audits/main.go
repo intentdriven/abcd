@@ -377,9 +377,22 @@ type besideOptions struct {
 // GOFLAGS empty, so the go run that builds that abcd takes the moved flags on
 // its own command line, as make preflight's every other Go step does.
 func gateCommand(r auditRun) []string {
-	argv := append([]string{"go", "run"}, r.flags...)
+	argv := append([]string{"go", "run"}, buildFlags(r.flags)...)
 	argv = append(argv, "./cmd/abcd", "implement", "load", "--wait", "--narrow", "--timeout", "12h", "--")
 	return append(argv, r.goTest()...)
+}
+
+// buildFlags are the moved flags go run takes as well as go test: a test-only
+// flag such as -count=1 stops go run before it builds, which would leave every
+// early audit unrun.
+func buildFlags(flags []string) []string {
+	var out []string
+	for _, f := range flags {
+		if name, _, _ := strings.Cut(f, "="); name == "-trimpath" || name == "-v" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // effectiveGoFlags is go env GOFLAGS under env, with go found as the gate
