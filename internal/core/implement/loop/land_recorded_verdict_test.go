@@ -45,14 +45,25 @@ func TestTheCloseIngestsOnlyTheVerdictTheRoundRecorded(t *testing.T) {
 		t.Fatalf("the lane's intent stays planned: %v", err)
 	}
 
-	// Put back as it was handed back, the verdict ingests.
+	// Put back as it was handed back, the verdict ingests: the records commit
+	// ships the intent with the recorded verdict rendered into it.
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
-		if r, ok := AsRefusal(err); ok && strings.Contains(r.Reason, "is not the return the loop recorded") {
-			t.Fatalf("the verdict as recorded is refused: %+v", r)
-		}
+		t.Fatalf("the verdict as recorded ingests: %v", err)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur := st.Lanes[0]
+	if cur.Landing == nil || !cur.Landing.RecordsDone || cur.HeadSHA == l.HeadSHA {
+		t.Fatalf("the records commit is made: %+v", cur.Landing)
+	}
+	shipped := f.repo.Git("-C", cur.Worktree, "show", cur.HeadSHA+":"+shippedIntentRel)
+	if !strings.Contains(shipped, "abcd-review: INGESTED") || !strings.Contains(shipped, "read the delivery") || strings.Contains(shipped, "never wrote") {
+		t.Fatalf("the shipped intent carries the verdict as recorded:\n%s", shipped)
 	}
 }
 
