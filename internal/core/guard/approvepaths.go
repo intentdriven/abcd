@@ -222,6 +222,10 @@ type pathUse struct {
 	// point that it deletes below, rsync --delete's destination), not as a
 	// removal of every protected path inside it.
 	bound bool
+	// tree, in and top are the write's (writeTarget): a write that may place
+	// a whole tree, judged for every path it can reach below where it lands.
+	tree, in bool
+	top      string
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -275,7 +279,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		if !w.ok {
 			written = w.base
 		}
-		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel})
+		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top})
 	}
 	at := func(i int, remove bool) pathUse {
 		tok, ok := fixedToken(s, i)
@@ -526,9 +530,13 @@ func parenRefusal() Approval {
 }
 
 // protects names the protected path u reaches, if it reaches one: a write or
-// a link into one, or a removal of one or of a directory holding one, judged
-// as written and with its existing directories resolved through symlinks (a
-// removal's own last name is not followed: it removes the link).
+// a link into one, a write that places a tree over one (a move, a copy, an
+// archive unpacked), or a removal of one or of a directory holding one,
+// judged as written and with its existing directories resolved through
+// symlinks (a removal's own last name is not followed: it removes the link).
+// A tree whose top names the line fixes only by a glob reaches each protected
+// name the glob matches; one whose names no line fixes is judged by the
+// protected paths below where it lands.
 func (f approveFacts) protects(u pathUse) (string, bool) {
 	cands := []string{u.path}
 	if u.remove {
@@ -537,18 +545,30 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 		cands = append(cands, fsutil.RealExistingPath(u.path))
 	}
 	for _, c := range cands {
+		below := func(string) bool { return false }
+		if u.tree {
+			dir, names := treeLanding(c, u.in, u.top, f.fold)
+			below = func(p string) bool { return treeReaches(dir, names, p, f.fold) }
+		}
 		for _, p := range f.protected {
-			if fsutil.PathWithin(c, p, f.fold) || (u.remove && fsutil.PathWithin(p, c, f.fold)) {
+			if fsutil.PathWithin(c, p, f.fold) || (u.remove && fsutil.PathWithin(p, c, f.fold)) || below(p) {
 				return p, true
 			}
 		}
 		for _, l := range f.userLayer {
-			if (fsutil.PathWithin(c, l, f.fold) || (u.remove && fsutil.PathWithin(l, c, f.fold))) && !f.within(c, f.own) {
+			if (fsutil.PathWithin(c, l, f.fold) || (u.remove && fsutil.PathWithin(l, c, f.fold)) || below(l)) && !f.within(c, f.own) {
 				return l, true
 			}
 		}
 		if name, ok := f.protectedName(c); ok {
 			return name, true
+		}
+		if u.tree && u.in && u.top != "" {
+			for _, n := range protectedNames {
+				if shellGlobMatch(fsutil.FoldPath(u.top, f.fold), fsutil.FoldPath(n, f.fold)) {
+					return n, true
+				}
+			}
 		}
 		if f.stage {
 			if !f.within(c, f.removable) && !strings.HasPrefix(c, "/dev/") {
@@ -556,6 +576,9 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 			}
 			for _, t := range f.tree {
 				if name := stageGateFile(t, c, f.declared, f.fold); name != "" {
+					return name, true
+				}
+				if name := stageGateLanded(t, c, u); name != "" {
 					return name, true
 				}
 			}

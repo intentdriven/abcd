@@ -474,8 +474,17 @@ A shell command is approved only when the guard reads it whole and clears it:
   the rest of the layer, though the run's own worktree kept under
   `~/.abcd.noindex/worktrees/` stays writable), and the names the host
   protects in any working tree (`.husky/`, `.vscode/`, `.envrc`, `.npmrc` and
-  the like). A removal of a directory holding one counts. A line that only
-  names one of them, to read it, is not a write;
+  the like). A removal of a directory holding one counts, and so does a write
+  that places a whole tree above one: `cp`, `mv`, `install` and `ln` land each
+  source under its own last name when the destination is a directory (named by
+  `-t`, spelled with a trailing slash, one of several sources, or a directory
+  standing there now), so `cp -R x/.git ./` writes `.git`, and a source spelled
+  as a glob lands under each name the glob matches; a directory's contents
+  copied (`cp -R src/. dir/`, `rsync -a src/ dir/`, `ditto src dir`), an archive
+  unpacked (`tar -x`, `unzip -d`), a patch applied with no file named, or a
+  source the line does not spell out can write any path below the directory
+  it lands in, so `rsync -a src/ ./` at the root of a working tree reaches its
+  `.git`. A line that only names one of them, to read it, is not a write;
 - no removal reaches outside the working tree (`removal-outside-tree`): a
   removal (`rm`, `rmdir`, `unlink`, `mv`'s sources, a `find` that deletes, an
   `rsync --delete`) whose target lies outside the launched working tree, the
@@ -611,8 +620,10 @@ per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards
 as everywhere, but the checks above read the line itself, not the script's own
 writes, and a command that writes into a directory (`tar -x`, `unzip -d`,
-`cp -r`, `git apply`, `git checkout`) is judged by that directory, not by the
-files that land inside it.
+`cp -r`, `git apply`, `git checkout`) is judged by that directory and, for the
+writers the protected-path rule above names, by every protected path below it,
+not by the names of the files that land inside it, which the guard does not
+read.
 
 What the approver does not cover, plainly. The file tools the role is granted
 on the launch (`--allowedTools`: reading, editing and writing files) write

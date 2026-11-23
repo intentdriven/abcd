@@ -936,6 +936,40 @@ type writeTarget struct {
 	gen   [2]int
 	base  string
 	wrote bool
+	// tree marks a write that may place a whole tree of files, not one file:
+	// a moved, copied or linked source, an archive or a patch unpacked, a
+	// clone. Without in, the tree lands at path; with in, each name at its
+	// top lands in the directory path, under a name the glob top matches, or
+	// any name where top is "" (treeLanding).
+	tree bool
+	in   bool
+	top  string
+}
+
+// treeLanding is where a tree a write places lands, read at c, a spelling of
+// the write's path: the directory it lands in, and whether a name at its top
+// can be the one given. Names compare as fold says.
+func treeLanding(c string, in bool, top string, fold bool) (dir string, names func(string) bool) {
+	if !in {
+		base := fsutil.FoldPath(filepath.Base(c), fold)
+		return filepath.Dir(c), func(n string) bool { return fsutil.FoldPath(n, fold) == base }
+	}
+	if top == "" {
+		return c, func(string) bool { return true }
+	}
+	pat := fsutil.FoldPath(top, fold)
+	return c, func(n string) bool { return shellGlobMatch(pat, fsutil.FoldPath(n, fold)) }
+}
+
+// treeReaches reports whether p lies at or below a tree that lands in dir
+// under a name names accepts.
+func treeReaches(dir string, names func(string) bool, p string, fold bool) bool {
+	rel, ok := fsutil.RelWithin(dir, p, fold)
+	if !ok || rel == "." {
+		return false
+	}
+	first, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+	return names(first)
 }
 
 // scriptSeg is the reading's record of one segment: every state it can run

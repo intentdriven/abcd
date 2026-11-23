@@ -751,8 +751,12 @@ its text:
   `.mcp.json` and `.abcd/guard.json`, abcd's own folder in the home directory
   (its trusted-roots, rules.json, config.json and the rest of the user layer,
   the run's own worktree kept there excepted), and the names the harness's own
-  list protects in any working tree. A line that only names one of them is not
-  a write;
+  list protects in any working tree. A write that places a whole tree counts
+  for every protected path below where it lands: a source moved, copied or
+  linked into a directory lands under its own last name there, or under each
+  name its glob matches, and a directory's contents copied, an archive
+  unpacked or a patch applied with no file named can write any path below
+  the directory. A line that only names one of them is not a write;
 - a removal whose fixed target lies outside the launched working tree, the
   run's own directories (the brief's and the receipt's, which the runner names
   to the approver) and the temporary directory. Writes outside the working tree are judged by
@@ -814,8 +818,9 @@ What the approver does not cover, plainly: the file tools the role is granted
 on the launch (the contract's tools other than the shell, which the runner
 grants without a prompt) write without asking the approver, so the protected
 paths bound only the shell's writes; a script the line runs writes unread, and
-a command that writes into a directory is judged by that directory, not by the
-files that land inside it; and the abcd binary that answers the prompts is not
+a command that writes into a directory is judged by that directory and every
+protected path below it, not by the names of the files that land inside it; and
+the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
 launchers the registry steps, so a harness started under another name, a copied
