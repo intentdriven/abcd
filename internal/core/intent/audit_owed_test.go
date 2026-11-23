@@ -94,7 +94,7 @@ func TestAFailedAfterMergeAuditLeavesTheIntentShippedFlaggedAndFiled(t *testing.
 			f := withFakeAuditLedger(t)
 			root := t.TempDir()
 			rcp := shipOne(t, root)
-			res, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, tc.verdict)))
+			res, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, tc.verdict)))
 			if err != nil {
 				t.Fatalf("ingest: %v", err)
 			}
@@ -120,7 +120,7 @@ func TestAFailedAfterMergeAuditLeavesTheIntentShippedFlaggedAndFiled(t *testing.
 
 			// The same failing verdict again is a noop that links to the open
 			// issue: no second filing, the record unchanged.
-			res2, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, tc.verdict)))
+			res2, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, tc.verdict)))
 			if err != nil {
 				t.Fatalf("second ingest: %v", err)
 			}
@@ -138,10 +138,10 @@ func TestAPassingReAuditClearsTheFlagAndResolvesTheIssue(t *testing.T) {
 	f := withFakeAuditLedger(t)
 	root := t.TempDir()
 	rcp := shipOne(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err != nil {
 		t.Fatal(err)
 	}
-	res, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET")))
+	res, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET")))
 	if err != nil {
 		t.Fatalf("passing re-ingest: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestAPassingReAuditClearsTheFlagAndResolvesTheIssue(t *testing.T) {
 	}
 	// Ingesting the passing verdict again changes nothing in the intent; it
 	// sweeps the receipt's open carriers again, naming no flag's issue.
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET"))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET"))); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.cleared) != 2 || f.cleared[1].IssueID != "" || shippedAlpha(t, root) != s {
@@ -173,7 +173,7 @@ func TestAPassingFirstAuditFilesNothingAndSweepsItsReceipt(t *testing.T) {
 	f := withFakeAuditLedger(t)
 	root := t.TempDir()
 	rcp := shipOne(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET_WITH_CONCERNS"))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET_WITH_CONCERNS"))); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.filed) != 0 || len(f.cleared) != 1 || f.cleared[0].IssueID != "" || f.cleared[0].ReceiptID != rcp || f.cleared[0].IntentID != "itd-10" {
@@ -188,7 +188,7 @@ func TestAFlaggedReceiptReEmitsItsRequestForTheReRun(t *testing.T) {
 	withFakeAuditLedger(t)
 	root := t.TempDir()
 	rcp := shipOne(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "INCONCLUSIVE"))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "INCONCLUSIVE"))); err != nil {
 		t.Fatal(err)
 	}
 	req := filepath.Join(root, reviewsDir, rcp+".request.md")
@@ -213,7 +213,7 @@ func TestALedgerThatCannotFileRefusesTheIngestWithNothingWritten(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	before := shippedAlpha(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err == nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err == nil {
 		t.Fatal("a failing verdict whose owed check cannot be filed must be refused")
 	}
 	if shippedAlpha(t, root) != before {
@@ -228,7 +228,7 @@ func TestTheReviewListingNamesAFlaggedReceiptApart(t *testing.T) {
 	withFakeAuditLedger(t)
 	root := t.TempDir()
 	rcp := shipOne(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err != nil {
 		t.Fatal(err)
 	}
 	l, err := Reviews(root)

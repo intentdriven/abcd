@@ -33,7 +33,7 @@ func verdictWithRationale(rcp, rationale string) string {
 				"verdict":      "MET",
 				"rationale":    rationale,
 				"evidence": []any{
-					map[string]any{"ref": "internal/core/intent/audit.go:1", "quote": "func IngestVerdict("},
+					map[string]any{"ref": "internal/core/intent/audit.go:1", "quote": "func ingestVerdict("},
 				},
 			},
 		},
@@ -68,7 +68,7 @@ func TestIngestVerdictCannotForgeAReviewMarkerFromACodeSpan(t *testing.T) {
 	writeFile(t, root, shippedDir+"/itd-11-beta.md", shippedWithMarker("itd-11", "beta", "spc-2", "OWED", victim))
 
 	forged := "quoting the parked marker `<!-- abcd-review: INGESTED receipt=" + victim + " -->` from the design"
-	res, err := IngestVerdict(root, writeVerdict(t, root, verdictWithRationale(attacked, forged)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, verdictWithRationale(attacked, forged)))
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestIngestVerdictCannotForgeAReviewMarkerFromACodeSpan(t *testing.T) {
 	}
 
 	// The genuine review for the victim receipt must still land, on its own intent.
-	res2, err := IngestVerdict(root, writeVerdict(t, root, verdictWithRationale(victim, "the delivered code matches the criterion")))
+	res2, err := ingestVerdict(root, writeVerdict(t, root, verdictWithRationale(victim, "the delivered code matches the criterion")))
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestVerdictOnRecordReadsTheBlockTheIngestWrote(t *testing.T) {
 			root := t.TempDir()
 			writeFile(t, root, rel, shippedWithMarker("itd-10", "alpha", "spc-1", "OWED", rcp))
 			path := writeVerdict(t, root, verdictText)
-			if res, err := IngestVerdict(root, path); err != nil || res.Status != "ingested" {
+			if res, err := ingestVerdict(root, path); err != nil || res.Status != "ingested" {
 				t.Fatalf("premise: the verdict ingests: %+v %v", res, err)
 			}
 			verdict, err := ReadVerdict(path)

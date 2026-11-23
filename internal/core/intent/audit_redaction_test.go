@@ -131,7 +131,7 @@ func TestIngestVerdictRedactsAgentProse(t *testing.T) {
 			"## Scope Conditions\n\n"+NullityToken,
 			"## Scope Conditions\n\n- the deployment is single-tenant <!-- cond: cond-2609021016272867 -->", 1))
 
-	res, err := IngestVerdict(root, writeVerdict(t, root, leakyVerdict(t, rcp, "cond-2609021016272867")))
+	res, err := ingestVerdict(root, writeVerdict(t, root, leakyVerdict(t, rcp, "cond-2609021016272867")))
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestDeadLetterRedactsAgentProse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, string(raw)))
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestIngestVerdictRedactsTheProvenanceLine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, string(raw)))
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestVerdictHashesAreValidatedShapes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+		res, err := ingestVerdict(root, writeVerdict(t, root, string(raw)))
 		if err != nil {
 			t.Fatalf("%s: IngestVerdict: %v", name, err)
 		}
@@ -306,7 +306,7 @@ func TestVerdictHashesAreValidatedShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, string(raw)))
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestDeadLetterReasonIsRedactedWhereItIsReturned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, string(raw)))
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestWrongTypeRefusalDoesNotEchoTheValue(t *testing.T) {
 	rcp := shipOne(t, root)
 	const planted = "/Users/zzotherperson/.config/tok-SENTINEL-7f3a" // abcd-lint:allow — planted leak
 	payload := strings.Replace(validVerdict(rcp), "abcd/intent-fidelity-verdict/v1", planted, 1)
-	_, err := IngestVerdict(root, writeVerdict(t, root, payload))
+	_, err := ingestVerdict(root, writeVerdict(t, root, payload))
 	if err == nil {
 		t.Fatal("ingest must reject a payload whose _type is not the fidelity-verdict type")
 	}
