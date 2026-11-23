@@ -894,8 +894,8 @@ mid-loop edit cannot change an in-flight loop. The loop terminal and the gate
 belong in a drainer layer that does not exist.
 
 Schema versioning and cross-version migration are **staged**: a configuration
-record carries `schema_version: 1`, and migrators arrive with the change that
-alters the shape, which itd-9 carries. The stamp is a convention rather than a
+record carries `schema_version: 1`, and migrators are added if a later intent
+changes the shape (itd-9). The stamp is a convention rather than a
 held rule, and the tree is not uniform — eleven of the seventeen committed records
 carry it (`config.json` in its `meta` block), and six do not, the record-lint
 and docs-lint configuration among them. Nothing refuses an unstamped record, so
