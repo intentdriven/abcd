@@ -952,43 +952,144 @@ func AcceptConfigChange(repoRoot, runID string, o Options) ([]string, error) {
 	var accepted []string
 	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
-		was, ok, err := readFingerprint(root, runID)
-		var bad *Refusal
-		if err != nil && !errors.As(err, &bad) {
-			return false, err
-		}
-		salt, serr := newSalt()
-		if serr != nil {
-			return false, serr
-		}
-		lanes := laneWorktrees(repoRoot, *st)
-		cur, err := takeFingerprint(repoRoot, lanes, salt, now)
+		a, err := takeAccept(repoRoot, root, runID, *st, now)
 		if err != nil {
-			return false, refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
-				"settle what git reports, then accept again; nothing was changed")
-		}
-		if ok {
-			again, err := takeFingerprint(repoRoot, lanes, was.Salt, now)
-			if err != nil {
-				return false, refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
-					"settle what git reports, then accept again; nothing was changed")
-			}
-			accepted = nameChanges(repoRoot, was.changes(repoRoot, again))
-		} else if bad != nil {
-			accepted = []string{ConfigFingerprintFileName + " (replaced)"}
-		}
-		if err := writeFingerprint(root, runID, cur); err != nil {
 			return false, err
 		}
-		if len(accepted) == 0 {
-			return false, nil
+		accepted = a.accepted
+		if err := writeFingerprint(root, runID, a.fp); err != nil {
+			return false, err
 		}
-		st.Record = append(st.Record, Entry{At: now, Stage: StageConfig,
-			Note: "the person accepted a change to the repository's git configuration: " + strings.Join(accepted, ", ")})
-		st.UpdatedAt = now
-		return true, nil
+		return a.note(st, now), nil
 	})
 	return accepted, err
+}
+
+// configAccept is an acceptance of the repository's git configuration as it
+// stands, read under the run's lock and not yet written: the fingerprint to
+// record and the name of each key or file that changed since the one the run
+// recorded.
+type configAccept struct {
+	fp       configFingerprint
+	accepted []string
+}
+
+// takeAccept reads what an acceptance records, writing nothing: the
+// fingerprint as the repository stands under a fresh salt, and what changed
+// since the run's own, or the run's fingerprint named replaced where the file
+// is not one this abcd wrote. A run with none accepts nothing.
+func takeAccept(repoRoot string, root *os.Root, runID string, st State, now time.Time) (configAccept, error) {
+	was, ok, err := readFingerprint(root, runID)
+	var bad *Refusal
+	if err != nil && !errors.As(err, &bad) {
+		return configAccept{}, err
+	}
+	salt, err := newSalt()
+	if err != nil {
+		return configAccept{}, err
+	}
+	lanes := laneWorktrees(repoRoot, st)
+	cur, err := takeFingerprint(repoRoot, lanes, salt, now)
+	if err != nil {
+		return configAccept{}, unreadToAccept(repoRoot, err)
+	}
+	a := configAccept{fp: cur}
+	if ok {
+		again, err := takeFingerprint(repoRoot, lanes, was.Salt, now)
+		if err != nil {
+			return configAccept{}, unreadToAccept(repoRoot, err)
+		}
+		a.accepted = nameChanges(repoRoot, was.changes(repoRoot, again))
+	} else if bad != nil {
+		a.accepted = []string{ConfigFingerprintFileName + " (replaced)"}
+	}
+	return a, nil
+}
+
+// unreadToAccept is the refusal of an acceptance whose read of the
+// configuration failed.
+func unreadToAccept(repoRoot string, err error) error {
+	return refuse(StageConfig, "", "", "the repository's git configuration cannot be read, so there is nothing to accept: "+scanner.RedactRefusal(repoRoot, fsutil.RedactHome(err.Error())),
+		"settle what git reports, then accept again; nothing was changed")
+}
+
+// note writes the acceptance's line into st's record, and reports whether it
+// accepted anything.
+func (a configAccept) note(st *State, now time.Time) bool {
+	if len(a.accepted) == 0 {
+		return false
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: StageConfig,
+		Note: "the person accepted a change to the repository's git configuration: " + strings.Join(a.accepted, ", ")})
+	st.UpdatedAt = now
+	return true
+}
+
+// pendingAccept is an acceptance a move given --accept-config-change carries
+// to its own write (acceptWith).
+type pendingAccept struct {
+	a     configAccept
+	root  *os.Root
+	runID string
+	// unwritten is the fingerprint's write error, once the move's state was
+	// written and the fingerprint was not.
+	unwritten error
+}
+
+// acceptWith is the run tripwire under the run's lock for a move that writes
+// the run once (a discard, a release, a restart) when the person gave
+// --accept-config-change: a changed configuration is not refused but read for
+// acceptance (takeAccept), writing nothing. The move calls apply only as its
+// callback reports a change, so the acceptance's line goes into the very state
+// the move writes and the fingerprint is written once that state has been
+// (State.afterWritten); a move refused after this, or one that writes
+// nothing, writes neither, and the state file stays as it was. Without the
+// flag it returns nil, and the move keeps its own tripwire.
+func acceptWith(repoRoot string, root *os.Root, st State, o Options) (*pendingAccept, error) {
+	if !o.AcceptConfig {
+		return nil, nil
+	}
+	a, err := takeAccept(repoRoot, root, st.RunID, st, o.now())
+	if err != nil {
+		return nil, err
+	}
+	return &pendingAccept{a: a, root: root, runID: st.RunID}, nil
+}
+
+// apply writes p's line into st, the state the move is about to write, and
+// registers the fingerprint's write after it; it returns what was accepted.
+// A nil p does nothing.
+func (p *pendingAccept) apply(st *State, now time.Time) []string {
+	if p == nil {
+		return nil
+	}
+	p.a.note(st, now)
+	st.afterWritten(func(*State, func() error) {
+		p.unwritten = writeFingerprint(p.root, p.runID, p.a.fp)
+	})
+	return p.a.accepted
+}
+
+// failed is the error a move that wrote its state returns when the
+// fingerprint its acceptance recorded was not written: the run record names
+// the acceptance, and the tripwire still refuses the next step until it is
+// accepted again. nil when there is none.
+func (p *pendingAccept) failed() error {
+	if p == nil || p.unwritten == nil {
+		return nil
+	}
+	return refuse(StageConfig, "", "", "the move was written with its acceptance in the run record, but the configuration it accepted was not recorded: "+fsutil.RedactHome(p.unwritten.Error()),
+		"run `abcd implement step --run "+p.runID+" "+AcceptConfigFlag+"` to record it")
+}
+
+// tripOrAccept is configTripwireIn for a move that writes once, or, with
+// --accept-config-change, the acceptance it carries to that write
+// (acceptWith).
+func tripOrAccept(repoRoot string, root *os.Root, st State, o Options) (*pendingAccept, error) {
+	if o.AcceptConfig {
+		return acceptWith(repoRoot, root, st, o)
+	}
+	return nil, configTripwireIn(repoRoot, root, st.RunID)
 }
 
 // ConfigTripwire checks every run in progress in the checkout, as a step

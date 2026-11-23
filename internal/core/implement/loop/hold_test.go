@@ -191,6 +191,9 @@ func TestADiscardRemovesTheLaneLocallyBeforeItClosesItsPullRequest(t *testing.T)
 	if n := strings.Count(f.ghLog(t), "pr close 7"); n != 0 || !bytes.Equal(before, stateBytes(t, f.repo.Root(), f.runID)) {
 		t.Fatalf("a refused discard closes no pull request (%d) and leaves the lane held", n)
 	}
+	if b := bundlesIn(t, f.repo, f.runID); len(b) != 0 {
+		t.Fatalf("a discard refused with the branch in place leaves no bundle behind: %v", b)
+	}
 	if err := os.Remove(stray); err != nil {
 		t.Fatal(err)
 	}

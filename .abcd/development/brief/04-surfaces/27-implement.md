@@ -583,7 +583,28 @@ branch, then closes its pull request, and leaves its step unlanded, each refused
 held and no lane has work left. Discard also takes a lane handed back as stuck or
 closed, whatever else the run is doing. A drain's issue run is then over
 ([`35-drain.md`](35-drain.md); spc-2610161044461448 step 5); an intent's run stays,
-and a landing's hand-back says when to remove its directory. An issue run logs
+and a landing's hand-back says when to remove its directory. It also ends a lane
+handed back for any other reason, unachievable included, once no lane of the run
+is at work, and a lane at work whose run nothing drives: no live process other
+than the caller's session is its driver and no agent of the run is running or
+may still be in its call, a host's agent counting as gone a reservation lease
+after it was handed out (iss-2611231404319245). A live run is refused as
+contention, and a lane whose pull request is open, armed or not, or merged is
+refused naming it, as is a pushed lane whose branch the forge lists an open pull
+request for that its state never recorded, or whose listing cannot be read; one
+closed is not closed again. Every discard saves the lane's commits the default
+branch does not hold to a bundle in the run's own directory before it removes
+anything, written as a new file git streams into (a name already taken refuses
+the discard), and deletes the branch only at the tip it saved. One that leaves
+nothing of the run to land or settle (no lane at work or held, no step pending,
+no handed-back lane still armed) releases the run's reservation once it is
+written, and only one provably the run's own: its history reaches a
+reservation the run's record logs through renewals alone. One released,
+lapsed or taken over since is left standing to lapse, and one the checkout's
+view shows absent or released is not released again. When the person
+accepts a configuration change, a discard, a release or a restart writes the
+acceptance in its own write, so one refused writes nothing
+(iss-2611231404326060); a plain step writes the acceptance first. An issue run logs
 each refused step on its lane, until its pull request is armed or left open, the stage, the check, the reason and a count,
 for the drain to read; an intent's run refuses as before, writing nothing.
 Without a named run, the step

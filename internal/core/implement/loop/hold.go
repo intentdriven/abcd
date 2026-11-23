@@ -147,7 +147,9 @@ func busyLanes(st State) []string {
 // lane that is not held and a run with any lane still at work. --discard also
 // takes a lane handed back as stuck or closed, by a drain (stuck.go) or a landing, whose
 // worktree and branch the hand-back left, and a lane the land fence refuses because its run let its
-// reservation go with no stop's mark standing.
+// reservation go with no stop's mark standing; and a lane at work or handed back
+// for any other reason (unheldEnd), which the discard then judges under the lock
+// (mayEndUnheld).
 func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 	i := -1
 	for k, l := range st.Lanes {
@@ -159,7 +161,7 @@ func decidable(repoRoot string, st State, laneID, flag string) (int, error) {
 		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 			"name a held lane `abcd implement status` lists")
 	}
-	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID) || letGoAtLand(repoRoot, st, l)) {
+	if l := st.Lanes[i]; flag == "--discard" && (stuckLane(l) || driveStopped(st.RunID) || letGoAtLand(repoRoot, st, l) || unheldEnd(l)) {
 		return i, nil
 	}
 	if l := st.Lanes[i]; l.Stage != StageHeld || l.Hold == nil {
@@ -193,8 +195,13 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		return StepResult{}, err
 	}
 	var res StepResult
+	var afterAccept *pendingAccept
 	err := saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(repoRoot, *st, laneID, "--release")
+		if err != nil {
+			return false, err
+		}
+		pa, err := acceptWith(repoRoot, root, *st, o)
 		if err != nil {
 			return false, err
 		}
@@ -208,9 +215,15 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "release",
 			Note: fmt.Sprintf("the person released %s to land as it is, at %s; its landing resumes at its %s", lane.ID, shortSHA(h.Head), h.Before)})
 		st.UpdatedAt = now
+		accepted := pa.apply(st, now)
 		res = laneResult(*st, lane, "", nil)
+		res.AcceptedConfigChange = accepted
+		afterAccept = pa
 		return true, nil
 	})
+	if err == nil {
+		err = afterAccept.failed()
+	}
 	return res, err
 }
 
@@ -242,6 +255,16 @@ func stuckLane(l Lane) bool {
 // a worktree or branch already gone is passed over. It changes nothing when the
 // lane is not held or any lane is still at work.
 //
+// It also ends a lane at work whose run nothing drives, and a lane handed back
+// for any reason (discard_unheld.go): refused while the run is live or the
+// lane's pull request is open or merged, its worktree and branch are removed
+// as a held lane's are, and a pull request the forge reports closed is not
+// closed again. Every discard first saves the lane's commits not on the
+// default branch to a bundle in the run's directory (saveLaneBundle), and one
+// that leaves no lane of the run at work or held releases the run's
+// reservation (releaseOnDiscard). With o.AcceptConfig, a changed git
+// configuration is accepted in the discard's own write (acceptWith).
+//
 // While the network is down a lane with a pull request to close waits on the
 // shared probe, changing nothing, and a close the network refuses is recorded
 // as the run's outage (outage.go).
@@ -257,25 +280,39 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 
 // discardHeld is Discard's move on the lane.
 func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) {
-	if err := configTripwire(repoRoot, runID); err != nil {
-		return StepResult{}, err
+	if !o.AcceptConfig {
+		if err := configTripwire(repoRoot, runID); err != nil {
+			return StepResult{}, err
+		}
 	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err
 	}
 	var res StepResult
+	var afterAccept *pendingAccept
+	released := ""
 	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		i, err := decidable(repoRoot, *st, laneID, "--discard")
 		if err != nil {
 			return false, err
 		}
+		pa, err := acceptWith(repoRoot, root, *st, o)
+		if err != nil {
+			return false, err
+		}
 		now := o.now()
 		lane := st.Lanes[i]
-		if lane.PR > 0 && g.down(implement.ServiceNetwork) {
+		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
+		closed := false
+		if unheldOnly(repoRoot, *st, lane) {
+			if closed, err = mayEndUnheld(c, root, lane, g, o); err != nil {
+				return false, err
+			}
+		}
+		if lane.PR > 0 && !closed && g.down(implement.ServiceNetwork) {
 			return false, g.networkWait(string(StageHeld), lane.ID, fmt.Sprintf("the discard of %s (closing pull request #%d)", lane.ID, lane.PR))
 		}
-		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
 		// The branch comes from the run's state file, which an archive of the
 		// checkout can carry hand-written, so a branch outside the loop's
 		// prefix is refused before anything is removed, as discardLane refuses
@@ -291,21 +328,36 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 			}
 		}
 		did := []string{}
+		// The lane's own commits are saved before anything is removed, so a
+		// discard never deletes work that exists nowhere else.
+		bundle, n, tip, err := saveBundle(root, repoRoot, st.RunID, lane)
+		if err != nil {
+			return false, refuse(string(StageHeld), "", lane.ID, "the lane's commits could not be saved before its branch is deleted: "+fsutil.RedactHome(err.Error()),
+				"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again; nothing was removed")
+		}
+		if bundle != "" {
+			did = append(did, bundleNote(bundle, n, lane.Branch))
+		}
 		if lane.Worktree != "" {
 			if err := removeLaneWorktree(c, lane, "run `abcd implement step --discard "+lane.ID+"` again"); err != nil {
+				// The branch still holds what the bundle saved, and the retry
+				// saves it again under the same name, so the bundle this call
+				// made goes with the refusal.
+				if bundle != "" {
+					_ = root.Remove(bundle)
+				}
 				return false, err
 			}
 			did = append(did, "removed its worktree")
 		}
-		if lane.Branch != "" {
-			tip, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "refs/heads/"+lane.Branch+"^{commit}", "--")
-			if err == nil && gitutil.IsFullSHA(tip) {
-				if _, err := gitutil.Run(repoRoot, "update-ref", "-d", "refs/heads/"+lane.Branch, tip); err != nil {
-					return false, refuse(string(StageHeld), "", lane.ID, "git could not delete "+lane.Branch+": "+fsutil.RedactHome(err.Error()),
-						"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again")
-				}
-				did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
+		// The branch is deleted only at the tip its commits were saved from, so
+		// one that moved since is refused rather than deleted.
+		if tip != "" {
+			if _, err := gitutil.Run(repoRoot, "update-ref", "-d", "refs/heads/"+lane.Branch, tip); err != nil {
+				return false, refuse(string(StageHeld), "", lane.ID, "git could not delete "+lane.Branch+" at "+shortSHA(tip)+", the tip its commits were saved from: "+fsutil.RedactHome(err.Error()),
+					"settle what git reports, then run `abcd implement step --discard "+lane.ID+"` again")
 			}
+			did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
 		}
 		// A lane handed back as closed has a pull request already closed.
 		pr := lane.PR
@@ -326,7 +378,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 				}
 			}
 		}
-		if pr > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
+		if pr > 0 && !closed && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
 			n := strconv.Itoa(pr)
 			if _, err := forge(c, lane, "pr", "close", n); err != nil {
 				if r, ok := AsRefusal(err); ok {
@@ -336,14 +388,22 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 			}
 			did = append(did, "closed pull request #"+n)
 		}
+		accepted := pa.apply(st, now)
 		lane.Stage = StageDiscarded
 		st.Lanes[i] = lane
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "discard",
 			Note: discardNote(*st, lane, did)})
 		st.UpdatedAt = now
+		releaseOnDiscard(repoRoot, st, lane.ID, now, &released)
 		res = laneResult(*st, lane, "", nil)
+		res.AcceptedConfigChange, res.Bundle = accepted, bundle
+		afterAccept = pa
 		return true, nil
 	})
+	res.Released = released
+	if err == nil {
+		err = afterAccept.failed()
+	}
 	g.record()
 	if note := g.recordNote(); note != "" {
 		if r, ok := AsRefusal(err); ok {
