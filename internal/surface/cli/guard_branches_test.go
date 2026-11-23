@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -228,5 +229,60 @@ func TestWorktreeStoreAddRecordsItsBranch(t *testing.T) {
 		if s, ok := by[name]; !ok || s != "sess-maker" {
 			t.Errorf("the store's add verb did not record %s with its session: %+v", name, got)
 		}
+	}
+}
+
+// addedBranchSessions is root copy's created-branch list, name to session.
+func addedBranchSessions(t *testing.T, root string) map[string]string {
+	t.Helper()
+	got, err := awayStore(t, root).CreatedBranches(claim.OwnCopyKey(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]string{}
+	for _, b := range got {
+		by[b.Name] = b.Session
+	}
+	return by
+}
+
+// TestWorktreeStoreAddRecordsWithNoSession (iss-2611211734561033): with no
+// host session in the environment, the store's add verb still records its
+// branch, with no session, which the stop check reads as a record that says
+// nothing of whose the branch is.
+func TestWorktreeStoreAddRecordsWithNoSession(t *testing.T) {
+	root := awayCheckout(t)
+	t.Setenv(hostSessionIDEnv, "")
+	if text, code := runWorktree(t, false, "add", "feat-anon"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, text)
+	}
+	if s, ok := addedBranchSessions(t, root)["feat-anon"]; !ok || s != "" {
+		t.Fatalf("the branch is recorded with no session: present %v, session %q", ok, s)
+	}
+}
+
+// TestWorktreeStoreAddRecordsWhenTheHookFails (iss-2611211734561033): a
+// post-checkout hook that fails after git made the worktree leaves it
+// standing, and the verb refuses saying so; the branch it made is recorded
+// all the same, with the session, so its work is owed to that session.
+func TestWorktreeStoreAddRecordsWhenTheHookFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX hook script")
+	}
+	root := awayCheckout(t)
+	t.Setenv(hostSessionIDEnv, "sess-maker")
+	hooks := gitAt(t, root, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	text, code := runWorktree(t, false, "add", "feat-hooked")
+	if code != 2 || !strings.Contains(text, "stands") {
+		t.Fatalf("a failing hook after git made the worktree is a refusal saying it stands: exit %d\n%s", code, text)
+	}
+	if s, ok := addedBranchSessions(t, root)["feat-hooked"]; !ok || s != "sess-maker" {
+		t.Fatalf("the branch made before the hook failed is recorded with its session: present %v, session %q", ok, s)
 	}
 }

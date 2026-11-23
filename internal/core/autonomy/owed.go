@@ -74,10 +74,11 @@ type OwedItem struct {
 	Live *LiveWork `json:"live,omitempty"`
 	// Unclaimed marks a branch's item that is owed only if this session made
 	// the branch (iss-2611211734561033): no record names the session that
-	// did, it is checked out in a worktree outside the store, and another
-	// live session works in this copy. The stop then names no push or queue
-	// for it, and says a branch this session did not make is a peer's, to be
-	// left untouched. Nor is it part of the item's identity.
+	// did, it is not checked out in a store worktree, and another live
+	// session works in this copy. The stop then says so, tells the session
+	// that made it how to push it or queue the push, and says a branch this
+	// session did not make is a peer's, to be left untouched. Nor is it part
+	// of the item's identity.
 	Unclaimed bool `json:"unclaimed,omitempty"`
 }
 
