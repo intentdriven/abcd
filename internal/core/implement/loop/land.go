@@ -2957,7 +2957,9 @@ func recordOwnReview(c Context, lane Lane, roots layered.Roots, tip, tipName str
 }
 
 // failedRecordsRound says which verdict the round that read the lane's records commit
-// gave, "" when that round passed or there was none.
+// gave, "" when that round passed or there was none. Its first finding is
+// quoted from the return as the loop recorded the verdict from it
+// (recordedReturn); a return changed since is not quoted.
 func failedRecordsRound(c Context, lane Lane) string {
 	n := len(lane.Validation)
 	if n == 0 || !lane.readsRecords(lane.Validation[n-1]) {
@@ -2966,7 +2968,7 @@ func failedRecordsRound(c Context, lane Lane) string {
 	r := lane.Validation[n-1]
 	for _, v := range r.Validators {
 		if !v.Pass {
-			text, err := readReturn(c.RepoRoot, v.Return, lane.ID)
+			text, err := recordedReturn(c.RepoRoot, lane, v)
 			finding := ""
 			if err == nil {
 				finding = firstFinding(string(text))
