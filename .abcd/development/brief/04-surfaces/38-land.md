@@ -75,7 +75,8 @@ bound: the refusal says so and gives the push to run by hand.
    Otherwise `make preflight` runs in the branch's checkout. It is run
    directly, never wrapped in a second load wait, because the target already
    waits on the machine's load waiter. After it the head must be
-   unchanged, a receipt must name it, and `origin`'s fetch and push URLs must
+   unchanged, a receipt must name it (one outside the lanes, or, when land runs
+   from inside a lane, the one in that checkout itself), and `origin`'s fetch and push URLs must
    read exactly as they were checked: the preflight is the branch's own and
    could add a push URL or a `pushInsteadOf`. A repository whose make file declares
    no `preflight` target has no gate that mints a receipt, and gets no push.

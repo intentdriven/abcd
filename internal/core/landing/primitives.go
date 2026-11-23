@@ -89,6 +89,27 @@ func ReceiptOutsideLanesContext(ctx context.Context, repoRoot, sha string) (stri
 	return firstReceipt(outsideLanes(repoRoot)(findReceiptsContext(ctx, repoRoot, ReceiptsRelDir, sha)))
 }
 
+// ownReceipt is the preflight receipt for sha standing in the local tier of
+// the checkout at dir itself, found and judged as Receipt finds and judges
+// one, or "" when that checkout holds none: what a preflight run there mints.
+func ownReceipt(dir, sha string) (string, error) {
+	found, err := findReceipts(dir, ReceiptsRelDir, sha)
+	if err != nil {
+		return "", err
+	}
+	want := fsutil.RealExistingPath(filepath.Join(dir, filepath.FromSlash(ReceiptsRelDir), sha))
+	for _, f := range found {
+		if fsutil.RealExistingPath(f.path) != want {
+			continue
+		}
+		if f.err != nil {
+			return "", f.err
+		}
+		return f.path, nil
+	}
+	return "", nil
+}
+
 // outsideLanes marks each receipt found in a drive lane's worktree, or every
 // one when repoRoot is in a lane, as one passed over.
 func outsideLanes(repoRoot string) func([]foundReceipt, error) ([]foundReceipt, error) {

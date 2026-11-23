@@ -91,7 +91,8 @@ that name with none at this head, since the proof may lie past the bound.
    (none counts when `abcd land` runs from inside a lane). Otherwise `make
    preflight` runs in the branch's checkout (it waits on the machine's load
    itself), its output on stderr, and the head must be unchanged and a receipt
-   present after it, and `origin`'s URLs exactly as they were checked (the
+   present after it (outside the lanes, or, run from inside a lane, in that
+   checkout itself), and `origin`'s URLs exactly as they were checked (the
    branch's own preflight could add a push URL or a `pushInsteadOf`). A
    repository whose make file declares no `preflight` target gets no push. The receipt is a convenience check, not a security
    boundary: CI re-runs every gate on the pushed commit.

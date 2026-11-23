@@ -52,3 +52,20 @@ func TestAPreflightReceiptInsideALaneCountsForNothingFromIt(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAPassedPreflightIsNotVouchedForByALanesReceipt: when the preflight land
+// runs passes but mints nothing, a receipt for the head standing only in a
+// drive lane's worktree does not stand in for it, and nothing is pushed.
+func TestAPassedPreflightIsNotVouchedForByALanesReceipt(t *testing.T) {
+	f := newFixture(t, "")
+	lane := addWorktree(t, f, driveLaneDir)
+	f.gate = func(string) error {
+		// passes, and a receipt appears only in the lane
+		return f.mint(lane)
+	}
+	_, err := f.land(f.options())
+	wantRefusal(t, err, "receipt")
+	if len(f.pushes()) != 0 {
+		t.Fatalf("pushed %v", f.pushes())
+	}
+}
