@@ -27,6 +27,19 @@ switchable in `~/.abcd.noindex/statusline.json` as `merging`, like the row's
 other elements. It reaches the host only through the status line the person
 consented to at install; nothing else in the host's settings calls abcd.
 
+While the mode is `auto`, read the same way (the default branch's committed
+copy and the machine layer, git only, inside the prompt hook's one deadline),
+every prompt also gives the session one line beside the away block, whether
+or not the person is away, outside the rules loader's dedup ledger: the
+technical facilitator is on auto, so a technical question is decided and
+recorded with `abcd decide` and not asked, and finished work does not wait for
+a person to read it; an act a command page reserves to the person is still
+theirs, and waits for them holding back nothing else (dcn-2611070734169709,
+iss-2611211700231699). The line grants nothing: the question gate, the stop
+check and the acts the guard keeps for the person read the away record as
+before, and a setting that cannot be read sends no line and is named on
+stderr. Only a checkout abcd manages hears it.
+
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's

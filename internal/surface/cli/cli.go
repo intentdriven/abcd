@@ -2009,6 +2009,13 @@ outside the dedup ledger.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
+			// The facilitator line (iss-2611211700231699): while
+			// facilitator.mode is auto, as the status line reads it, one
+			// line beside the away block saying what that means, on every
+			// prompt and inside the hook's one deadline.
+			facCtx, facCancel := context.WithDeadline(context.Background(), deadline)
+			away.Block = joinBlocks(away.Block, promptFacilitatorLine(facCtx, cmd.ErrOrStderr(), root))
+			facCancel()
 			// The checklist's behind note a present session's last stop left
 			// (spc-2610230805429429 step 4), carried once, beside the away
 			// block and outside the dedup ledger.

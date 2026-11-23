@@ -277,8 +277,8 @@ type rulesPromptView struct {
 	Unreadable []recall.Refusal    `json:"unreadable"`
 }
 
-// promptReserved is the bytes the away block takes off the turn's budget before
-// the rules, read as the hook reads it. The status block the hook also reads
+// promptReserved is the bytes the away block, and the facilitator line beside
+// it, take off the turn's budget before the rules, read as the hook reads them. The status block the hook also reads
 // first is left out: reading it takes in the status branches, which writes the
 // local tier, and this diagnostic writes nothing. An unmanaged checkout holds no
 // away record, and a drive's stage reads none, so the root commit is not looked
@@ -294,7 +294,10 @@ func promptReserved(stderr io.Writer, root string, here recall.RootFunc) int {
 		diagnosticLine(stderr, "abcd mode: this repository's root commit: %s; the away record was not read, so nothing is reserved for it",
 			fsutil.RedactHome(err.Error()))
 	}
-	return len(readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block)
+	away := readPromptAway(stderr, rootLookup{sha: sha, err: err, asked: true}, root).Block
+	ctx, cancel := context.WithTimeout(context.Background(), hookBudget)
+	defer cancel()
+	return len(joinBlocks(away, promptFacilitatorLine(ctx, stderr, root)))
 }
 
 // rulesPrompt answers `rules --prompt "<text>"`: what that one prompt brings

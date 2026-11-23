@@ -99,6 +99,17 @@ named, and nothing is written. The state lives per checkout at
 one the set form refuses (exit 2) and creates nothing — say so, and point at
 `/abcd:ahoy install` if the user wanted this repository managed.
 
+## The technical facilitator on auto
+
+While the repository's `facilitator.mode` is `auto` (the merge gate's
+setting, read from the default branch and this machine, never from your
+working tree), every prompt carries one line saying so, whether or not the
+person is away. Act on it: decide a technical question and record it with
+`abcd decide` instead of asking it, and do not hold finished work for a person
+to read. An act a command page reserves to the person is still theirs: it
+waits for them and holds back nothing else, so carry on with the rest. The
+line grants nothing a standing instruction does not.
+
 ## The away mode — `autonomous`, `queue`, `back`
 
 The person's word that they are away and sessions should work on until they
