@@ -42,11 +42,53 @@ import (
 // cloneStore is where a repository's matrix copies are cloned: the account's
 // abcd home, under matrix/<root-sha>/, beside the worktree store and like it
 // outside every checkout (adr-2610031751065746).
-func cloneStore(home, rootSHA string) string { return abcdhome.Path(home, "matrix", rootSHA) }
+func cloneStore(home, rootSHA string) string { return abcdhome.Path(home, matrixDir, rootSHA) }
+
+// matrixDir is the folder in the account's abcd home every repository's clone
+// store sits in.
+const matrixDir = "matrix"
+
+// CloneStores is the folder every repository's clone store sits in, as a
+// person reads it: under the account's abcd home, spelled from the home
+// directory.
+func CloneStores() string { return abcdhome.Display(matrixDir) }
 
 // cloneDir is the clone of run's copy made under alias, in store: the run's id
 // and the alias, and nothing of the copy's task or cell.
 func cloneDir(store, run, alias string) string { return filepath.Join(store, run, alias) }
+
+// ErrNotACopyClone is CopyClone's refusal of a directory that is not a copy's
+// clone in the clone store.
+var ErrNotACopyClone = errors.New("not a model-matrix copy's clone in the clone store")
+
+// CopyClone refuses dir unless it is a copy's clone in the clone store under
+// home, the account's home directory: exactly cloneDir(cloneStore(home,
+// <root-sha>), <run>, <alias>), each part of its own shape. Both the store and
+// dir are read through their symbolic links, so a link into the store names
+// the clone it leads to and a link out of it names where it leads. A store
+// that does not stand holds no clone.
+func CopyClone(home, dir string) error {
+	if !filepath.IsAbs(home) {
+		return fmt.Errorf("%w: the home directory is not an absolute path", ErrNotACopyClone)
+	}
+	stores, err := filepath.EvalSymlinks(abcdhome.Path(home, matrixDir))
+	if err != nil {
+		return fmt.Errorf("%w: no clone store stands", ErrNotACopyClone)
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return fmt.Errorf("%w: the directory could not be read", ErrNotACopyClone)
+	}
+	rel, err := filepath.Rel(stores, real)
+	if err != nil {
+		return ErrNotACopyClone
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 3 || !gitutil.IsFullSHA(parts[0]) || !runIDRe.MatchString(parts[1]) || !aliasRe.MatchString(parts[2]) {
+		return ErrNotACopyClone
+	}
+	return nil
+}
 
 // copyAlias is a copy's alias as the run's state records it: the one name its
 // clone is made under, and so the one name the copy is shown of which copy it

@@ -15,16 +15,19 @@ package loop
 // cell's (cellFailed), and no role of a trial is ever released to the host.
 //
 // A trial runs in its copy's own clone of the frozen commit
-// (internal/core/matrix), never in the person's checkout: its start names the
-// frozen commit, which must be the checkout's head, and every lane is cut
-// from it, so no copy starts anywhere else and no copy's lanes share another
-// copy's refs. A trial builds one spec step: a step that needs another would
+// (internal/core/matrix), never in the person's checkout: its start and every
+// lane it cuts refuse a checkout that is not a copy's clone in the clone store
+// (trialInCopyClone), its start names the frozen commit, which must be the
+// checkout's head, and every lane is cut from it, so no copy starts anywhere
+// else and no copy's lanes share another copy's refs. A trial builds one spec step: a step that needs another would
 // be cut from a commit that lacks it, since a trial lands nothing.
 
 import (
 	"fmt"
 	"os"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/matrix"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -95,6 +98,9 @@ func trialFrozen(repoRoot string, o Options) error {
 		return refuse(StageTrial, "", "", "a trial names the full id of its frozen commit, which every lane is cut from, and this one names "+
 			quoteOrNone(shortSHA(o.Frozen)), "start the trial with its frozen commit's full id; nothing was written")
 	}
+	if err := trialInCopyClone(repoRoot); err != nil {
+		return notInCopyClone(StageTrial, "", err, "start the trial in the copy's clone the model matrix made for it; nothing was written")
+	}
 	head, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--")
 	if err != nil || head != o.Frozen {
 		return refuse(StageTrial, "", "", fmt.Sprintf("a trial runs in its copy's clone, checked out at its frozen commit %s, and this checkout's head is %s",
@@ -113,8 +119,13 @@ func trialSteps(chk CheckResult) error {
 }
 
 // trialBase is the commit a trial's lane is cut from: its frozen commit, as
-// the run's state records it and the checkout holds it.
+// the run's state records it and the checkout holds it. The checkout must be
+// a copy's clone in the clone store, as the trial's start found it, so a
+// trial's state in any other checkout cuts no lane there.
 func trialBase(c Context, laneID string) (string, error) {
+	if err := trialInCopyClone(c.RepoRoot); err != nil {
+		return "", notInCopyClone(string(StageWorktree), laneID, err, "run the trial in the copy's clone the model matrix made for it; no lane was cut")
+	}
 	frozen := c.State.Frozen
 	if !gitutil.IsFullSHA(frozen) {
 		return "", refuse(string(StageWorktree), "", laneID, "the trial records no frozen commit to cut the lane from",
@@ -126,4 +137,23 @@ func trialBase(c Context, laneID string) (string, error) {
 			"start the trial in the copy's clone of its frozen commit")
 	}
 	return base, nil
+}
+
+// trialInCopyClone refuses a trial's checkout at repoRoot unless it is a
+// model-matrix copy's clone in the clone store under the account's abcd home
+// (matrix.CopyClone): the one place a copy's clone is made, after its
+// admission. A test names its own judge.
+var trialInCopyClone = func(repoRoot string) error {
+	home, err := abcdhome.MachineHome()
+	if err != nil {
+		return err
+	}
+	return matrix.CopyClone(home, repoRoot)
+}
+
+// notInCopyClone is a trial's refusal of a checkout trialInCopyClone refuses,
+// at stage, for lane ("" at the start).
+func notInCopyClone(stage, lane string, err error, remedy string) error {
+	return refuse(stage, "", lane, "a trial runs only in a model-matrix copy's clone, in the clone store under "+matrix.CloneStores()+
+		", and this checkout is not one ("+fsutil.RedactHome(err.Error())+")", remedy)
 }

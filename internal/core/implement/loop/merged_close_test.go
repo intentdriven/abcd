@@ -431,6 +431,7 @@ func TestADrainOrATrialStartClosesNothing(t *testing.T) {
 		}},
 		{"a trial's start", func(t *testing.T, f *landFixture) Options {
 			editState(t, f.repo.Root(), f.runID, func(doc map[string]any) { doc["trial"] = true })
+			standInClone(t, f.repo.Root())
 			head := strings.TrimSpace(f.repo.Git("rev-parse", "HEAD"))
 			return Options{noReserve: true, Trial: true, Frozen: head}
 		}},

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/matrix"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -24,6 +26,7 @@ import (
 func TestATrialRunTakesNoReservation(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
 	bare := onOrigin(t, repo)
+	standInClone(t, repo.Root())
 
 	frozen := repo.Git("rev-parse", "HEAD")
 	res, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: frozen})
@@ -75,6 +78,7 @@ func TestATrialRunTakesNoReservation(t *testing.T) {
 // one intent are different runs, so neither start resumes the other's.
 func TestATrialRunIsNeverResumedAsABuildNorABuildAsATrial(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	standInClone(t, repo.Root())
 	trial, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: repo.Git("rev-parse", "HEAD")})
 	if err != nil {
 		t.Fatal(err)
@@ -280,13 +284,50 @@ func TestATrialStoppedMidLaunchIsNotTheCellsFailure(t *testing.T) {
 	}
 }
 
+// standInClone lets a trial start and cut its lanes in the fixture checkout
+// at root as though it were a copy's clone in the clone store, for a test
+// whose subject is not where a trial runs; every other checkout is judged as
+// before. The judge is restored when the test ends.
+func standInClone(t *testing.T, root string) {
+	t.Helper()
+	prev := trialInCopyClone
+	want, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trialInCopyClone = func(repoRoot string) error {
+		if p, err := filepath.EvalSymlinks(repoRoot); err == nil && p == want {
+			return nil
+		}
+		return prev(repoRoot)
+	}
+	t.Cleanup(func() { trialInCopyClone = prev })
+}
+
+// cloneStoreHome is a home directory of the test's own whose clone store a
+// trial's checkout is judged against, in place of the account's.
+func cloneStoreHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	prev := trialInCopyClone
+	trialInCopyClone = func(repoRoot string) error { return matrix.CopyClone(home, repoRoot) }
+	t.Cleanup(func() { trialInCopyClone = prev })
+	return home
+}
+
 // trialClone is a copy's clone of src's head, as the model matrix makes one:
-// a fresh repository holding that commit alone on a detached HEAD, with no
+// a fresh repository in the clone store under a home of the test's own
+// (cloneStoreHome), holding that commit alone on a detached HEAD, with no
 // branch, tag or remote, given the empty local tier the run lives in.
 func trialClone(t *testing.T, src *gittest.Repo) (*gittest.Repo, string) {
 	t.Helper()
 	frozen := src.Git("rev-parse", "HEAD")
-	c := gittest.NewRepo(t)
+	home := cloneStoreHome(t)
+	dir := abcdhome.Path(home, "matrix", gittest.RootCommit(t, src.Root()), "mx-261123000000-ab12", "copy_"+strings.Repeat("5a", 16))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c := gittest.NewRepoAt(t, dir)
 	c.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
 	c.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
 	if err := os.MkdirAll(filepath.Join(c.Root(), filepath.FromSlash(TierRelDir)), 0o700); err != nil {
@@ -327,6 +368,7 @@ func TestATrialLaneIsCutFromTheFrozenCommit(t *testing.T) {
 // Nothing is written.
 func TestATrialStartNamesItsFrozenCommit(t *testing.T) {
 	src := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	standInClone(t, src.Root())
 	head := src.Git("rev-parse", "HEAD")
 	other := strings.Repeat("a", len(head))
 	for name, o := range map[string]Options{
@@ -343,10 +385,78 @@ func TestATrialStartNamesItsFrozenCommit(t *testing.T) {
 	}
 	t.Run("a spec of several steps", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. First\n2. Second\n"))
+		standInClone(t, repo.Root())
 		_, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: repo.Git("rev-parse", "HEAD")})
 		if r := mustRefusal(t, err); !strings.Contains(r.Reason, "one step") {
 			t.Fatalf("the refusal says a trial builds one step: %+v", r)
 		}
 		runTierAbsent(t, repo.Root())
 	})
+}
+
+// TestATrialRunsOnlyInACopysClone: a trial whose checkout's head is its frozen
+// commit is still refused unless the checkout is a copy's clone in the clone
+// store: the person's own checkout, a clone of the frozen commit kept anywhere
+// else, and a directory of the store's shape under another folder are refused,
+// naming the clone store, and nothing is written.
+func TestATrialRunsOnlyInACopysClone(t *testing.T) {
+	src := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	home := cloneStoreHome(t)
+	elsewhere := gittest.NewRepo(t)
+	frozen := src.Git("rev-parse", "HEAD")
+	elsewhere.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
+	elsewhere.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+	shaped := filepath.Join(home, "elsewhere", gittest.RootCommit(t, src.Root()), "mx-261123000000-ab12", "copy_"+strings.Repeat("5a", 16))
+	if err := os.MkdirAll(shaped, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	misplaced := gittest.NewRepoAt(t, shaped)
+	misplaced.Git("fetch", "-q", "--no-tags", "--depth=1", src.Root(), frozen)
+	misplaced.Git("-c", "advice.detachedHead=false", "checkout", "-q", "--detach", frozen)
+	for _, c := range []*gittest.Repo{elsewhere, misplaced} {
+		if err := os.MkdirAll(filepath.Join(c.Root(), filepath.FromSlash(TierRelDir)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, root := range map[string]string{
+		"the person's own checkout":      src.Root(),
+		"a clone outside the store":      elsewhere.Root(),
+		"a store-shaped path outside it": misplaced.Root(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Start(root, "itd-10", Options{Trial: true, Frozen: frozen})
+			if r := mustRefusal(t, err); !strings.Contains(r.Reason, "clone store") {
+				t.Fatalf("the refusal says a trial runs in a copy's clone in the clone store: %+v", r)
+			}
+			runTierAbsent(t, root)
+		})
+	}
+}
+
+// TestATrialLaneIsCutOnlyInACopysClone: a trial run's lane is cut only in a
+// copy's clone in the clone store, so a trial's state found in any other
+// checkout cuts no lane there.
+func TestATrialLaneIsCutOnlyInACopysClone(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	cloneStoreHome(t)
+	frozen := repo.Git("rev-parse", "HEAD")
+	prev := trialInCopyClone
+	standInClone(t, repo.Root())
+	res, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: frozen})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trialInCopyClone = prev
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lane := st.Lanes[0]
+	_, err = worktreeStage(Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}, &lane)
+	if r := worktreeRefused(t, err, "clone store"); r == nil {
+		t.Fatal("no refusal")
+	}
+	if lane.BaseSHA != "" {
+		t.Fatalf("no lane is cut outside a copy's clone: %+v", lane)
+	}
 }

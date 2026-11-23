@@ -126,8 +126,9 @@ type Options struct {
 	// nothing. A trial resumes only a trial, and a build never resumes one.
 	Trial bool
 	// Frozen is a trial's frozen commit, the one every lane of the run is cut
-	// from: the full id of the checkout's head, its copy's clone. Only a trial
-	// names one.
+	// from: the full id of the checkout's head, its copy's clone in the clone
+	// store, which is the only checkout a trial runs in. Only a trial names
+	// one.
 	Frozen string
 
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
