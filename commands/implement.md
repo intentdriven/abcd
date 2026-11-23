@@ -559,7 +559,11 @@ receipt without one is refused), and an optional `resolves` list naming each cap
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
 the report exists, and each fixed capture names one of the receipt's commits and
-an impact; any other field, a verdict included, refuses it. The `model` carries
+an impact; any other field, a verdict included, refuses it. A fixed capture
+that is not the run's own issue must be open at the lane's head, and not
+reserved by another holder as last fetched, or `receipt` refuses naming it: a
+capture another holder reserves is theirs to resolve, and the landing refuses
+to resolve one another holder has reserved since the receipt. The `model` carries
 no control, bidi or zero-width character, and a fixed capture's `note` and
 `grounds` none but a line break or a tab, or `receipt` refuses naming the field
 without quoting it.

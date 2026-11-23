@@ -580,8 +580,8 @@ The curated release artefact is the only abcd artefact that carries a semantic
 version. Versions are an *output* of cutting a release, never a sequencing input
 on the design record: the repo organises work by **phase** (see
 [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md)), and a release
-number is what falls out when a stretch of that work is published. The brief,
-intents and roadmap carry no version label.
+number is what falls out when a stretch of that work is published. The brief
+and intents carry no version label.
 
 Versioning is **strict SemVer**: the version string is `MAJOR.MINOR.PATCH` with
 no leading `v` at the selected version location, and the release's git tag is

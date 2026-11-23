@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // sessionNoteTTL bounds how long a session→store note is kept. A note is a
@@ -118,7 +119,7 @@ func sessionsDirReal(repoRoot, rootSHA string) (string, error) {
 // by the one that sometimes cannot. Writing it is best-effort by construction:
 // a failure here degrades a fallback, never a capture.
 func NoteSessionRepo(repoRoot, rootSHA, sessionID string) error {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
 	if !safeIDSegment(sessionID) {
@@ -183,7 +184,7 @@ func SessionRepo(sessionID string) (string, error) {
 	}
 	var found []string
 	for _, e := range entries {
-		if !e.IsDir() || !rootSHARe.MatchString(e.Name()) {
+		if !e.IsDir() || !gitutil.IsFullSHA(e.Name()) {
 			continue
 		}
 		note := filepath.Join(root, e.Name(), "sessions", sessionID)
@@ -228,7 +229,7 @@ func gapNotePath(repoRoot, rootSHA string) (string, error) {
 // moves LastSeen and the count, so a reader can tell a harness that has never
 // delivered the field from one that stopped, or started.
 func NoteSubagentGap(repoRoot, rootSHA, event string) error {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
 	path, err := gapNotePath(repoRoot, rootSHA)

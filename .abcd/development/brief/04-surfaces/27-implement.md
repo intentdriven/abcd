@@ -750,7 +750,11 @@ named origin has no reservations and is not held.
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
 record with its remedy as the work; its receipt must declare the issue fixed,
-and the landing resolves it with the commit the receipt names. Its receipt may
+and the landing resolves it with the commit the receipt names. A receipt may
+also declare fixed another capture the lane fixed on the way, which the
+landing resolves too, but only one open at the lane's head and not reserved by
+another holder: the receipt refuses such a capture naming it, and the landing
+refuses one another holder reserved since. Its receipt may
 instead hand the issue back, naming the kind of decision the lane found, the
 reason and, for a design finding or a second package, the home: the receipt
 verb then discards the lane's worktree and branch, records the discarded head,

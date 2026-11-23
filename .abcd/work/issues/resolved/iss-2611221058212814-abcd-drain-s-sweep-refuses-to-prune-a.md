@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/ahoy/worktree/notes.go:185"
 remedy: "Teach the notes archive abcd's own binary local-tier files, starting with reservation/generated: skip them, or copy them verbatim outside the redaction pass, instead of refusing the whole archive and keeping the worktree."
 refines: [iss-2611181412255215]
+resolution: "the notes archive leaves out the generated-set cache, the only abcd-written binary file in the tier, so the sweep's prune no longer fails its reclaim on it"
+impact: fix
+resolved_by:
+  commit: "d42109c66"
 ---
 
 abcd drain's sweep refuses to prune a worktree whose local tier holds .abcd/.work.local/reservation/generated, with 'the notes could not be archived: reservation/generated: not text, which the redaction pass cannot vouch for'. abcd writes that 160-byte file itself, the generated-set cache (internal/core/claim/generatedcache.go), and its fields are NUL-separated by design. The notes archive's only exemption for binary bytes is the built binary (isBuildProduct), so it refuses any worktree holding the cache; c-step3-1115 was kept this way during the 22 Nov clean-up.

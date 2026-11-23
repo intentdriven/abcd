@@ -711,11 +711,40 @@ const retiredFourthConditionSentence = "Items come back unordered and unweighted
 // guard-lessons block generated from the shell guard's registry, outside the
 // blindness core, which restates the rm the guard refuses for a sub-agent the
 // session's shell rules never reach.
+//
+// The comparative definition moved PATCH alone with iss-2609022226104492: its
+// item shape asks for the declared criterion's name alone, which is what the
+// ingest matches, where it had asked for the criterion quoted whole.
 var promptVersions = map[Position]string{
 	PositionWidening:    "0.2.4",
 	PositionEntailment:  "0.1.4",
-	PositionComparative: "0.1.4",
+	PositionComparative: "0.1.5",
 	PositionDetection:   "0.1.5",
+}
+
+// TestComparativeItemShapeAsksForTheCriterionNameAlone is iss-2609022226104492.
+// The criteria discipline declares each criterion as a name, a dash and a gloss
+// on one line, and the ingest's undeclared-criterion check matches the name
+// alone (declaredCriteria keeps the text before the dash). An item shape that
+// asks for the criterion "quoted from the passed material" has a reader return
+// the whole line, and the run is refused whole.
+func TestComparativeItemShapeAsksForTheCriterionNameAlone(t *testing.T) {
+	root := repoRoot(t)
+	shape := flatten(section(t, PositionComparative, definitionText(t, root, PositionComparative), "Item shape"))
+	if strings.Contains(shape, "quoted from the passed material") {
+		t.Errorf("the comparative item shape still asks for the criterion quoted from the passed "+
+			"material, which is the whole declared line and names no declared criterion:\n%s", shape)
+	}
+	for _, want := range []string{
+		"a name, a dash and a gloss",
+		"the declared criterion's name alone",
+		"not the gloss",
+	} {
+		if !strings.Contains(shape, want) {
+			t.Errorf("the comparative item shape does not say %q; the ingest matches the declared "+
+				"name alone:\n%s", want, shape)
+		}
+	}
 }
 
 // TestDetectionItemShapeCitesAConditionIdentity is spc-2609020626046252's

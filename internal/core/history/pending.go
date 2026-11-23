@@ -37,6 +37,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // pendingDirName is the machine-level directory, under the user-level store
@@ -389,7 +390,7 @@ func placeTarget(p Pending, resolve RepoResolver) (repoRoot, rootSHA, via, why s
 		cwdErr = errors.New("nothing was given to resolve its working directory")
 	default:
 		cwdRoot, cwdSHA, cwdErr = resolve(p.Cwd)
-		if cwdErr == nil && !rootSHARe.MatchString(cwdSHA) {
+		if cwdErr == nil && !gitutil.IsFullSHA(cwdSHA) {
 			cwdErr = fmt.Errorf("its working directory is %w", ErrNoRepository)
 		}
 	}

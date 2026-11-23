@@ -600,6 +600,7 @@ intent names, and is not a build step._
    - needs: none
    - packages: internal/core/extent
    - tests: internal/core/extent/extent_test.go: the four verdicts in their order from fixtures of findings and gaps, with `none` for a run that looked at no registry kind (none armed, nothing to read, none readable), and no `verdict` member for a command with no clear state; a reason, a cause or a source outside its set fails to encode; a kind in both lists fails to encode; a depth entry encodes its three values with where each came from, and the marks `not_told` and `none_asked`; the golden file of reasons and causes refuses a rename and admits an addition. internal/core/extent/render_test.go: the `Looked at:` line on every verdict; `Left out in this run:` with each cause on every verdict that has such an entry; `Known not looked at:` with its label on the two clear verdicts and on neither `found` nor `none`; one count of checks per reason and no line when there is no gap; one `Judged by:` line for each depth entry; the summary line for `clear_except_gaps`; the line that says nothing was checked, and why, for `none`, for an empty registry and for a statement with no `verdict` member that looked at no kind; `Looked at: nothing`; a `Could not check:` line that names no flag and is followed by every gap
+   - landed: 9ab518853
 2. The declaration, the facts, help and the lists
    - criteria: 13, 15, 21, 22, 23, 24, 25, 26, 27
    - needs: 1

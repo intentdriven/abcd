@@ -24,6 +24,16 @@ import (
 // RelDir is the local tier, relative to a checkout's root.
 const RelDir = ".abcd/.work.local"
 
+// The generated-set cache the reservation views keep (internal/core/claim):
+// GeneratedSetRel is its path, relative to a checkout's root, and
+// GeneratedSetMagic is its first field, ended by a NUL as every field in it
+// is. The cache is abcd's own, re-derived by the next read, so the worktree
+// store's notes archive leaves out a file at that path that opens with them.
+const (
+	GeneratedSetRel   = RelDir + "/reservation/generated"
+	GeneratedSetMagic = "abcd generated set"
+)
+
 // Refused is Untracked's refusal: git tracks something at or beneath Rel, or
 // something that reaches the tier (Paths, the first few of them), or git could
 // not say whether it does (Cause), which is never read as "nothing tracked".

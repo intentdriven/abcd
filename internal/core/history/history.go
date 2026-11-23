@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // recordSchemaVersion is the frontmatter schema stamped into every record.
@@ -310,7 +311,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 // the settled labels, the lineage, and the store's records directory.
 func prepareCapture(repoRoot, rootSHA string, meta CaptureMeta) (CaptureMeta, string, error) {
 	// Boundary validation — external inputs.
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return meta, "", errors.New(rootSHAErrMsg)
 	}
 	// The labels are settled before they are judged: a pre-split fused kind is

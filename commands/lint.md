@@ -193,8 +193,11 @@ one who has. It writes nothing except that render, and reaches no network.
   because it has neither an identity block abcd wrote nor a GitHub origin to
   name it, fails here too. A gate whose `--project` and `.abcd/site.json`
   disagree is refused, both ways.
-- `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
-  block, read through the same parser the positioning surfaces use.
+- `hero` — the rendered hero's eyebrow (the headline: the name and its
+  descriptor; with no descriptor, the name and the title; with neither a
+  descriptor nor a name, the title alone), tagline, purpose and pitch equal
+  the Identity block, read through the same parser the positioning surfaces
+  use.
 - `banned-tokens` — the documentation lint's banned tokens, over the text every
   composed surface publishes, whichever tree the span came from. The escape is
   read source-side: a token is exempt where the source line it was selected from
@@ -261,15 +264,19 @@ overwrites.
 
 emits `{ "block": …, "severity": …, "surfaces": [ … ] }`:
 
-- `block` — the canonical `title`, `tagline`, and optional `pitch`, plus the
-  `file` and `line` they are recorded at.
+- `block` — the canonical `title` and `tagline`, the optional `name`,
+  `descriptor`, `purpose`, `pitch`, and `listing`, and the `file` and `line`
+  they are recorded at.
 - `severity` — the family's weight, `warn` (the default) or `blocker`.
 - `surfaces` — one entry per registered surface: its `id`, the `file` and `line`
   checked, and a `status` of `ok`, `drifted`, `absent` (no such file in this
   repo — not a fault), or `unlocatable` (the file is there but the locator
   matches nothing, so drift would go unseen). A `drifted` entry carries `found`
   (the exact text the surface says), `missing` (which block fields it no longer
-  carries), and `canonical` (what the block says it should).
+  carries), and `canonical` (what the block says it should). A surface whose
+  quoted string does not decode in its format is `drifted` with a `reason`
+  saying so instead of a `missing` list: its words are never compared, so it
+  never reads `ok`.
 
 Report the block first, then any surface that is not `ok`, naming the file, the
 line, what it says, and what the block says. It exits `0` even when it reports

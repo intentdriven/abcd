@@ -46,7 +46,7 @@ var delimiterSites = map[string]delimiterSite{
 	"internal/core/matrix/udiff.go":              {1, "a WRITER: a unified diff's `--- ` file header; not frontmatter"},
 	"internal/core/lint/subverbs.go":             {1, "a markdown TABLE's separator row (`|---|`), not a frontmatter delimiter"},
 	"internal/core/implement/loop/brief.go":      {1, "a WRITER: the lane brief's thematic break above the intent section, in the body; not frontmatter"},
-	"internal/core/implement/loop/issuebrief.go": {1, "a WRITER: the issue lane brief's thematic break above the issue section, in the body; not frontmatter"},
+	"internal/core/implement/loop/issuebrief.go": {2, "a WRITER: the issue lane brief's and the bundle brief's thematic break above the issue sections, in the body; not frontmatter"},
 	"internal/core/embargo/close.go":             {1, "a WRITER: the thematic break a closed advisory's GitHub description carries between the approved closing text and the reporter's own; not frontmatter, and the read-back compares the approved text, never the break"},
 	"internal/core/guard/script.go":              {1, "a shell ARGUMENT, not a line: ksh93 runs a word opening with three dashes as its script, and parseShellCall reads it as one"},
 	"internal/core/guard/payload.go":             {1, "a shell ARGUMENT, not a line: ksh93 runs a word opening with three dashes as its script, and the stream reading reads it as one"},

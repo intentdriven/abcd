@@ -111,7 +111,7 @@ func Widen(repoRoot, runID, laneID string, paths []string, o Options) (WidenResu
 		if err != nil {
 			return false, err
 		}
-		if st.ReservedAt == nil {
+		if !st.holdsAny() {
 			res.Note = runID + " holds no reservation, so there is nothing to widen"
 			return false, nil
 		}
@@ -461,7 +461,7 @@ func widenLaneChanges(c Context, lane Lane) laneHold {
 // show this copy holding (the land fence's to settle), give none. The record's lines go to c.widened.
 func receiptHoldGaps(c Context, lane Lane) []string {
 	st := c.State
-	if st.ReservedAt == nil {
+	if !st.holdsAny() {
 		return nil
 	}
 	h := widenLaneChanges(c, lane)
@@ -515,7 +515,7 @@ var validatorsAct = fenceAct{not: "go on to its validators", none: "no validator
 // was missing, and the land fence refuses the push on it, so the validators
 // are not held back on a reading the landing makes again.
 func holdBeforeValidators(c Context, lane Lane) ([]Entry, error) {
-	if c.State.ReservedAt == nil {
+	if !c.State.holdsAny() {
 		return nil, nil
 	}
 	_, lines, err := holdLaneChanges(c, lane, StageValidate, validatorsAct)

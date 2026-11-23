@@ -59,6 +59,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // stagedSuffix marks a staged raw transcript. The extension is deliberately not
@@ -398,7 +399,7 @@ func sessionIDFromStaged(name string) string {
 // of the same session, and the fresher end-of-session bytes are the ones worth
 // keeping. Either way one session has one staged file, whatever fires.
 func Stage(repoRoot, rootSHA string, meta StageMeta, raw []byte) (StageResult, error) {
-	if !rootSHARe.MatchString(rootSHA) {
+	if !gitutil.IsFullSHA(rootSHA) {
 		return StageResult{}, errors.New(rootSHAErrMsg)
 	}
 	if meta.Lineage.Kind == "" {

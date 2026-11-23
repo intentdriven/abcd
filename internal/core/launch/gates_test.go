@@ -642,12 +642,15 @@ func TestProseLinesReadsARuledDocumentWhole(t *testing.T) {
 // file some hook text runs directly — the command itself, or a script the
 // command runs — still needs its executable bit, and a missing one is still a
 // finding. A file one hook text executes is judged whatever another hook text
-// does with it, in either order.
+// does with it, in either order, and whichever hook document carries each text:
+// the manifest's inline hooks and hooks/hooks.json feed one executed set
+// (iss-2610160924048542).
 func TestHookRowJudgesModeOnlyWhereAFileIsExecuted(t *testing.T) {
 	cases := []struct {
 		name     string
 		command  string
 		more     []string          // further hook commands, each under its own later event
+		manifest string            // a hook command declared inline in plugin.json's hooks
 		script   string            // hooks/go.sh contents
 		extra    map[string]string // further 0644 payload files
 		findings []string          // files the row must name as not executable
@@ -723,6 +726,20 @@ func TestHookRowJudgesModeOnlyWhereAFileIsExecuted(t *testing.T) {
 			},
 			findings: []string{"hooks/helper.sh"},
 		},
+		{
+			name:     "the manifest's inline hook hands the script to sh and hooks.json executes it",
+			manifest: `sh \"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			command:  `\"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			script:   "#!/bin/sh\nexit 0\n",
+			findings: []string{"hooks/go.sh"},
+		},
+		{
+			name:     "the manifest's inline hook executes the script and hooks.json hands it to sh",
+			manifest: `\"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			command:  `sh \"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			script:   "#!/bin/sh\nexit 0\n",
+			findings: []string{"hooks/go.sh"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -736,6 +753,11 @@ func TestHookRowJudgesModeOnlyWhereAFileIsExecuted(t *testing.T) {
 				decl = append(decl, `"`+events[i]+`": [{"hooks": [{"type": "command", "command": "`+command+`"}]}]`)
 			}
 			writeFile(t, root, "hooks/hooks.json", `{"hooks": {`+strings.Join(decl, ", ")+`}}`)
+			if tc.manifest != "" {
+				// The resolver reads the manifest's inline hooks before hooks.json.
+				writeFile(t, root, ".claude-plugin/plugin.json",
+					`{"name": "abcd", "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "`+tc.manifest+`"}]}]}}`)
+			}
 			writeFile(t, root, "hooks/go.sh", tc.script) // 0644
 			for rel, body := range tc.extra {
 				writeFile(t, root, rel, body) // 0644

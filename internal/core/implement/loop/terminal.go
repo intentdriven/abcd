@@ -1708,7 +1708,9 @@ func (t *terminal) peerTook(runID string) bool {
 	if err != nil {
 		return false
 	}
-	if run.ReservedAt == nil || letGoByDrive(run) {
+	// A run with members is read while it holds any issue, the lead's
+	// reserved_at set or not (holdsAny).
+	if !run.holdsAny() || letGoByDrive(run) {
 		t.waited = 0
 		return false
 	}
@@ -2411,7 +2413,7 @@ func (t *terminal) letGoForLimit(runID string) {
 	now := t.now()
 	key, held, clause, failed := "", "", "", false
 	err := saveRun(t.repoRoot, runID, t.o.Options, func(root *os.Root, st *State) (bool, error) {
-		if st.ReservedAt == nil || letGoByDrive(*st) {
+		if !st.holdsAny() || letGoByDrive(*st) {
 			return false, nil
 		}
 		if outcome, _, _ := laneOutcome(*st); outcome != DrainLaneInProgress {
@@ -2597,7 +2599,7 @@ func (t *terminal) letGo() {
 				continue
 			}
 			run, err := ReadState(t.repoRoot, l.RunID)
-			if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+			if err != nil || !run.holdsAny() || letGoByDrive(run) {
 				continue
 			}
 			// A stop that could not settle the lane holds its claims with its work.
@@ -2667,7 +2669,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			continue
 		}
 		run, err := ReadState(t.repoRoot, l.RunID)
-		if err != nil || run.ReservedAt == nil || letGoByDrive(run) {
+		if err != nil || !run.holdsAny() || letGoByDrive(run) {
 			continue
 		}
 		if c, err := runControl(t.repoRoot, l.RunID); err == nil && c.Stop != nil {

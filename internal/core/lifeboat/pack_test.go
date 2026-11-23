@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // okScan is a SecretScan that finds nothing — the default for pack tests not
@@ -242,19 +244,19 @@ func TestPathOverlapsCaseFolding(t *testing.T) {
 	}
 }
 
-// TestRootSHARegexAcceptsSHA256 proves the voyage key regex accepts a 64-char
-// SHA-256 root SHA, not just 40-char SHA-1 — otherwise SHA-256 repos never log a
-// voyage.
+// TestRootSHARegexAcceptsSHA256 proves the voyage key check, gitutil.IsFullSHA,
+// accepts a 64-char SHA-256 root SHA, not just 40-char SHA-1 — otherwise SHA-256
+// repos never log a voyage.
 func TestRootSHARegexAcceptsSHA256(t *testing.T) {
 	sha1 := strings.Repeat("a", 40)
 	sha256 := strings.Repeat("b", 64)
-	if !rootSHARe.MatchString(sha1) {
+	if !gitutil.IsFullSHA(sha1) {
 		t.Errorf("40-char SHA-1 rejected")
 	}
-	if !rootSHARe.MatchString(sha256) {
+	if !gitutil.IsFullSHA(sha256) {
 		t.Errorf("64-char SHA-256 rejected")
 	}
-	if rootSHARe.MatchString(strings.Repeat("c", 50)) {
+	if gitutil.IsFullSHA(strings.Repeat("c", 50)) {
 		t.Errorf("50-char string wrongly accepted")
 	}
 }

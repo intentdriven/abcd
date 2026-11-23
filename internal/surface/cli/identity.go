@@ -146,11 +146,7 @@ func identityGlyph(s positioning.Status) string {
 // terminal sanitiser.
 func renderIdentity(w io.Writer, rep positioning.Report) {
 	fmt.Fprintf(w, "abcd lint identity — %s (%s)\n", termsafe.Sanitize(rep.Block.File), rep.Severity)
-	fmt.Fprintf(w, "  title:   %s\n", termsafe.Sanitize(rep.Block.Title))
-	fmt.Fprintf(w, "  tagline: %s\n", termsafe.Sanitize(rep.Block.Tagline))
-	if rep.Block.Pitch != "" {
-		fmt.Fprintf(w, "  pitch:   %s\n", termsafe.Sanitize(rep.Block.Pitch))
-	}
+	renderBlockFields(w, rep.Block)
 	for _, s := range rep.Surfaces {
 		loc := termsafe.Sanitize(s.File)
 		if loc == "" {
@@ -162,9 +158,36 @@ func renderIdentity(w io.Writer, rep positioning.Report) {
 		if s.Status == positioning.StatusDrifted {
 			fmt.Fprintf(w, "    says:      %s\n", termsafe.Sanitize(s.Found))
 			fmt.Fprintf(w, "    canonical: %s\n", termsafe.Sanitize(s.Canonical))
+			if s.Reason != "" {
+				fmt.Fprintf(w, "    reason:    %s\n", termsafe.Sanitize(s.Reason))
+			}
 		}
 	}
 	fmt.Fprintf(w, "abcd lint identity — %d surface(s) adrift of the block\n", rep.Drifted())
+}
+
+// renderBlockFields prints the block's fields in the block's own order, the
+// title and tagline always and every optional field only when the block carries
+// it, and returns the label width it padded to. The values start one space past
+// the longest label printed, never less than "tagline:", so a block written
+// before the lockup fields existed prints byte for byte as it did, and a caller
+// that prints more labelled lines below lines them up with that width.
+func renderBlockFields(w io.Writer, b positioning.Block) int {
+	type field struct{ name, value string }
+	var fields []field
+	width := len("tagline:")
+	for _, name := range positioning.FieldNames {
+		v, _ := b.Field(name)
+		if v == "" && name != "title" && name != "tagline" {
+			continue
+		}
+		fields = append(fields, field{name, v})
+		width = max(width, len(name)+1)
+	}
+	for _, f := range fields {
+		fmt.Fprintf(w, "  %-*s %s\n", width, f.name+":", termsafe.Sanitize(f.value))
+	}
+	return width
 }
 
 // renderProposal prints the unified diffs. The header states plainly that this
@@ -197,13 +220,9 @@ func renderIdentityInit(w io.Writer, res positioning.InitResult) {
 		fmt.Fprintf(w, "abcd identity init — recorded the identity block at %s (%q)\n",
 			termsafe.Sanitize(res.Location.File), termsafe.Sanitize(res.Location.Heading))
 	}
-	fmt.Fprintf(w, "  title:   %s\n", termsafe.Sanitize(res.Block.Title))
-	fmt.Fprintf(w, "  tagline: %s\n", termsafe.Sanitize(res.Block.Tagline))
-	if res.Block.Pitch != "" {
-		fmt.Fprintf(w, "  pitch:   %s\n", termsafe.Sanitize(res.Block.Pitch))
-	}
+	width := renderBlockFields(w, res.Block)
 	for _, p := range res.Wrote {
-		fmt.Fprintf(w, "  wrote:   %s\n", p)
+		fmt.Fprintf(w, "  %-*s %s\n", width, "wrote:", p)
 	}
 	fmt.Fprintln(w, "  `abcd lint` now holds every registered surface to this block.")
 }

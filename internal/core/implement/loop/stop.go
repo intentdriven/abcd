@@ -739,9 +739,11 @@ func settleStop(repoRoot string, root *os.Root, st *State, c *control, tab *sess
 		return
 	}
 	rec.Released = noReservationHeld
-	if st.ReservedAt != nil {
+	if st.ReservedAt != nil || st.holdsAny() {
 		// A run with members releases every issue it holds, each plainly, each line
-		// naming its issue, and clears every member's reserved_at with the run's.
+		// naming its issue, and clears every member's reserved_at with the run's:
+		// a lead handed back alone leaves its members held whether or not its own
+		// reserved_at is set (spc-2611201455051897 step 2).
 		released := ""
 		letGo := letGoByDrive(*st)
 		for _, id := range st.reservedIssues() {

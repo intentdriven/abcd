@@ -7,7 +7,7 @@
   },
   "plugins": [
     {
-      "description": "Host-agnostic configuration layer for development — a single Go binary, usable as a plugin in compatible agent harnesses.",
+      "description": "The open way to build your idea with the agent you already use. abcd keeps your idea, its decisions, and every check as plain files beside the code.",
       "name": "abcd",
       "source": {
         "sha256": "d421070de3ca43308e5151f6b5407aeb21dcc901c59bdfc2a1734ce08c7a864d",

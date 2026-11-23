@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -40,6 +41,46 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 			Note: fmt.Sprintf("the pick of %s is falsified: %s was handed back as %s after %s; the intent's grounds entry is left as it was written",
 				keyOf(*st), lane.ID, hb.Verdict, fixRoundsPhrase(hb.FixRounds))})
 	}
+}
+
+// handBackAlone records on st each issue a receipt of a run with members
+// handed back alone (spc-2611201455051897 step 2): the lead's own hand-back,
+// or the member's, and a line in the run record naming the issue, laneID's,
+// at the handed-back stage. It returns the line's notes joined, "" when
+// handed is empty. The release of each is the hand-in's to make once the save
+// has written them (releaseAloneAfterWrite), or the lane's hand-back's when
+// every issue was handed back (releaseOnHandBack).
+func handBackAlone(st *State, laneID string, handed []issueHandedBack, now time.Time) string {
+	note := ""
+	for _, h := range handed {
+		hb := h.hb
+		hb.At = now
+		if m := st.member(h.issue); m >= 0 {
+			st.Bundle[m].HandBack = &hb
+		} else if recordid.SameID(h.issue, st.Key) {
+			st.LeadHandBack = &hb
+		} else {
+			continue
+		}
+		line := aloneSummary(h.issue, hb)
+		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: string(StageHandedBack), Note: line, Issue: h.issue})
+		note = joinNext(note, line)
+	}
+	if note != "" {
+		st.UpdatedAt = now
+	}
+	return note
+}
+
+// aloneSummary is the sentence an issue handed back alone is recorded and
+// reported with: the issue, its kind, its reason and its home, and that the
+// lane goes on with the others.
+func aloneSummary(id string, hb HandBack) string {
+	s := fmt.Sprintf("%s is handed back alone by its lane as %s: %s", id, hb.Kind, hb.Reason)
+	if hb.Home != "" {
+		s += "; its home: " + hb.Home
+	}
+	return s + "; the lane goes on with the run's other issues"
 }
 
 // keyOf is the record a run builds, for a sentence.

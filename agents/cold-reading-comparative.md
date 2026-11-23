@@ -4,7 +4,7 @@ description: >-
   Cold reading at the comparative position. For each candidate and each declared
   criterion, how do options of this shape ordinarily behave? Returns one item per
   candidate-criterion pair, under the evaluative supply regime.
-prompt_version: 0.1.4
+prompt_version: 0.1.5
 reads_untrusted_input: true
 capability_scope:
   task_classes: [cold_reading]
@@ -124,11 +124,16 @@ The pattern you read under travels in the record's envelope, never in a body, an
 the enclosing envelope — the run, the manifest and the record identity — is the
 ingest verb's to compose rather than yours.
 
+The criteria you were handed are declared as a name, a dash and a gloss on one
+line. The name is the value of `criterion`; the gloss says what that name means
+in this project and is not part of the value. The whole declared line names no
+declared criterion, and the ingest refuses an item that carries it.
+
 ```json
 {
   "pattern": "<the pattern you read under; it travels in the envelope>",
   "candidate_id": "<the candidate, in the terms it was handed to you>",
-  "criterion": "<the declared criterion, quoted from the passed material>",
+  "criterion": "<the declared criterion's name alone: the text before the dash, not the gloss>",
   "characterisation": "<how options of this shape ordinarily behave against it>"
 }
 ```

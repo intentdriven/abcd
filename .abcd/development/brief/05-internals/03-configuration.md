@@ -11,7 +11,8 @@ opts into: the provider adapter's `oracle` keys (the reviewer route's
 implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
 `pace.sub_agents` and `pace.fix_rounds`, and the drain's `pace.stuck_refusals`,
 1 to 64 and 3 by default, and `pace.stuck_minutes`, 1 to 10080 and 60 by default;
-`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
+`internal/core/implement/loop/pace.go`), the drain's bundle cap
+`drain.bundle_max` (below), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
@@ -258,6 +259,28 @@ a reservation on a fork naming the file and never stops one anywhere else. The m
 layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
+
+The `drain.bundle_max` key is read through the same reader, and a repository
+may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the
+cap, and `.abcd/config.json` may lower it and never raise it
+(itd-2611201450052326). The repository's file is whatever its last committer
+wrote, and the cap bounds how many of the person's own reservations one lane
+holds, so a repository figure above the machine's, or above the bundled 1
+where the machine sets none, is ignored and named, as a repository's
+`ledger.retention_days` below the machine's is. It is the most issues one drain lane
+takes, a whole number from 1 to 10; the default stays 1 for now, so a drain
+bundles only where a person sets the key, until a failed bundle can be split
+and the drain's figures exist. The reader claims the `drain` namespace, so a
+misspelt key under it is refused naming the file, and a value outside 1 to 10
+in any layer is refused naming its origin, never replaced by another layer. A drain reads
+it once, when it starts, and keeps it on its state with the layer and origin
+it came from, so a running drain keeps its cap whatever the files say later.
+An issue joins a lead's lane when it comes after the lead in the drain order,
+is eligible, has exactly the lead's category and has the lead's area (the
+directory holding its `found_at` path, or that path itself when it is a
+directory in the checkout); a `security` issue and one whose area is the
+repository's root never join, and a member's severity may differ from its
+lead's (`internal/core/implement/loop/drain_bundle.go`, 04-surfaces/35-drain.md).
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries ten of these blocks — `docs`,
@@ -870,9 +893,9 @@ review-queue entry snapshots the effective mode and budget at enqueue time, so a
 mid-loop edit cannot change an in-flight loop. The loop terminal and the gate
 belong in a drainer layer that does not exist.
 
-Schema versioning and cross-version migration come in a later phase: a
-configuration record carries `schema_version: 1`, and migrators are added if a
-later phase changes the shape (itd-9). The stamp is a convention rather than a
+Schema versioning and cross-version migration are **staged**: a configuration
+record carries `schema_version: 1`, and migrators are added if a later intent
+changes the shape (itd-9). The stamp is a convention rather than a
 held rule, and the tree is not uniform — eleven of the seventeen committed records
 carry it (`config.json` in its `meta` block), and six do not, the record-lint
 and docs-lint configuration among them. Nothing refuses an unstamped record, so
@@ -2183,7 +2206,7 @@ door takes a local file or an https URL rather than a harvested directory.
 
 Two triggers are drawn: an implicit one at disembark's first phase, and a manual
 CLI refresh. Per-source enable flags would default to on for a private repo and off
-for a public one. Scheduled sync comes in a later phase (itd-13).
+for a public one. Scheduled sync is **staged** (itd-13).
 
 > **Open question (adr-35):** the implicit trigger is stated against the old model,
 > in which disembark packed *this* repo. adr-35 makes disembark read-only against

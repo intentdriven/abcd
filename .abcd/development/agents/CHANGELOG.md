@@ -12,6 +12,19 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-22 (iss-2609022226104492 — the comparative item shape asks for the criterion's name)
+
+### cold-reading-comparative 0.1.5
+
+PATCH: the item shape asks for the declared criterion's name alone, the text
+before the dash and not the gloss, and says that the criteria are declared as a
+name, a dash and a gloss on one line. It had asked for the criterion quoted from
+the passed material, which is the whole declared line, while the ingest's
+undeclared-criterion check matches the declared name alone, so a reader who
+followed the definition had its run refused whole. The ingest is unchanged. The
+object, the question, the regime and the blindness core are untouched.
+Unmeasured, in the `0.x` band.
+
 ## 2026-11-15 (itd-2610301914350541 — the asking rules state the question keys)
 
 ### question-drafter 0.2.7

@@ -235,12 +235,13 @@ retrospective for the release is owed and names `/abcd:reflect <release-tag>`
 
 ## The lifeboat
 
-A lifeboat pack carries every retrospective the voyage produced, verbatim, as
+A lifeboat pack carries every retrospective the repository produced, verbatim, as
 `retrospectives/<release-tag>/README.md`, sealed by the record manifest hash with
-the other record families. The embark write puts them back into the new
-voyage's store, admitting only a strict release-tag directory holding
-`README.md`, and the embark lessons view ranks their lessons against the new voyage's brief for the
-press-release interview: the three most like it, then the rest as a list
+the other record families. The embark write puts them back into the target
+repository's store, admitting only a strict release-tag directory holding
+`README.md`, and the embark lessons view ranks their lessons against the target
+repository's brief for the press-release interview: the three most like it,
+then the rest as a list
 ([`03-embark.md`](03-embark.md)).
 
 ## Related documentation
