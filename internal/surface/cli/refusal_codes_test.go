@@ -230,7 +230,7 @@ func TestEveryRegisteredCodeResolvesThroughExplain(t *testing.T) {
 // nearest registered code and never repeating the word.
 func TestExplainRefusesAnUnknownCodeNamingTheNearest(t *testing.T) {
 	var stdout, stderr strings.Builder
-	code := Run([]string{"explain", "capture/remedy-misisng", "--json"}, &stdout, &stderr)
+	code := Run([]string{"explain", "capture/missing-remdy", "--json"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("exit %d, want 2:\n%s%s", code, stdout.String(), stderr.String())
 	}
@@ -241,7 +241,7 @@ func TestExplainRefusesAnUnknownCodeNamingTheNearest(t *testing.T) {
 	if env.Code != string(refusal.ExplainUnknownCode) || !strings.Contains(env.Error, "`capture/missing-remedy`") {
 		t.Errorf("envelope = %+v, want explain/unknown-code naming capture/missing-remedy", env)
 	}
-	if strings.Contains(stdout.String(), "misisng") {
+	if strings.Contains(stdout.String(), "remdy") {
 		t.Errorf("the refusal repeats the word:\n%s", stdout.String())
 	}
 	// A code with --input reads no input.
