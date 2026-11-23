@@ -672,3 +672,64 @@ func TestClosePublicTrackRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T)
 		})
 	}
 }
+
+// TestCloseRefusesTextNamingTheStoreOrAPrivateRecord: the closing text is
+// held to the store's location in every form the range check refuses
+// (absolute, home-relative, and the worktree-store fragment) and to every
+// private record id the store holds, this advisory's own and another's,
+// published or not, since those records never leave the store. Each refuses
+// the show and the close before anything is sent, without repeating it.
+func TestCloseRefusesTextNamingTheStoreOrAPrivateRecord(t *testing.T) {
+	const otherIss, publishedIss = "iss-2610120000000002", "iss-2610120000000003"
+	for name, tc := range map[string]struct {
+		line func(cf closeFixture) string
+		want string
+	}{
+		"absolute store path": {func(cf closeFixture) string { return "kept at " + cf.s.Root + "/x" }, "closing text"},
+		"home-relative store path": {func(cf closeFixture) string {
+			rel, err := filepath.Rel(cf.f.home, cf.s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return "kept at ~/" + filepath.ToSlash(rel)
+		}, "embargo store"},
+		"worktree-store fragment": {func(cf closeFixture) string {
+			return "under worktrees/" + filepath.Base(filepath.Dir(cf.s.Root)) + "/" + StoreName
+		}, "embargo store"},
+		"own private record id":       {func(cf closeFixture) string { return "filed as " + cf.issID }, "private record"},
+		"another private record id":   {func(closeFixture) string { return "like " + otherIss }, "private record"},
+		"a published one's record id": {func(closeFixture) string { return "as " + publishedIss }, "private record"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cf := newCloseFixture(t)
+			st, err := cf.s.Verify()
+			if err != nil {
+				t.Fatal(err)
+			}
+			at := fixedNow
+			st.Advisories = append(st.Advisories,
+				Advisory{GHSAID: ghsaClosed, IssueID: otherIss, Title: "a sample sibling report title", Severity: "minor", ForgeState: "triage"},
+				Advisory{GHSAID: ghsaPublished, IssueID: publishedIss, Title: titlePublishd, Severity: "major", ForgeState: "published",
+					Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at})
+			if err := cf.s.SaveState(st); err != nil {
+				t.Fatal(err)
+			}
+			line := tc.line(cf)
+			if err := os.WriteFile(cf.draftPath(), []byte(cf.draft(t)+"\n"+line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, approve := range []string{"", strings.Repeat("0", 64)} {
+				_, err := cf.close(approve)
+				mustRefuse(t, err, tc.want)
+				for _, leak := range []string{cf.s.Root, cf.issID, otherIss, publishedIss, "worktrees/"} {
+					if strings.Contains(err.Error(), leak) {
+						t.Fatalf("the refusal repeats the finding: %v", err)
+					}
+				}
+			}
+			if len(cf.g.calls()) != 0 {
+				t.Fatal("a refused close called gh")
+			}
+		})
+	}
+}

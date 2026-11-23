@@ -182,9 +182,11 @@ head of the advisory's description, with the reporter's own text kept whole
 below a separator line. Without `--approve` it sends nothing but a read: show
 the user `text` exactly as returned, then `approve_with`. The reporter reads
 that text, so it is refused before it is shown when it carries a secret, a
-name the private-names layer bans, or another advisory still under embargo
-(its id, reserved CVE id or title, a closed advisory's title included); the
-refusal names the kind and the line, never the match, and the remedy is to
+name the private-names layer bans, another advisory still under embargo
+(its id, reserved CVE id or title, a closed advisory's title included), the
+embargo store's location on this machine (absolute, home-relative or its
+worktree-store form), or any private record id the store holds, this
+advisory's own included; the refusal names the kind and the line, never the match, and the remedy is to
 record the verdict again with a reason that does not carry it.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in

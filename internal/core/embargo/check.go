@@ -739,27 +739,32 @@ func buildDenySet(stores []heldStore, allowed map[string]bool) (denySet, error) 
 	if ds.embargo == 0 {
 		return ds, nil
 	}
-	home, homeErr := os.UserHomeDir()
 	for _, h := range stores {
-		// The worktree-store fragment is the store's own: its key is its
-		// parent folder's name, which need not be any root the history has
-		// now.
-		key := filepath.Base(filepath.Dir(h.root))
-		forms := []string{h.root, storepath.Resolve(h.root), "worktrees/" + key + "/" + StoreName}
-		if homeErr == nil {
-			for _, hd := range []string{filepath.Clean(home), storepath.Resolve(home)} {
-				for _, root := range []string{h.root, storepath.Resolve(h.root)} {
-					if rel, err := filepath.Rel(hd, root); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-						forms = append(forms, "~/"+filepath.ToSlash(rel))
-					}
+		ds.addStorePaths(h.root)
+	}
+	return ds, nil
+}
+
+// addStorePaths adds the location of the store at root in every form a text
+// could name it: absolute (as given and resolved), home-relative, and the
+// worktree-store fragment under the store's own key. The fragment is the
+// store's own: its key is its parent folder's name, which need not be any
+// root the history has now.
+func (ds *denySet) addStorePaths(root string) {
+	key := filepath.Base(filepath.Dir(root))
+	forms := []string{root, storepath.Resolve(root), "worktrees/" + key + "/" + StoreName}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, hd := range []string{filepath.Clean(home), storepath.Resolve(home)} {
+			for _, r := range []string{root, storepath.Resolve(root)} {
+				if rel, err := filepath.Rel(hd, r); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+					forms = append(forms, "~/"+filepath.ToSlash(rel))
 				}
 			}
 		}
-		for _, f := range forms {
-			ds.add(filepath.ToSlash(f), KindStorePath, false)
-		}
 	}
-	return ds, nil
+	for _, f := range forms {
+		ds.add(filepath.ToSlash(f), KindStorePath, false)
+	}
 }
 
 // countOnce counts id as under embargo, once however many stores hold it.
@@ -845,6 +850,24 @@ func (ds *denySet) addTitle(title string) {
 func othersDenySet(st State, self string) denySet {
 	ds := denySet{}
 	ds.addEmbargoed(st, self, denyForPublication)
+	return ds
+}
+
+// kindPrivateRecordID is the kind of a private record id the store holds,
+// in the set a closing text is held to (closingDenySet).
+const kindPrivateRecordID = "private_record_id"
+
+// closingDenySet is the set a closing text is held to before its reporter
+// reads it: othersDenySet, the location of the store at root in every form
+// the range check refuses (addStorePaths), and every private record id the
+// store holds, this advisory's own included and a published one's too,
+// since those records never leave the store.
+func closingDenySet(st State, self, root string) denySet {
+	ds := othersDenySet(st, self)
+	ds.addStorePaths(root)
+	for _, a := range st.Advisories {
+		ds.add(a.IssueID, kindPrivateRecordID, true)
+	}
 	return ds
 }
 

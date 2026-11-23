@@ -171,7 +171,7 @@ func Close(req CloseRequest) (CloseResult, error) {
 	if err != nil {
 		return CloseResult{}, err
 	}
-	if err := scanClosingText(s.Checkout, text, othersDenySet(st, a.GHSAID)); err != nil {
+	if err := scanClosingText(s.Checkout, text, closingDenySet(st, a.GHSAID, s.Root)); err != nil {
 		return CloseResult{}, err
 	}
 
@@ -269,20 +269,28 @@ func forgeStateWord(state string) string {
 }
 
 // scanClosingText refuses a closing text that carries what its reader must
-// not see (scanOutbound), or names another advisory still under embargo
-// (others, the set the publication plan holds an advisory's text to): the
-// reporter of one advisory must not learn of another. The refusal names the
-// kind and the line, never the match.
-func scanClosingText(checkout, text string, others denySet) error {
+// not see (scanOutbound), or anything in deny (closingDenySet): another
+// advisory still under embargo, since the reporter of one advisory must not
+// learn of another, the store's location on this machine, or a private
+// record id the store holds. The refusal names the kind and the line, never
+// the match.
+func scanClosingText(checkout, text string, deny denySet) error {
 	f, err := scanOutbound(checkout, "the closing text", text, false)
 	if err != nil {
 		return err
 	}
 	remedy := "record the verdict again with `abcd embargo triage`, with a reason that does not carry it"
 	if f == nil {
-		if m := others.matches(text); len(m) > 0 {
-			return refuse(fmt.Sprintf("the closing text names another advisory still under embargo (%s on line %d), which its reader must not see; nothing was shown or sent",
-				m[0].kind, strings.Count(text[:m[0].start], "\n")+1), remedy)
+		if m := deny.matches(text); len(m) > 0 {
+			what := "another advisory still under embargo"
+			switch m[0].kind {
+			case KindStorePath:
+				what = "where this machine keeps the embargo store"
+			case kindPrivateRecordID:
+				what = "a private record the embargo store holds"
+			}
+			return refuse(fmt.Sprintf("the closing text names %s (%s on line %d), which its reader must not see; nothing was shown or sent",
+				what, m[0].kind, strings.Count(text[:m[0].start], "\n")+1), remedy)
 		}
 		return nil
 	}
