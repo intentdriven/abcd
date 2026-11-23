@@ -243,8 +243,10 @@ func preflightGateArgs(t *testing.T) (first, race []string) {
 			if in && !strings.HasPrefix(l, "\t") {
 				break
 			}
-			if l = strings.TrimSpace(l); in && strings.HasPrefix(l, call+"implement load ") {
-				out = append(out, strings.Fields(strings.TrimPrefix(l, call)))
+			// preflight's line starts with the early audits that run beside
+			// its gate (cmd/precheck-audits); the gate's words follow.
+			if at := strings.Index(l, call+"implement load "); in && at >= 0 {
+				out = append(out, strings.Fields(l[at+len(call):]))
 			}
 		}
 		return out

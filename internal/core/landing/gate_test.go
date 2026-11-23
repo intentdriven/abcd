@@ -105,10 +105,13 @@ func makefileGateTimeout(t *testing.T, target, marker string) time.Duration {
 		if in && !strings.HasPrefix(l, "\t") {
 			break
 		}
-		if !in || !strings.Contains(l, marker) {
+		at := strings.Index(l, marker)
+		if !in || at < 0 {
 			continue
 		}
-		f := strings.Fields(l)
+		// The gate's own words: preflight's line starts with the early audits
+		// that run beside it (cmd/precheck-audits), whose -- comes first.
+		f := strings.Fields(l[at:])
 		for i := 0; i+1 < len(f) && f[i] != "--"; i++ {
 			if f[i] == "--timeout" {
 				d, err := time.ParseDuration(f[i+1])

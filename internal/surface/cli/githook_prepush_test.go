@@ -690,7 +690,9 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 		t.Fatalf("the preflight recipe's last step is %q; want the receipt minted from the state recorded "+
 			"before the first gate ran\n%s", last, strings.Join(lines, "\n"))
 	}
-	gate := regexp.MustCompile(`^go run \./cmd/abcd implement load --wait --timeout \S+ -- \S*make --no-print-directory preflight-stages$`)
+	// The whole run is the command precheck's early audits run beside
+	// (cmd/precheck-audits), so the gate's words end the line they start.
+	gate := regexp.MustCompile(`^go run \./cmd/precheck-audits .* -- go run \./cmd/abcd implement load --wait --timeout \S+ -- \S*make --no-print-directory preflight-stages$`)
 	if len(lines) < 2 || !gate.MatchString(lines[len(lines)-2]) {
 		t.Errorf("the receipt is not minted straight after the whole run the load gate admits\n%s", strings.Join(lines, "\n"))
 	}
