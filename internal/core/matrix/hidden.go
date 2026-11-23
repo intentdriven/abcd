@@ -104,6 +104,10 @@ func placeHiddenTests(store, run, task string, tests []hiddenTest) ([]ContentRef
 		if errors.As(err, &pe) {
 			return nil, fmt.Errorf("the clone store could not be read: %w", storeRelative(err, store, "<clone store>"))
 		}
+		if errors.Is(err, errStoreUnanswered) {
+			return nil, errors.New("hidden tests are never placed where whether the clone store is inside a working tree or a repository could not be told, " +
+				"and git gave no answer there; it lives outside every checkout")
+		}
 		return nil, errors.New("hidden tests are never placed inside a working tree or a repository, and the clone store is inside one; " +
 			"it lives outside every checkout")
 	}

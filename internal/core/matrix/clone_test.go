@@ -160,6 +160,30 @@ func TestACopyIsNeverMadeInsideAWorkingTree(t *testing.T) {
 	}
 }
 
+// TestACopyIsNeverMadeWhereGitGivesNoAnswer: a store inside a repository git
+// will not answer for (here one of a repository format it does not read) is
+// refused, for a clone and for hidden tests alike, and nothing is made there:
+// only git's own answer that no repository holds the store lets either be
+// made.
+func TestACopyIsNeverMadeWhereGitGivesNoAnswer(t *testing.T) {
+	src, frozen := cloneSource(t)
+	unread := gittest.NewRepo(t)
+	unread.Git("config", "core.repositoryformatversion", "99")
+	store := filepath.Join(unread.Root(), "deep", "store")
+	key := TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}
+	if _, err := makeClone(src.Root(), store, cloneRun, frozen, key, keyAlias(key)); err == nil ||
+		!strings.Contains(err.Error(), "could not be told") {
+		t.Fatalf("a store git gives no answer for is refused, saying so: %v", err)
+	}
+	if _, err := placeHiddenTests(store, cloneRun, "widget", widgetHidden); err == nil ||
+		!strings.Contains(err.Error(), "could not be told") {
+		t.Fatalf("hidden tests where git gives no answer are refused, saying so: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(unread.Root(), "deep")); !os.IsNotExist(err) {
+		t.Fatalf("nothing is made where git gives no answer: %v", err)
+	}
+}
+
 // TestACopyIsMadeOnce: a key whose clone already exists is refused, so a copy
 // never starts from another attempt's leftovers.
 func TestACopyIsMadeOnce(t *testing.T) {

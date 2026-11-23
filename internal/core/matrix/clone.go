@@ -256,8 +256,15 @@ func outsideWorkingTrees(dir string) error {
 	}
 	out, err := git("-C", real, "rev-parse", "--is-inside-work-tree", "--is-inside-git-dir")
 	if err != nil {
-		// git names no repository here: the path is outside every one.
-		return nil
+		if notARepository(err) {
+			// git names no repository here: the path is outside every one.
+			return nil
+		}
+		// Any other answer (a repository git will not read, one it will not
+		// answer for under this account) says nothing of whether the path is
+		// inside a repository, so it is refused as though it were.
+		return fmt.Errorf("%w: whether %s is inside a working tree or a repository could not be told, so no clone is made there: %w",
+			errStoreUnanswered, dir, err)
 	}
 	if strings.Contains(out, "true") {
 		// The checkout is named only for the refusal: its toplevel is asked
@@ -272,6 +279,31 @@ func outsideWorkingTrees(dir string) error {
 	}
 	return nil
 }
+
+// errStoreUnanswered is outsideWorkingTrees' refusal where git gave no answer
+// on whether the path is inside a repository.
+var errStoreUnanswered = errors.New("git gave no answer at the clone store")
+
+// notARepository reports whether err is git's own answer that no repository
+// holds the directory it was asked at: exit status 128, its standard error
+// beginning "fatal: not a git repository", in the C locale the isolated
+// environment pins. Those words anywhere else in what git said are not that
+// answer.
+func notARepository(err error) bool {
+	var gf *gitFailure
+	return errors.As(err, &gf) && gitutil.ExitCode(gf.err) == 128 && strings.HasPrefix(gf.stderr, "fatal: not a git repository")
+}
+
+// gitFailure is a git command that ran and failed: its message as the caller
+// reads it, the exit error, and git's standard error as git wrote it, trimmed.
+type gitFailure struct {
+	msg    string
+	err    error
+	stderr string
+}
+
+func (e *gitFailure) Error() string { return e.msg }
+func (e *gitFailure) Unwrap() error { return e.err }
 
 // gitBound bounds one git command a clone is made with: a fetch of the frozen
 // commit and its checkout scale with the tree, so the bound is there only so a
@@ -316,10 +348,12 @@ func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]b
 		return nil, fmt.Errorf("git %s did not finish within %s, so it was stopped", args[0], limit)
 	}
 	if err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, clip(msg))
+		msg := strings.TrimSpace(stderr.String())
+		f := &gitFailure{msg: fmt.Sprintf("git %s: %v", args[0], err), err: err, stderr: msg}
+		if msg != "" {
+			f.msg += ": " + clip(msg)
 		}
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
+		return nil, f
 	}
 	return stdout.Bytes(), nil
 }
