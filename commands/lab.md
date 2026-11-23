@@ -155,7 +155,8 @@ plan is refused with nothing written. Never pass `--approve` on your own
 judgement, and never with a digest the person did not see. The run then hands
 off every pilot copy: `copies` lists each one's `key`, `state`, `clone` (its own
 clone of the frozen commit under a random alias, outside every checkout) and
-`brief` (what the copy is asked, naming no task id, cell, route or model). A
+`brief` (what the copy is asked, naming no task id, cell, route, model or path
+on this machine). A
 clone bound for a provider passes the launch bundle's secret scan first, over
 its checked-out tree and the frozen commit's own message, author and committer,
 and a hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
@@ -174,7 +175,8 @@ an OpenRouter or local cell with no pin, and a stale approval.
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <task>/<cell>/<repeat>
 ```
 
-Hand its `brief` to a fresh sub-agent working in its `clone` and nowhere else,
+Hand its `brief` to a fresh sub-agent started in its `clone`, which the brief
+calls the current directory, and working nowhere else,
 telling it nothing more of the run. For a code copy, then run the task's hidden
 tests against the clone yourself, through the load gate, outside the clone.
 Hand the copy back with a receipt file, `{"schema_version": 1, "outcome":

@@ -277,6 +277,27 @@ func TestAFrozenCommitTrackingALocalTierFileIsRefused(t *testing.T) {
 	}
 }
 
+// TestACopysBriefNamesNoPathOnThisMachine: what a copy is asked names where
+// it works only as the directory it starts in, never the clone's path, which
+// carries the account's home and so its login name.
+func TestACopysBriefNamesNoPathOnThisMachine(t *testing.T) {
+	home := filepath.Join(string(filepath.Separator)+"Users", "pat-example")
+	clone := filepath.Join(home, ".abcd.noindex", "matrix", strings.Repeat("ab", 20), cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
+	for _, task := range []Task{
+		{ID: "widget", Kind: KindCode, Intent: "itd-10"},
+		{ID: "notes", Kind: KindWriting, Criteria: "Clear.", Source: []string{"docs/a.md"}},
+		{ID: "audit", Kind: KindCheck, Material: []string{"docs/"}},
+	} {
+		brief := copyBrief(task)
+		if strings.Contains(brief, "pat-example") || strings.Contains(brief, clone) || strings.Contains(brief, string(filepath.Separator)+"Users") {
+			t.Errorf("%s: the brief names a path on this machine: %s", task.Kind, brief)
+		}
+		if !strings.Contains(brief, "current directory") {
+			t.Errorf("%s: the brief says where the copy works: %s", task.Kind, brief)
+		}
+	}
+}
+
 // TestOnlyACloneTheMatrixMadeIsACopysClone: a directory at a clone's place in
 // the store is a copy's clone only when it is a repository of its own (its
 // .git a directory, not a linked worktree's file), shallow at exactly the

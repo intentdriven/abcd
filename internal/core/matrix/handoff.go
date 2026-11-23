@@ -140,7 +140,7 @@ func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, 
 		return HandOff{}, err
 	}
 	h := HandOff{SchemaVersion: HandOffSchema, Run: rec.RunID, Key: key, Kind: task.Kind, Source: pin.Source,
-		State: HandOffWaiting, Clone: clone, Brief: copyBrief(task, clone)}
+		State: HandOffWaiting, Clone: clone, Brief: copyBrief(task)}
 	if pin.Source != SourceHost {
 		h.State = HandOffAwaitingRunner
 		h.Reason = "abcd does not launch a runner in a copy's clone yet, and nothing stands in for the cell's runner, so the copy waits for a launcher"
@@ -168,11 +168,13 @@ func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, 
 	return h, proc.WriteState(handOffRel(rec.RunID, key), data)
 }
 
-// copyBrief is what a copy of task is asked, in its clone at clone: the work
-// and where to do it, and nothing of the run, the task's id, the cell or any
-// model.
-func copyBrief(task Task, clone string) string {
-	stay := " Work only in " + clone + ", and read nothing outside it."
+// copyBrief is what a copy of task is asked: the work and where to do it, and
+// nothing of the run, the task's id, the cell or any model. Where it works is
+// named as the directory it starts in, its clone, and never by the clone's
+// path, which carries the account's home directory; the hand-off records the
+// path for whoever starts the copy there.
+func copyBrief(task Task) string {
+	stay := " Work only in the current directory, this repository's clone, and read nothing outside it."
 	switch task.Kind {
 	case KindCode:
 		return "Build the change " + task.Intent + " asks for, as its records in this repository set it out." + stay +

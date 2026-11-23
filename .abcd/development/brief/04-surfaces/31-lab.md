@@ -51,8 +51,8 @@ store outside every checkout, the record of which alias is which copy is kept
 in the run's state in the lab, and a clone bound for a provider passes the
 launch bundle's secret scan first, over its checked-out tree and the frozen
 commit's own message, author and committer, a hit refusing the cell. Each hand-off
-carries the brief the copy is made from, which names no task id, cell, route
-or model. A host cell's copy is the host's to make in its clone and hand back
+carries the brief the copy is made from, which names no task id, cell, route,
+model or path on this machine. A host cell's copy is the host's to make in its clone and hand back
 with a receipt and its transcript; a made code copy carries its hidden tests'
 result as the host ran them, and its trial says abcd neither placed nor ran
 them: it marks that result, the model served, the harness version and the
