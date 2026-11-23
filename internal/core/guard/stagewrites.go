@@ -555,6 +555,51 @@ func stageGateFile(tree, path string, declared []string, fold bool) string {
 	return stageAbcd
 }
 
+// stageGateLanded is the gate below tree that a write placing a whole tree, or
+// a removal, read at c, can reach (treeLanding): a gate at or below where the
+// tree lands or what is removed,
+// a local tier's gate deeper in the tree whose parts the landing begins (a
+// directory named .abcd landing in sub/, anything landing in a deeper local
+// tier), or, where the tree it lands holds tree itself, every gate. A deeper
+// local tier that would start at the top of a tree whose names no line fixes
+// is not read for: any directory's contents could hold one. Gate names compare
+// as stageGateFile compares them. "" for none, or for a write that places one
+// file.
+func stageGateLanded(tree, c string, u pathUse) string {
+	if !u.tree && !u.remove {
+		return ""
+	}
+	dir, names := treeLanding(c, u.in && !u.remove, u.top, true)
+	if treeReaches(dir, names, tree, true) {
+		return stageAbcd
+	}
+	rel, ok := fsutil.RelWithin(tree, dir, true)
+	if !ok {
+		return ""
+	}
+	var parts []string
+	if rel = filepath.ToSlash(rel); rel != "." {
+		parts = strings.Split(rel, "/")
+	}
+	gates := append(append(append([]string(nil), stageAbcdGates...), stageGateFiles...), stageAbcd)
+	for i := 0; i <= len(parts); i++ {
+		for _, g := range gates {
+			if i > 0 && !strings.HasPrefix(g, stageLocalTier+"/") {
+				continue
+			}
+			gp := strings.Split(g, "/")
+			n := len(parts) - i
+			if i > 0 && n == 0 && u.in && u.top == "" {
+				continue
+			}
+			if len(gp) > n && fsutil.FoldedPathMatch(strings.Join(parts[i:], "/"), strings.Join(gp[:n], "/"), false) && names(gp[n]) {
+				return g
+			}
+		}
+	}
+	return ""
+}
+
 // nestedLocalGate is the local tier's gate rel lands in deeper in the tree, judged
 // the same as the tier at the top.
 func nestedLocalGate(rel string) string {

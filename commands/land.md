@@ -87,10 +87,12 @@ and no push; nor does a listing of 20 merged pull requests from branches of
 that name with none at this head, since the proof may lie past the bound.
 
 1. **gate**: skipped when a preflight receipt already names the branch's head,
-   in any worktree, as the pre-push hook looks for one. Otherwise `make
+   in any worktree but a drive lane's, whose stages can write any file in it
+   (none counts when `abcd land` runs from inside a lane). Otherwise `make
    preflight` runs in the branch's checkout (it waits on the machine's load
    itself), its output on stderr, and the head must be unchanged and a receipt
-   present after it, and `origin`'s URLs exactly as they were checked (the
+   present after it (outside the lanes, or, run from inside a lane, in that
+   checkout itself), and `origin`'s URLs exactly as they were checked (the
    branch's own preflight could add a push URL or a `pushInsteadOf`). A
    repository whose make file declares no `preflight` target gets no push. The receipt is a convenience check, not a security
    boundary: CI re-runs every gate on the pushed commit.

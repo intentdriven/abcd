@@ -484,9 +484,13 @@ func dirtyTree(dir string) (bool, error) {
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
-// gate is step 4.
+// gate is step 4. A receipt found only in a drive lane's worktree does not
+// skip the preflight (receiptOutsideLanes), and does not stand in for the
+// receipt the preflight run here mints once it passes: that one counts
+// outside the lanes, or, run from inside a lane, only in the checkout it ran
+// in (ownReceipt).
 func gate(res *Result, o Options, dir, head string) error {
-	rcp, err := Receipt(dir, head)
+	rcp, err := receiptOutsideLanes(dir, head)
 	if err != nil {
 		return err
 	}
@@ -510,8 +514,13 @@ func gate(res *Result, o Options, dir, head string) error {
 		return refuse(fmt.Sprintf("HEAD moved from %s to %s while the preflight ran, so its receipt does not vouch for what would be pushed", short(head), short(now)),
 			"run abcd land again to gate the new head; nothing was pushed")
 	}
-	if rcp, err = Receipt(dir, head); err != nil {
+	if rcp, err = receiptOutsideLanes(dir, head); err != nil {
 		return err
+	}
+	if rcp == "" && insideDriveLane(dir) {
+		if rcp, err = ownReceipt(dir, head); err != nil {
+			return err
+		}
 	}
 	if rcp == "" {
 		return refuse("the preflight finished but no preflight receipt names "+short(head)+" (it mints one only on a tree that matched HEAD throughout)",

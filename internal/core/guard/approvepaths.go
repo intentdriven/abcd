@@ -222,6 +222,12 @@ type pathUse struct {
 	// point that it deletes below, rsync --delete's destination), not as a
 	// removal of every protected path inside it.
 	bound bool
+	// tree, in and top are the write's (writeTarget): a write that may place
+	// a whole tree, judged for every path it can reach below where it lands.
+	tree, in bool
+	top      string
+	// why is the writer's own reason for a write the guard cannot place.
+	why *writeWhy
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -275,7 +281,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		if !w.ok {
 			written = w.base
 		}
-		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel})
+		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top, why: w.why})
 	}
 	at := func(i int, remove bool) pathUse {
 		tok, ok := fixedToken(s, i)
@@ -358,13 +364,43 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "mv":
 			// The sources leave where they were: every operand with -t,
-			// else every one but the destination.
-			idx := w.operandIdx([]string{"-S", "--suffix", "-t", "--target-directory"})
-			if !has("-t", "--target-directory") && len(idx) > 0 {
-				idx = idx[:len(idx)-1]
+			// else every one but the destination, read as mv reads its
+			// options and the words an xargs before it adds.
+			view := xargsView(s, a.idx)
+			for _, i := range eachSources(readOptsEach(view, a.idx+1, mvOpts)) {
+				if i >= len(s.tokens) {
+					out = append(out, pathUse{remove: true})
+					continue
+				}
+				u := at(i, true)
+				if view.tokens[i] != s.tokens[i] {
+					u = pathUse{remove: true, written: tokenBase(view.tokens[i])}
+				}
+				out = append(out, u)
 			}
-			for _, i := range idx {
-				out = append(out, at(i, true))
+		case "git":
+			// git mv's sources leave where they were, as mv's do, and git
+			// rm removes the files it names, but for --cached (the index
+			// alone) or --dry-run.
+			if _, reads, kind, ok := moverReads(s, a); ok && kind == "mv" {
+				for _, i := range eachSources(reads) {
+					out = append(out, at(i, true))
+				}
+				break
+			}
+			if j, elsewhere := w.gitSub(); !elsewhere && j < len(s.tokens) && s.tokens[j] == "rm" {
+				r, _ := w.gitRead(j)
+				if r.has(0, "cached") || r.has('n', "dry-run") {
+					break
+				}
+				for _, i := range r.operands {
+					if rc.files.stageHome != "" && pathspecMagic(s.tokens[i]) {
+						why := pathspecUnplaced("rm").why
+						out = append(out, pathUse{remove: true, why: why})
+						continue
+					}
+					out = append(out, at(i, true))
+				}
 			}
 		case "sed":
 			// The files a sed script's w commands write, as sed opens them:
@@ -382,12 +418,14 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "ln":
 			// A link to a protected path is a way to write it.
-			idx := w.operandIdx([]string{"-S", "--suffix", "-t", "--target-directory"})
-			if !has("-t", "--target-directory") && len(idx) > 1 {
-				idx = idx[:len(idx)-1]
-			}
-			for _, i := range idx {
-				out = append(out, at(i, false))
+			for _, r := range readOptsEach(s, a.idx+1, lnOpts) {
+				idx := r.operands
+				if len(idx) > 1 {
+					idx = copySources(r, idx)
+				}
+				for _, i := range idx {
+					out = append(out, at(i, false))
+				}
 			}
 		}
 	}
@@ -484,8 +522,11 @@ func shellGlobMatch(pattern, name string) bool {
 }
 
 // unfixedRefusal is the refusal of a write or a removal whose target the line
-// does not fix.
+// does not fix, in the writer's own words where it gives them (why).
 func unfixedRefusal(u pathUse) Approval {
+	if u.why != nil {
+		return refusal(unfixedPathEntryID, u.why.reason, u.why.remedy)
+	}
 	what := "a path"
 	if u.written != "" {
 		what = "a path ending " + termsafe.Sanitize(u.written)
@@ -526,9 +567,13 @@ func parenRefusal() Approval {
 }
 
 // protects names the protected path u reaches, if it reaches one: a write or
-// a link into one, or a removal of one or of a directory holding one, judged
-// as written and with its existing directories resolved through symlinks (a
-// removal's own last name is not followed: it removes the link).
+// a link into one, a write that places a tree over one (a move, a copy, an
+// archive unpacked), or a removal of one or of a directory holding one,
+// judged as written and with its existing directories resolved through
+// symlinks (a removal's own last name is not followed: it removes the link).
+// A tree whose top names the line fixes only by a glob reaches each protected
+// name the glob matches; one whose names no line fixes is judged by the
+// protected paths below where it lands.
 func (f approveFacts) protects(u pathUse) (string, bool) {
 	cands := []string{u.path}
 	if u.remove {
@@ -537,18 +582,30 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 		cands = append(cands, fsutil.RealExistingPath(u.path))
 	}
 	for _, c := range cands {
+		below := func(string) bool { return false }
+		if u.tree {
+			dir, names := treeLanding(c, u.in, u.top, f.fold)
+			below = func(p string) bool { return treeReaches(dir, names, p, f.fold) }
+		}
 		for _, p := range f.protected {
-			if fsutil.PathWithin(c, p, f.fold) || (u.remove && fsutil.PathWithin(p, c, f.fold)) {
+			if fsutil.PathWithin(c, p, f.fold) || (u.remove && fsutil.PathWithin(p, c, f.fold)) || below(p) {
 				return p, true
 			}
 		}
 		for _, l := range f.userLayer {
-			if (fsutil.PathWithin(c, l, f.fold) || (u.remove && fsutil.PathWithin(l, c, f.fold))) && !f.within(c, f.own) {
+			if (fsutil.PathWithin(c, l, f.fold) || (u.remove && fsutil.PathWithin(l, c, f.fold)) || below(l)) && !f.within(c, f.own) {
 				return l, true
 			}
 		}
 		if name, ok := f.protectedName(c); ok {
 			return name, true
+		}
+		if u.tree && u.in && u.top != "" {
+			for _, n := range protectedNames {
+				if shellGlobMatch(fsutil.FoldPath(u.top, f.fold), fsutil.FoldPath(n, f.fold)) {
+					return n, true
+				}
+			}
 		}
 		if f.stage {
 			if !f.within(c, f.removable) && !strings.HasPrefix(c, "/dev/") {
@@ -556,6 +613,9 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 			}
 			for _, t := range f.tree {
 				if name := stageGateFile(t, c, f.declared, f.fold); name != "" {
+					return name, true
+				}
+				if name := stageGateLanded(t, c, u); name != "" {
 					return name, true
 				}
 			}
@@ -1062,7 +1122,7 @@ func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool, c
 			// Set on the command itself, the same reading already raised the
 			// guard's own warning; carried from an earlier command, only here.
 			return refusal(gitConfigWriteEntryID,
-				"this git command reads configuration the guard does not read (a file GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM names, or one an include pulls in), which may set a program git starts.",
+				"this git command reads configuration the guard does not read (a file GIT_CONFIG_GLOBAL or GIT_CONFIG_SYSTEM names, a global configuration XDG_CONFIG_HOME moves, or one an include pulls in), which may set a program git starts or an alias for another command.",
 				"the same git command without the variable or the setting."), true
 		}
 		if name, ok := programEnvRefused(read.env, clean); ok {
@@ -1383,6 +1443,425 @@ func gitConfigWrite(args []string, env map[string]string) (string, bool) {
 			key = keyName(ops[0])
 		}
 		return "this sets " + key + " in git's configuration, a setting that starts a program the guard does not read.", true
+	}
+	return "", false
+}
+
+// unfixedTreeRefusal is the refusal of a stage's write or removal u below a
+// tree the command by placed earlier on the line, whose contents the line
+// does not fix: any name in it may be a link leading anywhere.
+func unfixedTreeRefusal(u pathUse, by string) Approval {
+	verb := "writes"
+	if u.remove {
+		verb = "removes"
+	}
+	what := "a path"
+	if u.written != "" {
+		what = termsafe.Sanitize(u.written)
+	}
+	return refusal(unfixedPathEntryID,
+		"this "+verb+" "+what+" below what "+termsafe.Sanitize(by)+" placed earlier on the same line, whose contents the line does not fix: any name in it may be a link leading out of the working tree, which the guard cannot read before the line runs.",
+		"run the write as a separate command, after "+termsafe.Sanitize(by)+" has run, so the guard reads what it placed.")
+}
+
+// lineLink is a link a command on the line makes, at path, made by segment
+// seg of the placed line: where it leads (target), with ok false where the
+// line does not fix that; anyName marks links made in the directory path under
+// names the line does not fix. text is a symbolic link's own relative text
+// (rel), which leads from wherever the link is moved or copied to.
+type lineLink struct {
+	path, target string
+	ok, anyName  bool
+	seg          int
+	text         string
+	rel          bool
+}
+
+// lineTree is a tree a command on the line places, by segment seg: at path
+// at, a copy of what stood at src (srcOK, else the line does not fix what the
+// tree holds); in marks a tree of names landing in the directory at, matching
+// top (any name when top is "").
+type lineTree struct {
+	at, src   string
+	srcOK, in bool
+	top       string
+	seg       int
+	// by is the command that placed it, as a refusal names it.
+	by string
+}
+
+// lineMoves is what the line's commands move about before a later command
+// writes: the links they make (lineLinks) and the trees they place.
+type lineMoves struct {
+	links []lineLink
+	trees []lineTree
+}
+
+// lineLinks is every link the placed line's commands make, and every tree
+// they place: what `ln` makes (a symbolic link leads where its text names,
+// read from the link's own directory; a hard link is the file it names), what
+// `cp -s` makes, and a link `cp` or `mv` places by copying or moving one,
+// standing now or made earlier on the line, to where that one leads. A tree
+// a move or copy places carries the links made earlier on the line below its
+// source to the same place below where it lands. They are read in text
+// order, so a link moved after it is made is followed to the first one's
+// target.
+func lineLinks(rc *readCtx, placed []placedSeg) lineMoves {
+	var m lineMoves
+	for k, p := range placed {
+		for _, st := range p.states {
+			for _, a := range commandSites(p.seg) {
+				name := strings.ToLower(path.Base(p.seg.tokens[a.idx]))
+				if s, reads, kind, ok := moverReads(p.seg, a); ok {
+					m.linksAt(rc, s, st, a, kind, reads, k)
+				}
+				m.treesAt(rc, p.seg, st, a, name, k)
+			}
+		}
+	}
+	return m
+}
+
+// moverReads is how the command at a in seg moves, copies or links its
+// operands, where it is one that does (cp, mv, install, ln, and git mv, which
+// moves as mv does): the segment as the command receives its words
+// (xargsView), each reading of them, and the command's kind; ok is false for
+// any other command, and for a git that -C or --work-tree moves elsewhere,
+// whose writes are not placed at all.
+func moverReads(seg segment, a arrival) (s segment, reads []optRead, kind string, ok bool) {
+	switch name := strings.ToLower(path.Base(seg.tokens[a.idx])); name {
+	case "cp", "mv", "install", "ln":
+		s = xargsView(seg, a.idx)
+		return s, readOptsEach(s, a.idx+1, copySpec(name)), name, true
+	case "git":
+		w := writerArgs{s: seg, from: a.idx + 1}
+		if j, elsewhere := w.gitSub(); !elsewhere && j < len(seg.tokens) && seg.tokens[j] == "mv" {
+			r, _ := w.gitRead(j)
+			return seg, []optRead{r}, "mv", true
+		}
+	}
+	return seg, nil, "", false
+}
+
+// linksAt adds the links the cp, mv, install or ln at a in segment s of the
+// line, k, makes, read as reads (moverReads).
+func (m *lineMoves) linksAt(rc *readCtx, s segment, st *shellState, a arrival, name string, reads []optRead, k int) {
+	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
+	var pairs []linkPair
+	symbolic := false
+	for _, r := range reads {
+		if name == "install" {
+			// macOS install -l makes a link to each source instead of a
+			// copy, whatever its flags: a symbolic link's text is the source
+			// made absolute or relative, so it leads where the source is.
+			if v, ok := r.last('l', ""); !ok || !v.ok {
+				continue
+			}
+			symbolic = true
+		}
+		symbolic = symbolic || (name == "ln" && r.has('s', "symbolic")) || (name == "cp" && r.has('s', "symbolic-link"))
+		pairs = append(pairs, w.linkPairs(r, name == "ln")...)
+	}
+	fold := approveFoldsCase()
+	for _, pr := range pairs {
+		if !pr.at.ok {
+			continue
+		}
+		l := lineLink{path: pr.at.path, anyName: pr.at.in, seg: k}
+		dir := filepath.Dir(l.path)
+		if l.anyName {
+			dir = l.path
+		}
+		tok, fixed := fixedToken(s, pr.src)
+		var target string
+		switch {
+		case !fixed && (name == "ln" || symbolic):
+		case !fixed:
+			continue
+		case name == "install":
+			target, l.ok = st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+		case symbolic && !filepath.IsAbs(tok) && !strings.HasPrefix(tok, "~"):
+			target, l.ok = filepath.Join(dir, tok), true
+			l.text, l.rel = tok, true
+		case name == "ln" || symbolic:
+			target, l.ok = st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+		default:
+			src, ok := st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+			if !ok {
+				continue
+			}
+			if t, through, unfixed := m.through(pathUse{path: src, ok: true}, -1, false, fold); through || unfixed {
+				target, l.ok = t.path, !unfixed
+			} else if fi, err := os.Lstat(src); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+				target, l.ok = src, true
+				if text, err := os.Readlink(src); err == nil && !filepath.IsAbs(text) {
+					target, l.text, l.rel = filepath.Join(dir, text), text, true
+				}
+			} else {
+				continue
+			}
+		}
+		m.add(l, target, fold)
+	}
+}
+
+// add appends l, leading to target, judged through what the line moved
+// before it.
+func (m *lineMoves) add(l lineLink, target string, fold bool) {
+	if l.ok {
+		if t, through, unfixed := m.through(pathUse{path: target, ok: true}, -1, false, fold); unfixed {
+			l.ok = false
+		} else if through {
+			target = t.path
+		}
+		l.target = fsutil.RealExistingPath(target)
+	}
+	m.links = append(m.links, l)
+}
+
+// treesAt adds the trees the command at a in segment k of the line places:
+// for cp and mv (git mv among them, moverReads), each source's tree where it lands (copyPlan), with the links
+// made earlier below the source carried along; for any other writer that
+// places a tree (rsync, ditto, an archive unpacked, a clone), a tree whose
+// contents the line does not fix. ln places a link, which linksAt reads, and
+// install copies files, not trees.
+func (m *lineMoves) treesAt(rc *readCtx, seg segment, st *shellState, a arrival, name string, k int) {
+	s, reads, kind, mover := moverReads(seg, a)
+	switch {
+	case kind == "ln" || kind == "install":
+		return
+	case mover:
+	case name == "git":
+		w := writerArgs{rc: rc, s: seg, st: st, from: a.idx + 1}
+		for _, t := range w.gitTrees() {
+			m.trees = append(m.trees, lineTree{at: t.path, seg: k, by: "git"})
+		}
+		fallthrough
+	default:
+		for _, t := range siteTargets(rc, seg, st, a) {
+			if t.ok && t.tree {
+				m.trees = append(m.trees, lineTree{at: t.path, in: t.in, top: t.top, seg: k, by: name})
+			}
+		}
+		return
+	}
+	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
+	fold := approveFoldsCase()
+	for _, r := range reads {
+		for _, operands := range r.readings() {
+			p := w.planCopy(r, operands, 1)
+			if !p.ok || !p.dest.ok {
+				continue
+			}
+			for _, i := range p.srcs {
+				tok, fixed := fixedToken(s, i)
+				src, ok := "", false
+				if fixed && !s.globAt(i) {
+					src, ok = st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
+				}
+				base := path.Base(tok)
+				if !ok || strings.HasSuffix(tok, "/") || base == ".." || base == "/" {
+					m.trees = append(m.trees, lineTree{at: p.dest.path, in: true, seg: k, by: name})
+					continue
+				}
+				var ats []string
+				switch {
+				case base == ".":
+					ats = append(ats, p.dest.path)
+				case p.into:
+					ats = append(ats, filepath.Join(p.dest.path, base))
+					if p.asWell {
+						ats = append(ats, p.dest.path)
+					}
+				default:
+					ats = append(ats, p.dest.path)
+				}
+				for _, at := range ats {
+					m.place(lineTree{at: at, src: src, srcOK: true, seg: k}, fold)
+				}
+			}
+		}
+	}
+}
+
+// place appends t, a copy of what stood at its source: a source below a tree
+// placed earlier on the line is read back to what stood there (or as not
+// fixed, below a tree whose contents the line does not fix), and each link
+// made earlier on the line below the source is carried to the same place
+// below t, a relative one leading from its new place.
+func (m *lineMoves) place(t lineTree, fold bool) {
+	for i := len(m.trees) - 1; i >= 0; i-- {
+		e := m.trees[i]
+		rel, ok := fsutil.RelWithin(e.at, t.src, fold)
+		if !ok || rel == "." || !e.covers(rel) {
+			continue
+		}
+		if !e.srcOK {
+			m.trees = append(m.trees, lineTree{at: t.at, in: true, seg: t.seg, by: e.by})
+			return
+		}
+		t.src = filepath.Join(e.src, rel)
+	}
+	for _, l := range m.links {
+		rel, ok := fsutil.RelWithin(t.src, l.path, fold)
+		if !ok || rel == "." {
+			continue
+		}
+		c := l
+		c.path, c.seg = filepath.Join(t.at, rel), t.seg
+		target := l.target
+		if l.rel {
+			target = filepath.Join(filepath.Dir(c.path), l.text)
+		}
+		m.add(c, target, fold)
+	}
+	m.trees = append(m.trees, t)
+}
+
+// covers says whether the path rel below a tree's place lies in the tree: in
+// a tree of names landing in a directory, its first name must match top.
+func (t lineTree) covers(rel string) bool {
+	if !t.in || t.top == "" {
+		return true
+	}
+	first, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+	return shellGlobMatch(t.top, first) || t.top == first
+}
+
+// linkPair is a link a command places at at, made from its operand src.
+type linkPair struct {
+	at  writeTarget
+	src int
+}
+
+// linkPairs is each link a move, copy or link command read by r places, by
+// copyPlan's reading; ln with a single operand links it in the directory it
+// runs in under its own name.
+func (w writerArgs) linkPairs(r optRead, ln bool) []linkPair {
+	if _, target := r.last('t', "target-directory"); ln && len(r.operands) == 1 && !target {
+		i := r.operands[0]
+		tok, ok := fixedToken(w.s, i)
+		if !ok {
+			return nil
+		}
+		return []linkPair{{writeAt(w.rc, w.st, path.Base(tok), false), i}}
+	}
+	min := 1
+	if ln {
+		min = 2
+	}
+	p := w.planCopy(r, r.operands, min)
+	if !p.ok || !p.dest.ok {
+		return nil
+	}
+	var out []linkPair
+	for _, i := range p.srcs {
+		if p.into {
+			out = append(out, linkPair{w.landingIn(p.dest, i), i})
+		} else {
+			out = append(out, linkPair{p.dest, i})
+		}
+	}
+	return out
+}
+
+// through is u reached through what the line moved before it (lineMoves),
+// but what segment seg moves itself: its path where each link it passes
+// leads, in turn, whether the line made the link or a tree the line placed
+// carried it there from where it stands now. through is false where it passes
+// none; unfixed says it passes one that leads where the line does not fix,
+// or, in a stage, lies below a tree whose contents the line does not fix,
+// any name in which may be a link. A removal of a link itself passes none.
+func (m lineMoves) through(u pathUse, seg int, stage, fold bool) (v pathUse, through, unfixed bool) {
+	v, through, unfixed, _ = m.follow(u, seg, stage, fold)
+	return v, through, unfixed
+}
+
+// follow is through, also naming the command that placed the tree whose
+// contents the line does not fix (by), where that is what stopped it; a
+// removal of a single name directly below such a tree removes that name, a
+// link there included, and passes nothing.
+func (m lineMoves) follow(u pathUse, seg int, stage, fold bool) (v pathUse, through, unfixed bool, by string) {
+	v = u
+	for range len(m.links) + len(m.trees) + 8 {
+		moved := false
+		for _, l := range m.links {
+			if l.seg == seg {
+				continue
+			}
+			rel, ok := fsutil.RelWithin(l.path, v.path, fold)
+			if !ok || (rel == "." && (v.remove || l.anyName)) {
+				continue
+			}
+			if l.anyName {
+				if !strings.Contains(filepath.ToSlash(rel), "/") {
+					continue
+				}
+				return v, true, true, ""
+			}
+			if !l.ok {
+				return v, true, true, ""
+			}
+			v.path = filepath.Join(l.target, rel)
+			moved, through = true, true
+			break
+		}
+		if moved {
+			continue
+		}
+		for _, t := range m.trees {
+			if t.seg == seg || (seg >= 0 && t.seg > seg) {
+				continue
+			}
+			rel, ok := fsutil.RelWithin(t.at, v.path, fold)
+			if !ok || rel == "." || !t.covers(rel) {
+				continue
+			}
+			if !t.srcOK {
+				if stage && !(v.remove && !strings.Contains(filepath.ToSlash(rel), "/")) {
+					return v, true, true, t.by
+				}
+				continue
+			}
+			if p, ok := t.standing(rel, v.remove); ok {
+				v.path, moved, through = p, true, true
+				break
+			}
+		}
+		if !moved {
+			return v, through, false, ""
+		}
+	}
+	return v, through, true, ""
+}
+
+// standing is the path rel below tree t's place leads to through a link
+// standing now below t's source: each name of rel is read at the source, and
+// the first that is a link leads, from its new place, where its text names;
+// ok is false where none is. The last name of a removal is the link itself.
+func (t lineTree) standing(rel string, remove bool) (string, bool) {
+	names := strings.Split(filepath.ToSlash(rel), "/")
+	src, at := t.src, t.at
+	for i, n := range names {
+		src, at = filepath.Join(src, n), filepath.Join(at, n)
+		if i == len(names)-1 && remove {
+			return "", false
+		}
+		fi, err := os.Lstat(src)
+		if err != nil {
+			return "", false
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		text, err := os.Readlink(src)
+		if err != nil {
+			return "", false
+		}
+		if !filepath.IsAbs(text) {
+			text = filepath.Join(filepath.Dir(at), text)
+		}
+		return filepath.Join(append([]string{text}, names[i+1:]...)...), true
 	}
 	return "", false
 }

@@ -474,8 +474,44 @@ A shell command is approved only when the guard reads it whole and clears it:
   the rest of the layer, though the run's own worktree kept under
   `~/.abcd.noindex/worktrees/` stays writable), and the names the host
   protects in any working tree (`.husky/`, `.vscode/`, `.envrc`, `.npmrc` and
-  the like). A removal of a directory holding one counts. A line that only
-  names one of them, to read it, is not a write;
+  the like). A removal of a directory holding one counts, and so does a write
+  that places a whole tree above one: `cp`, `mv`, `install` and `ln` land each
+  source under its own last name when the destination is a directory (named by
+  `-t`, one of several sources, or a directory standing there now), so
+  `cp -R x/.git ./` writes `.git`; a destination spelled with a trailing slash
+  that does not exist yet becomes the source's tree itself, so both readings
+  are judged; a source spelled as a glob lands under each name the glob
+  matches; a directory's contents copied (`cp -R src/. dir/`, `rsync -a src/
+  dir/`, `ditto src dir`), an archive unpacked (`tar -x`, `unzip -d`), a patch
+  applied with no file named, a source the line does not spell out, or one
+  `xargs` supplies can write any path below the directory it lands in, so
+  `rsync -a src/ ./` at the root of a working tree reaches its `.git`, and a
+  patch applied there with no file named (`patch -p1 < x.diff`) is not
+  approved unattended; and an
+  archive whose members keep their absolute or parent paths (`tar -P`,
+  `--absolute-names`, `unzip -:`) can write anywhere. patch opens every file
+  inside its `-d` directory, the patched file, its `-o` output, its `-r`
+  reject file and the backups a `-B` prefix names among them, and macOS's
+  `install -M` writes its log file; `tar --cd` names tar's directory. The options are read as
+  GNU getopt reads them (a clustered `-Rt dir`, an abbreviated `--t dir` or
+  `--no-t`), and where macOS's command reads them otherwise (`cp -S` and
+  `install -S` take no value there, and every word after the first operand
+  is an operand there, so `cp f -t d x .abcd/` copies `x` into `.abcd/`)
+  both readings are judged; an option letter or long option name the line does
+  not fix may name the destination itself (`-t` with a directory glued on), so
+  the destination is not placed, while a value the line does not fix glued to
+  an option that takes one (`-m"$MODE"`, `--suffix=.$EXT`) names none. A write through
+  a link the same line makes (`ln -s`, `cp -s`, macOS's `install -l`, or a move or copy of a link) is
+  judged where the link leads, and so is one through a link inside a directory
+  the line moved or copied first, made on the line or standing there now; in a
+  stage, a write below a tree whose contents the line does not fix (from
+  `rsync`, `ditto`, an archive, a clone or a source `xargs` supplies) is not
+  placed, since any name in it may be a link, and the refusal says to run the
+  write as a separate command, which then follows the links standing there; a
+  removal of a single name directly below such a tree removes that name and is
+  judged as it is. A listing, a test or a dry run (`unzip -l`,
+  `tar -t`, `patch --dry-run`) writes nothing. A line that only names one of
+  them, to read it, is not a write;
 - no removal reaches outside the working tree (`removal-outside-tree`): a
   removal (`rm`, `rmdir`, `unlink`, `mv`'s sources, a `find` that deletes, an
   `rsync --delete`) whose target lies outside the launched working tree, the
@@ -611,8 +647,52 @@ per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards
 as everywhere, but the checks above read the line itself, not the script's own
 writes, and a command that writes into a directory (`tar -x`, `unzip -d`,
-`cp -r`, `git apply`, `git checkout`) is judged by that directory, not by the
-files that land inside it.
+`cp -r`) is judged by that directory and, for the writers the protected-path
+rule above names, by every protected path below it, not by the names of the
+files that land inside it, which the guard does not read. A git command that
+writes the working tree from a patch or from the object store (`git apply`,
+`git am`, a stash applied, a hard reset, a merge, cherry-pick, revert, rebase
+or pull, a branch switched to, `git checkout-index`, `git read-tree -u`) is
+not judged by the files it writes; in a stage it counts as placing a tree of
+contents the line does not fix over the working tree, as `git checkout -- P`
+and `git restore P` do over each path they name, so a later write below it on
+the same line, which may pass through a link it made, is not placed. A git
+subcommand's options are read as git reads them: a long option by its whole
+name or by a prefix that names no other (`--unsafe` is `--unsafe-paths`,
+`--dir=` is `--directory=`), a negation as `--no-<name>`, short options in
+clusters (`-mu` is `-m -u`), and a value glued on or as the next word. A
+branch made at HEAD with no start point, `git restore --staged` without
+`--worktree`, `git reset` with no option but `--soft`, `--mixed`, `-q`, `-p`
+or `-N`, `git read-tree` without `-u`, `git apply` with `--cached`, or with
+`--check` or `--stat` and no `--apply`, the stash commands that list or show,
+`git submodule status` or `summary`, and `git bisect log`, `visualize` or
+`view` write no file, each only while every option it is given is one that
+leaves the files alone: any other voids it (`git checkout -f -b topic`
+restores deleted files, so it counts as placing the tree), and so does a word
+the line does not fix. In a stage, `git apply` and `git am` are judged as a
+tree landing at the working tree's root, as `patch` is, or in the directory a
+fixed `--directory` names. With `--unsafe-paths` either may write anywhere, so
+it is not approved unattended, and the refusal says to drop it; nor is one
+with a `--directory` the line does not fix. The files git's own options name
+are judged as any write is: the `--output` of a command that shows a diff or
+a log, `git format-patch -o`, `git archive -o`, `git bundle create`, `git
+read-tree --index-output`, `git apply --build-fake-ancestor`, `git
+interpret-trailers --in-place`, `git merge-file`, the directory `git init`
+makes, and where `git mv` moves its sources, read as `mv` is; `git rm` removes
+the files it names. In a stage, a path `git rm`, `git checkout` or `git
+restore` takes as a pathspec git matches itself (one opening with `:`, such as
+`:/Makefile`, or holding a wildcard) can name any file, so it is not placed.
+In a stage, a subcommand git does not document is the
+`git-<name>` program git finds on PATH, which git 2.52 runs before any alias
+of that name, and is judged as any program is (`git lfs pull` is approved),
+when that program lies outside the working tree, the run's own directories
+and the temporary directory, and the configuration git reads (`git config
+--get alias.<name>`, under the stage's home) defines no alias of that name.
+Otherwise it may be an alias for any command, so it is not approved, and the
+refusal says which of these it met. That read has five seconds, as the hook's
+first git calls do; a git that has not answered by then is refused, saying so. A git command run with `XDG_CONFIG_HOME`
+set, which moves the configuration its aliases come from, is refused as one
+with `GIT_CONFIG_GLOBAL` set is.
 
 What the approver does not cover, plainly. The file tools the role is granted
 on the launch (`--allowedTools`: reading, editing and writing files) write

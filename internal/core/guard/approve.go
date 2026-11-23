@@ -298,6 +298,9 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 		}
 	}
 	vf := r.gitValueFlags()
+	// links are the links the line's commands make, which a write through
+	// one of them reaches where it leads (throughLinks).
+	links := lineLinks(rc, placed)
 	// wrote is set once a segment of the line writes or removes a path: a
 	// command a git setting runs after that, and a glob removal after that,
 	// are judged against files the line may have changed (a directory it may
@@ -347,7 +350,7 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 			}
 		}
 	}
-	for _, p := range placed {
+	for k, p := range placed {
 		wroteBefore := wrote
 		gitWroteBefore := wrote || gitWrote
 		// A command a git setting runs is judged as run from the working
@@ -426,6 +429,21 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 				}
 				if !u.ok {
 					return unfixedRefusal(u)
+				}
+				if v, through, unfixed, by := links.follow(u, k, facts.stage, facts.fold); unfixed {
+					if by != "" {
+						return unfixedTreeRefusal(u, by)
+					}
+					return unfixedRefusal(u)
+				} else if through {
+					if name, ok := facts.protects(v); ok {
+						return protectedRefusal(name)
+					}
+					if facts.outsideRemoval(v) {
+						return refusal(outsideRemovalEntryID,
+							"this removes "+termsafe.Sanitize(fsutil.DisplayPath(v.path))+", through a link the line makes, which lies outside the working tree the agent was started in, the run's own directories and the temporary directory, so abcd does not approve it unattended.",
+							"remove only files inside the working tree, or say in the receipt which file outside it should go.")
+					}
 				}
 				if facts.outsideRemoval(u) {
 					name := termsafe.Sanitize(fsutil.DisplayPath(u.path))
@@ -509,11 +527,21 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 		case "find":
 			ops, critical = findDeletes(s, a.idx+1), f.homeOrAbove
 		case "mv":
-			ops = operandsFrom(s, a.idx+1, []string{"-S", "--suffix", "-t", "--target-directory"})
-			if !flagGiven(s, a.idx+1, "-t", "--target-directory") && len(ops) > 0 {
-				ops = ops[:len(ops)-1] // the destination stays
-			}
+			ops = eachSources(readOptsEach(s, a.idx+1, mvOpts)) // the destination stays
 			ownLink = true
+		case "git":
+			// git mv moves as mv does; git rm removes, but for --cached or
+			// --dry-run.
+			if _, reads, kind, ok := moverReads(s, a); ok && kind == "mv" {
+				ops, ownLink = eachSources(reads), true
+			} else if j, elsewhere := (writerArgs{s: s, from: a.idx + 1}).gitSub(); !elsewhere && j < len(s.tokens) && s.tokens[j] == "rm" {
+				if r, _ := (writerArgs{s: s, from: a.idx + 1}).gitRead(j); !r.has(0, "cached") && !r.has('n', "dry-run") {
+					ops, ownLink = r.operands, true
+				}
+			}
+			if ops == nil {
+				continue
+			}
 		case "rsync":
 			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {
 				continue
