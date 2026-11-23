@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestImplementStepDiscardEndsALaneAtWork (iss-2611231404319245): through
@@ -81,8 +82,7 @@ func TestImplementStepDiscardLeavesAReservationMadeAgainAfterARelease(t *testing
 		"## Footprint\n\n- packages: internal/widget\n\n## Steps\n\n1. The state file\n")
 	repo.Commit("conventions")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	gitCmd(t, filepath.Dir(bare), "init", "-q", "--bare", bare)
-	gitCmd(t, bare, "symbolic-ref", "HEAD", "refs/heads/main")
+	gittest.InitBare(t, bare)
 	repo.Git("config", "user.name", "Pat Example")
 	repo.Git("config", "user.email", octoMail)
 	repo.Git("remote", "add", "origin", bare)
