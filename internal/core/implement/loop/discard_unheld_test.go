@@ -427,7 +427,7 @@ func reservedIssueAwaiting(t *testing.T) (repo *gittest.Repo, bare, runID string
 func TestDiscardLeavesAReservationMadeAgainSinceTheRunHeldIt(t *testing.T) {
 	repo, bare, runID, l := reservedIssueAwaiting(t)
 	o := pastTheLease(t, repo, runID)
-	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(o.Now().Add(-time.Minute))); err != nil {
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(o.Now().Add(-10*time.Second))); err != nil {
 		t.Fatal(err)
 	}
 	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
@@ -595,5 +595,117 @@ func TestTheBundleHeaderMustListTheSavedTipAlone(t *testing.T) {
 		if got := h.listsOnly(line); got != c.want {
 			t.Errorf("%s: listsOnly = %v; want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// wantLeftStanding wants the discard to have left the reservation on origin
+// at the commit it held before, unreleased, and the run record to say so.
+func wantLeftStanding(t *testing.T, repo *gittest.Repo, bare, runID string, before reservation) {
+	t.Helper()
+	if now := originReservation(t, bare, claim.RefPrefix+secondIssue); now.commit != before.commit || now.released {
+		t.Fatalf("the reservation is left as it stands: %+v, was %+v", now, before)
+	}
+	if note := recordNote(t, repo, runID, StageReservationReleased); !strings.Contains(note, "as it stands") {
+		t.Fatalf("the run record says the reservation was left as it stands: %q", note)
+	}
+}
+
+// TestDiscardLeavesAReservationMadeBeforeAnUnrelatedStateWrite: this person
+// released the run's reservation and reserved the issue again from this copy,
+// and the run's state was written after that for a reason of its own (a
+// driver's claim); the reservation is still not one the run took, so the
+// discard leaves it standing.
+func TestDiscardLeavesAReservationMadeBeforeAnUnrelatedStateWrite(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	o := pastTheLease(t, repo, runID)
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, clockAt(o.Now().Add(-3*time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(o.Now().Add(-2*time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	written := o.Now().Add(-time.Minute)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Record = append(st.Record, Entry{At: written, Stage: StageDriver, Note: "replaced the driver, which is gone"})
+		st.UpdatedAt = written
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if res, err := Discard(repo.Root(), runID, l.ID, o); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	wantLeftStanding(t, repo, bare, runID, mine)
+}
+
+// TestDiscardReleasesTheRunsReservationRenewedByAnotherWaiter: a load-gate
+// waiter in this copy renewed the run's own reservation half through its
+// lease, which the run's record never logs; the renewal is the same hold, so
+// the discard releases it.
+func TestDiscardReleasesTheRunsReservationRenewedByAnotherWaiter(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	own := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	half := own.claimed.Add(own.expires.Sub(own.claimed)/2 + time.Minute)
+	renewed, err := claim.RenewDue(repo.Root(), clockAt(half))
+	if err != nil || len(renewed) != 1 {
+		t.Fatalf("premise: the waiter renews the run's reservation: %+v %v", renewed, err)
+	}
+	if r := originReservation(t, bare, claim.RefPrefix+secondIssue); r.commit == own.commit {
+		t.Fatalf("premise: the renewal is a commit of its own: %+v", r)
+	}
+	if res, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID)); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released {
+		t.Fatalf("the run's renewed reservation is released: %+v", tomb)
+	}
+}
+
+// TestDiscardReleasesNothingTheViewShowsReleased: a reservation this
+// checkout's view shows released already is not released again: nothing is
+// pushed, and the record says there was nothing of the run's to release.
+func TestDiscardReleasesNothingTheViewShowsReleased(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	o := pastTheLease(t, repo, runID)
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, clockAt(o.Now().Add(-time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	tomb := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if res, err := Discard(repo.Root(), runID, l.ID, o); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if now := originReservation(t, bare, claim.RefPrefix+secondIssue); now.commit != tomb.commit {
+		t.Fatalf("nothing is pushed over a reservation already released: %+v, was %+v", now, tomb)
+	}
+	if note := recordNote(t, repo, runID, StageReservationReleased); !strings.Contains(note, "nothing of this run's to release") {
+		t.Fatalf("the run record says there was nothing to release: %q", note)
+	}
+}
+
+// TestDiscardClearsAStaleBundleLeftPartWritten: a part-written bundle a
+// discard cut short left in the run's directory, even a link, is removed, not
+// written through, and the retry saves the bundle under its own name.
+func TestDiscardClearsAStaleBundleLeftPartWritten(t *testing.T) {
+	repo, runID, l, _ := issueAwaiting(t)
+	tip := laneCommit(t, repo, l, "one.txt")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("kept\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	partial := filepath.Join(repo.Root(), filepath.FromSlash(runRel(runID)), l.ID+"-"+tip[:12]+".bundle.partial")
+	if err := os.Symlink(target, partial); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID))
+	if err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the discard goes through past a stale part-written bundle: %+v %v", res, err)
+	}
+	wantBundled(t, repo, runID, res, l.Branch, tip)
+	if b, err := os.ReadFile(target); err != nil || string(b) != "kept\n" {
+		t.Fatalf("the file the stale link names was written: %q %v", b, err)
+	}
+	if _, err := os.Lstat(partial); !os.IsNotExist(err) {
+		t.Fatalf("the stale part-written bundle is removed: %v", err)
 	}
 }

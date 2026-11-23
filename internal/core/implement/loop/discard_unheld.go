@@ -17,12 +17,15 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -213,11 +216,12 @@ var saveBundle = saveLaneBundle
 // branch, "" when the branch is gone. History is read as stored, so no graft
 // or replace ref hides a commit from the bundle.
 //
-// The file is created through root, the checkout's handle, as a new file in
-// the run's directory: a name already there, a link included, refuses the
-// save, and git writes the bundle to the open file on its standard output,
-// never opening a path of its own. The bundle's header must list the branch at
-// tip and nothing else, or the file is removed and the save refused: the
+// The file is created through root, the checkout's handle, in the run's
+// directory: a name already there, a link included, refuses the save. git
+// writes the bundle on its standard output to a new file of a part-written
+// name the save opened itself, never opening a path of its own, and the
+// bundle takes its own name only once whole. Its header must list the branch
+// at tip and nothing else, or the file is removed and the save refused: the
 // branch moved while it was read.
 func saveLaneBundle(root *os.Root, repoRoot, runID string, lane Lane) (rel string, n int, tip string, err error) {
 	if lane.Branch == "" {
@@ -247,18 +251,28 @@ func saveLaneBundle(root *os.Root, repoRoot, runID string, lane Lane) (rel strin
 		name = lane.ID
 	}
 	file := name + "-" + tip[:12] + ".bundle"
+	partial := file + ".partial"
 	rel = runRel(runID) + "/" + file
+	taken := fmt.Errorf("%s already exists, and a discard writes its bundle only to a file of its own making", rel)
 	dir, err := root.OpenRoot(runRel(runID))
 	if err != nil {
 		return "", 0, "", fmt.Errorf("opening the run's directory: %w", err)
 	}
 	defer dir.Close()
-	f, err := dir.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, fs.ErrExist) {
-		return "", 0, "", fmt.Errorf("%s already exists, and a discard writes its bundle only to a file of its own making", rel)
+	if _, err := dir.Lstat(file); err == nil {
+		return "", 0, "", taken
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", 0, "", fmt.Errorf("reading %s: %w", rel, err)
 	}
+	// A part-written bundle is what a discard cut short leaves; only a discard
+	// writes that name, and nothing reads it, so it is removed (a link itself,
+	// never what it names) before the bundle is written afresh.
+	if err := dir.Remove(partial); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", 0, "", fmt.Errorf("removing the part-written %s.partial: %w", rel, err)
+	}
+	f, err := dir.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return "", 0, "", fmt.Errorf("creating %s: %w", rel, err)
+		return "", 0, "", fmt.Errorf("creating %s.partial: %w", rel, err)
 	}
 	head := &bundleHeader{}
 	err = gitutil.StreamAsStored(repoRoot, io.MultiWriter(f, head), append([]string{"bundle", "create", "-q", "-", ref}, not...)...)
@@ -268,8 +282,16 @@ func saveLaneBundle(root *os.Root, repoRoot, runID string, lane Lane) (rel strin
 	if err == nil && !head.listsOnly(tip+" "+ref) {
 		err = fmt.Errorf("%s moved from %s while its commits were saved", lane.Branch, shortSHA(tip))
 	}
+	// The whole bundle takes its name only once checked, by a link that
+	// refuses a name already there, so no name a retry refuses is ever left
+	// half written.
+	if err == nil {
+		if err = dir.Link(partial, file); errors.Is(err, fs.ErrExist) {
+			err = taken
+		}
+	}
+	_ = dir.Remove(partial)
 	if err != nil {
-		_ = dir.Remove(file)
 		return "", 0, "", fmt.Errorf("saving %s's commits to %s: %w", lane.Branch, rel, err)
 	}
 	return rel, n, tip, nil
@@ -332,14 +354,13 @@ func bundleNote(rel string, n int, branch string) string {
 // pending (which the next step would open a lane for), and no lane handed back
 // with its pull request still armed (armingOwed), the rule completesRun keeps
 // for a landing. A reservation the record already shows released since it was
-// taken is not released again, and each is released only while it is still
-// the run's own (releaseOwn). An issue run's release publishes the discarded
-// lane's hand-back, where it carries one, as releaseOnHandBack would have.
-// Each release is written to the run record, and the run's reserved_at
-// cleared, by a second write under the same hold, as a stop's release is.
-// held and stage are lastHeld and renewalStage of the state before the
-// discard changed it. *said is what the releases came to, "" for none.
-func releaseOnDiscard(repoRoot string, st *State, laneID string, held time.Time, stage string, now time.Time, said *string) {
+// taken is not released again, and each is released only while it is provably
+// still the run's own (releaseOwn). An issue run's release publishes the
+// discarded lane's hand-back, where it carries one, as releaseOnHandBack would
+// have. What came of each is written to the run record, and the run's
+// reserved_at cleared, by a second write under the same hold, as a stop's
+// release is. *said is what the releases came to, "" for none.
+func releaseOnDiscard(repoRoot string, st *State, laneID string, now time.Time, said *string) {
 	st.afterWritten(func(s *State, rewrite func() error) {
 		if len(s.Pending) > 0 {
 			return
@@ -363,7 +384,7 @@ func releaseOnDiscard(repoRoot string, st *State, laneID string, held time.Time,
 			if releasedThisHoldFor(*s, id) {
 				continue
 			}
-			clause, failed := releaseOwn(repoRoot, id, kind, held, stage, now)
+			clause, failed := releaseOwn(repoRoot, *s, id, kind, now)
 			logged := StageReservationReleased
 			if failed {
 				tail, _, _ := lapseTail(repoRoot, s.forIssue(id), now)
@@ -388,53 +409,117 @@ func releaseOnDiscard(repoRoot string, st *State, laneID string, held time.Time,
 	})
 }
 
-// lastHeld is the latest moment the run's state shows it acting on its
-// reservations: its last write, the times it reserved, and each reservation
-// or renewal its record logs. Every reservation or renewal the run makes is
-// followed by a write of its state, short of one a refused step made at the
-// land fence (renewIssueAtFence), which names the stage the run's lane was at.
-func lastHeld(st State) time.Time {
-	t := st.UpdatedAt
-	later := func(p *time.Time) {
-		if p != nil && p.After(t) {
-			t = *p
-		}
-	}
-	later(st.ReservedAt)
-	for i := range st.Bundle {
-		later(st.Bundle[i].ReservedAt)
-	}
-	for i := range st.Record {
-		if st.Record[i].Stage == StageReservation || st.Record[i].Stage == StageReservationRenewed {
-			later(&st.Record[i].At)
-		}
-	}
-	return t
-}
-
-// releaseOwn releases the reservation on id while it is still the run's own,
-// and says what came of it as releaseReservation does. The tip, as this
-// checkout last saw it, is read first: one of this copy's claimed after held
-// (lastHeld) that does not name stage, the stage the run's own renewal at its
-// land fence names, was made since by another hand (this person's own reserve,
-// or another run's start) and is left as it stands; any other of this copy's
-// is released fenced on that commit (releaseReservationAt), so a tip that
-// moves on before the push is left too. A tip that is not this copy's, or is
-// already released, goes to claim's own judgement, which leaves another's.
-func releaseOwn(repoRoot, id, kind string, held time.Time, stage string, now time.Time) (clause string, failed bool) {
+// releaseOwn releases the reservation on id only while it is provably still
+// the run's own, and says what came of it as releaseReservation does. The tip
+// is read from this checkout's view, as last fetched: one the view shows
+// absent or released already is nothing of the run's to release, and nothing
+// is pushed; one of another copy or person, or unreadable, is left as it
+// stands; one of this copy's is released, fenced on that commit
+// (releaseReservationAt, so a tip that moves on before the push is left too),
+// only when its history reaches one of the run's own logged acts through
+// renewals alone (provablyOwn), and otherwise left as it stands to lapse. No clock
+// of the run's own is compared with the tip's: a write of the run's state is
+// no reservation act, and a renewal made by another hand in this copy (a
+// load-gate waiter's) is the same hold.
+func releaseOwn(repoRoot string, st State, id, kind string, now time.Time) (clause string, failed bool) {
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
 		return "the reservation on " + id + " was not released: the reservations as last fetched here could not be read (" +
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ")", true
 	}
 	r, ok := snap.Lookup(id)
-	if !ok || r.Copy != claim.CopyThis || (r.State != claim.StateLive && r.State != claim.StateExpired) {
-		return releaseReservation(repoRoot, id, kind, now)
+	switch {
+	case !ok:
+		return "nothing of this run's to release on " + id + ": this checkout's view shows no reservation of it", false
+	case r.State == claim.StateReleased:
+		return "nothing of this run's to release on " + id + ": this checkout's view shows it released already", false
+	case r.Copy != claim.CopyThis || (r.State != claim.StateLive && r.State != claim.StateExpired):
+		return "left the reservation on " + id + " as it stands: this checkout's view shows it held from another copy or by another person, or unreadable", false
 	}
-	ownRenewal := stage != "" && r.Stage == stage
-	if r.ClaimedAt.After(held) && !ownRenewal {
-		return "left the reservation on " + id + " as it stands: it was reserved again from this copy at " + stamp(r.ClaimedAt) +
-			", after this run last held it", false
+	if own, why := provablyOwn(repoRoot, st, id, r.Commit); !own {
+		return "left the reservation on " + id + " as it stands, to lapse at " + stamp(r.EffectiveExpiry) +
+			": it is not provably this run's, since " + why, false
 	}
 	return releaseReservationAt(repoRoot, id, r.Commit, kind, now)
+}
+
+// maxHoldWalk bounds the reservation commits provablyOwn reads back from a tip.
+const maxHoldWalk = 64
+
+// provablyOwn reports whether tip, a reservation commit of this copy's on id, is
+// still the run's own hold: read back along first parents, as stored, from
+// tip, its history reaches a commit that is one of the run's own logged
+// reservation acts (runActs: the commit's claimed-at is the act's time to the
+// second), through reservation commits of tip's own copy alone, none of them a
+// tombstone and none claimed after the lease of the one before it had ended.
+// why is the reason it is not, for the record: a release or a lapse in
+// between, a take-over, a commit that cannot be read, or no anchor within
+// maxHoldWalk commits.
+func provablyOwn(repoRoot string, st State, id, tip string) (own bool, why string) {
+	acts := runActs(st, id)
+	if len(acts) == 0 {
+		return false, "the run's record logs no reservation of " + id
+	}
+	out, err := gitutil.RunCappedAsStored(repoRoot, maxHoldWalk*48, "rev-list", "--first-parent", "--max-count="+strconv.Itoa(maxHoldWalk), tip, "--")
+	if err != nil {
+		return false, "its history could not be read"
+	}
+	copyKey := ""
+	var child *claim.ReservationMessage
+	for _, sha := range strings.Fields(out) {
+		body, err := gitutil.RunCappedAsStored(repoRoot, claim.MaxMessageBytes+1, "log", "-1", "--format=%B", sha, "--")
+		if err != nil {
+			return false, "its commit " + shortSHA(sha) + " could not be read"
+		}
+		m, err := claim.ReadReservationMessage(body)
+		switch {
+		case err != nil:
+			return false, "its commit " + shortSHA(sha) + " is not a reservation that can be read"
+		case m.Released():
+			return false, "it was released at " + stamp(m.ReleasedAt) + " and reserved again after"
+		case copyKey != "" && m.Copy != copyKey:
+			return false, "it was taken over from another copy after the run's reservation"
+		case child != nil && child.ClaimedAt.After(heldUntil(m)):
+			return false, "its lease lapsed at " + stamp(heldUntil(m)) + " and it was reserved again after"
+		}
+		copyKey = m.Copy
+		if slices.ContainsFunc(acts, m.ClaimedAt.Equal) {
+			return true, ""
+		}
+		child = &m
+	}
+	return false, "no reservation the run logged lies within its last " + strconv.Itoa(maxHoldWalk) + " commits"
+}
+
+// heldUntil is when the reservation m stopped holding: its expiry, clamped to
+// a day after it was claimed, as lease.Judge clamps it.
+func heldUntil(m claim.ReservationMessage) time.Time {
+	if most := m.ClaimedAt.Add(lease.Max); m.ExpiresAt.After(most) {
+		return most
+	}
+	return m.ExpiresAt
+}
+
+// runActs is the time of every reservation act on id the run's state logs,
+// to the second, as a reservation commit's claimed-at carries it: the run's
+// and each member's reserved_at, and each reservation and renewal line its
+// record holds for id. Each was taken from the clock the act's commit was
+// claimed at.
+func runActs(st State, id string) []time.Time {
+	var out []time.Time
+	add := func(t time.Time) { out = append(out, t.UTC().Truncate(time.Second)) }
+	if recordid.SameID(id, st.Key) && st.ReservedAt != nil {
+		add(*st.ReservedAt)
+	}
+	for _, m := range st.Bundle {
+		if recordid.SameID(m.Issue, id) && m.ReservedAt != nil {
+			add(*m.ReservedAt)
+		}
+	}
+	for _, e := range st.Record {
+		if (e.Stage == StageReservation || e.Stage == StageReservationRenewed) && recordid.SameID(st.lineIssue(e), id) {
+			add(e.At)
+		}
+	}
+	return out
 }

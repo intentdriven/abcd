@@ -961,16 +961,21 @@ branch does not hold to a git bundle in the run's own directory,
 `.abcd/.work.local/run/<run-id>/<lane-id>-<tip>.bundle`, before it removes
 anything; the result names it under `bundle`, the run record names it, and
 `git fetch <bundle> <branch>` restores the branch. A branch with no commits of
-its own saves none. The bundle is always a new file: a file or link already at
-its name, or a bundle git cannot write, refuses the discard with nothing
-removed. The branch is deleted only at the tip that was saved, so a branch that
+its own saves none. The bundle is always a new file, written under a
+part-written name (`<name>.bundle.partial`, which a later discard clears) and
+given its own name only once whole: a file or link already at its name, or a
+bundle git cannot write, refuses the discard with nothing removed. The branch is deleted only at the tip that was saved, so a branch that
 moved since is refused rather than deleted. A discard that leaves nothing of
 the run to land or settle (no lane at work or held, no spec step pending, and
 no lane handed back with its pull request still armed) releases every
 reservation the run still holds, an issue run's with the discarded lane's
 hand-back where it carries one, once the discard is written. Each release
-takes only the run's own reservation: one reserved again from this copy since
-the run last held it is left as it stands, and said so. The result says what
+takes only a reservation provably the run's own: this copy's, and reaching one
+the run's record logs through renewals alone (a renewal another session in
+this copy made, such as a load-gate waiter's, is the same hold). One released,
+lapsed or taken over since, so reserved again, is left standing to lapse; one
+this checkout's view shows absent or released already is not released again;
+the record says which. The result says what
 came of it under `released`, and the record logs it at
 `reservation_released` or `reservation_release_failed`. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain

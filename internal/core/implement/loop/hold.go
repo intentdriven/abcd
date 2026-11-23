@@ -285,7 +285,6 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		now := o.now()
 		lane := st.Lanes[i]
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
-		held, stage := lastHeld(*st), renewalStage(*st)
 		closed := false
 		if unheldOnly(repoRoot, *st, lane) {
 			if closed, err = mayEndUnheld(c, root, lane, g, o); err != nil {
@@ -376,7 +375,7 @@ func discardHeld(repoRoot, runID, laneID string, o Options) (StepResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "discard",
 			Note: discardNote(*st, lane, did)})
 		st.UpdatedAt = now
-		releaseOnDiscard(repoRoot, st, lane.ID, held, stage, now, &released)
+		releaseOnDiscard(repoRoot, st, lane.ID, now, &released)
 		res = laneResult(*st, lane, "", nil)
 		res.AcceptedConfigChange, res.Bundle = accepted, bundle
 		afterAccept = pa

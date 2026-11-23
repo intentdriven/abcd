@@ -597,8 +597,11 @@ branch does not hold to a bundle in the run's own directory before it removes
 anything, written as a new file git streams into (a name already taken refuses
 the discard), and deletes the branch only at the tip it saved. One that leaves
 nothing of the run to land or settle (no lane at work or held, no step pending,
-no handed-back lane still armed) releases the run's own reservation once it is
-written, leaving one reserved again from this copy since the run last held it. With
+no handed-back lane still armed) releases the run's reservation once it is
+written, and only one provably the run's own: its history reaches a
+reservation the run's record logs through renewals alone. One released,
+lapsed or taken over since is left standing to lapse, and one the checkout's
+view shows absent or released is not released again. With
 `--accept-config-change`, a discard, a release or a restart writes the
 acceptance in its own write, so one refused writes nothing
 (iss-2611231404326060); a plain step writes the acceptance first. An issue run logs
