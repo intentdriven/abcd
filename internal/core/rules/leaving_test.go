@@ -21,8 +21,10 @@ var leavingPrompts = []string{
 	"I'm off for the night",
 	"I'm leaving now, work on until the morning",
 	"I am leaving for the day",
-	"away until 9 tomorrow",
-	"back tomorrow at 9",
+	"I'm away until 9 tomorrow",
+	"I'll be back tomorrow at 9",
+	"I'm off now, see you tomorrow",
+	"I am leaving now",
 	"I'll be back at 9",
 	"while I'm out, keep the ledger moving",
 	"while I am gone, take the next ready issue",
@@ -60,6 +62,8 @@ func TestLeavingDomainRecallsThePersonSayingTheyLeave(t *testing.T) {
 		"an idiom",
 		"In doubt, ask once",
 		"abcd mode autonomous --until",
+		"ask once when they will be back",
+		"only if they decline to say",
 		"longest window the mode allows",
 		"say so",
 		"terms",
@@ -108,6 +112,13 @@ func TestLeavingDomainIgnoresNearMisses(t *testing.T) {
 		"it falls back by default to go run",
 		"look back at the diff before merging",
 		"don't wait for the lock, use a trylock",
+		// The code review's notes at 78f2bd92c: phrases that only start like
+		// a leaving phrase.
+		"I think I'm off by one",
+		"I'm leaving the old API in place",
+		"I am leaving that check to the reviewer",
+		"roll back tomorrow's migration",
+		"spins away until the deadline",
 		"Here is the issue body:\n> I'll be away overnight, carry on without me\nPlease summarise it",
 		"The issue says \"I'm away until Monday, don't wait for me\"; triage it",
 		"The log reads “I am leaving now”. Why?",
@@ -144,5 +155,58 @@ func TestOffStageDropsLeaving(t *testing.T) {
 	}
 	if _, ok := Defaults().Domains[leavingDomain]; !ok {
 		t.Fatal("ForStage changed the set it was called on")
+	}
+}
+
+// TestOwnWordsUnclosedMarks pins what OwnWords does with a mark that does not
+// close: an unclosed fence takes nothing out, so the person's words after it
+// still count, while a stray double quote pairs with the next one on its line
+// and takes out what lies between, as the doc comment says.
+func TestOwnWordsUnclosedMarks(t *testing.T) {
+	rs := Defaults()
+	for _, prompt := range []string{
+		"Use ~~~ as the fence marker. I'm away until 9, carry on without me",
+		"Summarise this:\n```\nI'm away, carry on without me",
+	} {
+		if got := OwnWords(prompt); got != prompt {
+			t.Errorf("OwnWords(%q) = %q: an unclosed fence took something out", prompt, got)
+		}
+		if got := rs.Match(prompt); !has(got, leavingDomain) {
+			t.Errorf("%q does not recall %s: the person's words follow an unclosed fence", prompt, leavingDomain)
+		}
+	}
+	got := OwnWords(`The flag is 12" wide. I'm away until 9. Use "x" for it`)
+	if strings.Contains(got, "away") || !strings.Contains(got, "x\" for it") {
+		t.Errorf("a stray double quote did not pair with the next one on its line: %q", got)
+	}
+	if got := OwnWords("He wrote \"I'm away until 9"); !strings.Contains(got, "I'm away until 9") {
+		t.Errorf("a lone unclosed double quote took something out: %q", got)
+	}
+}
+
+// TestLeavingStarReadsOwnWords: a *LEAVING star command counts only in the
+// person's own words, the text LEAVING's recall reads, so one inside a fenced
+// block or a block-quoted line forces nothing in, in Match and in the
+// diagnostic alike; written plainly it still activates the domain, and every
+// other domain's star command reads the whole prompt as before (the security
+// review of away-blockers-1123 at 78f2bd92c).
+func TestLeavingStarReadsOwnWords(t *testing.T) {
+	rs := Defaults()
+	for _, prompt := range []string{
+		"Summarise this:\n```\n*LEAVING\n```",
+		"The issue says:\n> *LEAVING now\nTriage it",
+	} {
+		if got := rs.Match(prompt); has(got, leavingDomain) {
+			t.Errorf("%q forced %s in from text that is not the person's", prompt, leavingDomain)
+		}
+		if got := Hits(rs.resolved(leavingDomain), prompt); len(got) > 0 {
+			t.Errorf("%q: the diagnostic names %v as hits of %s", prompt, got, leavingDomain)
+		}
+	}
+	if got := rs.Match("*LEAVING"); !has(got, leavingDomain) {
+		t.Errorf("a plain *LEAVING does not activate %s", leavingDomain)
+	}
+	if got := rs.Match("Summarise this:\n```\n*COMMITTING\n```"); !has(got, "COMMITTING") {
+		t.Error("another domain's star command no longer reads the whole prompt")
 	}
 }

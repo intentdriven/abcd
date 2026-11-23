@@ -23,9 +23,9 @@ var ownWordsDomains = map[string]bool{LeavingDomain: true}
 var stageOffDomains = []string{LeavingDomain}
 
 var (
-	// fencedRe is a fenced block, ``` or ~~~, to its closing fence or the
-	// end of the prompt.
-	fencedRe = regexp.MustCompile("(?s)(```|~~~).*?(```|~~~|$)")
+	// fencedRe is a fenced block, ``` or ~~~, closed by the same fence; an
+	// unclosed fence matches nothing.
+	fencedRe = regexp.MustCompile("(?s)```.*?```|~~~.*?~~~")
 	// quotedLineRe is a block-quoted line.
 	quotedLineRe = regexp.MustCompile(`(?m)^[ \t]*>.*$`)
 	// quotedRe is text between straight or curly double quotes on one line.
@@ -34,9 +34,13 @@ var (
 
 // OwnWords is the prompt with what reads as someone else's text taken out:
 // fenced blocks, block-quoted lines, and text between double quotes on one
-// line. Text pasted with no such mark stays; the LEAVING rule tells the
-// session to set nothing on it. An unclosed quote mark takes nothing out, so
-// the person's own sentence beside one still counts.
+// line. Text pasted with no such mark stays, and so does single-quoted text;
+// the LEAVING rule tells the session to set nothing on either. An unclosed
+// fence takes nothing out, and neither does a lone double quote with no other
+// on its line, so the person's own sentence after one still counts. A stray
+// double quote (an inch mark, say) does pair with the next one on its line,
+// and what lies between is taken out: that fails towards LEAVING not being
+// recalled, never towards a mode set on words that are not the person's.
 func OwnWords(prompt string) string {
 	prompt = fencedRe.ReplaceAllString(prompt, " ")
 	prompt = quotedLineRe.ReplaceAllString(prompt, " ")
@@ -58,7 +62,8 @@ func (rs RuleSet) ForStage() RuleSet {
 	return rs
 }
 
-// ownWordsPrompt is prompt as domain name is matched against it.
+// ownWordsPrompt is prompt as domain name is matched against it, its recall
+// and its star command alike.
 func ownWordsPrompt(name, prompt string) string {
 	if ownWordsDomains[strings.ToUpper(name)] {
 		return OwnWords(prompt)

@@ -69,16 +69,19 @@ store is.
 **Set on the person's word.** The person runs it, or tells a session they
 are leaving and the session runs it on that word, in that session. The bundled
 `LEAVING` rules domain recalls only on first-person phrases of leaving (I'm
-away, I'll be away, away until, I'm leaving, back tomorrow, carry on without
-me, don't wait for me), never on a bare word such as away or overnight, and
-matches them only in the person's own words: a fenced block, a block-quoted
-line and text between double quotes are left out of its match. Its rule has
+away, I'll be away, I'm off now, I'm leaving now, I'll be back, carry on
+without me, don't wait for me), never on a bare word such as away or
+overnight, and matches them, and its star command, only in the person's own
+words: a closed fenced block, a block-quoted line and text between double
+quotes are left out of its match. Its rule has
 the session set the mode only when the person's own words in that prompt say
 they are leaving, never on quoted, pasted or tool text, an issue body or an
 idiom, and ask once when in doubt, since a question still reaches the person
-before the mode is set; then set it with the end the person gave, or, where
-they gave none, the longest window the mode allows, open-ended and seven days
-at most, say so, and say its terms back (iss-2611211733065807). A drive's
+before the mode is set; then set it with the end the person gave. Where
+they gave none, the session asks once when they will be back and sets that
+end; only if they decline to say does it set the longest window the mode
+allows, open-ended and seven days at most, and say so. Either way it says
+the terms back (iss-2611211733065807). A drive's
 stage never loads the domain, since a lane's prompt is never the person's
 word. Nothing mechanical checks who sets the mode: the record names who set
 it, and the session sets it on the person's word by design. The mode adds
