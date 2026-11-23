@@ -308,8 +308,8 @@ func Lookup(c Code) (Entry, bool) {
 // kebab-case.
 var nameRe = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*/[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
 
-// ValidName reports whether s follows the code grammar.
-func ValidName(s string) bool { return nameRe.MatchString(s) }
+// validName reports whether s follows the code grammar.
+func validName(s string) bool { return nameRe.MatchString(s) }
 
 // placeholderRe is a placeholder of a next-command template: a word in angle
 // brackets that the caller replaces with a value of their own.
@@ -413,7 +413,7 @@ func DecodeLedger(data []byte) (Ledger, error) {
 		return Ledger{}, fmt.Errorf("the refusal-code ledger is format version %d; this binary reads %d", l.FormatVersion, LedgerFormatVersion)
 	}
 	for _, c := range l.Codes {
-		if !ValidName(string(c.Code)) {
+		if !validName(string(c.Code)) {
 			return Ledger{}, fmt.Errorf("the refusal-code ledger holds %q, which is not a code", c.Code)
 		}
 	}

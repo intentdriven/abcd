@@ -32,19 +32,19 @@ func TestNoTwoEntriesShareACode(t *testing.T) {
 // lower-case kebab-case (adr-2610301638558260).
 func TestEveryCodeFollowsTheGrammar(t *testing.T) {
 	for _, e := range Entries() {
-		if !ValidName(string(e.Code)) {
+		if !validName(string(e.Code)) {
 			t.Errorf("code %q is not <verb>/<reason> in lower-case kebab-case", e.Code)
 		}
 	}
 	for _, bad := range []string{"", "capture", "Capture/remedy-missing", "capture/remedy_missing",
 		"capture/-remedy", "capture//remedy", "capture/remedy/missing", "capture/remedy-", "/remedy"} {
-		if ValidName(bad) {
-			t.Errorf("ValidName(%q) = true, want false", bad)
+		if validName(bad) {
+			t.Errorf("validName(%q) = true, want false", bad)
 		}
 	}
 	for _, good := range []string{"capture/remedy-missing", "usage/unknown-flag", "explain/unknown-code"} {
-		if !ValidName(good) {
-			t.Errorf("ValidName(%q) = false, want true", good)
+		if !validName(good) {
+			t.Errorf("validName(%q) = false, want true", good)
 		}
 	}
 }
