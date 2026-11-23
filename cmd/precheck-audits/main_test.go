@@ -817,3 +817,16 @@ func TestOneAuditRunAtATime(t *testing.T) {
 		t.Fatalf("two audit runs ran at once:\n%s", out.String())
 	}
 }
+
+// TestTheGatesOwnGoRunCarriesTheMovedFlags: each audit run starts with
+// GOFLAGS empty, so the go run that builds the gate's abcd takes the moved
+// flags on its own command line, or it compiles without -trimpath into a cache
+// no other checkout reuses.
+func TestTheGatesOwnGoRunCarriesTheMovedFlags(t *testing.T) {
+	r := auditRun{flags: []string{"-trimpath"}}
+	got := gateCommand(r)
+	at := slices.Index(got, "./cmd/abcd")
+	if at < 0 || !slices.Contains(got[:at], "-trimpath") {
+		t.Fatalf("the gate's go run %q builds abcd without the moved flags", got)
+	}
+}

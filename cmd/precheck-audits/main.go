@@ -373,9 +373,13 @@ type besideOptions struct {
 }
 
 // gateCommand waits for the run at the narrow gate, through the checkout's own
-// abcd, for as long as make preflight's whole run may wait.
+// abcd, for as long as make preflight's whole run may wait. The run starts with
+// GOFLAGS empty, so the go run that builds that abcd takes the moved flags on
+// its own command line, as make preflight's every other Go step does.
 func gateCommand(r auditRun) []string {
-	return append([]string{"go", "run", "./cmd/abcd", "implement", "load", "--wait", "--narrow", "--timeout", "12h", "--"}, r.goTest()...)
+	argv := append([]string{"go", "run"}, r.flags...)
+	argv = append(argv, "./cmd/abcd", "implement", "load", "--wait", "--narrow", "--timeout", "12h", "--")
+	return append(argv, r.goTest()...)
 }
 
 // effectiveGoFlags is go env GOFLAGS under env, with go found as the gate
