@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -282,7 +283,7 @@ func TestAFrozenCommitTrackingALocalTierFileIsRefused(t *testing.T) {
 // carries the account's home and so its login name.
 func TestACopysBriefNamesNoPathOnThisMachine(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator)+"Users", "pat-example")
-	clone := filepath.Join(home, ".abcd.noindex", "matrix", strings.Repeat("ab", 20), cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
+	clone := filepath.Join(abcdhome.Path(home, "matrix"), strings.Repeat("ab", 20), cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "cheap", Repeat: 1}))
 	for _, task := range []Task{
 		{ID: "widget", Kind: KindCode, Intent: "itd-10"},
 		{ID: "notes", Kind: KindWriting, Criteria: "Clear.", Source: []string{"docs/a.md"}},
@@ -406,7 +407,7 @@ func TestOnlyACloneTheMatrixMadeIsACopysClone(t *testing.T) {
 		t.Fatal(err)
 	}
 	common := filepath.Join(t.TempDir(), "common.git")
-	gitOut(t, env, filepath.Dir(common), "init", "-q", "--bare", "--template=", common)
+	gittest.InitBare(t, common)
 	gitOut(t, env, common, "fetch", "-q", "--no-tags", deep.Root(), "+refs/heads/*:refs/heads/*")
 	for _, ref := range strings.Fields(gitOut(t, env, common, "for-each-ref", "--format=%(refname)")) {
 		gitOut(t, env, common, "update-ref", "-d", ref)

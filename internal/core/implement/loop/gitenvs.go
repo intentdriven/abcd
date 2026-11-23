@@ -133,6 +133,9 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.EachWorktree", isolatedEnv, false},
 	{"gitutil.EmptyTree", isolatedEnv, false},
 	{"gitutil.EmptyTreeName", isolatedEnv, false},
+	// A matrix trial's clone-store reads and its clone, in the isolated
+	// environment (or its as-stored twin), the hooks pinned off.
+	{"matrix.gitRawEnvCtx", isolatedEnv, false},
 	{"gitutil.EmptyTreeNameContext", isolatedEnv, false},
 	// The index listing and the read of which submodules moved, which the
 	// drive's staging reads to leave unmoved submodules out (addAllArgs), and
