@@ -157,7 +157,7 @@ The verdict is the person's decision, recorded under their name, so never record
 | `vulnerability` | `--by` | the record stays open in the store, to be fixed |
 | `not-abcds` | `--by`, `--exists-without "<why>"`, `--cannot-help "<why>"` | the record is won't-fixed in the store and the closing text is drafted |
 | `not-a-vulnerability` | `--by`, `--reason "<why>"` | the record is won't-fixed in the store and the closing text is drafted |
-| `public-track` | `--by`, `--reason "<why>"` | the record is won't-fixed in the store; `capture_command` is the `abcd capture` command to run in the public checkout |
+| `public-track` | `--by`, `--reason "<why>"` | the record is won't-fixed in the store and the closing text is drafted; `capture_command` is the `abcd capture` command to run in the public checkout |
 
 The two halves of `not-abcds` are the two halves of the rule that abcd fixes
 what it adds: why the problem would exist without abcd, and why abcd cannot
@@ -171,15 +171,22 @@ verdict, or one missing its reason, is refused with nothing written.
 "${CLAUDE_PLUGIN_ROOT}/abcd" embargo close --json <iss-N|GHSA-id>
 ```
 
-For an advisory whose verdict is `not-abcds` or `not-a-vulnerability`. GitHub
+For an advisory whose verdict is `not-abcds`, `not-a-vulnerability` or
+`public-track`. The public-track text says the report moved to the public
+track and gives the triage reason; it names no public issue, since the store
+keeps none. A public-track verdict recorded before triage drafted a closing
+text has its text drafted at close time from the reason the store keeps, with
+the same checks and the same approval. GitHub
 offers no comment on a repository advisory, so the explanation is posted at the
 head of the advisory's description, with the reporter's own text kept whole
 below a separator line. Without `--approve` it sends nothing but a read: show
 the user `text` exactly as returned, then `approve_with`. The reporter reads
 that text, so it is refused before it is shown when it carries a secret, a
-name the private-names layer bans, or another advisory still under embargo
-(its id, reserved CVE id or title, a closed advisory's title included); the
-refusal names the kind and the line, never the match, and the remedy is to
+name the private-names layer bans, another advisory still under embargo
+(its id, reserved CVE id or title, a closed advisory's title included), the
+embargo store's location on this machine (absolute, home-relative or its
+worktree-store form), or any private record id the store holds, this
+advisory's own included; the refusal names the kind and the line, never the match, and the remedy is to
 record the verdict again with a reason that does not carry it.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in

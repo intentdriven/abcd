@@ -332,9 +332,9 @@ func newEmbargoTriageCommand(asJSON *bool) *cobra.Command {
 			"  not-a-vulnerability  needs --reason\n" +
 			"  public-track         needs --reason; prints the `abcd capture` command to\n" +
 			"                       run in the public checkout\n\n" +
-			"The two closing verdicts move the record to the store's wontfix/ and draft\n" +
-			"the closing explanation, printed here, for `abcd embargo close`. A second\n" +
-			"triage of the same advisory keeps the earlier verdict in its history. An\n" +
+			"Every verdict but vulnerability moves the record to the store's wontfix/ and\n" +
+			"drafts the closing explanation, printed here, for `abcd embargo close`. A\n" +
+			"second triage of the same advisory keeps the earlier verdict in its history. An\n" +
 			"unknown verdict, or one missing its reason, is refused with nothing written.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -378,11 +378,12 @@ func newEmbargoCloseCommand(asJSON *bool) *cobra.Command {
 	var approve string
 	cmd := &cobra.Command{
 		Use: "close <iss-N|GHSA-id>",
-		Long: "Close one advisory whose verdict is not-abcds or not-a-vulnerability on\n" +
-			"GitHub, with the closing explanation its triage drafted. GitHub offers no\n" +
-			"comment on a repository advisory, so the explanation is posted at the head of\n" +
-			"the advisory's description, with the reporter's own text kept whole below a\n" +
-			"separator line.\n\n" +
+		Long: "Close one advisory whose verdict is not-abcds, not-a-vulnerability or\n" +
+			"public-track on GitHub, with the closing explanation its triage drafted; a\n" +
+			"public-track verdict recorded before triage drafted one has it drafted now\n" +
+			"from the reason the store keeps. GitHub offers no comment on a repository\n" +
+			"advisory, so the explanation is posted at the head of the advisory's\n" +
+			"description, with the reporter's own text kept whole below a separator line.\n\n" +
 			"Without --approve it reads the advisory and shows exactly the text that would\n" +
 			"be posted and the digest that approves it; nothing but that read is sent. With\n" +
 			"--approve <digest> it re-reads both and closes only when the digest is the\n" +

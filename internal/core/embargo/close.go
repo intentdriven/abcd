@@ -12,8 +12,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/banlist"
 )
 
-// CloseRequest closes one advisory on GitHub with the explanation its closing
-// verdict drafted. Without Approve it only shows the text and its digest;
+// CloseRequest closes one advisory on GitHub with the explanation its verdict
+// drafted. Without Approve it only shows the text and its digest;
 // with Approve equal to that digest it closes the advisory. A host passes
 // Approve only after the person, in that session, has seen the text and said
 // yes to it (adr-2610120558328615, decision 4). Now is the clock; nil is the
@@ -134,8 +134,9 @@ func closeDigest(ghsa, text, description string) string {
 }
 
 // Close shows, and on approval posts, the closing explanation of an advisory
-// whose verdict is not-abcds or not-a-vulnerability and which is neither
-// closed nor published. Without approval the only request is one read of the
+// whose verdict ends its private track (endsPrivateTrack: not-abcds,
+// not-a-vulnerability or public-track) and which is neither closed nor
+// published. Without approval the only request is one read of the
 // advisory. With it, the draft and the advisory are read again and the digest
 // recomputed; any difference refuses with nothing sent. On a match one PATCH
 // sets the advisory closed with the composed description, and a read-back must
@@ -160,17 +161,17 @@ func Close(req CloseRequest) (CloseResult, error) {
 	switch {
 	case a.ClosedAt != nil || a.PublishedAt != nil:
 		return CloseResult{}, refuse("this advisory is already closed or published; nothing was sent", "there is nothing left to close")
-	case a.Verdict == nil || !isClosingVerdict(*a.Verdict):
-		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds or not-a-vulnerability is closed, and this one's verdict is not; nothing was sent",
-			"record a closing verdict with `abcd embargo triage` first")
+	case !endsPrivateTrack(a.Verdict):
+		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds, not-a-vulnerability or public-track is closed, and this one's verdict is not; nothing was sent",
+			"record one of those verdicts with `abcd embargo triage` first")
 	case st.Repo == "":
 		return CloseResult{}, refuse("the embargo store does not name its repository; nothing was sent", "run `abcd embargo intake` once, then run it again")
 	}
-	text, err := s.readDraft(a.GHSAID)
+	text, err := s.closingText(a)
 	if err != nil {
 		return CloseResult{}, err
 	}
-	if err := scanClosingText(s.Checkout, text, othersDenySet(st, a.GHSAID)); err != nil {
+	if err := scanClosingText(s.Checkout, text, closingDenySet(st, a.GHSAID, s.Root)); err != nil {
 		return CloseResult{}, err
 	}
 
@@ -268,20 +269,28 @@ func forgeStateWord(state string) string {
 }
 
 // scanClosingText refuses a closing text that carries what its reader must
-// not see (scanOutbound), or names another advisory still under embargo
-// (others, the set the publication plan holds an advisory's text to): the
-// reporter of one advisory must not learn of another. The refusal names the
-// kind and the line, never the match.
-func scanClosingText(checkout, text string, others denySet) error {
+// not see (scanOutbound), or anything in deny (closingDenySet): another
+// advisory still under embargo, since the reporter of one advisory must not
+// learn of another, the store's location on this machine, or a private
+// record id the store holds. The refusal names the kind and the line, never
+// the match.
+func scanClosingText(checkout, text string, deny denySet) error {
 	f, err := scanOutbound(checkout, "the closing text", text, false)
 	if err != nil {
 		return err
 	}
 	remedy := "record the verdict again with `abcd embargo triage`, with a reason that does not carry it"
 	if f == nil {
-		if m := others.matches(text); len(m) > 0 {
-			return refuse(fmt.Sprintf("the closing text names another advisory still under embargo (%s on line %d), which its reader must not see; nothing was shown or sent",
-				m[0].kind, strings.Count(text[:m[0].start], "\n")+1), remedy)
+		if m := deny.matches(text); len(m) > 0 {
+			what := "another advisory still under embargo"
+			switch m[0].kind {
+			case KindStorePath:
+				what = "where this machine keeps the embargo store"
+			case kindPrivateRecordID:
+				what = "a private record the embargo store holds"
+			}
+			return refuse(fmt.Sprintf("the closing text names %s (%s on line %d), which its reader must not see; nothing was shown or sent",
+				what, m[0].kind, strings.Count(text[:m[0].start], "\n")+1), remedy)
 		}
 		return nil
 	}

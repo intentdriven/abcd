@@ -21,21 +21,38 @@ type closeFixture struct {
 	seeded
 	g    *ghFake
 	path string
+	text string // the closing text triage drafted
 }
 
 func newCloseFixture(t *testing.T) closeFixture {
 	t.Helper()
+	return newCloseFixtureFor(t, TriageRequest{Verdict: VerdictNotAVulnerability, By: "Alice",
+		Reason: "the behaviour is documented and intended"}, true)
+}
+
+// newCloseFixtureFor is newCloseFixture with the verdict req records. With
+// keepDraft false the draft triage wrote is removed after it is read, as a
+// store triaged by an abcd that drafted nothing for the verdict holds it;
+// the fake GitHub answers with the text read all the same.
+func newCloseFixtureFor(t *testing.T, req TriageRequest, keepDraft bool) closeFixture {
+	t.Helper()
 	sd := seedStore(t)
-	if _, err := sd.triage(TriageRequest{Target: sd.issID, Verdict: VerdictNotAVulnerability, By: "Alice",
-		Reason: "the behaviour is documented and intended"}); err != nil {
+	req.Target = sd.issID
+	if _, err := sd.triage(req); err != nil {
 		t.Fatal(err)
 	}
 	cf := closeFixture{seeded: sd, g: newGHFake(t), path: listPath + "/" + sd.ghsa}
+	cf.text = cf.draft(t)
+	if !keepDraft {
+		if err := os.Remove(cf.draftPath()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	reported := cf.remote(t, "triage", reporterText)
 	cf.g.answer("GET", cf.path, "", 1, reported)
 	cf.g.answer("GET", cf.path, "", 2, reported)
-	cf.g.answer("GET", cf.path, "", 3, cf.remote(t, "closed", composeClosedDescription(cf.draft(t), reporterText)))
-	cf.g.answer("PATCH", cf.path, "", 0, cf.remote(t, "closed", composeClosedDescription(cf.draft(t), reporterText)))
+	cf.g.answer("GET", cf.path, "", 3, cf.remote(t, "closed", composeClosedDescription(cf.text, reporterText)))
+	cf.g.answer("PATCH", cf.path, "", 0, cf.remote(t, "closed", composeClosedDescription(cf.text, reporterText)))
 	return cf
 }
 
@@ -278,13 +295,13 @@ func TestCloseStampsClosedAt(t *testing.T) {
 	}
 }
 
-// TestCloseRefusesVulnerabilityOrUntriagedVerdict: only the two closing
-// verdicts close; any other refuses before anything is sent.
+// TestCloseRefusesVulnerabilityOrUntriagedVerdict: only a verdict that ends
+// the private track closes (the two closing verdicts and the public track);
+// a vulnerability or an untriaged advisory refuses before anything is sent.
 func TestCloseRefusesVulnerabilityOrUntriagedVerdict(t *testing.T) {
 	for name, req := range map[string]*TriageRequest{
 		"untriaged":     nil,
 		"vulnerability": {Verdict: VerdictVulnerability, By: "Alice"},
-		"public-track":  {Verdict: VerdictPublicTrack, By: "Alice", Reason: "it discloses nothing"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			sd := seedStore(t)
@@ -517,6 +534,195 @@ func TestCloseRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
 				mustRefuse(t, err, "another advisory still under embargo")
 				for _, leak := range []string{ghsaClosed, strings.ToLower(ghsaClosed), cveOpen, otherTitle, closedTitle} {
 					if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(leak)) {
+						t.Fatalf("the refusal repeats the finding: %v", err)
+					}
+				}
+			}
+			if len(cf.g.calls()) != 0 {
+				t.Fatal("a refused close called gh")
+			}
+		})
+	}
+}
+
+const publicReason = "it is a hardening gap that exposes no one, so the work is done in the open"
+
+// TestClosePublicTrackShowsAndClosesOnApproval: an advisory moved to the
+// public track is closed as a closing verdict's is: the bare close shows the
+// text triage drafted, which says the report moved to the public track and
+// why, with its digest, and the approval of that digest closes it with that
+// text and reads it back. The private record stays in wontfix/, readable.
+func TestClosePublicTrackShowsAndClosesOnApproval(t *testing.T) {
+	cf := newCloseFixtureFor(t, TriageRequest{Verdict: VerdictPublicTrack, By: "Alice", Reason: publicReason}, true)
+	shown := cf.show(t)
+	if shown.Text != cf.text || shown.Verdict != VerdictPublicTrack || !hex64.MatchString(shown.Digest) || shown.Closed {
+		t.Fatalf("result %+v", shown)
+	}
+	for _, want := range []string{"public track", publicReason} {
+		if !strings.Contains(shown.Text, want) {
+			t.Errorf("the closing text lacks %q:\n%s", want, shown.Text)
+		}
+	}
+	for _, leak := range []string{cf.ghsa, seededTitle, cf.issID, "Alice"} {
+		if strings.Contains(shown.Text, leak) {
+			t.Errorf("the closing text carries %q:\n%s", leak, shown.Text)
+		}
+	}
+	noWrites(t, cf.g)
+
+	res, err := cf.close(shown.Digest)
+	if err != nil {
+		t.Fatalf("approved close: %v", err)
+	}
+	if !res.Closed || res.ClosedAt == nil {
+		t.Fatalf("result %+v", res)
+	}
+	w := cf.g.writes()
+	if len(w) != 1 || w[0].method() != "PATCH" {
+		t.Fatalf("writes %v, want one PATCH", w)
+	}
+	var body map[string]string
+	if err := json.Unmarshal([]byte(w[0].stdin), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["state"] != "closed" || body["description"] != strings.TrimRight(shown.Text, "\n")+closingSeparator+reporterText {
+		t.Fatalf("PATCH body %v", body)
+	}
+	if a := cf.state(t); a.ClosedAt == nil || a.ForgeState != "closed" {
+		t.Fatalf("state entry %+v", a)
+	}
+	m, _ := filepath.Glob(filepath.Join(cf.s.Root, ".abcd", "work", "issues", "wontfix", cf.issID+"-*.md"))
+	if len(m) != 1 || !cf.recordIn("wontfix") {
+		t.Fatal("the private record is no longer in wontfix/")
+	}
+	if data, err := os.ReadFile(m[0]); err != nil || !strings.Contains(string(data), seededTitle) {
+		t.Fatalf("the private record cannot be read back: %v", err)
+	}
+}
+
+// TestClosePublicTrackTriagedBeforeItDrafted: a public-track verdict
+// recorded before triage drafted a closing text for it has no draft, so the
+// text is drafted at close time from the reason the store keeps, the same
+// text triage drafts now, with the same digest rule; the approval closes it.
+// One whose store keeps no reason refuses, sending nothing.
+func TestClosePublicTrackTriagedBeforeItDrafted(t *testing.T) {
+	cf := newCloseFixtureFor(t, TriageRequest{Verdict: VerdictPublicTrack, By: "Alice", Reason: publicReason}, false)
+	if _, err := os.Lstat(cf.draftPath()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the fixture left a draft")
+	}
+	shown := cf.show(t)
+	if shown.Text != cf.text {
+		t.Fatalf("the text drafted at close time is not the one triage drafts:\n%s\nwant\n%s", shown.Text, cf.text)
+	}
+	if strings.Count(shown.Text, "public track") != 1 {
+		t.Fatalf("the stored reason's prefix was repeated:\n%s", shown.Text)
+	}
+	res, err := cf.close(shown.Digest)
+	if err != nil || !res.Closed {
+		t.Fatalf("approved close: %+v, %v", res, err)
+	}
+	if a := cf.state(t); a.ClosedAt == nil {
+		t.Fatal("closed_at not recorded")
+	}
+
+	bare := newCloseFixtureFor(t, TriageRequest{Verdict: VerdictPublicTrack, By: "Alice", Reason: publicReason}, false)
+	st, err := bare.s.Verify()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Advisories[0].Reason = nil
+	if err := bare.s.SaveState(st); err != nil {
+		t.Fatal(err)
+	}
+	_, err = bare.close("")
+	mustRefuse(t, err, "reason")
+	if len(bare.g.calls()) != 0 {
+		t.Fatal("a refused close called gh")
+	}
+}
+
+// TestClosePublicTrackRefusesTextNamingAnotherEmbargoedAdvisory: the text a
+// public-track close drafts, by triage or at close time, passes the same
+// check as a closing verdict's: a reason naming another advisory still under
+// embargo refuses the show and the close before anything is sent.
+func TestClosePublicTrackRefusesTextNamingAnotherEmbargoedAdvisory(t *testing.T) {
+	for name, keepDraft := range map[string]bool{"drafted by triage": true, "drafted at close": false} {
+		t.Run(name, func(t *testing.T) {
+			cf := newCloseFixtureFor(t, TriageRequest{Verdict: VerdictPublicTrack, By: "Alice",
+				Reason: "the same gap as " + ghsaClosed}, keepDraft)
+			st, err := cf.s.Verify()
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.Advisories = append(st.Advisories, Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000002",
+				Title: "a sample sibling report title", Severity: "minor", ForgeState: "triage"})
+			if err := cf.s.SaveState(st); err != nil {
+				t.Fatal(err)
+			}
+			for _, approve := range []string{"", strings.Repeat("0", 64)} {
+				_, err := cf.close(approve)
+				mustRefuse(t, err, "another advisory still under embargo")
+				if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(ghsaClosed)) {
+					t.Fatalf("the refusal repeats the finding: %v", err)
+				}
+			}
+			if len(cf.g.calls()) != 0 {
+				t.Fatal("a refused close called gh")
+			}
+		})
+	}
+}
+
+// TestCloseRefusesTextNamingTheStoreOrAPrivateRecord: the closing text is
+// held to the store's location in every form the range check refuses
+// (absolute, home-relative, and the worktree-store fragment) and to every
+// private record id the store holds, this advisory's own and another's,
+// published or not, since those records never leave the store. Each refuses
+// the show and the close before anything is sent, without repeating it.
+func TestCloseRefusesTextNamingTheStoreOrAPrivateRecord(t *testing.T) {
+	const otherIss, publishedIss = "iss-2610120000000002", "iss-2610120000000003"
+	for name, tc := range map[string]struct {
+		line func(cf closeFixture) string
+		want string
+	}{
+		"absolute store path": {func(cf closeFixture) string { return "kept at " + cf.s.Root + "/x" }, "closing text"},
+		"home-relative store path": {func(cf closeFixture) string {
+			rel, err := filepath.Rel(cf.f.home, cf.s.Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return "kept at ~/" + filepath.ToSlash(rel)
+		}, "embargo store"},
+		"worktree-store fragment": {func(cf closeFixture) string {
+			return "under worktrees/" + filepath.Base(filepath.Dir(cf.s.Root)) + "/" + StoreName
+		}, "embargo store"},
+		"own private record id":       {func(cf closeFixture) string { return "filed as " + cf.issID }, "private record"},
+		"another private record id":   {func(closeFixture) string { return "like " + otherIss }, "private record"},
+		"a published one's record id": {func(closeFixture) string { return "as " + publishedIss }, "private record"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cf := newCloseFixture(t)
+			st, err := cf.s.Verify()
+			if err != nil {
+				t.Fatal(err)
+			}
+			at := fixedNow
+			st.Advisories = append(st.Advisories,
+				Advisory{GHSAID: ghsaClosed, IssueID: otherIss, Title: "a sample sibling report title", Severity: "minor", ForgeState: "triage"},
+				Advisory{GHSAID: ghsaPublished, IssueID: publishedIss, Title: titlePublishd, Severity: "major", ForgeState: "published",
+					Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, PublishedAt: &at})
+			if err := cf.s.SaveState(st); err != nil {
+				t.Fatal(err)
+			}
+			line := tc.line(cf)
+			if err := os.WriteFile(cf.draftPath(), []byte(cf.draft(t)+"\n"+line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, approve := range []string{"", strings.Repeat("0", 64)} {
+				_, err := cf.close(approve)
+				mustRefuse(t, err, tc.want)
+				for _, leak := range []string{cf.s.Root, cf.issID, otherIss, publishedIss, "worktrees/"} {
+					if strings.Contains(err.Error(), leak) {
 						t.Fatalf("the refusal repeats the finding: %v", err)
 					}
 				}

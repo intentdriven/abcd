@@ -79,8 +79,8 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   with those advisories unread; refused, or failing otherwise, the plan
   refuses whole.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
-  vulnerability, public track) with who decided it and when; the two closing
-  verdicts draft the closing explanation, and "not abcd's" names both halves of
+  vulnerability, public track) with who decided it and when; each verdict but
+  vulnerability drafts the closing explanation, and "not abcd's" names both halves of
   [abcd-fixes-what-it-adds](../../principles/abcd-fixes-what-it-adds.md).
 - **fixed** records the commits that fix an advisory judged a vulnerability
   and neither closed nor published, in the store's state and nowhere else, so
@@ -111,7 +111,10 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   queued and the append are one write under the away store's lock
   (`autonomy.QueueStepOnce`), so two runs at once queue it once; while the
   person is present it refuses and queues nothing.
-- **close** shows the closing text and its digest and sends only a read; with
+- **close** takes an advisory whose verdict ends its private track (not abcd's,
+  not a vulnerability, or the public track, whose text says the work moved to
+  the public track and why, drafted at close time from the stored reason when
+  triage drafted none), shows the closing text and its digest and sends only a read; with
   the approval of that digest it closes the advisory with the text at the head
   of its description (GitHub offers no comment on an advisory), the reporter's
   text kept below a separator, and reads it back.
