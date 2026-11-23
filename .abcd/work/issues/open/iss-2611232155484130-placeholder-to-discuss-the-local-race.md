@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "release run 2026-11-23"
 origin: researcher-authored
 production_mode: hand-written
-remedy: "discuss first: whether a receipt may accept a passed CI race run in place of the local race stage"
+remedy: "no fix is planned: an idea held for discussion; put it through /abcd:ideate with the person before deciding whether a CI race run may stand in for the local one"
 ---
 
 Placeholder to discuss: the local race stage largely repeats the race tests the merge queue already runs on Linux, and is the longest part of a preflight
