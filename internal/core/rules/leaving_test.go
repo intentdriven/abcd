@@ -15,7 +15,7 @@ const leavingDomain = "LEAVING"
 var leavingPrompts = []string{
 	"I am away until 09:00, do not wait for me; the technical facilitator is on auto",
 	"I'm away for the evening",
-	"I’m away this weekend", // a curly apostrophe
+	"I\u2019m away this weekend", // a curly apostrophe
 	"I'll be away until Monday",
 	"I will be away tomorrow",
 	"I'm off for the night",
@@ -131,7 +131,7 @@ func TestLeavingDomainIgnoresNearMisses(t *testing.T) {
 		"while I'm out of ideas",
 		"Here is the issue body:\n> I'll be away overnight, carry on without me\nPlease summarise it",
 		"The issue says \"I'm away until Monday, don't wait for me\"; triage it",
-		"The log reads “I am leaving now”. Why?",
+		"The log reads \u201cI am leaving now\u201d. Why?",
 		"Summarise this:\n```\nI'm away, carry on without me\n```",
 	} {
 		if got := rs.Match(prompt); has(got, leavingDomain) {
@@ -168,7 +168,7 @@ func TestOffStageDropsLeaving(t *testing.T) {
 	}
 }
 
-// TestOwnWordsUnclosedMarks pins what OwnWords does with a mark that does not
+// TestOwnWordsUnclosedMarks pins what ownWords does with a mark that does not
 // close: an unclosed fence takes nothing out, so the person's words after it
 // still count, while a stray double quote pairs with the next one on its line
 // and takes out what lies between, as the doc comment says.
@@ -178,18 +178,18 @@ func TestOwnWordsUnclosedMarks(t *testing.T) {
 		"Use ~~~ as the fence marker. I'm away until 9, carry on without me",
 		"Summarise this:\n```\nI'm away, carry on without me",
 	} {
-		if got := OwnWords(prompt); got != prompt {
-			t.Errorf("OwnWords(%q) = %q: an unclosed fence took something out", prompt, got)
+		if got := ownWords(prompt); got != prompt {
+			t.Errorf("ownWords(%q) = %q: an unclosed fence took something out", prompt, got)
 		}
 		if got := rs.Match(prompt); !has(got, leavingDomain) {
 			t.Errorf("%q does not recall %s: the person's words follow an unclosed fence", prompt, leavingDomain)
 		}
 	}
-	got := OwnWords(`The flag is 12" wide. I'm away until 9. Use "x" for it`)
+	got := ownWords(`The flag is 12" wide. I'm away until 9. Use "x" for it`)
 	if strings.Contains(got, "away") || !strings.Contains(got, "x\" for it") {
 		t.Errorf("a stray double quote did not pair with the next one on its line: %q", got)
 	}
-	if got := OwnWords("He wrote \"I'm away until 9"); !strings.Contains(got, "I'm away until 9") {
+	if got := ownWords("He wrote \"I'm away until 9"); !strings.Contains(got, "I'm away until 9") {
 		t.Errorf("a lone unclosed double quote took something out: %q", got)
 	}
 }

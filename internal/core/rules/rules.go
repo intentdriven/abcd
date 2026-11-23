@@ -693,7 +693,7 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 	}
 	stars := parseStarCommands(prompt)
 	idx := indexPrompt(prompt)
-	// The domains matched against the person's own words alone (OwnWords)
+	// The domains matched against the person's own words alone (ownWords)
 	// share one index of that text and its star commands, built only when
 	// one of them is in play: a star command inside a quote or a fence
 	// forces none of them in.
@@ -712,7 +712,7 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 		match, starred := idx, stars
 		if ownWordsDomains[name] {
 			if own == nil {
-				words := OwnWords(prompt)
+				words := ownWords(prompt)
 				o := indexPrompt(words)
 				own, ownStars = &o, parseStarCommands(words)
 			}

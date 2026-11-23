@@ -9,12 +9,12 @@ import (
 // on the person's own word that they are leaving (iss-2611211733065807). Its
 // rule leads to `abcd mode autonomous`, which no check ties to the person, so
 // two things narrow when it is recalled beyond the first-person phrases it
-// declares: it is matched against the person's own words alone (OwnWords),
+// declares: it is matched against the person's own words alone (ownWords),
 // and a drive's stage never loads it (ForStage). Both answer the security and
 // code reviews of away-blockers-1123.
 const LeavingDomain = "LEAVING"
 
-// ownWordsDomains are matched against OwnWords(prompt) rather than the whole
+// ownWordsDomains are matched against ownWords(prompt) rather than the whole
 // prompt, by Match and by Hits alike.
 var ownWordsDomains = map[string]bool{LeavingDomain: true}
 
@@ -29,10 +29,10 @@ var (
 	// quotedLineRe is a block-quoted line.
 	quotedLineRe = regexp.MustCompile(`(?m)^[ \t]*>.*$`)
 	// quotedRe is text between straight or curly double quotes on one line.
-	quotedRe = regexp.MustCompile(`"[^"\n]*"|“[^”\n]*”`)
+	quotedRe = regexp.MustCompile("\"[^\"\n]*\"|\u201c[^\u201d\n]*\u201d")
 )
 
-// OwnWords is the prompt with what reads as someone else's text taken out:
+// ownWords is the prompt with what reads as someone else's text taken out:
 // fenced blocks, block-quoted lines, and text between double quotes on one
 // line. Text pasted with no such mark stays, and so does single-quoted text;
 // the LEAVING rule tells the session to set nothing on either. An unclosed
@@ -41,7 +41,7 @@ var (
 // double quote (an inch mark, say) does pair with the next one on its line,
 // and what lies between is taken out: that fails towards LEAVING not being
 // recalled, never towards a mode set on words that are not the person's.
-func OwnWords(prompt string) string {
+func ownWords(prompt string) string {
 	prompt = fencedRe.ReplaceAllString(prompt, " ")
 	prompt = quotedLineRe.ReplaceAllString(prompt, " ")
 	return quotedRe.ReplaceAllString(prompt, " ")
@@ -66,7 +66,7 @@ func (rs RuleSet) ForStage() RuleSet {
 // and its star command alike.
 func ownWordsPrompt(name, prompt string) string {
 	if ownWordsDomains[strings.ToUpper(name)] {
-		return OwnWords(prompt)
+		return ownWords(prompt)
 	}
 	return prompt
 }
