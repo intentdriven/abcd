@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -24,7 +25,8 @@ import (
 // outside the rules loader's dedup ledger, add the away block to the agent's
 // context while the record holds; the prompt hook also shows the person one
 // line (a systemMessage) saying so, or, once the window has lapsed unclosed
-// with anything unread, one line naming `abcd mode back`.
+// with anything unread, one line naming `abcd mode back`, and the agent one
+// line saying the away checks no longer hold (iss-2611211733085834).
 //
 // The block's words come from the away record, which lives in the away store
 // under the home folder (owner-only, checked as rules.json is), never from a
@@ -79,9 +81,45 @@ func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView 
 	case holds:
 		return awayView{Block: awayBlock(rec), Message: rec.PersonLine()}
 	case rec.Lapsed(now):
-		return awayView{Message: rec.LapsedLine()}
+		return awayView{Block: asBlock(rec.LapsedSessionLine()), Message: rec.LapsedLine()}
 	}
 	return awayView{}
+}
+
+// asBlock ends a one-line block with its newline, as every block the prompt
+// hook joins ends; an empty line stays empty.
+func asBlock(line string) string {
+	if line == "" {
+		return ""
+	}
+	return line + "\n"
+}
+
+// promptFacilitatorLine is what facilitator.mode adds to one prompt: while it
+// is auto, as the status line reads it, one line saying what that means for a
+// session (landing.AutoSessionLine, iss-2611211700231699), sent beside the away
+// block on every prompt and outside the rules loader's dedup ledger, and ""
+// otherwise. Only in a checkout abcd manages at root, and never on a drive's
+// stage, as the away record is read. Its git questions are bounded by ctx, the
+// hook's one deadline: a deadline spent sends nothing and names nothing, and
+// any other failed read is named on stderr and sends nothing, the mode read as
+// human, as every other reader of it does.
+func promptFacilitatorLine(ctx context.Context, stderr io.Writer, root string) string {
+	if root == "" || stageActive() || ctx.Err() != nil || !autonomy.Managed(root) {
+		return ""
+	}
+	auto, err := landing.AutoForSessions(ctx, root)
+	if err != nil {
+		if ctx.Err() == nil {
+			msg := strings.ReplaceAll(fsutil.RedactHome(err.Error()), root, ".")
+			diagnosticLine(stderr, "abcd: %s; the facilitator line was not sent", termsafe.CleanProseLine(msg, 300))
+		}
+		return ""
+	}
+	if !auto {
+		return ""
+	}
+	return asBlock(landing.AutoSessionLine)
 }
 
 // readAwayFailOpen is the hooks' read of the away record: ok false when there

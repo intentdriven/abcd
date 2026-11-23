@@ -41,6 +41,7 @@ var fenceWriters = map[string]fenceWriter{
 	"internal/core/reading/project.go":              {2, "fenceDelimiterRe judges one frontmatter line and refuses it; which lines a fence covers is floorFences, which reads mdrecord"},
 	"internal/core/mdrender/render.go":              {8, "the site renderer: it renders a block Blocks already cut by mdrecord's reading, refuses a fence form it does not render (tilde, four or more backticks), a list line that opens a fence and an indented code block; its patterns name a line's form, whether the line opens a fence is OpensFence's to say, whether a block's last line closes a fence is Read's, and it keeps no fence state of its own"},
 	"internal/core/release/page.go":                 {2, "a presence test: a headline carrying any delimiter is refused; it tracks nothing"},
+	"internal/core/rules/leaving.go":                {6, "judges prompt text, not a record: ownWords drops a closed fenced span, inline or across lines, from the person's prompt before the LEAVING domain's recall reads it, and an unclosed fence strips nothing, by design, since stripping to the end would remove the person's own words; it reads no document and tracks no lines"},
 	"internal/surface/cli/history_reconstruct.go":   {2, "a WRITER: the telemetry block is emitted inside one json fence; it reads no fences"},
 	"internal/surface/cli/reference.go":             {4, "a WRITER: the reference page emits its flag and example blocks as fences; it reads no fences"},
 }

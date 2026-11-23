@@ -27,6 +27,19 @@ switchable in `~/.abcd.noindex/statusline.json` as `merging`, like the row's
 other elements. It reaches the host only through the status line the person
 consented to at install; nothing else in the host's settings calls abcd.
 
+While the mode is `auto`, read the same way (the default branch's committed
+copy and the machine layer, git only, inside the prompt hook's one deadline),
+every prompt also gives the session one line beside the away block, whether
+or not the person is away, outside the rules loader's dedup ledger: the
+technical facilitator is on auto, so a technical question is decided and
+recorded with `abcd decide` and not asked, and finished work does not wait for
+a person to read it; an act a command page reserves to the person is still
+theirs, and waits for them holding back nothing else (dcn-2611070734169709,
+iss-2611211700231699). The line grants nothing: the question gate, the stop
+check and the acts the guard keeps for the person read the away record as
+before, and a setting that cannot be read sends no line and is named on
+stderr. Only a checkout abcd manages hears it.
+
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
@@ -53,6 +66,30 @@ holder name reservations resolve without a network read, else git's
 lives in `~/.abcd.noindex/away/<root-sha>/`, keyed on the root commit as the worktree
 store is.
 
+**Set on the person's word.** The person runs it, or tells a session they
+are leaving and the session runs it on that word, in that session. The bundled
+`LEAVING` rules domain recalls only on first-person phrases of leaving (I'm
+away, I'll be away, I'm off now, I'm leaving now, I'll be back tomorrow,
+carry on without me, don't wait for me), never on a bare word such as away or
+overnight, and matches them, and its star command, only in the person's own
+words: a closed fenced block, a block-quoted line and text between double
+quotes are left out of its match. Its rule has
+the session set the mode only when the person's own words in that prompt say
+they are leaving, never on quoted, pasted or tool text, an issue body or an
+idiom, and ask once when in doubt, since a question still reaches the person
+before the mode is set; then set it with the end the person gave. Where
+they gave none, the session sets the longest window the mode allows,
+open-ended and seven days at most, in that same turn, and says, as a
+statement and not a question, that the person can name an end and it will be
+set again with it, which keeps what is queued and recorded: a person who has
+left answers nothing, and their silence is no answer to wait on. Either way
+it says the terms back (iss-2611211733065807). A drive's
+stage never loads the domain, since a lane's prompt is never the person's
+word. Nothing mechanical checks who sets the mode: the record names who set
+it, and the session sets it on the person's word by design. The mode adds
+checks and grants nothing, and the person sees it on every prompt and ends it
+with their word.
+
 **When it ends.** The end is a clock time (its next occurrence, local time)
 or a timestamp, or nothing, which leaves the record open-ended. Every record
 ends seven days after it was set at most, so an end past that, or one already
@@ -68,6 +105,18 @@ line per queued step, per item handed back and per recorded stop (a stop at
 the host's cap labelled "possibly forced by the cap"), records who ended it and
 from which working copy, and closes the record, on a record whose time has
 passed as on one that holds.
+
+**What the sessions are told, and when it ends.** While the record holds,
+the session-start hook (every source, a compaction included) and the prompt
+hook (every prompt, outside the rules loader's dedup ledger) give the session
+the away block, and the prompt hook shows the person one line naming the
+verb that ends it. Once its time has passed while the record is not yet closed
+and holds a queued step or a recorded stop, the person's line says what is
+unread and that sessions ask and stop again, and every prompt gives the
+session one line as well: the window ended, the checks the away mode adds (a
+question refused, a turn's end checked) no longer hold, and the mode is set
+again only on the person's word (iss-2611211733085834). A record that ended
+with nothing unread says nothing to anyone.
 
 **Reading it without ending it.** While the record holds, bare `abcd mode`
 prints a second line under the badge's state saying when the away mode ends

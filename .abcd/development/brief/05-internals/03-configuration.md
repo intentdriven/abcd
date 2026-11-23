@@ -1842,7 +1842,7 @@ unchanged. Restating the entry keeps it; leaving the field out inherits the
 list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
-**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed; the status block shows at most ten lines and a count of the rest, between its heading and date line and its closing line, and the rules and notes share what the two leave. The host keeps 10,000 characters
+**The hook's whole output fits the host's cap.** The status and away blocks are read first and are not trimmed (the away block carries the facilitator line beside it, [`../04-surfaces/26-mode.md`](../04-surfaces/26-mode.md)); the status block shows at most ten lines and a count of the rest, between its heading and date line and its closing line, and the rules and notes share what the two leave. The host keeps 10,000 characters
 of one hook's output; above that it saves a file, shows a short preview and does not
 ask the agent to read the rest. So the rules, the memory notes and pages, the status
 block and the away block share one budget, 500 under the cap (iss-2611041419354106).
@@ -1970,14 +1970,14 @@ iss-2608261550580260):
   "injected": ["WIDGETS"],
   "recalled": [],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
-             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SCRATCH",
-             "SHELL", "WIDGETS"]
+             "LEAVING", "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP",
+             "SCRATCH", "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all thirteen. No memory note matched, so `recalled` is empty.
+the set names all fourteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|

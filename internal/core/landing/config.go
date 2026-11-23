@@ -467,6 +467,32 @@ func deadlineErr(err error) error {
 	return fmt.Errorf("git did not answer in time to read the default branch's %s: %w", KeyFacilitatorMode, err)
 }
 
+// AutoSessionLine is the one line the prompt hook gives a session on every
+// prompt while facilitator.mode is auto (iss-2611211700231699), beside the
+// away block and whether or not the person is away: what the setting means
+// for a session, as the person ruled it (dcn-2611070734169709). It grants
+// nothing an act did not already have: the question gate, the stop check and
+// the guard's acts reserved to the person are unchanged.
+const AutoSessionLine = "The technical facilitator is on auto (" + KeyFacilitatorMode + ", as the default branch and this machine set it): a technical question is decided and recorded with `abcd decide`, not asked, and finished work does not wait for a person to read it. An act a command page reserves to the person is still the person's: it waits for them and holds back nothing else, so carry on with the rest of the work."
+
+// AutoForSessions reports whether facilitator.mode is auto as the status line
+// reads it (readDefaultFacilitatorContext): the default branch's committed
+// .abcd/config.json as last fetched and the machine layer, never the working
+// tree's copy, its git questions bounded by ctx and none of them asking the
+// network, so a hook can ask it on every prompt. A repository with no
+// default branch yet reads as not auto, with no error. The error is the
+// reader's raw text, for the caller to mask; a caller takes it as human.
+func AutoForSessions(ctx context.Context, root string) (bool, error) {
+	f, err := readDefaultFacilitatorContext(ctx, root)
+	switch {
+	case errors.Is(err, ErrNoDefaultBranch):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return f.Mode == ModeAuto, nil
+}
+
 // AutonomousMerging is the status line's merging element, read: it reports
 // whether the repository's facilitator.mode is auto, read through the merge
 // gate's own resolver (readDefaultFacilitatorContext): the default branch's

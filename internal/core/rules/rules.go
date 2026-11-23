@@ -693,6 +693,12 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 	}
 	stars := parseStarCommands(prompt)
 	idx := indexPrompt(prompt)
+	// The domains matched against the person's own words alone (ownWords)
+	// share one index of that text and its star commands, built only when
+	// one of them is in play: a star command inside a quote or a fence
+	// forces none of them in.
+	var own *promptIndex
+	var ownStars map[string]bool
 
 	names := make([]string, 0, len(rs.Domains))
 	for name := range rs.Domains {
@@ -703,14 +709,23 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 	var out []ResolvedDomain
 	for _, name := range names {
 		d := rs.Domains[name]
-		if stars[name] {
+		match, starred := idx, stars
+		if ownWordsDomains[name] {
+			if own == nil {
+				words := ownWords(prompt)
+				o := indexPrompt(words)
+				own, ownStars = &o, parseStarCommands(words)
+			}
+			match, starred = *own, ownStars
+		}
+		if starred[name] {
 			out = append(out, rs.resolved(name))
 			continue
 		}
 		if d.State == StateDormant {
 			continue
 		}
-		if idx.hit(d) {
+		if match.hit(d) {
 			out = append(out, rs.resolved(name))
 		}
 	}
@@ -1328,7 +1343,7 @@ func TextStems(text string) []string {
 // alias that hits, in the order the domain declares them. It says nothing of
 // state or the kill switch; Match decides whether d is injected at all.
 func Hits(d ResolvedDomain, prompt string) []string {
-	prompt = CapPrompt(prompt)
+	prompt = ownWordsPrompt(d.Name, CapPrompt(prompt))
 	if parseStarCommands(prompt)[d.Name] {
 		return []string{"*" + d.Name}
 	}

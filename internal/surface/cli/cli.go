@@ -1672,11 +1672,19 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 // the commit its lane was cut from, since what the lane writes is not what the
 // agents reading its work are told. There GRILL keeps abcd's default question
 // limits, since the working tree's .abcd/config.json is the lane's own writing.
+// On any stage (a walled launch, or a base to read the rules at) the domains
+// no stage carries are dropped (rules.RuleSet.ForStage): LEAVING acts on the
+// person's word, and a lane's prompt is never that.
 func rulesForHook(root string, errOut io.Writer) (rules.RuleSet, error) {
 	if base := os.Getenv(runner.StageBaseEnv); base != "" {
-		return rules.LoadAt(root, base)
+		rs, err := rules.LoadAt(root, base)
+		return rs.ForStage(), err
 	}
-	return rulesWithLimits(root, errOut)
+	rs, err := rulesWithLimits(root, errOut)
+	if stageActive() {
+		rs = rs.ForStage()
+	}
+	return rs, err
 }
 
 // rulesWithLimits loads the rules for root with the GRILL domain stating the
@@ -2046,6 +2054,13 @@ outside the dedup ledger.`,
 			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
+			// The facilitator line (iss-2611211700231699): while
+			// facilitator.mode is auto, as the status line reads it, one
+			// line beside the away block saying what that means, on every
+			// prompt and inside the hook's one deadline.
+			facCtx, facCancel := context.WithDeadline(context.Background(), deadline)
+			away.Block = joinBlocks(away.Block, promptFacilitatorLine(facCtx, cmd.ErrOrStderr(), root))
+			facCancel()
 			// The checklist's behind note a present session's last stop left
 			// (spc-2610230805429429 step 4), carried once, beside the away
 			// block and outside the dedup ledger.

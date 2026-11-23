@@ -372,8 +372,8 @@ the checkout from the root the loader resolves for the working directory.
   used from 0 to 100, sets that bracket; without it the diagnostic has no
   session, so the fill is unknown and it renders the unknown-fill form.
   `--fill` without `--prompt`, or outside 0 to 100, is refused at exit 2 and
-  renders nothing, as is a `DOMAIN` given with `--prompt`. The rules take what the away block the hook reads first
-  leaves them; the status block is not counted, since reading it takes in the
+  renders nothing, as is a `DOMAIN` given with `--prompt`. The rules take what the away block and the facilitator line the hook reads first
+  leave them; the status block is not counted, since reading it takes in the
   status branches. On a drive's stage it reads the rules as the lane's base
   commit holds them and recalls no notes or pages, as the hook does there, and
   says it is on a stage, so an empty recall there reads apart from a prompt
