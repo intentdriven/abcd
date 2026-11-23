@@ -133,8 +133,10 @@ func (e *ModuleCacheError) Error() string {
 // tool `go install` or `go run` takes by version, and no program on PATH.
 //
 // It runs first with GOPROXY=off, so a cache that holds the module graph is read
-// with no network, and with GOFLAGS=-mod=mod in module mode, so go.sum is read
-// and not written; in workspace mode, which refuses -mod=mod, with the GOFLAGS
+// with no network, and with GOFLAGS=-mod=mod in module mode, so a go.mod the
+// build list has outgrown does not stop the run; -mod=mod lets go write go.mod
+// and go.sum, and the put-back below is what keeps them as they were. In
+// workspace mode, where the build refuses -mod=mod, it runs with the GOFLAGS
 // env carries less any -mod. Where that run stops only because the cache lacks
 // a module's metadata (`module lookup disabled by GOPROXY=off`), it runs again
 // with the GOPROXY env carries, which fetches that metadata, and can download a
