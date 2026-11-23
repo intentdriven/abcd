@@ -2,9 +2,11 @@ package guard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // landingTree is a working tree whose local tier, a subdirectory and a build
@@ -660,5 +662,109 @@ func TestAGitExtensionOnPathIsJudgedAsTheProgramItRuns(t *testing.T) {
 	}
 	if a := approveShell(clean(), stage, `git absorb`); a.Allow || !strings.Contains(a.Reason, "alias.absorb") {
 		t.Errorf("an extension the configuration also defines as an alias: allow=%v: %s", a.Allow, a.Reason)
+	}
+}
+
+// TestAGitAliasReadThatDoesNotAnswerIsRefusedWithinItsBudget: the read of
+// whether the configuration defines an alias is bound to its budget, so a git
+// that does not answer is refused within it, saying so, and not waited on.
+func TestAGitAliasReadThatDoesNotAnswerIsRefusedWithinItsBudget(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git on PATH")
+	}
+	tree := landingTree(t)
+	bin := t.TempDir()
+	stubs := map[string]string{
+		"git-lfs": "#!/bin/sh\nexit 0\n",
+		// git itself, holding only the alias read
+		"git": "#!/bin/sh\ncase \"$*\" in *\"--get alias.\"*) exec sleep 10;; esac\nexec '" + realGit + "' \"$@\"\n",
+	}
+	for name, body := range stubs {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	temps, budget := approveTempDirs, aliasReadBudget
+	t.Cleanup(func() { approveTempDirs, aliasReadBudget = temps, budget })
+	elsewhere := t.TempDir()
+	approveTempDirs = func() []string { return []string{elsewhere} }
+	aliasReadBudget = 300 * time.Millisecond
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	start := time.Now()
+	a := approveShell(clean(), stage, `git lfs pull`)
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("the check took %s, waiting on the alias read", took)
+	}
+	if a.Allow || !strings.Contains(a.Reason, "did not answer within") || !strings.Contains(a.Reason, "alias.lfs") {
+		t.Errorf("want a refusal saying git did not answer the alias.lfs read, got allow=%v: %s", a.Allow, a.Reason)
+	}
+}
+
+// TestAGitExtensionIsLookedUpOnlyInAStage: outside a stage an undocumented
+// git subcommand is judged as before, with no PATH search and no git started
+// to read the configuration.
+func TestAGitExtensionIsLookedUpOnlyInAStage(t *testing.T) {
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git on PATH")
+	}
+	tree := landingTree(t)
+	bin := t.TempDir()
+	marker := filepath.Join(t.TempDir(), "asked")
+	stubs := map[string]string{
+		"git-lfs": "#!/bin/sh\nexit 0\n",
+		"git":     "#!/bin/sh\ncase \"$*\" in *\"--get alias.\"*) : > '" + marker + "';; esac\nexec '" + realGit + "' \"$@\"\n",
+	}
+	for name, body := range stubs {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	temps := approveTempDirs
+	t.Cleanup(func() { approveTempDirs = temps })
+	elsewhere := t.TempDir()
+	approveTempDirs = func() []string { return []string{elsewhere} }
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, line := range []string{`git lfs pull`, `git lfs pull && printf x > notes.txt`} {
+		if a := approveShell(clean(), NewFiles(tree), line); !a.Allow {
+			t.Errorf("%q is refused outside a stage: %s", line, a.Reason)
+		}
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("outside a stage, the check started git to read alias.lfs")
+	}
+}
+
+// TestAStageGitPathspecThatGitMatchesItselfIsNotPlaced: a pathspec git
+// matches itself (`:/name` from the top, other `:` magic, a wildcard) can
+// name any file, so a stage's git rm, checkout or restore given one is
+// refused, saying so; a path spelled out is judged where it is. A stage's
+// plain git apply is refused for the files that decide how the lane is
+// judged, not for .git, which it never writes.
+func TestAStageGitPathspecThatGitMatchesItselfIsNotPlaced(t *testing.T) {
+	tree := landingTree(t)
+	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
+	for _, line := range []string{
+		`git rm ':/Makefile'`,
+		`git rm ':(top)Makefile'`,
+		`git rm 'x/*'`,
+		`git checkout -- ':/x/notes.txt'`,
+		`git restore ':(glob)**/approvals'`,
+	} {
+		a := approveShell(clean(), stage, line)
+		if a.Allow || !strings.Contains(a.Reason, "pathspec") {
+			t.Errorf("%q: want a refusal naming the pathspec, got allow=%v: %s", line, a.Allow, a.Reason)
+		}
+	}
+	for _, line := range []string{`git rm x/notes.txt`, `git checkout -- x/notes.txt`, `git restore x/notes.txt`} {
+		if a := approveShell(clean(), stage, line); !a.Allow {
+			t.Errorf("%q is refused: %s", line, a.Reason)
+		}
+	}
+	a := approveShell(clean(), stage, `git apply x/p.diff`)
+	if a.Allow || !strings.Contains(a.Reason, "decide how the lane is judged") || strings.Contains(a.Reason, ".git") {
+		t.Errorf("a stage's plain git apply: want the lane's files as the reason, got allow=%v: %s", a.Allow, a.Reason)
 	}
 }

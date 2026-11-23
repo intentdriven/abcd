@@ -394,6 +394,11 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 					break
 				}
 				for _, i := range r.operands {
+					if rc.files.stageHome != "" && pathspecMagic(s.tokens[i]) {
+						why := pathspecUnplaced("rm").why
+						out = append(out, pathUse{remove: true, why: why})
+						continue
+					}
 					out = append(out, at(i, true))
 				}
 			}

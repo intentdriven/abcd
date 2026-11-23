@@ -847,10 +847,11 @@ fixed --directory, and with --unsafe-paths, or a --directory the line does not
 fix, are not placed; the files git's own options name (--output, format-patch
 -o, archive -o, bundle create, read-tree --index-output, interpret-trailers
 --in-place, merge-file, init) are judged as writes, git mv as mv, and git rm
-as a removal; in a stage an undocumented git subcommand is the git-<name>
+as a removal, a pathspec git matches itself (a leading ':' or a wildcard)
+unplaced in a stage; in a stage an undocumented git subcommand is the git-<name>
 program PATH finds, judged as any program, where it lies outside the session's
-own directories and the configuration defines no alias of that name, and is
-otherwise not placed, as an alias; and XDG_CONFIG_HOME on a git line is
+own directories and the configuration (read within five seconds, refused past
+them) defines no alias of that name, and is otherwise not placed, as an alias; and XDG_CONFIG_HOME on a git line is
 refused as GIT_CONFIG_GLOBAL is; and
 the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a

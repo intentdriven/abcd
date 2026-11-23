@@ -1,10 +1,14 @@
 package guard
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -229,7 +233,8 @@ func (w writerArgs) applyTargets(name string, r optRead, loose bool, root string
 		return append(out, asTreeIn(writeTarget{path: filepath.Join(root, word), ok: true, wrote: true}))
 	}
 	if stage && !(name == "apply" && applyWritesNoFile(r)) && !(name == "am" && amWritesNoFile(r)) {
-		out = append(out, asTreeIn(writeTarget{path: root, ok: true, wrote: true}))
+		out = append(out, whyUnplaced("this runs git "+name+" in a drive's stage, which writes each path its patch names anywhere in the working tree, the files that decide how the lane is judged among them, and the guard does not read the patch, so it cannot show the patch leaves those files alone.",
+			"apply the patch with --directory naming the directory its paths go in, check it with --check or --stat, or write the files it changes directly."))
 	}
 	return out
 }
@@ -266,8 +271,10 @@ func (w writerArgs) gitTrees() []writeTarget {
 		return whole
 	}
 	if !gitSubcommands[name] {
-		if _, ok := w.gitExtension(i); ok {
-			return nil // a program git runs, judged as any program is
+		if w.rc.files.stageHome != "" {
+			if _, ok := w.gitExtension(i); ok {
+				return nil // a program git runs, judged as any program is
+			}
 		}
 		return whole
 	}
@@ -381,7 +388,7 @@ func (w writerArgs) gitTrees() []writeTarget {
 				continue // the tree-ish the paths come from
 			}
 			t := w.at(j)
-			if !t.ok {
+			if !t.ok || pathspecMagic(toks[j]) {
 				return whole
 			}
 			t.tree = true
@@ -426,7 +433,9 @@ func (w writerArgs) plainFrom(from int, allowed ...string) bool {
 // directory the guard does not follow, where a subcommand, its options, a
 // configuration value on the line or an alias can change any file. In a stage,
 // a subcommand git does not document is one the guard cannot place where it
-// may be an alias (gitExtension).
+// may be an alias (gitExtension), which is asked only there; and a path
+// checkout or restore takes as a pathspec git matches itself (pathspecMagic)
+// is not placed.
 func (w writerArgs) gitTargets() []writeTarget {
 	toks := w.s.tokens
 	i, elsewhere := w.gitSub()
@@ -448,7 +457,10 @@ func (w writerArgs) gitTargets() []writeTarget {
 		return nil
 	}
 	if !gitSubcommands[name] {
-		if why, ok := w.gitExtension(i); !ok && stage {
+		if !stage {
+			return nil
+		}
+		if why, ok := w.gitExtension(i); !ok {
 			return []writeTarget{why}
 		}
 		return nil
@@ -465,6 +477,16 @@ func (w writerArgs) gitTargets() []writeTarget {
 		out = append(out, sub.sourceLandings(r, 1)...)
 	case "checkout", "restore":
 		out = append(out, sub.operands([]string{"-b", "-B", "--orphan", "-s", "--source", "--conflict", "--pathspec-from-file"}, nil)...)
+		if stage {
+			for _, j := range r.operands {
+				if name == "checkout" && j < r.end {
+					continue // the tree-ish the paths come from
+				}
+				if pathspecMagic(toks[j]) {
+					out = append(out, pathspecUnplaced(name))
+				}
+			}
+		}
 	case "read-tree":
 		if v, ok := r.last(0, "index-output"); ok {
 			word, ok := w.wordOf(v)
@@ -627,7 +649,13 @@ func (w writerArgs) gitExtension(i int) (why writeTarget, ok bool) {
 	if _, err := os.Stat(root); err != nil || !filepath.IsAbs(root) {
 		return alias("the guard cannot say which directory git reads its configuration in, so it cannot say whether alias."+shown+" is defined.", spell)
 	}
-	defined, err := gitutil.AliasDefined(root, f.stageHome, name)
+	ctx, cancel := context.WithTimeout(context.Background(), aliasReadBudget)
+	defer cancel()
+	defined, err := gitutil.AliasDefinedContext(ctx, root, f.stageHome, name)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return alias(fmt.Sprintf("git did not answer within %s when asked whether its configuration defines alias.%s, so the guard cannot show it is the git-%s program and not an alias (a configuration that includes a file which never finishes reading, such as a named pipe, holds git this way).", aliasReadBudget, shown, shown),
+			"check that git answers here (git config --show-origin --get alias."+shown+"), then run the line again.")
+	}
 	if err != nil {
 		return alias("git could not say whether its configuration defines alias."+shown+" ("+termsafe.Sanitize(fsutil.RedactHome(err.Error()))+"), so the guard cannot show it is the git-"+shown+" program and not an alias.",
 			"check that git can read this repository's settings and your own (git config --show-origin --get alias."+shown+"), then run the line again.")
@@ -636,6 +664,27 @@ func (w writerArgs) gitExtension(i int) (why writeTarget, ok bool) {
 		return alias("the configuration git reads here defines it as an alias (alias."+shown+"), which can run any command and write any file, and the guard does not read what an alias does.", spell)
 	}
 	return writeTarget{}, true
+}
+
+// aliasReadBudget bounds gitExtension's read of the configuration, as the
+// guard hook's own git budget bounds its first git calls: git answers in
+// milliseconds, and one that has not answered by then is waiting on
+// something that may never come. A variable, so a test can shorten it.
+var aliasReadBudget = 5 * time.Second
+
+// pathspecMagic reports whether word is a pathspec git reads other than as a
+// path (gitglossary(7)): magic that opens with ':' (`:/name` from the
+// working tree's top, `:(glob)…`, `:!…`), or a wildcard git matches against
+// its own index, which names files the word does not.
+func pathspecMagic(word string) bool {
+	return strings.HasPrefix(word, ":") || strings.ContainsAny(word, "*?[")
+}
+
+// pathspecUnplaced is a path git command name takes as a pathspec that names
+// files the word does not spell, which the guard cannot place.
+func pathspecUnplaced(name string) writeTarget {
+	return whyUnplaced("this runs git "+name+" with a pathspec git matches itself (a leading ':' or a wildcard), which can name any file in the working tree, so the guard cannot say which files it reaches.",
+		"name each path in full, relative to the directory the command runs in.")
 }
 
 // writeWhy is the reason a write the guard cannot place is refused, and the

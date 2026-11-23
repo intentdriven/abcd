@@ -679,14 +679,18 @@ a log, `git format-patch -o`, `git archive -o`, `git bundle create`, `git
 read-tree --index-output`, `git apply --build-fake-ancestor`, `git
 interpret-trailers --in-place`, `git merge-file`, the directory `git init`
 makes, and where `git mv` moves its sources, read as `mv` is; `git rm` removes
-the files it names. In a stage, a subcommand git does not document is the
+the files it names. In a stage, a path `git rm`, `git checkout` or `git
+restore` takes as a pathspec git matches itself (one opening with `:`, such as
+`:/Makefile`, or holding a wildcard) can name any file, so it is not placed.
+In a stage, a subcommand git does not document is the
 `git-<name>` program git finds on PATH, which git 2.52 runs before any alias
 of that name, and is judged as any program is (`git lfs pull` is approved),
 when that program lies outside the working tree, the run's own directories
 and the temporary directory, and the configuration git reads (`git config
 --get alias.<name>`, under the stage's home) defines no alias of that name.
 Otherwise it may be an alias for any command, so it is not approved, and the
-refusal says which of these it met. A git command run with `XDG_CONFIG_HOME`
+refusal says which of these it met. That read has five seconds, as the hook's
+first git calls do; a git that has not answered by then is refused, saying so. A git command run with `XDG_CONFIG_HOME`
 set, which moves the configuration its aliases come from, is refused as one
 with `GIT_CONFIG_GLOBAL` set is.
 
