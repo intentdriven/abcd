@@ -761,7 +761,9 @@ its text:
   or parent paths can write anywhere. Options are read as GNU getopt reads
   them, with macOS's other reading judged too (a letter that takes no value
   there, and an option word after the first operand read as an operand), and a write through
-  a link the same line makes is judged where the link leads. A line that only
+  a link the same line makes, or through one inside a directory the line moved
+  or copied, is judged where the link leads; in a stage, a write below a tree
+  whose contents the line does not fix is not placed. A line that only
   names one of them is not a write;
 - a removal whose fixed target lies outside the launched working tree, the
   run's own directories (the brief's and the receipt's, which the runner names

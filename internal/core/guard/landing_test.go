@@ -264,12 +264,35 @@ func TestAStageCopyFedByXargsIsJudgedForAnySource(t *testing.T) {
 
 // TestALinkMadeEarlierOnTheLineIsFollowed: a later write, move or copy through
 // a link the line makes first is judged where the link leads, whichever
-// command made it; the link alone, and a link to an ordinary directory, stay
-// open.
+// command made it, and so is one through a link inside a directory the line
+// moved or copied first, whether the line made that link or it stands on disk;
+// below a tree whose contents the line does not fix (rsync, an archive, a
+// source xargs supplies), a stage's write is not placed. The link alone, a
+// link to an ordinary directory, and a write below a moved tree that passes
+// no link, stay open.
 func TestALinkMadeEarlierOnTheLineIsFollowed(t *testing.T) {
 	tree := landingTree(t)
+	if err := os.MkdirAll(filepath.Join(tree, "x", "e"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../.abcd/.work.local", filepath.Join(tree, "x", "e", "L")); err != nil {
+		t.Fatal(err)
+	}
 	stage := NewFiles(tree).WithStage(filepath.Join(t.TempDir(), "stage"), nil, nil)
 	for _, line := range []string{
+		// A link inside a directory the line moves or copies is followed at
+		// the directory's new place, made on the line or standing on disk.
+		`mkdir -p x/d && ln -s ../../.abcd/.work.local x/d/L && mkdir x/review-receipts && touch x/review-receipts/HEAD && mv x/d y/ && mv x/review-receipts y/d/L/`,
+		`mkdir -p x/d && ln -s ../../.abcd/.work.local x/d/L && cp -R x/d y/ && mv x/review-receipts y/d/L/`,
+		`mkdir -p x/d && ln -s ../../.abcd/.work.local x/d/L && mv x/d y/ && mv y z && mv x/review-receipts z/d/L/`,
+		`mv x/e y/ && mv x/review-receipts y/e/L/`,
+		`cp -R x/e y/e2 && mkdir y/e2/L/approvals`,
+		`mv x/e y/f && printf x > y/f/L/approvals`,
+		// A tree whose contents the line does not fix may hold a link.
+		`ln -s ../.abcd/.work.local x/L && rsync -a x/L y/ && mv x/review-receipts y/L/`,
+		`rsync -a x/old/ y/ && mv x/review-receipts y/L/`,
+		`tar -xf x/a.tar -C y && mkdir y/L/approvals`,
+		`find x -name '*.go' | xargs -I{} cp -R {} y/ && mv x/review-receipts y/L/`,
 		`ln -s .abcd/.work.local L && mv x/review-receipts L/`,
 		`ln -s .abcd/.work.local L && mkdir -p L/approvals`,
 		`ln -s .abcd/.work.local L; printf x > L/approvals/a`,
@@ -287,6 +310,10 @@ func TestALinkMadeEarlierOnTheLineIsFollowed(t *testing.T) {
 		`ln -s .abcd/.work.local L`,
 		`ln -s build L && printf x > L/a`,
 		`ln -s .abcd/.work.local L && printf x > L/scratch.txt`,
+		`mv x/staging y && printf x > y/notes.txt`,
+		`cp -R x/old y && rm -rf y/tmp`,
+		`mv x/e y && printf x > y/notes.txt`,
+		`tar -xf x/a.tar -C build && printf x > notes.txt`,
 	} {
 		if a := approveShell(clean(), stage, line); !a.Allow {
 			t.Errorf("%q is refused: %s", line, a.Reason)

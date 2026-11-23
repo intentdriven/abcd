@@ -67,57 +67,64 @@ func writeAt(rc *readCtx, st *shellState, word string, tilde bool) writeTarget {
 func writerTargets(rc *readCtx, s segment, st *shellState) []writeTarget {
 	var out []writeTarget
 	for _, a := range commandSites(s) {
-		tok := s.tokens[a.idx]
-		if isUnknown(tok) {
-			continue
-		}
-		w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
-		switch strings.ToLower(path.Base(tok)) {
-		case "tee":
-			out = append(out, w.operands(nil, nil)...)
-		case "cp", "mv", "install":
-			w.s = xargsView(s, a.idx)
-			out = append(out, w.copyTarget(strings.ToLower(path.Base(tok)))...)
-		case "ln":
-			w.s = xargsView(s, a.idx)
-			out = append(out, w.lnTarget()...)
-		case "dd":
-			for i := w.from; i < len(s.tokens); i++ {
-				if strings.HasPrefix(s.tokens[i], "of=") {
-					out = append(out, w.valueAt(i, len("of=")))
-				}
+		out = append(out, siteTargets(rc, s, st, a)...)
+	}
+	return out
+}
+
+// siteTargets is what the command at a writes, when it is a listed writer.
+func siteTargets(rc *readCtx, s segment, st *shellState, a arrival) []writeTarget {
+	var out []writeTarget
+	tok := s.tokens[a.idx]
+	if isUnknown(tok) {
+		return nil
+	}
+	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
+	switch strings.ToLower(path.Base(tok)) {
+	case "tee":
+		out = append(out, w.operands(nil, nil)...)
+	case "cp", "mv", "install":
+		w.s = xargsView(s, a.idx)
+		out = append(out, w.copyTarget(strings.ToLower(path.Base(tok)))...)
+	case "ln":
+		w.s = xargsView(s, a.idx)
+		out = append(out, w.lnTarget()...)
+	case "dd":
+		for i := w.from; i < len(s.tokens); i++ {
+			if strings.HasPrefix(s.tokens[i], "of=") {
+				out = append(out, w.valueAt(i, len("of=")))
 			}
-		case "curl":
-			out = append(out, w.curlTargets()...)
-		case "wget":
-			out = append(out, w.flagValues([]string{"-O", "--output-document"})...)
-		case "sed":
-			out = append(out, w.sedTargets()...)
-		case "patch":
-			out = append(out, w.patchTargets()...)
-		case "git":
-			out = append(out, w.gitTargets()...)
-		case "tar":
-			out = append(out, w.tarTargets()...)
-		case "unzip":
-			out = append(out, w.unzipTargets()...)
-		case "rsync":
-			out = append(out, w.rsyncTarget()...)
-		case "find":
-			out = append(out, findRuns(rc, s, st, a.idx+1)...)
-		case "go":
-			out = append(out, w.goBuildTarget()...)
-		case "sort":
-			out = append(out, w.flagValues([]string{"-o", "--output"})...)
-		case "ditto":
-			for _, d := range w.lastOf(w.operandIdx([]string{"--arch", "--bom", "--zlibCompressionLevel"}), 2) {
-				out = append(out, asTreeIn(d))
-			}
-		case "split":
-			out = append(out, w.splitTarget()...)
-		case "uniq":
-			out = append(out, w.secondOf(w.operandIdx([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}))...)
 		}
+	case "curl":
+		out = append(out, w.curlTargets()...)
+	case "wget":
+		out = append(out, w.flagValues([]string{"-O", "--output-document"})...)
+	case "sed":
+		out = append(out, w.sedTargets()...)
+	case "patch":
+		out = append(out, w.patchTargets()...)
+	case "git":
+		out = append(out, w.gitTargets()...)
+	case "tar":
+		out = append(out, w.tarTargets()...)
+	case "unzip":
+		out = append(out, w.unzipTargets()...)
+	case "rsync":
+		out = append(out, w.rsyncTarget()...)
+	case "find":
+		out = append(out, findRuns(rc, s, st, a.idx+1)...)
+	case "go":
+		out = append(out, w.goBuildTarget()...)
+	case "sort":
+		out = append(out, w.flagValues([]string{"-o", "--output"})...)
+	case "ditto":
+		for _, d := range w.lastOf(w.operandIdx([]string{"--arch", "--bom", "--zlibCompressionLevel"}), 2) {
+			out = append(out, asTreeIn(d))
+		}
+	case "split":
+		out = append(out, w.splitTarget()...)
+	case "uniq":
+		out = append(out, w.secondOf(w.operandIdx([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}))...)
 	}
 	return out
 }

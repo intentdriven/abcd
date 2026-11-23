@@ -222,6 +222,8 @@ var wordReaders = map[string]string{
 	"readTar":            "isUnknown: a word no line fixes may be -P, so the archive is judged as able to land anywhere",
 	"unzipTargets":       "exempt: reads unzip's literal option letters; a word no line fixes is read as the archive, and -d's value goes through resolveToken or valueAt, which refuse an unknown word",
 	"xargsReplacement":   "isUnknown: an option word no line fixes may name a replacement string, so every word of the command is read as unknown (xargsView)",
+	"siteTargets":        "isUnknown: no writer is read for a program name the line does not fix",
+	"treesAt":            "exempt: reads the word commandSites places as the program, and each source through fixedToken and globAt, a source either refuses read as a tree whose contents the line does not fix",
 	"lineLinks":          "exempt: reads the word commandSites places as the program, and each operand through fixedToken, which refuses an unknown word",
 	"linkPairs":          "exempt: reads ln's single operand through fixedToken, which refuses an unknown word, and the rest through planCopy and landingIn",
 	"landingIn":          "isUnknown: a source no line fixes lands in the destination under any name",

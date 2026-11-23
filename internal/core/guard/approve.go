@@ -430,7 +430,7 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int, carry ma
 				if !u.ok {
 					return unfixedRefusal(u)
 				}
-				if v, through, unfixed := throughLinks(u, links, k, facts.fold); unfixed {
+				if v, through, unfixed := links.through(u, k, facts.stage, facts.fold); unfixed {
 					return unfixedRefusal(u)
 				} else if through {
 					if name, ok := facts.protects(v); ok {

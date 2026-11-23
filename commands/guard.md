@@ -494,7 +494,11 @@ A shell command is approved only when the guard reads it whole and clears it:
   is an operand there, so `cp f -t d x .abcd/` copies `x` into `.abcd/`)
   both readings are judged. A write through
   a link the same line makes (`ln -s`, `cp -s`, or a move or copy of a link) is
-  judged where the link leads. A listing, a test or a dry run (`unzip -l`,
+  judged where the link leads, and so is one through a link inside a directory
+  the line moved or copied first, made on the line or standing there now; in a
+  stage, a write below a tree whose contents the line does not fix (from
+  `rsync`, `ditto`, an archive, a clone or a source `xargs` supplies) is not
+  placed, since any name in it may be a link. A listing, a test or a dry run (`unzip -l`,
   `tar -t`, `patch --dry-run`) writes nothing. A line that only names one of
   them, to read it, is not a write;
 - no removal reaches outside the working tree (`removal-outside-tree`): a
