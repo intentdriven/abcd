@@ -359,8 +359,8 @@ every other role keeps; one `--route` per role. The runner must be one
 `~/.abcd.noindex/config.json` enables and the model one its provider lists, or
 the step is refused before anything is written, naming the fix; a tier route,
 or a `--route` with `--release`, `--discard` or
-`--accept-config-change` (which writes its acceptance before the step is
-judged), is refused too. The
+`--accept-config-change` (which, on a plain step, writes its acceptance before
+the step is judged), is refused too. The
 model is held to the pins the machine sets for it, as the machine's own model
 is, so a `--route` naming claude, which holds no pin, for a model the machine
 pins is refused before anything is written, naming `runner.opencode.model`; a
@@ -933,7 +933,37 @@ opened one. A drain's issue run (`/abcd:drain`) is then over, so no run director
 removed by hand; an intent's run stays, and a landing's hand-back says when to remove its
 directory. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
 changed or could not be read too, finding the pull request by the lane's branch; if your own
-`implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
+`implement step` caused that stop, remove the file the message names instead.
+
+`--discard` also ends a lane nothing else ends:
+
+- a lane handed back for any other reason, `unachievable` included, once no
+  lane of the run is at work (while one stands handed back the run holds its
+  siblings' passing rounds, so it is refused at exit 3 naming them until they
+  finish, are held or are discarded first);
+- a lane at work (`worktree`, `brief`, `implement`, `validate` or `land`) whose
+  run nothing drives: no live process other than your own session is its
+  recorded driver, and no agent of the run is running or may still be in its
+  call. A runner's agent counts as gone once its own process has gone and its
+  claim's term has ended; a host's agent once a reservation lease (two hours)
+  has passed since it was handed out. A live run is refused
+  at exit 3, naming its driver or each agent, and nothing is changed.
+
+Either is refused at exit 2 while the lane's pull request is open, armed or not
+(close it on the forge first, or let the run land it), or merged (a step records
+the landing); one the forge reports closed is not closed again.
+
+Every discard, of any lane, first saves the lane's commits that the default
+branch does not hold to a git bundle in the run's own directory,
+`.abcd/.work.local/run/<run-id>/<lane-id>-<tip>.bundle`, before it removes
+anything; the result names it under `bundle`, the run record names it, and
+`git fetch <bundle> <branch>` restores the branch. A branch with no commits of
+its own saves none, and a bundle git cannot write refuses the discard with
+nothing removed. A discard that leaves no lane of the run at work or held
+releases every reservation the run still holds, an issue run's with the
+discarded lane's hand-back where it carries one, once the discard is written;
+the result says what came of it under `released`, and the record logs it at
+`reservation_released` or `reservation_release_failed`. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
@@ -1884,7 +1914,11 @@ directory, `info/attributes`), then relay the refusal to the person. Accept a
 change only on their word: `step --accept-config-change` records the settings
 as they now stand, names what it accepted on stderr, in the result's
 `accepted_config_change` under `--json` and in the run record, and takes the
-step. The flag goes with `--restart`, `--release` or `--discard` too. A lane
+step. The flag goes with `--restart`, `--release` or `--discard` too, and there
+the acceptance is written in the move's own write: a move that is then refused
+writes nothing, the acceptance included, so the run's state and fingerprint
+stay byte for byte as they were, and only a move that goes through names what
+it accepted. A plain step writes its acceptance first and then takes the step. A lane
 worktree that has gone is not a change once its lane landed or was discarded.
 While its lane is still in progress the loop still runs git at that path, so a
 worktree that is no longer there is named gone, and a path that stops being a

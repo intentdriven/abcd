@@ -19,13 +19,14 @@ import (
 // route in force sends to a runner, the configuration's or a --route, is
 // started on that runner at once rather than re-told to the host
 // (iss-2611012047534449).
-func runRestart(ctx context.Context, cmd *cobra.Command, asJSON bool, root, runID, laneID, yielded string, accepted []string, rs loop.Runners) error {
+func runRestart(ctx context.Context, cmd *cobra.Command, asJSON bool, root, runID, laneID, yielded string, acceptConfig bool, rs loop.Runners) error {
 	const prefix = "abcd implement step"
 	w := cmd.OutOrStdout()
-	res, err := loop.RestartDrive(ctx, root, runID, laneID, yielded, loop.DefaultStages(), loop.Options{}, rs)
+	res, err := loop.RestartDrive(ctx, root, runID, laneID, yielded, loop.DefaultStages(), loop.Options{AcceptConfig: acceptConfig}, rs)
 	if err != nil {
 		return loopFail(w, asJSON, prefix, err)
 	}
+	accepted := acceptedBy(cmd, res.StepResult, nil)
 	res.StepResult = redactStep(res.StepResult)
 	res.AcceptedConfigChange = accepted
 	return render(w, asJSON, res, func(w io.Writer) { renderRestart(w, res) })

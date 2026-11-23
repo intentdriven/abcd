@@ -4127,7 +4127,16 @@ leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
 a lane handed back as stuck or closed, which ends an issue's run while an intent's run
 stays, and any lane of a run a drive stopped on because its state changed or could not
-be read.
+be read. It also takes a lane handed back for any other reason (unachievable included)
+once no lane of the run is at work, and a lane at work (worktree, brief, implement,
+validate or land) whose run nothing drives: no other live process is its driver and no
+agent of the run is running or may still be in its call (a host's agent counts as gone a
+reservation lease after it was handed out). A live run is refused at exit 3, and a lane
+whose pull request is open (armed or not) or merged at exit 2, naming why; one the forge
+reports closed is not closed again. Every discard first saves the lane's commits not on
+the default branch to <lane>-<tip>.bundle in the run's directory (the result's bundle;
+`git fetch <bundle> <branch>` restores them), and one that leaves no lane of the run at
+work or held releases the run's reservation (the result's released).
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -4197,7 +4206,7 @@ step alone, over every configured route, asking for the model named after @ in p
 the runner's own runner.<name>.model, which every other role keeps; one per role. The
 runner must be one the machine enables and the model one its provider lists, or the step
 is refused before anything is written, naming the fix; a tier route, and a --route with
---release, --discard or --accept-config-change (which writes its acceptance before the
+--release, --discard or --accept-config-change (which, on a plain step, writes its acceptance before the
 step is judged), are refused too. The model is held to the pins the machine
 sets for it, as the runner's own model is: opencode holds them, and a --route naming
 claude, which holds none, for a pinned model is refused before anything is written,
@@ -4285,7 +4294,9 @@ together with git: a change made while the call runs is seen by the next one. A 
 started before the tripwire records its fingerprint at its next check and moves.
 --accept-config-change, once you have looked at what changed, records the configuration
 as it stands, names what it accepted on stderr, in the result (accepted_config_change) and
-in the run record, and takes the step.
+in the run record, and takes the step. With --release, --discard or --restart the
+acceptance is written in the move's own write, so a move that is refused writes nothing,
+the acceptance included.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
@@ -4294,7 +4305,7 @@ refusal, exit 3 on a pause or a locked run state.
 
 ```
       --accept-config-change[=true|false]   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string                      discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
+      --discard string                      discard a held lane (lane-<n>), one handed back, or one at work in a run nothing drives: save its own commits to a bundle in the run's directory, remove its worktree and branch, then close its pull request
       --release string                      land a held lane as it is (lane-<n>), once no lane has work left
       --restart string                      restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --route stringArray                   route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim

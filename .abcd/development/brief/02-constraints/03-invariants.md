@@ -78,7 +78,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    fence's fetch and renewal before the landing pushes the lane's branch and
    again before a merge is armed, and the tombstone once the run's last lane
    lands or an issue lane is handed back, the latter carrying the hand-back's
-   kind and the issue's record blob, and, in an issue run, the sync step's
+   kind and the issue's record blob, and once a discard leaves no lane of the
+   run at work or held, and one read of a lane's pull request's state through
+   the forge client when a discard ends a lane at work or handed back that
+   opened one, and, in an issue run, the sync step's
    fetch of origin's default branch, at each sync: before the landing's
    records, and again when the open pull request starts to conflict at its
    arming or its merge wait (spc-2610161044461448 step 13), and, while an

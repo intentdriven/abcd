@@ -1028,7 +1028,9 @@ A lane's stages run in order:
    handed back to them with those findings, and ask, for each held lane,
    whether it lands as it is (`implement step --release <lane-id>`) or is
    discarded (`implement step --discard <lane-id>`); do not start another fix
-   round. The run stays
+   round. The handed-back lane keeps its worktree and branch until the person
+   ends it the same way, once no lane is at work: `--discard <lane-id>` saves
+   its commits to a bundle in the run's directory first. The run stays
    in progress until its directory, `.abcd/.work.local/run/<run-id>`, is
    removed, which the refusal names as the way to build the intent afresh once
    it is replanned.

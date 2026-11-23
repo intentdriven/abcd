@@ -990,6 +990,12 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	case res.Complete:
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
 	}
+	if res.Bundle != "" {
+		fmt.Fprintf(w, "  bundle:  %s (the lane's own commits, saved before its branch was deleted)\n", termsafe.Sanitize(res.Bundle))
+	}
+	if res.Released != "" {
+		fmt.Fprintf(w, "  released: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Released)))
+	}
 	if r := res.Retried; r != nil {
 		fmt.Fprintf(w, "  retried: %s's %s on the %s runner (%s)\n", r.Lane, termsafe.Sanitize(r.Role), termsafe.Sanitize(r.Runner),
 			termsafe.Sanitize(fsutil.RedactHome(r.Why)))
@@ -1096,7 +1102,16 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
 			"a lane handed back as stuck or closed, which ends an issue's run while an intent's run\n" +
 			"stays, and any lane of a run a drive stopped on because its state changed or could not\n" +
-			"be read.\n" +
+			"be read. It also takes a lane handed back for any other reason (unachievable included)\n" +
+			"once no lane of the run is at work, and a lane at work (worktree, brief, implement,\n" +
+			"validate or land) whose run nothing drives: no other live process is its driver and no\n" +
+			"agent of the run is running or may still be in its call (a host's agent counts as gone a\n" +
+			"reservation lease after it was handed out). A live run is refused at exit 3, and a lane\n" +
+			"whose pull request is open (armed or not) or merged at exit 2, naming why; one the forge\n" +
+			"reports closed is not closed again. Every discard first saves the lane's commits not on\n" +
+			"the default branch to <lane>-<tip>.bundle in the run's directory (the result's bundle;\n" +
+			"`git fetch <bundle> <branch>` restores them), and one that leaves no lane of the run at\n" +
+			"work or held releases the run's reservation (the result's released).\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1164,7 +1179,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the runner's own runner.<name>.model, which every other role keeps; one per role. The\n" +
 			"runner must be one the machine enables and the model one its provider lists, or the step\n" +
 			"is refused before anything is written, naming the fix; a tier route, and a --route with\n" +
-			"--release, --discard or --accept-config-change (which writes its acceptance before the\n" +
+			"--release, --discard or --accept-config-change (which, on a plain step, writes its acceptance before the\n" +
 			"step is judged), are refused too. The model is held to the pins the machine\n" +
 			"sets for it, as the runner's own model is: opencode holds them, and a --route naming\n" +
 			"claude, which holds none, for a pinned model is refused before anything is written,\n" +
@@ -1247,7 +1262,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"started before the tripwire records its fingerprint at its next check and moves.\n" +
 			"--accept-config-change, once you have looked at what changed, records the configuration\n" +
 			"as it stands, names what it accepted on stderr, in the result (accepted_config_change) and\n" +
-			"in the run record, and takes the step.\n\n" +
+			"in the run record, and takes the step. With --release, --discard or --restart the\n" +
+			"acceptance is written in the move's own write, so a move that is refused writes nothing,\n" +
+			"the acceptance included.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,
@@ -1319,7 +1336,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
-			case acceptConfig && !acceptConfigChange(cmd, root, id, &accepted, &err):
+			// With --release, --discard or --restart the acceptance is written in the
+			// move's own write, so a move refused writes none of it either.
+			case acceptConfig && release == "" && discard == "" && restart == "" && !acceptConfigChange(cmd, root, id, &accepted, &err):
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			case restart != "":
 				// A restart consults the routes in force, as a step does: a
@@ -1337,12 +1356,14 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				}
 				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 				defer stop()
-				return runRestart(ctx, cmd, *asJSON, root, id, restart, yielded, accepted,
+				return runRestart(ctx, cmd, *asJSON, root, id, restart, yielded, acceptConfig,
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 			case release != "":
-				res, err = loop.Release(root, id, release, loop.Options{})
+				res, err = loop.Release(root, id, release, loop.Options{AcceptConfig: acceptConfig})
+				accepted = acceptedBy(cmd, res, err)
 			case discard != "":
-				res, err = loop.Discard(root, id, discard, loop.Options{})
+				res, err = loop.Discard(root, id, discard, loop.Options{AcceptConfig: acceptConfig})
+				accepted = acceptedBy(cmd, res, err)
 			default:
 				roots, notes := layered.RootsFor(root)
 				for _, n := range notes {
@@ -1409,12 +1430,25 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
-	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), one handed back, or one at work in a run nothing drives: save its own commits to a bundle in the run's directory, remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
 	stepRoute = addRunnerRouteFlag(cmd, loop.RoleImplementer, loop.RoleRuthless, loop.RoleSecurity, loop.RoleAuditor)
 	return cmd
+}
+
+// acceptedBy is what a --release or --discard given --accept-config-change
+// accepted in its own write, named on stderr as acceptConfigChange names it;
+// nothing for a move that was refused, which wrote no acceptance.
+func acceptedBy(cmd *cobra.Command, res loop.StepResult, err error) []string {
+	if err != nil {
+		return nil
+	}
+	if len(res.AcceptedConfigChange) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize("accepted a change to the repository's git configuration: "+strings.Join(res.AcceptedConfigChange, ", ")))
+	}
+	return res.AcceptedConfigChange
 }
 
 // acceptConfigChange accepts the run's changed git configuration for
