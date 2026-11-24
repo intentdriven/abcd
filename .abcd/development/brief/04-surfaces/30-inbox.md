@@ -155,7 +155,7 @@ the stance the rules loader takes on `~/.abcd.noindex/rules.json` behind a symli
 be recorded, or the report could not be moved), naming the capture; `2`
 refused, with nothing written, and with the home and working directories
 written as `~` and `.` in the message. The JSON output holds on
-every path: the list is `{"notice", "tally": {"reports", "senders"}, "reports": [...]}`, show is
+every path: the list is `{"notice", "tally": {"reports", "senders"}, "reports": [...], "left"}`, `left` counting the oldest waiting reports the listing did not read, show is
 the entry with `notice` beside its fields, and a refusal is
 the `{"abcd":"error",…}` envelope on stdout.
 

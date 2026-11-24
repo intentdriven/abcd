@@ -54,7 +54,7 @@ The exemptions carrying a rationale of their own:
   `abcd help` prints the root help, a different render from the bare board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
-adds meaning: `agents`, `announce`, `banlist`, `build`, `checklist`, `dashboard`,
+adds meaning: `agents`, `announce`, `banlist`, `build`, `checklist`, `completion`, `dashboard`,
 `decide`, `docs`, `drain`, `embargo`, `explain`, `guard`, `history`, `hook`, `ideate`,
 `identity`, `implement`, `inbox`, `lab`, `land`, `landings`, `library`, `lint`,
 `memory`, `mode`, `peers`, `reading`, `report`, `reserve`, `rules`, `scribe`,

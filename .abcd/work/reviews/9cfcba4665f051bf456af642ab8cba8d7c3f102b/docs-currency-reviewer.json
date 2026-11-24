@@ -1,0 +1,24 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "9cfcba4665f051bf456af642ab8cba8d7c3f102b"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-11-24T04:22:46Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:95bc3092c9cad660515718ecdbbe27260867fdab2539682c8218babe625657f1",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.17.1"
+  },
+  "categories": {},
+  "failing": [],
+  "_reviewProvenance": "One Opus 5.5 docs-currency-reviewer pass over README, docs/ and commands/ against the code and the built binary, PROMOTE with no failing claim. The checkers read an exact export of cf832458369547baf256732771a6c1cf9725e727 (main with the last pull request of the cycle merged in) with the binary built from it; this receipt names 9cfcba4665f051bf456af642ab8cba8d7c3f102b. R differs from that tree by the brief corrections in 16ee4f7ecaee, the status-line sentence fix in cb496c236586 (internal/core/surface/sentences.go and the three references generated from it), and the roll: CHANGELOG.md, RELEASE.md, the plugin pin and the release digest. No behaviour changed between the tree read and R. The same reviewer then read the composed CHANGELOG section and RELEASE.md of R against the code in a delta pass over the composed payload before the ingest: it found three lines that overstated the code (the review set's layers, launch reland, the away-mode recall), the composer recomposed them, and the same reviewer re-checked them, PROMOTE with nothing failing; the ingested CHANGELOG section and RELEASE.md in R are that re-checked payload."
+}

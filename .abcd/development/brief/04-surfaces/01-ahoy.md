@@ -616,6 +616,14 @@ earlier version wrote wider is narrowed when abcd next writes it
   tests/<root-sha>/              the check directory make preflight's test stages
                                  run from, outside every working tree, so Go's test
                                  cache holds across worktrees
+  preflight-checkouts/           the drive's per-preflight directory, a fresh
+                                 checkout of the head it judges, beside the
+                                 worktree store
+  stage-homes/                   the home a walled stage's shell runs with, apart
+                                 from the walled directory and its login
+  scheduled-runs/<root-sha>/     the scheduled-verdict store a status read reports
+  stop.json                      the run stop, where the person chose no shared
+                                 folder for it
   profiles/                      the drive's separate logins, each directory made
                                  and logged in by the person; abcd never reads,
                                  stores or forwards the login

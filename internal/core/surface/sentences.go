@@ -492,7 +492,7 @@ var sentences = map[string]string{
 		"Writes the moves to closed/ and shipped/; refuses to ship an intent with no impact.",
 
 	"abcd statusline": "Render abcd's status-line row from the host's payload on stdin: " +
-		"Writes nothing; never refuses.",
+		"Writes only the session's fill file; never refuses.",
 
 	"abcd update": "Swap the PATH-installed binary for a verified release, or with --check only compare: " +
 		"Writes the swapped binary; refuses a binary it cannot prove is abcd's.",

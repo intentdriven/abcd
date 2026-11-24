@@ -396,7 +396,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "untrack it. The state is at its second schema version, which added the",
-      "replacement": "untrack it. The state is at its third schema version; the second added the",
+      "replacement": "untrack it. The state is at its fourth schema version (the bundling fields above); the second added the",
       "evidence": "internal/core/implement/loop/drain.go:79",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
@@ -404,7 +404,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "a first-version state is read as the second's strict subset and written back at",
-      "replacement": "the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a first- or second-version state is read as the third's strict subset and written back at",
+      "replacement": "the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a state of the third version or lower is read as the fourth's strict subset and written back at",
       "evidence": "internal/core/implement/loop/drain.go:1564",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
@@ -412,7 +412,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "the second, and one that carries any of those fields is refused naming the",
-      "replacement": "the third, and a first-version one that carries any of the second's fields is refused naming the",
+      "replacement": "the fourth, and a first-version one that carries any of the second's fields is refused naming the",
       "evidence": "internal/core/implement/loop/drain.go:1550",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
@@ -644,7 +644,7 @@
     {
       "chapter": "34-build.md",
       "sentence": "written back at version 16 by its next mutation; an earlier version carrying what",
-      "replacement": "written back at the current version, 27, by its next mutation; an earlier version carrying what",
+      "replacement": "written back at the current version, 31, by its next mutation; an earlier version carrying what",
       "evidence": "internal/core/implement/loop/state.go:1269-1273 (every version from 1 to 19 is read as `SchemaVersion`, 20, and the next write carries it); state.go:270; loop.go:571",
       "commit": "49301ccb097cd61b6e8bff9d64eb7c9dd5fa923f",
       "applied": "2026-11-04T03:52:40Z"

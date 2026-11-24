@@ -35,7 +35,7 @@ table is a gap in the table, never evidence that the capability is ungated.**
 | Oracle adapter degrade | A step routed to a provider connection that cannot be reached, nothing having been sent, runs through the harness rather than failing the run: the receipt names the connection tried and the harness used, and the front door prints one fallback line; any other provider error refuses the step (`TestAnUnreachableProviderFallsBackToTheHarness`, `TestAnUnreachableProviderLeavesTheStepToTheHost`) |
 | Oracle re-review | After a fix, the audit-fix loop re-dispatches the review prompt through the seam; the verdict can downgrade and is honoured |
 | Review quality | A lifeboat review carries specific findings, not vague approval |
-| Disembark read-only (adr-35) | A pack never writes to the source: a test hashes the source tree before and after the run and asserts it is byte-identical. Pointing disembark at a repository abcd has never touched succeeds |
+| Disembark read-only (adr-35) | A pack never writes to the source: a test fingerprints every source entry's relative path, mode and size (`.git` skipped) before and after the run and asserts the fingerprints match. Pointing disembark at a repository abcd has never touched succeeds |
 | Disembark destination safety gate (adr-35) | A pack proceeds only when the destination is absent, an empty directory, or one carrying a parseable provenance file. A non-empty directory abcd did not produce refuses with no overwrite and no backup copy; a malformed provenance file refuses; a re-run over an abcd-produced destination confirms, then regenerates in place |
 | Disembark checkpoint | **(staged)** A mid-pack interrupt writes a forensic checkpoint. No resume sub-verb ships and none is planned — re-running starts fresh, so a checkpoint would exist for post-mortem only — and where it lands is undecided (see the open question below) |
 | Embark source lookup | `embark from <lifeboat> [target]` takes the path explicitly and scans for nothing; `embark probe` reads the same input read-only. There is no shorthand for a well-known home, because the lifeboat lands at an operator-chosen destination (adr-35). **(staged)** a candidate-listing sub-verb in any form |
@@ -113,6 +113,6 @@ table is a gap in the table, never evidence that the capability is ungated.**
 > operations namespace to the operator level, but it does not say where a
 > checkpoint goes. Three candidates and one exclusion: the operator-level voyage
 > home, the destination, or the gitignored local tier; it may not be written into
-> the source tree, which the read-only gate hashes. The retired logbook location
+> the source tree, which the read-only gate fingerprints. The retired logbook location
 > is not a candidate at all — iss-73 retired it, and an armed detector fails the
 > build on any non-test Go source under `internal/` that names it.

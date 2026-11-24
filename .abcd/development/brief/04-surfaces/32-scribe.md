@@ -164,8 +164,8 @@ renders what landed first.
   to 4 MiB. The context carries the whole ledger, so a ledger whose context
   would pass that limit cannot be transcribed for at all: assembly refuses it,
   naming the size and the limit, before a session is handed anything. This
-  repository's ledger of nearly 4,800 records assembles to a context of about
-  9.5 MB.
+  repository's ledger of more than 5,300 records holds over 9 MB of record text
+  alone, before the context's framing.
 
 - The context is assembled from the ledger as it stands in the working tree,
   uncommitted records included, where the intent's scope condition speaks of
