@@ -4893,7 +4893,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.",
+      "sentence": "Render abcd's status-line row from the host's payload on stdin: Writes only the session's fill file; never refuses.",
       "flags": []
     },
     {

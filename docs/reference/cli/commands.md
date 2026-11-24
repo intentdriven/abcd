@@ -7494,7 +7494,7 @@ abcd status
 
 ### `abcd statusline`
 
-Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.
+Render abcd's status-line row from the host's payload on stdin: Writes only the session's fill file; never refuses.
 
 **Usage:** `abcd statusline`
 
