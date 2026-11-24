@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -268,19 +268,25 @@ func TestTheScriptNotesTheGatesWaits(t *testing.T) {
 		t.Errorf("clock new wrote the clock: %v", err)
 	}
 
-	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(time.Now().Unix()-372, 10)+"-4242")
+	// The script reads the time between each bracket's two readings, in whole
+	// seconds, so each wait is bounded by its bracket and no slack is guessed.
+	began := time.Now()
+	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(began.Unix()-372, 10)+"-4242")
 	t.Setenv(ClockEnv, clock)
 	receiptScript(t, r.root, "clock", "opened")
+	opened := time.Now()
 	receiptScript(t, r.root, "clock", "opened")
+	marking := time.Now()
 	receiptScript(t, r.root, "clock", "mark", "race")
 	receiptScript(t, r.root, "clock", "since", "race")
+	since := time.Now()
 	receiptScript(t, r.root, "clock", "since", "lock")
 	sums := readClock(t, clock)
-	if load := sums["wait load"]; load < 372 || load > 374 {
-		t.Errorf("the load gate's wait noted %vs, want the 372s since the run began, once: %v", load, sums)
+	if load, hi := sums["wait load"], float64(372+opened.Unix()-began.Unix()); load < 372 || load > hi {
+		t.Errorf("the load gate's wait noted %vs, want the 372s since the run began, up to %vs, once: %v", load, hi, sums)
 	}
-	if race := sums["wait race"]; race > 1 {
-		t.Errorf("the race gate's wait noted %vs from a mark made just now: %v", race, sums)
+	if race, hi := sums["wait race"], float64(since.Unix()-marking.Unix()); race < 0 || race > hi {
+		t.Errorf("the race gate's wait noted %vs from a mark made just now, want from 0 to %vs: %v", race, hi, sums)
 	}
 	if _, ok := sums["wait lock"]; ok {
 		t.Errorf("a wait with no mark was noted: %v", sums)
@@ -316,13 +322,16 @@ func TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits(t *testing.T) {
 		body := "commit " + head + "\ntree " + tree + "\nstage " + stage + "\nmode reuse\nreused 1\npackages 2\nresult pass\n"
 		writeFile(t, filepath.Join(r.root, ".abcd", ".work.local", "preflight-reuse", head, stage+"-aaaaaaaaaaaa"), body, 0o644)
 	}
-	began := time.Now().Unix() - 3600
-	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(began, 10)+"-4242")
+	before := time.Now()
+	clock := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock", strconv.FormatInt(before.Unix()-3600, 10)+"-4242")
 	writeFile(t, clock, "wait load 600\nstage unit 120.400\nmark race 1763540000\nwait race 30\nwait lock 0.600\nstage race 1500.000\nstage unit 60.000\n", 0o644)
 
 	state := receiptScript(t, r.root, "state")
 	t.Setenv(ClockEnv, clock)
 	out := receiptScript(t, r.root, "mint", state)
+	// mint read the time after before and before now, so the run took the hour
+	// and from no to this many whole seconds more.
+	late := int(time.Now().Unix() - before.Unix())
 	lines := strings.Split(out, "\n")
 	if len(lines) < 6 || !strings.HasPrefix(lines[len(lines)-6], "preflight: push receipt minted for ") || !strings.Contains(lines[len(lines)-5], "the unit stage reused 1 of 2 packages and the race stage 1 of 2") {
 		t.Fatalf("the time is not on the last lines, after the receipt line:\n%s", out)
@@ -331,8 +340,8 @@ func TestTheReceiptLinePrintsTheRunsTimeWithoutItsWaits(t *testing.T) {
 	if last[1] != "preflight: stage unit: 3m00s" || last[2] != "preflight: stage race: 25m00s" {
 		t.Errorf("the stages' times:\n%s", out)
 	}
-	checked := within(t, last[3], "preflight: checked in ", " (waited 10m31s: load gate 10m00s, race gate 30s, check lock 1s)", 2969, 2971)
-	gates := within(t, last[0], "preflight: stage gates: ", "", 1289, 1291)
+	checked := within(t, last[3], "preflight: checked in ", " (waited 10m31s: load gate 10m00s, race gate 30s, check lock 1s)", 2969, 2969+late)
+	gates := within(t, last[0], "preflight: stage gates: ", "", 1289, 1289+late)
 	if checked-gates != 1680 {
 		t.Errorf("the gates' %ds and the test stages' 1680s do not make the checked %ds:\n%s", gates, checked, out)
 	}
@@ -413,7 +422,6 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 	state := receiptScript(t, r.root, "state")
 	receipt := filepath.Join(r.root, ".abcd", ".work.local", "preflight-receipts", head)
 	clocks := filepath.Join(r.root, ".abcd", ".work.local", "preflight-clock")
-	hourAgo := strconv.FormatInt(time.Now().Unix()-3600, 10)
 
 	// Two notes the report must read, among lines it must skip.
 	garbled := strings.Join([]string{
@@ -425,25 +433,33 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 		"wait load " + strings.Repeat("9", 20000),
 		"stage unit 60 # a comment", "wait\tload\t\t", "WAIT LOAD 99",
 	}, "\n") + "\n"
-	reported := []string{"preflight: stage gates: 58m50s", "preflight: stage unit: 1m00s", "preflight: checked in 59m50s (waited 10s: load gate 10s)"}
+	// The report of a run that took total, ten seconds of it at the load gate and
+	// a minute in the unit stage: for an hour, the gates' 58m50s and 59m50s checked.
+	reported := func(total time.Duration) []string {
+		return []string{
+			"preflight: stage gates: " + formatClock(total-70*time.Second),
+			"preflight: stage unit: 1m00s",
+			"preflight: checked in " + formatClock(total-10*time.Second) + " (waited 10s: load gate 10s)",
+		}
+	}
 	noTime := "preflight: no time reported"
 
 	for _, c := range []struct {
 		name  string
-		make  func(t *testing.T) string // makes the clock, returns its path
-		lines []string                  // the last lines, or nil for noTime
+		make  func(t *testing.T, hourAgo string) string // makes the clock, returns its path
+		lines func(total time.Duration) []string        // the last lines, or nil for noTime
 	}{
-		{"garbled lines", func(t *testing.T) string {
+		{"garbled lines", func(t *testing.T, hourAgo string) string {
 			clock := filepath.Join(clocks, hourAgo+"-1")
 			writeFile(t, clock, garbled, 0o644)
 			return clock
 		}, reported},
-		{"no final newline", func(t *testing.T) string {
+		{"no final newline", func(t *testing.T, hourAgo string) string {
 			clock := filepath.Join(clocks, hourAgo+"-2")
 			writeFile(t, clock, "wait load 10\nstage unit 60", 0o644)
 			return clock
 		}, reported},
-		{"an unreadable file", func(t *testing.T) string {
+		{"an unreadable file", func(t *testing.T, hourAgo string) string {
 			if os.Geteuid() == 0 {
 				t.Skip("root reads a file whatever its mode")
 			}
@@ -455,29 +471,29 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			t.Cleanup(func() { os.Chmod(clock, 0o644) })
 			return clock
 		}, nil},
-		{"a directory", func(t *testing.T) string {
+		{"a directory", func(t *testing.T, hourAgo string) string {
 			clock := filepath.Join(clocks, hourAgo+"-4")
 			if err := os.MkdirAll(filepath.Join(clock, "inside"), 0o755); err != nil {
 				t.Fatal(err)
 			}
 			return clock
 		}, nil},
-		{"a name with no start", func(t *testing.T) string {
+		{"a name with no start", func(t *testing.T, _ string) string {
 			clock := filepath.Join(clocks, "garbled-5")
 			writeFile(t, clock, "wait load 10\n", 0o644)
 			return clock
 		}, nil},
-		{"a start of leading zeros", func(t *testing.T) string {
+		{"a start of leading zeros", func(t *testing.T, _ string) string {
 			clock := filepath.Join(clocks, "0899-6")
 			writeFile(t, clock, "wait load 10\n", 0o644)
 			return clock
 		}, nil},
-		{"a start of too many digits", func(t *testing.T) string {
+		{"a start of too many digits", func(t *testing.T, _ string) string {
 			clock := filepath.Join(clocks, strings.Repeat("9", 25)+"-7")
 			writeFile(t, clock, "wait load 10\n", 0o644)
 			return clock
 		}, nil},
-		{"a clock directory this account cannot list", func(t *testing.T) string {
+		{"a clock directory this account cannot list", func(t *testing.T, hourAgo string) string {
 			if os.Geteuid() == 0 {
 				t.Skip("root lists a directory whatever its mode")
 			}
@@ -494,7 +510,10 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			if err := os.Remove(receipt); err != nil && !os.IsNotExist(err) {
 				t.Fatal(err)
 			}
-			clock := c.make(t)
+			// The run starts an hour before the clock is made; the script reads
+			// the time after before and before after, in whole seconds.
+			before := time.Now()
+			clock := c.make(t, strconv.FormatInt(before.Unix()-3600, 10))
 			script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
 			if err != nil {
 				t.Fatal(err)
@@ -505,6 +524,7 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			if err := cmd.Run(); err != nil {
 				t.Fatalf("mint over the clock exited %v:\n%s%s", err, stdout.String(), stderr.String())
 			}
+			after := time.Now()
 			if stderr.Len() > 0 {
 				t.Errorf("mint over the clock said on stderr:\n%s", stderr.String())
 			}
@@ -518,16 +538,20 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 				}
 				return
 			}
-			if len(lines) < len(c.lines) {
+			// The run took the hour and from no to late whole seconds more, the
+			// same total on every line.
+			late := time.Duration(after.Unix()-before.Unix()) * time.Second
+			want := c.lines(time.Hour)
+			if len(lines) < len(want) {
 				t.Fatalf("too few lines:\n%s", stdout.String())
 			}
-			got := lines[len(lines)-len(c.lines):]
-			for i, want := range c.lines {
-				// The run's start is a second from where the test set it, either way.
-				if got[i] != want && !closeTo(got[i], want) {
-					t.Errorf("line %d is %q, want %q:\n%s", i, got[i], want, stdout.String())
+			got := lines[len(lines)-len(want):]
+			for d := time.Duration(0); d <= late; d += time.Second {
+				if slices.Equal(got, c.lines(time.Hour+d)) {
+					return
 				}
 			}
+			t.Errorf("the last lines are %q, want %q for a run of an hour and up to %v more:\n%s", got, want, late, stdout.String())
 		})
 	}
 
@@ -537,7 +561,7 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 	// notes nothing and exits 0, even when an earlier mark of that name was sound.
 	for _, mark := range []string{"0899", "0", strings.Repeat("9", 13), "1700000000\nmark race 0899"} {
 		t.Run("a race mark of "+strconv.Quote(mark), func(t *testing.T) {
-			clock := filepath.Join(clocks, hourAgo+"-9")
+			clock := filepath.Join(clocks, strconv.FormatInt(time.Now().Unix()-3600, 10)+"-9")
 			body := "wait load 10\nmark race " + mark + "\n"
 			writeFile(t, clock, body, 0o644)
 			script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "preflight-receipt.sh"))
@@ -558,19 +582,6 @@ func TestAGarbledClockNeverCostsTheReceipt(t *testing.T) {
 			}
 		})
 	}
-}
-
-// closeTo reports whether got is want with its first time a second either way.
-func closeTo(got, want string) bool {
-	re := regexp.MustCompile(`\b[0-9][0-9hms]*s\b`)
-	w := re.FindStringIndex(want)
-	g := re.FindStringIndex(got)
-	if w == nil || g == nil || got[:g[0]] != want[:w[0]] || got[g[1]:] != want[w[1]:] {
-		return false
-	}
-	gd, err1 := time.ParseDuration(got[g[0]:g[1]])
-	wd, err2 := time.ParseDuration(want[w[0]:w[1]])
-	return err1 == nil && err2 == nil && (gd-wd).Abs() <= time.Second
 }
 
 // within reads the duration a line holds between prefix and suffix and fails the
