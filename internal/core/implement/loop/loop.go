@@ -982,7 +982,16 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			st.Record = append(st.Record, Entry{At: now, Stage: StageAdmitted, Note: "admitted under " + st.Admitted.String()})
 		}
 		if rsv.note != "" {
-			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})
+			// The line is the reservation's act, so it carries the time the
+			// reservation was claimed at, not the run's creation: a discard
+			// reads each logged act's time as a reservation commit's
+			// claimed-at (runActs), and a start whose clock moved on since
+			// would log a time a later reservation, not the run's, can carry.
+			at := now
+			if rsv.at != nil {
+				at = rsv.at.UTC().Truncate(time.Second)
+			}
+			st.Record = append(st.Record, Entry{At: at, Stage: StageReservation, Note: rsv.note})
 		}
 		if pick != nil {
 			rp := *pick
