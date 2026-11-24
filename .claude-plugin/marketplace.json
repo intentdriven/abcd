@@ -10,9 +10,9 @@
       "description": "The open way to build your idea with the agent you already use. abcd keeps your idea, its decisions, and every check as plain files beside the code.",
       "name": "abcd",
       "source": {
-        "sha256": "d421070de3ca43308e5151f6b5407aeb21dcc901c59bdfc2a1734ce08c7a864d",
+        "sha256": "55535e769cfed773dcfd6a6940d3480432ed5662265dde3f450e2c1e856992fb",
         "source": "archive",
-        "url": "https://github.com/intentdriven/abcd/releases/download/v0.17.0/abcd-plugin-v0.17.0.zip"
+        "url": "https://github.com/intentdriven/abcd/releases/download/v0.17.1/abcd-plugin-v0.17.1.zip"
       }
     }
   ]
