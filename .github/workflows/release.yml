@@ -148,7 +148,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # The toolchain go.mod declares, read from the declaration itself. A literal
           # beside it is a second spelling to bump, and the one that gets forgotten
@@ -577,7 +577,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # The toolchain go.mod declares, read from the declaration itself. A literal
           # beside it is a second spelling to bump, and the one that gets forgotten
@@ -973,7 +973,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # The toolchain go.mod declares, read from the declaration itself. A literal
           # beside it is a second spelling to bump, and the one that gets forgotten

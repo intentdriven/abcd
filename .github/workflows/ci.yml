@@ -352,7 +352,7 @@ jobs:
       # what saves it on the default branch, for both runners, after each change
       # to go.sum or the toolchain, and what keeps it from ageing out.
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # The go directive in go.mod is the ONLY place the toolchain is written,
           # here and in every other setup-go step in this repository. A literal
@@ -816,7 +816,7 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" \
             ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
             --persona regular /src
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
@@ -920,7 +920,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Load check (skipped on CI, says why)
@@ -968,7 +968,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Load check (skipped on CI, says why)
@@ -1108,7 +1108,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Scan for known vulnerabilities

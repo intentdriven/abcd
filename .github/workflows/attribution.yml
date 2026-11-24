@@ -104,7 +104,7 @@ jobs:
       # opacity classifier, which POSIX ERE cannot express (see
       # scripts/check-attribution.sh). The footer half stays pure shell.
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           # go.mod is the only place the toolchain is written, here as everywhere
           # else in this repository (iss-2609090951291799).
