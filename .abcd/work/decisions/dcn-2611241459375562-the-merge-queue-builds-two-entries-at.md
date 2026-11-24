@@ -1,0 +1,6 @@
+---
+id: dcn-2611241459375562
+slug: the-merge-queue-builds-two-entries-at
+date: 2026-11-24
+---
+2026-11-24 — The merge queue builds two entries at once, and this supersedes dcn-2610110000000002, which says four. The ruleset mirror (.abcd/work/rulesets/main-protection.json) and the live ruleset read on 2026-11-24 both say max_entries_to_build 2, with ALLGREEN grouping, up to five entries merged together and a 90-minute check timeout. The mirror is right and the earlier decision is stale: its reason for four was to leave one of five macOS runners for the nightly run, and the queue has used no macOS runner since dcn-2611042202509334 moved macOS to nightly, on-demand and release runs. The technical facilitator's ruling on auto, 2026-11-24. Whether to raise the number is a sizing question for itd-2610110940216682: build concurrency tests more entries at once and does not group them, the ceiling at two entries of 40 to 60 minutes is about 57 landings a day, and room on the hosted Linux runners appears only once the pull-request run has shrunk. Any raise is the person's act on the forge, recorded by a new decision, with the mirror following. Readers of the queue's size take it from the mirror, never from a decision's text.

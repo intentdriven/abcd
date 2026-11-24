@@ -1,7 +1,7 @@
 # Landing checked work in private repositories without renting CI twice: state of the art
 
 Dated 2026-10-26. A state-of-the-art pass behind the draft intent
-[itd-2610261025516272](../../intents/drafts/itd-2610261025516272-an-abcd-managed-private-repository-lands.md),
+[itd-2610261025516272](../../intents/planned/itd-2610261025516272-an-abcd-managed-private-repository-lands.md),
 local-first landing for abcd-managed repositories, asked for by the technical facilitator,
 who also set the assumption the pass works under: most repositories abcd
 manages are private. The question: how a managed repository should be set up

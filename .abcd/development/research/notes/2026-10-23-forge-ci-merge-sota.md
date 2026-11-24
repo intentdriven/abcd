@@ -14,7 +14,7 @@ interviews. It serves
 (the truth about the fence),
 [itd-2610161647248332](../../intents/drafts/itd-2610161647248332-abcd-should-find-out-what-the-forge-can.md)
 (find out what the forge can do),
-[itd-2610110940216682](../../intents/drafts/itd-2610110940216682-a-person-whose-project-abcd-manages-gets.md)
+[itd-2610110940216682](../../intents/planned/itd-2610110940216682-a-person-whose-project-abcd-manages-gets.md)
 (every change checked in full once),
 [itd-2609301020001595](../../intents/drafts/itd-2609301020001595-a-dependabot-bump-of-a-pinned-action-in.md)
 (a pinned-action bump syncs its template),
