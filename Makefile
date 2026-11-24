@@ -372,7 +372,8 @@ endif
 
 ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
-# receipt the last step mints, below). It waits at the load gate as one whole
+# receipt the last step mints, below). It runs precheck's audit tests through
+# the narrow gate beside its wait (below), waits at the load gate as one whole
 # run, then runs its stages (preflight-stages): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
 # six lint gates
@@ -409,9 +410,10 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # several on a loaded machine, hence EVAL_TIMEOUT above.
 #
 # A preflight waits for its turn as one whole run (itd-2610262127138979,
-# iss-2610241537197997): `preflight` runs nothing but the load gate's command
-# form (`abcd implement load --wait -- make preflight-stages`), so a queued
-# preflight does no lint, eval, build, vet or test work, and the waiter is the
+# iss-2610241537197997): `preflight` runs the load gate's command form (`abcd
+# implement load --wait -- make preflight-stages`), so a queued preflight does
+# no lint, eval, build or vet work and no test work but its narrow audit runs
+# (below), and the waiter is the
 # parent of the whole run, its turn held until the run ends. Its prerequisites
 # ran before the old gate, which stood only before the test stages, so thirty
 # queued runs once kept a 10-core machine overloaded while they waited, and a
@@ -464,8 +466,31 @@ ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # cores, with no test hung (iss-2610241911052191). On a CI runner it stays 40
 # minutes unscaled, so make preflight's own budget never moves with CI's steps,
 # which declare their own (dcn-2611062201286033).
+#
+# Beside that wait, precheck's audit tests run first thing
+# (iss-2611232155447855): cmd/precheck-audits starts the gate's command form and,
+# alongside it, precheck's three test lines (PRECHECK_AUDIT_PACKAGES in full,
+# PRECHECK_AUDIT_TESTS in PRECHECK_NAMED_PACKAGES, and the audits it chooses
+# everywhere else) as narrow runs of at most three packages, each through `abcd
+# implement load --wait --narrow`, which admits them beside a running preflight.
+# An audit test a preflight would fail after an hour's queue fails in minutes:
+# the first audit run whose tests fail stops the gate's command and every other
+# run, each through the process group it leads (interrupted, so go test removes
+# its work directory, and killed five seconds on), and the line exits with that run's
+# failure, so no receipt is minted. When the command ends first, its verdict
+# decides, and the audit runs still going stop, since its unit and race stages
+# run every one of their tests. The audits run beside the wait rather than ahead
+# of it because a make preflight with no waiter queued beneath it is a running
+# preflight to every other run's first gate: run ahead, they would hold every
+# other preflight shut for as long as they took. One audit run goes at a time,
+# leaving the account's other narrow places to a drive lane's short check. An
+# audit run the gate refuses, at the disk floor, an unusable setting or its
+# timeout, is no verdict on the tree: it says why, the rest stop, and the whole
+# run decides. A run of precheck's first two lines has that line's own flags, so
+# a result precheck left in go's test cache can replay; the third line's runs
+# each name only their own packages' audits, so they rerun.
 preflight:
-	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
+	go run ./cmd/precheck-audits -whole '$(PRECHECK_AUDIT_PACKAGES)' -named '$(PRECHECK_NAMED_PACKAGES)' -run '$(PRECHECK_AUDIT_TESTS)' -- go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # Both test stages run through cmd/check-tests (internal/testreuse,
@@ -575,10 +600,15 @@ endif
 # the full unit and race stages, needs no load gate, mints no receipt and replaces
 # no preflight: a pass says only that what it ran passes.
 # TestPrecheckRunsEveryPreflightGateButTheLoadCheck holds its gates to preflight's
-# and TestPrecheckRunsTheAuditTests its test lines to what this says.
+# and TestPrecheckRunsTheAuditTests its test lines to what this says. What the
+# three lines choose checks itself (iss-2611232155463657):
+# cmd/precheck-audits's TestPrecheckRunsEveryAuditNamedTest refuses a test named
+# TestNo... or TestEvery... whose reach touches the tree, through a program it
+# starts included, that none of the three runs, unless its notAudits says what
+# it does instead. make preflight runs the same three lines beside its wait.
 PRECHECK_AUDIT_PACKAGES := ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome ./cmd/precheck-audits
 PRECHECK_NAMED_PACKAGES := ./internal/surface/cli ./internal/core/site
-PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand
+PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand|Sentence|HookEvent|SalvageEntry|FilledInInput
 
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
@@ -648,9 +678,9 @@ preflight: export ABCD_TEST_SHARDS := 3
 # that asserts standard-library wording passed preflight on a newer local go and
 # failed CI (pull request 728). The go on PATH switches to the declared release
 # and puts its bin first on PATH for anything it runs, so a `go` a test execs is
-# the declared one too. On the full rule the first Go step is the load gate's
-# own `go run ./cmd/abcd implement load --wait` on the preflight line, before
-# any stage, so a machine that lacks the declared release and cannot fetch it
+# the declared one too. On the full rule the first Go step is the
+# `go run ./cmd/precheck-audits` on the preflight line, which starts the load
+# gate's own, before any stage, so a machine that lacks the declared release and cannot fetch it
 # (offline) sees that go run fail with go's own toolchain download error, before
 # anything is waited for or gated. The records-only rule waits at no gate: its
 # first Go step is the load check's, whose failure is ignored, so offline its

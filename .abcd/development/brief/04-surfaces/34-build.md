@@ -1081,7 +1081,8 @@ The four classes are `research`, `top`, `default` and `small`, strongest first.
 `review.reviewers` is one or two classes for both roles or a list per role,
 each role taking the highest layer that sets it, else the bundled `research`
 and `default`; `review.max_reviewers` is the machine's ceiling, 1 or 2 and 2
-when unset, which clamps a longer list with one line on stderr;
+when unset, which clamps a longer list, with one line on stderr naming both
+files where the list is a repository's;
 `models.classes` is the class map and `models.effort` each class's effort (one
 of `low`, `medium`, `high`, `xhigh` and `max` for every class, or one per class,
 `high` unless named), both read from the machine's file over the bundled
