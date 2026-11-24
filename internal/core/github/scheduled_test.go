@@ -169,6 +169,22 @@ func TestScheduledRunsRefusesAnOriginOffTheForge(t *testing.T) {
 	}
 }
 
+// TestAnOriginLookupPastItsDeadlineIsATimeout: a caller whose deadline has
+// passed before origin's URL is read gets ErrTimeout from both forge readers,
+// never "no origin remote", which names a checkout that has one as missing it.
+// Under load a 200ms deadline ran out inside the lookup itself.
+func TestAnOriginLookupPastItsDeadlineIsATimeout(t *testing.T) {
+	cwd := originAt(t, "https://github.com/example-org/example-app.git")
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	if _, err := ScheduledRuns(ctx, cwd, "nightly.yaml", "main"); !errors.Is(err, ErrTimeout) {
+		t.Errorf("ScheduledRuns = %v; want ErrTimeout", err)
+	}
+	if _, err := PushersPage(ctx, cwd, "refs/heads/abcd-reserved/rel-v0.1.0", ""); !errors.Is(err, ErrTimeout) {
+		t.Errorf("PushersPage = %v; want ErrTimeout", err)
+	}
+}
+
 // TestScheduledRunsEndsAtItsCallersDeadline: a forge that does not answer
 // holds the caller no longer than the deadline it set.
 func TestScheduledRunsEndsAtItsCallersDeadline(t *testing.T) {

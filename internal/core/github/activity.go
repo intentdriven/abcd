@@ -67,6 +67,21 @@ type PushPage struct {
 // not.
 func (p PushPage) More() bool { return p.Full || p.Next != "" || p.NextUnread }
 
+// originURL reads the URL of cwd's origin remote under ctx, for a forge reader
+// to ask about. A lookup ended by ctx wraps ErrTimeout, the caller's deadline
+// spent, never "no origin remote", which would name a checkout that has one as
+// missing it.
+func originURL(ctx context.Context, cwd string) (string, error) {
+	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
+	if err != nil && ctx.Err() != nil {
+		return "", fmt.Errorf("origin's URL was not read before the deadline: %w", ErrTimeout)
+	}
+	if err != nil || strings.TrimSpace(origin) == "" {
+		return "", fmt.Errorf("this checkout has no origin remote to ask about")
+	}
+	return strings.TrimSpace(origin), nil
+}
+
 // PushersPage is one page of the forge's record of who pushed to ref (a full
 // ref under refs/heads/) on the repository origin names: its activity
 // record's pushes (`GET /repos/{owner}/{repo}/activity`, up to ActivityPage
@@ -86,11 +101,11 @@ func (p PushPage) More() bool { return p.Full || p.Next != "" || p.NextUnread }
 // the tip the record has reached. The read of origin's URL and gh are both
 // ended when ctx ends (runContext).
 func PushersPage(ctx context.Context, cwd, ref, after string) (PushPage, error) {
-	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
-	if err != nil || strings.TrimSpace(origin) == "" {
-		return PushPage{}, fmt.Errorf("this checkout has no origin remote to ask about")
+	origin, err := originURL(ctx, cwd)
+	if err != nil {
+		return PushPage{}, err
 	}
-	owner, name, err := ParseRemote(strings.TrimSpace(origin))
+	owner, name, err := ParseRemote(origin)
 	if err != nil {
 		return PushPage{}, err
 	}

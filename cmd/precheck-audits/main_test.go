@@ -386,6 +386,21 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
+// markOnLine is a lockedBuffer that creates the file mark once a write
+// carrying line has been kept, so a command can wait for what was printed.
+type markOnLine struct {
+	lockedBuffer
+	line, mark string
+}
+
+func (m *markOnLine) Write(p []byte) (int, error) {
+	n, err := m.lockedBuffer.Write(p)
+	if err == nil && bytes.Contains(p, []byte(m.line)) {
+		_ = os.WriteFile(m.mark, nil, 0o600)
+	}
+	return n, err
+}
+
 // sh is a command running script in sh, after writing its pid to pidFile when
 // one is named, so a test can prove it was stopped.
 func sh(script, pidFile string) []string {
@@ -477,14 +492,20 @@ func TestPassingAuditsLeaveTheVerdictToTheWholeRun(t *testing.T) {
 	plan := []auditRun{{packages: []string{"./a"}}, {packages: []string{"./b"}}, {packages: []string{"./c"}}}
 	var started []string
 	var mu sync.Mutex
+	// The whole run ends only once the pass has counted every audit run, not
+	// after a fixed sleep or at the last start: on a slow runner three audit
+	// starts outlasted two seconds and the whole run ended first, and ending it
+	// at the last start leaves that audit's exit racing the whole run's.
+	counted := filepath.Join(t.TempDir(), "counted")
 	gate := func(r auditRun) []string {
 		mu.Lock()
 		started = append(started, r.packages[0])
 		mu.Unlock()
 		return sh("exit 0", "")
 	}
-	var out lockedBuffer
-	code := beside(context.Background(), plan, sh("sleep 2; exit 4", ""), &out, &out, besideOptions{gate: gate, goFlags: noGoFlags})
+	whole := sh("i=0; while [ ! -e '"+counted+"' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done; exit 4", "")
+	out := &markOnLine{line: "every audit run passed", mark: counted}
+	code := beside(context.Background(), plan, whole, out, out, besideOptions{gate: gate, goFlags: noGoFlags})
 	if code != 4 {
 		t.Fatalf("exit %d, want the command's 4:\n%s", code, out.String())
 	}

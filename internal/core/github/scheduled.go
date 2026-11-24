@@ -7,10 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // scheduledRunsPage is how many runs one question reads back: enough to find a
@@ -52,11 +49,11 @@ func ScheduledRuns(ctx context.Context, cwd, workflow, branch string) ([]Schedul
 	if !PlainName(workflow) {
 		return nil, fmt.Errorf("the workflow name is not a plain file name, so it will not be used to build an API path")
 	}
-	origin, err := gitutil.RunCappedContext(ctx, cwd, originURLBytes, "remote", "get-url", "origin")
-	if err != nil || strings.TrimSpace(origin) == "" {
-		return nil, fmt.Errorf("this checkout has no origin remote to ask about")
+	origin, err := originURL(ctx, cwd)
+	if err != nil {
+		return nil, err
 	}
-	owner, name, err := ParseRemote(strings.TrimSpace(origin))
+	owner, name, err := ParseRemote(origin)
 	if err != nil {
 		return nil, err
 	}
