@@ -453,10 +453,12 @@ const maxHoldWalk = 64
 // second), through reservation commits of tip's own copy alone, none of them a
 // tombstone and none claimed after the lease of the one before it had ended.
 // The act's time names its commit only to the second, so the anchor must be
-// the one reservation in the history read claimed at that second (soleAt): a
-// release and a fresh reservation from this copy within the second the run
-// reserved make a tip that carries the run's time with the run's own commit
-// below it, past the release, and neither is then proven.
+// the one reservation in the history read claimed at that second past a
+// break from it (soleAt): a release and a fresh reservation from this copy
+// within the second the run reserved make a tip that carries the run's time
+// with the run's own commit below it, past the release, and neither is then
+// proven. A commit of the same second within the anchor's unbroken hold (a
+// renewal and a widening one step made on its one clock) is the same hold.
 // why is the reason it is not, for the record: a release or a lapse in
 // between, a take-over, a commit that cannot be read, an act's time two
 // reservations carry, or no anchor within maxHoldWalk commits.
@@ -489,29 +491,41 @@ func provablyOwn(repoRoot string, st State, id, tip string) (own bool, why strin
 		}
 		copyKey = m.Copy
 		if slices.ContainsFunc(acts, m.ClaimedAt.Equal) {
-			return soleAt(repoRoot, shas[i+1:], m.ClaimedAt)
+			return soleAt(repoRoot, shas[i+1:], m)
 		}
 		child = &m
 	}
 	return false, "no reservation the run logged lies within its last " + strconv.Itoa(maxHoldWalk) + " commits"
 }
 
-// soleAt reports whether no reservation among older, the commits below an
-// anchor provablyOwn found claimed at at, was claimed at that same second: a
-// tombstone is no reservation act and does not count, and nor does a commit
-// that is no reservation that can be read. why is the reason it is not.
-func soleAt(repoRoot string, older []string, at time.Time) (own bool, why string) {
+// soleAt reports whether no reservation among older, the commits below
+// anchor, a commit provablyOwn found claimed at the second of an act the run
+// logs, was claimed at that same second past a break from anchor's hold: a
+// tombstone, a commit of another copy, a lapse (a commit claimed after the
+// lease of the one below it ended), or a commit that is no reservation that
+// can be read. A commit of that second within the unbroken hold is the same
+// hold, so whichever of them is the run's act, the tip is the run's; one past
+// a break may be the run's act, and then the tip is not provably the run's.
+// why is the reason it is not.
+func soleAt(repoRoot string, older []string, anchor claim.ReservationMessage) (own bool, why string) {
+	at, child, broken := anchor.ClaimedAt, anchor, false
 	for _, sha := range older {
 		m, err := readHoldCommit(repoRoot, sha)
-		switch {
-		case errors.Is(err, errHoldUnread):
+		if errors.Is(err, errHoldUnread) {
 			return false, "its commit " + shortSHA(sha) + " could not be read"
-		case err != nil || m.Released():
-			continue
-		case m.ClaimedAt.Equal(at):
-			return false, "two of its reservations, " + shortSHA(sha) + " and one made after it, were claimed at " + stamp(at) +
-				", the second the run logs a reservation act at, so which is the run's cannot be told"
 		}
+		if err != nil {
+			broken = true
+			continue
+		}
+		if m.Released() || m.Copy != anchor.Copy || child.ClaimedAt.After(heldUntil(m)) {
+			broken = true
+		}
+		if broken && !m.Released() && m.ClaimedAt.Equal(at) {
+			return false, "two of its reservations, " + shortSHA(sha) + " and one made after it past a release, a lapse or a take-over, were claimed at " +
+				stamp(at) + ", the second the run logs a reservation act at, so which is the run's cannot be told"
+		}
+		child = m
 	}
 	return true, ""
 }

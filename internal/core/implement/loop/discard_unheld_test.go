@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -753,6 +754,51 @@ func TestDiscardLeavesAReservationMadeAgainWhenAWideningBackedOff(t *testing.T) 
 		t.Fatalf("the lane is discarded: %+v %v", res, err)
 	}
 	wantLeftStanding(t, repo, bare, runID, mine)
+}
+
+// TestDiscardReleasesTheRunsReservationRenewedAndWidenedInOneStep: one step
+// renews the run's hold, half through its lease, and then widens it, both on
+// the step's one clock, so the renewal and the widening are claimed in the
+// same second. Both are the run's own unbroken hold, so the discard releases
+// it.
+func TestDiscardReleasesTheRunsReservationRenewedAndWidenedInOneStep(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	own := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	step := own.claimed.Add(own.expires.Sub(own.claimed)/2 + time.Minute)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		if note := renewReservation(repo.Root(), st, step, nil); note != "" {
+			t.Fatalf("premise: the step renews the run's hold: %s", note)
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	renewed := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if renewed.commit == own.commit || !renewed.claimed.Equal(step) {
+		t.Fatalf("premise: the renewal is a commit of its own claimed at the step's time: %+v", renewed)
+	}
+	snap, err := claim.View(repo.Root(), step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, ok := snap.Lookup(secondIssue)
+	if !ok {
+		t.Fatal("premise: the view shows the run's hold")
+	}
+	if _, err := widenReservation(repo.Root(), secondIssue, append(slices.Clone(held.Footprint), "commands/widened.md"), false, false, held, step); err != nil {
+		t.Fatalf("premise: the step widens the run's hold: %v", err)
+	}
+	widened := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if widened.parent != renewed.commit || !widened.claimed.Equal(step) {
+		t.Fatalf("premise: the widening sits on the renewal, claimed in the same second: %+v, renewal %+v", widened, renewed)
+	}
+	if res, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID)); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.parent != widened.commit {
+		t.Fatalf("the run's own hold, renewed and widened in one step, is released: %+v; record: %q",
+			tomb, recordNote(t, repo, runID, StageReservationReleased))
+	}
 }
 
 // TestDiscardReleasesTheRunsReservationRenewedByAnotherWaiter: a load-gate
