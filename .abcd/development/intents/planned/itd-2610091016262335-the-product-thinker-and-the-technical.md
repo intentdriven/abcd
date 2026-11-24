@@ -13,7 +13,6 @@ related_intents: [itd-2610052000411162, itd-2610040740122709, itd-26100407401357
 related_adrs: [adr-2610091016270711, adr-2610161400542916]
 related_issues: [iss-2610230519103295, iss-2610230519116460, iss-2610230519122686]
 supersedes: [itd-2610052000411162, itd-2610052000424067]
-held: "its remainder spec spc-2610230609005313 (ac-21: cloud setup in two steps, abcd recording the relay's address) has open design questions and no steps; plan it before any build (dcn-2610230609300445)"
 ---
 
 # A team edits its brief together live during a call, on abcdesign.app or on the host's own computer
