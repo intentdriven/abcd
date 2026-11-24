@@ -18,7 +18,7 @@ current, leaves it, and how a cut is published:
 user-level home),
 [itd-70](../../intents/drafts/itd-70-launch-release-retention-newest-per-line.md)
 (release retention newest-per-line),
-[itd-2609151658486398](../../intents/drafts/itd-2609151658486398-a-release-cut-publishes-the-security.md)
+[itd-2609151658486398](../../intents/planned/itd-2609151658486398-a-release-cut-publishes-the-security.md)
 (a cut publishes the advisories its fixes close) and
 [itd-149](../../intents/drafts/itd-149-abcd-handles-inbound-security-advisories.md)
 (inbound advisories and release cuts for every managed repository). The
