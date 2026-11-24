@@ -1034,11 +1034,11 @@ schema version is a newer abcd's: it is refused as that before it is strictly pa
 and the person is told to run the newer abcd and not to remove the file, which
 holds that drain. A drain state git tracks came with a commit, not from this
 checkout, and is refused before it is read, naming the file and saying to
-untrack it. The state is at its third schema version; the second added the
+untrack it. The state is at its fourth schema version (the bundling fields above); the second added the
 pins, the local flag and the override field a routed judge's route record
 shares with the run state's (no drain flag sets an override);
 the third added a judge fallback receipt's `spent`, and an earlier version's state carrying it is refused, naming it; a first- or second-version state is read as the third's strict subset and written back at
-the third, and a first-version one that carries any of the second's fields is refused naming the
+the fourth, and a first-version one that carries any of the second's fields is refused naming the
 field, which the first version never wrote. A drain that has ended is
 kept for reading, and the next invocation begins a new one. With no cap named,
 a drain's lanes are uncapped and a drive's are capped at eight. The cap is set when

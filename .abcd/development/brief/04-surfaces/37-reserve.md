@@ -30,7 +30,9 @@ The verb takes one record, an issue or an intent in canonical id form, the two
 families a build or a drain takes, or a release, `rel-vX.Y.Z` (the release
 hold, below), and does one of two things: it reserves the record, or it
 releases this copy's reservation of it. A third form, the holder query, takes
-no record and is described under "The holder" below. A reservation names every
+no record and is described under "The holder" below; a sixth, the admission of
+a pull request a release's reservation withdrew, is described under "Withdrawn
+merges" below. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
 on commas, and the footprint is required. Each path should name a file. A
 path naming a directory holds off every other reservation of any file inside
@@ -66,7 +68,7 @@ this machine, as an announcement does: a record the store holds, a footprint
 naming something under embargo, or a store that cannot be read refuses the
 act with nothing pushed. A release never consults it, so a reservation can
 always be ended.
-A fourth form, the sweep, takes no record and no flag but its apply switch
+A fifth form, the sweep, takes no record and no flag but its apply switch
 and its age threshold. It lists the spent reservation branches on `origin`,
 and with the apply switch deletes them, each with a lease on the exact tip
 it judged, so a branch re-reserved meanwhile survives. A branch is spent when
@@ -651,9 +653,10 @@ withdrawing nothing, and an admission or a release is refused.
   and its state: `withdrawn` (still to settle),
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
   `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
-  its owner), or `kept` (the forge refused its withdrawal, so it was left
+  its owner), `kept` (the forge refused its withdrawal, so it was left
   armed; this person's own renewals carry it, and a live one tries the
-  withdrawal again).
+  withdrawal again), or `standing` (armed by another account at a head the
+  merge gate here does not arm, left as it is and settled).
   Every field is fixed-form, so no free text reaches the remote. The reader
   reads it strictly: any other shape, a pull request named twice, more than
   40, one on a record's reservation, or a settled state on a reservation that

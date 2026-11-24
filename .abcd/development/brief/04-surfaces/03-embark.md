@@ -14,8 +14,8 @@ would write and the target already holds with different bytes is a conflict, and
 report names every conflicting path so you can resolve them and re-run. A file
 whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
-> **What ships is the unpack and the probe, and the unpack takes no modifiers of
-> its own.** The richer surface this chapter designs — a `scan` discovery
+> **What ships is the unpack, the probe and the lessons ranking, and the unpack
+> takes no modifiers of its own.** The richer surface this chapter designs — a `scan` discovery
 > sub-verb, and force, archive and refresh-audit modifiers on the unpack — is
 > **not built yet**; [§ The design-target
 > surface](#the-design-target-surface) holds it, and nothing outside that

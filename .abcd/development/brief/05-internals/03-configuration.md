@@ -1585,7 +1585,10 @@ holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (ta
 `.load-wait.lock`), its memory admission in `load-memory-admit.json`, the
 markers of the preflights' test stages queued or running in `whole-runs/`, the
 check directory those stages run from in `tests/<root-sha>/` ([the check
-directory](#the-check-directory)), the drive's separate logins in `profiles/`,
+directory](#the-check-directory)), the drive's per-preflight checkouts in
+`preflight-checkouts/`, a walled stage's home in `stage-homes/`, the scheduled
+verdicts in `scheduled-runs/<root-sha>/`, the run stop in `stop.json` where no
+shared folder holds it, the drive's separate logins in `profiles/`,
 the folder this account shares with another in `shared-folder.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the
@@ -2243,7 +2246,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus thirteen build-time binaries
+├── cmd/                                # the shipped entrypoint plus fifteen build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -2257,8 +2260,10 @@ abcd/
 │   ├── check-tests/                    #   runs `make preflight`'s test stages from the check directory, replaying what the test cache holds
 │   ├── ci-watchdog/                    #   the shell CI's test jobs run go test under, stopping a hang with its dumps before the job's cap
 │   ├── ci-shard/                       #   prints the packages one shard of CI's macOS suite tests, computed from `go list`
+│   ├── refusal-codes-sync/             #   writes the committed refusal-code ledger, .abcd/development/release/refusal-codes.json, from internal/core/refusal
+│   ├── reuse-measure/                  #   sets the last landings' preflight reuse and check time against a baseline (itd-2611011325421304)
 │   └── record-slug-rename/             #   one-off: renames records over the repository's slug cap (iss-2610100626320367)
-│                                       #   The thirteen are developer tooling, not user surface: they run
+│                                       #   The fifteen are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
