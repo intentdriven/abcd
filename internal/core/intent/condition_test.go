@@ -288,7 +288,7 @@ func TestReviewBlockBoundaryStopsAtConditionMarker(t *testing.T) {
 	}
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp,
 		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest: %+v %v", res, err)
 	}
@@ -311,7 +311,7 @@ func TestIngestReportsReadingOccasionedStanding(t *testing.T) {
 	}
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp,
 		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestVerdictIngestUnchangedBesideConditionBlocks(t *testing.T) {
 	root, rcp := condFixture(t, condOne)
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp,
 		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))
-	if res, err := IngestVerdict(root, vp); err != nil || res.Status != "ingested" {
+	if res, err := ingestVerdict(root, vp); err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest: %+v %v", res, err)
 	}
 	ingested := intentBody(t, root)
@@ -379,7 +379,7 @@ func TestShipConditionIngestOverridesThroughTheWriters(t *testing.T) {
 	if _, err := DispositionCondition(root, condReq(condition.Falsified)); err != nil {
 		t.Fatal(err)
 	}
-	res, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest: %+v %v", res, err)
 	}
@@ -403,13 +403,13 @@ func TestReingestNamingTheOccasionOverrides(t *testing.T) {
 	root, rcp := condFixture(t, condOne)
 	first := writeVerdict(t, root, verdictWithConditions(t, rcp,
 		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))
-	if res, err := IngestVerdict(root, first); err != nil || res.Status != "ingested" {
+	if res, err := ingestVerdict(root, first); err != nil || res.Status != "ingested" {
 		t.Fatalf("first ingest: %+v %v", res, err)
 	}
 	if _, err := DispositionCondition(root, condReq(condition.Falsified)); err != nil {
 		t.Fatal(err)
 	}
-	res, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	res, err := ingestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +431,7 @@ func TestReingestNamingTheOccasionOverrides(t *testing.T) {
 	}
 	// The same payload again is idempotent: nothing written.
 	before := intentBody(t, root)
-	again, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	again, err := ingestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
 	if err != nil || again.Status != "noop" {
 		t.Fatalf("identical re-ingest = %+v %v, want noop", again, err)
 	}
@@ -445,14 +445,14 @@ func TestReingestNamingTheOccasionOverrides(t *testing.T) {
 // written, rather than dead-lettered over the verdict already on the record.
 func TestReingestOfAnInvalidPayloadNeverReplacesAnIngestedVerdict(t *testing.T) {
 	root, rcp := condFixture(t, condOne)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWithConditions(t, rcp,
+	if _, err := ingestVerdict(root, writeVerdict(t, root, verdictWithConditions(t, rcp,
 		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))); err != nil {
 		t.Fatal(err)
 	}
 	before := intentBody(t, root)
 	bad := strings.Replace(verdictWithConditions(t, rcp, dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")),
 		`"criterion_id": "ac-1"`, `"criterion_id": "ac-9"`, 1)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, bad)); err == nil || !strings.Contains(err.Error(), "nothing written") {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, bad)); err == nil || !strings.Contains(err.Error(), "nothing written") {
 		t.Fatalf("err = %v, want a refusal saying nothing was written", err)
 	}
 	if intentBody(t, root) != before {

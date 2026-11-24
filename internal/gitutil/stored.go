@@ -3,6 +3,7 @@ package gitutil
 import (
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -147,5 +148,19 @@ func EachAsStoredContext(ctx context.Context, root string, maxLine int, each fun
 		return fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 	}
 	w.flush()
+	return nil
+}
+
+// StreamAsStored runs one git command as stored (asStored) with its stdout
+// written to w as git writes it, for an answer the caller keeps whole rather
+// than reads, such as a bundle written to a file the caller opened itself: no
+// cap applies, and git never opens a path of its own for it. A failure
+// carries git's bounded stderr.
+func StreamAsStored(root string, w io.Writer, args ...string) error {
+	cmd := asStored(isolatedGit(root, args...))
+	e := &capWriter{remaining: 4096}
+	if err := procgroup.RunToEOF(context.Background(), cmd, w, e); err != nil {
+		return fmt.Errorf("git %s: %w (stderr: %q)", strings.Join(args, " "), err, strings.TrimSpace(string(e.buf)))
+	}
 	return nil
 }

@@ -406,7 +406,15 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 29. Version 29
+under a run id it does not name. The state is schema version 31. Version 31
+kept the digest of each validator's return as the loop read it when it recorded
+the verdict, and every return the landing reads again (the audit's verdict at
+the close, the reviewers' returns its review receipts record) is held to that
+digest: a file of version 30 reads as the current version, its verdicts'
+returns read as they stand, and one of version 30 or lower carrying a digest is
+refused. Version 30 let an issue run carry member issues beside its lead: a file
+of version 29 reads as a run with no members, and one of version 29 or lower
+carrying a member is refused. Version 29
 kept each location a round's judge struck, with its reason, on the judge
 (iss-2611182238519860), so a finished run keeps a strike's reason once the
 next round drops the struck round's findings: a file of version 28 reads as
@@ -691,7 +699,8 @@ back; its audit reads each of the run's lanes' own diff. After a hand-back the
 siblings finish, no new lane opens, no lane closes the spec, and a lane whose
 round passes is held before its push or its arming (an armed one is disarmed;
 where the forge refuses the withdrawal the move refuses naming the pull request,
-and one the forge reports merged is recorded as landed), until the person
+and one the forge reports merged, or whose pushed head the tip origin reports for
+its default branch holds, is recorded as landed), until the person
 releases or discards it (ruling DR6c). A discard removes the lane's worktree and
 branch before it closes the pull request, so a refused removal leaves nothing
 half done.
@@ -1177,7 +1186,9 @@ mode is `auto`, back at `validate`, and a sync.
    lane that took the fidelity audit does.
 2. In the lane's worktree it runs the spec's close (which ships the intent
    and parks the fidelity receipt) and ingests the verdict of the audit
-   the lane took into that receipt, rather than asking for a second audit; and
+   the lane took into that receipt, rather than asking for a second audit, read
+   as the bytes the validate stage recorded it from, so a verdict whose digest
+   is not the one recorded with it is refused before anything moves; and
    for every capture the lane's receipts declared fixed it runs the capture
    store's resolve with the lane's commit that fixed it. What a close ships and what holds it stay as the judged head has them, so an
    uncommitted change to them is refused, and what that head itself holds against

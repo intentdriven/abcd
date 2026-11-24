@@ -359,8 +359,8 @@ every other role keeps; one `--route` per role. The runner must be one
 `~/.abcd.noindex/config.json` enables and the model one its provider lists, or
 the step is refused before anything is written, naming the fix; a tier route,
 or a `--route` with `--release`, `--discard` or
-`--accept-config-change` (which writes its acceptance before the step is
-judged), is refused too. The
+`--accept-config-change` (which, on a plain step, writes its acceptance before
+the step is judged), is refused too. The
 model is held to the pins the machine sets for it, as the machine's own model
 is, so a `--route` naming claude, which holds no pin, for a model the machine
 pins is refused before anything is written, naming `runner.opencode.model`; a
@@ -911,8 +911,10 @@ handed-back lane), the `head` its round judged and `before`, the landing step it
 stopped before (`push`, or `arm` once its pull request is open; an armed one is
 disarmed with `gh pr merge <n> --disable-auto`). Where the forge refuses the
 withdrawal, `step` refuses naming the pull request, moves no other lane, and the
-person decides it on the forge; an armed pull request the forge reports merged
-had landed before the hand-back and is recorded as landed. Once nothing is left to move,
+person decides it on the forge; an armed pull request the forge reports merged,
+or whose pushed head the tip origin itself reports for its default branch holds
+(never the local remote-tracking ref), had landed before the hand-back and is
+recorded as landed. Once nothing is left to move,
 every `step` refuses at the `handed-back` stage naming the hand-back and each
 held lane. The person decides each held lane, one per invocation, once no lane
 has work left:
@@ -933,7 +935,51 @@ opened one. A drain's issue run (`/abcd:drain`) is then over, so no run director
 removed by hand; an intent's run stays, and a landing's hand-back says when to remove its
 directory. It takes a lane the land fence refuses because its run let its reservation go with no stop's mark standing too; the fence's other remedy is to reserve the record again with `abcd reserve <id> --footprint <path>` and step. It takes any lane of a run a drive stopped on because its state
 changed or could not be read too, finding the pull request by the lane's branch; if your own
-`implement step` caused that stop, remove the file the message names instead. An issue run logs each refused step on its lane, until its pull
+`implement step` caused that stop, remove the file the message names instead.
+
+`--discard` also ends a lane nothing else ends:
+
+- a lane handed back for any other reason, `unachievable` included, once no
+  lane of the run is at work (while one stands handed back the run holds its
+  siblings' passing rounds, so it is refused at exit 3 naming them until they
+  finish, are held or are discarded first);
+- a lane at work (`worktree`, `brief`, `implement`, `validate` or `land`) whose
+  run nothing drives: no live process other than your own session is its
+  recorded driver, and no agent of the run is running or may still be in its
+  call. A runner's agent counts as gone once its own process has gone and its
+  claim's term has ended; a host's agent once a reservation lease (two hours)
+  has passed since it was handed out. A live run is refused
+  at exit 3, naming its driver or each agent, and nothing is changed.
+
+Either is refused at exit 2 while the lane's pull request is open, armed or not
+(close it on the forge first, or let the run land it), or merged (a step records
+the landing); one the forge reports closed is not closed again. A lane whose
+branch was pushed at its landing but whose state records no pull request (one
+opened and not read back) is refused while the forge lists one open for its
+branch, and while that listing cannot be read.
+
+Every discard, of any lane, first saves the lane's commits that the default
+branch does not hold to a git bundle in the run's own directory,
+`.abcd/.work.local/run/<run-id>/<lane-id>-<tip>.bundle`, before it removes
+anything; the result names it under `bundle`, the run record names it, and
+`git fetch <bundle> <branch>` restores the branch. A branch with no commits of
+its own saves none. The bundle is always a new file, written under a
+part-written name (`<name>.bundle.partial`, which a later discard clears) and
+given its own name only once whole: a file or link already at its name, or a
+bundle git cannot write, refuses the discard with nothing removed. The branch is deleted only at the tip that was saved, so a branch that
+moved since is refused rather than deleted. A discard that leaves nothing of
+the run to land or settle (no lane at work or held, no spec step pending, and
+no lane handed back with its pull request still armed) releases every
+reservation the run still holds, an issue run's with the discarded lane's
+hand-back where it carries one, once the discard is written. Each release
+takes only a reservation provably the run's own: this copy's, and reaching one
+the run's record logs through renewals alone (a renewal another session in
+this copy made, such as a load-gate waiter's, is the same hold). One released,
+lapsed or taken over since, so reserved again, is left standing to lapse; one
+this checkout's view shows absent or released already is not released again;
+the record says which. The result says what
+came of it under `released`, and the record logs it at
+`reservation_released` or `reservation_release_failed`. An issue run logs each refused step on its lane, until its pull
 request is armed or left open (`refused` in its state: the stage, the check, the reason and a count), which the drain
 reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
@@ -989,7 +1035,9 @@ over each of the run's lanes' own diff.
    already marks it; a commit doing only that declares
    `Assisted-by: abcd:<version>`). On
    the lane that closes the spec it runs `spec close` in the lane's worktree
-   and ingests the verdict of the audit that lane took, and for each capture the
+   and ingests the verdict of the audit that lane took, read as the bytes the
+   loop recorded it from (one whose digest is not the one recorded with it is
+   refused, and nothing is committed), and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
    intent) and `Resolves:` trailers, an `Admitted-by:` naming the rule the run
@@ -1884,7 +1932,11 @@ directory, `info/attributes`), then relay the refusal to the person. Accept a
 change only on their word: `step --accept-config-change` records the settings
 as they now stand, names what it accepted on stderr, in the result's
 `accepted_config_change` under `--json` and in the run record, and takes the
-step. The flag goes with `--restart`, `--release` or `--discard` too. A lane
+step. The flag goes with `--restart`, `--release` or `--discard` too, and there
+the acceptance is written in the move's own write: a move that is then refused
+writes nothing, the acceptance included, so the run's state and fingerprint
+stay byte for byte as they were, and only a move that goes through names what
+it accepted. A plain step writes its acceptance first and then takes the step. A lane
 worktree that has gone is not a change once its lane landed or was discarded.
 While its lane is still in progress the loop still runs git at that path, so a
 worktree that is no longer there is named gone, and a path that stops being a
@@ -2020,11 +2072,34 @@ it first finds the machine free, and nothing more until it opens, and gives up
 after `--timeout` (6 hours by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
 on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock`, `memory`,
-`whole-run` or `unreadable`). `--json` reports `status`
+`whole-run` or `unreadable`). At the race gate `--timeout` counts only the time
+the race queue ahead is stalled (iss-2611232155470105), so a preflight that
+passed its unit stages is not thrown away while it waits its turn behind race
+stages that are working. A look at which a race run, a race waiter ahead or the
+race gate's hold keeps the gate shut and that queue is progressing pauses the
+clock for the time since the previous look: a holder ahead whose tree used more
+than a tenth of a core over the last ten minutes, or that this waiter has not
+yet watched ten minutes (granted once per holder), a race run or race waiter
+ahead starting or ending, or a settle hold in force. The load or memory holding
+the gate shut as well does not stop the pause. Without such a queue the time
+counts: the load limit or memory alone, waiters ahead held by them, a holder
+quiet for ten minutes (a hung run), or a look that could not read the process
+table. The pause never carries the wait past six times `--timeout` from its
+start, so `make preflight`'s race gate gives up after two hours of a stalled
+queue or twelve in all. Each race gate's waiting line ends by saying whether
+the clock is paused (`the race queue ahead is progressing, so the timeout's
+clock is paused`) or runs, with how much of the timeout it has counted (once
+the wait has reached its ceiling, a progressing queue reads `but the wait has
+reached its 12h0m0s ceiling, so the timeout's clock runs`), and a timeout's
+closing line says how much of the wait was paused. The first gate and
+the narrow gate count wall-clock time. `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, and `backoffs` when it stood
-back.
+(`tests`, `race` or `narrow`), `slots` and `slots_source`, `narrow_runs` and `narrow_source` at a narrow gate, `backoffs` when it stood
+back, and at the race gate `paused_s` once its clock has been paused,
+`progress` when the last look paused it, and `at_ceiling` when the last look
+found the queue progressing but the wait already at its ceiling, so the clock
+ran.
 
 A command after `--` named by a path runs as given. One named by its name alone
 runs as `PATH` finds it, unless that program lies inside the working tree the

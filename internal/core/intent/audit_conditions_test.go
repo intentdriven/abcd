@@ -122,7 +122,7 @@ func TestIngestAppliesAllFourDispositions(t *testing.T) {
 		dispositionOf(condThree, "falsified"),
 		untested,
 	))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("ingest: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestIngestedBlockRendersNarrowing(t *testing.T) {
 	narrowed["narrowing"] = "holds below 2k records, not the 10k the design assumed"
 
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, narrowed))
-	if res, err := IngestVerdict(root, vp); err != nil || res.Status != "ingested" {
+	if res, err := ingestVerdict(root, vp); err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v, err %v", res, err)
 	}
 	s := intentBody(t, root)
@@ -181,7 +181,7 @@ func TestIngestRefusesPartialConditionCoverage(t *testing.T) {
 		dispositionOf(condOne, "survived"),
 		dispositionOf(condTwo, "survived"),
 	))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestIngestRefusesUnknownConditionID(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipWithConditions(t, root, stampedCondition(condOne, "holds on POSIX"))
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condTwo, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestIngestRefusesDuplicateConditionID(t *testing.T) {
 		dispositionOf(condOne, "survived"),
 		dispositionOf(condOne, "falsified"),
 	))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestIngestRefusesOutOfEnumDisposition(t *testing.T) {
 			root := t.TempDir()
 			rcp := shipWithConditions(t, root, stampedCondition(condOne, "holds on POSIX"))
 			vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condOne, value)))
-			res, err := IngestVerdict(root, vp)
+			res, err := ingestVerdict(root, vp)
 			if err != nil {
 				t.Fatalf("dead-letter path must not error: %v", err)
 			}
@@ -262,7 +262,7 @@ func TestIngestNarrowedRequiresNarrowing(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipWithConditions(t, root, stampedCondition(condOne, "holds below 10k records"))
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condOne, "narrowed")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestIngestUntestedMayOmitEvidence(t *testing.T) {
 	untested := dispositionOf(condOne, "untested")
 	untested["evidence"] = []any{}
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, untested))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v (reason %q), err %v", res, res.Reason, err)
 	}
@@ -295,7 +295,7 @@ func TestIngestSurvivedRequiresEvidence(t *testing.T) {
 	bare := dispositionOf(condOne, "survived")
 	bare["evidence"] = []any{}
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, bare))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestIngestConditionlessIntentAcceptsEmptyBlock(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v (reason %q), err %v", res, res.Reason, err)
 	}
@@ -328,7 +328,7 @@ func TestIngestConditionlessIntentRefusesDispositions(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condOne, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestIngestRefusesUnstampedCondition(t *testing.T) {
 		"- holds below 10k records",
 	)
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condOne, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestIngestRefusesDuplicateConditionIdentityInTheRecord(t *testing.T) {
 		stampedCondition(condOne, "holds on POSIX, pasted a second time"),
 	)
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, dispositionOf(condOne, "survived")))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestIngestRefusesNarrowingOnAnUnnarrowedDisposition(t *testing.T) {
 			entry := dispositionOf(condOne, value)
 			entry["narrowing"] = "actually holds only below 2k records"
 			vp := writeVerdict(t, root, verdictWithConditions(t, rcp, entry))
-			res, err := IngestVerdict(root, vp)
+			res, err := ingestVerdict(root, vp)
 			if err != nil {
 				t.Fatalf("dead-letter path must not error: %v", err)
 			}
@@ -425,7 +425,7 @@ func TestDeadLetterRecordsConditionsUntested(t *testing.T) {
 		`"verdict": "MET"`, `"verdict": "SHIP"`, 1)
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestIngestConditionRationaleIsNeutralised(t *testing.T) {
 	entry["narrowing"] = forged
 	vp := writeVerdict(t, root, verdictWithConditions(t, rcp, entry))
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v (reason %q), err %v", res, res.Reason, err)
 	}

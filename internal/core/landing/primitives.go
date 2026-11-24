@@ -58,17 +58,73 @@ const (
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
 //
-// It stays on the deadline-free finder rather than calling ReceiptContext
+// It stays on the deadline-free finder rather than calling receiptContext
 // with a Background context, which the hook git audit would count as a new
 // deadline-free call (dcn-2611101237202451).
 func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
 
-// ReceiptContext is Receipt with its git calls (the worktree listing and each
+// receiptContext is Receipt with its git calls (the worktree listing and each
 // receipt's tracked check) bound to ctx, for a reader on a deadline, the away
 // mode's stop check among them: a ctx already ended starts no git and
 // refuses with its own error, and one that ends while git runs kills it.
-func ReceiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
+func receiptContext(ctx context.Context, repoRoot, sha string) (string, error) {
 	return findReceiptContext(ctx, repoRoot, ReceiptsRelDir, sha)
+}
+
+// receiptOutsideLanes is Receipt passing over a receipt found in a drive
+// lane's worktree, and every one when repoRoot is itself a lane's worktree or
+// lies inside one (insideDriveLane): the drive runs model stages in a lane's
+// worktree, and they can write any file there, so only a checkout outside the
+// lanes vouches that a preflight passed. A person's `abcd land` reads it before
+// it skips its own preflight, and the away mode's owed reading reads it. The
+// drive's own landing keeps Receipt, with its check that the receipt is one
+// its own preflight minted.
+func receiptOutsideLanes(repoRoot, sha string) (string, error) {
+	return firstReceipt(outsideLanes(repoRoot)(findReceipts(repoRoot, ReceiptsRelDir, sha)))
+}
+
+// ReceiptOutsideLanesContext is receiptOutsideLanes with its git calls bound
+// to ctx, as receiptContext binds Receipt's.
+func ReceiptOutsideLanesContext(ctx context.Context, repoRoot, sha string) (string, error) {
+	return firstReceipt(outsideLanes(repoRoot)(findReceiptsContext(ctx, repoRoot, ReceiptsRelDir, sha)))
+}
+
+// ownReceipt is the preflight receipt for sha standing in the local tier of
+// the checkout at dir itself, found and judged as Receipt finds and judges
+// one, or "" when that checkout holds none: what a preflight run there mints.
+func ownReceipt(dir, sha string) (string, error) {
+	found, err := findReceipts(dir, ReceiptsRelDir, sha)
+	if err != nil {
+		return "", err
+	}
+	want := fsutil.RealExistingPath(filepath.Join(dir, filepath.FromSlash(ReceiptsRelDir), sha))
+	for _, f := range found {
+		if fsutil.RealExistingPath(f.path) != want {
+			continue
+		}
+		if f.err != nil {
+			return "", f.err
+		}
+		return f.path, nil
+	}
+	return "", nil
+}
+
+// outsideLanes marks each receipt found in a drive lane's worktree, or every
+// one when repoRoot is in a lane, as one passed over.
+func outsideLanes(repoRoot string) func([]foundReceipt, error) ([]foundReceipt, error) {
+	return func(found []foundReceipt, err error) ([]foundReceipt, error) {
+		if err != nil {
+			return nil, err
+		}
+		inLane := insideDriveLane(repoRoot)
+		for i := range found {
+			if inLane || insideDriveLane(found[i].path) {
+				found[i] = foundReceipt{path: found[i].path, lane: true}
+			}
+		}
+		return found, nil
+	}
 }
 
 // findReceipt finds the receipt file named sha under rel in any worktree git

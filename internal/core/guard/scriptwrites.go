@@ -2,6 +2,7 @@ package guard
 
 import (
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -66,56 +67,64 @@ func writeAt(rc *readCtx, st *shellState, word string, tilde bool) writeTarget {
 func writerTargets(rc *readCtx, s segment, st *shellState) []writeTarget {
 	var out []writeTarget
 	for _, a := range commandSites(s) {
-		tok := s.tokens[a.idx]
-		if isUnknown(tok) {
-			continue
-		}
-		w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
-		switch strings.ToLower(path.Base(tok)) {
-		case "tee":
-			out = append(out, w.operands(nil, nil)...)
-		case "cp", "mv", "install":
-			out = append(out, w.copyTarget()...)
-		case "ln":
-			out = append(out, w.lnTarget()...)
-		case "dd":
-			for i := w.from; i < len(s.tokens); i++ {
-				if strings.HasPrefix(s.tokens[i], "of=") {
-					out = append(out, w.valueAt(i, len("of=")))
-				}
+		out = append(out, siteTargets(rc, s, st, a)...)
+	}
+	return out
+}
+
+// siteTargets is what the command at a writes, when it is a listed writer.
+func siteTargets(rc *readCtx, s segment, st *shellState, a arrival) []writeTarget {
+	var out []writeTarget
+	tok := s.tokens[a.idx]
+	if isUnknown(tok) {
+		return nil
+	}
+	w := writerArgs{rc: rc, s: s, st: st, from: a.idx + 1}
+	switch strings.ToLower(path.Base(tok)) {
+	case "tee":
+		out = append(out, w.operands(nil, nil)...)
+	case "cp", "mv", "install":
+		w.s = xargsView(s, a.idx)
+		out = append(out, w.copyTarget(strings.ToLower(path.Base(tok)))...)
+	case "ln":
+		w.s = xargsView(s, a.idx)
+		out = append(out, w.lnTarget()...)
+	case "dd":
+		for i := w.from; i < len(s.tokens); i++ {
+			if strings.HasPrefix(s.tokens[i], "of=") {
+				out = append(out, w.valueAt(i, len("of=")))
 			}
-		case "curl":
-			out = append(out, w.curlTargets()...)
-		case "wget":
-			out = append(out, w.flagValues([]string{"-O", "--output-document"})...)
-		case "sed":
-			out = append(out, w.sedTargets()...)
-		case "patch":
-			out = append(out, w.dirTarget([]string{"-d", "--directory"}))
-			out = append(out, w.flagValues([]string{"-o", "--output"})...)
-		case "git":
-			out = append(out, w.gitTargets()...)
-		case "tar":
-			if w.tarExtracts() {
-				out = append(out, w.dirTarget([]string{"-C", "--directory"}))
-			}
-		case "unzip":
-			out = append(out, w.dirTarget([]string{"-d"}))
-		case "rsync":
-			out = append(out, w.rsyncTarget()...)
-		case "find":
-			out = append(out, findRuns(rc, s, st, a.idx+1)...)
-		case "go":
-			out = append(out, w.goBuildTarget()...)
-		case "sort":
-			out = append(out, w.flagValues([]string{"-o", "--output"})...)
-		case "ditto":
-			out = append(out, w.lastOf(w.operandIdx([]string{"--arch", "--bom", "--zlibCompressionLevel"}), 2)...)
-		case "split":
-			out = append(out, w.splitTarget()...)
-		case "uniq":
-			out = append(out, w.secondOf(w.operandIdx([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}))...)
 		}
+	case "curl":
+		out = append(out, w.curlTargets()...)
+	case "wget":
+		out = append(out, w.flagValues([]string{"-O", "--output-document"})...)
+	case "sed":
+		out = append(out, w.sedTargets()...)
+	case "patch":
+		out = append(out, w.patchTargets()...)
+	case "git":
+		out = append(out, w.gitTargets()...)
+	case "tar":
+		out = append(out, w.tarTargets()...)
+	case "unzip":
+		out = append(out, w.unzipTargets()...)
+	case "rsync":
+		out = append(out, w.rsyncTarget()...)
+	case "find":
+		out = append(out, findRuns(rc, s, st, a.idx+1)...)
+	case "go":
+		out = append(out, w.goBuildTarget()...)
+	case "sort":
+		out = append(out, w.flagValues([]string{"-o", "--output"})...)
+	case "ditto":
+		for _, d := range w.lastOf(w.operandIdx([]string{"--arch", "--bom", "--zlibCompressionLevel"}), 2) {
+			out = append(out, asTreeIn(d))
+		}
+	case "split":
+		out = append(out, w.splitTarget()...)
+	case "uniq":
+		out = append(out, w.secondOf(w.operandIdx([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}))...)
 	}
 	return out
 }
@@ -131,7 +140,14 @@ func (w writerArgs) rsyncTarget() []writeTarget {
 	if tok, ok := fixedToken(w.s, last); ok && remoteSpec(tok) {
 		return nil
 	}
-	return []writeTarget{w.at(last)}
+	return []writeTarget{asTreeIn(w.at(last))}
+}
+
+// asTreeIn is d as the directory a tree of names no line fixes lands in: an
+// archive unpacked there, or a directory's contents copied into it.
+func asTreeIn(d writeTarget) writeTarget {
+	d.tree, d.in = true, true
+	return d
 }
 
 // lastOf is the last operand of idx when there are at least min of them: the
@@ -361,38 +377,235 @@ func (w writerArgs) dirTarget(flags []string) writeTarget {
 	return writeTarget{path: w.st.dir, ok: ok, rel: !ok, wrote: true}
 }
 
-// copyTarget is the destination of cp, mv or install: the -t value, else the
-// last operand.
-func (w writerArgs) copyTarget() []writeTarget {
-	if vs := w.flagValues([]string{"-t", "--target-directory"}); len(vs) > 0 {
-		return vs
+// copyTarget is what cp, mv or install writes: its destination, and the tree
+// each source places (sourceLandings). install -d makes every operand a
+// directory.
+func (w writerArgs) copyTarget(name string) []writeTarget {
+	var out []writeTarget
+	for _, r := range readOptsEach(w.s, w.from, copySpec(name)) {
+		if v, ok := r.last('M', ""); ok && v.ok && name == "install" {
+			out = append(out, w.valueOf(v)) // macOS install's metalog
+		}
+		if name == "install" && r.has('d', "directory") {
+			for _, i := range r.operands {
+				out = append(out, w.at(i))
+			}
+			continue
+		}
+		out = append(out, w.sourceLandings(r, 1)...)
 	}
-	idx := w.operandIdx([]string{"-S", "--suffix", "-m", "--mode", "-o", "--owner", "-g", "--group"})
-	if len(idx) == 0 {
-		return nil
-	}
-	return []writeTarget{w.at(idx[len(idx)-1])}
+	return out
 }
 
 // lnTarget is the link ln makes: the -t value, else the last of two or more
 // operands, and with a single operand a link of the target's own name in the
-// directory ln runs in (`ln -s /path/s.sh` writes ./s.sh).
+// directory ln runs in (`ln -s /path/s.sh` writes ./s.sh). Each is read as
+// sourceLandings reads a copy, since a link to a directory places its tree.
 func (w writerArgs) lnTarget() []writeTarget {
-	if vs := w.flagValues([]string{"-t", "--target-directory"}); len(vs) > 0 {
-		return vs
-	}
-	idx := w.operandIdx([]string{"-S", "--suffix"})
-	switch len(idx) {
-	case 0:
-		return nil
-	case 1:
-		tok := w.s.tokens[idx[0]]
-		if isUnknown(tok) || w.s.globAt(idx[0]) || strings.ContainsRune(tok, varMark) {
-			return []writeTarget{unplacedWrite("")}
+	var out []writeTarget
+	for _, r := range readOptsEach(w.s, w.from, lnOpts) {
+		if _, ok := r.last('t', "target-directory"); len(r.operands) == 1 && !ok {
+			i := r.operands[0]
+			tok := w.s.tokens[i]
+			if isUnknown(tok) || w.s.globAt(i) || strings.ContainsRune(tok, varMark) {
+				out = append(out, unplacedWrite(""))
+				continue
+			}
+			t := writeAt(w.rc, w.st, path.Base(tok), false)
+			t.tree = t.ok
+			out = append(out, t)
+			continue
 		}
-		return []writeTarget{writeAt(w.rc, w.st, path.Base(tok), false)}
+		out = append(out, w.sourceLandings(r, 2)...)
 	}
-	return []writeTarget{w.at(idx[len(idx)-1])}
+	return out
+}
+
+// copyPlan is where a move, copy or link of operands lands: its destination,
+// whether each source lands in it under its own name (into), the sources, and
+// whether the destination may also take the source's tree as itself (asWell).
+// A source lands in the destination when it is a directory: named by -t, one
+// of several sources, a directory standing there now (followed through a
+// link, as the commands follow it), or spelled with a trailing slash, which on
+// a destination that does not exist yet makes it the source's tree instead;
+// unless -T says the destination is never one. Otherwise the source takes the
+// destination's name. ok is false where there is no destination.
+type copyPlan struct {
+	dest         writeTarget
+	srcs         []int
+	into, asWell bool
+	ok           bool
+}
+
+func (w writerArgs) planCopy(r optRead, operands []int, min int) copyPlan {
+	var p copyPlan
+	if v, ok := r.last('t', "target-directory"); ok {
+		p.dest, p.into, p.srcs = w.valueOf(v), true, operands
+	} else {
+		if len(operands) < min {
+			return p
+		}
+		last := operands[len(operands)-1]
+		p.dest, p.srcs = w.at(last), operands[:len(operands)-1]
+		dir := p.dest.ok && isDir(p.dest.path)
+		slash := strings.HasSuffix(w.s.tokens[last], "/")
+		p.into = len(p.srcs) > 1 || slash || dir
+		p.asWell = slash && !dir && len(p.srcs) <= 1
+	}
+	if r.has('T', "no-target-directory") {
+		p.into = false
+	}
+	p.ok = true
+	return p
+}
+
+// sourceLandings is what a command that moves, copies or links its sources
+// to a destination writes (cp, mv, install, ln), the -t value or else the
+// last of at least min operands, under each reading of its operands
+// (optRead.readings): the destination, and the tree each source places there
+// (copyPlan). A source whose last name is a glob lands under any name it
+// matches; one ending in a slash, `.` or a name no line fixes, under any name
+// at all, since the copy may be of a directory's contents. An option word no
+// line fixes may be -t with its destination glued on, so the destination is
+// not placed; an operand no line fixes may be -t, naming the word after it as
+// the destination, which is read as a tree of any names landing there.
+func (w writerArgs) sourceLandings(r optRead, min int) []writeTarget {
+	var out []writeTarget
+	for _, operands := range r.readings() {
+		p := w.planCopy(r, operands, min)
+		if !p.ok {
+			continue
+		}
+		if !p.dest.ok {
+			out = append(out, p.dest)
+			continue
+		}
+		dest := p.dest
+		if !p.into || p.asWell {
+			dest.tree = true
+		}
+		out = append(out, dest)
+		if r.unsure {
+			out = append(out, unplacedWrite(""))
+		}
+		if p.into {
+			for _, i := range p.srcs {
+				out = append(out, w.landingIn(p.dest, i))
+			}
+		}
+	}
+	for _, i := range r.operands {
+		if tok := w.s.tokens[i]; (isUnknown(tok) || strings.ContainsRune(tok, varMark)) && i+1 < len(w.s.tokens) {
+			if next := w.at(i + 1); next.ok {
+				out = append(out, asTreeIn(next))
+			}
+		}
+	}
+	return out
+}
+
+// landingIn is the tree source i places in the directory d.
+func (w writerArgs) landingIn(d writeTarget, i int) writeTarget {
+	tok := w.s.tokens[i]
+	land := writeTarget{path: d.path, ok: true, wrote: true, tree: true, in: true}
+	if isUnknown(tok) || strings.ContainsRune(tok, varMark) || strings.HasSuffix(tok, "/") {
+		return land
+	}
+	base := path.Base(tok)
+	if base == "." || base == ".." || base == "/" {
+		return land
+	}
+	if w.s.globAt(i) {
+		land.top = base
+		return land
+	}
+	land.path, land.in = filepath.Join(d.path, base), false
+	return land
+}
+
+// isDir reports whether p is a directory now, through any link.
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// patchTargets is what patch writes: nothing on a dry run (--dry-run, or
+// Apple patch's -C and --check); the -o file where one is named; else the
+// file its first operand names, which it patches alone; else every file the
+// patch names, a tree of names no line fixes in the directory it works in;
+// and the reject file (-r) and the backups a prefix (-B, -Y) or a suffix
+// holding a slash (-z) names. patch changes to the -d directory before it
+// opens any file, so a relative name is read inside it. Its options are read
+// as getopt reads them (patchOpts).
+func (w writerArgs) patchTargets() []writeTarget {
+	r := readOpts(w.s, w.from, patchOpts)
+	if r.has('C', "dry-run") || r.has(0, "check") {
+		return nil
+	}
+	dir, under := w.dirTarget(nil), false
+	if v, ok := r.last('d', "directory"); ok {
+		dir, under = w.valueOf(v), true
+	}
+	at := func(word string, ok bool) writeTarget {
+		tilde := strings.HasPrefix(word, "~")
+		switch {
+		case !ok:
+			return unplacedWrite("")
+		case !under || filepath.IsAbs(word) || tilde:
+			return writeAt(w.rc, w.st, word, tilde)
+		case !dir.ok:
+			return unplacedWrite("")
+		}
+		return writeTarget{path: filepath.Join(dir.path, word), ok: true, wrote: true}
+	}
+	var out []writeTarget
+	if v, ok := r.last('r', "reject-file"); ok {
+		out = append(out, at(w.wordOf(v)))
+	}
+	if v, ok := r.last('B', "prefix"); ok {
+		word, fixed := w.wordOf(v)
+		t := at(word, fixed)
+		if t.ok {
+			// each backup is the prefix and the patched file's name
+			top := filepath.Base(word) + "*"
+			if strings.HasSuffix(word, "/") {
+				top = ""
+			} else {
+				t.path = filepath.Dir(t.path)
+			}
+			t.tree, t.in, t.top = true, true, top
+		}
+		out = append(out, t)
+	}
+	if _, ok := r.last('Y', "basename-prefix"); ok {
+		out = append(out, asTreeIn(dir))
+	}
+	if v, ok := r.last('z', "suffix"); ok {
+		if word, fixed := w.wordOf(v); !fixed || strings.Contains(word, "/") {
+			out = append(out, asTreeIn(dir))
+		}
+	}
+	switch v, ok := r.last('o', "output"); {
+	case ok:
+		out = append(out, at(w.wordOf(v)))
+	case len(r.operands) > 0:
+		out = append(out, at(w.wordOf(optVal{idx: r.operands[0], ok: true})))
+	default:
+		out = append(out, asTreeIn(dir))
+	}
+	return out
+}
+
+// wordOf is the text of the value v carries, and whether the line fixes it.
+func (w writerArgs) wordOf(v optVal) (string, bool) {
+	if !v.ok || v.idx >= len(w.s.tokens) {
+		return "", false
+	}
+	tok := w.s.tokens[v.idx]
+	if isUnknown(tok) || w.s.globAt(v.idx) || strings.ContainsRune(tok, varMark) {
+		return "", false
+	}
+	return tok[v.skip:], true
 }
 
 // curlTargets is curl's -o value, and with -O the last path segment of each
@@ -460,74 +673,4 @@ func (w writerArgs) sedTargets() []writeTarget {
 		out = append(out, w.at(i))
 	}
 	return out
-}
-
-// gitTargets is the paths `git checkout` and `git restore` write, and the
-// directory `git clone` makes. Every `git -C`, whatever its subcommand, is a
-// write the guard does not place: -C moves git to a directory the guard does
-// not follow, where a subcommand, its options, a configuration value on the
-// line or an alias can change any file.
-func (w writerArgs) gitTargets() []writeTarget {
-	toks := w.s.tokens
-	i := w.from
-	for i < len(toks) {
-		t := toks[i]
-		if t == "-C" {
-			return []writeTarget{unplacedWrite("")}
-		}
-		if t == "-c" || t == "--git-dir" || t == "--work-tree" || t == "--namespace" {
-			i += 2
-			continue
-		}
-		if strings.HasPrefix(t, "-") {
-			i++
-			continue
-		}
-		break
-	}
-	if i >= len(toks) {
-		return nil
-	}
-	sub := w
-	sub.from = i + 1
-	switch toks[i] {
-	case "checkout", "restore":
-		return sub.operands([]string{"-b", "-B", "--orphan", "-s", "--source", "--conflict", "--pathspec-from-file"}, nil)
-	case "clone":
-		idx := sub.operandIdx([]string{"-b", "--branch", "-o", "--origin", "--depth", "-c", "--config",
-			"--reference", "--separate-git-dir", "-u", "--upload-pack", "--template", "--filter", "-j", "--jobs"})
-		switch {
-		case len(idx) >= 2:
-			return []writeTarget{w.at(idx[1])}
-		case len(idx) == 1:
-			repo, ok := fixedToken(w.s, idx[0])
-			if !ok {
-				return []writeTarget{unplacedWrite("")}
-			}
-			name := strings.TrimSuffix(path.Base(strings.TrimRight(repo, "/")), ".git")
-			if i := strings.LastIndexByte(name, ':'); i >= 0 {
-				name = name[i+1:]
-			}
-			return []writeTarget{writeAt(w.rc, w.st, name, false)}
-		}
-	}
-	return nil
-}
-
-// tarExtracts reports whether a tar command extracts: a mode letter x in its
-// first word (`tar xzf`, `tar -xzf`), or --extract / --get.
-func (w writerArgs) tarExtracts() bool {
-	toks := w.s.tokens
-	for i := w.from; i < len(toks); i++ {
-		t := toks[i]
-		switch {
-		case t == "--extract" || t == "--get":
-			return true
-		case i == w.from && !strings.HasPrefix(t, "-") && strings.ContainsRune(t, 'x'):
-			return true
-		case isShortCluster(t) && strings.ContainsRune(t[1:], 'x'):
-			return true
-		}
-	}
-	return false
 }

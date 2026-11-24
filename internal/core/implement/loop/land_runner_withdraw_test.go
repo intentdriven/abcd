@@ -234,6 +234,7 @@ func loopReceipt(t *testing.T, root, runID string, other bool) string {
 	l := st.Lanes[st.current()]
 	head := l.Landing.Pushed
 	var returns []landing.ReviewReturn
+	written := map[string]string{}
 	for _, v := range l.Validation[len(l.Validation)-1].Validators {
 		if v.Role == RoleAuditor {
 			continue
@@ -262,10 +263,25 @@ func loopReceipt(t *testing.T, root, runID string, other bool) string {
 		if err := os.WriteFile(at, text, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		written[v.Return] = answerDigest(text)
 		if other && len(returns) == 0 {
 			text = append(text, "a person's own reading\n"...)
 		}
 		returns = append(returns, landing.ReviewReturn{Name: v.Return, Text: string(text)})
+	}
+	// The round read the returns as now written, so their digests are the
+	// ones its verdicts were recorded with.
+	if err := mutate(root, runID, func(_ *os.Root, st *State) (bool, error) {
+		i := st.current()
+		r := &st.Lanes[i].Validation[len(st.Lanes[i].Validation)-1]
+		for k := range r.Validators {
+			if d, ok := written[r.Validators[k].Return]; ok && r.Validators[k].ReturnSHA256 != "" {
+				r.Validators[k].ReturnSHA256 = d
+			}
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 	at, err := landing.RecordReview(root, head, returns)
 	if err != nil {

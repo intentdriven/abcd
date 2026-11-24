@@ -64,7 +64,7 @@ func stallingGit(t *testing.T, stall string) (calls func() []string) {
 func TestTheReceiptReadStartsNoGitOnASpentDeadline(t *testing.T) {
 	root, sha := receiptRepo(t)
 	calls := stallingGit(t, "")
-	if p, err := ReceiptContext(context.Background(), root, sha); err != nil || p == "" {
+	if p, err := receiptContext(context.Background(), root, sha); err != nil || p == "" {
 		t.Fatalf("a live ctx: %q, %v; want the receipt found", p, err)
 	}
 	if got := calls(); len(got) == 0 {
@@ -72,7 +72,7 @@ func TestTheReceiptReadStartsNoGitOnASpentDeadline(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	p, err := ReceiptContext(ctx, root, sha)
+	p, err := receiptContext(ctx, root, sha)
 	if p != "" || !errors.Is(err, context.Canceled) {
 		t.Errorf("a spent ctx: %q, %v; want no receipt and the ctx's own error", p, err)
 	}
@@ -106,7 +106,7 @@ func TestTheReceiptReadEndsAtItsDeadlineWhileGitHangs(t *testing.T) {
 			done := make(chan answer, 1)
 			start := time.Now()
 			go func() {
-				p, err := ReceiptContext(ctx, root, sha)
+				p, err := receiptContext(ctx, root, sha)
 				done <- answer{p, err}
 			}()
 			var a answer

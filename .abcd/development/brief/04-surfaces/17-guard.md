@@ -778,8 +778,23 @@ its text:
   `.mcp.json` and `.abcd/guard.json`, abcd's own folder in the home directory
   (its trusted-roots, rules.json, config.json and the rest of the user layer,
   the run's own worktree kept there excepted), and the names the harness's own
-  list protects in any working tree. A line that only names one of them is not
-  a write;
+  list protects in any working tree. A write that places a whole tree counts
+  for every protected path below where it lands: a source moved, copied or
+  linked into a directory lands under its own last name there, or under each
+  name its glob matches (into a slash-spelled destination that does not exist
+  yet, as that destination itself), and a directory's contents copied, a
+  source xargs supplies, an archive unpacked or a patch applied with no file
+  named can write any path below the directory; an archive keeping absolute
+  or parent paths can write anywhere. patch reads its file names inside its
+  `-d` directory, and its reject file, its backups' prefix and macOS
+  `install -M`'s log are writes too; a patch with no file named at the root of
+  a working tree is not approved unattended. Options are read as GNU getopt reads
+  them, with macOS's other reading judged too (a letter that takes no value
+  there, and an option word after the first operand read as an operand), and a write through
+  a link the same line makes, or through one inside a directory the line moved
+  or copied, is judged where the link leads; in a stage, a write below a tree
+  whose contents the line does not fix is not placed. A line that only
+  names one of them is not a write;
 - a removal whose fixed target lies outside the launched working tree, the
   run's own directories (the brief's and the receipt's, which the runner names
   to the approver) and the temporary directory. Writes outside the working tree are judged by
@@ -841,8 +856,31 @@ What the approver does not cover, plainly: the file tools the role is granted
 on the launch (the contract's tools other than the shell, which the runner
 grants without a prompt) write without asking the approver, so the protected
 paths bound only the shell's writes; a script the line runs writes unread, and
-a command that writes into a directory is judged by that directory, not by the
-files that land inside it; and the abcd binary that answers the prompts is not
+a command that writes into a directory is judged by that directory and every
+protected path below it, not by the names of the files that land inside it; a
+git command that writes the working tree from a patch or the object store
+(apply, am, a stash applied, a hard reset, merge, cherry-pick, revert, rebase,
+pull, a branch switched to, checkout-index, read-tree -u) is not judged by the
+files it writes, and in a stage counts as placing a tree of unfixed contents
+over the working tree (over each path `git checkout -- P` or `git restore P`
+names), so a later write below it on the same line is not placed, while one
+that writes no file (a branch made at HEAD, restore --staged, a soft or mixed
+reset, read-tree without -u, submodule status or summary, bisect log) places
+nothing, and only while every option it is given is one its allowlist names;
+git's options are read as git's parse-options reads them (a long option by any
+prefix naming no other, a negation, short options in clusters); in a stage git
+apply and am are judged as a tree landing at the working tree's root, or in a
+fixed --directory, and with --unsafe-paths, or a --directory the line does not
+fix, are not placed; the files git's own options name (--output, format-patch
+-o, archive -o, bundle create, read-tree --index-output, interpret-trailers
+--in-place, merge-file, init) are judged as writes, git mv as mv, and git rm
+as a removal, a pathspec git matches itself (a leading ':' or a wildcard)
+unplaced in a stage; in a stage an undocumented git subcommand is the git-<name>
+program PATH finds, judged as any program, where it lies outside the session's
+own directories and the configuration (read within five seconds, refused past
+them) defines no alias of that name, and is otherwise not placed, as an alias; and XDG_CONFIG_HOME on a git line is
+refused as GIT_CONFIG_GLOBAL is; and
+the abcd binary that answers the prompts is not
 among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
 launchers the registry steps, so a harness started under another name, a copied

@@ -245,7 +245,8 @@ func TestAGitIdentityBehindAnIncludeIsFound(t *testing.T) {
 
 // TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate: nothing beyond the
 // list, under the stage's home, with the person's home named for the load gate
-// and the Go caches kept.
+// and a build cache and GOPATH of its own
+// (TestAPreflightsBuildCacheAndGOPATHAreItsOwnAndItsModuleCacheThePersons).
 func TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate(t *testing.T) {
 	p := wallProfile(t)
 	for _, k := range []string{"GH_TOKEN", "SSH_AUTH_SOCK", "AWS_SECRET_ACCESS_KEY"} {
@@ -255,7 +256,7 @@ func TestAPreflightsEnvironmentIsTheStagesAndKeepsTheMachinesGate(t *testing.T) 
 	if _, err := WriteWallSettings(p, wallBin); err != nil {
 		t.Fatal(err)
 	}
-	env := PreflightEnv(p)
+	env := PreflightEnv(p, preflightGo(t, p))
 	if strings.Contains(strings.Join(env, "\n"), "a-value-never-passed") {
 		t.Fatalf("something outside the list reached the preflight: %q", env)
 	}
@@ -560,7 +561,7 @@ func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
 		t.Fatalf("a reset reached the check directory: %v", err)
 	}
 	for _, want := range []string{"HOME=" + p.ShellHome, abcdhome.StageHomeEnv + "=" + p.ShellHome, abcdhome.PersonHomeEnv + "=" + p.PersonHome} {
-		if !slices.Contains(PreflightEnv(p), want) {
+		if !slices.Contains(PreflightEnv(p, preflightGo(t, p)), want) {
 			t.Errorf("a preflight is not told %s", want)
 		}
 	}
@@ -569,13 +570,13 @@ func TestAResetLeavesThePersonsCheckDirectory(t *testing.T) {
 	}
 }
 
-// TestADrivesPreflightReusesWhatTheOneBeforeItPassed: under a stage's environment,
-// with its home emptied before each run as a drive empties it, the real check-tests
-// replays a result for the next run, for a fresh worktree of that commit and for a
-// later commit that leaves the test's inputs alone. A test that reads the home takes
-// part, since the home's value is in go test's key. The check directory is not written
-// again, and the build cache lies outside the home.
-func TestADrivesPreflightReusesWhatTheOneBeforeItPassed(t *testing.T) {
+// TestADrivesPreflightReusesNoResultOfTheOneBeforeIt: under a stage's environment,
+// with its home emptied before each run and a build cache made for each run alone, as
+// a drive runs its preflight, the real check-tests runs the test again on the next
+// run rather than replaying the last run's result. The check directory is not written
+// again, and each run's build cache is gone once the run ends, never the one a stage
+// is told.
+func TestADrivesPreflightReusesNoResultOfTheOneBeforeIt(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no go")
 	}
@@ -652,20 +653,35 @@ func TestReadsATrackedFileAndTheHome(t *testing.T) {
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 
+	var made []string
 	preflight := func(dir string) string {
 		t.Helper()
 		if err := ResetStageHome(p); err != nil {
 			t.Fatal(err)
 		}
+		goDir, err := MakePreflightGo(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		made = append(made, goDir)
+		defer func() {
+			if err := RemovePreflightGo(p, goDir); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		env := PreflightEnv(p, goDir)
+		if got, _ := envValue(env, "GOCACHE"); got == caches[0] || !fsutil.PathWithin(got, goDir, false) {
+			t.Fatalf("the build cache %q is not the run's own, in %s: %q", got, goDir, env)
+		}
 		// The Go there starts its telemetry under that home, which would race the next
 		// reset and this test's cleanup.
 		off := exec.Command("go", "telemetry", "off")
-		off.Dir, off.Env = dir, PreflightEnv(p)
+		off.Dir, off.Env = dir, env
 		if out, err := off.CombinedOutput(); err != nil {
 			t.Fatalf("go telemetry off: %v\n%s", err, out)
 		}
 		cmd := exec.Command(bin, "-cached-timeout", "1h20m", "unit", "go", "test", "-timeout", "40m", "./...")
-		cmd.Dir, cmd.Env = dir, PreflightEnv(p)
+		cmd.Dir, cmd.Env = dir, env
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("a preflight's test stage in %s failed: %v\n%s", dir, err, out)
@@ -673,32 +689,22 @@ func TestReadsATrackedFileAndTheHome(t *testing.T) {
 		return string(out)
 	}
 	const replayed = "example.com/fixture/reads\t(cached)"
-	if out := preflight(repo.Root()); strings.Contains(out, replayed) || !strings.Contains(out, "reused 0 of 1 packages") {
-		t.Fatalf("the first run has nothing to reuse:\n%s", out)
-	}
-	worktree := func(name string) string {
-		t.Helper()
-		dir := filepath.Join(t.TempDir(), name)
-		repo.Git("worktree", "add", "-q", "--detach", dir, "HEAD")
-		return dir
-	}
-	again := preflight(repo.Root())
-	if !strings.Contains(again, " 0 files written") {
-		t.Errorf("the next run wrote the check directory again:\n%s", again)
-	}
-	repeats := map[string]string{"the next run": again, "a fresh worktree": preflight(worktree("fresh"))}
-	repo.Write("unrelated.txt", "not read by any test\n")
-	repo.Git("add", "-A")
-	repo.Git("commit", "-q", "-m", "a later commit")
-	repeats["a later commit"] = preflight(worktree("later"))
-	for name, out := range repeats {
-		if !strings.Contains(out, replayed) || !strings.Contains(out, "reused 1 of 1 packages") {
-			t.Errorf("%s did not reuse the result:\n%s", name, out)
+	for i, name := range []string{"the first run", "the next run"} {
+		out := preflight(repo.Root())
+		if strings.Contains(out, replayed) || !strings.Contains(out, "reused 0 of 1 packages") {
+			t.Fatalf("%s replayed a result:\n%s", name, out)
+		}
+		if i > 0 && !strings.Contains(out, " 0 files written") {
+			t.Errorf("the next run wrote the check directory again:\n%s", out)
 		}
 	}
-	env := PreflightEnv(p)
-	if !slices.Contains(env, "GOCACHE="+caches[0]) || fsutil.PathWithin(caches[0], p.ShellHome, false) {
-		t.Errorf("the build cache is not the one kept outside the home %s: %q", p.ShellHome, env)
+	if len(made) != 2 || made[0] == made[1] {
+		t.Fatalf("each run has a build cache of its own: %q", made)
+	}
+	for _, dir := range made {
+		if _, err := os.Lstat(dir); !os.IsNotExist(err) {
+			t.Errorf("a run's build cache %s stands once it ended: %v", dir, err)
+		}
 	}
 }
 

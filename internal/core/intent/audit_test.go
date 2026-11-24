@@ -197,7 +197,7 @@ func TestIngestHappyPath(t *testing.T) {
 	rcp := shipOne(t, root)
 	vp := writeVerdict(t, root, validVerdict(rcp))
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("ingest: %v", err)
 	}
@@ -242,11 +242,11 @@ func TestIngestIdempotentNoOp(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	vp := writeVerdict(t, root, validVerdict(rcp))
-	if _, err := IngestVerdict(root, vp); err != nil {
+	if _, err := ingestVerdict(root, vp); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := os.ReadFile(filepath.Join(root, shippedDir, "itd-10-alpha.md"))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("second ingest must not error: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestIngestUnsolicitedVerdictRejected(t *testing.T) {
 	root := t.TempDir()
 	shipOne(t, root)
 	vp := writeVerdict(t, root, validVerdict("rcp-000000000000"))
-	if _, err := IngestVerdict(root, vp); err == nil {
+	if _, err := ingestVerdict(root, vp); err == nil {
 		t.Fatal("ingest must reject an unsolicited verdict (no matching OWED receipt)")
 	}
 	// The shipped intent still shows OWED, untouched.
@@ -286,7 +286,7 @@ func TestIngestUnknownCriterionDeadLetters(t *testing.T) {
 	payload := strings.Replace(validVerdict(rcp), `"criterion_id": "ac-1"`, `"criterion_id": "ac-9"`, 1)
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestIngestOutOfEnumVerdictDeadLetters(t *testing.T) {
 	payload := strings.Replace(validVerdict(rcp), `"verdict": "MET"`, `"verdict": "SHIP"`, 1)
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestIngestMalformedBodyDeadLetters(t *testing.T) {
 	payload := `{"_type":"abcd/intent-fidelity-verdict/v1","receipt_id":"` + rcp + `","criteria":"not-an-array"}`
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestIngestWrongTypeRejected(t *testing.T) {
 	rcp := shipOne(t, root)
 	payload := strings.Replace(validVerdict(rcp), "abcd/intent-fidelity-verdict/v1", "abcd/something-else/v1", 1)
 	vp := writeVerdict(t, root, payload)
-	if _, err := IngestVerdict(root, vp); err == nil {
+	if _, err := ingestVerdict(root, vp); err == nil {
 		t.Fatal("ingest must reject a payload whose _type is not the fidelity-verdict type")
 	}
 }
@@ -376,7 +376,7 @@ func TestIngestNeutralisesForgedMarker(t *testing.T) {
 		"the ship-move writes the OWED stub and request file", forged, 1)
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v, err %v", res, err)
 	}
@@ -408,7 +408,7 @@ func TestIngestPartialCriteriaDeadLetters(t *testing.T) {
 
 	// validVerdict covers only ac-1 — a partial judgement of a 3-criterion intent.
 	vp := writeVerdict(t, root, validVerdict(rcp))
-	r, err := IngestVerdict(root, vp)
+	r, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestIngestMissingPolicyHashDeadLetters(t *testing.T) {
 	payload := strings.Replace(validVerdict(rcp), `"rubric_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`, `"rubric_hash": ""`, 1)
 	vp := writeVerdict(t, root, payload)
 
-	r, err := IngestVerdict(root, vp)
+	r, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("dead-letter path must not error: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestFullReviewCycle(t *testing.T) {
 	}
 
 	vp := writeVerdict(t, root, validVerdict(rcp))
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatalf("IngestVerdict: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestIngestVerdictRefusesSymlink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	_, err := IngestVerdict(root, link)
+	_, err := ingestVerdict(root, link)
 	if err == nil {
 		t.Fatal("expected a symlinked verdict path to be refused, got nil error")
 	}
@@ -616,7 +616,7 @@ func TestIngestNeutralisesLinkSyntax(t *testing.T) {
 	payload = strings.Replace(payload, "OWED stub emitted at ship", "the path "+quoted+" resolves", 1)
 	vp := writeVerdict(t, root, payload)
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil || res.Status != "ingested" {
 		t.Fatalf("ingest = %+v, err %v", res, err)
 	}

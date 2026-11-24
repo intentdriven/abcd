@@ -69,11 +69,14 @@ its bound (20) filled with none at the head, since the proof may lie past the
 bound: the refusal says so and gives the push to run by hand.
 
 1. **Gate.** When a preflight receipt names the head in any worktree of the
-   repository, the lookup the pre-push hook makes, the gate is skipped.
+   repository but a drive lane's, the gate is skipped: the drive runs model
+   stages in a lane's worktree, and they can write any file there, so a receipt
+   standing only there (or any receipt, read from inside a lane) does not.
    Otherwise `make preflight` runs in the branch's checkout. It is run
    directly, never wrapped in a second load wait, because the target already
    waits on the machine's load waiter. After it the head must be
-   unchanged, a receipt must name it, and `origin`'s fetch and push URLs must
+   unchanged, a receipt must name it (one outside the lanes, or, when land runs
+   from inside a lane, the one in that checkout itself), and `origin`'s fetch and push URLs must
    read exactly as they were checked: the preflight is the branch's own and
    could add a push URL or a `pushInsteadOf`. A repository whose make file declares
    no `preflight` target has no gate that mints a receipt, and gets no push.

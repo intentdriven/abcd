@@ -472,8 +472,9 @@ func TestBuildWithoutASessionSaysItHoldsNoClaimInJSON(t *testing.T) {
 
 // TestImplementStepReleaseAndDiscardAreWired: `implement step --release` and
 // `--discard` reach the loop's decision over a held lane (ruling DR6c): a lane
-// that is not held is refused naming it, with the state unchanged, and the two
-// flags together are refused; status names the slots in use.
+// that is not held is refused --release naming it, a lane the run lacks is
+// refused --discard, each with the state unchanged, and the two flags together
+// are refused; status names the slots in use.
 func TestImplementStepReleaseAndDiscardAreWired(t *testing.T) {
 	repo := buildRepo(t)
 	var res struct {
@@ -487,13 +488,17 @@ func TestImplementStepReleaseAndDiscardAreWired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, flag := range []string{"--release", "--discard"} {
-		ref := refusalDocs(t, 2, "implement", "step", flag, "lane-1", "--json")
-		if ref["stage"] != "held" || !strings.Contains(ref["reason"].(string), "lane-1 is worktree, not held") {
-			t.Fatalf("%s of a lane that is not held is refused naming it: %v", flag, ref)
-		}
+	ref := refusalDocs(t, 2, "implement", "step", "--release", "lane-1", "--json")
+	if ref["stage"] != "held" || !strings.Contains(ref["reason"].(string), "lane-1 is worktree, not held") {
+		t.Fatalf("--release of a lane that is not held is refused naming it: %v", ref)
 	}
-	ref := refusalDocs(t, 2, "implement", "step", "--release", "lane-1", "--discard", "lane-1", "--json")
+	// A lane at work in a run nothing drives is --discard's to end
+	// (iss-2611231404319245), so its refusal is shown over a lane the run lacks.
+	ref = refusalDocs(t, 2, "implement", "step", "--discard", "lane-9", "--json")
+	if ref["stage"] != "held" || !strings.Contains(ref["reason"].(string), "no lane of the name given") {
+		t.Fatalf("--discard of a lane the run lacks is refused naming it: %v", ref)
+	}
+	ref = refusalDocs(t, 2, "implement", "step", "--release", "lane-1", "--discard", "lane-1", "--json")
 	if !strings.Contains(ref["reason"].(string), "one decision each") {
 		t.Fatalf("the two flags together are refused: %v", ref)
 	}

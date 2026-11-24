@@ -45,7 +45,7 @@ func TestIngestedRecordEndsInANewline(t *testing.T) {
 	t.Run("ship then ingest", func(t *testing.T) {
 		root := t.TempDir()
 		rcp := shipOne(t, root)
-		if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(rcp))); err != nil {
+		if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(rcp))); err != nil {
 			t.Fatal(err)
 		}
 		if s := shippedIntentBody(t, root); !strings.HasSuffix(s, "\n") {
@@ -54,7 +54,7 @@ func TestIngestedRecordEndsInANewline(t *testing.T) {
 	})
 	t.Run("stub at end of file with no newline", func(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp))
-		if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
+		if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
 			t.Fatal(err)
 		}
 		if s := shippedIntentBody(t, root); !strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\n\n") {
@@ -64,7 +64,7 @@ func TestIngestedRecordEndsInANewline(t *testing.T) {
 	t.Run("dead letter", func(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp))
 		bad := strings.Replace(validVerdict(blockRcp), `"criterion_id": "ac-1"`, `"criterion_id": "ac-9"`, 1)
-		res, err := IngestVerdict(root, writeVerdict(t, root, bad))
+		res, err := ingestVerdict(root, writeVerdict(t, root, bad))
 		if err != nil || res.Status != "dead_letter" {
 			t.Fatalf("ingest = %+v %v, want dead_letter", res, err)
 		}
@@ -81,7 +81,7 @@ func TestIngestedRecordEndsInANewline(t *testing.T) {
 func TestFirstIngestKeepsLinkRefsBelowTheOwedStub(t *testing.T) {
 	refs := "[iss-80]: https://example.com/issues/iss-80\n[spc-28]: https://example.com/specs/spc-28\n"
 	root := fixtureWithNotes(t, owedStub(blockRcp)+"\n\n"+refs)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
+	if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
 		t.Fatal(err)
 	}
 	s := shippedIntentBody(t, root)
@@ -117,7 +117,7 @@ func TestReingestKeepsAHumanNoteBelowTheBlock(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	vp := writeVerdict(t, root, validVerdict(rcp))
-	if _, err := IngestVerdict(root, vp); err != nil {
+	if _, err := ingestVerdict(root, vp); err != nil {
 		t.Fatal(err)
 	}
 	const note = "A note the product thinker wrote under the review."
@@ -127,7 +127,7 @@ func TestReingestKeepsAHumanNoteBelowTheBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := IngestVerdict(root, vp)
+	res, err := ingestVerdict(root, vp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestReingestKeepsAHumanNoteBelowTheBlock(t *testing.T) {
 
 	changed := strings.Replace(validVerdict(rcp), "the ship-move writes the OWED stub and request file",
 		"the ship-move writes the OWED stub, and the request file beside it", 1)
-	res, err = IngestVerdict(root, writeVerdict(t, root, changed))
+	res, err = ingestVerdict(root, writeVerdict(t, root, changed))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestOnlyALiveMarkerCounts(t *testing.T) {
 func TestAFencedMarkerIsNotASolicitation(t *testing.T) {
 	root := fixtureWithNotes(t, "```\n<!-- abcd-review: OWED receipt="+blockRcp+" -->\n```\n")
 	before := shippedIntentBody(t, root)
-	if _, err := IngestVerdict(root, writeVerdictRaw(t, root, validVerdict(blockRcp))); err == nil ||
+	if _, err := ingestVerdict(root, writeVerdictRaw(t, root, validVerdict(blockRcp))); err == nil ||
 		!strings.Contains(err.Error(), "unsolicited") {
 		t.Fatalf("err = %v, want the receipt refused as unsolicited", err)
 	}
@@ -235,7 +235,7 @@ func TestIngestRefusesAnUnresolvableCitation(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp)+"\n")
 		armProseCitations(t, root)
 		before := shippedIntentBody(t, root)
-		_, err := IngestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
+		_, err := ingestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
 		if err == nil || !strings.Contains(err.Error(), dangling) || !strings.Contains(err.Error(), "prose_citation_resolves") {
 			t.Fatalf("err = %v, want a refusal naming %s and the rule", err, dangling)
 		}
@@ -246,14 +246,14 @@ func TestIngestRefusesAnUnresolvableCitation(t *testing.T) {
 	t.Run("armed: a resolving citation ingests", func(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp)+"\n")
 		armProseCitations(t, root)
-		res, err := IngestVerdict(root, writeVerdict(t, root, cite(blockRcp, "spc-1")))
+		res, err := ingestVerdict(root, writeVerdict(t, root, cite(blockRcp, "spc-1")))
 		if err != nil || res.Status != "ingested" {
 			t.Fatalf("ingest = %+v %v, want ingested", res, err)
 		}
 	})
 	t.Run("unarmed: the repository does not gate prose citations", func(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp)+"\n")
-		res, err := IngestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
+		res, err := ingestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
 		if err != nil || res.Status != "ingested" {
 			t.Fatalf("ingest = %+v %v, want ingested", res, err)
 		}
@@ -261,11 +261,11 @@ func TestIngestRefusesAnUnresolvableCitation(t *testing.T) {
 	t.Run("armed: a re-ingest is refused the same way", func(t *testing.T) {
 		root := fixtureWithNotes(t, owedStub(blockRcp)+"\n")
 		armProseCitations(t, root)
-		if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
+		if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err != nil {
 			t.Fatal(err)
 		}
 		before := shippedIntentBody(t, root)
-		_, err := IngestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
+		_, err := ingestVerdict(root, writeVerdict(t, root, cite(blockRcp, dangling)))
 		if err == nil || !strings.Contains(err.Error(), dangling) {
 			t.Fatalf("err = %v, want a refusal naming %s", err, dangling)
 		}
@@ -360,7 +360,7 @@ func TestIngestRefusesWithNoGateRegistered(t *testing.T) {
 
 	root := fixtureWithNotes(t, owedStub(blockRcp)+"\n")
 	before := shippedIntentBody(t, root)
-	if _, err := IngestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err == nil ||
+	if _, err := ingestVerdict(root, writeVerdict(t, root, validVerdict(blockRcp))); err == nil ||
 		!strings.Contains(err.Error(), "no prose-citation gate is registered") {
 		t.Fatalf("err = %v, want the unregistered gate refused", err)
 	}

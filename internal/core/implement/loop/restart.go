@@ -325,6 +325,7 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	afterStopCheck()
 	var res RestartResult
 	var retold []Await
+	var afterAccept *pendingAccept
 	err = saveRun(repoRoot, runID, o, func(root *os.Root, st *State) (bool, error) {
 		// A stop may have come since the check: under the lock it re-tells no one.
 		if c, err := readControl(root, runID); err != nil {
@@ -354,8 +355,10 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		}
 		now := o.now()
 		// Proving and saving the asides and the reset run git in the lane's
-		// worktree: the run tripwire is checked first.
-		if err := configTripwireIn(repoRoot, root, st.RunID); err != nil {
+		// worktree: the run tripwire is checked first, or, with
+		// --accept-config-change, the acceptance is carried to this save.
+		pa, err := tripOrAccept(repoRoot, root, *st, o)
+		if err != nil {
 			if r, ok := AsRefusal(err); ok {
 				r.Lane = laneID
 			}
@@ -403,7 +406,10 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		}
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
+		accepted := pa.apply(st, now)
+		afterAccept = pa
 		res.StepResult = laneResult(*st, lane, "", &told[0])
+		res.AcceptedConfigChange = accepted
 		if len(told) > 1 {
 			moves := make([]string, len(told))
 			for n, a := range told {
@@ -414,6 +420,9 @@ func restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		retold = told
 		return true, nil
 	})
+	if err == nil {
+		err = afterAccept.failed()
+	}
 	return res, retold, err
 }
 

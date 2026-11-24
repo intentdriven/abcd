@@ -854,7 +854,7 @@ func auditProvenanceBlock(p auditPolicy) string {
 // Ingest (untrusted verdict -> committed Audit Notes)
 // ---------------------------------------------------------------------------
 
-// IngestVerdict reads an untrusted intent-fidelity verdict JSON and applies it to
+// ingestVerdict reads an untrusted intent-fidelity verdict JSON and applies it to
 // the committed record, FAIL-CLOSED at every step:
 //
 //   - malformed/oversize/unreadable payload with no resolvable receipt -> reject;
@@ -868,7 +868,7 @@ func auditProvenanceBlock(p auditPolicy) string {
 //   - a rendered block citing a record id the repository's record gate
 //     refuses -> reject, nothing written (checkReviewCitations);
 //   - otherwise -> INGESTED (OWED stub replaced by the rendered verdict).
-func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
+func ingestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	raw, err := readVerdictFile(verdictPath)
 	if err != nil {
 		return IngestVerdictResult{}, err

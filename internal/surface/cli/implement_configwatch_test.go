@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -8,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
@@ -120,5 +123,49 @@ func TestImplementStepNeverPrintsAKeyNamesSecret(t *testing.T) {
 		if strings.Contains(text, token) || strings.Contains(text, pw) || strings.Contains(text, "x-access-token") {
 			t.Fatalf("the key's secret was printed or stored:\n%s", text)
 		}
+	}
+}
+
+// TestARefusedDiscardLeavesTheAcceptanceUnwritten (iss-2611231404326060):
+// `implement step --discard <lane> --accept-config-change` over a lane the
+// discard then refuses (its implementer is out, so its run is live) leaves the
+// run's state and its configuration fingerprint byte for byte as they were:
+// the acceptance is written only with the discard it accompanies.
+func TestARefusedDiscardLeavesTheAcceptanceUnwritten(t *testing.T) {
+	repo := buildRepo(t)
+	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
+	repo.Commit("conventions")
+	var start struct {
+		RunID string `json:"run_id"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &start); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		mustStep(t, "implement", "step", "--json")
+	}
+	repo.Git("config", "filter.lfs.clean", "git-lfs clean -- %f")
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(loop.StateRelPath(start.RunID)))
+	read := func(name string) []byte {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(filepath.Dir(dir), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	state, fp := read("state.json"), read(loop.ConfigFingerprintFileName)
+	code, out, errOut := implementCLI(t, "implement", "step", "--run", start.RunID, "--discard", "lane-1", "--accept-config-change", "--json")
+	if code == 0 {
+		t.Fatalf("premise: the discard of a live lane is refused\nstdout: %s\nstderr: %s", out, errOut)
+	}
+	if !bytes.Equal(state, read("state.json")) {
+		t.Fatalf("a refused discard wrote its acceptance into the run's state\nstdout: %s\nstderr: %s", out, errOut)
+	}
+	if !bytes.Equal(fp, read(loop.ConfigFingerprintFileName)) {
+		t.Fatal("a refused discard recorded the configuration as accepted")
+	}
+	if strings.Contains(errOut, "accepted a change") {
+		t.Fatalf("a refused discard says it accepted the change: %s", errOut)
 	}
 }

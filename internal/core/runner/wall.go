@@ -549,10 +549,21 @@ func ownerAccess(root *os.Root, rel string, fi fs.FileInfo) {
 }
 
 // PreflightEnv is the environment a lane's preflight runs in: what a stage
-// carries, under its home, with the person's home named for the load gate and the
-// Go caches kept. Nothing else of the parent's passes.
-func PreflightEnv(p Profile) []string {
-	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), stageSeal(p))
+// carries, under its home, with the person's home named for the load gate, the
+// person's own module cache as a stage is told it, and a build cache and GOPATH
+// in goDir, the folder MakePreflightGo made for this preflight alone, in place
+// of the ones a stage is told. Nothing else of the parent's passes.
+func PreflightEnv(p Profile, goDir string) []string {
+	var seal []string
+	for _, kv := range stageSeal(p) {
+		switch k, _, _ := strings.Cut(kv, "="); k {
+		case "GOCACHE", "GOPATH":
+			continue
+		}
+		seal = append(seal, kv)
+	}
+	seal = append(seal, "GOCACHE="+filepath.Join(goDir, "build"), "GOPATH="+filepath.Join(goDir, "path"))
+	return sealedEnv(stageEnv(gitutil.ScrubbedEnv()), seal)
 }
 
 // stageGoExports are the Go caches as they stand in the person's own environment,

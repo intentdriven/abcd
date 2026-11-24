@@ -48,6 +48,11 @@ type Options struct {
 	ClassMapRead func(routes []string)
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+	// AcceptConfig is `implement step --accept-config-change` given with
+	// --discard, --release or --restart: a changed git configuration the run
+	// tripwire would refuse is accepted in the same write as the move it goes
+	// with (acceptWith), so a move refused writes no acceptance either.
+	AcceptConfig bool
 	// driverIsSelf has a claim on the run name this process, where a drive runs the
 	// run itself, rather than the session above it.
 	driverIsSelf bool
@@ -526,6 +531,13 @@ type StepResult struct {
 	// accepted (`implement step --accept-config-change`) before its step:
 	// names alone, a URL subsection hidden, never a value (configwatch.go).
 	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	// Bundle is where a discard saved the lane's commits not on origin's
+	// default branch before it removed the lane's branch, relative to the
+	// checkout root; "" when the branch held none of its own.
+	Bundle string `json:"bundle,omitempty"`
+	// Released is what became of the run's reservation once a discard left no
+	// lane of the run at work or held; "" when it held none to release.
+	Released string `json:"released,omitempty"`
 	// standing is what the step said of a receipt it read and did not take,
 	// carried to whatever answer a later move of the same call gives
 	// (carryStanding).

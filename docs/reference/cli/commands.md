@@ -3625,6 +3625,15 @@ narrow wait in the same lane (the same command, worktree and drive stage), until
 first try's timeouts has passed since the last gave up, in your account's own
 `~/.abcd.noindex/load-wait-narrow-carry.json`; a try that opens clears it.
 
+At the race gate --timeout counts only the time the race queue ahead is stalled.
+A look at which a race run, a race waiter ahead or the race gate's hold keeps it shut
+and that queue is progressing pauses the clock: a holder ahead that used more than
+10% of a core over the last 10m0s, or that the waiter has not yet
+watched that long, a race run or waiter ahead starting or ending, or a settle hold.
+The load, memory, waiters held by them and a quiet holder count against the timeout.
+Each waiting line says whether the clock is paused or runs, and the
+pause stops at 6 times --timeout from the start, so nothing waits for ever.
+
 A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,
 naming how long it waited and that nothing ran, so a pipe that loses the exit
 code still shows it; with --json that line is the last on stderr.
@@ -3635,7 +3644,7 @@ code still shows it; with --json that line is the last on stderr.
       --narrow[=true|false]      with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs
       --race-gate[=true|false]   wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold
       --site string              where the check runs: preflight | eval-harness
-      --timeout duration         with --wait or --race-gate, give up after this long and exit 1 (default 6h0m0s)
+      --timeout duration         with --wait or --race-gate, give up after this long and exit 1; at the race gate only time the race queue ahead is not progressing counts, up to 6 times this in all (default 6h0m0s)
       --wait[=true|false]        wait until the load is below the wait limit and no other go test -race run is live
 ```
 
@@ -4134,7 +4143,16 @@ leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work. --discard also takes
 a lane handed back as stuck or closed, which ends an issue's run while an intent's run
 stays, and any lane of a run a drive stopped on because its state changed or could not
-be read.
+be read. It also takes a lane handed back for any other reason (unachievable included)
+once no lane of the run is at work, and a lane at work (worktree, brief, implement,
+validate or land) whose run nothing drives: no other live process is its driver and no
+agent of the run is running or may still be in its call (a host's agent counts as gone a
+reservation lease after it was handed out). A live run is refused at exit 3, and a lane
+whose pull request is open (armed or not) or merged at exit 2, naming why; one the forge
+reports closed is not closed again. Every discard first saves the lane's commits not on
+the default branch to <lane>-<tip>.bundle in the run's directory (the result's bundle;
+`git fetch <bundle> <branch>` restores them), and one that leaves no lane of the run at
+work or held releases the run's reservation (the result's released).
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -4204,7 +4222,7 @@ step alone, over every configured route, asking for the model named after @ in p
 the runner's own runner.<name>.model, which every other role keeps; one per role. The
 runner must be one the machine enables and the model one its provider lists, or the step
 is refused before anything is written, naming the fix; a tier route, and a --route with
---release, --discard or --accept-config-change (which writes its acceptance before the
+--release, --discard or --accept-config-change (which, on a plain step, writes its acceptance before the
 step is judged), are refused too. The model is held to the pins the machine
 sets for it, as the runner's own model is: opencode holds them, and a --route naming
 claude, which holds none, for a pinned model is refused before anything is written,
@@ -4292,7 +4310,9 @@ together with git: a change made while the call runs is seen by the next one. A 
 started before the tripwire records its fingerprint at its next check and moves.
 --accept-config-change, once you have looked at what changed, records the configuration
 as it stands, names what it accepted on stderr, in the result (accepted_config_change) and
-in the run record, and takes the step.
+in the run record, and takes the step. With --release, --discard or --restart the
+acceptance is written in the move's own write, so a move that is refused writes nothing,
+the acceptance included.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
@@ -4301,7 +4321,7 @@ refusal, exit 3 on a pause or a locked run state.
 
 ```
       --accept-config-change[=true|false]   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string                      discard a held lane (lane-<n>), or one a drain handed back as stuck or closed: remove its worktree and branch, then close its pull request
+      --discard string                      discard a held lane (lane-<n>), one handed back, or one at work in a run nothing drives: save its own commits to a bundle in the run's directory, remove its worktree and branch, then close its pull request
       --release string                      land a held lane as it is (lane-<n>), once no lane has work left
       --restart string                      restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --route stringArray                   route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
