@@ -1,0 +1,139 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "9cfcba4665f051bf456af642ab8cba8d7c3f102b"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-11-24T04:22:46Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:95bc3092c9cad660515718ecdbbe27260867fdab2539682c8218babe625657f1",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:b93e557f8c9958a71b769599d6093b4860ec0f24542bf3c7403ab65b2bee0c08",
+    "briefVersion": "0.17.1"
+  },
+  "categories": {
+    "criterion-violation": 1,
+    "false-claim": 3,
+    "fictional-layout": 1,
+    "stale-count": 5,
+    "undocumented-surface": 2
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:56-61",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:56-61 (.abcd/development/brief/02-constraints/04-naming.md, g01): claim: The remaining surfaces exempt from the maritime convention are listed so the exemption is on the record (agents ... update); together with the maritime table and the rationale exemptions this is meant to register every shipped verb. / reality: `abcd --help` registers `completion` in its Set-up group (cobra's shell-completion verb, which 01-product/04-scope.md:19 counts as operator-internal). The naming register leaves it out of the maritime table, the rationale exemptions and the plain exemption list.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-002",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-reserve.md:29-73 (\"## The forms\")",
+      "summary": ".abcd/development/brief/04-surfaces/37-reserve.md:29-73 (\"## The forms\") (.abcd/development/brief/04-surfaces/37-reserve.md, g01): claim: The verb 'does one of two things' (reserve or release), then 'A third form, the holder query', then 'A fourth form, the renewal' and again 'A fourth form, the sweep'. The release admission form (rel-vX.Y.Z --admit <pr>) is never counted. / reality: `abcd reserve --help` lists six usage forms: reserve with --footprint, --renew, rel-vX.Y.Z --admit <pr>, --release, --holder, and --sweep [--apply] [--older-than]. The brief uses 'fourth' twice and leaves out the admission form.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-reserve.md:654-661 (\"The record\" bullet under Withdrawn merges)",
+      "summary": ".abcd/development/brief/04-surfaces/37-reserve.md:654-661 (\"The record\" bullet under Withdrawn merges) (.abcd/development/brief/04-surfaces/37-reserve.md, g01): claim: Gives the closed list of states an Abcd-Withdrawn entry may carry, 11 states: withdrawn, admitted, rearmed, armed, moved, closed, merged, mismatch, manual or refused, or kept. Any other shape reads as unreadable. / reality: internal/core/claim/withdraw.go:104-106 WithdrawalStates holds 12 states. The extra one is `standing` (WithdrawnStanding, withdraw.go:101), which the reader accepts and treats as settled. The brief's own Re-arm bullet records `standing`, but the vocabulary list leaves it out.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:38 (Disembark read-only row; also :115-116 'the source tree, which the read-only gate hashes')",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:38 (Disembark read-only row; also :115-116 'the source tree, which the read-only gate hashes') (.abcd/development/brief/06-delivery/02-verification-matrix.md, g01): claim: A test hashes the source tree before and after the run and asserts it is byte-identical. / reality: The tests compare a fingerprint of each entry's relative path, mode and size only, with .git skipped: treeHash in internal/core/lifeboat/probe_test.go:488-512, used by TestPackWritesLifeboatAndLeavesSourceUnchanged (pack_test.go:76), and dirFingerprint in internal/surface/cli/disembark_test.go:241. No file content is hashed, so a rewrite that keeps a file's size passes. 04-surfaces/02-disembark.md:239-244 states this correctly.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-005",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:251-253 and :347; verb `abcd statusline`",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:251-253 and :347; verb `abcd statusline` (.abcd/development/brief/04-surfaces/README.md, g02): claim: Every visible verb's sentence names what it writes (or that it writes nothing), and the operator-internal table says statusline's one write, on the path that renders abcd's own row, is the session's fill file under ~/.abcd.noindex/fill/ / reality: `abcd statusline --help` (and the sentence in .abcd/development/release/surface.json) opens with 'Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.' The same help's long text says 'It writes one file only ... the session's fill file, ~/.abcd.noindex/fill/<sha256 of the session id>.json'. The sentence's writing clause contradicts the brief's sentence contract and the verb's documented write",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in cb496c236586, with the generated command references regenerated."
+    },
+    {
+      "id": "x-006",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/32-scribe.md:167-168",
+      "summary": ".abcd/development/brief/04-surfaces/32-scribe.md:167-168 (.abcd/development/brief/04-surfaces/32-scribe.md, g02): claim: This repository's ledger of nearly 4,800 records assembles to a context of about 9.5 MB / reality: The scribe's allow list (issueschema.LedgerDirs under .abcd/work/issues) holds 5,364 records in the tree: open 1,833, resolved 2,804, wontfix 727. Their raw text alone is 9,426,883 bytes before any context framing, so the count, and probably the size, are stale",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-007",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/35-drain.md:1037",
+      "summary": ".abcd/development/brief/04-surfaces/35-drain.md:1037 (.abcd/development/brief/04-surfaces/35-drain.md, g03): claim: \"The state is at its third schema version\"; a first- or second-version drain state \"is read as the third's strict subset and written back at the third\". This contradicts the same chapter's line 210, which says \"The drain's state is version 4\". / reality: internal/core/implement/loop/drain.go:95 has `const DrainSchemaVersion = 4`, and version 3 is `drainSchemaVersionUnbundled` (\"read, never written\"). The drain state is at version 4, and older states are written back at 4, not 3.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-008",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:581-757 (the ~/.abcd.noindex/ USER SCOPE inventory, declared at :759-761 to be the one list shared with 05-internals/03-configuration.md)",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:581-757 (the ~/.abcd.noindex/ USER SCOPE inventory, declared at :759-761 to be the one list shared with 05-internals/03-configuration.md) (.abcd/development/brief/04-surfaces/01-ahoy.md, g05): claim: The tree lists every machine-local store abcd keeps under ~/.abcd.noindex/. It does not list scheduled-runs/, stage-homes/, preflight-checkouts/ or stop.json. / reality: Production code writes all four under the abcd home. scheduled-runs/<root-sha>/ is the scheduled-verdict store (internal/core/claim/scheduled.go:53,369, abcdhome.Rel(scheduledStoreDir, sha)), and 39-status.md:77 documents it. stage-homes/ is the walled stage's home (internal/core/runner/wall.go:46). preflight-checkouts/ is the drive's per-preflight checkout folder (internal/core/implement/loop/preflightcheckout.go:63). stop.json is the run stop kept in the account's own home when no shared folder was chosen (internal/core/runstop/runstop.go:48). None of the four appears in this inventory or in 05-internals/03-configuration.md.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-009",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/03-embark.md:17",
+      "summary": ".abcd/development/brief/04-surfaces/03-embark.md:17 (.abcd/development/brief/04-surfaces/03-embark.md, g05): claim: \"What ships is the unpack and the probe, and the unpack takes no modifiers of its own.\" This names the unpack and the probe as the whole shipped surface. / reality: The binary also ships `abcd embark lessons` with --brief and --scores (see `abcd embark --help` and `abcd embark lessons --help`). The same chapter's own Sub-verbs table (:41) and its :57 bullet list lessons as shipped, so the opening summary leaves out a shipped sub-verb.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-010",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/34-build.md:533-537",
+      "summary": ".abcd/development/brief/04-surfaces/34-build.md:533-537 (.abcd/development/brief/04-surfaces/34-build.md, g08): claim: Each earlier state-file version is read as a run that predates the addition and \"written back at the current version, 27, by its next mutation\" / reality: The run state's current schema version is 31 (internal/core/implement/loop/state.go:393 `const SchemaVersion = 31`), and the same chapter says so at line 409 (\"The state is schema version 31\"); the \"27\" is a stale count left from an earlier version",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-011",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:2246 (and :2261)",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:2246 (and :2261) (.abcd/development/brief/05-internals/03-configuration.md, g09): claim: The plugin tree says cmd/ holds 'the shipped entrypoint plus thirteen build-time binaries' and lists exactly thirteen (record-lint, scaffold-sync, scaffold-render, asking-sync, command-facts-sync, abcd-gen-surface, abcd-gen-cli-ref, test-parallelism, precheck-audits, check-tests, ci-watchdog, ci-shard, record-slug-rename); ':2261' repeats 'The thirteen are developer tooling'. / reality: cmd/ holds abcd plus fifteen build-time binaries. Two are not in the tree: cmd/refusal-codes-sync (writes .abcd/development/release/refusal-codes.json from internal/core/refusal; the Makefile wires refusal-codes-sync and refusal-codes-sync-check) and cmd/reuse-measure (sets preflight reuse and check-time reports against a baseline, for itd-2611011325421304). Each has a main.go and a main_test.go.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    },
+    {
+      "id": "x-012",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/30-inbox.md:158",
+      "summary": ".abcd/development/brief/04-surfaces/30-inbox.md:158 (.abcd/development/brief/04-surfaces/30-inbox.md, g12): claim: The list JSON is {\"notice\", \"tally\": {\"reports\", \"senders\"}, \"reports\": [...]}, stated as the whole shape. / reality: `abcd inbox --json` always carries a fourth top-level field, `left` (int, not omitempty): inboxListOutput in internal/surface/cli/report.go:252-258 holds Notice, Tally, Reports and Left (the count of older waiting reports the listing did not read). The brief leaves it out.",
+      "disposition": "fixed",
+      "note": "Re-verified against the code, then fixed on the release branch before the roll in 16ee4f7ecaee."
+    }
+  ],
+  "_reviewProvenance": "Full tier: both directions, the manifest's 54 checkers (Direction A over the 49 brief docs, Direction B over the 5 surfaces), each reading its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item. Run by hand through the host's agent tool in 13 groups, one Opus 5.5 agent per group. The checkers read an exact export of cf832458369547baf256732771a6c1cf9725e727 (main with the last pull request of the cycle merged in) with the binary built from it; this receipt names 9cfcba4665f051bf456af642ab8cba8d7c3f102b. R differs from that tree by the brief corrections in 16ee4f7ecaee, the status-line sentence fix in cb496c236586 (internal/core/surface/sentences.go and the three references generated from it), and the roll: CHANGELOG.md, RELEASE.md, the plugin pin and the release digest. No behaviour changed between the tree read and R. The checkers raised 12 findings; each was re-verified against the code before it was dispositioned, and all 12 were fixed, none invalid and none deferred."
+}
