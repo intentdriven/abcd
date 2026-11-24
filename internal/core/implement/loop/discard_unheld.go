@@ -452,9 +452,16 @@ const maxHoldWalk = 64
 // reservation acts (runActs: the commit's claimed-at is the act's time to the
 // second), through reservation commits of tip's own copy alone, none of them a
 // tombstone and none claimed after the lease of the one before it had ended.
+// The act's time names its commit only to the second, so the anchor must be
+// the one reservation in the history read claimed at that second past a
+// break from it (soleAt): a release and a fresh reservation from this copy
+// within the second the run reserved make a tip that carries the run's time
+// with the run's own commit below it, past the release, and neither is then
+// proven. A commit of the same second within the anchor's unbroken hold (a
+// renewal and a widening one step made on its one clock) is the same hold.
 // why is the reason it is not, for the record: a release or a lapse in
-// between, a take-over, a commit that cannot be read, or no anchor within
-// maxHoldWalk commits.
+// between, a take-over, a commit that cannot be read, an act's time two
+// reservations carry, or no anchor within maxHoldWalk commits.
 func provablyOwn(repoRoot string, st State, id, tip string) (own bool, why string) {
 	acts := runActs(st, id)
 	if len(acts) == 0 {
@@ -464,14 +471,14 @@ func provablyOwn(repoRoot string, st State, id, tip string) (own bool, why strin
 	if err != nil {
 		return false, "its history could not be read"
 	}
+	shas := strings.Fields(out)
 	copyKey := ""
 	var child *claim.ReservationMessage
-	for _, sha := range strings.Fields(out) {
-		body, err := gitutil.RunCappedAsStored(repoRoot, claim.MaxMessageBytes+1, "log", "-1", "--format=%B", sha, "--")
-		if err != nil {
+	for i, sha := range shas {
+		m, err := readHoldCommit(repoRoot, sha)
+		if errors.Is(err, errHoldUnread) {
 			return false, "its commit " + shortSHA(sha) + " could not be read"
 		}
-		m, err := claim.ReadReservationMessage(body)
 		switch {
 		case err != nil:
 			return false, "its commit " + shortSHA(sha) + " is not a reservation that can be read"
@@ -484,11 +491,57 @@ func provablyOwn(repoRoot string, st State, id, tip string) (own bool, why strin
 		}
 		copyKey = m.Copy
 		if slices.ContainsFunc(acts, m.ClaimedAt.Equal) {
-			return true, ""
+			return soleAt(repoRoot, shas[i+1:], m)
 		}
 		child = &m
 	}
 	return false, "no reservation the run logged lies within its last " + strconv.Itoa(maxHoldWalk) + " commits"
+}
+
+// soleAt reports whether no reservation among older, the commits below
+// anchor, a commit provablyOwn found claimed at the second of an act the run
+// logs, was claimed at that same second past a break from anchor's hold: a
+// tombstone, a commit of another copy, a lapse (a commit claimed after the
+// lease of the one below it ended), or a commit that is no reservation that
+// can be read. A commit of that second within the unbroken hold is the same
+// hold, so whichever of them is the run's act, the tip is the run's; one past
+// a break may be the run's act, and then the tip is not provably the run's.
+// why is the reason it is not.
+func soleAt(repoRoot string, older []string, anchor claim.ReservationMessage) (own bool, why string) {
+	at, child, broken := anchor.ClaimedAt, anchor, false
+	for _, sha := range older {
+		m, err := readHoldCommit(repoRoot, sha)
+		if errors.Is(err, errHoldUnread) {
+			return false, "its commit " + shortSHA(sha) + " could not be read"
+		}
+		if err != nil {
+			broken = true
+			continue
+		}
+		if m.Released() || m.Copy != anchor.Copy || child.ClaimedAt.After(heldUntil(m)) {
+			broken = true
+		}
+		if broken && !m.Released() && m.ClaimedAt.Equal(at) {
+			return false, "two of its reservations, " + shortSHA(sha) + " and one made after it past a release, a lapse or a take-over, were claimed at " +
+				stamp(at) + ", the second the run logs a reservation act at, so which is the run's cannot be told"
+		}
+		child = m
+	}
+	return true, ""
+}
+
+// errHoldUnread is readHoldCommit's error for a commit git could not read.
+var errHoldUnread = errors.New("the commit could not be read")
+
+// readHoldCommit reads the reservation message of the commit sha, as stored:
+// errHoldUnread when git cannot read it, claim.ReadReservationMessage's own
+// error when it is no reservation that can be read.
+func readHoldCommit(repoRoot, sha string) (claim.ReservationMessage, error) {
+	body, err := gitutil.RunCappedAsStored(repoRoot, claim.MaxMessageBytes+1, "log", "-1", "--format=%B", sha, "--")
+	if err != nil {
+		return claim.ReservationMessage{}, errHoldUnread
+	}
+	return claim.ReadReservationMessage(body)
 }
 
 // heldUntil is when the reservation m stopped holding: its expiry, clamped to
@@ -503,8 +556,13 @@ func heldUntil(m claim.ReservationMessage) time.Time {
 // runActs is the time of every reservation act on id the run's state logs,
 // to the second, as a reservation commit's claimed-at carries it: the run's
 // and each member's reserved_at, and each reservation and renewal line its
-// record holds for id. Each was taken from the clock the act's commit was
-// claimed at.
+// record holds for id that names no lane. Each was taken from the clock the
+// act's commit was claimed at; a start logs its reservation line at the time
+// the reservation was claimed, not at the run's creation. A lane's
+// reservation line is a widening's, and is no anchor: one that backed off or
+// could not be made yet pushed nothing, so its time is one no commit of the
+// run carries, and one made renews the run's own hold, which the walk passes
+// through to an anchor below it.
 func runActs(st State, id string) []time.Time {
 	var out []time.Time
 	add := func(t time.Time) { out = append(out, t.UTC().Truncate(time.Second)) }
@@ -517,6 +575,9 @@ func runActs(st State, id string) []time.Time {
 		}
 	}
 	for _, e := range st.Record {
+		if e.Lane != "" && e.Stage == StageReservation {
+			continue
+		}
 		if (e.Stage == StageReservation || e.Stage == StageReservationRenewed) && recordid.SameID(st.lineIssue(e), id) {
 			add(e.At)
 		}

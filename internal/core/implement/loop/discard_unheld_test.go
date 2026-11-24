@@ -13,7 +13,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -637,6 +639,166 @@ func TestDiscardLeavesAReservationMadeBeforeAnUnrelatedStateWrite(t *testing.T) 
 		t.Fatalf("the lane is discarded: %+v %v", res, err)
 	}
 	wantLeftStanding(t, repo, bare, runID, mine)
+}
+
+// TestDiscardLeavesAReservationMadeAgainInTheSecondTheRunReserved: this
+// person released the run's reservation and reserved the issue again from
+// this copy within the same second the run reserved it, so the new tip's
+// claimed-at is the run's logged act to the second. The tip is still not the
+// run's: the run's own commit at that second lies below it, past the release,
+// so the act's time names two commits and proves neither. The discard leaves
+// the reservation standing.
+func TestDiscardLeavesAReservationMadeAgainInTheSecondTheRunReserved(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	own := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, clockAt(own.claimed)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(own.claimed)); err != nil {
+		t.Fatal(err)
+	}
+	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if mine.released || !mine.claimed.Equal(own.claimed) {
+		t.Fatalf("premise: the reservation made again carries the run's claimed-at: %+v, run's %+v", mine, own)
+	}
+	if res, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID)); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	wantLeftStanding(t, repo, bare, runID, mine)
+}
+
+// TestDiscardLeavesAReservationMadeAgainWhenTheRunWasCreated: a start's clock
+// moves on between its reservation and the run's creation, as a slow start's
+// does. The run records its reservation at the time the reservation was
+// claimed, not at the run's creation, so this person's release and fresh
+// reservation from this copy at the run's creation time carry no time the run
+// logs as its own, and the discard leaves that reservation standing.
+func TestDiscardLeavesAReservationMadeAgainWhenTheRunWasCreated(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	base := time.Now().UTC().Truncate(time.Second).Add(-10 * time.Minute)
+	var ticks atomic.Int64
+	ticking := Options{Now: func() time.Time { return base.Add(time.Duration(ticks.Add(1)) * time.Second) }}
+	res, err := Start(repo.Root(), secondIssue, ticking)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range len(Sequence) {
+		if currentLane(t, repo, res.RunID).awaiting() != nil {
+			break
+		}
+		if _, err := advance(repo.Root(), res.RunID, DefaultStages(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	own := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created time.Time
+	for _, e := range st.Record {
+		switch e.Stage {
+		case "start":
+			if created.IsZero() {
+				created = e.At
+			}
+		case StageReservation:
+			if !e.At.Equal(own.claimed) {
+				t.Errorf("the run logs its reservation at %s, the time it was claimed at, %s", e.At, own.claimed)
+			}
+		}
+	}
+	if !created.After(own.claimed) {
+		t.Fatalf("premise: the run was created after its reservation was claimed: %s, claimed %s", created, own.claimed)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, clockAt(created)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(created)); err != nil {
+		t.Fatal(err)
+	}
+	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	l := currentLane(t, repo, res.RunID)
+	if res, err := Discard(repo.Root(), res.RunID, l.ID, pastTheLease(t, repo, res.RunID)); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	wantLeftStanding(t, repo, bare, res.RunID, mine)
+}
+
+// TestDiscardLeavesAReservationMadeAgainWhenAWideningBackedOff: a lane's
+// widening of the run's hold backed off, which the record logs as a
+// reservation line though nothing was pushed; this person then released the
+// run's reservation and reserved the issue again from this copy in that same
+// second. A lane's reservation line is no anchor of the run's hold, so the
+// discard leaves the reservation standing.
+func TestDiscardLeavesAReservationMadeAgainWhenAWideningBackedOff(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	o := pastTheLease(t, repo, runID)
+	backedOff := o.Now().Add(-2 * time.Minute).UTC().Truncate(time.Second)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Record = append(st.Record, Entry{At: backedOff, Lane: l.ID, Stage: StageReservation,
+			Note: "the widening of " + secondIssue + "'s hold to docs/x.md backed off: held by another; nothing was pushed, and the lane edits none of them"})
+		st.UpdatedAt = backedOff
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, clockAt(backedOff)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}}, clockAt(backedOff)); err != nil {
+		t.Fatal(err)
+	}
+	mine := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if res, err := Discard(repo.Root(), runID, l.ID, o); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	wantLeftStanding(t, repo, bare, runID, mine)
+}
+
+// TestDiscardReleasesTheRunsReservationRenewedAndWidenedInOneStep: one step
+// renews the run's hold, half through its lease, and then widens it, both on
+// the step's one clock, so the renewal and the widening are claimed in the
+// same second. Both are the run's own unbroken hold, so the discard releases
+// it.
+func TestDiscardReleasesTheRunsReservationRenewedAndWidenedInOneStep(t *testing.T) {
+	repo, bare, runID, l := reservedIssueAwaiting(t)
+	own := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	step := own.claimed.Add(own.expires.Sub(own.claimed)/2 + time.Minute)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		if note := renewReservation(repo.Root(), st, step, nil); note != "" {
+			t.Fatalf("premise: the step renews the run's hold: %s", note)
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	renewed := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if renewed.commit == own.commit || !renewed.claimed.Equal(step) {
+		t.Fatalf("premise: the renewal is a commit of its own claimed at the step's time: %+v", renewed)
+	}
+	snap, err := claim.View(repo.Root(), step)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, ok := snap.Lookup(secondIssue)
+	if !ok {
+		t.Fatal("premise: the view shows the run's hold")
+	}
+	if _, err := widenReservation(repo.Root(), secondIssue, append(slices.Clone(held.Footprint), "commands/widened.md"), false, false, held, step); err != nil {
+		t.Fatalf("premise: the step widens the run's hold: %v", err)
+	}
+	widened := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if widened.parent != renewed.commit || !widened.claimed.Equal(step) {
+		t.Fatalf("premise: the widening sits on the renewal, claimed in the same second: %+v, renewal %+v", widened, renewed)
+	}
+	if res, err := Discard(repo.Root(), runID, l.ID, pastTheLease(t, repo, runID)); err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the lane is discarded: %+v %v", res, err)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.parent != widened.commit {
+		t.Fatalf("the run's own hold, renewed and widened in one step, is released: %+v; record: %q",
+			tomb, recordNote(t, repo, runID, StageReservationReleased))
+	}
 }
 
 // TestDiscardReleasesTheRunsReservationRenewedByAnotherWaiter: a load-gate
