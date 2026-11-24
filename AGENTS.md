@@ -143,7 +143,8 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: all the Definition of done lists
+make preflight      # the pre-push gate: all the Definition of done lists;
+                    # precheck's audits run beside it
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the audit
                     # tests of the rest; no unit or race stage. Run it before

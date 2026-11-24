@@ -278,7 +278,9 @@ it exits 0 on every status: it never
 refuses, waits or signals anything. With its wait flag, which takes no site flag, it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
 waits at it once, as one whole run (a records-only change takes a shorter
-rule that waits at no gate): it blocks until the one-minute load is
+rule that waits at no gate), running `make precheck`'s audit tests beside that
+wait as narrow runs, the first whose tests fail stopping the run with no receipt
+(iss-2611232155447855): it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
 that started earlier, whatever its pid, or within two seconds of it with the

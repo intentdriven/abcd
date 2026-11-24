@@ -239,13 +239,19 @@ const wholeRunTimeout = 12 * time.Hour
 // through (TestPreflightWaitsAsOneWholeRun).
 const stagesMakeVar = "PREFLIGHT_STAGES_MAKE"
 
+// earlyAuditsCall is how preflight's line starts: precheck's audit tests, as
+// narrow runs, beside the gate's command form, which follows its `--`
+// (iss-2611232155447855, cmd/precheck-audits).
+const earlyAuditsCall = "go run ./cmd/precheck-audits -whole '$(PRECHECK_AUDIT_PACKAGES)' -named '$(PRECHECK_NAMED_PACKAGES)' -run '$(PRECHECK_AUDIT_TESTS)' --"
+
 // TestPreflightWaitsAsOneWholeRun: `make preflight` has no prerequisite and
 // runs nothing before the load gate's command form, which runs every stage
 // (preflightStages) as its command, so a queued preflight does no lint, eval,
-// build, vet or test work and its turn holds until the run ends; the only
-// other line mints the receipt once the run has passed. CI never runs make
-// preflight (harnessJobs refuses a workflow that does), and the gate opens at
-// once on a runner.
+// build, vet or whole test stage; beside the gate it runs precheck's audit
+// tests through the narrow gate (earlyAuditsCall), whose first failure stops
+// the gate's command. The only other line mints the receipt once the run has
+// passed. CI never runs make preflight (harnessJobs refuses a workflow that
+// does), and the gate opens at once on a runner.
 func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
 	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
 	// The first `preflight:` rule is the full run's; the records-only rule,
@@ -272,12 +278,16 @@ func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
 		}
 	}
 	if len(lines) != 2 || !strings.HasPrefix(lines[1], "@scripts/preflight-receipt.sh mint ") {
-		t.Fatalf("preflight's recipe is %q; want the gate's command form, then the receipt's mint, and nothing else", lines)
+		t.Fatalf("preflight's recipe is %q; want the early audits beside the gate's command form, then the receipt's mint, and nothing else", lines)
 	}
-	gate := strings.Fields(lines[0])
+	command, ok := strings.CutPrefix(lines[0], earlyAuditsCall+" ")
+	if !ok {
+		t.Fatalf("preflight's first line is %q; want it to start %s, so precheck's audit tests fail before the queue does", lines[0], earlyAuditsCall)
+	}
+	gate := strings.Fields(command)
 	cmd := slices.Index(gate, "--")
-	if !strings.HasPrefix(lines[0], loadGateCall+" ") || cmd < 0 || !slices.Equal(gate[cmd+1:], []string{"$(" + stagesMakeVar + ")"}) {
-		t.Fatalf("preflight's first line is %q; want %s ... -- $(%s)", lines[0], loadGateCall, stagesMakeVar)
+	if !strings.HasPrefix(command, loadGateCall+" ") || cmd < 0 || !slices.Equal(gate[cmd+1:], []string{"$(" + stagesMakeVar + ")"}) {
+		t.Fatalf("preflight's gate is %q; want %s ... -- $(%s)", command, loadGateCall, stagesMakeVar)
 	}
 	// make runs a recipe line that names MAKE itself even under -n, -q and
 	// -t, so a dry run would queue at the gate for hours; named through a

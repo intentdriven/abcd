@@ -46,6 +46,17 @@ type evidence struct {
 	// spawn is any exec.Command, whatever it names: Audits stops at one, and the
 	// always-rerun verdict, which asks what the program can read, does not use it.
 	spawn bool
+	// climb is a reach of the tree only Audits and ReachesTree count: a walk
+	// or glob from a path that climbs out of the package directory
+	// (filepath.WalkDir("..")), or a literal naming an ancestor of it and
+	// nothing else ("../../..") handed to a function of the package's test
+	// files, which may hand it on to a program (driveWalk("../../../..") runs
+	// go list there). The always-rerun verdict leaves both to its own rules.
+	climb bool
+	// ancestor is a literal naming an ancestor and nothing else anywhere in the
+	// declaration, whatever it is handed to. Only ReachesTree reads it: a
+	// traversal case in a table ("../..") holds one as often as an audit does.
+	ancestor bool
 }
 
 // reached is what a test reaches through every declaration it names.
@@ -570,6 +581,13 @@ func (r reader) read(body ast.Node, n *node) {
 			if pkg, fn, ok := stdRef(x.Fun, r.imports); ok {
 				readCall(pkg, fn, x, &n.direct)
 			}
+			if r.callee(x) != "" {
+				for _, a := range x.Args {
+					if s, ok := stringArg(a); ok && ancestor(s) {
+						n.direct.climb = true
+					}
+				}
+			}
 			readSkip(x, &n.direct)
 			if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "new" && len(x.Args) == 1 && r.isCmd(x.Args[0]) {
 				n.direct.program = true
@@ -607,6 +625,19 @@ func upward(s string) bool {
 	return s == ".." || strings.HasPrefix(s, "../") || strings.Contains(s, "/../")
 }
 
+// ancestor reports whether a path is only a climb: "..", "../..", "../../".
+func ancestor(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, seg := range strings.Split(strings.TrimSuffix(s, "/"), "/") {
+		if seg != ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // stdRef resolves pkg.Name through the file's imports.
 func stdRef(e ast.Expr, imports map[string]string) (pkg, name string, ok bool) {
 	sel, isSel := e.(*ast.SelectorExpr)
@@ -625,6 +656,9 @@ func stdRef(e ast.Expr, imports map[string]string) (pkg, name string, ok bool) {
 }
 
 func readLiteral(s string, e *evidence) {
+	if ancestor(s) {
+		e.ancestor = true
+	}
 	if s == "--show-toplevel" || s == "--git-common-dir" {
 		e.tree = true
 	}
@@ -657,6 +691,12 @@ func readCall(pkg, fn string, call *ast.CallExpr, e *evidence) {
 			for _, a := range call.Args {
 				if s, ok := stringArg(a); ok && upward(s) {
 					e.tree = true
+				}
+			}
+		case "Walk", "WalkDir", "Glob":
+			if len(call.Args) > 0 {
+				if s, ok := stringArg(call.Args[0]); ok && upward(s) {
+					e.climb = true
 				}
 			}
 		case "Abs":
@@ -776,10 +816,10 @@ func readSpawn(fn string, call *ast.CallExpr, e *evidence) {
 
 // Audits names the tests in one package's test files that read the committed
 // tree, the choice `make precheck` makes (cmd/precheck-audits): a test that
-// reaches the repository by what reached.tree counts, other than through a
-// helper that starts a process. That helper is the line between an audit and a
-// test that only finds a script at the root to run it, a line the always-rerun
-// classifier above has no need of. A test running a program in its own body is
+// reaches the repository by what reached.tree counts, or by a climb (evidence's
+// climb), other than through a helper that starts a process. That helper is
+// the line between an audit and a test that only finds a script at the root to
+// run it, a line the always-rerun classifier above has no need of. A test running a program in its own body is
 // still named, since an audit may list files through one, and naming one too
 // many costs seconds. A file that does not parse is an error: what cannot be
 // read cannot be shown to hold no audit.
@@ -815,7 +855,7 @@ func (g *graph) auditsTree(test string) bool {
 		if n == nil || (key != test && (n.direct.program || n.direct.spawn)) {
 			continue
 		}
-		if n.direct.tree {
+		if n.direct.tree || n.direct.climb {
 			return true
 		}
 		for ref := range n.refs {
@@ -823,4 +863,35 @@ func (g *graph) auditsTree(test string) bool {
 		}
 	}
 	return false
+}
+
+// ReachesTree names the tests in one package's test files whose whole reach
+// touches the repository tree: what Audits counts, and also a tree reached
+// through a helper that starts a process (Audits stops there) or through a
+// string literal naming an ancestor of the package directory, whatever it is
+// handed to. It is wider than Audits on purpose, the detector of the check that
+// precheck runs every audit (cmd/precheck-audits, TestPrecheckRunsEveryAuditNamedTest),
+// which a detector as narrow as the selection could never fault. A file that
+// does not parse is an error.
+func ReachesTree(paths []string) ([]string, error) {
+	files, err := parseFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	g := buildGraph(files, nil)
+	var names []string
+	for _, name := range g.tests {
+		r, seen := g.reach(name)
+		touches := r.tree
+		for key := range seen {
+			if n := g.nodes[key]; n != nil && (n.direct.climb || n.direct.ancestor) {
+				touches = true
+			}
+		}
+		if touches {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
 }

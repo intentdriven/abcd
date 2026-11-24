@@ -1996,7 +1996,14 @@ too, and the check never fails for either. It reads the memory pressure too
 `make preflight` gates itself: it waits at `implement load --wait` once, as one
 whole run, before any of its stages (a records-only change takes a shorter
 rule that waits at no gate), so run it plain, with no wrapper and no
-waiter loop of your own. While it waits and runs, that waiter records
+waiter loop of your own. Beside that wait it runs `make precheck`'s audit
+tests one at a time, as narrow runs of at most three packages, each through
+`--wait --narrow`: the first whose tests fail stops the whole run, its gate
+and stages included (interrupted first, killed five seconds later), and no
+receipt is minted; an audit run the gate refuses or times out names the
+gate's reason, the rest stop, and the whole run decides; when the whole run
+ends first, its verdict stands and the audit runs still going stop, since its
+stages run every one of their tests. While it waits and runs, that waiter records
 itself in a marker under abcd's home, naming its checkout, the commit that
 checkout's HEAD was at when it was written, and that its command is the
 preflight's stages; the away mode's stop check reads it to count an owed item
