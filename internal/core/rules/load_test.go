@@ -435,6 +435,10 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"`load.memory_floor_macos`",
 		"`load.memory_floor_linux`",
 		"a reading that cannot be taken shuts nothing",
+		// The race gate's timeout counts a stalled queue only
+		// (iss-2611232155470105).
+		"At the race gate the timeout counts only time its race queue is stalled",
+		"never past six times the timeout",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

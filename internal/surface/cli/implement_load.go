@@ -411,6 +411,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"narrow wait in the same lane (the same command, worktree and drive stage), until one of the\n" +
 			"first try's timeouts has passed since the last gave up, in your account's own\n" +
 			"`" + abcdhome.Display(implement.WaitNarrowCarryFileName) + "`; a try that opens clears it.\n\n" +
+			"At the race gate --timeout counts only the time the race queue ahead is stalled.\n" +
+			"A look at which a race run, a race waiter ahead or the race gate's hold keeps it shut\n" +
+			"and that queue is progressing pauses the clock: a holder ahead that used more than\n" +
+			shareText(implement.QuietShare) + " of a core over the last " + implement.QuietSpan.String() + ", or that the waiter has not yet\n" +
+			"watched that long, a race run or waiter ahead starting or ending, or a settle hold.\n" +
+			"The load, memory, waiters held by them and a quiet holder count against the timeout.\n" +
+			"Each waiting line says whether the clock is paused or runs, and the\n" +
+			"pause stops at " + strconv.Itoa(implement.WaitRaceCeilingFactor) + " times --timeout from the start, so nothing waits for ever.\n\n" +
 			"A wait that gives up exits 1 and ends with a line starting `LOAD GATE TIMED OUT`,\n" +
 			"naming how long it waited and that nothing ran, so a pipe that loses the exit\n" +
 			"code still shows it; with --json that line is the last on stderr.",
@@ -473,7 +481,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
 	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor or memory pressure is at or above its floor, and above that shut by another go test -race run, a race waiter ahead, the load, memory pressure and the race gate's hold")
 	cmd.Flags().BoolVar(&narrowMark, "narrow", false, "with --wait and a go test naming at most three packages, wait at the narrow gate instead of behind whole runs")
-	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
+	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1; at the race gate only time the race queue ahead is not progressing counts, up to "+strconv.Itoa(implement.WaitRaceCeilingFactor)+" times this in all")
 	return cmd
 }
 
@@ -516,8 +524,12 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 		}
 	}
 	if !asJSON {
-		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
-		req.OnQuiet = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
+		req.OnWait = func(r implement.WaitResult) {
+			fmt.Fprintf(out, "waiting for capacity: %s%s\n", waitConditions(r), raceClockText(r, timeout))
+		}
+		req.OnQuiet = func(r implement.WaitResult) {
+			fmt.Fprintf(out, "waiting for capacity: %s%s\n", waitConditions(r), raceClockText(r, timeout))
+		}
 		req.OnSettle = func(j time.Duration) {
 			fmt.Fprintf(out, "load gate: the machine looks free; checking everything again in %s before opening, so two starters in one quiet minute do not start together\n",
 				j.Round(time.Second))
@@ -965,10 +977,42 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 	}
 }
 
-// timedOutLine is a timed-out wait's closing line.
+// timedOutLine is a timed-out wait's closing line. A race gate whose clock
+// was paused says for how much of the wait.
 func timedOutLine(res implement.WaitResult) string {
 	waited := seconds(res.WaitedS).Round(time.Second)
-	return fmt.Sprintf("LOAD GATE TIMED OUT after %s: exit 1, nothing ran: %s", waited, waitConditions(res))
+	paused := ""
+	if res.PausedS > 0 {
+		paused = fmt.Sprintf(" (%s of it paused while the race queue ahead progressed)", seconds(res.PausedS).Round(time.Second))
+	}
+	return fmt.Sprintf("LOAD GATE TIMED OUT after %s%s: exit 1, nothing ran: %s", waited, paused, waitConditions(res))
+}
+
+// raceClockText says, on a race gate's waiting line, whether its timeout's
+// clock is paused because the race queue ahead is progressing, or runs, and
+// how much of the timeout it has counted (implement.WaitResult.Progress and
+// AtCeiling: a progressing queue at the ceiling no longer pauses it), so a
+// person reading the log sees why the wait has not timed out. It says nothing
+// at another gate or with no timeout.
+func raceClockText(res implement.WaitResult, timeout time.Duration) string {
+	if res.Gate != implement.GateRace || timeout <= 0 {
+		return ""
+	}
+	counted := seconds(res.WaitedS - res.PausedS).Round(time.Second)
+	paused := seconds(res.PausedS).Round(time.Second)
+	if res.Progress {
+		return fmt.Sprintf("; the race queue ahead is progressing, so the timeout's clock is paused: %s of the %s timeout counted, %s paused, %s at most in all",
+			counted, timeout, paused, implement.WaitRaceCeilingFactor*timeout)
+	}
+	text := fmt.Sprintf("; nothing ahead is progressing, so the timeout's clock runs: %s of the %s timeout counted", counted, timeout)
+	if res.AtCeiling {
+		text = fmt.Sprintf("; the race queue ahead is progressing, but the wait has reached its %s ceiling, so the timeout's clock runs: %s of the %s timeout counted",
+			implement.WaitRaceCeilingFactor*timeout, counted, timeout)
+	}
+	if paused > 0 {
+		text += fmt.Sprintf(", %s paused before", paused)
+	}
+	return text
 }
 
 // waitConditions names what holds the gate shut.
