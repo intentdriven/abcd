@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
 )
@@ -42,11 +43,160 @@ import (
 // cloneStore is where a repository's matrix copies are cloned: the account's
 // abcd home, under matrix/<root-sha>/, beside the worktree store and like it
 // outside every checkout (adr-2610031751065746).
-func cloneStore(home, rootSHA string) string { return abcdhome.Path(home, "matrix", rootSHA) }
+func cloneStore(home, rootSHA string) string { return abcdhome.Path(home, matrixDir, rootSHA) }
+
+// matrixDir is the folder in the account's abcd home every repository's clone
+// store sits in.
+const matrixDir = "matrix"
+
+// CloneStores is the folder every repository's clone store sits in, as a
+// person reads it: under the account's abcd home, spelled from the home
+// directory.
+func CloneStores() string { return abcdhome.Display(matrixDir) }
 
 // cloneDir is the clone of run's copy made under alias, in store: the run's id
 // and the alias, and nothing of the copy's task or cell.
 func cloneDir(store, run, alias string) string { return filepath.Join(store, run, alias) }
+
+// ErrNotACopyClone is CopyClone's refusal of a directory that is not a copy's
+// clone in the clone store.
+var ErrNotACopyClone = errors.New("not a model-matrix copy's clone in the clone store")
+
+// CopyClone refuses dir unless it is a copy's clone of frozen in the clone
+// store under home, the account's home directory: exactly
+// cloneDir(cloneStore(home, <root-sha>), <run>, <alias>), each part of its own
+// shape, holding what makeClone made (cloneHolds). Both the store and dir are
+// read through their symbolic links, so a link into the store names the clone
+// it leads to and a link out of it names where it leads. A store that does
+// not stand holds no clone. lanes is the branch-name prefix of the branches
+// the trial's own lanes cut in the clone, the only refs it may hold. fresh is
+// set where the clone holds no trial yet, before any lane shares its object
+// store, and only then is every object it holds judged.
+func CopyClone(home, dir, frozen, lanes string, fresh bool) error {
+	if !filepath.IsAbs(home) {
+		return fmt.Errorf("%w: the home directory is not an absolute path", ErrNotACopyClone)
+	}
+	stores, err := filepath.EvalSymlinks(abcdhome.Path(home, matrixDir))
+	if err != nil {
+		return fmt.Errorf("%w: no clone store stands", ErrNotACopyClone)
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return fmt.Errorf("%w: the directory could not be read", ErrNotACopyClone)
+	}
+	rel, err := filepath.Rel(stores, real)
+	if err != nil {
+		return ErrNotACopyClone
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 3 || !gitutil.IsFullSHA(parts[0]) || !runIDRe.MatchString(parts[1]) || !aliasRe.MatchString(parts[2]) {
+		return ErrNotACopyClone
+	}
+	return cloneHolds(real, frozen, lanes, fresh)
+}
+
+// cloneHolds refuses a clone at dir that does not hold what makeClone makes.
+// It checks exactly this:
+//   - dir/.git is a directory, not a symbolic link or the file a linked
+//     worktree's .git is, and holds no commondir or gitdir file;
+//   - dir/.git/objects is a directory, not a symbolic link;
+//   - no objects/info/alternates file is reached at that path, through any
+//     link on the way to it, so no other object store is borrowed;
+//   - git, as stored and isolated, puts the common directory, the object
+//     store and the shallow file at dir/.git, dir/.git/objects and
+//     dir/.git/shallow;
+//   - dir/.git/shallow, read as a regular file of at most 4096 bytes, names
+//     exactly frozen;
+//   - every ref is a branch under refs/heads/<lanes>, the branches its
+//     trial's lanes cut, and each names a commit descended from frozen;
+//   - where fresh is set (the clone holds no trial yet, so no lane's
+//     worktree has written to its object store), every object the clone
+//     holds is reached from frozen or one of those branches' tips, read as
+//     stored, so no history fetched and then cut loose is left in it.
+//
+// These checks judge what the clone is, not where it came from: they are the
+// bar until a trial has a front door, and then the trial is owed a token from
+// the step that made and scanned the clone (admitClone). A refusal names which
+// check failed and nothing of any object's content.
+func cloneHolds(dir, frozen, lanes string, fresh bool) error {
+	gitDir := filepath.Join(dir, ".git")
+	if fi, err := os.Lstat(gitDir); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: its .git is not a repository's own directory", ErrNotACopyClone)
+	}
+	for _, name := range []string{"commondir", "gitdir"} {
+		if _, err := os.Lstat(filepath.Join(gitDir, name)); !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: its .git names another repository's directory", ErrNotACopyClone)
+		}
+	}
+	objects := filepath.Join(gitDir, "objects")
+	if fi, err := os.Lstat(objects); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: its object store is not a directory of its own", ErrNotACopyClone)
+	}
+	if _, err := os.Lstat(filepath.Join(objects, "info", "alternates")); !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: it borrows objects from another repository", ErrNotACopyClone)
+	}
+	if !gitutil.IsFullSHA(frozen) {
+		return fmt.Errorf("%w: no frozen commit is named for it", ErrNotACopyClone)
+	}
+	if shallow, err := fsutil.ReadGuarded(filepath.Join(gitDir, "shallow"), 4096); err != nil || strings.TrimSpace(string(shallow)) != frozen {
+		return fmt.Errorf("%w: it is not shallow at exactly its frozen commit", ErrNotACopyClone)
+	}
+	paths, err := gitAsStored("-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-path", "objects", "--git-path", "shallow")
+	if err != nil {
+		return fmt.Errorf("%w: where git keeps its repository could not be read", ErrNotACopyClone)
+	}
+	got := strings.Split(strings.TrimSpace(string(paths)), "\n")
+	want := []string{gitDir, objects, filepath.Join(gitDir, "shallow")}
+	if len(got) != len(want) {
+		return fmt.Errorf("%w: where git keeps its repository could not be read", ErrNotACopyClone)
+	}
+	for i := range want {
+		if !samePath(got[i], want[i]) {
+			return fmt.Errorf("%w: git keeps its repository outside its .git", ErrNotACopyClone)
+		}
+	}
+	refs, err := gitAsStored("-C", dir, "for-each-ref", "--format=%(objectname) %(refname)")
+	if err != nil {
+		return fmt.Errorf("%w: its refs could not be read", ErrNotACopyClone)
+	}
+	tips := []string{frozen}
+	for _, line := range strings.Split(strings.TrimSpace(string(refs)), "\n") {
+		if line == "" {
+			continue
+		}
+		oid, ref, _ := strings.Cut(line, " ")
+		if lanes == "" || !strings.HasPrefix(ref, "refs/heads/"+lanes) || !gitutil.IsFullSHA(oid) {
+			return fmt.Errorf("%w: it holds a ref no copy's clone holds", ErrNotACopyClone)
+		}
+		if _, err := gitAsStored("-C", dir, "merge-base", "--is-ancestor", frozen, oid); err != nil {
+			return fmt.Errorf("%w: a lane's branch names a commit not descended from its frozen commit", ErrNotACopyClone)
+		}
+		tips = append(tips, oid)
+	}
+	if !fresh {
+		return nil
+	}
+	reachable, err := gitAsStored(append(append([]string{"-C", dir, "rev-list", "--objects"}, tips...), "--")...)
+	if err != nil {
+		return fmt.Errorf("%w: what its frozen commit and its lanes' branches reach could not be read", ErrNotACopyClone)
+	}
+	reached := map[string]bool{}
+	for _, line := range strings.Split(string(reachable), "\n") {
+		if oid, _, _ := strings.Cut(line, " "); oid != "" {
+			reached[oid] = true
+		}
+	}
+	held, err := gitAsStored("-C", dir, "cat-file", "--batch-all-objects", "--batch-check=%(objectname)")
+	if err != nil {
+		return fmt.Errorf("%w: the objects it holds could not be listed", ErrNotACopyClone)
+	}
+	for _, oid := range strings.Fields(string(held)) {
+		if !reached[oid] {
+			return fmt.Errorf("%w: it holds objects that neither its frozen commit nor its lanes' branches reach", ErrNotACopyClone)
+		}
+	}
+	return nil
+}
 
 // copyAlias is a copy's alias as the run's state records it: the one name its
 // clone is made under, and so the one name the copy is shown of which copy it
@@ -207,6 +357,9 @@ func fillClone(repoRoot, dir, frozen string) error {
 	steps := [][]string{
 		// An empty template: no hooks, and nothing of the person's.
 		{"init", "-q", "--template=", dir},
+		// No reflog, now or later: an entry names the account and machine
+		// that moved HEAD, which nothing a copy reads should carry.
+		{"-C", dir, "config", "core.logAllRefUpdates", "false"},
 		// One commit deep: the frozen commit and its tree, and none of its
 		// ancestors.
 		{"-C", dir, "fetch", "-q", "--depth=1", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", repoRoot, frozen},
@@ -256,8 +409,15 @@ func outsideWorkingTrees(dir string) error {
 	}
 	out, err := git("-C", real, "rev-parse", "--is-inside-work-tree", "--is-inside-git-dir")
 	if err != nil {
-		// git names no repository here: the path is outside every one.
-		return nil
+		if notARepository(err) {
+			// git names no repository here: the path is outside every one.
+			return nil
+		}
+		// Any other answer (a repository git will not read, one it will not
+		// answer for under this account) says nothing of whether the path is
+		// inside a repository, so it is refused as though it were.
+		return fmt.Errorf("%w: whether %s is inside a working tree or a repository could not be told, so no clone is made there: %w",
+			errStoreUnanswered, dir, err)
 	}
 	if strings.Contains(out, "true") {
 		// The checkout is named only for the refusal: its toplevel is asked
@@ -272,6 +432,31 @@ func outsideWorkingTrees(dir string) error {
 	}
 	return nil
 }
+
+// errStoreUnanswered is outsideWorkingTrees' refusal where git gave no answer
+// on whether the path is inside a repository.
+var errStoreUnanswered = errors.New("git gave no answer at the clone store")
+
+// notARepository reports whether err is git's own answer that no repository
+// holds the directory it was asked at: exit status 128, its standard error
+// beginning "fatal: not a git repository", in the C locale the isolated
+// environment pins. Those words anywhere else in what git said are not that
+// answer.
+func notARepository(err error) bool {
+	var gf *gitFailure
+	return errors.As(err, &gf) && gitutil.ExitCode(gf.err) == 128 && strings.HasPrefix(gf.stderr, "fatal: not a git repository")
+}
+
+// gitFailure is a git command that ran and failed: its message as the caller
+// reads it, the exit error, and git's standard error as git wrote it, trimmed.
+type gitFailure struct {
+	msg    string
+	err    error
+	stderr string
+}
+
+func (e *gitFailure) Error() string { return e.msg }
+func (e *gitFailure) Unwrap() error { return e.err }
 
 // gitBound bounds one git command a clone is made with: a fetch of the frozen
 // commit and its checkout scale with the tree, so the bound is there only so a
@@ -300,10 +485,38 @@ func gitRawWithin(limit time.Duration, args ...string) ([]byte, error) {
 // gitRawCtx is gitRawWithin under parent too: git is killed when parent ends
 // or past limit, whichever comes first, and the refusal names which.
 func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]byte, error) {
+	return gitRawEnvCtx(parent, limit, gitutil.IsolatedEnv(), args...)
+}
+
+// samePath reports whether a and b name one file or directory, both read
+// through their symbolic links; a path that cannot be read is no match.
+func samePath(a, b string) bool {
+	ra, err := filepath.EvalSymlinks(a)
+	if err != nil {
+		return false
+	}
+	rb, err := filepath.EvalSymlinks(b)
+	return err == nil && ra == rb
+}
+
+// cloneCheckBound bounds each git command cloneHolds runs: listing a clone's
+// objects and what reaches them scales with the frozen tree, so the bound is
+// there only so a git that waits never holds the trial forever.
+const cloneCheckBound = 10 * time.Minute
+
+// gitAsStored is git within cloneCheckBound in the isolated environment, made
+// to read objects as stored (gitutil.AsStoredEnv): no replace ref, graft file
+// or commit-graph stands in for what the repository holds.
+func gitAsStored(args ...string) ([]byte, error) {
+	return gitRawEnvCtx(context.Background(), cloneCheckBound, gitutil.AsStoredEnv(gitutil.IsolatedEnv()), args...)
+}
+
+// gitRawEnvCtx is gitRawCtx with git's environment env.
+func gitRawEnvCtx(parent context.Context, limit time.Duration, env []string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parent, limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = gitutil.IsolatedEnv()
+	cmd.Env = env
 	// git leads its own group and the bound kills the whole of it, so a
 	// helper git started (a remote helper, a pager) ends with it.
 	procgroup.Bound(cmd, time.Second)
@@ -316,10 +529,12 @@ func gitRawCtx(parent context.Context, limit time.Duration, args ...string) ([]b
 		return nil, fmt.Errorf("git %s did not finish within %s, so it was stopped", args[0], limit)
 	}
 	if err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, clip(msg))
+		msg := strings.TrimSpace(stderr.String())
+		f := &gitFailure{msg: fmt.Sprintf("git %s: %v", args[0], err), err: err, stderr: msg}
+		if msg != "" {
+			f.msg += ": " + clip(msg)
 		}
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
+		return nil, f
 	}
 	return stdout.Bytes(), nil
 }

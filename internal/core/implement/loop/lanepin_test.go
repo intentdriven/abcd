@@ -937,6 +937,7 @@ func TestAnAdoptedLaneWhoseHooksTheTipChangedIsRefused(t *testing.T) {
 func TestATrialLaneIsNotPinnedAndAsksNoRemote(t *testing.T) {
 	repo, bare, head := hookedOrigin(t)
 	removeAll(t, bare)
+	standInClone(t, repo.Root())
 	start, err := Start(repo.Root(), "itd-10", Options{Trial: true, Frozen: head})
 	if err != nil {
 		t.Fatal(err)

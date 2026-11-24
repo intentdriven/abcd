@@ -17,9 +17,9 @@ import (
 // step 3), so what the release gate keeps off the public never leaves the
 // machine in a clone either. The scanner's configuration is read at repoRoot,
 // the checkout the run belongs to, whose local tier the clone does not hold.
-// Git's own directory is not read, so a caller whose tree must be covered
-// whole hands it a tree whose repository holds nothing past its checked-out
-// files: a model-matrix clone holds its frozen commit alone.
+// Git's own directory is not read: a caller whose repository holds more than
+// its checked-out files scans the rest itself (ScanText), as a model-matrix
+// clone's admission scans its frozen commit's message and identities.
 //
 // An entry is never followed: a symbolic link or any other non-regular entry
 // is handed to the scanner as itself, which leaves it unscanned and so
@@ -58,4 +58,27 @@ func ScanTree(repoRoot, dir string) ([]string, error) {
 	}
 	res, _ := sc.ScanBundle(files)
 	return scanRefusals(res), nil
+}
+
+// ScanText is the launch bundle's scan over text that is no file of a tree,
+// named name in its findings: what the bundle's gate would refuse it on
+// (scanRefusals), with the scanner's configuration read at repoRoot. The
+// configuration's rules and identity apply, and its path filters do not, since
+// the text has no path: nothing it skips or excludes leaves the text out. A
+// scanner that cannot run, runs degraded, or runs without the augmenter the
+// repository configured refuses, as it does for a tree.
+func ScanText(repoRoot, name string, text []byte) []string {
+	sc, err := scanner.New(repoRoot)
+	if err != nil {
+		return scanRefusals(scanner.ScanResult{Unavailable: true, UnavailableReason: err.Error()})
+	}
+	res := scanner.ScanResult{FilesScanned: 1, Findings: sc.ScanText(string(text), name)}
+	if gap := sc.AugmenterGap(); gap != "" {
+		res.Unscanned = []string{scanner.AugmenterGapPath}
+		res.UnscannedWhy = map[string]string{scanner.AugmenterGapPath: gap}
+	}
+	if bad, why := sc.Unavailable(); bad {
+		res.Unavailable, res.UnavailableReason = true, why
+	}
+	return scanRefusals(res)
 }

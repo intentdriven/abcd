@@ -176,6 +176,7 @@ func TestATrialsLaneReadsTheDrivesHeldSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.Trial, st.Frozen = true, head
+	standInClone(t, repo.Root())
 	repo.Git("config", "core.editor", "/bin/true")
 	lane := st.Lanes[0]
 	lw, err := laneWorktree(repo.Root(), st.RunID, lane.ID)
