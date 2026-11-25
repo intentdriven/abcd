@@ -559,10 +559,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if j := st.Judging; j != nil {
 		holds.add(j.Issue, j.Hold, false)
 	}
-	persisted := st.Judging
+	// A bundle forming keeps its holds across moves as the judgement awaited
+	// does: persistedForming is the bundle as the state on disk records it
+	// (drain_form.go).
+	holds.addForming(st.Forming)
+	persisted, persistedForming := st.Judging, st.Forming.clone()
 	defer func() {
 		r := recover()
-		holds.settle(persisted)
+		holds.settle(persisted, persistedForming)
 		if r != nil {
 			panic(r)
 		}
@@ -654,6 +658,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if st.Stopped != "" && st.Judging != nil {
 			st.Judging, write = nil, true
 		}
+		// A drain that ends forms no bundle: its holds are released plainly
+		// below, with no tombstone (drain_form.go).
+		if st.Stopped != "" && st.Forming != nil {
+			res.Next = joinNext(res.Next, endForming(st.Forming))
+			st.Forming, write = nil, true
+		}
 		if st.Stopped != "" && st.WaitingUntil != nil {
 			st.WaitingUntil, st.Waiting, write = nil, "", true
 		}
@@ -674,7 +684,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if bundleIgnored != "" {
 			res.Next = joinNext(res.Next, bundleIgnored)
 		}
-		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
+		if clauses := holds.settle(st.Judging, st.Forming); len(clauses) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, clauses...)...)
 			write = true
 		}
@@ -700,7 +710,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if err := writeDrain(repoRoot, st); err != nil {
 				return DrainResult{}, err
 			}
-			persisted = st.Judging
+			persisted, persistedForming = st.Judging, st.Forming.clone()
 		}
 		// The spot-check's record of what the drain decided alone: written
 		// from the state as the move leaves it, never failing the move
@@ -786,7 +796,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if werr := writeDrain(repoRoot, st); werr != nil {
 				return DrainResult{}, werr
 			}
-			persisted = st.Judging
+			persisted, persistedForming = st.Judging, st.Forming.clone()
 		}
 		var notes []string
 		if live {
@@ -970,7 +980,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// The lane in progress is renewed at half its lease on every move,
 	// waiting or not, before the window gate (drain_lease.go).
 	leaseNotes = renewInProgress(repoRoot, st.withoutPassed(d), view, now)
-	finished := owing
+	// A bundle forming keeps its holds alive the same way (drain_lease.go).
+	formNotes, formRenewed := renewForming(repoRoot, &st, holds, view, now)
+	leaseNotes = append(leaseNotes, formNotes...)
+	finished := owing || formRenewed
 	for _, f := range res.Finished {
 		for i := range st.Lanes {
 			if f.Done && st.Lanes[i].RunID == f.RunID {
@@ -1007,18 +1020,18 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if outcome != DrainLaneHandedBack {
 				continue
 			}
-			r, err := routeHandBack(repoRoot, p.Issue, "lane", *hb, origin, now)
+			// Every issue the lane still holds is routed, a bundle's members
+			// with its lead, each route keeping the record it judged, so a
+			// change to it on origin is a new question this drain takes up
+			// again, as every route keeps (drain_form.go).
+			l := st.Lanes[i]
+			l.Issue = p.Issue
+			routes, err := routeLaneHandBack(repoRoot, st, l, run, *hb, origin, blobs, now)
 			if err != nil {
 				return refuseMoved(err)
 			}
-			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
-				r.Wrote += "; " + rel
-			}
-			// The record it judged, so a change to it on origin is a new
-			// question this drain takes up again, as every route keeps.
-			r.Blob = blobs.of(p.Issue)
-			st.HandBacks = append(st.HandBacks, r)
-			res.Routed = append(res.Routed, r)
+			st.HandBacks = append(st.HandBacks, routes...)
+			res.Routed = append(res.Routed, routes...)
 			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
 		}
 	}
@@ -1092,6 +1105,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			run = admitted
 		}
+		// A member of a bundle handed back alone is routed as the drain reads
+		// the lane, while the lane goes on with the rest (drain_form.go).
+		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneHandedBack {
+			alone, err := routeAlone(repoRoot, st, *l, run, origin, blobs, now)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			st.HandBacks = append(st.HandBacks, alone...)
+			res.Routed = append(res.Routed, alone...)
+		}
 		outcome, pr, hb := laneOutcome(run)
 		if outcome == DrainLaneInProgress {
 			if bounds == nil {
@@ -1129,18 +1152,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			return finish(true)
 		case DrainLaneHandedBack:
-			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, origin, now)
+			// The issue is a person's again: its reservation is released
+			// rather than left to hold others off until it lapses. A
+			// bundle's every member is routed with its lead (drain_form.go).
+			routes, err := routeLaneHandBack(repoRoot, st, *l, run, *hb, origin, blobs, now)
 			if err != nil {
 				return refuseMoved(err)
 			}
-			// The issue is a person's again: its reservation is released
-			// rather than left to hold others off until it lapses.
-			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
-				r.Wrote += "; " + rel
-			}
-			r.Blob = blobs.of(l.Issue)
-			st.HandBacks = append(st.HandBacks, r)
-			res.Routed = append(res.Routed, r)
+			st.HandBacks = append(st.HandBacks, routes...)
+			res.Routed = append(res.Routed, routes...)
 		}
 		l.Outcome, l.PR = outcome, pr
 	}
@@ -1213,7 +1233,22 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}
 	var capped, held []string
-	for _, v := range lapsedLast(plan.Dispositions, st.Lapsed) {
+	// A bundle forming takes its candidates rather than the drain's order,
+	// the rest of this move and each move after it, until its lane opens
+	// (drain_form.go).
+	form := former{st: &st, plan: plan, area: planArea(repoRoot, plan)}
+	queue := lapsedLast(plan.Dispositions, st.Lapsed)
+	if st.Forming != nil {
+		fq, note, ok := form.queue()
+		if note != "" {
+			leaseNotes = append(leaseNotes, note)
+		}
+		if ok {
+			queue = fq
+		}
+	}
+	for qi := 0; qi < len(queue); qi++ {
+		v := queue[qi]
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
@@ -1221,7 +1256,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// taken up again once its record has changed on origin
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
-			if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
 				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
 					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				}
@@ -1258,7 +1293,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// One handed back does too without origin, where nothing says
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
-		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
 			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
 				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				continue
@@ -1270,7 +1305,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun, Reason: reason})
 			continue
 		}
-		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 && origin == nil {
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) }); i >= 0 && origin == nil {
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
 				Reason: "this checkout's run " + runs[i].RunID + " for it was handed back, and with no remote named " + claim.Remote +
 					" the drain cannot tell whether its record has changed since; it is a person's"})
@@ -1428,16 +1463,24 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judged, routedHold = &st.Judgements[len(st.Judgements)-1], judging.Hold
 		}
 		st.Judging = nil
+		// A no over a lead with candidates under a cap above 1 forms a bundle
+		// rather than opening the lead's lane, and the move goes on to its
+		// candidates; a no over a candidate joins the bundle, which opens
+		// once it reaches the cap (drain_form.go).
+		if lead, full := form.join(v.ID, formingHold(hold, owned, view != nil, judged, routedHold)); lead {
+			queue, _, _ = form.queue()
+			qi = -1
+			continue
+		} else if st.Forming != nil {
+			if full {
+				break
+			}
+			continue
+		}
 		// Every lane runs on the drain's pace, not on what the configuration
-		// resolves when it opens (drain_pace.go).
-		lane := o
-		lane.Pace, lane.SubAgents, lane.FixRounds, lane.pace = nil, nil, nil, st.Pace
-		lane.reserve = footprint
-		lane.plan = &plan
-		lane.drain = true
-		// The lane is admitted under the rule this move loaded and judged the
-		// issue by, which its records commit names (itd-2610301850454860).
-		lane.admitted = &Admitted{Kind: landings.KindDrain, Record: rule.Record, Path: rule.Path}
+		// resolves when it opens, and is admitted under the rule this move
+		// loaded and judged the issue by (drainLaneOptions).
+		lane := drainLaneOptions(o, st, footprint, &plan, rule)
 		if owned {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
@@ -1453,15 +1496,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 			}
 		} else if h := routedHold; h != nil {
-			lane.held = &heldReservation{at: h.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
-				v.ID, claim.Remote, stamp(h.ExpiresAt), strings.Join(footprint, ", ")),
-				forkUnchecked: h.ForkUnchecked, forkAllowed: h.ForkAllowed}
-			if h.ForkUnchecked != "" {
-				lane.held.note += "; " + claim.ForkUncheckedLine(h.ForkUnchecked)
-			}
-			if h.ForkAllowed != "" {
-				lane.held.note += "; " + claim.ForkAllowedLine(h.ForkAllowed)
-			}
+			lane.held = heldOn(v.ID, *h, footprint)
 		}
 		holds.starting(v.ID)
 		if drainBeforeStart != nil {
@@ -1513,6 +1548,25 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return finish(true)
 	}
 	st.Judging = nil
+	// A bundle forming opens once no candidate is left, or the person's
+	// live reservations are at the cap: it opens as it stands rather than
+	// waiting (drain_form.go).
+	if st.Forming != nil {
+		opened := openBundle(repoRoot, o, &st, &plan, rule, holds, now)
+		switch {
+		case opened.err != nil:
+			return refuseMoved(opened.err)
+		case opened.start != nil:
+			res.Start = opened.start
+			res.Next = bundleNext(st.Lanes[len(st.Lanes)-1], *opened.start)
+			return finish(true)
+		case opened.passed != nil:
+			res.Passed = append(res.Passed, *opened.passed)
+			res.Next = "the bundle's lane did not open: " + opened.passed.Reason + "; run `abcd drain` again to take up the next eligible issue"
+			return finish(true)
+		}
+		capped = opened.capped
+	}
 	// At the cap, or with only work others hold left, the drain waits and
 	// keeps its judgements; it stops as empty only when nothing eligible is
 	// left, held or not (drain_wait.go).

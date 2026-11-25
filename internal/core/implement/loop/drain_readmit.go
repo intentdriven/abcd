@@ -94,17 +94,22 @@ func (st DrainState) lastHandBack(issue string) *DrainRoute {
 }
 
 // taken reports whether the drain has issue in hand: a lane it opened that
-// was not handed back, or a hand-back whose record has not changed on origin
-// since it was routed. A route that kept no blob (no origin, or a record
-// origin held in no one file) is never re-admitted, nor is one whose record
-// origin now holds in no one file.
+// was not handed back, as its issue or a member of its bundle, a bundle it is
+// forming, or a hand-back whose record has not changed on origin since it was
+// routed. A member handed back alone is the lane's no longer: it is judged by
+// its route, as an issue whose lane was handed back is. A route that kept no
+// blob (no origin, or a record origin held in no one file) is never
+// re-admitted, nor is one whose record origin now holds in no one file.
 func (st DrainState) taken(issue string, blobs *originBlobs) bool {
+	if st.Forming.has(issue) {
+		return true
+	}
 	handedBack := false
 	for _, l := range st.Lanes {
-		if l.Issue != issue {
+		if !laneCarries(l, issue) {
 			continue
 		}
-		if l.Outcome != DrainLaneHandedBack {
+		if l.Outcome != DrainLaneHandedBack && !st.handedBackAloneIn(l, issue) {
 			return true
 		}
 		handedBack = true
