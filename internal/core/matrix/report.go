@@ -88,10 +88,14 @@ type CodeCell struct {
 	NotStarted   int       `json:"not_started"`
 	Excluded     int       `json:"excluded"`
 	Unexamined   int       `json:"unexamined"`
-	// NotHandedBack, AwaitingRunner, Refused and NeverHandedOff count the
-	// copies with no trial, by where they stand; none is in any rate.
+	// NotHandedBack, AwaitingRunner, Launched, Refused and NeverHandedOff
+	// count the copies with no trial, by where they stand; none is in any
+	// rate. Launched counts a runner cell's copies whose launch began and
+	// wrote no trial: at work, stopped, or made and awaiting their hidden
+	// tests' result.
 	NotHandedBack  int         `json:"not_handed_back"`
 	AwaitingRunner int         `json:"awaiting_runner"`
+	Launched       int         `json:"launched"`
 	Refused        int         `json:"refused"`
 	NeverHandedOff int         `json:"never_handed_off"`
 	Reviews        CellReviews `json:"reviews"`
@@ -109,8 +113,17 @@ type UnreturnedState string
 const (
 	// UnreturnedNotHandedBack: handed to the host and never handed back.
 	UnreturnedNotHandedBack UnreturnedState = "not_handed_back"
-	// UnreturnedAwaitingRunner: a runner cell's copy, waiting for a launcher.
+	// UnreturnedAwaitingRunner: a runner cell's copy, waiting for its launch.
 	UnreturnedAwaitingRunner UnreturnedState = "awaiting_runner"
+	// UnreturnedLaunching: a runner cell's copy whose launch began and has
+	// not ended, or was stopped before it could say so.
+	UnreturnedLaunching UnreturnedState = "launching"
+	// UnreturnedInterrupted: a runner cell's copy whose launch was stopped
+	// before the copy was made; it is not launched again.
+	UnreturnedInterrupted UnreturnedState = "interrupted"
+	// UnreturnedAwaitingScore: a code copy its runner made, waiting for its
+	// hidden tests' result.
+	UnreturnedAwaitingScore UnreturnedState = "awaiting_score"
 	// UnreturnedRefused: its cell's clone was refused before the copy started.
 	UnreturnedRefused UnreturnedState = "refused"
 	// UnreturnedNeverHandedOff: a pilot copy the run's start never reached.
@@ -561,6 +574,12 @@ func accountCopies(proc stateReader, rec RunRecord, d Declaration, trials []Tria
 						state = UnreturnedNotHandedBack
 					case HandOffAwaitingRunner:
 						state = UnreturnedAwaitingRunner
+					case HandOffLaunching:
+						state = UnreturnedLaunching
+					case HandOffInterrupted:
+						state, reason = UnreturnedInterrupted, h.Reason
+					case HandOffLaunched:
+						state = UnreturnedAwaitingScore
 					default:
 						state, reason = UnreturnedRefused, h.Reason
 					}
@@ -572,7 +591,8 @@ func accountCopies(proc stateReader, rec RunRecord, d Declaration, trials []Tria
 				}
 				g.Repeats = append(g.Repeats, r)
 			}
-			for _, s := range []UnreturnedState{UnreturnedNotHandedBack, UnreturnedAwaitingRunner, UnreturnedRefused, UnreturnedNeverHandedOff} {
+			for _, s := range []UnreturnedState{UnreturnedNotHandedBack, UnreturnedAwaitingRunner, UnreturnedLaunching, UnreturnedAwaitingScore,
+				UnreturnedInterrupted, UnreturnedRefused, UnreturnedNeverHandedOff} {
 				if g := groups[s]; g != nil {
 					out = append(out, *g)
 				}
@@ -593,6 +613,8 @@ func (b *reportBuilder) unreturnedInto(task string, row *CodeCell) {
 			row.NotHandedBack += len(u.Repeats)
 		case UnreturnedAwaitingRunner:
 			row.AwaitingRunner += len(u.Repeats)
+		case UnreturnedLaunching, UnreturnedInterrupted, UnreturnedAwaitingScore:
+			row.Launched += len(u.Repeats)
 		case UnreturnedRefused:
 			row.Refused += len(u.Repeats)
 		case UnreturnedNeverHandedOff:
@@ -610,7 +632,15 @@ func (b *reportBuilder) unreturnedLimits() {
 			b.limit("%d copies of %s on %s (%s) were handed to the host and never handed back; they are in no rate, so the cell's figures stand on the copies returned alone", n, u.Task, u.Cell, which)
 			b.improve("hand back every copy of %s on %s, a failed one with its reason, so the cell's figures count every copy the run made", u.Task, u.Cell)
 		case UnreturnedAwaitingRunner:
-			b.limit("%d copies of %s on %s (%s) wait for the cell's runner, which abcd does not launch yet; nothing stands in for it, so they are in no rate, review or judging", n, u.Task, u.Cell, which)
+			b.limit("%d copies of %s on %s (%s) wait for the cell's runner, which their launch starts; nothing stands in for it, so they are in no rate, review or judging", n, u.Task, u.Cell, which)
+			b.improve("launch the copies of %s on %s with abcd lab matrix launch, so the cell's figures count every copy the run made", u.Task, u.Cell)
+		case UnreturnedLaunching:
+			b.limit("%d copies of %s on %s (%s) were launched and wrote no trial: their runner is at work, or their launch was stopped before it said so; they are in no rate", n, u.Task, u.Cell, which)
+		case UnreturnedInterrupted:
+			b.limit("%d copies of %s on %s (%s) were launched and stopped before they were made (%s); that is the run's error, not the copies' score, so they are in no rate", n, u.Task, u.Cell, which, u.Reason)
+		case UnreturnedAwaitingScore:
+			b.limit("%d copies of %s on %s (%s) were made by the cell's runner and wait for their hidden tests' result; they are in no rate", n, u.Task, u.Cell, which)
+			b.improve("hand back the hidden tests' result of each copy of %s on %s that its runner made, so the cell's figures count it", u.Task, u.Cell)
 		case UnreturnedRefused:
 			b.limit("%d copies of %s on %s (%s) were refused before they started (%s); they are in no rate", n, u.Task, u.Cell, which, u.Reason)
 		case UnreturnedNeverHandedOff:
@@ -1016,10 +1046,12 @@ func (b *reportBuilder) runLimits() {
 		b.limit("%s could not be pinned (%s)", u.Field, u.Reason)
 		b.improve("pin %s in the next run, or say why it cannot be", u.Field)
 	}
-	host, examined, noCalls := false, false, false
+	host, examined, noCalls, launched := false, false, false, false
 	for _, t := range b.trials {
 		if t.Source == SourceHost {
 			host = true
+		} else if len(t.Roles) > 0 {
+			launched = true
 		}
 		if slices.Contains(t.Unpinned, oracle.Unpinned{Field: TrialCalls, Reason: oracle.NotReported}) {
 			noCalls = true
@@ -1035,6 +1067,10 @@ func (b *reportBuilder) runLimits() {
 	}
 	if host {
 		b.limit("copies made in the host's harness ran where abcd neither launches nor confines them, so their isolation is asserted, not proven")
+	}
+	if launched {
+		b.limit("copies launched on a runner rest on abcd's runner launch, which is tested against a fake runner and has no live proof yet, so a harness's real events may read otherwise than its tests assume")
+		b.improve("prove the runner launch live on one cheap cell before a run's figures are relied on")
 	}
 	if noCalls {
 		b.limit("copies made in the host's harness carry no call receipts: the model served, the harness version and the times of each are the host's word, marked self-reported in its trial, and its tokens and cost are not reported")

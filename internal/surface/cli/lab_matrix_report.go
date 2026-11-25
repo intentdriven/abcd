@@ -137,7 +137,13 @@ func unreturnedWords(st matrix.UnreturnedState) string {
 	case matrix.UnreturnedNotHandedBack:
 		return "handed to the host and never handed back"
 	case matrix.UnreturnedAwaitingRunner:
-		return "awaiting its runner, which abcd does not launch yet"
+		return "awaiting its runner, which abcd lab matrix launch starts"
+	case matrix.UnreturnedLaunching:
+		return "launched, with no trial yet"
+	case matrix.UnreturnedInterrupted:
+		return "launched and stopped before they were made"
+	case matrix.UnreturnedAwaitingScore:
+		return "made by its runner, awaiting their hidden tests' result"
 	case matrix.UnreturnedRefused:
 		return "refused before they started"
 	default:
@@ -172,9 +178,9 @@ func renderMatrixReport(w io.Writer, r matrix.Report) {
 				fmt.Fprintf(w, "; of its hidden tests' results, %d the host's report", cell.HostReported)
 			}
 			fmt.Fprintf(w, "\n    apart: %d never started, %d unexamined, %d excluded\n", cell.NotStarted, cell.Unexamined, cell.Excluded)
-			if n := cell.NotHandedBack + cell.AwaitingRunner + cell.Refused + cell.NeverHandedOff; n > 0 {
-				fmt.Fprintf(w, "    no trial: %d never handed back, %d awaiting its runner, %d refused, %d never handed off\n",
-					cell.NotHandedBack, cell.AwaitingRunner, cell.Refused, cell.NeverHandedOff)
+			if n := cell.NotHandedBack + cell.AwaitingRunner + cell.Launched + cell.Refused + cell.NeverHandedOff; n > 0 {
+				fmt.Fprintf(w, "    no trial: %d never handed back, %d awaiting its runner, %d launched, %d refused, %d never handed off\n",
+					cell.NotHandedBack, cell.AwaitingRunner, cell.Launched, cell.Refused, cell.NeverHandedOff)
 			}
 			fmt.Fprintf(w, "    reviews: %d confirmed finding(s), %d unconfirmed flag(s)\n", cell.Reviews.Confirmed, cell.Reviews.Unconfirmed)
 			for _, k := range cell.Costs {

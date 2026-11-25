@@ -30,6 +30,7 @@ the verb encodes is the discipline record
 | `matrix judge` | — | shipped |
 | `matrix report` | — | shipped |
 | `matrix rerun` | — | shipped |
+| `matrix launch` | — | shipped |
 
 ## A model matrix run
 
@@ -58,16 +59,17 @@ result as the host ran them, and its trial says abcd neither placed nor ran
 them: it marks that result, the model served, the harness version and the
 times as the host's own word, and says it carries no call receipts. A writing
 copy's document is kept only once its trial passes the secret screen, so a
-hand-back the screen refuses can be made again. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
-and the host never stands in for one, since its answer would measure the wrong
-model. A copy handed back is checked for compliance under one overall deadline
+hand-back the screen refuses can be made again. A runner cell's copy waits for
+its launch, and the host never stands in for its runner, since its answer would
+measure the wrong model. A copy handed back is checked for compliance under one overall deadline
 before its trial is written, a check copy's findings are recorded and its trial
 written before its clone is deleted, and every trial, review request and
 judging packet passes the secret screen. The report accounts for every copy
 handed off that holds no trial: one the host never handed back, one waiting for
-its runner, a refused cell's, and one the run's start never reached are each
-shown and kept out of every rate. A review or a judging is drawn once, so it
-waits until every copy of its task handed to the host is back. A code task's
+its runner, one launched and not yet written, a refused cell's, and one the
+run's start never reached are each shown and kept out of every rate. A review
+or a judging is drawn once, so it waits until every copy of its task handed to
+the host is back and every one launched is written. A code task's
 copies are then reviewed through blinded requests, each assembled from the
 frozen tree and the copy's clone read as data under an opaque label, whose
 answers are scored before they are recorded. A writing task's judging packet is
@@ -81,6 +83,29 @@ maker withheld, and its finding is keyed on the line as located, so two lines
 that differ only in the model they name are never matched as one finding. A
 check copy's own words are scrubbed before they are made one line, so a name
 broken across lines is withheld from them too.
+
+A runner cell's copies are launched in the foreground, at most as many at once
+as the run declares (spc-2610161949559050 step 11). Each
+copy's runner is started directly in its clone in the runners' cell mode, on
+the same blind brief a host cell's copy is made from, so within a task the
+cells differ only by model and harness. Nothing stands in for the runner: one
+that fails, refuses or answers unparsably is the cell's failure, never handed
+to the host, and a provider down before the copy began is tried again on the
+same pin and recorded as not started, never scored. Before its runner starts, a
+cell's route and pin are read again and held to the ones the person consented
+to, a provider-bound clone passes the secret scan again, and a metered copy
+waits while the spending cap's remainder, less what the copies in flight may
+spend, does not cover its declared cost. The brief and the copy's answer sit in
+a third store, outside the clone, the clone store and the lab's state, one
+folder per copy under its alias, and a copy whose transcript names another
+copy's folder there read outside its copy. A copy is launched once. Each runner
+is one process group, killed whole when the launch is stopped; a stop is the
+run's error, never the copy's score, and a copy it cut short is not launched
+again. A made copy passes the same compliance check and secret screen as a host
+copy's hand-back, its served side the runner's own receipt rather than the
+host's word; a made code copy waits for its hidden tests' result. Runner
+launches are proven against a fake runner only so far, and the report says so
+among its limitations.
 
 A recorded run's report is read from its records in the lab and writes nothing
 (spc-2610161949559050 step 8). A code task gives each builder's pass rate on
@@ -276,7 +301,7 @@ Flags: none.
 
 ### `abcd lab matrix`
 
-Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
+Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix launch`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
 
 | Flag | Type |
 |---|---|
@@ -304,6 +329,12 @@ Sub-verbs: none.
 | `--host` | string |
 | `--judges` | string |
 | `--verdicts` | string |
+
+### `abcd lab matrix launch`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd lab matrix report`
 

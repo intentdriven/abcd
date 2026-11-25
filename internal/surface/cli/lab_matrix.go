@@ -61,7 +61,7 @@ func startedView(rec matrix.RunRecord, plan matrix.Plan, l *matrix.Launcher, wha
 		counts[h.State]++
 	}
 	out.Note = fmt.Sprintf("%s is written in the lab and its %d pilot copies are handed off, each in its own clone: %d for the host to make and hand back "+
-		"with `abcd lab matrix copy`, %d awaiting a runner abcd does not launch yet, %d refused by the secret scan",
+		"with `abcd lab matrix copy`, %d awaiting their runner, which `abcd lab matrix launch` starts, %d refused by the secret scan",
 		what, len(l.Handed), counts[matrix.HandOffWaiting], counts[matrix.HandOffAwaitingRunner], counts[matrix.HandOffRefused])
 	return out
 }
@@ -95,8 +95,9 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			"frozen commit made under a random alias in the clone store outside every\n" +
 			"checkout; a clone bound for a provider passes the launch bundle's secret scan\n" +
 			"first, and a hit refuses the cell. A host cell's copy is the host's to make in\n" +
-			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,\n" +
-			"since abcd does not launch a runner in a clone yet and nothing stands in for it.\n\n" +
+			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits\n" +
+			"for `abcd lab matrix launch`, which starts the cell's runner in its clone, and\n" +
+			"nothing stands in for the runner.\n\n" +
 			"Refused, exit 2, with nothing written: a declaration that does not parse, a\n" +
 			"cell route the runner rung or this machine's runner configuration refuses, a\n" +
 			"cell on a runner that names no model, a model its provider does not list, an\n" +
@@ -144,7 +145,7 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&approve, "approve", "", "the digest of the plan the person saw and said yes to; records the run")
 	cmd.AddCommand(newLabMatrixReportCommand(asJSON), newLabMatrixRerunCommand(asJSON), newLabMatrixCopyCommand(asJSON),
-		newLabMatrixReviewCommand(asJSON), newLabMatrixJudgeCommand(asJSON))
+		newLabMatrixReviewCommand(asJSON), newLabMatrixJudgeCommand(asJSON), newLabMatrixLaunchCommand(asJSON))
 	return cmd
 }
 

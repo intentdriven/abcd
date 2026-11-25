@@ -3358,6 +3358,11 @@
       ]
     },
     {
+      "path": "abcd lab matrix launch",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd lab matrix report",
       "hidden": false,
       "sentence": "Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.",

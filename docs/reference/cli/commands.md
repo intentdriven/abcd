@@ -4852,8 +4852,9 @@ yes to it. The run then hands off every pilot copy, each in its own clone of the
 frozen commit made under a random alias in the clone store outside every
 checkout; a clone bound for a provider passes the launch bundle's secret scan
 first, and a hit refuses the cell. A host cell's copy is the host's to make in
-its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,
-since abcd does not launch a runner in a clone yet and nothing stands in for it.
+its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits
+for `abcd lab matrix launch`, which starts the cell's runner in its clone, and
+nothing stands in for the runner.
 
 Refused, exit 2, with nothing written: a declaration that does not parse, a
 cell route the runner rung or this machine's runner configuration refuses, a
@@ -4962,6 +4963,43 @@ A halted lab exits 1.
 
 ```
 abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3
+```
+
+##### `abcd lab matrix launch`
+
+**Usage:** `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]`
+
+abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]
+
+Launch, in the foreground, the copies of a consented run that wait for their
+cell's runner, at most as many at once as the run's declared concurrency; with a
+key, that one copy alone. Each copy's runner is started in its own clone, in the
+runners' cell mode, on the blind brief a host cell's copy is made from, with the
+cell's route for this launch alone. Nothing stands in for the runner: one that
+fails, refuses or answers unparsably is the cell's failure, never handed to the
+host; a provider down before the copy began is tried again on the same pin and
+recorded as not started, never scored. A provider-bound clone passes the secret
+scan again first. The brief and the receipt sit in the hand-off store, outside
+the clone, the clone store and the lab's state. A made copy is checked for
+compliance and written as its trial through the secret screen, as a host copy's
+hand-back is; a made code copy waits for its hidden tests' result, handed back
+with `abcd lab matrix copy --receipt`. A metered copy whose declared cost the
+spending cap's remainder does not cover is left waiting and named.
+
+An interrupt stops the launch: every runner at work is killed with its process
+group, and each copy it was making is left interrupted, which is the run's
+error and never the copy's score; such a copy is not launched again.
+
+Refused, exit 2, with nothing launched: a key that is not one, a copy the run
+did not hand off, a host cell's copy, a refused cell's, one already launched,
+and a cell whose route, source or pin on this machine is not the one the run
+recorded. A launch stopped part-way exits 2 and says what it wrote. A halted lab
+exits 1.
+
+**Example:**
+
+```
+abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b
 ```
 
 ##### `abcd lab matrix report`

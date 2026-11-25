@@ -62,8 +62,10 @@ const (
 	// of its own is no breach.
 	RuleTestsKept ComplianceRule = "tests_kept"
 	// RuleOwnCopyOnly: the copy read nothing in the run's clone store outside
-	// its own clone, so no other copy and none of the hidden tests, as its
-	// transcript and the links its clone holds show. The hidden tests and
+	// its own clone, so no other copy and none of the hidden tests, and
+	// nothing in the run's hand-off store outside its own brief folder, so no
+	// other copy's brief or answer, as its transcript and the links its clone
+	// holds show. The hidden tests and
 	// the other clones sit beside the copy under one account, so their modes
 	// do not bar it from them: the rule is a heuristic scan for the reads a
 	// transcript records, not a barrier (ownCopyOnly).
@@ -150,6 +152,11 @@ type complianceInputs struct {
 	// sits beside every other record of the run. A copy whose transcript names
 	// a path in it read what would un-blind it.
 	State string
+	// Handoff is the run's hand-off store, an absolute path, or empty: where
+	// a launched copy's brief and receipt sit (handoffStore), each copy's in a
+	// folder named by its alias. A copy whose transcript names a path in it
+	// outside its own folder read another copy's brief or answer.
+	Handoff string
 	// Within is the whole check's deadline; zero means complianceDeadline.
 	Within time.Duration
 }
@@ -181,8 +188,8 @@ func checkCompliance(in complianceInputs) (Compliance, error) {
 	if !aliasRe.MatchString(in.Alias) {
 		return Compliance{}, fmt.Errorf("%q is not a copy's alias", clip(in.Alias))
 	}
-	if in.State != "" && !filepath.IsAbs(in.State) {
-		return Compliance{}, errors.New("the compliance check reads the run's state by absolute path")
+	if in.State != "" && !filepath.IsAbs(in.State) || in.Handoff != "" && !filepath.IsAbs(in.Handoff) {
+		return Compliance{}, errors.New("the compliance check reads the run's state and hand-off store by absolute path")
 	}
 	read := complianceRead(in)
 	isolation := ComplianceCheck{Rule: RuleIsolation, State: StateKept,
@@ -813,6 +820,8 @@ func isTestPath(p string) bool {
 //     JSON-escaped, and cleaned of
 //     doubled slashes, "." segments and ".." climbs, matched in any letter
 //     case, against the store as given and as its links resolve;
+//   - the same absolute paths against the run's hand-off store, where a path
+//     outside the copy's own alias folder is another copy's brief or answer;
 //   - every relative path with a ".." climb, from $PWD or bare, resolved
 //     against the copy's working folder: from its clone's root and from each
 //     folder depth inside it, a climb that reaches an existing path in the
@@ -857,42 +866,55 @@ func ownCopyOnly(ctx context.Context, in complianceInputs, tree frozenTree, tree
 }
 
 // storeForm is one spelling of a place no copy reads, and of the copy's own
-// clone within it ("" where the place holds none): slash-separated, clean and
-// lower-cased (lowerASCII). state marks the run's state rather than its clone
-// store.
+// folder within it ("" where the place holds none): slash-separated, clean and
+// lower-cased (lowerASCII). place says which place it is.
 type storeForm struct {
 	store, clone string
-	state        bool
+	place        storePlace
 }
 
-// storeForms is the store, and the run's state where it is given, each as
-// given and as its links resolve.
+// storePlace is which place a storeForm spells.
+type storePlace int
+
+const (
+	// placeClones is the run's clone store, the copy's own clone its folder.
+	placeClones storePlace = iota
+	// placeState is the run's state in the lab, which holds no folder of the
+	// copy's own.
+	placeState
+	// placeHandoff is the run's hand-off store, the copy's own brief folder
+	// its folder.
+	placeHandoff
+)
+
+// storeForms is the store, the run's state and its hand-off store where each
+// is given, each as given and as its links resolve.
 func storeForms(in complianceInputs) []storeForm {
 	own := lowerASCII(path.Join(in.Run, in.Alias))
 	var forms []storeForm
-	add := func(dir string, state bool) {
+	add := func(dir string, place storePlace) {
 		s := lowerASCII(path.Clean(filepath.ToSlash(dir)))
 		for _, f := range forms {
 			if f.store == s {
 				return
 			}
 		}
-		f := storeForm{store: s, state: state}
-		if !state {
+		f := storeForm{store: s, place: place}
+		if place != placeState {
 			f.clone = path.Join(s, own)
 		}
 		forms = append(forms, f)
 	}
-	for _, place := range []struct {
+	for _, at := range []struct {
 		dir   string
-		state bool
-	}{{in.Store, false}, {in.State, true}} {
-		if place.dir == "" {
+		place storePlace
+	}{{in.Store, placeClones}, {in.State, placeState}, {in.Handoff, placeHandoff}} {
+		if at.dir == "" {
 			continue
 		}
-		add(place.dir, place.state)
-		if real, err := filepath.EvalSymlinks(place.dir); err == nil {
-			add(real, place.state)
+		add(at.dir, at.place)
+		if real, err := filepath.EvalSymlinks(at.dir); err == nil {
+			add(real, at.place)
 		}
 	}
 	return forms
@@ -1208,8 +1230,12 @@ func (sc *transcriptScan) absolute(p string) (string, bool) {
 	lp := lowerASCII(p)
 	for _, f := range sc.forms {
 		if f.outsideOwn(lp) {
-			if f.state {
+			switch f.place {
+			case placeState:
 				return "the copy's transcript names the run's state, where which copy is which is recorded: <run state>" +
+					termsafe.Sanitize(p[len(f.store):]), true
+			case placeHandoff:
+				return "the copy's transcript names the run's hand-off store outside its own brief folder: <hand-off store>" +
 					termsafe.Sanitize(p[len(f.store):]), true
 			}
 			return "the copy's transcript names the run's clone store outside its own clone: <clone store>" +

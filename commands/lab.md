@@ -160,9 +160,9 @@ on this machine). A
 clone bound for a provider passes the launch bundle's secret scan first, over
 its checked-out tree and the frozen commit's own message, author and committer,
 and a hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
-make, below. A runner cell's copy is `awaiting_runner`: abcd does not launch a
-runner in a clone yet, and nothing stands in for it, so never make it yourself
-and tell the person plainly that those cells wait. Refused, exit 2, with nothing
+make, below. A runner cell's copy is `awaiting_runner`: it is launched with
+`lab matrix launch`, below, and nothing stands in for its runner, so never make
+it yourself. Refused, exit 2, with nothing
 written: a metered cell with no spending
 cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
 person's own machine configuration, never the repository's), a local cell with
@@ -205,6 +205,35 @@ A refusal raised once a check copy's findings are recorded, or a writing copy's
 document is kept, says so instead.
 Hand back every host copy you were handed, a failed one with its reason: a copy
 never handed back is in no rate, and the report names it.
+
+**Launch the runner cells' copies** once the person has said yes to the run,
+telling them it may spend against the cap. The launch runs in the foreground
+for as long as its copies take, which can be hours: when a host's command time
+limit would cut it short, ask the person to run it in a plain terminal.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix launch --json <lab-id> <run-id> [<task>/<cell>/<repeat>]
+```
+
+It launches every `awaiting_runner` copy, at most as many at once as the run
+declares, or with a key that copy alone. Each copy's runner is started in its
+clone, in the runners' cell mode, on the copy's blind brief, which sits with
+its answer in the hand-off store outside the clone; nothing stands in for the
+runner, and a provider down before the copy began is tried again on the same
+pin. `copies` lists each copy's `key`, `state` (`launched`, `interrupted`, or
+`refused` when the secret scan, run again first, refuses its clone; a copy left
+`awaiting_runner` names why, as when the spending cap's remainder does not cover
+it), `status` (its trial's, where one is written) and `reason`. A made code copy
+is `launched` with no status: run its task's hidden tests against its clone
+yourself, through the load gate, outside the clone, and hand back its result
+alone with `lab matrix copy --receipt` and a receipt of `{"schema_version": 1,
+"outcome": "made", "score": {"passed": <n>, "total": <n>}}`. An interrupt
+kills every runner at work with its process group and leaves its copy
+`interrupted`: the run's error, never the copy's score, and it is not launched
+again. Refused, exit 2, with nothing launched: a host cell's copy, a refused
+cell's, one already launched, a key the run did not hand off, and a cell whose
+route, source or pin on this machine is not the one the run recorded. A launch
+stopped part-way exits 2 and says what it wrote.
 
 **Review a code task's copies**, once every copy of it handed to you is back:
 the review is drawn once, so it is refused while one is out.
@@ -268,9 +297,11 @@ why), `good_enough` and each copy's length; with fewer than three judges,
 the table the person's locked verdicts unlocked, null until then. `drift`, on a
 re-run, lists every field that drifted from the first run with both values.
 `unreturned` lists every copy handed off that holds no trial, by task, cell
-and `state` (`not_handed_back`, `awaiting_runner`, `refused`, or
-`never_handed_off` when the run's start stopped before it), with its
-`repeats`; each code cell counts them too, and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
+and `state` (`not_handed_back`, `awaiting_runner`, `launching`,
+`awaiting_score` for a launched code copy waiting for its hidden tests' result,
+`interrupted`, `refused`, or `never_handed_off` when the run's start stopped
+before it), with its `repeats`; each code cell counts them too (`launched` for
+the three launch states), and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
 plain words: a comparison that is not ranked is not a result either way.
 
 **Re-run a recorded run** from its own declaration, by its id in the lab or a
@@ -321,6 +352,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1`.
 - `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
   - An example call is `abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3`.
+- `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]`
+  - An example call is `abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab matrix report <lab-id> <run-id> [flags]`
   - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`

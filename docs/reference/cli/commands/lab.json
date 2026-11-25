@@ -40,6 +40,7 @@
       "subcommands": [
         "copy",
         "judge",
+        "launch",
         "report",
         "rerun",
         "review"
@@ -98,6 +99,13 @@
       ],
       "inputs": [],
       "example": "abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3"
+    },
+    {
+      "path": "abcd lab matrix launch",
+      "usage": "abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b"
     },
     {
       "path": "abcd lab matrix report",

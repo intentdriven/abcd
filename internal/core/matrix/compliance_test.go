@@ -622,3 +622,33 @@ func TestOneReadOfTheFrozenTreeServesBothChecks(t *testing.T) {
 		t.Fatalf("a read past the caller's deadline returned %v", err)
 	}
 }
+
+// TestOwnCopyOnlyReadsTheHandoffStoreOutsideTheCopysOwnFolder: a transcript
+// naming another copy's folder in the run's hand-off store, where a launched
+// copy's brief and answer sit, read outside its copy, in any spelling the
+// store's other paths are read in; one naming only its own folder there
+// stayed in its copy.
+func TestOwnCopyOnlyReadsTheHandoffStoreOutsideTheCopysOwnFolder(t *testing.T) {
+	c := newComplianceCase(t)
+	handoff := filepath.Join(t.TempDir(), handoffDirName, "root")
+	c.in.Handoff = handoff
+	own := handoffDir(handoff, cloneRun, c.in.Alias)
+	other := handoffDir(handoff, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}))
+	base := string(c.in.Transcript)
+	c.in.Transcript = []byte(base + "read " + filepath.Join(own, launchBriefName) + "\nwrote " + filepath.Join(own, launchReceiptName) + "\n")
+	if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateKept {
+		t.Fatalf("a copy that read its own brief folder stayed in its copy: %+v", got)
+	}
+	for _, read := range []string{
+		filepath.Join(other, launchBriefName),
+		strings.ToUpper(filepath.Join(other, launchReceiptName)[:1]) + filepath.Join(other, launchReceiptName)[1:],
+		strings.ReplaceAll(filepath.Join(other, launchBriefName), "/", `\/`),
+		filepath.Join(own, "..", filepath.Base(other), launchBriefName),
+	} {
+		c.in.Transcript = []byte(base + "cat " + read + "\n")
+		got := ruleOf(t, c.check(t), RuleOwnCopyOnly)
+		if got.State != StateBroken || !strings.Contains(got.Detail, "hand-off store") {
+			t.Errorf("reading %s: %+v; want own_copy_only broken naming the hand-off store", read, got)
+		}
+	}
+}

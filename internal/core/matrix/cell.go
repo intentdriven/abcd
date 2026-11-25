@@ -7,6 +7,7 @@ package matrix
 // nothing else runs the role. A provider that is down before the copy began is
 // retried on the same pin, its attempts counted as not started and never
 // scored. A clone bound for a provider passes the launch bundle's scan first.
+// The launch (launch.go) makes each runner cell's copy through runCopy.
 
 import (
 	"context"
