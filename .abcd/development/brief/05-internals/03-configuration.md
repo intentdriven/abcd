@@ -2057,11 +2057,9 @@ output is one JSON object, whole or absent, whose
   ([`../04-surfaces/17-guard.md`](../04-surfaces/17-guard.md#the-hold-on-a-sub-agents-writes));
 - the two commands: `rules --prompt "<your task in one sentence>"`, which names
   the domains a task recalls, and `rules <DOMAIN>`, which prints one. They run
-  `scripts/abcd.sh` in a checkout laid out as abcd's source tree whose root commit
-  is abcd's own (`abcdrepo.RootCommit`, asked of the checkout within the hook's
-  bound: the layout is no identity), and anywhere else, or with no answer, the
-  hook's own executable by its absolute path, bare `abcd` where that path holds a
-  byte a shell word cannot carry plain;
+  the hook's own executable by its absolute path, in every checkout
+  (dcn-2611252223137667), and bare `abcd` where that path holds a byte a shell
+  word cannot carry plain;
 - the names of the domains in force, with their count, each one an override names
   labelled as `abcd rules` labels it. The document fits
   `rules.InjectionBudgetBytes`: a list that does not is replaced whole by the
@@ -2085,7 +2083,10 @@ where there is none.
 under the same folder, guard and age (`internal/core/rules/subagent.go`). Each is
 one small file, named by a digest of the session id and the agent id and by the
 fact: `told` (the file, the root, and whether the start hook or the guard told
-it; the start hook keeps it last, with its answer made and not yet written), `passed` (it has read the file, or a build lane's brief that carries it),
+it; the start hook keeps it last, with its answer made and not yet written, so a
+bound spent as it is kept, or an answer that cannot be written after it, leaves a
+`told` fact for a sub-agent that was not told, whose stop's line then says what it
+skipped), `passed` (it has read the file, or a build lane's brief that carries it),
 `held` and `unjudged` (what the guard did about its writes) and `judged` (its
 stop's line is kept). A fact is written once and never rewritten from a read, so
 two hooks answering for one sub-agent cannot lose each other's; an `unjudged` fact

@@ -36,7 +36,8 @@ const (
 	// SubagentHeld is that the guard refused a write.
 	SubagentHeld SubagentFact = "held"
 	// SubagentUnjudged is that the guard could not judge the sub-agent, and
-	// why. It is final: that sub-agent is not judged again and never held.
+	// why. It is final, but for a transcript not there yet: that sub-agent is
+	// not judged again and never held.
 	SubagentUnjudged SubagentFact = "unjudged"
 	// SubagentJudged is that the stop kept the sub-agent's one line.
 	SubagentJudged SubagentFact = "judged"
