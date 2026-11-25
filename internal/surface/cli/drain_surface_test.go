@@ -1022,3 +1022,77 @@ func TestTheDrainSummaryShowsTheBundleForming(t *testing.T) {
 		t.Errorf("a move forming nothing shows no bundle forming:\n%s\n%s", b.String(), j.Bytes())
 	}
 }
+
+// TestTheDrainVerbNamesTheBundleItIsForming: run as the verb, under a machine
+// cap of 2, the move that takes the lead's no reads the bundle forming back
+// from the drain's state and names it, in the text and in --json, while it
+// asks over the candidate.
+func TestTheDrainVerbNamesTheBundleItIsForming(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, f := range []string{"internal/a/one.go", "internal/a/two.go"} {
+		p := filepath.Join(repo, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	machine := abcdhome.Path(home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(machine), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(machine, []byte(`{"drain":{"bundle_max":2}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{
+		captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first", "--found-at", "internal/a/one.go"),
+		captureWithRemedy(t, "an error is dropped on close", "--category", "bug", "--remedy", "return the close error", "--found-at", "internal/a/two.go"),
+	}
+	// drain runs the verb, its stdout alone, as the person's terminal reads it.
+	drain := func(args ...string) []byte {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		if code := Run(append([]string{"drain"}, args...), &stdout, &stderr); code != 0 {
+			t.Fatalf("drain %v exited %d:\n%s%s", args, code, stdout.String(), stderr.String())
+		}
+		return stdout.Bytes()
+	}
+	type move struct {
+		Judging struct {
+			Issue        string `json:"issue"`
+			RemedySHA256 string `json:"remedy_sha256"`
+			Answer       string `json:"answer"`
+		} `json:"judging"`
+		Forming *struct {
+			Lead    string   `json:"lead"`
+			Members []string `json:"members"`
+		} `json:"forming"`
+	}
+	var first move
+	if err := json.Unmarshal(drain("--json"), &first); err != nil || !slices.Contains(ids, first.Judging.Issue) || first.Forming != nil {
+		t.Fatalf("the first move asks over the lead and forms nothing yet: %v %+v", err, first)
+	}
+	lead := first.Judging.Issue
+	answer, _ := json.Marshal(map[string]any{"schema_version": 1, "issue": lead, "remedy_sha256": first.Judging.RemedySHA256,
+		"answer": "no", "reason": "an internal ordering fix"})
+	if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(first.Judging.Answer)), answer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text := string(drain("--judgement", first.Judging.Answer))
+	if want := "  forming: a bundle led by " + lead + ", no member yet, its hold kept until its lane opens\n"; !strings.Contains(text, want) {
+		t.Fatalf("the move that takes the lead's no names the bundle forming, want %q:\n%s", want, text)
+	}
+	var again move
+	if err := json.Unmarshal(drain("--json"), &again); err != nil || again.Forming == nil || again.Forming.Lead != lead || len(again.Forming.Members) != 0 {
+		t.Fatalf("--json carries the bundle forming on the lead: %v %+v", err, again)
+	}
+	if again.Judging.Issue == lead || !slices.Contains(ids, again.Judging.Issue) {
+		t.Fatalf("the drain asks over the candidate while the bundle forms: %+v", again)
+	}
+}

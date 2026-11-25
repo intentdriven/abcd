@@ -208,7 +208,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
 			"pull request is open, and it routes the lane's outcome and opens the next. Under\n" +
 			"drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not\n" +
-			"open its lane at once: that move and the next reserve and judge each member in turn,\n" +
+			"open its lane at once: that move and the ones after it reserve and judge each member in turn,\n" +
 			"keeping every hold, a yes routing that member alone, and the lane opens with the lead\n" +
 			"and the members a no took once none is left, the cap is reached or the next\n" +
 			"reservation would reach reservation.max_live. The summary names each lane's lead and\n" +
