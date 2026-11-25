@@ -12,14 +12,19 @@ package cli
 //
 // What cannot be judged is never held. It leaves a fact saying so, after which
 // that sub-agent is not judged again: abcd does not come back to hold one it has
-// said it could not judge, and it pays for git and a transcript read once. The
-// stop's line is where it is said.
+// said it could not judge, and it pays for git and a transcript read once. A
+// transcript that is not there yet is the one cause that settles nothing: the
+// host may write it at any moment, so the next write is judged on what stands
+// then. The stop's line is where it is said.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -35,6 +40,7 @@ const (
 	unjudgedGit         = "git-did-not-answer"
 	unjudgedRules       = "conventions-unknown"
 	unjudgedNoPath      = "no-transcript-path"
+	unjudgedNotThere    = "transcript-not-there"
 	unjudgedTranscript  = "transcript-unreadable"
 	unjudgedUnsayable   = "could-not-be-told"
 	unjudgedFault       = "internal-fault"
@@ -82,8 +88,13 @@ func subagentHold(in guardHookInput, cwd string) (err error) {
 	if !subagentKey(session, agent) {
 		return nil // nothing to keep a fact under: never judged, never held
 	}
+	unsettled := false // an unjudged fact stands that settles nothing
 	unjudged := func(why string) error {
-		_ = rules.WriteSubagentFact(session, agent, rules.SubagentUnjudged, rules.SubagentRecord{Reason: why})
+		keep := rules.WriteSubagentFact
+		if unsettled && why != unjudgedNotThere {
+			keep = rules.ReplaceSubagentFact
+		}
+		_ = keep(session, agent, rules.SubagentUnjudged, rules.SubagentRecord{Reason: why})
 		return nil
 	}
 	// A panic exits 2, which the host reads as a block.
@@ -93,11 +104,13 @@ func subagentHold(in guardHookInput, cwd string) (err error) {
 		}
 	}()
 	for _, f := range []rules.SubagentFact{rules.SubagentPassed, rules.SubagentUnjudged} {
-		switch _, found, err := rules.ReadSubagentFact(session, agent, f); {
+		switch rec, found, err := rules.ReadSubagentFact(session, agent, f); {
 		case err != nil:
 			return unjudged(unjudgedFacts)
-		case found:
+		case found && rec.Reason != unjudgedNotThere:
 			return nil
+		case found:
+			unsettled = true
 		}
 	}
 	told, found, err := rules.ReadSubagentFact(session, agent, rules.SubagentTold)
@@ -133,6 +146,9 @@ func subagentHold(in guardHookInput, cwd string) (err error) {
 	if !ok {
 		return unjudged(unjudgedNoPath)
 	}
+	if transcriptNotThere(transcript) {
+		return unjudged(unjudgedNotThere)
+	}
 	raw, err := readTranscript(transcript)
 	if err != nil {
 		return unjudged(unjudgedTranscript)
@@ -159,8 +175,18 @@ func subagentTranscriptPath(session, agent string) (string, bool) {
 		"agent-"+agent+harnessTranscriptSuffix), true
 }
 
-// subagentHoldReason is the refusal: the file, where abcd looked for it, and
-// the way out.
+// transcriptNotThere reports whether a transcript is absent or empty: the host
+// has written none of it yet.
+func transcriptNotThere(path string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return errors.Is(err, fs.ErrNotExist)
+	}
+	return fi.Mode().IsRegular() && fi.Size() == 0
+}
+
+// subagentHoldReason is the refusal: the file, where abcd looked for it, the
+// way out, and what is left to a sub-agent with no tool to take it with.
 func subagentHoldReason(told rules.SubagentRecord) string {
 	looked := ""
 	if root, ok := plainPath(told.Root); ok {
@@ -169,6 +195,7 @@ func subagentHoldReason(told rules.SubagentRecord) string {
 	return fmt.Sprintf("Blocked by the abcd guard (unread conventions): this sub-agent has not read %[1]s, the repository's conventions, and its writes wait until it has. "+
 		"Run instead: read %[1]s at the root of the worktree you work in%[2]s, then send this write again. "+
 		"Any call of a tool that does not write and names the file passes: the host's reading tool, `cat %[1]s` in the shell, or a search for it. "+
-		"Make the read a call of its own: one in the same shell line as the held command is not counted, and one sent in the same turn as the write may not be.",
+		"Make the read a call of its own: one in the same shell line as the held command is not counted, and one sent in the same turn as the write may not be. "+
+		"With no tool but ones that write, no call of yours can read it: end and say so to the session that started you, whose own writes are never held for this.",
 		told.File, looked)
 }

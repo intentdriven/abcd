@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -161,6 +162,9 @@ func TestGuardHoldsTheGitCommandsThatRecordOrSendWork(t *testing.T) {
 		"git merge x", "git rebase main", "git cherry-pick abc", "git revert abc", "git am x.patch", "git pull --rebase",
 		"git push origin HEAD:lane",
 		"git add -A && git commit -m x",
+		"if ! git diff --cached --quiet; then git commit -m wip; fi",
+		"{ git commit -m x; }",
+		`for b in a b; do git push origin "$b"; done`,
 	} {
 		if reason := mustHold(t, command, f.shell("a1", command)); !strings.Contains(reason, "AGENTS.md") {
 			t.Errorf("%s: %s", command, reason)
@@ -329,15 +333,20 @@ func TestGuardDoesNotHoldWhatItCannotJudge(t *testing.T) {
 	odd := f.write("p3")
 	odd.transcript = strings.TrimSuffix(f.transcript, ".jsonl")
 	unjudged("a transcript of another form", "no-transcript-path", odd, nil)
-	unjudged("an absent transcript", "transcript-unreadable", f.write("t1"), nil)
-	f.says(t, "t2", "")
-	unjudged("an empty transcript", "transcript-unreadable", f.write("t2"), nil)
 	f.says(t, "t3", "x")
 	big := filepath.Join(strings.TrimSuffix(f.transcript, ".jsonl"), "subagents", "agent-t3.jsonl")
 	if err := os.Truncate(big, maxTranscriptBytes+1); err != nil {
 		t.Fatal(err)
 	}
 	unjudged("a transcript over the cap", "transcript-unreadable", f.shell("t3", "git commit -m x"), nil)
+	if err := os.Symlink(big, filepath.Join(filepath.Dir(big), "agent-t4.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	unjudged("a transcript that is a link", "transcript-unreadable", f.write("t4"), func() {
+		if err := os.Remove(filepath.Join(filepath.Dir(big), "agent-t4.jsonl")); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	// A told fact naming another file.
 	tellSubagent(t, "s1", "n1", "AGENTS.md", rules.SubagentToldByStart)
@@ -389,6 +398,85 @@ func TestGuardDoesNotHoldWhatItCannotJudge(t *testing.T) {
 	f.says(t, "z1", shellCallLine(t, "ls"))
 	t.Setenv("ABCD_RULES_STATE_DIR", filepath.Join(block, "state"))
 	mustPass(t, "a fact store that cannot be read", f.write("z1"))
+}
+
+// TestGuardJudgesAgainOnceTheTranscriptIsThere: a transcript that is absent or
+// empty holds nothing and settles nothing, so the next write is judged on what
+// stands then, and the stop still says that one was not judged.
+func TestGuardJudgesAgainOnceTheTranscriptIsThere(t *testing.T) {
+	f := newHoldFixture(t)
+	for _, c := range []struct{ agent, what string }{{"t1", "an absent transcript"}, {"t2", "an empty transcript"}} {
+		if c.agent == "t2" {
+			f.says(t, c.agent, "")
+		}
+		for _, call := range []heldCall{f.write(c.agent), f.shell(c.agent, "git commit -m x")} {
+			mustPass(t, c.what, call)
+		}
+		if rec, ok := fact(t, "s1", c.agent, rules.SubagentUnjudged); !ok || rec.Reason != "transcript-not-there" {
+			t.Errorf("%s: unjudged = %+v, %v", c.what, rec, ok)
+		}
+		f.says(t, c.agent, shellCallLine(t, "ls"))
+		mustHold(t, c.what+", then one with no reading", f.write(c.agent))
+		mustHold(t, c.what+", then one with no reading", f.shell(c.agent, "git commit -m x"))
+		if _, ok := fact(t, "s1", c.agent, rules.SubagentHeld); !ok {
+			t.Errorf("%s: no held fact", c.what)
+		}
+		line, keep := subagentStopLine(hookInput{SessionID: "s1", AgentID: c.agent}, []byte(shellCallLine(t, "ls")), "")
+		if !keep || line.Hold != history.SubagentHoldBoth {
+			t.Errorf("%s: the stop's line is %+v, %v", c.what, line, keep)
+		}
+		if text := subagentLineText(line); !strings.HasSuffix(text, "; its writes were held, and at least one could not be judged and was not held") {
+			t.Errorf("%s: the stop's line reads %q", c.what, text)
+		}
+		f.says(t, c.agent, shellCallLine(t, "ls")+readCallLine(t, "AGENTS.md"))
+		mustPass(t, c.what+", then a reading", f.write(c.agent))
+		if rec, ok := fact(t, "s1", c.agent, rules.SubagentPassed); !ok || rec.Reason != "read" {
+			t.Errorf("%s: passed = %+v, %v", c.what, rec, ok)
+		}
+	}
+}
+
+// TestGuardAFinalCauseReplacesATranscriptNotThere: once a sub-agent could not
+// be judged for a cause that settles it, it is not judged again, whatever the
+// first call found.
+func TestGuardAFinalCauseReplacesATranscriptNotThere(t *testing.T) {
+	f := newHoldFixture(t)
+	mustPass(t, "an absent transcript", f.write("a1"))
+	f.says(t, "a1", "x")
+	path := filepath.Join(strings.TrimSuffix(f.transcript, ".jsonl"), "subagents", "agent-a1.jsonl")
+	if err := os.Truncate(path, maxTranscriptBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	mustPass(t, "a transcript over the cap", f.write("a1"))
+	if rec, ok := fact(t, "s1", "a1", rules.SubagentUnjudged); !ok || rec.Reason != "transcript-unreadable" {
+		t.Errorf("unjudged = %+v, %v", rec, ok)
+	}
+	f.says(t, "a1", shellCallLine(t, "ls"))
+	mustPass(t, "a later call", f.write("a1"))
+	// A transcript that is not there settles nothing a final cause settled.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	mustPass(t, "an absent transcript, after", f.write("a1"))
+	if rec, ok := fact(t, "s1", "a1", rules.SubagentUnjudged); !ok || rec.Reason != "transcript-unreadable" {
+		t.Errorf("unjudged, after = %+v, %v", rec, ok)
+	}
+}
+
+// TestGuardTellsASubagentThatCannotReadWhoIsNotHeld: a sub-agent with no tool
+// but one that writes stays held, and the refusal says what it does then.
+func TestGuardTellsASubagentThatCannotReadWhoIsNotHeld(t *testing.T) {
+	f := newHoldFixture(t)
+	write := toolCallLine(t, "Write", map[string]any{"file_path": filepath.Join(f.repo.Root(), "x.txt"), "content": "AGENTS.md"})
+	for i := range 3 {
+		f.says(t, "a1", strings.Repeat(write, i+1))
+		reason := mustHold(t, "a sub-agent that only writes", f.write("a1"))
+		for _, want := range []string{"With no tool but ones that write", "end and say so to the session that started you", "never held"} {
+			if !strings.Contains(reason, want) {
+				t.Errorf("the refusal does not say %q: %s", want, reason)
+			}
+		}
+	}
 }
 
 // TestGuardDoesNotHoldWhenGitDoesNotAnswer: git that stalls is unjudged, once.

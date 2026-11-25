@@ -545,7 +545,7 @@ func subagentLineText(l history.SubagentLine) string {
 	if hold := map[history.SubagentLineHold]string{
 		history.SubagentHoldHeld:      "its writes were held",
 		history.SubagentHoldNotJudged: "its writes could not be judged and were not held",
-		history.SubagentHoldBoth:      "its writes were held, and later could not be judged and were not held",
+		history.SubagentHoldBoth:      "its writes were held, and at least one could not be judged and was not held",
 	}[l.Hold]; hold != "" {
 		what += "; " + hold
 	}

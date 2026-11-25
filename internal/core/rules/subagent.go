@@ -83,13 +83,25 @@ func subagentLeaf(session, agent string, fact SubagentFact) string {
 // is already there stands as it is, so a fact's age runs from its first
 // writing. With no home it keeps nothing and returns ErrNoStateHome.
 func WriteSubagentFact(session, agent string, fact SubagentFact, rec SubagentRecord) error {
+	return keepSubagentFact(session, agent, fact, rec, false)
+}
+
+// ReplaceSubagentFact is WriteSubagentFact for a fact the caller has read and
+// found to settle nothing: what it writes stands in its place, whatever was
+// there. Nothing of the old fact is carried over, so it loses no other hook's
+// write but one it was asked to replace.
+func ReplaceSubagentFact(session, agent string, fact SubagentFact, rec SubagentRecord) error {
+	return keepSubagentFact(session, agent, fact, rec, true)
+}
+
+func keepSubagentFact(session, agent string, fact SubagentFact, rec SubagentRecord, replace bool) error {
 	dir, _, _, err := stateFolder(true)
 	if err != nil {
 		return err
 	}
 	defer dir.Close()
 	leaf := subagentLeaf(session, agent, fact)
-	if _, err := dir.Lstat(leaf); err == nil {
+	if _, err := dir.Lstat(leaf); err == nil && !replace {
 		return nil
 	}
 	rec.At = time.Now().UTC()

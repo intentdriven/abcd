@@ -61,6 +61,16 @@ func TestSubagentFactsAreKeptPerSessionAndAgent(t *testing.T) {
 	if again, _, _ := ReadSubagentFact("s1", "a1", SubagentTold); again.By != SubagentToldByStart || again.File != "AGENTS.md" {
 		t.Errorf("a second write replaced the fact: %+v", again)
 	}
+	// Replaced only by name.
+	if err := ReplaceSubagentFact("s1", "a1", SubagentTold, told); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReplaceSubagentFact("s1", "a1", SubagentTold, SubagentRecord{File: "CLAUDE.md", By: SubagentToldByGuard}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _, _ := ReadSubagentFact("s1", "a1", SubagentTold); again.File != "CLAUDE.md" || again.By != SubagentToldByGuard {
+		t.Errorf("a replaced fact reads %+v", again)
+	}
 	files := subagentFactFiles(t, d)
 	if len(files) != 1 || !strings.HasSuffix(files[0], ".told") || strings.Contains(files[0], "s1") {
 		t.Fatalf("state folder holds %v; want the one hashed .told leaf", files)
