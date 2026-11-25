@@ -142,3 +142,38 @@ func TestTheDriveNamesAFinishedBundleByWhatItCarried(t *testing.T) {
 		t.Fatalf("the drive names each finished lane by what it carried:\n got %q\nwant %q", lines, want)
 	}
 }
+
+// TestALetGoAfterABundleOpensLeavesItsLanesHolds: the move that opens a
+// bundle's lane clears `forming` in the same write that records the lane, so
+// a drive's let-go after it finds no forming hold to release: the lead's and
+// the member's holds, now the lane's, stay held at the commits the drain
+// took while the lane is parked at its pull request.
+func TestALetGoAfterABundleOpensLeavesItsLanesHolds(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	first := mustDrain(t, repo, Options{}, DrainOptions{})
+	lead, m1, _, _ := orderOf(t, first)
+	second := judge(t, repo, Options{}, first, JudgementNo, "", noReason)
+	third := judge(t, repo, Options{}, second, JudgementNo, "", noReason)
+	if third.Lane == nil || !slices.Equal(third.Lane.Bundle, []string{m1}) {
+		t.Fatalf("the bundle's lane opens: %+v", third)
+	}
+	taken := map[string]string{lead: refOf(t, bare, lead), m1: refOf(t, bare, m1)}
+	st := formedState(t, repo)
+	if st.Forming != nil || len(st.Lanes) != 1 || st.Lanes[0].RunID != third.Lane.RunID {
+		t.Fatalf("one write records the lane and clears forming: %+v", st)
+	}
+	// Parked at its pull request, the lane keeps its own holds through a let-go.
+	st.Lanes[0].Outcome = DrainLanePullRequest
+	if err := writeDrain(repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	newTerminal(repo.Root(), TerminalOptions{Say: sayInto(&said)}).letGo()
+	for id, commit := range taken {
+		heldStill(t, bare, id, commit)
+	}
+	if len(said) != 0 {
+		t.Fatalf("the let-go releases nothing of the lane's:\n%s", strings.Join(said, "\n"))
+	}
+}
