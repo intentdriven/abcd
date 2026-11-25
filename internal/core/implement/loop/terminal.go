@@ -1031,7 +1031,7 @@ func (t *terminal) sayMove(res DrainResult) {
 	for _, f := range res.Finished {
 		switch {
 		case f.Done:
-			t.say("finished %s", f.Issue)
+			t.say("finished %s", laneIssues(f.Issue, f.RunID, f.Bundle))
 		case f.Note != "" && t.notedFinish[f.RunID] != f.Note:
 			if t.notedFinish == nil {
 				t.notedFinish = map[string]string{}

@@ -120,3 +120,25 @@ func TestALetGoTheComparisonStopsNamesEveryFormingHold(t *testing.T) {
 		t.Fatalf("a let-go that releases nothing keeps forming: %+v %v", st.Forming, err)
 	}
 }
+
+// TestTheDriveNamesAFinishedBundleByWhatItCarried: the drive's line for a
+// finished lane names it as the move's note does (laneIssues): a lane of one
+// by its issue and run, a bundle with its members, and a bundle whose lead was
+// handed back alone by its run and members, never a blank.
+func TestTheDriveNamesAFinishedBundleByWhatItCarried(t *testing.T) {
+	var lines []string
+	tm := newTerminal(t.TempDir(), TerminalOptions{Stages: DefaultStages(), Say: sayInto(&lines)})
+	tm.sayMove(DrainResult{Finished: []DrainFinished{
+		{Issue: "iss-1", RunID: "run-1", Done: true},
+		{Issue: "iss-2", RunID: "run-2", Done: true, Bundle: []string{"iss-3", "iss-4"}},
+		{Issue: "", RunID: "run-5", Done: true, Bundle: []string{"iss-6", "iss-7"}},
+	}})
+	want := []string{
+		"finished iss-1's run run-1",
+		"finished iss-2's run run-2 with its member(s) iss-3 and iss-4",
+		"finished run run-5 with its member(s) iss-6 and iss-7",
+	}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("the drive names each finished lane by what it carried:\n got %q\nwant %q", lines, want)
+	}
+}
