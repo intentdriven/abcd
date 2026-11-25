@@ -35,6 +35,34 @@ in product terms before it is used, without naming the tool that implements it: 
 person holding the pen, a checksum is a fingerprint saying two copies are identical. A question
 that fails this is rewritten, not annotated.
 
+## Words below the product thinker's floor
+
+The words the paragraph on the product thinker names, one to a row, each in the singular, with
+the other ways it is written and the plain words to use instead. abcd's question check refuses
+each one in a question to the product thinker, unless the question introduces it in one sentence
+before its first use. The check holds the same list (`internal/core/question/floor.go`), and a
+test holds the two equal: a word is added to or taken from both, and from the paragraph, in one
+change.
+
+| Word | Also written | Plain words |
+|---|---|---|
+| version control | none | the kept history of every change |
+| checkout | none | the project's folder of work |
+| branch | none | a separate line of work |
+| merge | none | adding finished work to the project |
+| commit | none | a saved change |
+| worktree | none | a second folder of the project's work |
+| shell | none | the window where commands are typed |
+| file ownership | none | which account a file belongs to |
+| permission bit | none | who may open or change a file |
+| continuous integration | CI | the automatic checks |
+| merge queue | none | the line finished work waits in before it is added |
+| hook | none | a step that runs by itself at a set moment |
+| environment variable | none | a setting a program reads when it starts |
+| checksum | none | a fingerprint saying two copies are identical |
+| symbolic link | symlink | a file that stands for another file |
+| record id | none | the record's title |
+
 ## When to use
 
 Use "knowledge floor" when judging whether an explanation or a question suits the person it is

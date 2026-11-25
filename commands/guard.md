@@ -221,7 +221,7 @@ deny, whose reason is one head line, "Blocked by the abcd guard (question tool):
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per rule and tab naming the tab, the first part that broke the rule, its
 value, the limit and the remedy, and how many more such lines the rule drew on
-that tab, so one retry fixes them all. Every rule on every tab is named, and
+that tab (each further value named too, for the register rule), so one retry fixes them all. Every rule on every tab is named, and
 the head line counts every part. A refusal stays a few lines however large the
 question, because the check reads at most four tabs and four options, and a
 rule broken a thousand times on one tab, an em dash on each of a thousand list
@@ -239,9 +239,17 @@ that the question would have been shown. The hook refuses and never rewrites the
 
 A number header names no person, so the agent sets `/abcd:mode` to the person
 the question is for, `product-thinker` or `facilitator`, before asking it, and
-the product thinker's register rule (no record number and no command) follows
-that mode: a `Q1` tab naming a command is refused while the mode names the
-product thinker and admitted while it names the facilitator. A tab headed in
+the product thinker's register rule (no record number, no command, and no word
+below their knowledge floor that the question does not introduce) follows
+that mode: a `Q1` tab naming a command, or a checkout, is refused while the mode
+names the product thinker and admitted while it names the facilitator. The words
+are the list the floor's page carries
+(`.abcd/development/brief/glossary/interview/knowledge-floor.md` under the
+plugin root), each a finding naming the plain words to use; a whole word alone
+counts, in the singular or the plural, and one inside a longer word
+(`auto-merge`) does not. A word the same tab's question text introduces in one
+sentence before its first use ("A checksum is a fingerprint saying two copies
+are identical.") passes on that tab. A tab headed in
 the older form is judged by its own role word, so in one call a `Product Q2`
 tab is held to the product thinker's register beside a `Q1` tab asked while
 the mode names the facilitator. In a repository

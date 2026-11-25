@@ -2770,7 +2770,9 @@ tab over the limit, the verb that checks the next draft and the agent that
 drafts a question to fit. The hook never
 rewrites a question. A number header names no person, so the agent sets
 `abcd mode` to the person before asking, and the product thinker's register
-rule follows that mode. In a checkout abcd manages, an admitted question is
+rule (no record number, no command, and no word below their knowledge floor
+that the question does not introduce) follows that mode. In a checkout abcd
+manages, an admitted question is
 never refused on the mode: an older-form header sets `abcd mode` from its
 role (Product to product-thinker, Tech and Setup to facilitator), a number
 header leaves the mode as set, and the question is marked open in the local
