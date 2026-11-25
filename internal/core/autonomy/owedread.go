@@ -961,10 +961,18 @@ func (r *owedReader) stackIdx() *stackIndex {
 		if err != nil {
 			continue
 		}
+		lines := strings.Split(out, "\n")
+		// The commit a branch was created at is the other branch's, whatever
+		// else the reflog says of it: a reset back to it names it again.
 		seen := map[string]bool{}
-		for _, line := range strings.Split(out, "\n") {
-			h, msg, _ := strings.Cut(line, "\t")
-			if h == "" || seen[h] || strings.HasPrefix(msg, "branch: Created from") {
+		for _, line := range lines {
+			if h, msg, _ := strings.Cut(line, "\t"); strings.HasPrefix(msg, "branch: Created from") {
+				seen[h] = true
+			}
+		}
+		for _, line := range lines {
+			h, _, _ := strings.Cut(line, "\t")
+			if h == "" || seen[h] {
 				continue
 			}
 			seen[h] = true
