@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,8 @@ const validHooksJSON = `{
   "hooks": {
     "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router"}]}],
     "SessionStart":     [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
-    "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}]
+    "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
+    "SubagentStart":    [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook subagent-start"}]}]
   }
 }`
 
@@ -291,6 +293,93 @@ func TestDetectHookManifestGapOnBrokenPlugin(t *testing.T) {
 		if g.ID == "hooks.manifest_missing" && (g.Resolvable || g.Required) {
 			t.Errorf("hooks.manifest_missing must be non-resolvable/advisory: %+v", g)
 		}
+	}
+}
+
+// manifestWithoutSubagentStart is a sound manifest from before the event was
+// wired: every required entry, and none at a sub-agent's start.
+const manifestWithoutSubagentStart = `{
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router"}]}],
+    "SessionStart":     [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
+    "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}]%s
+  }
+}`
+
+// TestDetectNamesAManifestWithNoSubagentStartEntry: an otherwise sound
+// manifest with no entry that reaches `hook subagent-start` is named under an
+// id of its own, with one step, and a missing or malformed manifest stays the
+// one gap it was (spc-2611251757228271).
+func TestDetectNamesAManifestWithNoSubagentStartEntry(t *testing.T) {
+	const id = "hooks.subagent_start_unwired"
+	_, pluginRoot := setupHermetic(t)
+	dir := t.TempDir()
+	managedRepoAt(t, dir)
+	manifest := filepath.Join(pluginRoot, "hooks", "hooks.json")
+	detect := func() []Gap {
+		t.Helper()
+		det, err := Detect(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return det.Gaps
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if gaps := detect(); hasGap(gaps, id) {
+		t.Errorf("a wired manifest raises %s: %+v", id, gaps)
+	}
+
+	script := filepath.Join(pluginRoot, "hooks", "subagent-start.sh")
+	viaScript := `,
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/subagent-start.sh\""}]}]`
+	for name, entry := range map[string]string{
+		"absent":          "",
+		"empty":           `, "SubagentStart": []`,
+		"not a list":      `, "SubagentStart": {}`,
+		"another command": `, "SubagentStart": [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook subagent-stop"}]}]`,
+		"a missing shim":  viaScript,
+	} {
+		write(manifest, fmt.Sprintf(manifestWithoutSubagentStart, entry))
+		var found *Gap
+		for _, g := range detect() {
+			if g.ID == id {
+				found = &g
+			}
+			if g.ID == "hooks.manifest_missing" {
+				t.Errorf("%s: a sound manifest raises %s", name, g.ID)
+			}
+		}
+		if found == nil {
+			t.Errorf("%s: %s is not raised", name, id)
+			continue
+		}
+		if found.Category != PluginOwned || found.Scope != "machine" || found.Required || found.Resolvable {
+			t.Errorf("%s: the gap = %+v; want plugin-owned, machine-scoped, not required and not resolvable", name, found)
+		}
+		if found.FixHint != "Update the plugin." {
+			t.Errorf("%s: step = %q", name, found.FixHint)
+		}
+	}
+	write(script, "#!/bin/sh\nexec \"$r/abcd\" hook subagent-start\n")
+	write(manifest, fmt.Sprintf(manifestWithoutSubagentStart, viaScript))
+	if gaps := detect(); hasGap(gaps, id) {
+		t.Errorf("a shim that reaches the verb raises %s", id)
+	}
+
+	write(manifest, "{not json")
+	if gaps := detect(); hasGap(gaps, id) || !hasGap(gaps, "hooks.manifest_missing") {
+		t.Errorf("a malformed manifest: %+v; want hooks.manifest_missing alone", gaps)
+	}
+	if err := os.Remove(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if gaps := detect(); hasGap(gaps, id) || !hasGap(gaps, "hooks.manifest_missing") {
+		t.Errorf("a missing manifest: %+v; want hooks.manifest_missing alone", gaps)
 	}
 }
 

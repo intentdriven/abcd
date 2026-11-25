@@ -62,6 +62,9 @@ var wordReaders = map[string]string{
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
 	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	// recordacts.go: the sub-agent hold's reading of the git commands that
+	// record or send work.
+	"recordActIn": "isUnknown on the program, every option word and the subcommand: a word nothing fixes there is read as no act",
 	// deletes.go: the delete proof's reading. Each refuses the line on any
 	// word isUnknown reports, so a word nothing fixes is never read as a
 	// literal target, option or command name.
