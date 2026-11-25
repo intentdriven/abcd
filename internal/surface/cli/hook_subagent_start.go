@@ -40,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // subagentStartBound is the hook's own deadline, set before stdin is read and
@@ -278,9 +279,8 @@ func plainByte(c byte) bool {
 }
 
 // shellPath is p as a shell word: as it is where every byte is plain, and else
-// in single quotes, each quote inside it closing the quotes, escaped, and
-// opening them again. ok is false where p is not valid UTF-8 or holds a rune
-// that does not print, and it is then left out.
+// one single-quoted word (shellquote.Single). ok is false where p is not valid
+// UTF-8 or holds a rune that does not print, and it is then left out.
 func shellPath(p string) (string, bool) {
 	if p == "" || !utf8.ValidString(p) {
 		return "", false
@@ -295,7 +295,7 @@ func shellPath(p string) (string, bool) {
 	if plain {
 		return p, true
 	}
-	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'", true
+	return shellquote.Single(p), true
 }
 
 // subagentAbcd is the abcd a sub-agent is told to run, in every checkout: this
