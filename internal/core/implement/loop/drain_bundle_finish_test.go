@@ -352,6 +352,22 @@ func TestALeadHandedBackAloneIsNeitherFinishedNorHandedBackAgain(t *testing.T) {
 				t.Fatalf("%s is tombstoned once as closed: %+v %q", id, tipOf(t, f.bare, id), kind)
 			}
 		}
+		// The move routes each issue the closed lane names in its bundle
+		// with the closed hand-back, and no route for the empty issue the
+		// lead handed back alone leaves on it.
+		for _, r := range res.Routed {
+			if r.Issue == "" {
+				t.Fatalf("a route names no issue: %+v", res.Routed)
+			}
+		}
+		for _, id := range p.Bundle {
+			if rs := routedFor(res.Routed, id); len(rs) != 1 || rs[0].From != "lane" || rs[0].Kind != HandBackClosed {
+				t.Fatalf("%s is routed once by the closed hand-back: %+v", id, res.Routed)
+			}
+		}
+		if rs := routedFor(res.Routed, secondIssue); len(rs) > 1 || (len(rs) == 1 && rs[0].Kind == HandBackClosed) {
+			t.Fatalf("the lead handed back alone is routed by its own hand-back, at most once, never as closed: %+v", res.Routed)
+		}
 	})
 }
 

@@ -682,7 +682,9 @@ func TestAClosedBundleWhoseLeadWentAloneRoutesTheRunsIssues(t *testing.T) {
 	}
 	was := drainFinish
 	drainFinish = func(string, []DrainLane, time.Time, Options, []string) ([]DrainFinished, []DrainParked, error) {
-		return nil, []DrainParked{{RunID: runID, PR: 7, State: ParkedClosed}}, nil
+		// As readParked names a closed bundle whose lead went alone: no
+		// issue, its members in Bundle.
+		return nil, []DrainParked{{Issue: "", RunID: runID, PR: 7, State: ParkedClosed, Bundle: []string{m1, m2}}}, nil
 	}
 	t.Cleanup(func() { drainFinish = was })
 	res := mustDrain(t, repo, Options{}, DrainOptions{})
