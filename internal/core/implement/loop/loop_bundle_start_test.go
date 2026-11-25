@@ -249,3 +249,87 @@ func TestAStartRefusesMembersItCannotCarry(t *testing.T) {
 		t.Fatalf("the refused bundle creates no run: %d, %v", len(runs), err)
 	}
 }
+
+// handedBackLanes is a run's one lane, handed back to the person.
+func handedBackLanes() []Lane {
+	return []Lane{{ID: "lane-1", Stage: StageHandedBack, HandBack: &HandBack{Kind: "design", Reason: "a decision", Home: "the person"}}}
+}
+
+// TestALaterRunThatCarriesAnIssueSupersedesTheHandedBackOne: a run handed
+// back is superseded by a later run that carries its lead or any of its
+// members, so a build finds the later run and never the dead one: a single
+// run handed back before a bundle took its issue as a member, and a bundle
+// handed back whole before its member was taken up alone.
+func TestALaterRunThatCarriesAnIssueSupersedesTheHandedBackOne(t *testing.T) {
+	// A single run of the member, handed back, then a bundle carrying it.
+	single := State{RunID: "run-a", Key: bundleTwo, Lanes: handedBackLanes()}
+	bundle := State{RunID: "run-b", Key: bundleLead, Lanes: []Lane{{ID: "lane-1"}}, Bundle: []Member{{Issue: bundleTwo, Footprint: []string{"docs/b.md"}}}}
+	if !single.issueHandedBack() {
+		t.Fatal("premise: the single run is handed back")
+	}
+	runs := []State{single, bundle}
+	if !superseded(runs, 0) {
+		t.Fatal("the bundle that carries the member supersedes the member's run handed back")
+	}
+	if st, ok := liveRun(runs, bundleTwo, false, false); !ok || st.RunID != "run-b" {
+		t.Fatalf("a build of the member finds the bundle, not the run handed back: %s, %v", st.RunID, ok)
+	}
+
+	// A bundle handed back whole, then the member's own run.
+	dead := State{RunID: "run-c", Key: bundleLead, Lanes: handedBackLanes(), Bundle: []Member{{Issue: bundleTwo, Footprint: []string{"docs/b.md"}}}}
+	alone := State{RunID: "run-d", Key: bundleTwo, Lanes: []Lane{{ID: "lane-1"}}}
+	if !dead.issueHandedBack() {
+		t.Fatal("premise: the bundle is handed back")
+	}
+	runs = []State{dead, alone}
+	if !superseded(runs, 0) {
+		t.Fatal("the member's later run supersedes the bundle handed back")
+	}
+	if st, ok := liveRun(runs, bundleTwo, false, false); !ok || st.RunID != "run-d" {
+		t.Fatalf("a build of the member finds its own later run, not the bundle: %s, %v", st.RunID, ok)
+	}
+	if st, ok := liveRun(runs, bundleLead, false, false); ok {
+		t.Fatalf("the dead bundle is resumed for no issue it carried: %s", st.RunID)
+	}
+
+	// A run handed back that nothing later carries stays as it was, and a
+	// run in progress is never superseded.
+	if superseded([]State{single}, 0) || superseded([]State{bundle, {RunID: "run-e", Key: bundleTwo, Lanes: []Lane{{ID: "lane-1"}}}}, 0) {
+		t.Fatal("only a run handed back is superseded, and only by a later run carrying one of its issues")
+	}
+}
+
+// TestAMembersResumeThatClosesAMergedLaneSaysItOnce: a build of a member whose
+// resume closes a lane whose pull request merged names the run's lead, and
+// the line saying the member is the bundle's appears once.
+func TestAMembersResumeThatClosesAMergedLaneSaysItOnce(t *testing.T) {
+	f, l := mergedLaneFixture(t)
+	f.mergeCommit(t, l.Landing.Pushed)
+	// The fixture's run, made an issue run that carries a member.
+	if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+		st.Key = f.issue
+		st.Bundle = []Member{{Issue: bundleTwo, Footprint: []string{"docs/b.md"}}}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Start(f.repo.Root(), bundleTwo, Options{noReserve: true})
+	if err != nil {
+		t.Fatalf("the build of the member resumes its run: %v", err)
+	}
+	if !res.Resumed || res.RunID != f.runID || len(res.Closed) != 1 {
+		t.Fatalf("premise: the resume closes the merged lane: %+v", res)
+	}
+	if res.Lead != f.issue {
+		t.Fatalf("the result names the lead %s: %q", f.issue, res.Lead)
+	}
+	n := 0
+	for _, d := range res.Diagnostics {
+		if strings.Contains(d, "is a member of") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the member's line appears once, not %d times: %q", n, res.Diagnostics)
+	}
+}

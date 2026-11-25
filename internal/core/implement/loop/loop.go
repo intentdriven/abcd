@@ -747,7 +747,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		return StartResult{}, err
 	}
 	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
-		lead, byLead := res.Lead, res.Diagnostics
+		lead := res.Lead
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -794,11 +794,10 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			}
 			return StartResult{}, err
 		}
-		// The closing rebuilds the result, so the lead a member found is named
-		// on what it returns.
-		if lead != "" && res.Lead == "" {
+		// The closing rebuilds the result, keeping its lines, so the lead a
+		// member found is named again on what it returns.
+		if res.Lead == "" {
 			res.Lead = lead
-			res.Diagnostics = append(slices.Clone(byLead), res.Diagnostics...)
 		}
 		return res, nil
 	}
