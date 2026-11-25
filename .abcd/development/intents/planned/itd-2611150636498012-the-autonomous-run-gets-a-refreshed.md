@@ -85,7 +85,7 @@ We expect a person to stop a drive after its lane without a lane left to take up
 - A terminal that can hand the drive single key presses. The repository has a raw terminal mode, which the interviews use (`internal/term/raw.go`); what it lacks is a mode that reads single keys and leaves the terminal's signals and output alone, which the spec adds. <!-- cond: cond-2611251808084722 -->
 - Where input is not a terminal, no key is read and no option line is drawn. The drive runs as it does today, and the headless mode or a flag carries the choice. <!-- cond: cond-2611251808084851 -->
 - The footer's three lines and their words are those of itd-2611141610192096 and itd-2611141610197753. This intent adds the option line and the keys. <!-- cond: cond-2611251808088680 -->
-- A stop after the lane in hand is recorded state a person sets, as every stop is (adr-2611050740453233). Its place among the existing stops is part of planning. <!-- cond: cond-2611251808083254 -->
+- A stop after the lane in hand is recorded state a person sets, as every stop is (adr-2611050740453233). Its place among the existing stops is settled by spc-2611251808081374 ("Stopping after the lane in hand" and "The two-step interrupt"): every other stop still wins. <!-- cond: cond-2611251808083254 -->
 - The native app is not part of this intent. The headless mode is built so that one can connect later, on the same machine and for the same account. <!-- cond: cond-2611251808084304 -->
 
 ## What's Out of Scope

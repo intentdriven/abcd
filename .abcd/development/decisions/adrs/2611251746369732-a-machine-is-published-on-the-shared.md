@@ -26,7 +26,7 @@ We will publish a machine on the shared remote only as a label the person chose,
 
 1. **What may be published.** A drive's published line carries, and carries only:
    - the machine label the person chose;
-   - the state word (`working`, `waiting`, `stalled` or `stopped`), and for a wait or a block the enumerated word of its cause (an outage, a usage window, a fast-forward declined), never the sentence the drive composed for it;
+   - the state word (`working`, `waiting`, `stalled` or `stopped`), and for a wait or a block the enumerated word of its cause (an outage, a usage window), never the sentence the drive composed for it;
    - times: since when the state holds, when the line was written, when the drive will have written again, and the drive's end time;
    - counts: lanes done, in work, set aside and handed back, and where a fast-forward of the drive's checkout was declined, how many commits it is behind, with one word from a fixed list for what declined it;
    - at most one record id the remote already shows, the issue or intent of the lane in hand;

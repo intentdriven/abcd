@@ -8,8 +8,8 @@ reclassification_history: []
 builds_on: [itd-2611141610197753]
 severity: minor
 related_issues: [iss-2610231127555243, iss-2611050840353717, iss-2611251810162964]
-refines: [itd-2610222215485265, itd-2610161016394967, itd-2610161016401115]
-related_intents: [itd-2611062149308723, itd-2611141610201875, itd-2611041656024409]
+refines: [itd-2610222215485265, itd-2610161016394967, itd-2610161016401115, itd-2611041656024409]
+related_intents: [itd-2611062149308723, itd-2611141610201875]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
@@ -52,7 +52,7 @@ Sharing the queue between accounts is delivered (itd-2610161016394967). Three th
 
 ### What a person sees
 
-- At the start: the end time, the lane cap if one was given, how many lanes this drain works at once, how many reservations the repository allows one person, and that a reboot, a logout or a crash ends the drive, with the one command that carries on.
+- At the start: the end time, with the lane cap if one was given, before the yes; on `?` and in the full plan, how many lanes this drain works at once, how many reservations the repository allows one person, and that a reboot, a logout or a crash ends the drive, with the one command that carries on, which is printed once after the yes.
 - One line each time the drive begins a new drain, and one when it waits on an empty queue.
 - In `abcd peers` and in the drive's waits: the lanes this drain has in work against its limit, and the reservations the person holds against the repository's ceiling.
 - In `abcd status` and on the board: one line per drive, with its label, its state, since when, and what it waits on.
@@ -108,7 +108,7 @@ We expect a person to answer "are the drains working?" from one machine, because
 - **Given** a running drive, **when** a repository file, a machine file or a new release changes, or the drive re-executes itself for a release, **then** its end time and its lane cap are the ones its start showed: nothing but a start the person types sets either.
 - **Given** a drive that meets a rate limit, an outage or an unreadable origin, **when** its end time has not come, **then** it waits and does not end, and ends only at the end time, at its lane cap or on a stop.
 - **Given** a drain state left by an earlier start, **when** a drive starts, **then** the start says how old the state is and what the drive carries over from it.
-- **Given** any drive, **when** it starts, **then** it says that a reboot, a logout or a crash ends it, that nothing starts it again, and prints the one command that carries on, which names the same end time; **given** the drive was ended that way, **when** the person types that command, **then** the drive carries on from the drain's state and ends at the time first shown.
+- **Given** any drive, **when** it starts, **then** its full plan on `?`, which the drive also writes to its log, says that a reboot, a logout or a crash ends it and that nothing starts it again, and gives the one command that carries on, which names the same end time, and after the yes the drive prints that command once; **given** the drive was ended that way, **when** the person types that command, **then** the drive carries on from the drain's state and ends at the time first shown.
 - **Given** a running drive in a repository with origin, **when** its state word or what it waits on changes, and at each renewal of what it holds, **then** it publishes its state line to the account's status branch on origin under the label the person chose for that machine, and at its end it publishes `stopped`.
 - **Given** any published state line, **when** it is read as pushed, **then** it holds only the label, a state word, a reason from a fixed list, a record id, times, counts, how far the checkout is behind where a fast-forward was declined, the holder id and working-copy key every reservation already carries, and abcd's version, and never the machine's host name, a path, an account name or any sentence the drive composed; the commit's author and committer are those a reservation's commit has and hold none of the three either.
 - **Given** a label, **when** the person sets it, **then** it is 1 to 24 lower-case letters, digits and hyphens, and one equal to the machine's host name or the account's name, in any case, is refused; **given** none is set, **then** the drive publishes under a label drawn from the working copy's random key and says how to set one.
@@ -180,7 +180,8 @@ Recorded 2026-11-25. Decisions 1 to 6 are the product thinker's, given in a plan
 - governed by: adr-2611251746369732 (a machine is published on the shared remote only as a chosen label, a state word, times and counts), which decisions 5, 10 and 13 apply.
 - refines: dcn-2611222342270127 (the drain's bundle cap is set by the person's machine). Its ruling on `drain.bundle_max` stands. The clause of its grounds that names `reservation.max_live` among the person's own settings is replaced by decision 3, the product thinker's ruling of 2026-11-25: the repository sets the ceiling, and a machine may lower it and never raise it. The same rule in the resolution of iss-2610170717515674 and in the comment of `internal/core/claim/maxlive.go` is replaced with it.
 - resolves: iss-2610231127555243 (the ceiling's unit), by decisions 2 and 3; iss-2611050840353717 (nothing restarts a long run), by decision 6, its opt-in ruled out.
-- context: itd-2611041656024409 (a run finishes after it dies), which takes decision 6; itd-2611062149308723 (a drive takes each release itself), whose re-execution decision 9 binds; itd-2611141610201875 (the drive keeps its pull requests and checkout moving), whose declined fast-forward decision 13 carries in the view.
+- refines: itd-2611041656024409 (a run finishes after it dies, from the one command that resumes it), which takes decision 6. This intent's fourteenth criterion is that draft's first two, its spec's step 3 builds them and resolves iss-2611050840353717, and the draft keeps the two criteria that remain.
+- context: itd-2611062149308723 (a drive takes each release itself), whose re-execution decision 9 binds; itd-2611141610201875 (the drive keeps its pull requests and checkout moving), whose declined fast-forward decision 13 carries in the view.
 - evidence: `.abcd/development/research/notes/drive-operations-2026-11.md`, events 1, 2, 5 and 10; `.abcd/development/research/notes/autonomous-run-2026-11-14.md`, event 11; the drain state of 7 to 24 November (189 of 200 lanes).
 
 ## Audit Notes

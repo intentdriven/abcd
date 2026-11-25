@@ -81,7 +81,7 @@ We expect the drive's checkout to stay near the default branch, because the driv
 
 ## Acceptance Criteria
 
-- **Given** a pull request the merge queue removed, **when** it has been re-armed fewer times at that head than the stated number, **then** the drive re-arms it and says so on one line; otherwise it hands the lane back naming the check and the command that re-runs it (decision 1). The number, a few, is the run's to propose when the step is planned.
+- **Given** a pull request the merge queue removed, **when** it has been re-armed fewer times at that head than the stated number, **then** the drive re-arms it and says so on one line; otherwise it hands the lane back naming the check and the command that re-runs it (decision 1). The number is three re-arms at one head (decision 7).
   - Evidence: lab-261114145658-67e1f9b, F-6, F-10 and F-18.
 - **Given** a drive's checkout behind origin's default branch, with no dirty path that an incoming commit changes and no lane in progress, **when** the drive starts or a lane ends, **then** the checkout is fast-forwarded, including over a commit that changes a hook or a setting the drive holds, after which the drive reads its hold again (decisions 3 and 6); **given** a dirty path that an incoming commit changes, **then** it is not, and the drive writes one event line that says what blocks it, which `abcd implement status` names and the view by login across machines carries, while the state line keeps its one `on` field (decision 5). The records the drive writes are outside the checkout (decision 2).
   - Evidence: lab-261114145658-67e1f9b, F-12 and F-19.
@@ -97,7 +97,7 @@ _All resolved: questions 1 to 4 by the product thinker on 2026-11-15 (decisions 
 ## Decisions
 
 1. **The drive always re-arms a pull request the merge queue removed, up to a few times at one head** (product thinker, 2026-11-15; formerly DQ-6).
-   - Answer: always, with no new read of the forge. A real failure of the change spends those few merge-queue cycles before it is handed back. The exact number is the run's to propose when the step is planned.
+   - Answer: always, with no new read of the forge. A real failure of the change spends those few merge-queue cycles before it is handed back. The exact number was the run's to propose when the step was planned; it is decision 7.
    - What it costs: the merge-queue cycles a real failure spends, which is the price of reading no more of the forge than the code parses today (F-10).
 2. **The records a drive writes are kept outside the checkout until a person takes them** (product thinker, 2026-11-15; formerly DQ-8).
    - Answer: the hand-back notes and the other records the drive writes go in each account's own abcd folder on that machine, and not in the checkout, until a person takes them in.
@@ -116,6 +116,10 @@ _All resolved: questions 1 to 4 by the product thinker on 2026-11-15 (decisions 
    - Answer: the second criterion is widened to the drive's start. A start is a boundary like the end of a lane, so it fast-forwards under the same conditions and reads its hold after, in place of refusing a checkout that is behind a tip whose hooks have changed and naming a hand-typed `git pull --ff-only`.
    - Why: decision 3 already lets a running drive fast-forward over a hooks change at a boundary, and with several machines landing work a checkout behind origin at the start is the normal state each morning.
    - What it costs: a start may now move the checkout before its first move, which a person who left a deliberate older checkout would not expect; the same safety conditions as at a lane's end apply, so a dirty path an incoming commit changes still stops it.
+7. **Three re-arms at one head** (technical facilitator, 2026-11-25, at planning; decision 1 left the number to the run).
+   - Answer: the loop arms a pull request the merge queue removed again at most three times at one head, a constant beside the watch's own bound of three toggles per head (`maxToggles`). The count and the forge time of the removal last re-armed for are new fields of the lane's landing, which takes run-state schema 32 (spc-2611251808377435, step 1).
+   - Why: a real failure then costs at most three merge-queue cycles before a person hears of it, the same bound the watch already keeps.
+   - What it costs: a pull request whose flaky check fails four times at one head is handed back though one more cycle might have landed it.
 
 ## Typed Links
 

@@ -17,7 +17,7 @@ blocked_by: [itd-2610222215485265, itd-2611041656012738, itd-2611041549461012, i
 
 ## Press Release
 
-> A drive tells the person at its start what ends it and how to go on. Alice, a solo founder, types `abcd drain --drive`, and before they say yes the start tells them that a reboot, a logout or a crash ends the drive, and names the one command that carries it on. They start ten fixes and go out. An update restarts the computer after four. When they are back they type that command, and the drive carries on from where the drain stood, finishes the other six inside the bound they agreed to, and tells them what it did. "Nothing ran while I was out that I had not started that day," said Alice, "and getting it going again was the one line it had shown me." abcd installs nothing that starts by itself.
+> A drive tells the person at its start what ends it and how to go on. Alice, a solo founder, types `abcd drain --drive`, and the plan it shows on `?` tells them that a reboot, a logout or a crash ends the drive; when they say yes, it prints the one command that carries it on. They start ten fixes and go out. An update restarts the computer after four. When they are back they type that command, and the drive carries on from where the drain stood, finishes the other six inside the bound they agreed to, and tells them what it did. "Nothing ran while I was out that I had not started that day," said Alice, "and getting it going again was the one line it had shown me." abcd installs nothing that starts by itself.
 
 ## Why This Matters
 
@@ -25,7 +25,7 @@ A notice (itd-2611041656012738) tells the person a run died, and the work still 
 
 In the planning of 2026-11-25 for drives that keep working across machines, the product thinker was asked whether abcd may set a drive to start again by itself after a reboot or a crash, and ruled that it may not (decision 1). A drive is not restarted automatically, and nothing self-starting is installed. What the person gets instead is a start that says plainly what ends a drive and names the one command that resumes it, which since itd-2611141610197753 carries on from the drain's state with nothing else typed. That ruling is this draft's answer, and it replaces the pick-up the draft first described.
 
-The wider ask of iss-2610281328229800, a run starting by itself when paid credit appears, is not decided here and stays open. iss-2611050840353717 records that nothing restarts a long run after a reboot and that disk encryption can hold the machine at its login screen; its first half, a drive that says so at its start and names how to resume, is this intent.
+The wider ask of iss-2610281328229800, a run starting by itself when paid credit appears, is not decided here and stays open. iss-2611050840353717 records that nothing restarts a long run after a reboot and that disk encryption can hold the machine at its login screen; its first half, a drive that says so at its start and names how to resume, is delivered by itd-2611251809580662, which refines this draft: that intent's fourteenth criterion is this draft's first two, its spec's step 3 builds them and resolves the issue, and this draft keeps the two criteria that remain.
 
 ## Mechanism
 
@@ -44,7 +44,7 @@ We expect an interrupted drive to be finished soon after the person returns, at 
 
 ## Acceptance Criteria
 
-- **Given** a person starts a drive, **when** the start shows what it will do, **then** before the yes it says that a reboot, a logout or a crash ends the drive, and names the one command that resumes it.
+- **Given** a person starts a drive, **when** the start shows what it will do, **then** its full plan on `?`, which the drive also writes to its log, says that a reboot, a logout or a crash ends the drive and names the one command that resumes it, and after the yes the drive prints that command once.
 - **Given** a drive ended by a reboot, a logout or a killed process, **when** the person types the command the start named, **then** the drive carries on from the drain's state, inside the bound its new yes names, and says what it took up.
 - **Given** any drive, **when** it starts or runs, **then** abcd registers nothing to start it again: no login item, no timer, no service, and no entry in a scheduler.
 - **Given** the check of itd-2611041656012738 is on and a drive died, **when** the check looks, **then** it tells the person and starts nothing.
