@@ -332,6 +332,73 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 	return out, err
 }
 
+// listingDenied is the mode a run's folder in the hand-off store and in the
+// clone store holds while its copies run: its owner may make, remove and pass
+// through the entries it names, and cannot list them. A copy runs as the same
+// account, so 0711 would not do: it keeps the owner's read.
+const listingDenied fs.FileMode = 0o300
+
+// denyListing sets each of dirs that exists, a real directory, to
+// listingDenied, and returns what gives each the mode it held, or 0700 where
+// it held no read for its owner (a launch killed outright left it closed).
+// Nothing lists these folders while they are closed: review, judging and the
+// report read the copies from the run's records, and own_copy_only's walk of a
+// pattern reads what a copy's own shell could, matching nothing in them.
+func denyListing(dirs ...string) (func() error, error) {
+	type held struct {
+		dir  string
+		mode fs.FileMode
+	}
+	var done []held
+	restore := func() error {
+		var errs []error
+		for _, h := range done {
+			if err := os.Chmod(h.dir, h.mode); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errors.Join(errs...)
+	}
+	for _, d := range dirs {
+		fi, err := os.Lstat(d)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err == nil && !fi.IsDir() {
+			err = fmt.Errorf("%s is not a real directory", filepath.Base(d))
+		}
+		if err != nil {
+			return nil, errors.Join(err, restore())
+		}
+		mode := fi.Mode().Perm()
+		if mode&0o400 == 0 {
+			mode = 0o700
+		}
+		if err := os.Chmod(d, listingDenied); err != nil {
+			return nil, errors.Join(err, restore())
+		}
+		done = append(done, held{dir: d, mode: mode})
+	}
+	return restore, nil
+}
+
+// removeClone deletes the copy's clone dir. Its run's folder may be closed to
+// listing (denyListing), and deleting a tree opens the folder that holds it,
+// so the clone is first moved into a fresh folder of its own beside it, named
+// at random and readable, and deleted there; where it cannot be moved, it is
+// deleted where it is.
+func removeClone(dir string) error {
+	tmp, err := os.MkdirTemp(filepath.Dir(dir), ".removing-")
+	if err != nil {
+		return os.RemoveAll(dir)
+	}
+	moved := filepath.Join(tmp, filepath.Base(dir))
+	if err := os.Rename(dir, moved); err != nil {
+		return errors.Join(os.RemoveAll(dir), os.Remove(tmp))
+	}
+	return errors.Join(os.RemoveAll(moved), os.Remove(tmp))
+}
+
 // runFolder makes run's folder in the hand-off store, a real directory
 // outside every working tree.
 func runFolder(store, run string) error {
@@ -350,8 +417,12 @@ func runFolder(store, run string) error {
 	return nil
 }
 
-// launchLocked is launch once it holds its run's lock.
-func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, only *TrialKey, cells func(RunRecord, Declaration) func(CellPin) (cellDispatch, error)) (LaunchResult, error) {
+// launchLocked is launch once it holds its run's lock. While its copies run,
+// the run's folders in the hand-off store and the clone store, which hold
+// every copy's folder, are closed to listing (denyListing), and their modes
+// are given back however the launch ends: a copy finds no sibling's folder
+// by listing, and names one only by its alias, which own_copy_only reads.
+func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, only *TrialKey, cells func(RunRecord, Declaration) func(CellPin) (cellDispatch, error)) (res LaunchResult, retErr error) {
 	picks, rec, d, trials, handed, err := l.pick(run, only)
 	if err != nil {
 		return LaunchResult{}, err
@@ -376,6 +447,15 @@ func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, on
 		}
 		checked[p.pin.Cell] = true
 	}
+	restore, err := denyListing(filepath.Join(handoffStore(l.home, rootSHA), run), filepath.Join(cloneStore(l.home, rootSHA), run))
+	if err != nil {
+		return LaunchResult{}, fmt.Errorf("the run's folders could not be closed to listing while its copies run: %w", err)
+	}
+	defer func() {
+		if err := restore(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("the run's folders could not be opened to listing again: %w", err))
+		}
+	}()
 	budget := newSpendBudget(rec, d, trials, handed)
 	slots := make(chan struct{}, max(1, rec.Concurrency))
 	results := make([]*LaunchedCopy, len(picks))
@@ -550,7 +630,7 @@ func (l *copyLauncher) one(ctx context.Context, rec RunRecord, p launchPick) (La
 	// The clone is scanned again just before its runner starts, as it was
 	// when it was handed off: nothing in it is sent to a provider unscanned.
 	if err := admitClone(l.repoRoot, h.Clone, p.pin); err != nil {
-		if rerr := os.RemoveAll(h.Clone); rerr != nil {
+		if rerr := removeClone(h.Clone); rerr != nil {
 			return lc, nil, true, errors.Join(err, rerr, setState(HandOffRefused, err.Error()+"; its clone could not be removed"))
 		}
 		h.Clone = ""
@@ -930,7 +1010,7 @@ func (l *copyLauncher) finish(rec RunRecord, p launchPick, t TrialRecord, back l
 		if err := writeTrial(l.repoRoot, l.labID, t); err != nil {
 			return t, false, err
 		}
-		if err := os.RemoveAll(clone); err != nil {
+		if err := removeClone(clone); err != nil {
 			return t, false, afterWrite(fmt.Errorf("its trial is written, and its clone could not be deleted: %w", err))
 		}
 		return t, false, nil

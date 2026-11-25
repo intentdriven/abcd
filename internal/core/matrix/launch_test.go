@@ -878,3 +878,74 @@ func TestAnEndRecordWrittenAsTheLockIsFreedIsRead(t *testing.T) {
 		t.Fatalf("a copy whose end landed as its lock was freed reads at its end: %+v", got)
 	}
 }
+
+// TestALaunchClosesTheRunsFoldersToListingWhileItsCopiesRun: while a launch's
+// copies run, the run's folder in the hand-off store and in the clone store
+// cannot be listed, by the copy or by anything else of the account, though
+// the copy keeps its own brief folder and clone; each has its mode back once
+// the launch ends, whether it ended as it should, was stopped (a SIGTERM or
+// a SIGHUP, which the command turns into a stop) or failed.
+func TestALaunchClosesTheRunsFoldersToListingWhileItsCopiesRun(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the superuser lists a folder whatever its mode")
+	}
+	for name, end := range map[string]func(ctx context.Context, stop context.CancelFunc, f *fakeCell, req runner.Request, check *copyCheck) (runner.Outcome, error){
+		"an end": func(ctx context.Context, _ context.CancelFunc, f *fakeCell, req runner.Request, check *copyCheck) (runner.Outcome, error) {
+			return f.dispatch(ctx, req, check)
+		},
+		"a stop": func(ctx context.Context, stop context.CancelFunc, _ *fakeCell, _ runner.Request, _ *copyCheck) (runner.Outcome, error) {
+			stop()
+			<-ctx.Done()
+			return runner.Outcome{}, ctx.Err()
+		},
+		"a failed launch": func(context.Context, context.CancelFunc, *fakeCell, runner.Request, *copyCheck) (runner.Outcome, error) {
+			return runner.Outcome{}, errors.New("the runner refused the dispatch whole")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, home, m, rec, _ := checkLab(t)
+			key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+			clone := awaitRunner(t, r, home, m, rec, key, KindCode)
+			awaitRunner(t, r, home, m, rec, TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 2}, KindCode)
+			handRun := filepath.Join(handoffStore(home, rec.RootSHA), rec.RunID)
+			cloneRunDir := filepath.Dir(clone)
+			ctx, stop := context.WithCancel(context.Background())
+			defer stop()
+			f := &fakeCell{answer: madeReceipt, transcript: inClone(clone)}
+			var listed []error
+			var ownErr error
+			dispatch := func(ctx context.Context, req runner.Request, check *copyCheck) (runner.Outcome, error) {
+				for _, dir := range []string{filepath.Dir(filepath.Dir(req.Brief)), filepath.Dir(req.Dir)} {
+					_, err := os.ReadDir(dir)
+					listed = append(listed, err)
+				}
+				if _, err := os.ReadDir(filepath.Dir(req.Brief)); err != nil {
+					ownErr = err
+				} else if _, err := os.ReadDir(req.Dir); err != nil {
+					ownErr = err
+				}
+				return end(ctx, stop, f, req, check)
+			}
+			_, err := testLauncher(r, home, m, dispatch).launch(ctx, rec.RunID, &key, nil)
+			if (name == "an end") != (err == nil) {
+				t.Fatalf("the launch returned %v", err)
+			}
+			refused := len(listed) >= 2
+			for _, err := range listed {
+				refused = refused && errors.Is(err, fs.ErrPermission)
+			}
+			if !refused {
+				t.Fatalf("listing the run's folders while its copy ran: %v; want each refused", listed)
+			}
+			if ownErr != nil {
+				t.Fatalf("the copy could not list its own folders: %v", ownErr)
+			}
+			for _, dir := range []string{handRun, cloneRunDir} {
+				fi, err := os.Stat(dir)
+				if err != nil || fi.Mode().Perm() != 0o700 {
+					t.Fatalf("%s after the launch: %v, %v; want its mode 0700 back", filepath.Base(dir), fi.Mode().Perm(), err)
+				}
+			}
+		})
+	}
+}

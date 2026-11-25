@@ -102,14 +102,22 @@ neither stops every further metered launch. The brief and the copy's answer sit 
 a third store, outside the clone, the clone store and the lab's state, one
 folder per copy under its alias, and a copy whose transcript names another
 copy's folder there read outside its copy, by its absolute path or by a climb
-from the copy's own folder. A path pattern, as the shell expands it, that
-matches outside the copy and could match nothing inside its clone from any
-folder deep enough for its climb is a read outside; one that could also match
-inside leaves the copy unexamined, since the scan cannot tell the folder the
-pattern ran in, so an honest copy that listed a parent folder of its clone is
-set apart from the rates, never counted as blinded, with one that read its
-sibling. Shell syntax the check does not evaluate exactly is judged by its
-literal prefix and never kept.
+from the copy's own folder. A climb is read as the shell reads it, quoted
+parts and escaped characters literal. A path pattern, as the shell expands it,
+that matches outside the copy is a read outside where no folder of the clone is
+deep enough for its climb to stay inside it, or where it names another copy's
+folder as written; otherwise it leaves the copy unexamined, since the scan
+cannot tell the folder the pattern ran in, so an honest copy that listed a
+parent folder of its clone is set apart from the rates, never counted as
+blinded, with one that read its sibling. A substitution or an extended pattern
+is judged by its literal prefix and never kept, and a chmod or chflags of a
+climb is a read outside. No transcript scan sees every read, and a bare climb
+that recurses (grep -r . ..) is kept by it: while a launch's copies run, the
+run's folders in the hand-off store and the clone store are closed to listing,
+their owner keeping only the right to pass through and make entries, and their
+modes are given back however the launch ends, so a copy cannot find its
+siblings' folders by listing, and one that names a sibling's folder as written
+reads broken.
 A pattern is matched when the copy is judged, so a sibling check copy's deleted
 clone is not seen; answers in the hand-off store are. A copy is launched once, and a run by one launch at
 a time, which holds the run's lock; a second is refused while it runs. Each

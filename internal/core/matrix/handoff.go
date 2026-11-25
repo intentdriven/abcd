@@ -179,7 +179,7 @@ func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, 
 		h.Reason = "the copy waits for its launch (abcd lab matrix launch), which starts the cell's runner in its clone; nothing stands in for the runner"
 	}
 	if err := admitClone(l.RepoRoot, clone, pin); err != nil {
-		if rerr := os.RemoveAll(clone); rerr != nil {
+		if rerr := removeClone(clone); rerr != nil {
 			return HandOff{}, errors.Join(err, rerr)
 		}
 		h.State, h.Clone, h.Reason = HandOffRefused, "", termsafe.SanitizeLine(err.Error())
@@ -680,7 +680,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		if err := writeTrial(repoRoot, labID, t); err != nil {
 			return TrialRecord{}, lostTrialWrite(repoRoot, labID, run, key, err)
 		}
-		if err := os.RemoveAll(clone); err != nil {
+		if err := removeClone(clone); err != nil {
 			return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 		}
 		return t, nil
@@ -707,7 +707,7 @@ func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key Tria
 	if err := jsonstrict.Decode(written, &t); err != nil || t.Key != key || t.Run != rec.RunID {
 		return TrialRecord{}, fmt.Errorf("copy %s's trial does not read as its own, so its clone at %s is kept", key, clone)
 	}
-	if err := os.RemoveAll(clone); err != nil {
+	if err := removeClone(clone); err != nil {
 		return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 	}
 	return t, nil

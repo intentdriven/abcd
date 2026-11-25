@@ -279,6 +279,7 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		"network policy",             // asserted for every copy
 		"deleted clone",              // a pattern matched at judging time
 		"cannot tell the folder",     // an unclear pattern is unexamined
+		"closes the run's folders",   // listing denial, not the scan, holds
 		"smallest difference",        // an unsized comparison
 		"model and harness together", // the harness confound
 		"could not examine",          // the unexamined copy
