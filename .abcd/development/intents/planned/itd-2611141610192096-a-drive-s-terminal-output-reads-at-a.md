@@ -1,8 +1,8 @@
 ---
 id: itd-2611141610192096
 slug: a-drive-s-terminal-output-reads-at-a
-spec_id: null
-kind: null
+spec_id: spc-2611251805244246
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611141610197753]
@@ -181,11 +181,11 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 ## Scope Conditions
 
-- A terminal of 50 columns or more. The lab drew 50, 80 and 120 and nothing narrower.
-- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn.
-- The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules.
-- The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this.
-- Until the option menu of decision 1 is built, "one step away" means `abcd implement status` in a second terminal and the log's path.
+- A terminal of 50 columns or more. The lab drew 50, 80 and 120 and nothing narrower. <!-- cond: cond-2611251805245558 -->
+- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn. <!-- cond: cond-2611251805240700 -->
+- The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules. <!-- cond: cond-2611251805245053 -->
+- The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this. <!-- cond: cond-2611251805240775 -->
+- Until the option menu of decision 1 is built, "one step away" means `abcd implement status` in a second terminal and the log's path. <!-- cond: cond-2611251805247450 -->
 
 ## What's Out of Scope
 
