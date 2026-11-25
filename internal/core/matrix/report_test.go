@@ -277,6 +277,7 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		"could not be pinned",        // an unpinned field of the run record
 		"asserted, not proven",       // the host cell's isolation
 		"network policy",             // asserted for every copy
+		"deleted clone",              // a pattern matched at judging time
 		"smallest difference",        // an unsized comparison
 		"model and harness together", // the harness confound
 		"could not examine",          // the unexamined copy

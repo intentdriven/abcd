@@ -102,7 +102,9 @@ neither stops every further metered launch. The brief and the copy's answer sit 
 a third store, outside the clone, the clone store and the lab's state, one
 folder per copy under its alias, and a copy whose transcript names another
 copy's folder there read outside its copy, by its absolute path or by a climb
-from the copy's own folder. A copy is launched once, and a run by one launch at
+from the copy's own folder. A path pattern is matched when the copy is judged,
+so a sibling check copy's deleted clone is not seen; answers in the hand-off
+store are. A copy is launched once, and a run by one launch at
 a time, which holds the run's lock; a second is refused while it runs. Each
 runner is one process group, killed whole when the launch is stopped,
 terminated or hung up; a stop is the run's error, never the copy's score, and a
