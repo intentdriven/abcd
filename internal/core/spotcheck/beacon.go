@@ -32,10 +32,10 @@ import (
 // chain by this hash.
 const ChainHash = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
-// chainKey is the quicknet chain's group public key, a compressed point on
+// chainPoint is the quicknet chain's group public key, a compressed point on
 // G2 (scheme bls-unchained-g1-rfc9380: signatures on G1, keys on G2), read
 // from the same info reply.
-const chainKey = "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a"
+const chainPoint = "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a"
 
 // The beacon's bounds.
 const (
@@ -219,7 +219,7 @@ func sigBytes(s string) ([]byte, error) {
 // message signed is the SHA-256 of the round as a big-endian uint64; circl's
 // G1 domain separation tag is the one the chain's scheme signs under.
 func verifyRound(round uint64, sig []byte) ([32]byte, error) {
-	key, err := hex.DecodeString(chainKey)
+	key, err := hex.DecodeString(chainPoint)
 	if err != nil {
 		return [32]byte{}, err
 	}
