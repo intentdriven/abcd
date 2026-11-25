@@ -829,8 +829,8 @@ func isTestPath(p string) bool {
 //     inside it, is a read outside; and resolved against the copy's own
 //     folder in the hand-off store, which a launch hands it, a climb that
 //     reaches another copy's folder there is one too; a pattern (* or ?) is
-//     judged by its literal prefix, the folder before its first pattern
-//     character, unless from a folder of the clone it matches inside it.
+//     judged by what it matches outside the copy, from the same folders,
+//     unless from a folder of the clone it matches inside it.
 //
 // What it does not see, the report lists among the run's limitations: a read
 // through a relative path with no climb after a cd out of the clone, a path a
@@ -1284,8 +1284,8 @@ func (sc *transcriptScan) climb(t string) (string, bool) {
 	if seen, ok := sc.climbs[c]; ok {
 		return seen, seen != ""
 	}
-	if i := strings.IndexAny(c, globChars); i >= 0 {
-		seen := sc.globClimb(t, c, i)
+	if strings.ContainsAny(c, globChars) {
+		seen := sc.globClimb(t, c)
 		sc.climbs[c] = seen
 		return seen, seen != ""
 	}
@@ -1338,34 +1338,52 @@ func climbs(c string) (int, string) {
 	return k, rest
 }
 
-// globClimb judges the clean climb c, a pattern whose first pattern character
-// is at i, by its literal prefix, the folder before that character: a read
-// outside when the prefix climbs out of the copy's own folder in the hand-off
-// store, or from the clone out into an existing place in the store, and the
-// whole pattern, from no folder of the clone, matches a path inside it (a
-// copy in widget/ that read ../*.md stayed in its clone).
-func (sc *transcriptScan) globClimb(t, c string, i int) string {
-	pre := "."
-	if j := strings.LastIndexByte(c[:i], '/'); j >= 0 {
-		pre = path.Clean(c[:j])
-	}
-	k, restPre := climbs(pre)
-	if k == 0 {
-		return ""
-	}
-	_, pattern := climbs(c)
-	if sc.globInside(k, pattern) {
+// globClimb judges the clean climb c, a pattern, by what it matches: a read
+// outside when, from the copy's own folder in the hand-off store or from the
+// clone's root or a folder inside it, it matches an existing path in a store
+// outside the copy, and from no folder of the clone does it match a path
+// inside it (a copy in widget/ that read ../*.md stayed in its clone). A
+// pattern whose prefix stays in the copy, and one that matches nothing outside
+// it, read nothing outside.
+func (sc *transcriptScan) globClimb(t, c string) string {
+	k, pattern := climbs(c)
+	if k == 0 || sc.globInside(k, pattern) {
 		return ""
 	}
 	for _, own := range sc.handoffs {
-		if !under(lowerASCII(path.Join(own, pre)), lowerASCII(own)) {
+		if sc.globOutside(path.Join(own, c)) {
 			return "the copy's transcript climbs out of its own brief folder in the run's hand-off store: " + termsafe.Sanitize(t)
 		}
 	}
-	if sc.outside(k, restPre) {
-		return "the copy's transcript climbs out of its own clone into the run's clone store: " + termsafe.Sanitize(t)
+	base := sc.clone
+	for j := 1; j <= k; j++ {
+		base = path.Dir(base)
+		if k-j > sc.scan.heights[""] {
+			continue
+		}
+		if sc.globOutside(path.Join(base, pattern)) {
+			return "the copy's transcript climbs out of its own clone into the run's clone store: " + termsafe.Sanitize(t)
+		}
 	}
 	return ""
+}
+
+// globOutside reports whether the pattern p matches an existing path in a
+// store outside the copy's own.
+func (sc *transcriptScan) globOutside(p string) bool {
+	m, err := filepath.Glob(filepath.FromSlash(p))
+	if err != nil {
+		return false
+	}
+	for _, hit := range m {
+		lp := lowerASCII(filepath.ToSlash(hit))
+		for _, f := range sc.forms {
+			if f.outsideOwn(lp) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // globInside reports whether k climbs then pattern, from some folder of the

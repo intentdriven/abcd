@@ -687,10 +687,10 @@ func TestOwnCopyOnlyClimbsFromTheCopysOwnBriefFolder(t *testing.T) {
 }
 
 // TestOwnCopyOnlyJudgesAGlobByItsLiteralPrefix: a path that holds a pattern
-// names no file as written, so it is judged by the folder before its first
-// pattern character: a glob climbing out of the copy's own brief folder, or
-// out of its clone into the store, read outside its copy, while one that from
-// a folder of the clone matches a path inside it stayed in its copy.
+// names no file as written, so it is judged by what it matches: a glob that,
+// climbing out of the copy's own brief folder or its clone, matches a file
+// outside the copy read outside it; one whose prefix stays in the copy, or
+// that matches nothing outside it, stayed in its copy.
 func TestOwnCopyOnlyJudgesAGlobByItsLiteralPrefix(t *testing.T) {
 	c := newComplianceCase(t)
 	handoff := filepath.Join(t.TempDir(), handoffDirName, "root")
@@ -714,6 +714,11 @@ func TestOwnCopyOnlyJudgesAGlobByItsLiteralPrefix(t *testing.T) {
 		"cd " + own + " && cat ../copy_?*/" + launchDocName:          StateBroken,
 		"cd " + c.clone + " && cat ../*/README.md":                   StateBroken,
 		"cd " + filepath.Join(c.clone, "widget") + " && cat ../*.md": StateKept,
+		// A pattern that matches nothing outside the copy reads nothing there.
+		"cd " + filepath.Join(c.clone, "widget") + " && rm -f ../build/*.o": StateKept,
+		"cd " + filepath.Join(c.clone, "widget") + " && ls ../*.go":         StateKept,
+		// One that matches a sibling's files read them.
+		"cd " + filepath.Join(c.clone, "widget") + " && cat ../../*/widget/widget.go": StateBroken,
 	} {
 		c.in.Transcript = bash(cmd)
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != want {
