@@ -121,7 +121,7 @@ func AskingRulesFrom(l Limits, n LimitsNote) []string {
 			numberWord(l.Rows), numberWord(l.Columns),
 			boundsSentences(), n.sentence()),
 
-		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, whom the question is for, the decision, and the defensible answers. " +
+		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, in the words of the person the question is for and never in internals for the product thinker, whom the question is for, the decision, and the defensible answers. " +
 			"It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. " +
 			"Ask only the question the writer returns, and never write or edit a question yourself. " +
 			"When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. " +
@@ -147,7 +147,8 @@ func AskingRulesFrom(l Limits, n LimitsNote) []string {
 
 		"In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.",
 
-		"What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at " + KnowledgeFloorPage + " under abcd's plugin root (in abcd's own repository, at that path from its root).",
+		"What each person can be assumed to know, the knowledge floor an explanation is measured against, is stated in full at " + KnowledgeFloorPage + " under abcd's plugin root (in abcd's own repository, at that path from its root). " +
+			"abcd's question check refuses a question to the product thinker that uses a word listed there as below their floor, unless the word is introduced in one sentence before its first use.",
 
 		"In abcd's own interviews, before a stop that is not a question (a hand-off, or a step the person runs), record whose answer is owed with `abcd mode facilitator` or `abcd mode product-thinker`, and set it back with `abcd mode managed` once the answer is in. " +
 			"Where the host has no status surface, the set form prints one line naming the addressee; relay it verbatim, because that line is the whole of the fallback.",
