@@ -8,7 +8,7 @@ source: "agent-finding"
 found_during: "planning of 25 November"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/core/claim/withdrawforge.go"
+found_at: "internal/core/claim/release.go"
 remedy: "Use omitzero, or a pointer as the sibling record in claim does, and test that an ended release with no lapse prints no lapsed_at."
 ---
 

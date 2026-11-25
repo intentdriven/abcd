@@ -947,6 +947,7 @@ func (r *owedReader) stackIdx() *stackIndex {
 		return r.stacks
 	}
 	idx := &stackIndex{heads: map[string][]string{}, tips: map[string][]string{}}
+	made := map[string][]string{}
 	for _, name := range r.baseNames {
 		c, ok := r.branches[name]
 		if !ok {
@@ -971,16 +972,42 @@ func (r *owedReader) stackIdx() *stackIndex {
 			}
 		}
 		for _, line := range lines {
-			h, _, _ := strings.Cut(line, "\t")
+			h, msg, _ := strings.Cut(line, "\t")
 			if h == "" || seen[h] {
 				continue
 			}
 			seen[h] = true
 			idx.tips[h] = append(idx.tips[h], name)
+			if !movedOnto(msg) {
+				made[h] = append(made[h], name)
+			}
+		}
+	}
+	// A tip several branches' reflogs name belongs to the branches that made
+	// it: one that only moved onto it (a fast-forward, a reset, a rebase)
+	// took it from the other.
+	for h, names := range made {
+		if len(idx.tips[h]) > len(names) {
+			idx.tips[h] = names
 		}
 	}
 	r.stacks = idx
 	return idx
+}
+
+// movedOnto says whether a reflog line records a move of the branch onto a
+// commit that already existed (a fast-forward, a reset, a rebase), rather
+// than a commit the branch made itself. A line it cannot tell counts as made.
+func movedOnto(msg string) bool {
+	switch {
+	case strings.HasPrefix(msg, "merge ") && strings.HasSuffix(msg, ": Fast-forward"),
+		strings.HasPrefix(msg, "pull") && strings.HasSuffix(msg, ": Fast-forward"),
+		strings.HasPrefix(msg, "reset: moving to "),
+		strings.HasPrefix(msg, "branch: Reset to "),
+		strings.HasPrefix(msg, "rebase"):
+		return true
+	}
+	return false
 }
 
 // diskStackBase is the nearest other own branch whose tip is in b's own
