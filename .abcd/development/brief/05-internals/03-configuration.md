@@ -1426,9 +1426,12 @@ Three properties are load-bearing:
 - **Every write is checked whole and lands atomically.** A write validates and
   scans every field before any byte reaches the disk, writes the file 0600
   through an atomic replace, and writes the same bytes as the last good copy; a
-  temporary file a killed writer left is never read. Whether that holds
-  across a crash or a power cut is not yet shown: the spec's crash lab
-  (spc-2610230805429429 step 7) has not run.
+  temporary file a killed writer left is never read. The crash lab's kill
+  loop (spc-2610230805429429 step 7) shows it holds when the writer is killed:
+  of 1,000 kills at random points, 280 inside a refused secret-bearing write,
+  each left the list whole, no older than the last finished write, with no
+  byte of the refused write anywhere in the tier. Whether it holds across a power cut
+  is not yet shown: the two power cuts are owed in spc-2611251849050328.
 - **A hook reads within its deadline.** These reads run under the hook's own
   deadline. At a session start: finding the checkout, the checklist read's
   tracked check and the secret scanner's identity probe, a probe the deadline

@@ -302,8 +302,10 @@ five bullets now bind itd-2610222029228127, where they are carried.
   session genuinely waiting on something outside records what it waits for and
   when it will look again, and is never kept spinning (product thinker).
 - **How a session learns the product thinker is away:** they say so, or set it
-  in the app, either until a set time or open-ended; open-ended, they say when
-  they are back. The state is always shown plainly, so they never wrongly
+  in the app, either until a set time or open-ended; open-ended, the mode
+  lasts until they say they are back or until the seven-day window the stall
+  fix gave every away record (itd-2610180912189125) ends it, whichever comes
+  first. The state is always shown plainly, so they never wrongly
   believe agents are waiting or working (product thinker). Their stated goal,
   which the design must make possible: almost all work runs autonomously once
   the human design work is done.
