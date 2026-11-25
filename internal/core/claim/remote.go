@@ -545,9 +545,10 @@ var spotcheckNetTimeout = time.Minute
 // branch (refs/heads/abcd-spotcheck), by the one push this package makes
 // (pushTo): plain, never forced, with the repository's hooks running, so
 // origin takes it only as a fast-forward. A push origin refused comes back as
-// git's own words (pushRejection). A ctx already ended pushes nothing; the
-// push itself is bounded by gitutil.NetTimeout, since no runner of gitutil's
-// runs the repository's hooks under a caller's context.
+// git's own words (pushRejection). A ctx already ended pushes nothing, and
+// the push runs under ctx as well as gitutil.NetTimeout, its hooks included
+// (gitutil.NetInputContext): git, and the pre-push hook it runs, are stopped
+// when ctx ends, so a caller's deadline holds over the whole push.
 func PushBranch(ctx context.Context, root, sha, ref string) error {
 	if !gitutil.IsFullSHA(sha) || ref != spotcheckBranchRef {
 		return refuse("%s is not a commit and the spot-check's branch to push; %s", echoName(ref), nothingPushed)
@@ -555,7 +556,12 @@ func PushBranch(ctx context.Context, root, sha, ref string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("%s: %w", nothingPushed, err)
 	}
-	return push(root, pushTo(sha, ref))
+	args := pushTo(sha, ref)
+	trace(args...)
+	if out, err := gitutil.NetInputContext(ctx, root, "", args...); err != nil {
+		return pushRejection(out, err)
+	}
+	return nil
 }
 
 // FetchBranch fetches ref, which must be the spot-check's store branch, into

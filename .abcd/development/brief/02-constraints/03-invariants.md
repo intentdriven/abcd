@@ -204,6 +204,21 @@ The following are non-negotiable invariants — any architectural choice that vi
    around each such delete, and the reservation sweep's workflow started
    through the forge client (`gh workflow run`) with its newest run read
    back. It never pushes a reservation deletion itself.
+   The spot-check's store (itd-2610301750162657, `abcd-spotcheck` on
+   `origin`) is fetched and pushed only where a landing has just been proved:
+   `land` once a re-run finds the branch landed, and `implement step` once a
+   lane's landing is proved, whose meaning includes the spot-check's
+   observation. While the window has not passed the observation reads the
+   store as last fetched, from disk, and makes one push of the records this
+   checkout holds that origin's copy lacks, or nothing when it holds none.
+   Once the window has passed (or before the first window opens) it makes one
+   fetch of the store's branch, one fetch of the latest round of the drand
+   beacon over HTTPS from `api.drand.sh` (then `api2.drand.sh`, then
+   `api3.drand.sh` when one before cannot be reached), within ten seconds in
+   all, the landings reader's forge reads for the window, and one push of the
+   cycle, each tried once more after a fresh fetch when origin refuses it.
+   Only typed fields leave the machine: a record's free text stays on its local
+   copy.
    Setup (`abcd ahoy install`) downloads abcd only on a yes to the question
    that names the download, the release and the file it is written to, which
    is that fetch's documented meaning: the release's binary for this computer,

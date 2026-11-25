@@ -456,6 +456,24 @@ with no approval, so abcd enforces this itself. Every forge read the gate
 makes is a GET, its fields pinned in `internal/ghcontract` after a live
 read-only call, and a forge answer that cannot be read counts for nothing.
 
+## The spot-check at a landing
+
+A re-run that finds the branch landed observes the landing for the spot-check
+(itd-2610301750162657, `internal/core/spotcheck`), and the `landed` step's note
+carries the observation's line. In `auto` mode the gate's decision abcd takes
+alone, and a re-arm the release hold makes, are each kept on the checkout's
+local copy of the store (`refs/abcd/spotcheck`), with the mode's layer and
+whether a review receipt named the head. While the window has not passed, the
+observation reads the store as last fetched and pushes only records origin's
+branch `abcd-spotcheck` lacks. Once it has passed it fetches the branch, takes
+one verified round of the drand quicknet beacon (signature checked against the
+pinned key, ten seconds in all), draws by HMAC over the round's randomness,
+and pushes the cycle over the tracking tip, tried once more after a refusal.
+Only typed fields reach origin, and an observation that cannot draw writes
+nothing and leaves the landing proved. The branch takes no preflight receipt:
+the pre-push hook admits it by a row of its own
+([adr-2611251806496719](../../decisions/adrs/2611251806496719-the-spot-check-s-store-branch-is-pushed.md)).
+
 ## Trust boundaries
 
 - The remote is `origin` alone, and its every fetch and push URL must be the

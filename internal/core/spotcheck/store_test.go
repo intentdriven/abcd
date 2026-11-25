@@ -1001,15 +1001,15 @@ func TestASecondLostRaceKeepsTheRecordsForTheNextPush(t *testing.T) {
 	}
 }
 
-// Two records of one issue in one second that differ, one from each
-// writer, are both pushed; and a file origin holds under a record's name
-// whose content the name does not give is named unreadable and replaced by
-// the record, which is then found on origin's copy.
+// Two records of one issue in one second whose typed fields differ, one from
+// each writer, are both pushed; and a file origin holds under a record's
+// name whose content the name does not give is named unreadable and
+// replaced by the record's typed copy, which is then found on origin's copy.
 func TestAFileOriginHoldsUnderARecordsNameWithOtherContentIsReplaced(t *testing.T) {
 	a, b, bare := twoClones(t)
 	ctx := context.Background()
 	ha, hb2 := handBack("iss-1", at0), handBack("iss-1", at0)
-	hb2.Reason = "another reason"
+	hb2.Kind = "closed"
 	write(t, a.Root(), hb(ha))
 	write(t, b.Root(), hb(hb2))
 	if _, err := push(ctx, a.Root()); err != nil {
@@ -1022,7 +1022,7 @@ func TestAFileOriginHoldsUnderARecordsNameWithOtherContentIsReplaced(t *testing.
 		t.Fatalf("origin holds %v, want both of iss-1's records", got)
 	}
 	// Another writer puts other content under a record's name on origin.
-	mine := fileOf(t, handBack("iss-2", at0))
+	mine := fileOf(t, handBack("iss-2", at0).typed()) // the name the push carries
 	write(t, b.Root(), hb(handBack("iss-2", at0)))
 	a.Git("fetch", "origin", "+"+BranchRef+":"+TrackingRef)
 	planted := commitFilesAt(t, a, a.Git("rev-parse", TrackingRef), map[string]string{mine.path(): "{}\n"})
@@ -1037,7 +1037,7 @@ func TestAFileOriginHoldsUnderARecordsNameWithOtherContentIsReplaced(t *testing.
 	}
 	found := false
 	for _, h := range rec.HandBacks {
-		found = found || (h.Issue == "iss-2" && h.Reason == "the lane kept refusing")
+		found = found || (h.Issue == "iss-2" && h.Kind == "stuck" && h.Reason == "")
 	}
 	if !found || len(rec.Unreadable) != 0 || len(rec.HandBacks) != 3 {
 		t.Fatalf("origin's copy holds %+v", rec)
@@ -1063,34 +1063,28 @@ func TestABranchGoneFromOriginLeavesNoStaleTrackingRef(t *testing.T) {
 	}
 }
 
-// The lay-over compares files at any depth: a file the local copy holds in a
-// folder within a folder that origin lacks is pushed, and origin's own at
-// any depth are kept.
-func TestALayOverComparesFilesAtAnyDepth(t *testing.T) {
+// A push keeps origin's files at any depth: a file origin holds in a folder
+// within a folder stays when another writer pushes its records over it, and
+// a file the local copy holds that is no record is never pushed.
+func TestAPushKeepsOriginsFilesAtAnyDepth(t *testing.T) {
 	a, b, bare := twoClones(t)
 	ctx := context.Background()
 	write(t, a.Root(), hb(handBack("iss-1", at0)))
 	if _, err := push(ctx, a.Root()); err != nil {
 		t.Fatal(err)
 	}
-	a.Git("update-ref", LocalRef, commitFilesAt(t, a, a.Git("rev-parse", LocalRef), map[string]string{"items/x/one.json": "one\n"}))
-	if _, err := push(ctx, a.Root()); err != nil {
-		t.Fatal(err)
-	}
+	a.Git("fetch", "origin", "+"+BranchRef+":"+TrackingRef)
+	deep := commitFilesAt(t, a, a.Git("rev-parse", TrackingRef), map[string]string{"items/x/one.json": "one\n"})
+	a.Git("push", "origin", deep+":"+BranchRef)
 	write(t, b.Root(), hb(handBack("iss-2", at0)))
 	b.Git("update-ref", LocalRef, commitFilesAt(t, b, b.Git("rev-parse", LocalRef), map[string]string{"items/x/two.json": "two\n"}))
 	res, err := push(ctx, b.Root())
-	if err != nil || res.Pushed != 2 {
+	if err != nil || res.Pushed != 1 {
 		t.Fatalf("b's push = %+v, %v", res, err)
 	}
 	got := remoteFiles(t, bare)
-	for _, want := range []string{"items/x/one.json", "items/x/two.json"} {
-		if !slices.Contains(got, want) {
-			t.Fatalf("origin holds %v, want %s", got, want)
-		}
-	}
-	if len(got) != 4 {
-		t.Fatalf("origin holds %v", got)
+	if !slices.Contains(got, "items/x/one.json") || slices.Contains(got, "items/x/two.json") || len(got) != 3 {
+		t.Fatalf("origin holds %v; want iss-1, iss-2 and items/x/one.json", got)
 	}
 }
 

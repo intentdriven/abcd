@@ -771,6 +771,11 @@ started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an
 intent's run keeps its reservation through a hand-back. A run holding no reservation
 is neither renewed nor tombstoned, and its own reservation is not fenced.
+Once a lane's landing is proved, the step observes it for the spot-check
+(itd-2610301750162657), as `abcd land` does at a landed re-run
+([`38-land.md`](38-land.md)), and the landing's note carries the
+observation's line; a draw that cannot be made writes nothing and never undoes
+the landing.
 
 The land fence also reads the release hold (itd-2609151838312703 C7,
 spc-2610150728396006 step 4). Every run's fence, one holding a reservation or

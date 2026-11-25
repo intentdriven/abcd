@@ -845,6 +845,32 @@ may run to in this repository: a whole number from 16 to 200, 40 by default
 - **What it does not bound.** An idea's slug in `ideate`, whose verdict record is not
   one of these families, keeps its own limit of 64, and a checklist item's id its own.
 
+### The spot-check keys
+
+The `spotcheck` block sets the spot-check's window and its sample
+(`internal/core/spotcheck/config.go`, itd-2610301750162657), read through the
+layered resolver, the repository layer last and winning.
+
+```jsonc
+{
+  "spotcheck": {
+    "window_days": 7,                   // 1 to 90; bundled default 7
+    "window_changes": 0,                // 10 to 100000; 0 or absent is unset
+    "per_group": 10                     // 1 to 100; bundled default 10
+  }
+}
+```
+
+- **The first bound to pass closes the window.** A window spans everything since
+  the last cycle, and closes at the first landing observed once `window_days`
+  whole days have gone by or, when set, `window_changes` first-parent commits
+  have landed on the default branch.
+- **`per_group` is the most a group draws.** The size halves, rounded up, after
+  three closed cycles in a row found nothing, and is whole again after a finding.
+- **A nonsense value refuses.** A value out of bounds or not a whole number, or a
+  misspelt key under `spotcheck`, refuses the observation, naming the file and
+  the key, and nothing is drawn; it never falls back to the default.
+
 ### Staged config keys
 
 No shipped code reads any of the keys below. None appears in any repository's

@@ -328,6 +328,29 @@ abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the
 shell guard refuses an agent's own `gh pr merge` while the mode is `human`.
 
+In `auto` mode, a decision abcd takes alone (an author with write access and no
+person's approval counted) is kept for the spot-check on this checkout's local
+copy of its record, made from the decision as the gate gave it; a re-arm the
+release hold makes is kept the same way. A record that cannot be written leaves
+the decision standing, its reason saying the record was not written, and the gate
+asked again over the same head with the same answer keeps one record.
+
+## The spot-check at a landing
+
+When a re-run finds the branch landed, land observes the landing for the
+spot-check (itd-2610301750162657), and the `landed` step's note carries what it
+did. While the window (`spotcheck.window_days`, seven days by default) has not
+passed, it pushes only the records this checkout holds that the store branch
+`abcd-spotcheck` on origin lacks, and asks nothing when it holds none. Once the
+window has passed, it fetches the store branch and one round of the drand public
+randomness beacon, checks the round's signature itself, draws up to
+`spotcheck.per_group` items from each group of the work decided with no person
+involved, and pushes the drawn items to the branch. Only typed fields reach
+origin: a record's free text stays on the machine that wrote it. A draw that
+cannot be made (the beacon unreachable or its signature wrong, the forge
+unread, the push refused twice) writes nothing, says why, and leaves the
+landing as proved; the next landing observed tries again.
+
 **What `human` holds against.** The gate assumes agents keep the rules: it
 stops an agent merging by mistake, not one set on getting round it. The
 recorded approval is a file in the checkout's local tier, and anything running

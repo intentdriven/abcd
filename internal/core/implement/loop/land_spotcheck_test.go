@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -165,4 +166,38 @@ func keptWhy(why string) string {
 		"origin/main),", "<removed>",
 		"origin/main)", "<removed>",
 	).Replace(why)
+}
+
+// The spot-check's observation of a landing is turned off for every test of
+// the package but the ones that count it: an observation reaches origin and
+// the beacon, which no other test here is about.
+func init() {
+	observeLanding = func(context.Context, spotcheck.Observed) string { return "" }
+}
+
+// TestALaneLandingIsObservedOnce: the lane landing the ancestor check proves
+// is observed for the spot-check once, from the run's checkout at origin's
+// default branch, and the observation's note joins the landing's; a lane not
+// yet merged is not observed.
+func TestALaneLandingIsObservedOnce(t *testing.T) {
+	var seen []spotcheck.Observed
+	saved := observeLanding
+	t.Cleanup(func() { observeLanding = saved })
+	observeLanding = func(_ context.Context, o spotcheck.Observed) string {
+		seen = append(seen, o)
+		return "spot-check: observed"
+	}
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.armReserved(t)
+	if len(seen) != 0 {
+		t.Fatalf("a lane not yet merged was observed: %+v", seen)
+	}
+	f.merged(t, l.Landing.Pushed)
+	f.step(t)
+	if len(seen) != 1 || seen[0].Site != spotcheck.SiteLane || seen[0].Root != f.repo.Root() || seen[0].Default != "main" {
+		t.Fatalf("the landing was observed as %+v; want once, from the lane site", seen)
+	}
+	if note := landNote(t, f); !strings.Contains(note, "; spot-check: observed") {
+		t.Fatalf("the landing's note does not carry the observation's: %q", note)
+	}
 }

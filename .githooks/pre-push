@@ -105,6 +105,14 @@
 #      from an ordinary machine. The hook is not what keeps this work off the
 #      default branch; the wip-guard required check and the ruleset are.
 #
+#      The spot-check's store (itd-2610301750162657, adr-2611251806496719) is
+#      the fourth: the one branch refs/heads/abcd-spotcheck, an orphan whose
+#      commits hold the store's small JSON files and nothing else. The
+#      spotcheck_shape check admits a fast-forward (or the creation) whose
+#      every commit holds only regular, non-executable files at the store's
+#      paths, read in full; anything else pushed to the branch is gated as any
+#      branch is, and a deletion is refused: the store is kept for ever.
+#
 #      A commit is "already on a remote", and needs no receipt for that, only
 #      when a remote-tracking ref outside every receipt-less prefix holds it.
 #      A ref under one was pushed without a receipt, so it vouches for nothing:
@@ -168,10 +176,18 @@ is_null_id() {
 # a reservation over a tip it fetched without a receipt, and the walk only
 # reads: nothing is fetched, deepened or written.
 only_empty_trees() {
-  local listing walked line stored parents oldifs walked_n stored_n
+  local listing
   listing="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
   [ -n "$empty_tree" ] || return 1
   [ -z "$(printf '%s\n' "$listing" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ] || return 1
+  read_in_full "$@"
+}
+
+# read_in_full succeeds when the walk of the range git rev-list is given
+# followed, for every commit it lists, every parent the commit stores: a
+# shallow clone's cut leaves a commit's parents unread (only_empty_trees).
+read_in_full() {
+  local walked line stored parents oldifs walked_n stored_n
   walked="$(git rev-list --parents "$@" 2>/dev/null)" || return 1
   oldifs="$IFS"
   IFS=$'\n'
@@ -206,6 +222,51 @@ reservation_shape() {
     git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null &&
       only_empty_trees "$remote_sha..$local_sha"
   fi
+}
+
+# spotcheck_path_re is a path of the spot-check's store (internal/core/spotcheck,
+# adr-2611251806496719): window-open.json, or a .json name under one of the
+# store's five folders, every segment made of letters, digits, ".", "_" and
+# "-". A path git quotes (one holding any other byte) never matches.
+spotcheck_path_re='^(window-open\.json|(handbacks|decisions|cycles|items|judgements)(/[A-Za-z0-9._-]+)+\.json)$'
+
+# spotcheck_shape is the spot-check store's shape check, for the branch the
+# push names ($branch): the branch is abcd-spotcheck itself, the push is a
+# fast-forward (or a create), the walk reads the range in full, and every
+# commit it moves holds nothing but regular, non-executable files at store
+# paths (spotcheck_path_re), no segment "." or "..". The range is everything
+# new on an update and everything reachable on a create, so a commit of the
+# product's history pushed to the branch walks into a tree holding other
+# paths and is gated as any branch is. Only paths and modes are judged: the
+# store's reader judges every file's content, and nothing on the branch is
+# built, run or merged.
+spotcheck_shape() {
+  local remote_sha="$1" local_sha="$2" range commit commits listing line meta path
+  [ "$branch" = "abcd-spotcheck" ] || return 1
+  if is_null_id "$remote_sha"; then
+    range="$local_sha"
+  else
+    git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null || return 1
+    range="$remote_sha..$local_sha"
+  fi
+  read_in_full "$range" || return 1
+  commits="$(git rev-list "$range" 2>/dev/null)" || return 1
+  for commit in $commits; do
+    listing="$(git ls-tree -r --full-tree "$commit" 2>/dev/null)" || return 1
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      meta="${line%%$'\t'*}"
+      path="${line#*$'\t'}"
+      case "$meta" in
+      "100644 blob "*) ;;
+      *) return 1 ;;
+      esac
+      [[ "$path" =~ $spotcheck_path_re ]] || return 1
+      case "/$path/" in
+      */./* | */../*) return 1 ;;
+      esac
+    done <<<"$listing"
+  done
 }
 
 # wip_id_re is the one record id a work-in-progress branch carries after its
@@ -259,6 +320,7 @@ shape_check() {
   case "$1" in
   reservation_shape) [ "$#" -eq 1 ] || reservation_shape "$2" "$3" ;;
   wip_shape) [ "$#" -eq 1 ] || wip_shape "$2" "$3" ;;
+  spotcheck_shape) [ "$#" -eq 1 ] || spotcheck_shape "$2" "$3" ;;
   *) return 1 ;;
   esac
 }
@@ -274,7 +336,9 @@ shape_check() {
 # shape_check. The last field is named
 # when a delete under the prefix is refused, with <name> standing for the
 # branch's name after the prefix, or is "never" for a branch kept for ever: a
-# ref under a receipt-less prefix is never deleted by a push.
+# ref under a receipt-less prefix is never deleted by a push. A prefix that
+# does not end in a slash names one branch exactly, never the branches whose
+# names begin with it.
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
 # no shape check, or one naming a check shape_check has no arm for, is never
@@ -286,6 +350,7 @@ shape_check() {
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
   "abcd-status/|reservation_shape|adr-2610150729333337|never"
+  "abcd-spotcheck|spotcheck_shape|adr-2611251806496719|never"
 )
 
 # receiptless_row finds the row whose prefix the branch is under and whose
@@ -297,8 +362,9 @@ receiptless_row() {
     IFS='|' read -r row_prefix row_shape row_ruling row_end <<<"$row"
     [ -n "$row_prefix" ] && [ -n "$row_shape" ] || continue
     shape_check "$row_shape" || continue
-    case "$1" in
-    "$row_prefix"*) return 0 ;;
+    case "$row_prefix" in
+    */) case "$1" in "$row_prefix"*) return 0 ;; esac ;;
+    *) [ "$1" = "$row_prefix" ] && return 0 ;;
     esac
   done
   return 1
