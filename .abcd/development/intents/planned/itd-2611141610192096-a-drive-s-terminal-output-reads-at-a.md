@@ -218,7 +218,7 @@ All resolved by the product thinker: on 2026-11-15 (decisions 1 to 3), and the s
    - Answer: the drive offers options. A person cycles through them with Space and accepts the one shown with Enter. The default option does nothing, so an accidental Enter changes nothing. This is none of the three answers the lab offered (no keys, a typed letter and Enter, or single keys by a new terminal mode).
    - Where it is built: in a larger refresh of the command line and terminal interface for the autonomous run, which also needs a headless mode so that a native macOS app can later connect to the command line. That refresh is itd-2611150636498012, and this intent's design works without it.
 2. **Stop after the current lane is wanted, and is one of those options** (product thinker, 2026-11-15; formerly DQ-11).
-   - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today.
+   - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today. **Changed 2026-11-25:** itd-2611150636498012's decision 6 gives the first Ctrl-C the stop after the lane in hand too, the second today's orderly stop and the third the kill, so today's meaning of an interrupt no longer holds.
 3. **The terminal shows the footer, not the table** (product thinker, 2026-11-15; formerly DQ-12).
    - Answer: the footer, three live lines with every event a line above. The cost is more scrollback, 23 rows for the whole fixture run against 15 for the table.
 4. **The start's `review` line names the reviewers only** (product thinker, 2026-11-25; the planning's product question on what that line holds).

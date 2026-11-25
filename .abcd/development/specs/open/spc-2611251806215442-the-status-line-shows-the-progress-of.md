@@ -195,6 +195,8 @@ The criteria are numbered in the order the intent lists them.
 
 ## Open Questions
 
+_All resolved: no question is open, and the notes below are kept for the reader, each with what the plan does until told otherwise._
+
 None holds a step. Four notes for the product thinker, each with what the plan does until told otherwise.
 
 - Pull requests armed by a session that has ended, and by a drive, appear in no session's row. Decision 7 and the seventh criterion say only the session's own are counted, and the plan follows them. Event 3 of the incident note, which the intent cites, was of the drive's pull requests; those reach the row only through the drive's state.

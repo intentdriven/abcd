@@ -17,7 +17,7 @@ blocked_by: [itd-2610222215485265, itd-2611041656012738, itd-2611041549461012, i
 
 ## Press Release
 
-> A drive tells the person at its start what ends it and how to go on. Alice, a solo founder, types `abcd drain --drive`, and before she says yes the start tells her that a reboot, a logout or a crash ends the drive, and names the one command that carries it on. She starts ten fixes and goes out. An update restarts the computer after four. When she is back she types that command, and the drive carries on from where the drain stood, finishes the other six inside the bound she agreed to, and tells her what it did. "Nothing ran while I was out that I had not started that day," said Alice, "and getting it going again was the one line it had shown me." abcd installs nothing that starts by itself.
+> A drive tells the person at its start what ends it and how to go on. Alice, a solo founder, types `abcd drain --drive`, and before they say yes the start tells them that a reboot, a logout or a crash ends the drive, and names the one command that carries it on. They start ten fixes and go out. An update restarts the computer after four. When they are back they type that command, and the drive carries on from where the drain stood, finishes the other six inside the bound they agreed to, and tells them what it did. "Nothing ran while I was out that I had not started that day," said Alice, "and getting it going again was the one line it had shown me." abcd installs nothing that starts by itself.
 
 ## Why This Matters
 

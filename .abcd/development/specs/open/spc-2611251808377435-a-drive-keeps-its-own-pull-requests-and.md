@@ -174,6 +174,8 @@ The criteria are numbered in the order the intent lists them.
 
 ## Open Questions
 
+_All resolved: no question is open, and the notes below are kept for the reader, each with the choice the plan made._
+
 None blocks a step. Three notes are for the product thinker to see.
 
 - **The start's fast-forward comes after the yes.** The start screen asks once, and the fast-forward at the start runs after the answer. A commit it takes in can change a hook or a setting the drive then holds, which is what decision 3 allows at every boundary, and the widened criterion puts the start among them. The plan keeps that order and says the fast-forward on one line. If the product thinker wants the yes to cover exactly what the drive starts with, the fast-forward moves before the start screen, which is a change to the front door and to the screen's lines.

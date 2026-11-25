@@ -201,7 +201,9 @@ The criteria are numbered in the order the intent lists them. The third and four
 
 ## Open Questions
 
-None. The one product question the planning raised, what the start's `review` line holds, was answered by the product thinker on 2026-11-25: the reviewers' names only, with the models and efforts on `?` and in the log. The spec is written on that answer.
+_All resolved: no question is open, and the checks below are kept for the reader, each with the rule its step follows._
+
+The one product question the planning raised, what the start's `review` line holds, was answered by the product thinker on 2026-11-25: the reviewers' names only, with the models and efforts on `?` and in the log. The spec is written on that answer.
 
 Three things a step checks on the default branch when it is cut, each with the rule it follows whichever way the check comes out:
 

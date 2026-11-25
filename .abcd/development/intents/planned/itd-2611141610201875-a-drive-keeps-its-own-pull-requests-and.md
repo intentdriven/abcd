@@ -88,7 +88,7 @@ We expect the drive's checkout to stay near the default branch, because the driv
 
 ## Open Questions
 
-Questions 1 to 4 are resolved by the product thinker on 2026-11-15 (decisions 1 to 4). Question 5 was settled by the technical facilitator on 2026-11-25 (decision 5); it is kept below as it was put.
+_All resolved: questions 1 to 4 by the product thinker on 2026-11-15 (decisions 1 to 4), and question 5 by the technical facilitator on 2026-11-25 (decision 5), which is kept below as it was put._
 
 5. **"Where does a person see that the checkout's fast-forward is blocked?"** (F-12; the lab's brief put it on the state line)
    - What is known: the state line of itd-2611141610197753 has one `on` field, for what the drive is working or waiting on, and one act. A drive whose fast-forward is declined is usually working on a lane, so the block is not what the line is on. The lab's brief says "the state line says what blocks it" and its state-line design has no field for it.

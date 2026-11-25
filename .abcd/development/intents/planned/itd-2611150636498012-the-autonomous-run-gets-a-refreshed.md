@@ -116,7 +116,7 @@ We expect a person to stop a drive after its lane without a lane left to take up
 
 ## Open Questions
 
-All resolved on 2026-11-25: questions 1 and 3 to 6 by the product thinker, and question 2 by the technical facilitator as a consequence of question 1 (decisions 1 to 6). Each question is kept below as it was put, with the answers that could be defended, and the answer taken is marked.
+_All resolved on 2026-11-25: questions 1 and 3 to 6 by the product thinker, and question 2 by the technical facilitator as a consequence of question 1 (decisions 1 to 6). Each question is kept below as it was put, with the answers that could be defended, and the answer taken is marked._
 
 1. **What is the headless interface?**
    - A local socket with a versioned message protocol. An app can connect to a run that is already going, and more than one client can read. Cost: a protocol to design, version and keep; a socket's place and lifetime to manage across a stop and a restart.

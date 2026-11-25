@@ -256,6 +256,8 @@ The criteria are numbered in the order the intent lists them. Criterion 12 is th
 
 ## Open Questions
 
+_All resolved: no question is open, and the checks below are kept for the reader, each with the rule its step follows._
+
 None for the product thinker.
 
 Four things a step checks on the default branch when it is cut, each with the rule it follows whichever way the check comes out:
