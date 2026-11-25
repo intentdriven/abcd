@@ -5,7 +5,8 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2610222215485265, itd-2611251725203320]
+refines: [itd-2609201916151817]
 severity: minor
 impact: additive
 origin: researcher-authored
@@ -20,7 +21,7 @@ production_mode: hand-written
 
 ## Why This Matters
 
-`abcd drain` can make every move from a plain terminal; `abcd build` cannot, so building a planned idea still needs a session open and everything that session holds. adr-2610222222326104 lets a build adopt the drive's four conditions later. The product thinker asked on 2026-11-25 for both to run out of the box in any repository abcd manages.
+`abcd drain` can make every move from a plain terminal; `abcd build` cannot, so building a planned idea still needs a session open and everything that session holds. adr-2610222222326104 lets a build adopt the drive's four conditions later. The product thinker ruled on 2026-11-25 that a build from the plain terminal follows the two parts that land first (dcn-2611251726008978).
 
 ## Mechanism
 
@@ -41,11 +42,11 @@ production_mode: hand-written
 
 ## Decisions
 
-1. Ruled by the product thinker on 2026-11-25: not before the six-day run starts. It changes the files the drive's changes are in, so the run that holds those plans and builds it after them.
+1. The product thinker's, on 2026-11-25 (dcn-2611251726008978): not before the six-day run starts. The reason is the writing session's: It changes the files the drive's own changes are in, so the run that holds those files plans it and builds it after them.
 
 ## Decomposition
 
-Hand-run four-piece table, 2026-11-25. One capability, this intent; no new trust rule, since adr-2610222222326104 names the case. Verdict: FILE-AS-IS.
+Hand-run four-piece table, 2026-11-25. One capability, this intent; no new trust rule, since adr-2610222222326104 names the case. Typed links: `refines` itd-2609201916151817, whose opt-in process driver this makes the walled drive; `builds_on` itd-2610222215485265 and itd-2611251725203320. Flagged for the product thinker: This may duplicate in part that intent's process-driver criterion. Verdict: FILE-AS-IS.
 
 ## Audit Notes
 
