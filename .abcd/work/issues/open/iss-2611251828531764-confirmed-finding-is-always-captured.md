@@ -9,7 +9,7 @@ found_during: "manual build of 25 November, logged as a test of what abcd relies
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/rules/defaults/rules.json"
-remedy: "Enforce it at the places abcd already stands. State the rule in the ISSUES domain and in what a sub-agent is told at its start. Have a sub-agent return its findings in a fixed block, each with its state: fixed in a named commit, refuted with the test, captured under a named record, or held in the private store. The stop hooks keep a per-session list of what is in none of the four and hold the stop once, naming each; landing, a run ending, and a handover refuse while the list is not empty. A finding untested is listed as owed a test, never dropped. Grounds: the deferral discipline has these states already, and the release receipts enforce them."
+remedy: "Build itd-2611251831138387, whose spec is spc-2611252115253843: the list of confirmed findings, the block a sub-agent ends with, the hold at a stop and the refusal at a landing and at the end of a run. This issue resolves with its close."
 related_intents: [itd-2611251831138387]
 ---
 
