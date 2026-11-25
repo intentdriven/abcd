@@ -234,9 +234,9 @@ func renderMatrixPlan(w io.Writer, v labMatrixView) {
 	for _, h := range v.HiddenTests {
 		words := make([]string, len(h.Command))
 		for i, word := range h.Command {
-			words[i] = termsafe.SanitizeLine(strconv.Quote(word))
+			words[i] = termsafe.SanitizeLine(strconv.QuoteToASCII(word))
 		}
-		fmt.Fprintf(w, "  hidden tests: %s, from %s\n", termsafe.Sanitize(h.Task), termsafe.SanitizeLine(strconv.Quote(h.Folder)))
+		fmt.Fprintf(w, "  hidden tests: %s, from %s\n", termsafe.Sanitize(h.Task), termsafe.SanitizeLine(strconv.QuoteToASCII(h.Folder)))
 		fmt.Fprintf(w, "    command:   %s\n", strings.Join(words, " "))
 		fmt.Fprintf(w, "    consent:   %s\n", termsafe.SanitizeLine(h.Consent))
 	}

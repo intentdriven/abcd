@@ -357,6 +357,21 @@ func TestAMatcherAndAProposerArePlannedAsTheChecksJudges(t *testing.T) {
 	if j := check(proposed); j.Count != 2 || !strings.Contains(j.Who, "the proposer cell propose-local") {
 		t.Fatalf("the check's judges with a proposer = %+v", j)
 	}
+	// A judge on a runner route waits for a launcher, and the plan says so
+	// before consent, naming each such judge.
+	for _, c := range []struct {
+		j    JudgeNeed
+		want []string
+	}{{check(matched), []string{"match-or is a runner cell"}}, {check(proposed), []string{"match-or is a runner cell", "propose-local is a runner cell"}}} {
+		for _, w := range c.want {
+			if !strings.Contains(c.j.Note, w) || !strings.Contains(c.j.Note, "waits for a launcher") {
+				t.Errorf("the judges note = %q; want it to say %s and waits for a launcher", c.j.Note, w)
+			}
+		}
+	}
+	if j := check(bare); strings.Contains(j.Note, "launcher") {
+		t.Errorf("the judges note with no judge declared = %q; want no wait named", j.Note)
+	}
 	roles := map[string]Role{}
 	for _, c := range proposed.Cells {
 		roles[c.Cell] = c.Role
@@ -392,7 +407,7 @@ func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
 		t.Fatalf("hidden tests = %+v; want none where no task names any", bare.HiddenTests)
 	}
 	decl := strings.Replace(string(planDecl(builders, ``, ``)), `"intent": "itd-2610161733316518"}`,
-		`"intent": "itd-2610161733316518", "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "Test Hidden", "One\u00a0Two", "./..."]}`, 1)
+		`"intent": "itd-2610161733316518", "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "Test Hidden", "One\u00a0Two", "g\u043e", "a`+"`"+`b", "./..."]}`, 1)
 	p, err := plan(t, []byte(decl), ResolvedCap{})
 	if err != nil {
 		t.Fatal(err)
@@ -403,9 +418,11 @@ func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
 	h := p.HiddenTests[0]
 	// Every word holding a space, a Unicode one among them, is quoted, and so
 	// is the folder; the line says no hidden test is run by this build.
-	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone; " +
+	// A letter outside ASCII is shown as its escape, and a backtick never
+	// ends the command's fence.
+	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" \"g\\u043e\" \"a\\x60b\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone; " +
 		"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report"
-	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 6 || h.Consent != want {
+	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 8 || h.Consent != want {
 		t.Fatalf("hidden tests = %+v\nwant consent %q", h, want)
 	}
 	if p.Digest == bare.Digest {

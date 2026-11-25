@@ -342,3 +342,59 @@ func TestACheckWithAHostMatcherAndProposerIsJudgedThroughTheCLIToItsTable(t *tes
 		t.Fatalf("the judging after the table (exit %d): %s", code, out)
 	}
 }
+
+// A letter from another script that looks like an ASCII one is shown in the
+// printed plan as its escape, in the folder and in every word, so a command
+// one look-alike letter away from the expected one reads as different.
+func TestThePrintedPlanShowsALookAlikeLetterAsItsEscape(t *testing.T) {
+	_, id, decl := matrixLabCLI(t, "builder=runner:opencode@openrouter/vendor/model", true)
+	body, err := os.ReadFile(decl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	with := strings.Replace(string(body), `"intent":"itd-2610161733316518"}`,
+		`"intent":"itd-2610161733316518","hidden_tests":"/work/t\u0435sts","test_command":["g\u043e","test"]}`, 1)
+	if err := os.WriteFile(decl, []byte(with), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runLab(t, "lab", "matrix", id, decl)
+	if code != 0 {
+		t.Fatalf("the plan (exit %d): %s%s", code, out, errOut)
+	}
+	for _, want := range []string{`"g\u043e" "test"`, `"/work/t\u0435sts"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the printed plan lacks %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "\u043e") || strings.Contains(out, "\u0435") {
+		t.Errorf("the printed plan shows a look-alike letter as itself:\n%s", out)
+	}
+}
+
+// A run that cannot be read is refused as that, whatever flag the task's
+// kind would take, never as a task of the wrong kind.
+func TestAJudgeOnARunThatCannotBeReadSaysSo(t *testing.T) {
+	_, id, run := matrixCheckRun(t, "", "contradiction", "drift", "gap")
+	other := run[:len(run)-1] + string("0123456789abcdef"[(strings.IndexByte("0123456789abcdef", run[len(run)-1])+1)%16])
+	code, _, errOut := runLab(t, "lab", "matrix", "judge", id, other, "check-a", "--table")
+	if code == 0 || strings.Contains(errOut, "not one of the run's check tasks") || strings.Contains(errOut, "goes with a check task") {
+		t.Fatalf("judging a run that does not exist: exit %d, %s; want the run's read refused as it is", code, errOut)
+	}
+}
+
+// The printed plan of a check with a runner matcher names the wait in its
+// judges note before the person consents.
+func TestThePrintedPlanSaysARunnerJudgeWaitsForALauncher(t *testing.T) {
+	_, id, _ := matrixLabCLI(t, "builder=runner:opencode@openrouter/vendor/model", true)
+	decl := filepath.Join(t.TempDir(), "matrix.json")
+	body := `{"schema_version":1,"name":"check judging","tasks":[{"id":"check-a","kind":"check","material":["README.md"]}],` +
+		`"builders":[{"id":"host-big","route":"host"}],"matcher":{"id":"match-or","route":"matcher=runner:opencode@openrouter/vendor/model"},` +
+		`"repeats":{"pilot":3,"max":10},"concurrency":2,"judging":{"guests_may_judge":false}}`
+	if err := os.WriteFile(decl, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := runLab(t, "lab", "matrix", id, decl)
+	if code != 0 || !strings.Contains(out, "match-or is a runner cell, and its answer waits for a launcher") {
+		t.Fatalf("the plan (exit %d): %s%s; want its judges note to name the runner matcher's wait", code, out, errOut)
+	}
+}

@@ -384,14 +384,47 @@ func TestAJudgeNamingTheModelAHostBuilderServedIsRefused(t *testing.T) {
 		in.Cells = append(in.Cells, CellPin{Cell: "match-or", Role: RoleMatcher, Source: SourceOpenRouter, Runner: "opencode",
 			Model: "openrouter/vendor/host-model", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}})
 	}
-	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
-		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, "Host-Model"},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
-	}, runnerMatcher)
-	if _, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); err == nil || !strings.Contains(err.Error(), "host-big") {
-		t.Fatalf("DrawCheck = %v; want the matcher refused as the model host-big served", err)
+	// One model under each spelling a served name may carry: another case, a
+	// dated snapshot, a variant tag, spaces about it, a dashed date.
+	for _, served := range []string{"Host-Model", "host-model-20261001", "host-model:free", " host-model ", "vendor/host-model-2026-10-01"} {
+		t.Run(served, func(t *testing.T) {
+			r, home, m, rec := checkFlowLab(t, []checkCopyAt{
+				{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, served},
+				{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
+			}, runnerMatcher)
+			if _, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); err == nil || !strings.Contains(err.Error(), "host-big") {
+				t.Fatalf("DrawCheck = %v; want the matcher refused as the model host-big served", err)
+			}
+			absent(t, "the matcher's request", checkState(home, m, rec.RunID, "match.json"))
+		})
 	}
-	absent(t, "the matcher's request", checkState(home, m, rec.RunID, "match.json"))
+}
+
+// A draw killed after the key is written and before the packet leaves the key
+// alone: the judging says so, and the verb alone writes the packet the key
+// names, the same one, so the check stays drawable.
+func TestADrawLeftWithItsKeyAndNoPacketWritesThePacketTheKeyNames(t *testing.T) {
+	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, "The guard reads its registry from the plugin root.", "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, "It refuses a hazard"), StatusPassed, ""},
+	})
+	first, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil || first.Packet == nil {
+		t.Fatalf("DrawCheck = %+v, %v", first, err)
+	}
+	if err := os.Remove(checkState(home, m, rec.RunID, "packet.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecordCheckVerdicts(r.Root(), m.ID, rec.RunID, checkTask, checkVerdicts(t, *first.Packet, CheckKey{Packet: first.PacketDigest}, true, nil)); err == nil {
+		t.Fatal("verdicts were locked on a packet not recorded")
+	}
+	j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil || j.Stage != CheckAwaitingVerdicts || j.PacketDigest != first.PacketDigest || j.Waiting != "" {
+		t.Fatalf("DrawCheck over a key with no packet = %+v, %v; want the packet the key names, digest %s", j, err, first.PacketDigest)
+	}
+	if _, err := RecordCheckVerdicts(r.Root(), m.ID, rec.RunID, checkTask, checkVerdicts(t, *j.Packet, CheckKey{Packet: j.PacketDigest}, true, nil)); err != nil {
+		t.Fatalf("the verdicts on the packet written again: %v", err)
+	}
 }
 
 // A runner proposer's verdicts come only through a launcher: once the

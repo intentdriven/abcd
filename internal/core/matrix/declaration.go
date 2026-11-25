@@ -440,17 +440,26 @@ func judgeOnBuilder(role Role, judge, builder string) error {
 	return fmt.Errorf("the %s cell %s is named as the builder cell %s: a %s judges from outside the matrix, never on a builder's own route or model", role, judge, builder, role)
 }
 
-// modelKey is the model a route's <provider>/<model> names, with every
-// provider and vendor prefix cut and its case folded: openrouter/vendor/model-x,
-// vendor/model-x and Model-X are one model. Two models that differ only in
-// their prefix are taken as one, so a judge is refused rather than let judge
-// what may be its own copies.
+// modelKey is the model a route's <provider>/<model>, or a served name,
+// names: the spaces about it trimmed, every provider and vendor prefix cut, a
+// carrier's `:variant` tag (`:free`) cut, its case folded, and a dated
+// snapshot at its end (-YYYYMMDD, -YYYY-MM-DD) cut. So
+// openrouter/vendor/model-x, vendor/Model-X:free, model-x-20261001 and
+// " model-x " are one model. Two models that differ only so are taken as one,
+// so a judge is refused rather than let judge what may be its own copies.
 func modelKey(model string) string {
+	model = strings.TrimSpace(model)
 	if i := strings.LastIndexByte(model, '/'); i >= 0 {
 		model = model[i+1:]
 	}
-	return strings.ToLower(model)
+	if i := strings.IndexByte(model, ':'); i >= 0 {
+		model = model[:i]
+	}
+	return datedSnapshotRe.ReplaceAllString(strings.ToLower(strings.TrimSpace(model)), "")
 }
+
+// datedSnapshotRe is a dated snapshot written at a model name's end.
+var datedSnapshotRe = regexp.MustCompile(`-([0-9]{8}|[0-9]{4}-[0-9]{2}-[0-9]{2})$`)
 
 // The bounds of a code task's hidden tests: the folder's path, and the test
 // command's words and each word's length.

@@ -317,6 +317,9 @@ func TestAJudgeNamingABuildersModelThroughAnotherProviderIsRefused(t *testing.T)
 	for name, judge := range map[string]string{
 		"another provider": `"matcher": {"id": "match-x", "route": "matcher=runner:other@vendor/model"}`,
 		"another case":     `"proposer": {"id": "propose-x", "route": "proposer=runner:opencode@openrouter/Vendor/MODEL"}`,
+		"a variant tag":    `"matcher": {"id": "match-x", "route": "matcher=runner:opencode@openrouter/vendor/model:free"}`,
+		"a dated snapshot": `"matcher": {"id": "match-x", "route": "matcher=runner:other@vendor/model-20260101"}`,
+		"a dashed date":    `"proposer": {"id": "propose-x", "route": "proposer=runner:other@vendor/Model-2026-01-01"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parseDeclaration([]byte(withJudges(judge))); err == nil || !strings.Contains(err.Error(), "named as the builder cell or-cheap") {

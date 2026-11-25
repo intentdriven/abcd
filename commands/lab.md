@@ -137,11 +137,15 @@ the run may make), `cost` (the expected cost by source at the most copies,
 reckoned only from each cell's declared `cost_per_copy`; a metered source with a
 cell that declared none says `not estimated; bounded by your cap`), `spend_cap`
 and where it came from, `load_cap` and `cores`, `time` (a bound when every cell
-declares `minutes_per_copy`, otherwise known after the pilot), `judges`, and the
-`digest` naming exactly this plan, with `approve_with`, the command that starts
-it. Building it makes no network call and fetches no price. Show the person the
+declares `minutes_per_copy`, otherwise known after the pilot), `judges` (each
+with its `note`), `hidden_tests` (each code task's `folder`, its test `command`
+word by word, and the `consent` line the person agrees to), and the `digest`
+naming exactly this plan, with `approve_with`, the command that starts it.
+Building it makes no network call and fetches no price. Show the person the
 whole plan in plain words: the copies, what it may spend against the cap, the
-load, the time and the judges.
+load, the time and the judges, and each code task's hidden-tests folder and
+command with its consent line, word for word. The digest covers them, so never
+pass `--approve` for a plan whose hidden tests the person has not seen.
 
 **Only after the person has seen that plan and said yes to it**, record the run
 with the digest it carried:
@@ -270,8 +274,8 @@ matcher joined, and the `packet` is drawn. A matcher or proposer cell marked
 `awaiting_runner` waits for a launcher this build does not have: the judging
 stops at `awaiting_matcher` or `awaiting_proposer` with `waiting` saying so.
 Never answer for it yourself, and tell the person it waits. Where `waiting` says
-the matcher's answer is recorded and its packet is not drawn, run the verb with
-no flag: it draws the packet from that answer. The packet shows each distinct finding under a `code`,
+the draw of the packet was interrupted, run the verb with no flag: it draws the
+packet from what the draw recorded. The packet shows each distinct finding under a `code`,
 shuffled, with no model, cell, run or path named and no verdict proposed. Show
 it to the person and record their verdict on every code, locked, with
 `--verdicts <file>`: `{"schema_version": 1, "packet": "<packet_digest>",

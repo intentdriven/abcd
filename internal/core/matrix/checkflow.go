@@ -93,8 +93,9 @@ type CheckJudging struct {
 	Packet         *CheckPacket    `json:"packet,omitempty"`
 	PacketDigest   string          `json:"packet_digest,omitempty"`
 
-	// answered marks a matcher's answer recorded.
-	answered bool
+	// answered marks a matcher's answer recorded, and keyed a key written
+	// with no packet beside it.
+	answered, keyed bool
 }
 
 // checkMatchState is a matcher's request as the run keeps it: the copies
@@ -358,10 +359,15 @@ func checkJudgingOf(proc *lab.Procedure, rec RunRecord, d Declaration, task stri
 		j.Sample, j.answered = mr.Sample, true
 	}
 	if p == nil {
-		if mr != nil {
+		keyed, err := stateExists(proc, checkRel(rec.RunID, task, "key.json"))
+		if err != nil {
+			return CheckJudging{}, false, err
+		}
+		j.keyed = keyed
+		if mr != nil || keyed {
 			j.Waiting = interruptedDraw(task)
 		}
-		return j, st != nil, nil
+		return j, st != nil || keyed, nil
 	}
 	j.Packet, j.PacketDigest, j.Copies, j.Stage, j.Waiting = p, k.Packet, len(k.Copies), CheckAwaitingVerdicts, ""
 	if st == nil {
@@ -385,12 +391,12 @@ func checkJudgingOf(proc *lab.Procedure, rec RunRecord, d Declaration, task stri
 	return j, true, nil
 }
 
-// interruptedDraw is what a judging whose matcher's answer is recorded with
-// no packet beside it waits for: the two are written together, so only an
-// interruption between the writes leaves it, and the verb alone draws the
-// packet from the answer recorded.
+// interruptedDraw is what a judging whose matcher's answer or key is
+// recorded with no packet beside it waits for: they are written together,
+// the packet last, so only an interruption between the writes leaves it, and
+// the verb alone draws the packet from what is recorded.
 func interruptedDraw(task string) string {
-	return fmt.Sprintf("the matcher's answer on %s is recorded and its packet is not drawn, as an interrupted draw leaves it: draw the packet with the verb alone", task)
+	return fmt.Sprintf("the draw of %s's packet was interrupted, and the packet is not recorded: draw the packet with the verb alone", task)
 }
 
 // DrawCheck starts check task's judging in run, once: it joins the findings
@@ -410,6 +416,9 @@ func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
 		return CheckJudging{}, err
 	}
 	j, started, err := checkJudgingOf(proc, rec, d, task)
+	if err == nil && started && j.Packet == nil && j.keyed {
+		return rewritePacket(repoRoot, labID, proc, j, run, task)
+	}
 	if err == nil && started && j.Packet == nil && j.answered {
 		return redrawCheck(repoRoot, labID, proc, j, run, task)
 	}
@@ -466,6 +475,46 @@ func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
 		return j, nil
 	}
 	return drawCheck(repoRoot, labID, j, run, task, copies, m, seed)
+}
+
+// rewritePacket writes the packet of a judging whose key is recorded with no
+// packet beside it, the one the key names, closing proc. The packet was never
+// written, so nobody has seen it, and the key holds it whole.
+func rewritePacket(repoRoot, labID string, proc *lab.Procedure, j CheckJudging, run, task string) (CheckJudging, error) {
+	raw, err := proc.ReadState(checkRel(run, task, "key.json"))
+	var k CheckKey
+	if err == nil {
+		if err = jsonstrict.Decode(raw, &k); err != nil {
+			err = fmt.Errorf("the check's key.json does not parse: %w", err)
+		}
+	}
+	if err == nil && (k.Run != run || k.Task != task) {
+		err = errors.New("the check's key written is another run's or task's")
+	}
+	var copies []CheckCopy
+	if err == nil {
+		copies, err = readCheckCopies(proc, run, k.Copies)
+	}
+	proc.Close()
+	if err != nil {
+		return CheckJudging{}, err
+	}
+	p, err := packetOfKey(k, copies)
+	if err != nil {
+		return CheckJudging{}, fmt.Errorf("the packet of %s cannot be drawn again from its key: %w", task, err)
+	}
+	data, err := encodeCheck(p)
+	if err != nil {
+		return CheckJudging{}, err
+	}
+	if err := writeCheckState(repoRoot, labID, checkRel(run, task, "packet.json"), data); err != nil {
+		return CheckJudging{}, err
+	}
+	j.Stage, j.Packet, j.PacketDigest, j.Copies, j.Waiting = CheckAwaitingVerdicts, &p, k.Packet, len(k.Copies), ""
+	if j.MatcherRequest == nil {
+		j.Leftovers = leftoverCount(k)
+	}
+	return j, nil
 }
 
 // redrawCheck draws the packet of a judging whose matcher's answer is
@@ -607,7 +656,7 @@ func matcherAdmits(j CheckJudging, st *checkMatchState, task string) error {
 		return fmt.Errorf("the run declares no matcher cell, so the findings of %s no exact key joins stay rows of their own", task)
 	case j.Matcher.AwaitingRunner:
 		return errors.New(runnerWait(RoleMatcher, j.Matcher))
-	case j.Packet == nil && j.answered:
+	case j.Packet == nil && (j.answered || j.keyed):
 		return errors.New(interruptedDraw(task))
 	case j.Packet != nil && st != nil:
 		return fmt.Errorf("the matcher's answer on %s is recorded already; it is taken once", task)
