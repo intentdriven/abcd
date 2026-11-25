@@ -533,6 +533,67 @@ that otherwise the branch is a peer's and must be left untouched: never
 committed to, merged or pushed. A branch whose creator is recorded keeps the
 usual instruction.
 
+## The hold on a sub-agent's writes
+
+A sub-agent reads the repository's conventions before it writes
+(itd-2611251725190796, spc-2611251757228271; the refusal is ruled in
+dcn-2611251823160636). In a repository abcd manages whose rules are on, the hook
+refuses a sub-agent's write, with the host's deny, until a call of that
+sub-agent's own has named the conventions file: `AGENTS.md` at the checkout
+root, else `CLAUDE.md`. The arm is `subagentHold`
+(`internal/surface/cli/guard_subagent.go`), asked before the file-writing
+tools' own gate and, for the shell tool, once the session's root has resolved.
+
+**What is a write.** A call of one of the file-writing tools, wherever the file
+lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
+`rebase`, `cherry-pick`, `revert`, `am`, `pull` and `push`. `guard.RecordActs`
+reads each command of the line after the guard's own tokenizer, steps over
+assignment words and git's global options with their values, and takes the
+subcommand by position, so `git stash push` and `echo git commit` are no write. A
+word a substitution or a variable prints is allowed as a global option's value
+and after the subcommand; as the program, an option word or the subcommand it
+reads as no act. A command run through a wrapper (`env`, `sh -c`, a script, an
+alias) is not seen, and neither is `abcd land`, since what it sends was held at
+its commit. Any other shell command goes on unasked: no closed reading of a line
+tells a write from a read, and an edit made through the shell is held at its
+commit.
+
+**What is a reading.** The sub-agent's own transcript is read once at the held
+call, from where the host keeps it beside the session's
+(`<session>/subagents/agent-<id>.jsonl`), and judged by `history.JudgeSubagent`,
+the judge its stop uses ([`11-history.md`](11-history.md)). A call that is not
+itself a write and names the file, as a whole name, is a reading: the host's
+reading tool, `cat AGENTS.md` in the shell, a search for it. So is one that names
+a build lane's own brief (`.abcd/.work.local/run/<run>/<lane>/brief.md`), which
+carries the conventions whole. Naming is the test: the hold proves a skipped
+reading and never a careful one. A reading is kept as a fact beside the rules
+loader's ledgers
+([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)),
+and every later call answers from it.
+
+**The refusal** names the file and the root abcd looked in, says which calls
+pass, that the read goes in a call of its own, since one in the same shell line
+as the held command is not counted and one sent in the same turn may not be, and
+says to send the write again after it. It does not give way after some number of
+refusals. A sub-agent the start hook never reached is held too: the guard asks
+the start hook's own test, and the refusal is what tells it.
+
+**Who is never held.** The session itself, whose calls the host's payload names
+no sub-agent for; abcd's four cold-reading agents, by the type the host names; a
+drive's stage, whose brief carries the conventions; and a sub-agent that never
+writes, for which no store is read. Nothing is held in a repository abcd does
+not manage, where its rules are switched off, or where neither file stands. A
+run in the checkout exempts nobody.
+
+**What cannot be judged is not held.** An agent or session id that can key no
+fact, a fact that cannot be read, git that does not answer inside the hook's
+deadline, a rules file that will not load, a payload with no absolute transcript
+path, and a transcript that is absent, unreadable or over the size abcd reads
+each let the write go on to the guard's other checks. Where there is a key to
+keep it under, a fact says why, and that sub-agent is not judged again; its stop
+keeps a line saying so, which the staged listing prints
+([`11-history.md`](11-history.md#a-stopping-sub-agents-line)).
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.
@@ -595,8 +656,9 @@ the same answer.
 One limit is not among those states, because it is never false: the guard's
 reach. The manifest's pre-tool-use matcher hands the hook the shell tool, the
 question tool and the host's file-writing tools (`Write`, `Edit`, `MultiEdit`,
-`NotebookEdit`) and nothing else. A file those tools write is judged only by
-where it lands: in a main checkout two or more live sessions started in, outside
+`NotebookEdit`) and nothing else. A sub-agent's write is held until it has read
+the conventions ("The hold on a sub-agent's writes"); past that, a file those
+tools write is judged only by where it lands: in a main checkout two or more live sessions started in, outside
 that checkout's own local tier (`.abcd/.work.local/`, which git ignores), it is
 denied with the record verbs' refusal (`occupancy.CheckPath`, which walks up to
 the file's `.git` with no git subprocess; iss-2610280051498465), and anywhere

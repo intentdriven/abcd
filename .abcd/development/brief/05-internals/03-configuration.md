@@ -1578,7 +1578,8 @@ whose news was shown in `after-update/`
 one marker per running host session in `occupancy/`, the session-name register
 in `sessions/names.json`
 ([`../04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md#what-ships-today)), the
-rules loader's per-session ledgers in `rules-state/`, the dashboard's run file,
+rules loader's per-session ledgers and the sub-agents' facts ([what a starting
+sub-agent is told](#what-a-starting-sub-agent-is-told)) in `rules-state/`, the dashboard's run file,
 seen devices and lock in `dashboard/`
 ([`../04-surfaces/36-dashboard.md`](../04-surfaces/36-dashboard.md#starting-stopping-reading-the-state)), this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
@@ -1664,7 +1665,7 @@ permission guard (a regular file this uid owns that no one else can write) —
 `credential-homes.json`, `tools.json`, `identity.json`,
 `identity/<root-sha>.json`, the files of `away/<root-sha>/`, the one-shot allows
 in `guard-allow/<root-sha>/`, the markers in `occupancy/`,
-`sessions/names.json`, the ledgers in `rules-state/`, `dashboard/run.json`,
+`sessions/names.json`, the ledgers and the sub-agents' facts in `rules-state/`, `dashboard/run.json`,
 `dashboard/seen.json`, and the check records and builds in
 `dogfood/<root-sha>/` — is refused when `~/.abcd.noindex`, or a directory
 below it on the way to the file, is a symlink: the rule the rules loader states
@@ -2032,6 +2033,63 @@ in two cases:
   a prompt without the prefix drops it from the set, and the next `*NAME`
   renders it again, with no edit to `rules.json`.
 
+## What a starting sub-agent is told
+
+The rules loader runs when a person sends a prompt, and a sub-agent is sent none;
+the conventions file reaches it only where the host loads it. So `hook
+subagent-start` (itd-2611251725190796, spc-2611251757228271) tells each sub-agent,
+as it starts, where the conventions are and which commands print the rules. Its
+output is one JSON object, whole or absent, whose
+`hookSpecificOutput.additionalContext` carries:
+
+- the conventions file, `AGENTS.md` at the checkout root or else `CLAUDE.md`, the
+  root the hook looked in, and that a sub-agent given another worktree reads the
+  copy at that worktree's root: the payload carries the session's directory and
+  never the sub-agent's own. The file is looked at and never opened, so no word
+  of it, its check word included, can reach the output. With neither file the
+  message says nothing of one;
+- that the guard refuses the sub-agent's writes until a call of its own has read
+  that file
+  ([`../04-surfaces/17-guard.md`](../04-surfaces/17-guard.md#the-hold-on-a-sub-agents-writes));
+- the two commands: `rules --prompt "<your task in one sentence>"`, which names
+  the domains a task recalls, and `rules <DOMAIN>`, which prints one. In abcd's
+  own source tree they run `scripts/abcd.sh`, and anywhere else the hook's own
+  executable by its absolute path, bare `abcd` where that path holds a byte a
+  shell word cannot carry plain;
+- the names of the domains in force, with their count. The document fits
+  `rules.InjectionBudgetBytes`: a list that does not is replaced whole by the
+  count and the command that prints it, and no name is cut.
+
+It carries no rule's text. The hook is silent, at exit 0 and with nothing
+written, in a repository abcd does not manage, where the rules are switched off in
+the repository or on the machine, and for abcd's four cold-reading agents, whose
+context may hold no repository path.
+
+The hook holds itself to 5 seconds (`subagentStartBound`), set before stdin is
+read, under the manifest's 10. A payload it cannot read, a rules file that will not
+load, git that does not answer, a fact that cannot be written, a panic and a spent
+bound each leave stdout empty, put one line on stderr and exit 1: never 0, which
+would hide it, and never 2, the host's blocking status. The sub-agent starts all
+the same. The failure is counted in the history lane's `subagent-readings.json`,
+in the store the session-start hook noted for the session, and the line says so
+where there is none.
+
+**A sub-agent's facts** are kept in `rules-state/`, beside the session ledgers and
+under the same folder, guard and age (`internal/core/rules/subagent.go`). Each is
+one small file, named by a digest of the session id and the agent id and by the
+fact: `told` (the file, the root, and whether the start hook or the guard told
+it), `passed` (it has read the file, or a build lane's brief that carries it),
+`held` and `unjudged` (what the guard did about its writes) and `judged` (its
+stop's line is kept). A fact is written once and never rewritten from a read, so
+two hooks answering for one sub-agent cannot lose each other's. They are no part
+of the session's ledger, which every prompt rewrites and each session start
+removes. A payload whose ids can key nothing leaves no fact, and that sub-agent is
+told and never judged or held. A fact is swept seven days after it was written,
+with the ledgers.
+
+The sub-agent's stop reads the facts and keeps one line for what it skipped
+([`../04-surfaces/11-history.md`](../04-surfaces/11-history.md#a-stopping-sub-agents-line)).
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
@@ -2328,19 +2386,25 @@ world-writable, and recorded as this
 machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
 message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse`,
 `PermissionRequest` and `PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
-and the transcript hooks declare none. Every event that runs `bootstrap.sh`
+`SubagentStart`
+declares a 10-second timeout, and the transcript hooks declare none. Every event that runs `bootstrap.sh`
 names a `statusMessage`, the host's spinner text while the hook runs, because the
 salvage sends the script's output nowhere; the text states no duration, since
 those limits differ. A test pins every event's timeout and the message
 (`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
-`SubagentStop` are among the four
+`SubagentStop` are among the five
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the
 transcript the hook exists to capture (iss-2608210934566223). Both resolve the
 plugin root, then PATH, then say the transcript was not captured. `SubagentStop`
 additionally never exits non-zero beyond that refusal, because exit 2 is the host's
-BLOCKING code on that event. `Stop` and `StopFailure` carry the away
+BLOCKING code on that event. `SubagentStart` carries `hook subagent-start`
+([what a starting sub-agent is told](#what-a-starting-sub-agent-is-told)) and
+downloads nothing, since a sub-agent's start does not wait on a fetch:
+it resolves the plugin root, then PATH, then says in one line, at exit 1, that the
+sub-agent was not told, and the verb holds itself to 5 seconds under the manifest's
+10. `Stop` and `StopFailure` carry the away
 mode's stop check (`hook stop`, `hook stop-failure`, spc-2610180914469489) and fire
 at a turn's end, where a fetch would hold the session; each resolves the plugin
 root, then PATH, then says what did not happen, at exit 1, never `Stop`'s

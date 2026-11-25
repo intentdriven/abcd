@@ -53,10 +53,12 @@ import (
 // (scripts/abcd.sh, iss-2610241240133009): it runs the binary it has just
 // built with exec "$bin" "$@", which warns as program-name-unknown twice, its
 // command line and the file whole, as the other exec "$BIN" "$@" launchers
-// already do.
+// already do. Raised to 39 when the SubagentStart hook's shim landed
+// (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
+// same two warns.
 const (
 	maxSweepBlocks = 30
-	maxSweepWarns  = 37
+	maxSweepWarns  = 39
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {

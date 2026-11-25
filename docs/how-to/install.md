@@ -89,8 +89,8 @@ Session end is one deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
 line if the transcript was not captured rather than blocking on a bootstrap.
-The hooks that run when a turn ends, when a turn ends on an error and when a
-sub-agent finishes download nothing either: each resolves the plugin root then
+The hooks that run when a turn ends, when a turn ends on an error, and when a
+sub-agent starts or finishes download nothing either: each resolves the plugin root then
 `PATH` and says in one line what did not happen.
 Session start is the other exception, in the other direction: it resolves the
 plugin root alone, and when that is empty it fails closed rather than reaching

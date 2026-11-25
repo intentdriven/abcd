@@ -17,7 +17,8 @@ the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
 check performs **zero writes**. The hook writes the record of a branch the
 session creates (below), and refuses nothing for it; when it admits abcd's own
 question where the badge shows, it also writes the waiting-on mode and the
-marker saying a question is open (below).
+marker saying a question is open (below), and when it judges a sub-agent's write
+it keeps what it found (below).
 
 ## `check` — decide one command
 
@@ -331,7 +332,23 @@ linked worktree, a checkout one session or none works in, a path in no checkout,
 and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
 ignores) are written silently. A file call naming no path, a relative path with
 no absolute session directory, or a count that cannot be made, lets the write
-run and warns loudly. A call through any other
+run and warns loudly.
+
+A **sub-agent's write is held** until that sub-agent has read the conventions
+file at its checkout root, `AGENTS.md` or else `CLAUDE.md`, in a repository abcd
+manages whose rules are on. A write is a call of one of those file-writing tools,
+or a shell line naming `git commit`, `merge`, `rebase`, `cherry-pick`, `revert`,
+`am`, `pull` or `push`. The refusal names the file, where abcd looked for it and
+the way out: one call of its own that names the file and writes nothing (the
+host's reading tool, `cat AGENTS.md`, or a search for it), and then the same
+write again. A read in the same shell line as the held command is not counted,
+and one sent in the same turn may not be. Never work around a hold by writing
+through another tool: read the file. A call that names a build lane's own brief
+stands for the reading. The session's own calls, abcd's cold-reading agents and
+a drive's stage are never held, and a write that cannot be judged is not held:
+the sub-agent's stop keeps a line saying so, and `history staged` lists it.
+
+A call through any other
 tool never reaches the guard: a command a tool from another extension runs is
 neither checked nor warned about. That is the guard's standing scope, not a
 degradation, and the `guard:` line of `abcd ahoy` does not report it.

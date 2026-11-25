@@ -392,6 +392,14 @@ func hasGap(gaps []Gap, id string) bool {
 	return false
 }
 
+// TestShippedHookManifestWiresSubagentStart: the shipped manifest raises no gap
+// of its own, its entry read through to the script.
+func TestShippedHookManifestWiresSubagentStart(t *testing.T) {
+	if gaps := detectHookManifest("../../..", true); len(gaps) != 0 {
+		t.Errorf("the shipped manifest raises %+v", gaps)
+	}
+}
+
 // TestShippedHookManifestVerifies pins the real hooks/hooks.json against the
 // verifier, so the manifest and requiredHookCommand can never drift apart.
 func TestShippedHookManifestVerifies(t *testing.T) {

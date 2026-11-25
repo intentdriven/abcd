@@ -35,6 +35,7 @@ var wantHookTimeouts = map[string]int{
 	"PermissionRequest": 0,
 	"PreCompact":        0,
 	"SessionEnd":        0,
+	"SubagentStart":     10,
 	"SubagentStop":      0,
 	"Stop":              30,
 	"StopFailure":       0,

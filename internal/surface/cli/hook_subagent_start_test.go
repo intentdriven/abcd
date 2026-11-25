@@ -564,3 +564,27 @@ func TestSubagentStartRecoversAPanicAtExitOne(t *testing.T) {
 		t.Errorf("the panic was counted %d time(s), want 1", n)
 	}
 }
+
+// TestSubagentStartBoundSitsUnderTheManifests: the hook answers for itself, its
+// failure counted, before the host kills it.
+func TestSubagentStartBoundSitsUnderTheManifests(t *testing.T) {
+	doc := decodedHooksManifest(t)
+	entries := doc.Hooks["SubagentStart"]
+	if len(entries) != 1 || len(entries[0].Hooks) != 1 || entries[0].Hooks[0].Timeout == nil {
+		t.Fatalf("the manifest wires %d SubagentStart group(s), want one with one command and a timeout", len(entries))
+	}
+	declared := time.Duration(*entries[0].Hooks[0].Timeout) * time.Second
+	if slack := declared - subagentStartBound - history.SubagentLineLock; slack < time.Second {
+		t.Errorf("the bound %s and the count's lock %s leave %s of the manifest's %s", subagentStartBound, history.SubagentLineLock, slack, declared)
+	}
+}
+
+// TestSubagentStartIsAWiredVerb: the verb the shim runs answers, through the
+// command tree the binary ships.
+func TestSubagentStartIsAWiredVerb(t *testing.T) {
+	repo, _ := subagentRepo(t)
+	so, se, code := runSessionStart(startHookPayload(t, "s1", repo.Root(), "a1", "t"), "hook", "subagent-start")
+	if code != 0 || se != "" || !strings.Contains(so, `"hookEventName":"SubagentStart"`) {
+		t.Errorf("exit %d stdout %q stderr %q", code, so, se)
+	}
+}

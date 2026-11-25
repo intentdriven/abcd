@@ -361,3 +361,36 @@ func TestSubagentLineNoticesCountEachLineOnce(t *testing.T) {
 		t.Errorf("a torn marker: %q", n)
 	}
 }
+
+// TestSessionStartCountsNewSubagentLinesOnce: the session-start hook says how
+// many lines were kept since it last said so, and then says nothing of them.
+func TestSessionStartCountsNewSubagentLinesOnce(t *testing.T) {
+	repo, _ := sessionEndRepo(t)
+	start := func(session string) string {
+		t.Helper()
+		_, se, code := runSessionStart(fmt.Sprintf(`{"session_id":%q,"hook_event_name":"SessionStart","cwd":%s}`, session, mustJSON(t, repo)), "hook", "session-start")
+		if code != 0 {
+			t.Fatalf("session-start exited %d: %s", code, se)
+		}
+		return se
+	}
+	const notice = "sub-agent line(s) kept since the last notice"
+	if se := start("s0"); strings.Contains(se, notice) {
+		t.Errorf("with no line kept: %q", se)
+	}
+	for _, agent := range []string{"a1", "a2"} {
+		tellSubagent(t, "s1", agent, "AGENTS.md", rules.SubagentToldByStart)
+		stopSubagent(t, repo, "s1", agent, shellCallLine(t, "ls"))
+	}
+	if se := start("s2"); !strings.Contains(se, "2 "+notice) {
+		t.Errorf("the two lines are not counted: %q", se)
+	}
+	if se := start("s3"); strings.Contains(se, notice) {
+		t.Errorf("a line is counted twice: %q", se)
+	}
+	tellSubagent(t, "s4", "a3", "AGENTS.md", rules.SubagentToldByStart)
+	stopSubagent(t, repo, "s4", "a3", shellCallLine(t, "ls"))
+	if se := start("s5"); !strings.Contains(se, "1 "+notice) {
+		t.Errorf("the new line is not counted alone: %q", se)
+	}
+}

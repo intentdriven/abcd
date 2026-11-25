@@ -223,7 +223,12 @@ at all, so an empty sub-agent corpus is the host and not the sessions. It
 carries a second note when transcripts, a session's or a sub-agent's, were
 read but could not be staged, with how many, when, and the last one's reason:
 those transcripts are not in the store, and the hook that lost them exited 0,
-so this note is the only place the loss shows. Under `--json` both notes go to
+so this note is the only place the loss shows. It carries a third note when a
+sub-agent's stop kept a line: how many were ever kept, and the newest fifty,
+newest first, each with its time, the sub-agent's type and id, and what it
+skipped (the conventions file, the rules command, or both), that it could not be
+judged and why, or that its start hook failed, with what the guard did about its
+writes. Under `--json` the notes go to
 stderr, beside the array, so read stderr as well. Tell the user how many were lost and why. An entry
 past the seven-day limit renders as OVERDUE; a quarantined transcript is listed
 in its own block, and is not awaiting anything — nothing will retry it.

@@ -2231,6 +2231,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook subagent-start",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook subagent-stop",
       "hidden": false,
       "flags": []
