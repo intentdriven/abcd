@@ -1,0 +1,326 @@
+== first move's next
+judge iss-2609300000000103's remedy before its lane opens: read .abcd/.work.local/run/drain-judgement.request.md, write the answer it asks for to .abcd/.work.local/run/drain-judgement.json, then run `abcd drain --judgement .abcd/.work.local/run/drain-judgement.json`; until then the drain opens nothing
+== judgement request
+# Drain judgement request: iss-2609300000000103
+
+`abcd drain` is about to open a lane that fixes iss-2609300000000103 alone, unattended. Its fields say it needs no
+decision: every field rule passes on its remedy; the host judgement over the remedy may still hand it back. One question is left, and it is yours. Judge from this request alone: do not
+open the lane, edit the record or fix anything.
+
+**The question:** does this remedy, carried out as written, change what a user sees, or a trust
+boundary?
+
+- **What a user sees**: anything a person reads or relies on, such as a command's output or exit
+  code, a flag, a message, a page, a prompt, or what a command does when a person runs it.
+- **A trust boundary**: what is allowed or refused, read, written, run or sent, whose input is
+  trusted, or a rule about safety, secrets or permissions.
+
+Answer `yes` when it changes either, and name the kind: `user-visible` for what a user sees, `trust-rule` for a
+trust boundary, and `trust-rule` when it changes both. When the remedy does not let you tell, answer
+`yes` and say what you could not tell. Answer `no` only when it changes neither.
+
+A `no` changes nothing: the lane opens as the issue's fields already allow. A `yes` hands the issue
+back to a person before any lane opens: `user-visible` promotes it to an intent draft for a person to plan,
+and `trust-rule` flags it as needing a decision record, with your reason as the question that record
+must answer, written onto the open issue as its `decision_needed:` field. The judgement can only
+ever hand an issue back.
+
+## The issue
+
+- id: iss-2609300000000103
+- record: .abcd/work/issues/open/iss-2609300000000103-renderer.md
+- severity: minor
+- category: documentation
+
+The remedy and the record are quoted as the ledger holds them, save two substitutions: a
+control character or a rune that renders as nothing (a bidi override, a zero-width or tag rune) is
+written `?`, and an HTML comment opener or closer inside a quote has its second hyphen written
+`&#45;`, so no quote can end its fence early.
+
+### The remedy
+
+<!-- begin remedy -->
+
+Name the flag in the page.
+
+<!-- end remedy -->
+
+### The record's body
+
+<!-- begin .abcd/work/issues/open/iss-2609300000000103-renderer.md -->
+
+The renderer panics on an empty list (iss-2609300000000103)
+
+<!-- end .abcd/work/issues/open/iss-2609300000000103-renderer.md -->
+
+## Your answer
+
+Write this JSON to `.abcd/.work.local/run/drain-judgement.json`, strictly in this shape (any other field refuses it):
+
+    {
+      "schema_version": 1,
+      "issue": "iss-2609300000000103",
+      "remedy_sha256": "0c0dcca5c312b0309a7041874badba14021cecd0b1d78e0d59e8a2db1845dc3c",
+      "answer": "yes or no",
+      "kind": "user-visible or trust-rule, with yes only; leave the field out with no",
+      "reason": "one sentence; with trust-rule, the question the decision record must answer"
+    }
+
+`remedy_sha256` is the digest of the remedy as the ledger holds it; copy it as it stands. Then run
+`abcd drain --judgement .abcd/.work.local/run/drain-judgement.json`. A remedy rewritten in the meantime refuses the answer, and the next
+`abcd drain` asks again.
+
+== second move's next
+drive iss-2609300000000103's lane, run <RUN>: run `abcd implement step` to take lane-1's worktree stage; run `abcd drain` again once it is handed back or its pull request is open
+== drain state
+{
+  "hand_backs": [],
+  "judgements": [
+    {
+      "answer": "no",
+      "applied": true,
+      "at": "<TIME>",
+      "hold": {
+        "claimed_at": "<TIME>",
+        "commit": "<SHA>",
+        "expires_at": "<TIME>"
+      },
+      "issue": "iss-2609300000000103",
+      "reason": "the remedy changes neither",
+      "remedy_sha256": "0c0dcca5c312b0309a7041874badba14021cecd0b1d78e0d59e8a2db1845dc3c"
+    }
+  ],
+  "lanes": [
+    {
+      "issue": "iss-2609300000000103",
+      "opened_at": "<TIME>",
+      "outcome": "in-progress",
+      "run_id": "<RUN>"
+    }
+  ],
+  "max": 0,
+  "pace": {
+    "fix_rounds": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 3
+    },
+    "pause_minutes": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 0
+    },
+    "sub_agents": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 2
+    },
+    "work_minutes": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 120
+    }
+  },
+  "rule": "adr-2609300000000001",
+  "schema_version": "\u003cVERSION\u003e",
+  "started_at": "<TIME>",
+  "updated_at": "<TIME>",
+  "window_started_at": "<TIME>"
+}
+== run state
+{
+  "admitted": {
+    "kind": "drain",
+    "path": ".abcd/development/decisions/adrs/2609300000000001-drain-rule.md",
+    "record": "adr-2609300000000001"
+  },
+  "created_at": "<TIME>",
+  "driver": "host",
+  "intent": "",
+  "key": "iss-2609300000000103",
+  "lanes": [
+    {
+      "id": "lane-1",
+      "key": "iss-2609300000000103",
+      "spec_step": 1,
+      "stage": "worktree",
+      "step_title": "The renderer panics on an empty list (iss-2609300000000103)"
+    }
+  ],
+  "pace": {
+    "fix_rounds": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 3
+    },
+    "pause_minutes": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 0
+    },
+    "sub_agents": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 2
+    },
+    "work_minutes": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 120
+    }
+  },
+  "pending": [],
+  "record": [
+    {
+      "at": "<TIME>",
+      "lane": "lane-1",
+      "note": "checks passed; lane-1 opened for iss-2609300000000103 (The renderer panics on an empty list (iss-2609300000000103))",
+      "stage": "start"
+    },
+    {
+      "at": "<TIME>",
+      "note": "pace 120/0 minutes, 2 sub-agents (bundled); 3 fix rounds before a lane is handed back (bundled); the first window opens now",
+      "stage": "pace"
+    },
+    {
+      "at": "<TIME>",
+      "note": "review set ruthless-reviewer research (anthropic/claude-fable-5, effort high) and default (anthropic/claude-sonnet-5-5, effort high) (bundled); security-reviewer research (anthropic/claude-fable-5, effort high) and default (anthropic/claude-sonnet-5-5, effort high) (bundled); at most 2 per role (bundled); judge top (anthropic/claude-opus-5-5, effort high) (bundled), waiting; efforts from bundled",
+      "stage": "review"
+    },
+    {
+      "at": "<TIME>",
+      "note": "the judge, top (anthropic/claude-opus-5-5, effort high), waits for the whole run: no judge agent has cleared itd-81's calibration gate, so where a role's two reviewers disagree the stricter verdict decides, and no judge is launched, awaited or counted",
+      "stage": "review"
+    },
+    {
+      "at": "<TIME>",
+      "note": "skipped, as no runner of the run reports a quota: an estimate of 5 agent run(s) from 1 step(s), each an implementer, 2 ruthless-reviewers and 2 security-reviewers: the host reports no quota (implementer, ruthless-reviewer, security-reviewer: an estimated 5 agent run(s)), so the check is skipped for it",
+      "stage": "budget"
+    },
+    {
+      "at": "<TIME>",
+      "note": "admitted under drain adr-2609300000000001 (.abcd/development/decisions/adrs/2609300000000001-drain-rule.md)",
+      "stage": "admitted"
+    },
+    {
+      "at": "<TIME>",
+      "note": "reserved iss-2609300000000103 on origin for this copy until <TIME> before its judgement, footprint: commands/drain.md",
+      "stage": "reservation"
+    }
+  ],
+  "reserved_at": "<TIME>",
+  "review": {
+    "classes": [
+      {
+        "class": "research",
+        "effort": "high",
+        "effort_layer": "bundled",
+        "effort_origin": "bundled",
+        "map_layer": "bundled",
+        "map_origin": "bundled",
+        "model": "anthropic/claude-fable-5"
+      },
+      {
+        "class": "top",
+        "effort": "high",
+        "effort_layer": "bundled",
+        "effort_origin": "bundled",
+        "map_layer": "bundled",
+        "map_origin": "bundled",
+        "model": "anthropic/claude-opus-5-5"
+      },
+      {
+        "class": "default",
+        "effort": "high",
+        "effort_layer": "bundled",
+        "effort_origin": "bundled",
+        "map_layer": "bundled",
+        "map_origin": "bundled",
+        "model": "anthropic/claude-sonnet-5-5"
+      },
+      {
+        "class": "small",
+        "effort": "high",
+        "effort_layer": "bundled",
+        "effort_origin": "bundled",
+        "map_layer": "bundled",
+        "map_origin": "bundled",
+        "model": "anthropic/claude-haiku-4-5"
+      }
+    ],
+    "judge": {
+      "class": "top",
+      "effort": "high",
+      "effort_layer": "bundled",
+      "effort_origin": "bundled",
+      "layer": "bundled",
+      "map_layer": "bundled",
+      "map_origin": "bundled",
+      "model": "anthropic/claude-opus-5-5",
+      "origin": "bundled",
+      "status": "waiting"
+    },
+    "max_reviewers": {
+      "layer": "bundled",
+      "origin": "bundled",
+      "value": 2
+    },
+    "roles": [
+      {
+        "layer": "bundled",
+        "origin": "bundled",
+        "reviewers": [
+          {
+            "class": "research",
+            "effort": "high",
+            "effort_layer": "bundled",
+            "effort_origin": "bundled",
+            "map_layer": "bundled",
+            "map_origin": "bundled",
+            "model": "anthropic/claude-fable-5"
+          },
+          {
+            "class": "default",
+            "effort": "high",
+            "effort_layer": "bundled",
+            "effort_origin": "bundled",
+            "map_layer": "bundled",
+            "map_origin": "bundled",
+            "model": "anthropic/claude-sonnet-5-5"
+          }
+        ],
+        "role": "ruthless-reviewer"
+      },
+      {
+        "layer": "bundled",
+        "origin": "bundled",
+        "reviewers": [
+          {
+            "class": "research",
+            "effort": "high",
+            "effort_layer": "bundled",
+            "effort_origin": "bundled",
+            "map_layer": "bundled",
+            "map_origin": "bundled",
+            "model": "anthropic/claude-fable-5"
+          },
+          {
+            "class": "default",
+            "effort": "high",
+            "effort_layer": "bundled",
+            "effort_origin": "bundled",
+            "map_layer": "bundled",
+            "map_origin": "bundled",
+            "model": "anthropic/claude-sonnet-5-5"
+          }
+        ],
+        "role": "security-reviewer"
+      }
+    ]
+  },
+  "run_id": "<RUN>",
+  "schema_version": "\u003cVERSION\u003e",
+  "spec": "",
+  "updated_at": "<TIME>",
+  "window_started_at": "<TIME>"
+}

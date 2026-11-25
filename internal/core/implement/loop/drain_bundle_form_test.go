@@ -1,8 +1,10 @@
 package loop
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -373,60 +375,353 @@ func TestABundleOpensAtTheReservationCapWithoutWaiting(t *testing.T) {
 	}
 }
 
-// TestABundlesHandBacksAreRoutedByIssue: a member handed back alone is routed
-// alone, once, while its lane goes on, and is in the lane's hand no longer; a
-// whole-lane hand-back routes every issue the run still carries, the lead
-// first, and not again the member routed alone.
-func TestABundlesHandBacksAreRoutedByIssue(t *testing.T) {
-	repo := drainRepo(t)
-	at := time.Now().UTC().Truncate(time.Second)
-	alone := HandBack{At: at, Kind: HandBackDesignFinding, Reason: "the guard needs a decision", Home: "the brief"}
-	run := State{Key: formLead, Bundle: []Member{
-		{Issue: formM1, Footprint: []string{"internal/a/f1.go"}, HandBack: &alone},
-		{Issue: formM2, Footprint: []string{"internal/a/f2.go"}},
-	}}
-	l := DrainLane{Issue: formLead, RunID: "run-2611250000000001", OpenedAt: at, Outcome: DrainLaneInProgress, Bundle: []string{formM1, formM2}}
-	st := DrainState{Lanes: []DrainLane{l}}
-	blobs := &originBlobs{}
+// writeMembers makes the drain's bundle start write each member onto the
+// lead's new run, with the hold it opened on, as the run's start does once it
+// carries members (loop.go), and returns what each lane opened with.
+func writeMembers(t *testing.T) *[]openedBundle {
+	t.Helper()
+	var got []openedBundle
+	was := startBundle
+	startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
+		got = append(got, openedBundle{lead: lead, members: members})
+		started, err := startLane(repoRoot, lead, o)
+		if err != nil {
+			return started, err
+		}
+		err = mutate(repoRoot, started.RunID, func(_ *os.Root, st *State) (bool, error) {
+			for _, m := range members {
+				at := m.held.at
+				st.Bundle = append(st.Bundle, Member{Issue: m.issue, Footprint: m.footprint, ReservedAt: &at})
+				st.Record = append(st.Record, Entry{At: at, Stage: StageReservation, Note: m.held.note, Issue: m.issue})
+			}
+			return true, nil
+		})
+		return started, err
+	}
+	t.Cleanup(func() { startBundle = was })
+	return &got
+}
 
-	routes, err := routeAlone(repo.Root(), st, l, run, nil, blobs, at.Add(time.Minute))
-	if err != nil {
+// openedBundleLane is the fixture drained, under a cap of 3, to a bundle's
+// lane opened on the lead with the first two candidates as members, written
+// onto its run; it returns the lead, the members and the run.
+func openedBundleLane(t *testing.T, repo *gittest.Repo) (lead, m1, m2, runID string) {
+	t.Helper()
+	bundleMachineConfig(t, `{"drain":{"bundle_max":3}}`)
+	writeMembers(t)
+	res := mustDrain(t, repo, Options{}, DrainOptions{})
+	lead, m1, m2, _ = orderOf(t, res)
+	for range 3 {
+		res = judge(t, repo, Options{}, res, JudgementNo, "", noReason)
+	}
+	if res.Start == nil || res.Lane == nil || !slices.Equal(res.Lane.Bundle, []string{m1, m2}) {
+		t.Fatalf("the bundle's lane opens: %+v", res)
+	}
+	return lead, m1, m2, res.Lane.RunID
+}
+
+// handBackMember hands m back alone on the run's current lane, as a receipt's
+// handbacks does.
+func handBackMember(t *testing.T, repo *gittest.Repo, runID, m string) {
+	t.Helper()
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		hb := HandBack{Kind: HandBackDesignFinding, Reason: "the guard needs a decision", Home: "the brief"}
+		handBackAlone(st, st.Lanes[st.current()].ID, []issueHandedBack{{issue: m, hb: hb}}, time.Now())
+		return true, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(routes) != 1 || routes[0].Issue != formM1 || routes[0].From != "lane" || routes[0].Kind != HandBackDesignFinding {
-		t.Fatalf("the member handed back alone is routed alone: %+v", routes)
-	}
-	st.HandBacks = routes
-	if again, err := routeAlone(repo.Root(), st, l, run, nil, blobs, at.Add(2*time.Minute)); err != nil || len(again) != 0 {
-		t.Fatalf("a member routed alone is not routed again: %+v %v", again, err)
-	}
-	if !st.handedBackAloneIn(l, formM1) || st.handedBackAloneIn(l, formM2) {
-		t.Fatal("only the member routed alone is out of the lane's hand")
-	}
-	if !st.taken(formM2, blobs) || !st.taken(formLead, blobs) {
-		t.Fatal("the lane's lead and its member still held are not counted as taken")
-	}
+}
 
-	whole := HandBack{At: at, Kind: HandBackDesignFinding, Reason: "the lane needs a decision", Home: "the brief"}
-	routes, err = routeLaneHandBack(repo.Root(), st, l, run, whole, nil, blobs, at.Add(3*time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ids []string
-	for _, r := range routes {
-		ids = append(ids, r.Issue)
-		if r.Reason != whole.Reason {
-			t.Fatalf("each issue still held is routed by the lane's hand-back: %+v", r)
+// routedFor are the routes in rs of id.
+func routedFor(rs []DrainRoute, id string) []DrainRoute {
+	var out []DrainRoute
+	for _, r := range rs {
+		if r.Issue == id {
+			out = append(out, r)
 		}
 	}
-	if !slices.Equal(ids, []string{formLead, formM2}) {
-		t.Fatalf("a whole-lane hand-back routes every issue still held, the lead first: %v", ids)
+	return out
+}
+
+// TestABundlesHandBacksAreRoutedByIssue: through the drain's moves, a member
+// handed back alone is routed alone, once, while its lane goes on, and is in
+// the lane's hand no longer; a whole-lane hand-back then routes every issue
+// the run still carries, the lead first, and not again the member routed
+// alone.
+func TestABundlesHandBacksAreRoutedByIssue(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	lead, m1, m2, runID := openedBundleLane(t, repo)
+
+	handBackMember(t, repo, runID, m1)
+	res := mustDrain(t, repo, Options{}, DrainOptions{})
+	if rs := routedFor(res.Routed, m1); len(rs) != 1 || rs[0].From != "lane" || rs[0].Kind != HandBackDesignFinding {
+		t.Fatalf("the member handed back alone is routed alone: %+v", res.Routed)
+	}
+	if res.Lane == nil || res.Lane.RunID != runID {
+		t.Fatalf("the lane goes on with the rest: %+v", res.Lane)
+	}
+	again := mustDrain(t, repo, Options{}, DrainOptions{})
+	if rs := routedFor(again.Routed, m1); len(rs) != 0 {
+		t.Fatalf("a member routed alone is not routed again: %+v", again.Routed)
+	}
+	st := formedState(t, repo)
+	if !st.taken(lead, &originBlobs{}) || !st.taken(m2, &originBlobs{}) {
+		t.Fatal("the lane's lead and its member still held are not counted as taken")
+	}
+	if !st.handedBackAloneIn(st.Lanes[0], m1) {
+		t.Fatal("the member routed alone is still in the lane's hand")
 	}
 
-	single := State{Key: formLead}
-	one := DrainLane{Issue: formLead, RunID: "run-2611250000000002", OpenedAt: at, Outcome: DrainLaneInProgress}
-	routes, err = routeLaneHandBack(repo.Root(), DrainState{Lanes: []DrainLane{one}}, one, single, whole, nil, blobs, at.Add(time.Minute))
-	if err != nil || len(routes) != 1 || routes[0].Issue != formLead {
-		t.Fatalf("a lane of one issue routes its issue alone: %+v %v", routes, err)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		handBackLane(st, &st.Lanes[st.current()], HandBack{Kind: HandBackDesignFinding, Reason: "the lane needs a decision", Home: "the brief"}, "", time.Now())
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	whole := mustDrain(t, repo, Options{}, DrainOptions{})
+	var ids []string
+	for _, r := range whole.Routed {
+		if r.From == "lane" {
+			ids = append(ids, r.Issue)
+		}
+	}
+	if !slices.Equal(ids, []string{lead, m2}) {
+		t.Fatalf("a whole-lane hand-back routes every issue still held, the lead first: %v", ids)
+	}
+}
+
+// TestAMemberHandedBackAloneIsRoutedWhenItsLaneMerges: a member handed back
+// alone whose lane merges before the drain's next move reads it is routed as
+// the lane is marked done, and is in the lane's hand no longer.
+func TestAMemberHandedBackAloneIsRoutedWhenItsLaneMerges(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	lead, m1, _, runID := openedBundleLane(t, repo)
+	handBackMember(t, repo, runID, m1)
+	was := drainFinish
+	drainFinish = func(string, []DrainLane, time.Time, Options, []string) ([]DrainFinished, []DrainParked, error) {
+		return []DrainFinished{{Issue: lead, RunID: runID, PR: 7, Done: true}}, nil, nil
+	}
+	t.Cleanup(func() { drainFinish = was })
+	res := mustDrain(t, repo, Options{}, DrainOptions{})
+	if rs := routedFor(res.Routed, m1); len(rs) != 1 || rs[0].From != "lane" {
+		t.Fatalf("the member handed back alone is routed as its lane is done: %+v", res.Routed)
+	}
+	st := formedState(t, repo)
+	if st.Lanes[0].Outcome != DrainLaneDone || !st.handedBackAloneIn(st.Lanes[0], m1) {
+		t.Fatalf("the lane is done and the member out of its hand: %+v", st.Lanes[0])
+	}
+}
+
+// handRenewedCandidate is the fixture moved to a bundle forming on the lead
+// whose first candidate this person renewed by hand from this copy before its
+// no was answered: it returns the order, the candidate's tip after the hand
+// renewal, and the move that answered.
+func handRenewedCandidate(t *testing.T, repo *gittest.Repo, bare string, o Options) ([]string, string, DrainResult) {
+	t.Helper()
+	second, _, ids := formingOnLead(t, repo, bare, o)
+	m1 := ids[1]
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: m1, Footprint: footprintOf(t, bare, m1)}, clockAt(o.now())); err != nil {
+		t.Fatalf("renewing %s by hand: %v", m1, err)
+	}
+	byHand := refOf(t, bare, m1)
+	if byHand == second.Judging.Hold.Commit {
+		t.Fatal("premise: the hand renewal moved the tip")
+	}
+	third := judge(t, repo, o, second, JudgementNo, "", noReason)
+	if i := slices.IndexFunc(third.Passed, func(e Excluded) bool { return e.ID == m1 }); i < 0 || !strings.Contains(third.Passed[i].Reason, "by hand") {
+		t.Fatalf("the move says the candidate is left as this person holds it: %+v", third.Passed)
+	}
+	if st := formedState(t, repo); st.Forming == nil || st.Forming.has(m1) {
+		t.Fatalf("the hand-renewed candidate does not join: %+v", st.Forming)
+	}
+	heldStill(t, bare, m1, byHand)
+	return ids, byHand, third
+}
+
+// TestAHandRenewedCandidateIsLeftAsItStandsWhenTheDrainEnds: a candidate
+// this person renewed by hand is never the drain's: a move past half the
+// bundle's lease renews it not, and a drain that ends does not release it.
+func TestAHandRenewedCandidateIsLeftAsItStandsWhenTheDrainEnds(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":4}}`)
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	o := Options{Now: c.now}
+	ids, byHand, _ := handRenewedCandidate(t, repo, bare, o)
+	r := originReservation(t, bare, claim.RefPrefix+ids[0])
+	c.t = r.claimed.Add(r.expires.Sub(r.claimed) * 3 / 4)
+	mustDrain(t, repo, o, DrainOptions{})
+	heldStill(t, bare, ids[1], byHand)
+	giveUp(t, joinShared(t, repo.Root(), c.now), "host-a", func(d time.Duration) { c.t = c.t.Add(d) })
+	if res := mustDrain(t, repo, o, DrainOptions{}); res.Stopped != DrainStoppedOutage {
+		t.Fatalf("the drain ends: %+v", res)
+	}
+	heldStill(t, bare, ids[1], byHand)
+}
+
+// TestAHandRenewedCandidateIsLeftAsItStandsWhenTheStartFails: a bundle whose
+// start fails releases the holds it took, and not a candidate this person
+// renewed by hand.
+func TestAHandRenewedCandidateIsLeftAsItStandsWhenTheStartFails(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":4}}`)
+	ids, byHand, third := handRenewedCandidate(t, repo, bare, Options{})
+	fourth := judge(t, repo, Options{}, third, JudgementNo, "", noReason)
+	if fourth.Judging == nil || fourth.Judging.Issue != ids[3] {
+		t.Fatalf("the last candidate is asked: %+v", fourth.Judging)
+	}
+	was := startBundle
+	startBundle = func(string, string, Options, []laneMember) (StartResult, error) {
+		return StartResult{}, errors.New("the start failed")
+	}
+	t.Cleanup(func() { startBundle = was })
+	path := writeAnswer(t, repo, fourth.Judging, judgementAnswer(fourth.Judging, JudgementNo, "", noReason))
+	if _, err := Drain(repo.Root(), Options{}, DrainOptions{Judgement: path}); err == nil {
+		t.Fatal("the bundle's failed start did not refuse the move")
+	}
+	heldStill(t, bare, ids[1], byHand)
+	for _, id := range []string{ids[0], ids[2], ids[3]} {
+		if r := originReservation(t, bare, claim.RefPrefix+id); !r.released {
+			t.Fatalf("%s's hold, the drain's, is released when the start fails: %+v", id, r)
+		}
+	}
+}
+
+// moveFoundAtOnOrigin rewrites id's found_at on origin's default branch.
+func moveFoundAtOnOrigin(t *testing.T, bare, id, to string) {
+	t.Helper()
+	pushFromOtherCopy(t, bare, "move "+id, func(dir string) {
+		matches, _ := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", "open", id+"-*.md"))
+		if len(matches) != 1 {
+			t.Fatalf("origin holds no open record of %s", id)
+		}
+		data, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(data), "\n")
+		moved := false
+		for i, l := range lines {
+			if strings.HasPrefix(l, "found_at:") {
+				lines[i], moved = "found_at: "+to, true
+			}
+		}
+		if !moved {
+			t.Fatalf("%s's record names no found_at", id)
+		}
+		if err := os.WriteFile(matches[0], []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// TestAMemberWhoseFoundAtMovedLeavesTheBundle: a member whose found_at names
+// another path than the footprint its hold reserved, once the bundle is
+// full, leaves it before the lane opens, its hold released plainly, and the
+// lane opens with the rest.
+func TestAMemberWhoseFoundAtMovedLeavesTheBundle(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":3}}`)
+	opened := recordBundles(t)
+	second, _, ids := formingOnLead(t, repo, bare, Options{})
+	third := judge(t, repo, Options{}, second, JudgementNo, "", noReason)
+	m1Hold := refOf(t, bare, ids[1])
+	if st := formedState(t, repo); st.Forming == nil || !st.Forming.has(ids[1]) {
+		t.Fatalf("the first candidate joins: %+v", st.Forming)
+	}
+	moveFoundAtOnOrigin(t, bare, ids[1], "internal/a/moved.go")
+	res := judge(t, repo, Options{}, third, JudgementNo, "", noReason)
+	if res.Start == nil || res.Lane == nil || !slices.Equal(res.Lane.Bundle, []string{ids[2]}) {
+		t.Fatalf("the lane opens with the members whose footprint stands: %+v", res.Lane)
+	}
+	if !strings.Contains(res.Next, ids[1]+" left the bundle") {
+		t.Fatalf("the move says the member left: %s", res.Next)
+	}
+	plainlyReleasedOver(t, bare, ids[1], m1Hold)
+	if len(*opened) != 1 || len((*opened)[0].members) != 1 || (*opened)[0].members[0].issue != ids[2] {
+		t.Fatalf("the bundle opens without the moved member: %+v", *opened)
+	}
+}
+
+// TestANoWhoseHoldIsGoneIsReservedBeforeItJoins: a candidate answered no in
+// a move whose window had closed loses the hold it was judged on; the next
+// move reserves it again before it joins, so it never joins unreserved.
+func TestANoWhoseHoldIsGoneIsReservedBeforeItJoins(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":4}}`)
+	second, _, ids := formingOnLead(t, repo, bare, Options{})
+	judgedOn := second.Judging.Hold.Commit
+	st := formedState(t, repo)
+	long := time.Now().Add(-24 * time.Hour)
+	st.WindowStartedAt = &long
+	if err := writeDrain(repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	closed := judge(t, repo, Options{}, second, JudgementNo, "", noReason)
+	if closed.Start != nil || !strings.Contains(closed.Next, "window has elapsed") {
+		t.Fatalf("the answer is taken in a move whose window closed: %s", closed.Next)
+	}
+	releasedOver(t, bare, ids[1], judgedOn)
+	next := mustDrain(t, repo, Options{}, DrainOptions{})
+	st = formedState(t, repo)
+	if st.Forming == nil || !st.Forming.has(ids[1]) {
+		t.Fatalf("the candidate joins on the next move: %+v %s", st.Forming, next.Next)
+	}
+	i := slices.IndexFunc(st.Forming.Members, func(m DrainFormingMember) bool { return m.Issue == ids[1] })
+	h := st.Forming.Members[i].Hold
+	if h == nil || h.Commit != refOf(t, bare, ids[1]) {
+		t.Fatalf("the candidate joins on a hold taken again: %+v, origin %s", h, refOf(t, bare, ids[1]))
+	}
+	heldStill(t, bare, ids[1], h.Commit)
+}
+
+// TestAFormingBundleWaitsOnASilentOrigin: a move that cannot read origin's
+// default branch keeps the bundle forming and its hold.
+func TestAFormingBundleWaitsOnASilentOrigin(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":4}}`)
+	_, leadHold, ids := formingOnLead(t, repo, bare, Options{})
+	gitIn(t, bare, "branch", "-m", "main", "trunk")
+	gitIn(t, bare, "symbolic-ref", "HEAD", "refs/heads/trunk")
+	res := mustDrain(t, repo, Options{}, DrainOptions{})
+	if res.OriginWait == nil {
+		t.Fatalf("the move waits on origin: %+v", res)
+	}
+	if st := formedState(t, repo); st.Forming == nil || st.Forming.Lead != ids[0] {
+		t.Fatalf("a silent origin keeps the bundle forming: %+v", st.Forming)
+	}
+	heldStill(t, bare, ids[0], leadHold)
+}
+
+// TestAClosedBundleWhoseLeadWentAloneRoutesTheRunsIssues: a bundle's pull
+// request closed unmerged after its lead was handed back alone routes each
+// issue the run still holds with the closed hand-back and the lead once,
+// alone, and never an issue named as none, whatever the parked lane names.
+func TestAClosedBundleWhoseLeadWentAloneRoutesTheRunsIssues(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	lead, m1, m2, runID := openedBundleLane(t, repo)
+	handBackMember(t, repo, runID, lead)
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		handBackLane(st, &st.Lanes[st.current()], HandBack{Kind: HandBackClosed, Reason: "the pull request was closed unmerged", Home: "a person"}, "", time.Now())
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	was := drainFinish
+	drainFinish = func(string, []DrainLane, time.Time, Options, []string) ([]DrainFinished, []DrainParked, error) {
+		return nil, []DrainParked{{RunID: runID, PR: 7, State: ParkedClosed}}, nil
+	}
+	t.Cleanup(func() { drainFinish = was })
+	res := mustDrain(t, repo, Options{}, DrainOptions{})
+	if rs := routedFor(res.Routed, ""); len(rs) != 0 {
+		t.Fatalf("a route names no issue: %+v", rs)
+	}
+	if rs := routedFor(res.Routed, lead); len(rs) != 1 || rs[0].Kind != HandBackDesignFinding {
+		t.Fatalf("the lead is routed once, by its own hand-back: %+v", res.Routed)
+	}
+	for _, m := range []string{m1, m2} {
+		if rs := routedFor(res.Routed, m); len(rs) != 1 || rs[0].Kind != HandBackClosed {
+			t.Fatalf("%s is routed by the closed hand-back: %+v", m, res.Routed)
+		}
 	}
 }

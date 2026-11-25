@@ -126,13 +126,15 @@ func (f *DrainForming) size() int { return len(f.entries()) }
 // former is what one move's forming reads: the drain's state, its plan and
 // how it reads an issue's area.
 type former struct {
-	st   *DrainState
-	plan capture.DrainPlan
-	area func(id string) string
+	repoRoot string
+	st       *DrainState
+	plan     capture.DrainPlan
+	area     func(id string) string
 }
 
 // standing reports whether id still stands in a bundle: it is eligible in the
-// plan, and the judgement over its remedy as it now stands answered no.
+// plan, its found_at still names a path to reserve it with, and the judgement
+// over its remedy as it now stands answered no.
 func (m former) standing(id string) bool {
 	i := slices.IndexFunc(m.plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, id) })
 	if i < 0 || m.plan.Dispositions[i].Outcome != capture.DrainEligible {
@@ -140,6 +142,9 @@ func (m former) standing(id string) bool {
 	}
 	iss, ok := m.plan.OpenIssue(m.plan.Dispositions[i].ID)
 	if !ok {
+		return false
+	}
+	if _, ok := issueFootprint(m.repoRoot, iss); !ok {
 		return false
 	}
 	j := judgementFor(*m.st, iss.ID, remedyDigest(iss.Remedy))
@@ -164,7 +169,7 @@ func (m former) queue() (queue []capture.DrainVerdict, note string, ok bool) {
 	f := m.st.Forming
 	if !m.standing(f.Lead) {
 		m.st.Forming = nil
-		return nil, fmt.Sprintf("the bundle forming on %s is let go: %s is no longer eligible, or its remedy changed since its judgement, so its reservations are released", f.Lead, f.Lead), false
+		return nil, fmt.Sprintf("the bundle forming on %s is let go: %s is no longer eligible, its found_at names no path, or its remedy changed since its judgement, so its reservations are released", f.Lead, f.Lead), false
 	}
 	var gone []string
 	f.Members = slices.DeleteFunc(f.Members, func(mb DrainFormingMember) bool {
@@ -175,7 +180,7 @@ func (m former) queue() (queue []capture.DrainVerdict, note string, ok bool) {
 		return true
 	})
 	if len(gone) > 0 {
-		note = fmt.Sprintf("%s left the bundle forming on %s: no longer eligible, or its remedy changed since its judgement", strings.Join(gone, ", "), f.Lead)
+		note = fmt.Sprintf("%s left the bundle forming on %s: no longer eligible, its found_at names no path, or its remedy changed since its judgement", strings.Join(gone, ", "), f.Lead)
 	}
 	if f.size() >= m.st.bundleCap() {
 		return nil, note, true
@@ -189,6 +194,12 @@ func (m former) queue() (queue []capture.DrainVerdict, note string, ok bool) {
 		}
 	}
 	return queue, note, true
+}
+
+// forms reports whether a no over id would form or join a bundle: one is
+// forming, or id would lead one, having candidates under a cap above 1.
+func (m former) forms(id string) bool {
+	return m.st.Forming != nil || m.st.bundleCap() > 1 && len(m.candidates(id)) > 0
 }
 
 // join is the forming step for an issue whose judgement answered no, as the
@@ -214,20 +225,30 @@ func (m former) join(id string, hold *DrainHold) (lead, full bool) {
 
 // formingHold is the drain's hold on an issue as the bundle records it: the
 // one the judgement was asked on when it is the reservation the view shows
-// (own), the reservation the view shows otherwise, a routed judge's hold the
-// view, fetched before it, could not show, or, with no view to judge by, the
-// one the judgement records; nil when the drain holds none.
-func formingHold(own claim.Reservation, owned, viewed bool, judged *DrainJudgement, routed *DrainHold) *DrainHold {
+// (own), a routed judge's hold the view, fetched before it, could not show,
+// or, with no view to judge by, the one the judgement records; nil when the
+// drain holds none. byHand is true when the view shows this copy's live
+// reservation at a tip the drain's own hold is not: this person made or
+// renewed it by hand, so it is never the drain's (drain_hold.go), and the
+// issue does not join a bundle, whose holds the drain renews and releases.
+func formingHold(own claim.Reservation, owned, viewed bool, judged *DrainJudgement, routed *DrainHold) (hold *DrainHold, byHand bool) {
 	if owned {
 		if judged != nil && judged.Hold != nil && judged.Hold.Commit == own.Commit {
-			return cloneHold(judged.Hold)
+			return cloneHold(judged.Hold), false
 		}
-		return &DrainHold{Commit: own.Commit, ClaimedAt: own.ClaimedAt, ExpiresAt: own.EffectiveExpiry}
+		return nil, true
 	}
 	if routed == nil && !viewed && judged != nil {
 		routed = judged.Hold
 	}
-	return cloneHold(routed)
+	return cloneHold(routed), false
+}
+
+// handHeldPassOver is the pass-over of a candidate whose reservation this person
+// holds by hand: it is left as it stands, and the bundle forms without it.
+func handHeldPassOver(id, lead string) Excluded {
+	return Excluded{ID: id, Check: CheckReservation, Reason: "it is your own reservation from this copy, made or renewed by hand since the drain took its hold, so it does not join the bundle forming on " +
+		lead + " and is left as it stands"}
 }
 
 // heldOn is the lane's start on the drain's hold h of id, reserved with
@@ -263,12 +284,31 @@ func drainLaneOptions(o Options, st DrainState, footprint []string, plan *captur
 
 // bundleOpened is what opening a forming bundle came to: the lane's start, or
 // the issue another holds and why, or the reservations the person is at the
-// cap with, or the refusal that stops the move.
+// cap with, or the refusal that stops the move; left says which members left
+// the bundle before it opened, and why.
 type bundleOpened struct {
 	start  *StartResult
 	passed *Excluded
 	capped []string
 	err    error
+	left   string
+}
+
+// reservedFootprint reports whether fp, the footprint an issue's found_at now
+// names, is the footprint the drain's hold on it reserved, as view shows the
+// tip at hold; true with no view or no hold to judge by.
+func reservedFootprint(view *claim.Snapshot, id string, hold *DrainHold, fp []string) bool {
+	if view == nil || hold == nil {
+		return true
+	}
+	r, ok := view.Lookup(id)
+	if !ok || r.Commit != hold.Commit {
+		return true
+	}
+	a, b := slices.Clone(r.Footprint), slices.Clone(fp)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 // openBundle opens the lane of the bundle st is forming: the lead's lane, with
@@ -277,24 +317,47 @@ type bundleOpened struct {
 // hold on the move's way out (judgeHolds.settle, starting), and the
 // judgements are kept, so a later move forms the bundle again without asking
 // any of them again.
-func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainPlan, rule drainrule.Rule, holds *judgeHolds, now time.Time) bundleOpened {
+func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainPlan, rule drainrule.Rule, holds *judgeHolds, view *claim.Snapshot, now time.Time) bundleOpened {
 	f := st.Forming
 	st.Forming = nil
-	footprintOf := func(id string) []string {
+	// footprintOf is the footprint id's found_at names now, and whether it
+	// is still the one its hold reserved: an issue whose found_at no longer
+	// names a path, or names another since it was reserved, is not opened on
+	// that hold.
+	footprintOf := func(id string, hold *DrainHold) ([]string, bool) {
 		iss, ok := plan.OpenIssue(id)
 		if !ok {
-			return nil
+			return nil, false
 		}
-		fp, _ := issueFootprint(repoRoot, iss)
-		return fp
+		fp, ok := issueFootprint(repoRoot, iss)
+		return fp, ok && reservedFootprint(view, id, hold, fp)
 	}
-	lead := drainLaneOptions(o, *st, footprintOf(f.Lead), plan, rule)
+	leadFP, ok := footprintOf(f.Lead, f.Hold)
+	if !ok {
+		return bundleOpened{passed: &Excluded{ID: f.Lead, Check: CheckReservation, Reason: "its found_at names no path, or another than its reservation's footprint, since the drain reserved it" +
+			"; the bundle with " + strings.Join(f.ids()[1:], ", ") + " did not open, and its reservations are released"}}
+	}
+	var left []string
+	f.Members = slices.DeleteFunc(f.Members, func(m DrainFormingMember) bool {
+		if _, ok := footprintOf(m.Issue, m.Hold); ok {
+			return false
+		}
+		left = append(left, m.Issue)
+		return true
+	})
+	leftNote := ""
+	if len(left) > 0 {
+		leftNote = fmt.Sprintf("%s left the bundle on %s before its lane opened: its found_at names no path, or another than its reservation's footprint, since the drain reserved it, so its reservation is released",
+			strings.Join(left, ", "), f.Lead)
+	}
+	lead := drainLaneOptions(o, *st, leadFP, plan, rule)
 	if f.Hold != nil {
 		lead.held = heldOn(f.Lead, *f.Hold, lead.reserve)
 	}
 	members := make([]laneMember, 0, len(f.Members))
 	for _, m := range f.Members {
-		lm := laneMember{issue: m.Issue, footprint: footprintOf(m.Issue)}
+		fp, _ := footprintOf(m.Issue, m.Hold)
+		lm := laneMember{issue: m.Issue, footprint: fp}
 		if m.Hold != nil {
 			lm.held = heldOn(m.Issue, *m.Hold, lm.footprint)
 		}
@@ -310,7 +373,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 	if err != nil {
 		r, ok := AsRefusal(err)
 		if ok && r.capped != nil {
-			return bundleOpened{capped: r.capped}
+			return bundleOpened{capped: r.capped, left: leftNote}
 		}
 		if !ok || (r.Stage == StageReservation && !r.Contention) {
 			return bundleOpened{err: err}
@@ -318,7 +381,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 		if err := unreadableRefusal(repoRoot, r.unjudged); err != nil {
 			return bundleOpened{err: err}
 		}
-		return bundleOpened{passed: &Excluded{ID: f.Lead, Check: r.Check, Reason: termsafe.Sanitize(r.Reason) +
+		return bundleOpened{left: leftNote, passed: &Excluded{ID: f.Lead, Check: r.Check, Reason: termsafe.Sanitize(r.Reason) +
 			"; the bundle with " + strings.Join(f.ids()[1:], ", ") + " did not open, and its reservations are released"}}
 	}
 	ids := f.ids()
@@ -330,7 +393,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 		lane.Bundle = ids[1:]
 	}
 	st.Lanes = append(st.Lanes, lane)
-	return bundleOpened{start: &started}
+	return bundleOpened{start: &started, left: leftNote}
 }
 
 // bundleNext is the move's next once a bundle's lane opened: a lane of one
@@ -381,6 +444,21 @@ func routeAlone(repoRoot string, st DrainState, l DrainLane, run State, origin *
 	return out, nil
 }
 
+// routeAloneFinished is routeAlone over a lane of a bundle that merged: a
+// member handed back alone that no move routed while the lane ran is routed
+// as the lane is marked done, so it does not stay in the lane's hand. A lane
+// of one issue reads nothing.
+func routeAloneFinished(repoRoot string, st DrainState, l DrainLane, origin *DrainOrigin, blobs *originBlobs, now time.Time) ([]DrainRoute, error) {
+	if len(l.Bundle) == 0 {
+		return nil, nil
+	}
+	run, err := ReadState(repoRoot, l.RunID)
+	if err != nil {
+		return nil, err
+	}
+	return routeAlone(repoRoot, st, l, run, origin, blobs, now)
+}
+
 // aloneHandBacks is each issue of the run handed back alone, the lead first,
 // with its hand-back, whether or not its reservation is recorded.
 func (s State) aloneHandBacks() []aloneHandBack {
@@ -402,7 +480,7 @@ func (s State) aloneHandBacks() []aloneHandBack {
 // (step 5), every member of a bundle is routed so. The reservation is released
 // as a lane's is (releaseHandedBack), its clause on the first route the lane's
 // hand-back makes. A run with no members routes its lane's issue alone, as
-// before bundles.
+// before bundles; an issue the lane names as none is never routed.
 func routeLaneHandBack(repoRoot string, st DrainState, l DrainLane, run State, hb HandBack, origin *DrainOrigin, blobs *originBlobs, now time.Time) ([]DrainRoute, error) {
 	out, err := routeAlone(repoRoot, st, l, run, origin, blobs, now)
 	if err != nil {
@@ -412,12 +490,17 @@ func routeLaneHandBack(repoRoot string, st DrainState, l DrainLane, run State, h
 	if run.hasMembers() {
 		ids = run.Issues()
 	}
-	for i, id := range ids {
+	first := true
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
 		r, err := routeHandBack(repoRoot, id, "lane", hb, origin, now)
 		if err != nil {
 			return out, err
 		}
-		if i == 0 {
+		if first {
+			first = false
 			if rel := releaseHandedBack(repoRoot, run, hb, now); rel != "" {
 				r.Wrote += "; " + rel
 			}
