@@ -1588,7 +1588,8 @@ check directory those stages run from in `tests/<root-sha>/` ([the check
 directory](#the-check-directory)), the drive's per-preflight checkouts in
 `preflight-checkouts/`, a walled stage's home in `stage-homes/`, the scheduled
 verdicts in `scheduled-runs/<root-sha>/`, the run stop in `stop.json` where no
-shared folder holds it, the drive's separate logins in `profiles/`,
+shared folder holds it, the separate logins in `profiles/`, whose first directory `abcd start` makes and the person logs in,
+the copies of abcd an open session's hooks run in `session-bin/`,
 the folder this account shares with another in `shared-folder.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the

@@ -652,8 +652,9 @@ run from a session whose setting reads as off a profile prints one line on stder
 after the move, naming what abcd cannot check and addressed to the person; it never refuses and the exit
 code does not change. In the managed mode nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
@@ -1968,8 +1969,9 @@ session whose setting reads as off a profile prints one line on stderr opening W
 naming what abcd cannot check and addressed to the person; it never refuses and the exit code does not
 change. In the managed mode and on --dry-run nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
@@ -3304,8 +3306,9 @@ whose setting reads as off a profile prints one line on stderr opening WARNING:,
 mode and on a resume, naming what abcd cannot check and addressed to the person; it never refuses and
 the exit code does not change. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 **Flags:**
@@ -6226,8 +6229,9 @@ Setting it from a session whose setting reads as off a profile prints one line o
 WARNING:, after the set, naming what abcd cannot check and addressed to the person. The mode is set and
 the exit code is the same either way: it warns and never refuses. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
@@ -7406,6 +7410,48 @@ In the repository whose brief describes the binary, a close that ships an intent
 
 ```
 abcd spec close spc-2609010000000001
+```
+
+### `abcd start`
+
+Start a session on abcd alone, making its separate login where none exists: Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.
+
+**Usage:** `abcd start [prompt] [flags]`
+
+Start a session on abcd alone: the few tools the work needs, abcd's hooks and the
+repository's conventions file, and nothing else of your set-up. You type it, in a
+plain terminal, in a checkout abcd manages. A run has one of two outcomes.
+
+On an account with no profile it makes one directory under
+~/.abcd.noindex/profiles/, writes abcd's settings there and nothing of yours,
+prints the host's own login command, and starts nothing. The login is yours, in
+your own shell: abcd never performs it, and never reads, stores or forwards it.
+
+On a profile that is logged in it runs one short launch with the session's
+arguments on that profile, refuses naming anything the launch reports that the
+printed list does not name, and otherwise opens the session in place of abcd. The
+short launch spends a little of the subscription and is written to the launch
+ledger. It is one launch, not the open session: what the host adds after the start
+abcd cannot see.
+
+A profile is a separate login and settings on this one account, not a sandbox: a
+command the session runs can still read whatever the account can.
+
+With a prompt the session opens with it; with none it opens waiting for you. With
+several profiles, name one with --profile. `abcd session` is another thing: the
+live brief sessions.
+
+**Flags:**
+
+```
+      --permission-mode string   the permission mode the session starts in, manual | acceptEdits | plan | auto | dontAsk | bypassPermissions; without it, the host's default
+      --profile string           the profile to start on; on an account with none, the name the one made is given
+```
+
+**Example:**
+
+```
+abcd start
 ```
 
 ### `abcd status`

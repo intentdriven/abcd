@@ -1078,3 +1078,58 @@ func TestStartLeavesOutAHookVerbTheBinaryLacks(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryLineNamingTheProfileSaysASeparateLoginNeverASandbox: the verb's lines, its page
+// and its chapter say what a profile is, and nowhere that a profile is spoken of is it
+// called a sandbox.
+func TestEveryLineNamingTheProfileSaysASeparateLoginNeverASandbox(t *testing.T) {
+	texts := map[string]string{}
+	says := []string{"the making's lines", "a start's lines", "commands/start.md", ".abcd/development/brief/04-surfaces/43-start.md"}
+	for _, rel := range []string{"commands/start.md", "commands/drain.md", "commands/mode.md", "docs/reference/cli/commands.md",
+		".abcd/development/brief/04-surfaces/26-mode.md", ".abcd/development/brief/04-surfaces/35-drain.md",
+		".abcd/development/brief/04-surfaces/43-start.md"} {
+		raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		texts[rel] = string(raw)
+	}
+	// The worlds change the working directory, so the pages are read before them.
+	made := newStartWorld(t)
+	made.profiles(t)
+	if code := made.run(); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, made.errb.String())
+	}
+	opened := newStartWorld(t)
+	opened.opens(t)
+	texts["the making's lines"], texts["a start's lines"] = made.out.String(), opened.out.String()
+	// The reference speaks of the host's own sandbox elsewhere; the verb's section is held.
+	const heading = "\n### `abcd start`"
+	_, section, found := strings.Cut(texts["docs/reference/cli/commands.md"], heading)
+	if !found {
+		t.Fatal("the reference has no section for the verb")
+	}
+	section, _, _ = strings.Cut(section, "\n### ")
+	texts["docs/reference/cli/commands.md"] = section
+
+	fold := func(s string) string { return strings.Join(strings.Fields(s), " ") }
+	for _, name := range says {
+		if !strings.Contains(fold(texts[name]), "separate login and settings") {
+			t.Errorf("%s does not say a separate login and settings", name)
+		}
+	}
+	for name, text := range texts {
+		for _, paragraph := range strings.Split(text, "\n\n") {
+			words := strings.ToLower(fold(paragraph))
+			if !strings.Contains(words, "profile") {
+				continue
+			}
+			for _, denial := range []string{"not a sandbox", "never a sandbox"} {
+				words = strings.ReplaceAll(words, denial, "")
+			}
+			if strings.Contains(words, "sandbox") {
+				t.Errorf("%s calls a profile a sandbox:\n%s", name, paragraph)
+			}
+		}
+	}
+}

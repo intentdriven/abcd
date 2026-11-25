@@ -57,6 +57,7 @@ it does not order the table.
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
 | 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
+| 43 | `/abcd:start` | shipped | Start a session on abcd alone, on a separate login it makes where the account holds none, after one short launch shows nothing the printed list does not name | [`43-start.md`](43-start.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 | 40 | `/abcd:sweep` | shipped | See every worktree, branch, reservation and inbox report a repository has left lying around, and clear only what is provably finished | [`40-sweep.md`](40-sweep.md) |
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
@@ -209,6 +210,7 @@ and `help` are the framework's own commands, filed under set-up.
 | `session` | people | set-up |
 | `site` | agents and hosts | — |
 | `spec` | agents and hosts | — |
+| `start` | people | set-up |
 | `status` | people | records |
 | `statusline` | agents and hosts | — |
 | `sweep` | people | set-up |
@@ -307,7 +309,9 @@ the checkout's current branch, so it acts rather than renders; it refuses on
 the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare
 `abcd landings` lists the changes since the last release tag the default
 branch reaches, so in a checkout with no release tag it refuses, naming where
-the person can say the range starts, and lists nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+the person can say the range starts, and lists nothing. Bare `abcd start` is the
+start itself, so it acts rather than renders; anywhere but a person's terminal it
+refuses and writes nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -463,7 +467,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `embark`, `explain`, `guard`, `history`, `ideate`, `identity`, `implement`,
 `inbox`, `intent`, `lab`, `land`, `landings`, `launch`, `library`, `lint`,
 `memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
-`session`, `site`, `status`, `sweep`, `update`.
+`session`, `site`, `start`, `status`, `sweep`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
