@@ -14,3 +14,5 @@ refines: [iss-2610241228359748]
 ---
 
 After the plugin was updated to 0.17.1 at project scope, the host went on loading the user-scope copy, 0.16.0, in every session started in that project, and `abcd ahoy` says only that the plugin root is resolved. On 2026-11-25 the person believed the update was in force. The session ran hooks, agents and command pages five releases old: the rule for a person leaving was missing, and the prompt hook printed 42,791 bytes where 0.17.1 prints 7,936 for the same prompt, so the host cut the rules to a preview. Refines iss-2610241228359748, which waits for a ruling on precedence: this part needs none.
+
+2026-11-25: The first half of the ideate verdict dcn-2611251807556458 is this: the copies compared from disk, the one that runs named, and the one step that mends each. It waits on no ruling.

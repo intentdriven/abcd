@@ -18,3 +18,5 @@ A session start says nothing when the installed plugin is older than the newest 
 ## Evidence 2026-11-21
 
 On 2026-11-20, two days after v0.17.0 was cut, sessions in abcd's own checkout still ran the v0.16.0 plugin, with nothing at their start saying that a newer release existed. One of them ran `/abcd:ideate` from the v0.16.0 page and repeated its adversarial leg, and its rules hook overran the host's cap on each of four prompts over 20 and 21 November although the fix shipped in v0.17.0. The detail is under the same date in iss-2610241228359748.
+
+2026-11-25: The ruling asked for here is weighed in an ideate verdict (dcn-2611251807556458): a check on a standing yes, at most daily, metadata alone, to the person alone, is the shape that survives; adr-38 stays until it is ruled on.
