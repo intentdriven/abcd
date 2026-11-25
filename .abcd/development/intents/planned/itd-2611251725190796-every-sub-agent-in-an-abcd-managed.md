@@ -35,11 +35,11 @@ We expect a hook at a sub-agent's start to close the gap because the host delive
 
 ## Acceptance Criteria
 
-- **Given** a managed repository and a session with no plugin but abcd, **when** it starts a sub-agent of any kind, **then** what the hook returns names the conventions file in the worktree the sub-agent works in, and the commands that print the rules a task recalls; what the hook sends never carries the file's check word.
+- **Given** a managed repository and a session with no plugin but abcd, **when** it starts a sub-agent of any kind but abcd's four cold-reading agents, **then** what the hook returns names the conventions file in the worktree the sub-agent works in, and the commands that print the rules a task recalls; what the hook sends never carries the file's check word.
 - **Given** the host's limit on a hook's output, **when** a sub-agent starts, **then** what it is told fits the limit whole: where the conventions file is, the commands, and the name of every domain in force. No rule's text is cut to fit.
 - **Given** a conventions file that carries a check word, **when** one sub-agent on the installed host is asked for it in a live check, **then** it answers it after reading the file, and a dated receipt in the local tier names the host's version.
 - **Given** a sub-agent in a managed repository with a conventions file, **when** it is about to write (a file tool of the host's that writes, or a shell command the spec names as a write) and it has not read that file, **then** the guard refuses the call naming the file to read, and the same call goes through once it has read it, by the host's reading tool or through the shell.
-- **Given** the session itself, a sub-agent that never writes, a repository abcd does not manage or whose rules are off, no conventions file, or a sub-agent whose brief carries the conventions whole, **when** it acts, **then** nothing is held for this.
+- **Given** the session itself, one of abcd's cold-reading agents, a sub-agent that never writes, a repository abcd does not manage or whose rules are off, no conventions file, or a sub-agent whose brief carries the conventions whole, **when** it acts, **then** nothing is held for this.
 - **Given** a call the host does not say is a sub-agent's, or a reading abcd cannot judge, **when** it would be held, **then** it is not, and the line its stop records says it could not be judged.
 - **Given** a sub-agent whose transcript the host hands over at its stop, **when** no tool call in it names the conventions file, or none runs the rules command, **then** one line naming its type and id and which was missing is kept in the repository's store under abcd's home, counted in the next session-start notice, and listed by `abcd history staged`; the stop itself refuses nothing.
 - **Given** a transcript that is absent, unreadable, or over the size abcd reads, **when** the sub-agent stops, **then** the line says it could not be judged.
@@ -56,10 +56,13 @@ _None open. Whether a sub-agent that has not read the conventions is only report
 1. The product thinker's, on 2026-11-25 (dcn-2611251726008978): this part and itd-2611251725203320 are on the main branch before their six-day unattended run starts; itd-2611251725209625 follows in that run. They chose the part from its one sentence and gave no wording for a criterion. The criteria, the Mechanism, and the scope conditions are the writing session's; they were listed to the product thinker in plain words, not walked one by one, and they then said to start building. That is the consent the plan stands on. They review each on return, and a change then is made through the record.
 2. The product thinker's, on 2026-11-25 (dcn-2611251823160636): a sub-agent that has not read the conventions file is held by the guard at its first write until it has. Which shell commands count as its write is technical and is the spec's, recorded there. What cannot be judged is not held, and is said; the writing session's, no question put, since a hold on a guess would stop work for a reason abcd cannot show.
 3. The hook's own bound is five seconds and the manifest declares ten. No question was put, since a bound is a technical default with one defensible order of size: a sub-agent's start must not wait on it.
+4. The writing session's, no question put, since the brief already rules it: abcd's four cold-reading agents are told nothing and never held (invariant 15; itd-183's criterion that a reading's context holds "the assembled input and no repository path").
 
 ## Decomposition
 
 Hand-run four-piece table, 2026-11-25. One capability, this intent; the hook's wiring, the cap's handling, and the install report are plumbing, carried by its spec, the brief's configuration chapter (`05-internals/03-configuration.md`), and its ahoy chapter (`04-surfaces/01-ahoy.md`); no trust rule; the hold is the product thinker's ruling, and the stance "a hold never rests on a guess" has no principle and is held for them. Typed links: `builds_on` itd-3, itd-2611041636196213, and itd-2610030814013772; `related_issues` iss-2609300536239512. Flagged for the product thinker, never auto-classified: The finding of 2026-11-25 narrows itd-2610030814013772's condition cond-2610031156365364 (the host reads the file itself only while its own built-in plugin is on). Verdict: FILE-AS-IS.
+
+itd-2611251831138387 builds on this hook to carry its findings block.
 
 ## Audit Notes
 

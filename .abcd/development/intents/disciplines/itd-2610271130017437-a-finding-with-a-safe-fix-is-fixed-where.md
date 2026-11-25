@@ -107,17 +107,18 @@ detector, and propose rather than file across a boundary.
 ## Staging
 
 The first two gates above are from before the amendment of 2026-11-25 (dcn-2611251833399124): Where
-they refuse a capture or file nothing, the build captures and resolves instead
-(itd-2611251831138387). Nothing is armed yet. The rungs, in order:
+they refuse a capture or file nothing, the build captures and resolves instead; that build is
+iss-2610271115000748's, whose remedy is amended to say so. Holding a session to the rule, at its
+stop and at a landing, is itd-2611251831138387's, which changes neither gate. Nothing is armed yet.
+The rungs, in order:
 
 1. **Taught.** The bundled `ISSUES` rules domain, which every managed repository
    loads, states the rule, so an agent meets it before it files.
-2. **Held at capture.** The first gate: the capture verb refuses a minor
-   inconsistency or documentation finding that names no reason it cannot be fixed in
-   place.
+2. **Held at capture.** The first gate, as amended: the capture verb takes every
+   confirmed finding, and one fixed in place is filed resolved, naming its fix.
 3. **Held at the automated filers.** The second gate, starting with the consistency
    ingest: its findings carry a fix and a safe-or-ruling mark, safe ones are applied
-   or proposed, and rulings alone are filed.
+   or proposed and filed resolved, and rulings are filed open.
 4. **Measured.** The third gate: each pass reports its not-real rate from its
    triage.
 
