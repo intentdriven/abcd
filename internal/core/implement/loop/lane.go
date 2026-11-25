@@ -268,8 +268,15 @@ var originAskTimeout = time.Minute
 // move a ref here (gitutil.RemoteHeadTip, bounded by originAskTimeout). The
 // default branch as read here, defRef at base, must be that tip or an
 // ancestor of it, so a default branch here the remote never had is refused
-// rather than passed over; and the tip must already be in the repository, as
-// a fetch leaves it, or nothing here can show base descends to it. A remote
+// rather than passed over; and the tip must be in the repository, or nothing
+// here can show base descends to it: a tip not held yet (origin moved since
+// this checkout's last fetch, as when the lane opens between a drain move's
+// fetch and this ask) is fetched once, as the move fetches origin's default
+// branch (fetchUnheldTip), and only a tip still not held after that refuses
+// (iss-2611251741261124). In a drive the fetch runs under what the drive
+// holds, as its every networked git does; it moves only origin's
+// remote-tracking ref, and base, read before it, is judged against the tip
+// as before. A remote
 // that cannot be asked is never read as one that agrees: a lost network (or
 // no answer within the bound) is the stage's network failure (netFailure), a
 // contention refusal, and any other failure the stage's plain refusal; either
@@ -306,10 +313,25 @@ func originTip(c Context, laneID, defRef, base string) (string, string, error) {
 			fmt.Sprintf("%s's default branch is %s, and the default branch here is %s, so the lane would open on a branch this checkout does not take as its default", Remote, branch, here),
 			"set the default branch here to "+Remote+"'s (`git remote set-head "+Remote+" --auto`), or "+Remote+"'s to this one, then run `abcd implement step` again; nothing was made")
 	}
-	if _, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
-		return "", "", refuse(string(StageWorktree), "", laneID,
-			fmt.Sprintf("%s reports its %s at %s, which this repository does not hold yet, so the lane's commit cannot be shown to be on it", Remote, branch, tip[:12]),
-			"fetch "+Remote+" (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
+	if !tipHeld(c.RepoRoot, tip) {
+		held, err := fetchUnheldTip(c.RepoRoot, branch, tip)
+		if err != nil {
+			if r, ok := heldStopOf(err); ok {
+				return "", "", r
+			}
+			if r := netFailure(StageWorktree, laneID, "git fetch "+Remote+" "+branch, err); r != nil {
+				r.Remedy = "keep to offline work; run `abcd implement step` again once the network is back; nothing was made"
+				return "", "", r
+			}
+			return "", "", refuse(string(StageWorktree), "", laneID,
+				fmt.Sprintf("%s reports its %s at %s, which this repository does not hold yet, and git could not fetch it, so the lane's commit cannot be shown to be on it: %s", Remote, branch, tip[:12], gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))),
+				"settle what git reports when it fetches (`git fetch "+Remote+"`), then run `abcd implement step` again; nothing was made")
+		}
+		if !held {
+			return "", "", refuse(string(StageWorktree), "", laneID,
+				fmt.Sprintf("%s reports its %s at %s, which this repository does not hold yet even once it fetched %s, so the lane's commit cannot be shown to be on it", Remote, branch, tip[:12], branch),
+				"fetch "+Remote+" (`git fetch "+Remote+"`) and see that its "+branch+" is the tip it reports (`git ls-remote --symref "+Remote+" HEAD`), then run `abcd implement step` again; nothing was made")
+		}
 	}
 	if base != tip {
 		if _, err := gitutil.RunCappedAsStored(c.RepoRoot, 4096, "merge-base", "--is-ancestor", base, tip); err != nil {
