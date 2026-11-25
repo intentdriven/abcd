@@ -23,6 +23,7 @@ package findings
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -339,8 +340,8 @@ func (d dirs) live(sub string, limit int) ([]string, error) {
 
 // nameOf is the entry's name: a hash of the kind, the place and the head for a
 // gate's entry, and of the kind, the redacted text before its cut, the place
-// and the session for a reading's. A withheld text is named by the text as
-// given, which never leaves the account's own store.
+// and the session for a reading's. A withheld entry is named by randomName
+// instead.
 func nameOf(e Entry, text string) string {
 	parts := []string{"reading", string(e.Kind), normalise(text), e.Place, e.Session}
 	if e.Head != "" {
@@ -348,6 +349,16 @@ func nameOf(e Entry, text string) string {
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
+}
+
+// randomName names an entry whose text was withheld: no function of the text,
+// so a repeat is its own entry and never merged.
+func randomName() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("findings: no name for a withheld entry: %w", err)
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 func normalise(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
@@ -391,7 +402,11 @@ func (s Store) put(rs *redactors, e Entry) (Entry, error) {
 	text, withheld := rs.clean(e.Checkout, e.Text)
 	e.Withheld = withheld
 	if withheld {
-		e.Name = nameOf(e, e.Text)
+		name, err := randomName()
+		if err != nil {
+			return Entry{}, err
+		}
+		e.Name = name
 	} else {
 		e.Name = nameOf(e, text)
 	}

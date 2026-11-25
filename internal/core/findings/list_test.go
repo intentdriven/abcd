@@ -736,6 +736,20 @@ func TestTextTheFullScanCannotClearIsWithheld(t *testing.T) {
 	if !got.Withheld || got.Text != "" {
 		t.Fatalf("under a degraded scan the entry was put as %+v; want its text withheld", got)
 	}
+	// A withheld entry is named at random: its name and handle are no
+	// function of the text, so a repeat is its own entry.
+	again := mustPut(t, s, e)
+	if again.Name == got.Name || again.Handle() == got.Handle() {
+		t.Fatalf("two puts of one withheld text share the name %s; want two entries", got.Name)
+	}
+	for _, n := range []string{got.Name, again.Name} {
+		if n == nameOf(e, e.Text) || !entryFileRe.MatchString(n+".json") {
+			t.Fatalf("a withheld entry is named %q, the hash of its text or no name of the store's shape", n)
+		}
+	}
+	if v := mustRead(t, s); len(v.Open) != 2 {
+		t.Fatalf("the list holds %d withheld entries; want 2", len(v.Open))
+	}
 }
 
 func TestASettleReasonIsRedactedWithItsEntrysPatterns(t *testing.T) {
