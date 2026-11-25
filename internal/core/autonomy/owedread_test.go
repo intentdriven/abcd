@@ -891,6 +891,25 @@ func TestStackedBranchFoundWithoutPullRequest(t *testing.T) {
 	}
 }
 
+// TestForkPointResetIsNoStack: a branch reset to the commit it was created at,
+// its commits made again, is still the branch cut from the other, so the other
+// is not stacked on it once it moves on.
+func TestForkPointResetIsNoStack(t *testing.T) {
+	f := newFx(t)
+	f.stack()
+	fork := f.head("feat/base")
+	f.git("update-ref", "-m", "reset: moving to HEAD~1", "refs/heads/feat/top", fork)
+	f.commitOn("feat/top", "top work again", "")
+	f.commitOn("feat/base", "base moves on", "")
+	owed := f.read(true)
+	if has(owed, OwedStacked, "feat/base") {
+		t.Fatalf("feat/top was cut from feat/base, not the reverse: %s", describe(owed))
+	}
+	if it, ok := find(owed, OwedStacked, "feat/top"); !ok || !strings.Contains(it.Reason, "feat/base") {
+		t.Fatalf("feat/top is still stacked on feat/base: %s", describe(owed))
+	}
+}
+
 // TestStackedBranchClearingRule: a stacked branch is owed while behind its
 // base, failing, with a review outstanding, or unverified; waiting on its base
 // otherwise.
