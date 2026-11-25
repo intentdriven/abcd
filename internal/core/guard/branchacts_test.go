@@ -31,8 +31,13 @@ func TestBranchActsForms(t *testing.T) {
 		{"git -C ../other -c core.x=y checkout -b feat/q", []BranchAct{{Kind: BranchCreate, Name: "feat/q"}}},
 		{"GIT_TRACE=0 git switch -c feat/e", []BranchAct{{Kind: BranchCreate, Name: "feat/e"}}},
 		{"cd ../x && git switch -c feat/a && git branch feat/b", []BranchAct{{Kind: BranchCreate, Name: "feat/a"}, {Kind: BranchCreate, Name: "feat/b"}}},
+		{"if true; then git checkout -b feat/i; fi", []BranchAct{{Kind: BranchCreate, Name: "feat/i"}}},
+		{"if ! git switch -c feat/j; then git branch feat/k; fi", []BranchAct{{Kind: BranchCreate, Name: "feat/j"}, {Kind: BranchCreate, Name: "feat/k"}}},
+		{"{ git worktree add -b feat/l ../l; }", []BranchAct{{Kind: BranchCreate, Name: "feat/l"}}},
+		{"for i in 1; do git branch -m feat/m; done", []BranchAct{{Kind: BranchRename, From: "", Name: "feat/m"}}},
 		// Nothing created.
 		{"git branch", nil},
+		{`for b in a b; do git checkout -b "$b"; done`, nil},
 		{"git branch -d feat/w", nil},
 		{"git branch --list feat/*", nil},
 		{"git branch -u origin/main feat/w", nil},

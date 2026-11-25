@@ -31,15 +31,13 @@ func RecordActs(command string) []string {
 }
 
 // recordActIn is the held git subcommand of one command, or "". The subcommand
-// is taken by position, after assignment words and git's global options with
-// their values. A word a substitution or a variable helps to write is allowed
+// is taken by position, after the words commandWords steps over and git's global
+// options with their values. A word a substitution or a variable helps to write is allowed
 // as the value of such an option and anywhere after the subcommand, where it
 // changes nothing read here (the message of `git commit -m "$(cat …)"`); as the
 // program, an option or the subcommand it fixes no act, and none is read.
 func recordActIn(toks []string) string {
-	for len(toks) > 0 && isAssignmentWord(toks[0]) {
-		toks = toks[1:]
-	}
+	toks = commandWords(toks)
 	if len(toks) == 0 || isUnknown(toks[0]) || path.Base(toks[0]) != "git" {
 		return ""
 	}

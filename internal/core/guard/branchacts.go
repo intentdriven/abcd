@@ -69,9 +69,7 @@ func branchActsIn(toks []string) []BranchAct {
 			return nil
 		}
 	}
-	for len(toks) > 0 && isAssignmentWord(toks[0]) {
-		toks = toks[1:]
-	}
+	toks = commandWords(toks)
 	if len(toks) == 0 || path.Base(toks[0]) != "git" {
 		return nil
 	}
@@ -99,6 +97,16 @@ func branchActsIn(toks []string) []BranchAct {
 		return branchCommandActs(args)
 	}
 	return nil
+}
+
+// commandWords is a command's tokens from its program on: past the assignment
+// words, and the shell's reserved words, that lead to a command (`if`, `then`,
+// `do`, `{`, `!`), as the registry's walker steps them.
+func commandWords(toks []string) []string {
+	for len(toks) > 0 && (isAssignmentWord(toks[0]) || reserved[toks[0]]) {
+		toks = toks[1:]
+	}
+	return toks
 }
 
 // isAssignmentWord is a NAME=value word in command position.
