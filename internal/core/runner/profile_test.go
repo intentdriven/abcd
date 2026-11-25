@@ -49,7 +49,8 @@ func TestTheDriveRunsOnTheOneWalledDirectory(t *testing.T) {
 }
 
 // TestNoWalledDirectoryRefusesNamingTheOneToMake: with none, or no profiles
-// folder at all, the refusal names the folder and the login to run.
+// folder at all, the refusal names the folder and the command that makes the first
+// profile and prints the login to run, and gives no step by hand.
 func TestNoWalledDirectoryRefusesNamingTheOneToMake(t *testing.T) {
 	for _, home := range []string{t.TempDir(), func() string {
 		h := t.TempDir()
@@ -62,10 +63,13 @@ func TestNoWalledDirectoryRefusesNamingTheOneToMake(t *testing.T) {
 		if !errors.Is(err, ErrNoProfile) {
 			t.Fatalf("no directory is ErrNoProfile: %v", err)
 		}
-		for _, want := range []string{abcdhome.Display("profiles") + "/", "CLAUDE_CONFIG_DIR="} {
+		for _, want := range []string{abcdhome.Display("profiles") + "/", "`abcd start` in a plain terminal", "login command", "abcd never logs a harness in"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("the refusal %q does not name %q", err, want)
 			}
+		}
+		if strings.Contains(err.Error(), "mkdir") {
+			t.Errorf("the refusal %q still gives the step by hand", err)
 		}
 	}
 }
