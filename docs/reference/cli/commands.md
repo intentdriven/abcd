@@ -4963,7 +4963,7 @@ estimable. A matcher or proposer on a runner route waits for a launcher, and
 the host never answers for it. Nothing of a check is filed or written where
 the release gates read.
 
-Refused, exit 2, with nothing written: a task that is not one of the run's
+Refused, exit 2, with no record written: a task that is not one of the run's
 writing or check tasks, no made copy, a missing example, too few judges, a
 judging already drawn, a task with a copy handed to the host and not handed
 back, a packet the secret screen refuses, a verdict, matcher, proposal or label

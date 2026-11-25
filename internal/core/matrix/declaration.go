@@ -443,34 +443,38 @@ func judgeOnBuilder(role Role, judge, builder string) error {
 // modelKey is the model a route's <provider>/<model>, or a served name,
 // names, read so that one model under the spellings carriers give it is one
 // key: the spaces about it trimmed and its case folded; every provider prefix
-// cut, a slash one (openrouter/vendor/) and a dotted carrier one
-// (us.vendor.); a carrier's revision tail (-v1:0) cut; a routing variant
-// after a colon cut, from the closed list routingVariants (`:free`), while
-// any other colon tag, a size or a quantisation (`:7b`, `:q4_K_M`), is kept;
-// a snapshot stamp cut, after an at sign or as a date at the end
-// (-YYYYMMDD, -YYYY-MM-DD, -YYYY-MM), and a trailing -latest; and a dot or a
-// dash between two version digits read as one (4.5 and 4-5). So
+// cut, a slash one (openrouter/vendor/) and a dotted carrier one, a vendor
+// from carrierVendors with or without a region from carrierRegions before it
+// (us.vendor., vendor.), while any other dotted name is the model's own and
+// kept whole (aya.expanse and yi.expanse stay two); a carrier's revision tail
+// (-v1:0) cut; a routing variant after a colon cut, from the closed list
+// routingVariants (`:free`, `:latest`), while any other colon tag, a size or
+// a quantisation (`:7b`, `:q4_K_M`), is kept; a snapshot stamp cut, after an
+// at sign or as a date at the end (-YYYYMMDD, -YYYY-MM-DD, -YYYY-MM), and a
+// trailing -latest; and a dot or a dash between two version digits read as
+// one (4.5 and 4-5). A cut that would leave nothing is not made, so a name
+// that is all prefix or tail keys as itself and never as the empty key. So
 // vendor/model-4-5, openrouter/vendor/Model-4.5:free,
-// us.vendor.model-4-5-20261001-v1:0 and model-4.5@20261001 are one model,
+// us.anthropic.model-4-5-20261001-v1:0 and model-4.5@20261001 are one model,
 // while model-4 and model-4-5, or qwen2.5-coder:7b and qwen2.5-coder:32b,
 // stay two. Two models that differ only so are taken as one, so a judge is
 // refused rather than let judge what may be its own copies.
 func modelKey(model string) string {
 	model = strings.ToLower(strings.TrimSpace(model))
-	if i := strings.LastIndexByte(model, '/'); i >= 0 {
+	if i := strings.LastIndexByte(model, '/'); i >= 0 && i < len(model)-1 {
 		model = model[i+1:]
 	}
-	model = carrierRevisionRe.ReplaceAllString(model, "")
-	model = routingVariantRe.ReplaceAllString(model, "")
-	model = atStampRe.ReplaceAllString(model, "")
+	model = cutKept(carrierRevisionRe, model)
+	model = cutKept(routingVariantRe, model)
+	model = cutKept(atStampRe, model)
 	for {
-		cut := latestRe.ReplaceAllString(datedSnapshotRe.ReplaceAllString(model, ""), "")
+		cut := cutKept(latestRe, cutKept(datedSnapshotRe, model))
 		if cut == model {
 			break
 		}
 		model = cut
 	}
-	model = dottedCarrierRe.ReplaceAllString(model, "")
+	model = cutKept(dottedCarrierRe, model)
 	for {
 		folded := versionSepRe.ReplaceAllString(model, "$1.$2")
 		if folded == model {
@@ -480,9 +484,35 @@ func modelKey(model string) string {
 	}
 }
 
+// cutKept is model with re's match cut, or model as it is where the cut
+// would leave nothing.
+func cutKept(re *regexp.Regexp, model string) string {
+	if cut := re.ReplaceAllString(model, ""); strings.TrimSpace(cut) != "" {
+		return cut
+	}
+	return model
+}
+
 // routingVariants are the variant tags a carrier routes one model's weights
-// by, written after a colon: none of them names other weights.
-var routingVariants = []string{"free", "beta", "extended", "nitro", "floor", "online", "thinking"}
+// by, written after a colon: none of them names other weights. `latest` is a
+// local server's default tag, the alias of whichever weights the name was
+// pulled as, as -latest is after a dash.
+var routingVariants = []string{"free", "beta", "extended", "nitro", "floor", "online", "thinking", "latest"}
+
+// carrierRegions and carrierVendors are the dotted prefixes a cloud carrier
+// writes before a model's own name. The package names no carrier of its own,
+// so they are Amazon Bedrock's, the cloud carrier whose model ids carry such
+// a prefix: a cross-region profile's region (us., eu., apac.) and the
+// vendor whose model it is (anthropic., meta.). A region is cut only before
+// a listed vendor, and a vendor not listed is no carrier prefix, so its name
+// is kept whole.
+var (
+	carrierRegions = []string{"us", "us-gov", "eu", "apac", "jp", "au", "global"}
+	carrierVendors = []string{
+		"ai21", "amazon", "anthropic", "cohere", "deepseek", "google", "luma", "meta", "minimax",
+		"mistral", "moonshot", "moonshotai", "nvidia", "openai", "qwen", "stability", "twelvelabs", "writer",
+	}
+)
 
 var (
 	routingVariantRe  = regexp.MustCompile(`:(` + strings.Join(routingVariants, "|") + `)$`)
@@ -490,9 +520,18 @@ var (
 	atStampRe         = regexp.MustCompile(`@([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
 	datedSnapshotRe   = regexp.MustCompile(`-([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
 	latestRe          = regexp.MustCompile(`-latest$`)
-	dottedCarrierRe   = regexp.MustCompile(`^([a-z]+\.)+`)
+	dottedCarrierRe   = regexp.MustCompile(`^((` + quoteAll(carrierRegions) + `)\.)?(` + quoteAll(carrierVendors) + `)\.`)
 	versionSepRe      = regexp.MustCompile(`([0-9])[.-]([0-9])`)
 )
+
+// quoteAll is words as one regular-expression alternation, each quoted.
+func quoteAll(words []string) string {
+	q := make([]string, len(words))
+	for i, w := range words {
+		q[i] = regexp.QuoteMeta(w)
+	}
+	return strings.Join(q, "|")
+}
 
 // The bounds of a code task's hidden tests: the folder's path, and the test
 // command's words and each word's length.

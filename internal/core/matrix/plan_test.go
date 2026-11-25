@@ -1,6 +1,8 @@
 package matrix
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -391,6 +393,49 @@ func TestAMatcherAndAProposerArePlannedAsTheChecksJudges(t *testing.T) {
 	}
 	if bare.Digest == matched.Digest || matched.Digest == proposed.Digest {
 		t.Fatalf("digests %s, %s, %s: want each judge added to change the plan's", bare.Digest, matched.Digest, proposed.Digest)
+	}
+}
+
+// The judges note asks the person to check the judges' routes wherever a
+// judge is declared, on the check task's judges and once, and says nothing of
+// it where no judge is: a plan with neither cell carries the sentence nowhere
+// (spec step 9).
+func TestThePlanAsksToCheckTheJudgesRoutesOnlyWhereAJudgeIsDeclared(t *testing.T) {
+	const sentence = "a judge is held apart from the builders by its model's name read with its provider, carrier, variant tag and date set aside, so check that the judges' routes above name other models than the builders'"
+	builders := `{"id":"host-big","route":"host"}`
+	matcher := `
+  "matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/model", "cost_per_copy": {"amount": 0.25, "unit": "usd"}},`
+	proposer := `
+  "proposer": {"id": "propose-local", "route": "proposer=runner:opencode@local/qwen"},
+  "load_cap": 4,`
+	for _, c := range []struct {
+		name, extra string
+		cap         ResolvedCap
+		want        int
+	}{
+		{"no judge", ``, ResolvedCap{}, 0},
+		{"a matcher", matcher, usd25, 1},
+		{"a proposer", proposer, ResolvedCap{}, 1},
+		{"a matcher and a proposer", matcher + proposer, usd25, 1},
+	} {
+		p, err := plan(t, planDecl(builders, ``, c.extra), c.cap)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		var all bytes.Buffer
+		enc := json.NewEncoder(&all)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(p); err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(all.String(), sentence); n != c.want {
+			t.Errorf("%s: the plan carries the judges sentence %d times; want %d", c.name, n, c.want)
+		}
+		for _, j := range p.Judges {
+			if n, want := strings.Count(j.Note, sentence), map[bool]int{true: c.want, false: 0}[j.Kind == KindCheck]; n != want {
+				t.Errorf("%s: the %s task's judges note carries the sentence %d times; want %d: %q", c.name, j.Kind, n, want, j.Note)
+			}
+		}
 	}
 }
 

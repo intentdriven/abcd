@@ -328,7 +328,7 @@ func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
 			"estimable. A matcher or proposer on a runner route waits for a launcher, and\n" +
 			"the host never answers for it. Nothing of a check is filed or written where\n" +
 			"the release gates read.\n\n" +
-			"Refused, exit 2, with nothing written: a task that is not one of the run's\n" +
+			"Refused, exit 2, with no record written: a task that is not one of the run's\n" +
 			"writing or check tasks, no made copy, a missing example, too few judges, a\n" +
 			"judging already drawn, a task with a copy handed to the host and not handed\n" +
 			"back, a packet the secret screen refuses, a verdict, matcher, proposal or label\n" +

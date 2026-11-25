@@ -297,7 +297,7 @@ The table gives each finding's row, each model's `scores` (precision, unique
 valid findings, recall) and the `overlap`; `matcher` gives its agreement, or
 `not_estimable` saying why: no matcher declared, none asked, or fewer than ten
 pairs labelled. Asked again with no flag, the verb shows the judging as it
-stands. Refused, exit 2, with nothing written: a task with a copy handed to you
+stands. Refused, exit 2, with no record written: a task with a copy handed to you
 and not back, a matcher, verdict, proposal or label file that does not
 validate, a second matcher answer, verdict file or table, a table before the
 verdicts are locked, an answer for a runner cell, and a matcher or proposer

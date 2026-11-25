@@ -58,9 +58,11 @@ result as the host ran them, and its trial says abcd neither placed nor ran
 them: it marks that result, the model served, the harness version and the
 times as the host's own word, and says it carries no call receipts. A writing
 copy's document is kept only once its trial passes the secret screen, so a
-hand-back the screen refuses can be made again. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
-and the host never stands in for one, since its answer would measure the wrong
-model. A copy handed back is checked for compliance under one overall deadline
+hand-back the screen refuses can be made again. A runner cell's copy waits:
+abcd does not launch a runner in a clone yet, and when it does the cell's
+runner makes the copy in its clone from the same blind brief
+(dcn-2611251746554510); the host never stands in for one, since its answer
+would measure the wrong model. A copy handed back is checked for compliance under one overall deadline
 before its trial is written, a check copy's findings are recorded and its trial
 written before its clone is deleted, and every trial, review request and
 judging packet passes the secret screen. The report accounts for every copy
@@ -120,12 +122,13 @@ agreement on a sample of its pairs the person labels, reported from ten
 labelled pairs up. The matcher and the proposer are cells the person declares,
 on their own routes and never on a builder's route or model, and each is
 optional: nothing is chosen for the person. The model is compared by its name
-with what carriers add to one model set aside: the provider or carrier prefix,
-a routing variant such as `:free`, a carrier's revision tail, a date or
-`@` stamp, a trailing `-latest`, case, spaces, and a dot or a dash between
-version digits. A size or quantisation tag (`:7b`) and the version number
-itself still tell two models apart, a host builder is compared by the model its
-copies were served, and the plan's judges note asks the person to check the
+with what carriers add to one model set aside: the provider prefix, a known
+carrier's dotted region and vendor (`us.anthropic.`), a routing variant such
+as `:free` or `:latest`, a carrier's revision tail, a date or `@` stamp, a
+trailing `-latest`, case, spaces, and a dot or a dash between version digits.
+A size or quantisation tag (`:7b`), a model's own dotted name (`aya.expanse`)
+and the version number itself still tell two models apart, a host builder is
+compared by the model its copies were served, and the plan's judges note asks the person to check the
 routes shown, since a name read this way can still miss one model sold under
 two names.
 One on a runner route waits for a launcher abcd does not have yet, and the host

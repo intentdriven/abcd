@@ -344,8 +344,8 @@ func TestModelKeyReadsOneModelUnderEachSpellingAndKeepsOtherModelsApart(t *testi
 		{"model-x", "model-x-2026-10-01"},
 		{"model-x", "model-x-2026-10"},
 		{"model-x", "model-x-latest"},
-		{"vendor/model-x", "us.vendor.model-x-20261001-v1:0"},
-		{"vendor/model-4-5", "eu.vendor.model-4.5-v2:0"},
+		{"anthropic/model-x", "us.anthropic.model-x-20261001-v1:0"},
+		{"meta/model-4-5", "eu.meta.model-4.5-v2:0"},
 	}
 	for _, v := range routingVariants {
 		same = append(same, [2]string{"vendor/model-x", "openrouter/vendor/model-x:" + v})
@@ -371,5 +371,57 @@ func TestModelKeyReadsOneModelUnderEachSpellingAndKeepsOtherModelsApart(t *testi
 		`"route": "builder=runner:opencode@openrouter/vendor/model"`, `"route": "builder=runner:opencode@local/qwen2.5-coder:7b"`, 1)
 	if _, err := parseDeclaration([]byte(local)); err != nil {
 		t.Fatalf("a matcher on another size of the builder's local model = %v; want it taken", err)
+	}
+}
+
+// A latest alias names the model it aliases, written after a dash or as a
+// colon tag (`model:latest`, a local server's default tag), and so keys as
+// that model.
+func TestModelKeyReadsALatestAliasAsTheModel(t *testing.T) {
+	for _, p := range [][2]string{
+		{"foo", "foo-latest"},
+		{"foo", "foo:latest"},
+		{"local/qwen2.5-coder", "local/qwen2.5-coder:latest"},
+		{"vendor/model-4-5", "openrouter/vendor/model-4.5-latest:free"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a != b || a == "" {
+			t.Errorf("modelKey(%q) = %q and modelKey(%q) = %q; want one model", p[0], a, p[1], b)
+		}
+	}
+	if a, b := modelKey("local/qwen2.5-coder:latest"), modelKey("local/qwen2.5-coder:7b"); a == b {
+		t.Errorf("modelKey of the latest tag and of a size tag are both %q; want two models", a)
+	}
+}
+
+// A dotted prefix is cut only where a carrier writes it, its region and its
+// vendor before the model (us.anthropic.), so a model's own dotted name keeps
+// what tells it apart, and no name keys as nothing.
+func TestModelKeyCutsOnlyACarriersDottedPrefix(t *testing.T) {
+	for _, p := range [][2]string{
+		{"anthropic/model-x", "us.anthropic.model-x-20261001-v1:0"},
+		{"meta/model-x", "eu.meta.model-x-v1:0"},
+		{"model-x", "anthropic.model-x-v2:0"},
+		{"model-x", "apac.amazon.model-x"},
+		{"model-x", "us-gov.anthropic.model-x"},
+		{"model-x", "global.anthropic.model-x"},
+		{"model-x", "US.Anthropic.Model-X"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a != b || a == "" {
+			t.Errorf("modelKey(%q) = %q and modelKey(%q) = %q; want one model", p[0], a, p[1], b)
+		}
+	}
+	for _, p := range [][2]string{
+		{"aya.expanse", "yi.expanse"},
+		{"local/aya.expanse", "expanse"},
+		{"us.anthropic.aya.expanse", "us.anthropic.yi.expanse"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a == b {
+			t.Errorf("modelKey(%q) and modelKey(%q) are both %q; want two models", p[0], p[1], a)
+		}
+	}
+	for _, s := range []string{"us.anthropic.", "anthropic.", "us.", "a.b.", "-latest", ":free", ":latest", "@20261001", "-20261001", "-v1:0", "vendor/", "us.anthropic.-latest"} {
+		if k := modelKey(s); k == "" {
+			t.Errorf("modelKey(%q) is empty; want a key", s)
+		}
 	}
 }
