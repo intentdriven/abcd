@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"errors"
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/runstop"
 	"os"
@@ -276,7 +277,7 @@ func TestNamingAReleaseTagIsThePersonsAct(t *testing.T) {
 }
 
 // TestNamingAReleaseTagIsRefusedInEveryMode: the mode decides who merges, never
-// who names a release, and a repository's own guard file cannot claim the id.
+// who names a release.
 func TestNamingAReleaseTagIsRefusedInEveryMode(t *testing.T) {
 	const anyProgram = "abcd-update-tag-any-program"
 	for _, human := range []bool{true, false} {
@@ -290,9 +291,6 @@ func TestNamingAReleaseTagIsRefusedInEveryMode(t *testing.T) {
 				t.Errorf("human %v: Check(%q) = %q via %q, %v; want a block via %q", human, cmd, d.Verdict, d.EntryID, err, id)
 			}
 		}
-	}
-	if !containsString(reservedEntryIDs, anyProgram) {
-		t.Errorf("reservedEntryIDs lacks %q", anyProgram)
 	}
 }
 
@@ -592,6 +590,33 @@ func TestAnActsProgramIsReadByItsBasename(t *testing.T) {
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+}
+
+// TestARepositorysGuardFileCannotClaimAPersonActsID: a repository's guard file that
+// declares an entry under an act's reserved id does not load, and the act stays
+// refused under the registry that is left.
+func TestARepositorysGuardFileCannotClaimAPersonActsID(t *testing.T) {
+	for _, a := range personActs {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".abcd"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		file := `{"schema_version": 1, "entries": {"` + a.id + `": {"tier": "warn", "pattern": {"command": "ls"},
+			"why": "w", "successor": "s"}}}`
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(RepoRelPath)), []byte(file), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		ld := LoadRepo(dir)
+		if ld.Posture != LoadRepoDropped || !errors.Is(ld.Err, ErrInvalidEntry) || !strings.Contains(ld.Err.Error(), a.id) {
+			t.Errorf("%s: posture %v, %v; want the repository's file refused for the id", a.id, ld.Posture, ld.Err)
+		}
+		if _, has := ld.Registry.Entries[a.id]; has {
+			t.Errorf("%s is an entry of the registry left in force", a.id)
+		}
+		if d, err := ld.Registry.Check("scripts/abcd.sh update v0.7.0"); err != nil || d.EntryID != updateTagAnyEntryID || d.Verdict != VerdictBlock {
+			t.Errorf("%s: the registry left in force reads an update with a tag as %q via %q, %v", a.id, d.Verdict, d.EntryID, err)
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/spf13/pflag"
@@ -38,6 +39,20 @@ func TestTheGuardReadsTheUpdateOperandAsTheCommandDoes(t *testing.T) {
 	}
 	if taken == 0 {
 		t.Error("the command took no word as a tag, so nothing was compared")
+	}
+}
+
+// TestTheGuardsTagPatternsAreTheirSources: the patterns the guard reads the update
+// operand by are, letter for letter, the ones the command reads it by.
+func TestTheGuardsTagPatternsAreTheirSources(t *testing.T) {
+	for name, p := range map[string][2]*regexp.Regexp{
+		"the release tag's alphabet": {guard.ReleaseTagWord, ahoy.ReleaseTagShape},
+		"a release tag's start":      {guard.ReleaseTagStart, releaseTagStart},
+		"a verb's shape":             {guard.VerbWord, verbShape},
+	} {
+		if p[0].String() != p[1].String() {
+			t.Errorf("%s: the guard reads %s, its source %s", name, p[0], p[1])
+		}
 	}
 }
 

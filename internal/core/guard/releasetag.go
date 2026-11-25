@@ -15,14 +15,14 @@ import (
 // standing as the first operand after the subcommand.
 const ShapeReleaseTag = "release-tag"
 
-// releaseTagWord, releaseTagStart and lowercaseWord are the update command's own
+// ReleaseTagWord, ReleaseTagStart and VerbWord are the update command's own
 // reading of its operand: a word of a tag's alphabet, where a lowercase word that
-// does not start as every release tag does is a mistyped sub-verb
-// (TestTheGuardReadsTheUpdateOperandAsTheCommandDoes holds the two together).
+// does not start as every release tag does is a mistyped sub-verb. Each is the
+// pattern the command reads by (TestTheGuardsTagPatternsAreTheirSources).
 var (
-	releaseTagWord  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
-	releaseTagStart = regexp.MustCompile(`^v[0-9]`)
-	lowercaseWord   = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+	ReleaseTagWord  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+	ReleaseTagStart = regexp.MustCompile(`^v[0-9]`)
+	VerbWord        = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 )
 
 // releaseTagCouldBe reports whether an operand is a release tag, or can still be
@@ -35,13 +35,13 @@ func releaseTagCouldBe(tok string, glob bool) bool {
 		tok = strings.NewReplacer("*", unknownText, "?", unknownText).Replace(bracketsAsStar(tok))
 	}
 	if !isUnknown(tok) {
-		return releaseTagWord.MatchString(tok) && (!lowercaseWord.MatchString(tok) || releaseTagStart.MatchString(tok))
+		return ReleaseTagWord.MatchString(tok) && (!VerbWord.MatchString(tok) || ReleaseTagStart.MatchString(tok))
 	}
 	fixed := knownText(tok)
 	if knownLead(tok) == "" {
 		fixed = "v" + fixed
 	}
-	return releaseTagWord.MatchString(fixed)
+	return ReleaseTagWord.MatchString(fixed)
 }
 
 // unnamedPackage reports whether a word is a package path that names no directory
@@ -126,7 +126,7 @@ func (a personAct) tagFrom(s segment, r actReading) bool {
 			continue
 		}
 		if atTag {
-			if r.fixedName && releaseTagCouldBe(w.text, w.glob) || !w.unfixed && releaseTagStart.MatchString(w.text) {
+			if r.fixedName && releaseTagCouldBe(w.text, w.glob) || !w.unfixed && ReleaseTagStart.MatchString(w.text) {
 				return true
 			}
 		}

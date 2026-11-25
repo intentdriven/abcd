@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/vintage"
+	"github.com/intentdriven/abcd/internal/urlguard"
 )
 
 // recordingFetcher counts every LatestTag call, so a test can assert exactly
@@ -131,16 +133,23 @@ func (f tagFetcher) LatestTag() (string, error) {
 }
 
 // TestUpdateCheckTrustsTheUpdatePathsRoots: the fetcher the check builds carries
-// a root pool of its own, as the update path's does, rather than leaving the
-// choice to the transport's default.
+// the very pool its loader returns, and the loader is the one the update path
+// uses, which loads the roots with the CA overrides out of the environment.
 func TestUpdateCheckTrustsTheUpdatePathsRoots(t *testing.T) {
+	if reflect.ValueOf(releaseCheckRoots).Pointer() != reflect.ValueOf(urlguard.OverrideFreeRoots).Pointer() {
+		t.Error("the check does not load its roots as the update path does")
+	}
+	pool := x509.NewCertPool()
+	orig := releaseCheckRoots
+	releaseCheckRoots = func() *x509.CertPool { return pool }
+	t.Cleanup(func() { releaseCheckRoots = orig })
 	transport := reflect.ValueOf(newReleaseFetcher()).Elem().FieldByName("client").Elem().FieldByName("Transport").Elem().Elem()
 	tlsConfig := transport.FieldByName("TLSClientConfig")
 	if tlsConfig.IsNil() {
 		t.Fatal("the check's fetcher has no TLS configuration of its own")
 	}
-	if tlsConfig.Elem().FieldByName("RootCAs").IsNil() {
-		t.Fatal("the check's fetcher pins no root pool")
+	if got := tlsConfig.Elem().FieldByName("RootCAs").Pointer(); got != reflect.ValueOf(pool).Pointer() {
+		t.Error("the check's fetcher trusts another pool than the one its loader returned")
 	}
 }
 

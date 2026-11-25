@@ -20,11 +20,15 @@ import (
 // two things: the check path fetches exactly once, and NO other path
 // (`--version`, ahoy, session-start, install) ever constructs it — the
 // zero-network invariant of adr-38 tier 1.
-// It trusts the roots the update path does, loaded with the CA overrides out of
-// the environment; a pool that cannot be loaded falls back as that path's does.
+// It trusts the roots releaseCheckRoots loads.
 var newReleaseFetcher = func() vintage.ReleaseFetcher {
-	return vintage.NewGitHubReleaseFetcherWithRoots(urlguard.OverrideFreeRoots())
+	return vintage.NewGitHubReleaseFetcherWithRoots(releaseCheckRoots())
 }
+
+// releaseCheckRoots loads the roots the check trusts, the update path's: loaded
+// with the CA overrides out of the environment; a pool that cannot be loaded falls
+// back as that path's does.
+var releaseCheckRoots = urlguard.OverrideFreeRoots
 
 // resolveUpdateTarget is the disk-only install classification the next-step
 // line consults; a package var so a test can pin a shape without a PATH fixture.
