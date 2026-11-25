@@ -331,3 +331,45 @@ func TestAJudgeNamingABuildersModelThroughAnotherProviderIsRefused(t *testing.T)
 		t.Fatalf("a judge on another model = %v; want it taken", err)
 	}
 }
+
+// One model under each spelling carriers give it is one key, and models that
+// differ in their weights or their version number stay apart (spec step 9).
+func TestModelKeyReadsOneModelUnderEachSpellingAndKeepsOtherModelsApart(t *testing.T) {
+	same := [][2]string{
+		{"vendor/model-4-5", "openrouter/vendor/model-4.5"},
+		{"vendor/model-x", "openrouter/vendor/Model-X"},
+		{" model-x ", "model-x"},
+		{"model-x", "model-x@20261001"},
+		{"model-x", "model-x-20261001"},
+		{"model-x", "model-x-2026-10-01"},
+		{"model-x", "model-x-2026-10"},
+		{"model-x", "model-x-latest"},
+		{"vendor/model-x", "us.vendor.model-x-20261001-v1:0"},
+		{"vendor/model-4-5", "eu.vendor.model-4.5-v2:0"},
+	}
+	for _, v := range routingVariants {
+		same = append(same, [2]string{"vendor/model-x", "openrouter/vendor/model-x:" + v})
+	}
+	for _, p := range same {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a != b || a == "" {
+			t.Errorf("modelKey(%q) = %q and modelKey(%q) = %q; want one model", p[0], a, p[1], b)
+		}
+	}
+	for _, p := range [][2]string{
+		{"local/qwen2.5-coder:7b", "local/qwen2.5-coder:32b"},
+		{"local/model:q4_K_M", "local/model:q8_0"},
+		{"vendor/model-4", "vendor/model-4-5"},
+		{"vendor/model-4.5", "vendor/model-4.6"},
+		{"vendor/model-x", "vendor/model-y"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a == b {
+			t.Errorf("modelKey(%q) and modelKey(%q) are both %q; want two models", p[0], p[1], a)
+		}
+	}
+	// The pair a size tag tells apart is two cells a declaration admits.
+	local := strings.Replace(withJudges(`"matcher": {"id": "match-local", "route": "matcher=runner:opencode@local/qwen2.5-coder:32b"}`),
+		`"route": "builder=runner:opencode@openrouter/vendor/model"`, `"route": "builder=runner:opencode@local/qwen2.5-coder:7b"`, 1)
+	if _, err := parseDeclaration([]byte(local)); err != nil {
+		t.Fatalf("a matcher on another size of the builder's local model = %v; want it taken", err)
+	}
+}

@@ -711,12 +711,20 @@ func recordCheckTable(repoRoot, labID, run, task string, in checkTableInputs) (C
 			return CheckTable{}, err
 		}
 		// A reason is a model's text, so it passes the secret screen every
-		// copy's findings pass before any of it reaches the table.
-		reasons, err := encodeCheck(proposed)
-		if err != nil {
-			return CheckTable{}, err
+		// copy's findings pass before any of it reaches the table. Each reason
+		// is one line, screened as the line of the packet's item it is on, so
+		// a refusal names the proposal it is in.
+		lines := make([]string, len(p.Items))
+		for i, it := range p.Items {
+			lines[i] = proposed[it.Code].Reason
 		}
-		if err := screen(repoRoot, []screened{{lab.StateFile{Rel: checkRel(run, task, "table.json"), Data: reasons}, reasons}}); err != nil {
+		reasons := []byte(strings.Join(lines, "\n"))
+		err := screen(repoRoot, []screened{{lab.StateFile{Rel: checkRel(run, task, "table.json"), Data: reasons}, reasons}})
+		var sr *screenRefusal
+		switch {
+		case errors.As(err, &sr) && sr.line >= 1 && sr.line <= len(p.Items):
+			return CheckTable{}, fmt.Errorf("the proposals are refused, and nothing of them is recorded: the reason proposed on %s carries a %s, which the secret screen refuses", p.Items[sr.line-1].Code, sr.kind)
+		case err != nil:
 			return CheckTable{}, fmt.Errorf("the proposals are refused, and nothing of them is recorded: %w", err)
 		}
 	}

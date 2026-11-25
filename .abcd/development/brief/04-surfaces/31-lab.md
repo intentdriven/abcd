@@ -118,9 +118,16 @@ column, the verdict the proposer cell proposes where one is declared, each
 model's precision, unique valid findings, recall and overlap, and the matcher's
 agreement on a sample of its pairs the person labels, reported from ten
 labelled pairs up. The matcher and the proposer are cells the person declares,
-on their own routes and never on a builder's route or model (the model compared
-with its provider and case set aside, and a host builder's by the model its
-copies were served), and each is optional: nothing is chosen for the person.
+on their own routes and never on a builder's route or model, and each is
+optional: nothing is chosen for the person. The model is compared by its name
+with what carriers add to one model set aside: the provider or carrier prefix,
+a routing variant such as `:free`, a carrier's revision tail, a date or
+`@` stamp, a trailing `-latest`, case, spaces, and a dot or a dash between
+version digits. A size or quantisation tag (`:7b`) and the version number
+itself still tell two models apart, a host builder is compared by the model its
+copies were served, and the plan's judges note asks the person to check the
+routes shown, since a name read this way can still miss one model sold under
+two names.
 One on a runner route waits for a launcher abcd does not have yet, and the host
 never answers for it: the plan's judges line says so, and the judging stops at
 that cell's stage saying so. Nothing of a check is filed or

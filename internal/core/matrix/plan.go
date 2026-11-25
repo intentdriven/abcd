@@ -381,6 +381,9 @@ func checkJudges(d Declaration, t Task) JudgeNeed {
 		j.Who += "; the findings no exact key joins stay unmatched, each a row of its own"
 		j.Note = "no matcher cell is declared, so the matcher's agreement is not estimable"
 	}
+	if d.Matcher != nil || d.Proposer != nil {
+		j.Note += "; a judge is held apart from the builders by its model's name read with its provider, carrier, variant tag and date set aside, so check that the judges' routes above name other models than the builders'"
+	}
 	for _, c := range []*Cell{d.Matcher, d.Proposer} {
 		if c != nil && c.Route != "host" {
 			j.Note += "; " + c.ID + " is a runner cell, and its answer waits for a launcher this build of abcd does not have, so the check's judging stops there until one does"

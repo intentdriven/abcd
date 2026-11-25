@@ -441,25 +441,58 @@ func judgeOnBuilder(role Role, judge, builder string) error {
 }
 
 // modelKey is the model a route's <provider>/<model>, or a served name,
-// names: the spaces about it trimmed, every provider and vendor prefix cut, a
-// carrier's `:variant` tag (`:free`) cut, its case folded, and a dated
-// snapshot at its end (-YYYYMMDD, -YYYY-MM-DD) cut. So
-// openrouter/vendor/model-x, vendor/Model-X:free, model-x-20261001 and
-// " model-x " are one model. Two models that differ only so are taken as one,
-// so a judge is refused rather than let judge what may be its own copies.
+// names, read so that one model under the spellings carriers give it is one
+// key: the spaces about it trimmed and its case folded; every provider prefix
+// cut, a slash one (openrouter/vendor/) and a dotted carrier one
+// (us.vendor.); a carrier's revision tail (-v1:0) cut; a routing variant
+// after a colon cut, from the closed list routingVariants (`:free`), while
+// any other colon tag, a size or a quantisation (`:7b`, `:q4_K_M`), is kept;
+// a snapshot stamp cut, after an at sign or as a date at the end
+// (-YYYYMMDD, -YYYY-MM-DD, -YYYY-MM), and a trailing -latest; and a dot or a
+// dash between two version digits read as one (4.5 and 4-5). So
+// vendor/model-4-5, openrouter/vendor/Model-4.5:free,
+// us.vendor.model-4-5-20261001-v1:0 and model-4.5@20261001 are one model,
+// while model-4 and model-4-5, or qwen2.5-coder:7b and qwen2.5-coder:32b,
+// stay two. Two models that differ only so are taken as one, so a judge is
+// refused rather than let judge what may be its own copies.
 func modelKey(model string) string {
-	model = strings.TrimSpace(model)
+	model = strings.ToLower(strings.TrimSpace(model))
 	if i := strings.LastIndexByte(model, '/'); i >= 0 {
 		model = model[i+1:]
 	}
-	if i := strings.IndexByte(model, ':'); i >= 0 {
-		model = model[:i]
+	model = carrierRevisionRe.ReplaceAllString(model, "")
+	model = routingVariantRe.ReplaceAllString(model, "")
+	model = atStampRe.ReplaceAllString(model, "")
+	for {
+		cut := latestRe.ReplaceAllString(datedSnapshotRe.ReplaceAllString(model, ""), "")
+		if cut == model {
+			break
+		}
+		model = cut
 	}
-	return datedSnapshotRe.ReplaceAllString(strings.ToLower(strings.TrimSpace(model)), "")
+	model = dottedCarrierRe.ReplaceAllString(model, "")
+	for {
+		folded := versionSepRe.ReplaceAllString(model, "$1.$2")
+		if folded == model {
+			return strings.TrimSpace(model)
+		}
+		model = folded
+	}
 }
 
-// datedSnapshotRe is a dated snapshot written at a model name's end.
-var datedSnapshotRe = regexp.MustCompile(`-([0-9]{8}|[0-9]{4}-[0-9]{2}-[0-9]{2})$`)
+// routingVariants are the variant tags a carrier routes one model's weights
+// by, written after a colon: none of them names other weights.
+var routingVariants = []string{"free", "beta", "extended", "nitro", "floor", "online", "thinking"}
+
+var (
+	routingVariantRe  = regexp.MustCompile(`:(` + strings.Join(routingVariants, "|") + `)$`)
+	carrierRevisionRe = regexp.MustCompile(`-v[0-9]+:[0-9]+$`)
+	atStampRe         = regexp.MustCompile(`@([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
+	datedSnapshotRe   = regexp.MustCompile(`-([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
+	latestRe          = regexp.MustCompile(`-latest$`)
+	dottedCarrierRe   = regexp.MustCompile(`^([a-z]+\.)+`)
+	versionSepRe      = regexp.MustCompile(`([0-9])[.-]([0-9])`)
+)
 
 // The bounds of a code task's hidden tests: the folder's path, and the test
 // command's words and each word's length.

@@ -32,9 +32,11 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The sample of the matcher's pairs people are asked to label, and the fewest
@@ -405,7 +407,62 @@ func interruptedDraw(task string) string {
 // request about those leftovers alone; otherwise the leftovers stay rows of
 // their own and the packet is drawn and recorded with its key. Asked again,
 // it shows the judging as it stands and writes nothing.
-func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
+func DrawCheck(repoRoot, labID, run, task string) (j CheckJudging, err error) {
+	err = withCheckLock(repoRoot, labID, run, task, func() error {
+		j, err = drawCheckHeld(repoRoot, labID, run, task)
+		return err
+	})
+	return j, err
+}
+
+// checkLockWait is how long a judge command waits for another on the same
+// check to finish with its judging.
+const checkLockWait = 30 * time.Second
+
+// checkLockHeld and checkLockBusy are tests' seams: called, where set, as a
+// command takes a check's lock and as it finds another command holding it.
+var checkLockHeld, checkLockBusy func()
+
+// withCheckLock runs fn holding check task's judging lock in run, so two judge
+// commands on one check never interleave their reads and writes: a draw, its
+// recovery and a recorded answer each see the judging another left whole. A
+// command that finds the lock held waits for it, up to checkLockWait. The
+// run's record and the check task are read before the lock is taken, so a
+// lock is only ever made beside a run that holds that check.
+func withCheckLock(repoRoot, labID, run, task string, fn func() error) error {
+	proc, err := lab.OpenProcedure(repoRoot, labID)
+	if err != nil {
+		return err
+	}
+	defer proc.Close()
+	if _, _, err := checkRun(proc, run, task); err != nil {
+		return err
+	}
+	rel := checkRel(run, task, "judging.lock")
+	ran := false
+	held := func() error {
+		ran = true
+		if checkLockHeld != nil {
+			checkLockHeld()
+		}
+		return fn()
+	}
+	err = proc.WithStateLock(rel, 0, held)
+	if ran || !errors.Is(err, fsutil.ErrLockContention) {
+		return err
+	}
+	if checkLockBusy != nil {
+		checkLockBusy()
+	}
+	err = proc.WithStateLock(rel, checkLockWait, held)
+	if !ran && errors.Is(err, fsutil.ErrLockContention) {
+		return fmt.Errorf("another judge command on %s has held its judging for %s; nothing was written: %w", task, checkLockWait, err)
+	}
+	return err
+}
+
+// drawCheckHeld is DrawCheck under the check's lock.
+func drawCheckHeld(repoRoot, labID, run, task string) (CheckJudging, error) {
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
 		return CheckJudging{}, err
@@ -586,7 +643,16 @@ func writeCheckState(repoRoot, labID, rel string, data []byte) error {
 // fails, and records it once: its pairs joined, the sample of pairs people
 // label to check it drawn, and the packet drawn from the joined rows, all
 // written together.
-func RecordCheckMatcher(repoRoot, labID, run, task string, answer []byte) (CheckJudging, error) {
+func RecordCheckMatcher(repoRoot, labID, run, task string, answer []byte) (j CheckJudging, err error) {
+	err = withCheckLock(repoRoot, labID, run, task, func() error {
+		j, err = recordCheckMatcherHeld(repoRoot, labID, run, task, answer)
+		return err
+	})
+	return j, err
+}
+
+// recordCheckMatcherHeld is RecordCheckMatcher under the check's lock.
+func recordCheckMatcherHeld(repoRoot, labID, run, task string, answer []byte) (CheckJudging, error) {
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
 		return CheckJudging{}, err
@@ -698,7 +764,16 @@ func requestIDs(m *checkMatch, st checkMatchState) (map[string]int, error) {
 // RecordCheckVerdicts locks the person's verdict file on check task's packet,
 // once: a second file is never taken over the first, and a file that does
 // not validate records nothing.
-func RecordCheckVerdicts(repoRoot, labID, run, task string, data []byte) (LockedCheckVerdicts, error) {
+func RecordCheckVerdicts(repoRoot, labID, run, task string, data []byte) (v LockedCheckVerdicts, err error) {
+	err = withCheckLock(repoRoot, labID, run, task, func() error {
+		v, err = recordCheckVerdictsHeld(repoRoot, labID, run, task, data)
+		return err
+	})
+	return v, err
+}
+
+// recordCheckVerdictsHeld is RecordCheckVerdicts under the check's lock.
+func recordCheckVerdictsHeld(repoRoot, labID, run, task string, data []byte) (LockedCheckVerdicts, error) {
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
 		return LockedCheckVerdicts{}, err
@@ -725,7 +800,16 @@ func RecordCheckVerdicts(repoRoot, labID, run, task string, data []byte) (Locked
 // of the matcher's pairs, given only where a matcher answered. The matcher's
 // agreement is reported where at least matcherLabelFloor pairs are labelled;
 // otherwise the table says why it is not estimable.
-func RecordCheckTable(repoRoot, labID, run, task string, proposals, labels []byte) (CheckTable, error) {
+func RecordCheckTable(repoRoot, labID, run, task string, proposals, labels []byte) (t CheckTable, err error) {
+	err = withCheckLock(repoRoot, labID, run, task, func() error {
+		t, err = recordCheckTableHeld(repoRoot, labID, run, task, proposals, labels)
+		return err
+	})
+	return t, err
+}
+
+// recordCheckTableHeld is RecordCheckTable under the check's lock.
+func recordCheckTableHeld(repoRoot, labID, run, task string, proposals, labels []byte) (CheckTable, error) {
 	proc, err := lab.OpenProcedure(repoRoot, labID)
 	if err != nil {
 		return CheckTable{}, err

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,8 +279,9 @@ func TestACheckMatcherIsAskedOnlyTheLeftoversAndItsAnswerIsRefusedWhole(t *testi
 	leaky.Proposed = slices.Clone(proposals.Proposed)
 	leaky.Proposed[0].Reason = "it matches ghp_" + testsecret.Synthetic(61, 36)
 	ldata, _ := json.Marshal(leaky)
-	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, ldata, nil); err == nil || !strings.Contains(err.Error(), "proposals are refused") {
-		t.Fatalf("a proposal reason carrying a token = %v; want the proposals refused", err)
+	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, ldata, nil); err == nil || !strings.Contains(err.Error(), "proposals are refused") ||
+		!strings.Contains(err.Error(), "the reason proposed on "+leaky.Proposed[0].Code) || strings.Contains(err.Error(), "table.json") {
+		t.Fatalf("a proposal reason carrying a token = %v; want the proposals refused, naming the proposal on %s", err, leaky.Proposed[0].Code)
 	}
 	absent(t, "the table", checkState(home, m, rec.RunID, "table.json"))
 	outside := fmt.Sprintf(`{"schema_version":1,"labels":[{"a":%q,"b":%q,"same":true}]}`, x, x+"0")
@@ -537,5 +539,47 @@ func TestTheMatchersSampleIsShownInASeededOrder(t *testing.T) {
 	}
 	if !mixed {
 		t.Fatal("over eight seeds the matcher's joins always lead the sample; want them shown in a drawn order")
+	}
+}
+
+// Two judge commands on one check never interleave: while one holds the
+// check's judging, a second waits for it and then sees the judging the first
+// left whole, the same packet, and neither fails on the other's writes.
+func TestTwoJudgeCommandsOnOneCheckTakeItsJudgingInTurn(t *testing.T) {
+	r, _, m, rec := checkFlowLab(t, []checkCopyAt{
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, "The guard reads its registry from the plugin root.", "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, "It refuses a hazard"), StatusPassed, ""},
+	})
+	type drawn struct {
+		j   CheckJudging
+		err error
+	}
+	held, release, busy := make(chan struct{}), make(chan struct{}), make(chan struct{}, 1)
+	// Only the first command to take the lock parks in it; any other passes
+	// straight on, so a second command let in beside the first runs to its end.
+	var parked atomic.Bool
+	checkLockHeld = func() {
+		if parked.CompareAndSwap(false, true) {
+			close(held)
+			<-release
+		}
+	}
+	checkLockBusy = func() { busy <- struct{}{} }
+	t.Cleanup(func() { checkLockHeld, checkLockBusy = nil, nil })
+	a, b := make(chan drawn, 1), make(chan drawn, 1)
+	go func() { j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); a <- drawn{j, err} }()
+	<-held
+	go func() { j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); b <- drawn{j, err} }()
+	select {
+	case <-busy:
+	case got := <-b:
+		close(release)
+		<-a
+		t.Fatalf("a second judge command ran while the first held the check: %+v, %v", got.j, got.err)
+	}
+	close(release)
+	first, second := <-a, <-b
+	if first.err != nil || second.err != nil || first.j.Packet == nil || second.j.PacketDigest != first.j.PacketDigest {
+		t.Fatalf("the two draws = %+v, %v and %+v, %v; want both to show the one packet", first.j, first.err, second.j, second.err)
 	}
 }
