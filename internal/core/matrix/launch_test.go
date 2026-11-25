@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
@@ -73,13 +74,19 @@ func handOffNow(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, key 
 // fakeCell is a cell's dispatch that answers from a script, one outcome per
 // try, writing answer at the request's Receipt path and transcript to the
 // copy's transcript store first, and checking the answer as the runners'
-// dispatch does. It counts the copies in flight.
+// dispatch does. It counts the copies in flight. With meet, the first copies
+// wait for one another until that many are in flight at once, a rendezvous
+// rather than a sleep; with release, each copy says it entered on entered and
+// waits for release to close.
 type fakeCell struct {
 	mu         sync.Mutex
+	cond       *sync.Cond
 	outs       []runner.Outcome
 	answer     []byte
 	transcript func(req runner.Request) string
-	hold       time.Duration
+	meet       int
+	entered    chan struct{}
+	release    chan struct{}
 	reqs       []runner.Request
 	inFlight   int
 	peak       int
@@ -87,9 +94,16 @@ type fakeCell struct {
 
 func (f *fakeCell) dispatch(ctx context.Context, req runner.Request, check *copyCheck) (runner.Outcome, error) {
 	f.mu.Lock()
+	if f.cond == nil {
+		f.cond = sync.NewCond(&f.mu)
+	}
 	f.reqs = append(f.reqs, req)
 	f.inFlight++
 	f.peak = max(f.peak, f.inFlight)
+	f.cond.Broadcast()
+	for f.peak < f.meet {
+		f.cond.Wait()
+	}
 	out := servedOutcome()
 	if len(f.outs) > 0 {
 		out = f.outs[0]
@@ -104,9 +118,10 @@ func (f *fakeCell) dispatch(ctx context.Context, req runner.Request, check *copy
 		f.inFlight--
 		f.mu.Unlock()
 	}()
-	if f.hold > 0 {
+	if f.release != nil {
+		f.entered <- struct{}{}
 		select {
-		case <-time.After(f.hold):
+		case <-f.release:
 		case <-ctx.Done():
 		}
 	}
@@ -516,7 +531,9 @@ func TestCopiesInFlightNeverExceedTheDeclaredConcurrency(t *testing.T) {
 	for rep := 1; rep <= 5; rep++ {
 		awaitRunner(t, r, home, m, rec, TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: rep}, KindCode)
 	}
-	f := &fakeCell{answer: madeReceipt, hold: 150 * time.Millisecond, transcript: func(req runner.Request) string { return "read " + req.Brief + "\n" }}
+	// The first copies wait until as many as the run declares are in flight,
+	// so the figure is reached however slowly each copy gets to its runner.
+	f := &fakeCell{answer: madeReceipt, meet: rec.Concurrency, transcript: func(req runner.Request) string { return "read " + req.Brief + "\n" }}
 	res, err := testLauncher(r, home, m, f.dispatch).launch(context.Background(), rec.RunID, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -612,5 +629,207 @@ func TestALaunchedWritingCopyIsKeptAndACheckCopysFindingsRecorded(t *testing.T) 
 	defer proc.Close()
 	if _, err := proc.ReadState(checkCopyRel(rec.RunID, check)); err != nil {
 		t.Fatalf("the check copy's findings are recorded: %v", err)
+	}
+}
+
+// meteredOutcome is servedOutcome with the runner reporting it spent amount.
+func meteredOutcome(amount float64) runner.Outcome {
+	out := servedOutcome()
+	c := &oracle.Cost{Amount: amount, Unit: oracle.CostUSD}
+	out.Answer.Sides.Cost, out.Receipt.Route.Sides.Cost = c, c
+	return out
+}
+
+// TestASecondLaunchCountsWhatTheFirstLeftAgainstTheCap: a launch made before
+// any score is handed back counts what the copies an earlier launch made are
+// spending, though none holds a trial yet, so the spending cap holds across
+// launches as it holds within one.
+func TestASecondLaunchCountsWhatTheFirstLeftAgainstTheCap(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t, func(in *runInputs) {
+		in.Declaration = []byte(strings.Replace(string(in.Declaration), `"settings": {"temperature": 0.6}`,
+			`"settings": {"temperature": 0.6}, "cost_per_copy": {"amount": 10, "unit": "usd"}`, 1))
+	})
+	for rep := 1; rep <= 4; rep++ {
+		awaitRunner(t, r, home, m, rec, TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: rep}, KindCode)
+	}
+	cell := func() *fakeCell {
+		return &fakeCell{outs: []runner.Outcome{meteredOutcome(10)}, answer: madeReceipt,
+			transcript: func(req runner.Request) string { return "read " + req.Brief + "\n" }}
+	}
+	first := cell()
+	res, err := testLauncher(r, home, m, first.dispatch).launch(context.Background(), rec.RunID, nil, nil)
+	if err != nil || len(first.reqs) != 2 {
+		t.Fatalf("the first launch makes the two copies a cap of 25 covers at 10 each: %d dispatches, %+v %v", len(first.reqs), res.Copies, err)
+	}
+	second := cell()
+	res, err = testLauncher(r, home, m, second.dispatch).launch(context.Background(), rec.RunID, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.reqs) != 0 {
+		t.Fatalf("a second launch, before any score is handed back, spent past the cap: %d more copies launched, %+v", len(second.reqs), res.Copies)
+	}
+	for _, c := range res.Copies {
+		if c.State != HandOffAwaitingRunner || !strings.Contains(c.Reason, "cap") {
+			t.Errorf("copy %s waits on the cap: %+v", c.Key, c)
+		}
+	}
+}
+
+// launchLockAt is run's launch lock in the hand-off store, as the test reads
+// where it sits.
+func launchLockAt(home string, rec RunRecord) string {
+	return filepath.Join(handoffStore(home, rec.RootSHA), rec.RunID, "launch.lock")
+}
+
+// writeBegun records copy key's launch as begun, and never ended, as a launch
+// killed outright leaves it.
+func writeBegun(t *testing.T, r *gittest.Repo, m lab.Minted, rec RunRecord, key TrialKey, ended []byte) {
+	t.Helper()
+	h := handOffNow(t, r, m, rec, key)
+	h.State, h.Reason = HandOffLaunching, "its launch began"
+	data, err := encodeCheck(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc, err := lab.OpenProcedure(r.Root(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	if err := proc.WriteState(launchRel(rec.RunID, key, launchBegun), data); err != nil {
+		t.Fatal(err)
+	}
+	if ended != nil {
+		if err := proc.WriteState(launchRel(rec.RunID, key, launchEnded), ended); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestALaunchThatEndedWithNoRecordReadsAsInterrupted: a copy whose launch
+// began and wrote no end, its run's launch lock free, was cut off with its
+// launch (killed outright, or its machine lost): it reads as interrupted, so
+// its task's review and judging stop waiting for it and it is not launched
+// again; while a launch holds the lock it reads as launching.
+func TestALaunchThatEndedWithNoRecordReadsAsInterrupted(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	awaitRunner(t, r, home, m, rec, key, KindCode)
+	writeBegun(t, r, m, rec, key, nil)
+	if err := os.MkdirAll(filepath.Dir(launchLockAt(home, rec)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsutil.WithFileLock(launchLockAt(home, rec), time.Second, func() error {
+		if h := handOffNow(t, r, m, rec, key); h.State != HandOffLaunching {
+			t.Errorf("while a launch holds the run's lock, a begun copy is launching: %+v", h)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h := handOffNow(t, r, m, rec, key)
+	if h.State != HandOffInterrupted || !strings.Contains(h.Reason, "no record") {
+		t.Fatalf("a begun copy with no end and the lock free reads as interrupted: %+v", h)
+	}
+	proc, err := lab.OpenProcedure(r.Root(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	for _, what := range []string{"its review", "its judging"} {
+		if err := awaitHost(proc, rec.RunID, key.Task, what); err != nil {
+			t.Errorf("%s waits for a copy whose launch is gone: %v", what, err)
+		}
+	}
+	f := &fakeCell{answer: madeReceipt}
+	if _, err := launchOne(t, testLauncher(r, home, m, f.dispatch), rec, key); err == nil || len(f.reqs) != 0 {
+		t.Fatalf("a copy whose launch is gone is not launched again: %v, %d dispatches", err, len(f.reqs))
+	}
+}
+
+// TestATornEndRecordReadsAsInterrupted: an end record that does not parse (a
+// launch killed while writing it) reads as the copy interrupted, naming the
+// record, and the rest of the run still reads.
+func TestATornEndRecordReadsAsInterrupted(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	other := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 2}
+	awaitRunner(t, r, home, m, rec, key, KindCode)
+	awaitRunner(t, r, home, m, rec, other, KindCode)
+	writeBegun(t, r, m, rec, key, []byte(`{"schema_vers`))
+	h := handOffNow(t, r, m, rec, key)
+	if h.State != HandOffInterrupted || !strings.Contains(h.Reason, launchRel(rec.RunID, key, launchEnded)) {
+		t.Fatalf("a torn end record reads as interrupted, naming it: %+v", h)
+	}
+	proc, err := lab.OpenProcedure(r.Root(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	all, err := readHandOffs(proc, rec.RunID)
+	if err != nil || len(all) != 2 || all[1].State != HandOffAwaitingRunner {
+		t.Fatalf("the rest of the run still reads: %+v %v", all, err)
+	}
+}
+
+// TestASecondLaunchOfARunIsRefusedWhileOneRuns: a run is launched by one
+// launch at a time; a second, while the first holds the run's launch lock, is
+// refused naming who holds it, and starts nothing.
+func TestASecondLaunchOfARunIsRefusedWhileOneRuns(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t)
+	first, second := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}, TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 2}
+	awaitRunner(t, r, home, m, rec, first, KindCode)
+	awaitRunner(t, r, home, m, rec, second, KindCode)
+	held := &fakeCell{answer: madeReceipt, entered: make(chan struct{}, 1), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, err := testLauncher(r, home, m, held.dispatch).launch(context.Background(), rec.RunID, &first, nil)
+		done <- err
+	}()
+	<-held.entered
+	f := &fakeCell{answer: madeReceipt}
+	_, err := testLauncher(r, home, m, f.dispatch).launch(context.Background(), rec.RunID, nil, nil)
+	close(held.release)
+	if ferr := <-done; ferr != nil {
+		t.Fatalf("the first launch: %v", ferr)
+	}
+	if err == nil || !strings.Contains(err.Error(), "one launch at a time") || !strings.Contains(err.Error(), fmt.Sprintf("pid %d", os.Getpid())) {
+		t.Fatalf("a second launch while one runs is refused naming who holds it: %v", err)
+	}
+	if len(f.reqs) != 0 {
+		t.Fatalf("the refused launch started %d copies", len(f.reqs))
+	}
+}
+
+// TestAClaimIsReleasedWhenTheLaunchCannotRecordItsStart: a copy whose start
+// cannot be recorded (the lab halted mid-launch) gives its claim back, so it
+// still waits for its runner and a later launch makes it.
+func TestAClaimIsReleasedWhenTheLaunchCannotRecordItsStart(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	awaitRunner(t, r, home, m, rec, key, KindCode)
+	halt := filepath.Join(runDir(home, m, rec.RunID), "..", "..", "halt-sweep.json")
+	f := &fakeCell{answer: madeReceipt, transcript: func(req runner.Request) string { return "read " + req.Brief + "\n" }}
+	l := testLauncher(r, home, m, f.dispatch)
+	l.configure = func(CellPin) (cellDispatch, error) {
+		// The lab halts after the copies are picked, before any is begun.
+		return f.dispatch, os.WriteFile(halt, []byte("{}"), 0o600)
+	}
+	if _, err := launchOne(t, l, rec, key); err == nil {
+		t.Fatal("a launch whose start cannot be recorded fails")
+	}
+	if err := os.Remove(halt); err != nil {
+		t.Fatal(err)
+	}
+	claim := filepath.Join(handoffDir(handoffStore(home, rec.RootSHA), rec.RunID, cloneAlias(t, home, m, rec, key)), launchClaimName)
+	if _, err := os.Lstat(claim); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the copy's claim is given back: %v", err)
+	}
+	if h := handOffNow(t, r, m, rec, key); h.State != HandOffAwaitingRunner {
+		t.Fatalf("the copy still waits for its runner: %+v", h)
+	}
+	if res, err := launchOne(t, testLauncher(r, home, m, f.dispatch), rec, key); err != nil || res.Copies[0].State != HandOffLaunched {
+		t.Fatalf("a later launch makes it: %+v %v", res, err)
 	}
 }

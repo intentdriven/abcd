@@ -95,13 +95,20 @@ same pin and recorded as not started, never scored. Before its runner starts, a
 cell's route and pin are read again and held to the ones the person consented
 to, a provider-bound clone passes the secret scan again, and a metered copy
 waits while the spending cap's remainder, less what the copies in flight may
-spend, does not cover its declared cost. The brief and the copy's answer sit in
+spend, does not cover its declared cost. The remainder is reckoned from the
+run's records, so a copy an earlier launch made and left without a trial still
+counts, at its reported cost or else its declared one; a copy whose cost is
+neither stops every further metered launch. The brief and the copy's answer sit in
 a third store, outside the clone, the clone store and the lab's state, one
 folder per copy under its alias, and a copy whose transcript names another
-copy's folder there read outside its copy. A copy is launched once. Each runner
-is one process group, killed whole when the launch is stopped; a stop is the
-run's error, never the copy's score, and a copy it cut short is not launched
-again. A made copy passes the same compliance check and secret screen as a host
+copy's folder there read outside its copy, by its absolute path or by a climb
+from the copy's own folder. A copy is launched once, and a run by one launch at
+a time, which holds the run's lock; a second is refused while it runs. Each
+runner is one process group, killed whole when the launch is stopped,
+terminated or hung up; a stop is the run's error, never the copy's score, and a
+copy it cut short is not launched again. A launch killed outright leaves no end
+to its copies' launches, and once its lock is free they read as interrupted, so
+no review or judging waits for them. A made copy passes the same compliance check and secret screen as a host
 copy's hand-back, its served side the runner's own receipt rather than the
 host's word; a made code copy waits for its hidden tests' result. Runner
 launches are proven against a fake runner only so far, and the report says so

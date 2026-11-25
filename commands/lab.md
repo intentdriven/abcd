@@ -207,7 +207,9 @@ Hand back every host copy you were handed, a failed one with its reason: a copy
 never handed back is in no rate, and the report names it.
 
 **Launch the runner cells' copies** once the person has said yes to the run,
-telling them it may spend against the cap. The launch runs in the foreground
+telling them it may spend against the cap. Tell them too, before they say yes,
+what the plan's `not_sandboxed` says: the runner and each copy's code run as
+this account on this machine and are not sandboxed. The launch runs in the foreground
 for as long as its copies take, which can be hours: when a host's command time
 limit would cut it short, ask the person to run it in a plain terminal.
 
@@ -227,13 +229,18 @@ it), `status` (its trial's, where one is written) and `reason`. A made code copy
 is `launched` with no status: run its task's hidden tests against its clone
 yourself, through the load gate, outside the clone, and hand back its result
 alone with `lab matrix copy --receipt` and a receipt of `{"schema_version": 1,
-"outcome": "made", "score": {"passed": <n>, "total": <n>}}`. An interrupt
-kills every runner at work with its process group and leaves its copy
-`interrupted`: the run's error, never the copy's score, and it is not launched
-again. Refused, exit 2, with nothing launched: a host cell's copy, a refused
-cell's, one already launched, a key the run did not hand off, and a cell whose
-route, source or pin on this machine is not the one the run recorded. A launch
-stopped part-way exits 2 and says what it wrote.
+"outcome": "made", "score": {"passed": <n>, "total": <n>}}`. An interrupt, a
+termination or a hangup kills every runner at work with its process group and
+leaves its copy `interrupted`: the run's error, never the copy's score, and it
+is not launched again; a launch killed outright leaves its copies read as
+`interrupted` once nothing holds the run. What the copies earlier launches
+made may spend counts against the cap until their scores are handed back.
+Refused, exit 2, with nothing launched: a host cell's copy, a refused cell's,
+one already launched, a key the run did not hand off, and a cell whose route,
+source or pin on this machine is not the one the run recorded. One launch per
+run runs at a time: a second is refused at exit 3, naming who holds the run,
+so wait for that one to end. A launch stopped part-way exits 2 and says what it
+wrote.
 
 **Review a code task's copies**, once every copy of it handed to you is back:
 the review is drawn once, so it is refused while one is out.

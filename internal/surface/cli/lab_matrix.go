@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,6 +26,22 @@ const maxDeclarationFile = 256 << 10
 type labMatrixView struct {
 	matrix.Plan
 	ApproveWith string `json:"approve_with"`
+}
+
+// notSandboxed is what the person is told before they say yes to a plan
+// (dcn-2611251934117439): a copy's runner and its code are bounded in their
+// environment, working folder and lifetime, and in nothing else.
+const notSandboxed = "the runners and each copy's code, its hidden tests included, run as this account on this machine " +
+	"and are not sandboxed: only their environment, their working folder and how long they run are bounded"
+
+// MarshalJSON is the view with what the person is told of the sandbox, as
+// not_sandboxed, so every plan shown carries it.
+func (v labMatrixView) MarshalJSON() ([]byte, error) {
+	type plain labMatrixView
+	return json.Marshal(struct {
+		plain
+		NotSandboxed string `json:"not_sandboxed"`
+	}{plain(v), notSandboxed})
 }
 
 // labMatrixStarted is a consented run: its record is written and every pilot
@@ -226,6 +243,7 @@ func renderMatrixPlan(w io.Writer, v labMatrixView) {
 	for _, j := range v.Judges {
 		fmt.Fprintf(w, "  judges:      %s (%s): %d, %s\n", termsafe.Sanitize(j.Task), j.Kind, j.Count, j.Who)
 	}
+	fmt.Fprintf(w, "  sandbox:     none: %s\n", notSandboxed)
 	fmt.Fprintf(w, "  digest:      %s\n", v.Digest)
 	fmt.Fprintf(w, "  to start it: %s\n", strings.TrimSpace(termsafe.Sanitize(v.ApproveWith)))
 }

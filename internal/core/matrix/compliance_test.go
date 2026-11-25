@@ -652,3 +652,36 @@ func TestOwnCopyOnlyReadsTheHandoffStoreOutsideTheCopysOwnFolder(t *testing.T) {
 		}
 	}
 }
+
+// TestOwnCopyOnlyClimbsFromTheCopysOwnBriefFolder: a launched copy is handed
+// its own folder in the hand-off store, so a relative climb is read from
+// there too: a copy that cd's into its own folder and reads ../<sibling>/…
+// read another copy's answer, and one that climbs back into its own folder
+// stayed in its copy.
+func TestOwnCopyOnlyClimbsFromTheCopysOwnBriefFolder(t *testing.T) {
+	c := newComplianceCase(t)
+	handoff := filepath.Join(t.TempDir(), handoffDirName, "root")
+	c.in.Handoff = handoff
+	own := handoffDir(handoff, cloneRun, c.in.Alias)
+	sibling := handoffDir(handoff, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}))
+	for dir, name := range map[string]string{own: launchBriefName, sibling: launchDocName} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("text\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := string(c.in.Transcript)
+	bash := func(cmd string) []byte {
+		return []byte(base + `{"type":"tool_use","name":"bash","input":{"command":"` + cmd + `"}}` + "\n")
+	}
+	c.in.Transcript = bash("cd " + own + " && cat ../" + filepath.Base(sibling) + "/" + launchDocName)
+	if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateBroken || !strings.Contains(got.Detail, "brief folder") {
+		t.Fatalf("a climb from the copy's own brief folder into a sibling's is a read outside its copy: %+v", got)
+	}
+	c.in.Transcript = bash("cd " + own + " && cat ../" + filepath.Base(own) + "/" + launchBriefName)
+	if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateKept {
+		t.Fatalf("a climb back into its own folder stayed in its copy: %+v", got)
+	}
+}

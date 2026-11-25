@@ -28,7 +28,10 @@ package matrix
 //     provider-bound clone passes the launch bundle's scan again just before
 //     its runner starts.
 //   - A metered copy is launched only while the spending cap's remainder, less
-//     what the copies in flight may spend, covers its declared cost.
+//     what the copies in flight may spend, covers its declared cost; the
+//     remainder is reckoned from the run's records (newSpendBudget), the
+//     copies earlier launches made and left without a trial included, and one
+//     launch per run runs at a time, holding the run's launch lock.
 //   - The brief and the receipt sit in a third store, the hand-off store
 //     (handoffStore), outside the clone, the clone store and the lab state,
 //     each copy's in a folder named by its alias; the compliance check treats a
@@ -91,6 +94,35 @@ const (
 	launchReceiptName = "receipt.json"
 	launchDocName     = "document.md"
 )
+
+// The run's own files in the hand-off store: the lock one launch of the run
+// holds for as long as it runs, and who holds it.
+const (
+	launchLockName   = "launch.lock"
+	launchHolderName = "launch.holder"
+)
+
+// launchLockWait is how long a launch waits for its run's lock before it is
+// refused: long enough for a reader that only looked at the lock to let it go.
+const launchLockWait = time.Second
+
+// ErrLaunchHeld is a launch refused because another launch of its run holds
+// the run's lock: one launch per run at a time (exit 3).
+var ErrLaunchHeld = errors.New("another launch of the run holds it")
+
+// launchLockPath is run's launch lock in the hand-off store.
+func launchLockPath(store, run string) string { return filepath.Join(store, run, launchLockName) }
+
+// runLockHeld reports whether a launch holds the lock at lock now: free where
+// its folder was never made or the lock is taken and given back at once, held
+// where it is taken, and held where it cannot be judged.
+func runLockHeld(lock string) bool {
+	if !fsutil.IsRealDir(filepath.Dir(lock)) {
+		return false
+	}
+	err := fsutil.WithFileLock(lock, 0, func() error { return nil })
+	return err != nil && !errors.Is(err, fs.ErrNotExist)
+}
 
 // receiptName is the file a copy of kind hands its answer back in: a writing
 // copy's document, and every other copy's receipt or findings.
@@ -253,7 +285,10 @@ type launchPick struct {
 	alias string
 }
 
-// launch is LaunchCopies with the cells' dispatch made by cells.
+// launch is LaunchCopies with the cells' dispatch made by cells, run while
+// it holds its run's launch lock: one launch per run at a time, so what the
+// copies in flight may spend and how many run at once are reckoned by one
+// process. A second is refused (ErrLaunchHeld), naming who holds the lock.
 func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, cells func(RunRecord, Declaration) func(CellPin) (cellDispatch, error)) (LaunchResult, error) {
 	if !runIDRe.MatchString(run) {
 		return LaunchResult{}, fmt.Errorf("%q is not a run id", clip(run))
@@ -263,9 +298,66 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 			return LaunchResult{}, err
 		}
 	}
-	picks, rec, d, trials, err := l.pick(run, only)
+	proc, err := lab.OpenProcedure(l.repoRoot, l.labID)
 	if err != nil {
 		return LaunchResult{}, err
+	}
+	rootSHA := proc.Entry().RootSHA
+	proc.Close()
+	store := handoffStore(l.home, rootSHA)
+	if err := runFolder(store, run); err != nil {
+		return LaunchResult{}, err
+	}
+	holder := filepath.Join(store, run, launchHolderName)
+	var out LaunchResult
+	locked := false
+	err = fsutil.WithFileLock(launchLockPath(store, run), launchLockWait, func() error {
+		locked = true
+		who := fmt.Sprintf("pid %d, since %s", os.Getpid(), l.now().Format(time.RFC3339))
+		if err := fsutil.WriteFileAtomic(holder, []byte(who+"\n"), 0o600); err != nil {
+			return err
+		}
+		defer os.Remove(holder)
+		var lerr error
+		out, lerr = l.launchLocked(ctx, run, rootSHA, only, cells)
+		return lerr
+	})
+	if !locked && errors.Is(err, fsutil.ErrLockContention) {
+		who := "who holds it is not recorded"
+		if raw, rerr := fsutil.ReadGuarded(holder, 256); rerr == nil {
+			who = "held by " + termsafe.SanitizeLine(strings.TrimSpace(string(raw)))
+		}
+		return LaunchResult{}, fmt.Errorf("%w (%s): a run is launched by one launch at a time, so wait for that one to end", ErrLaunchHeld, who)
+	}
+	return out, err
+}
+
+// runFolder makes run's folder in the hand-off store, a real directory
+// outside every working tree.
+func runFolder(store, run string) error {
+	if !filepath.IsAbs(store) || !runIDRe.MatchString(run) {
+		return errors.New("a run's hand-off folder is named by an absolute store and a run id")
+	}
+	if err := os.MkdirAll(store, 0o700); err != nil {
+		return fmt.Errorf("the hand-off store could not be made: %w", err)
+	}
+	if err := outsideWorkingTrees(store); err != nil {
+		return err
+	}
+	if err := fsutil.EnsureRealDirAll(store, run, 0o700); err != nil {
+		return fmt.Errorf("the run's hand-off folder could not be made: %w", err)
+	}
+	return nil
+}
+
+// launchLocked is launch once it holds its run's lock.
+func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, only *TrialKey, cells func(RunRecord, Declaration) func(CellPin) (cellDispatch, error)) (LaunchResult, error) {
+	picks, rec, d, trials, handed, err := l.pick(run, only)
+	if err != nil {
+		return LaunchResult{}, err
+	}
+	if rec.RootSHA != rootSHA {
+		return LaunchResult{}, fmt.Errorf("the run %s is keyed on another repository's root commit than its lab", run)
 	}
 	out := LaunchResult{Run: run, Copies: []LaunchedCopy{}}
 	if len(picks) == 0 {
@@ -284,7 +376,7 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 		}
 		checked[p.pin.Cell] = true
 	}
-	budget := newSpendBudget(rec, d, trials)
+	budget := newSpendBudget(rec, d, trials, handed)
 	slots := make(chan struct{}, max(1, rec.Concurrency))
 	results := make([]*LaunchedCopy, len(picks))
 	var (
@@ -353,23 +445,26 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 // pick reads the run and chooses the copies a launch makes: every copy of a
 // runner cell awaiting its runner, in key order, or, with only, that one,
 // refused where it is not one to launch.
-func (l *copyLauncher) pick(run string, only *TrialKey) ([]launchPick, RunRecord, Declaration, []TrialRecord, error) {
+func (l *copyLauncher) pick(run string, only *TrialKey) ([]launchPick, RunRecord, Declaration, []TrialRecord, []HandOff, error) {
+	fail := func(err error) ([]launchPick, RunRecord, Declaration, []TrialRecord, []HandOff, error) {
+		return nil, RunRecord{}, Declaration{}, nil, nil, err
+	}
 	proc, err := lab.OpenProcedure(l.repoRoot, l.labID)
 	if err != nil {
-		return nil, RunRecord{}, Declaration{}, nil, err
+		return fail(err)
 	}
 	defer proc.Close()
 	rec, d, err := readRun(proc, run)
 	if err != nil {
-		return nil, RunRecord{}, Declaration{}, nil, err
+		return fail(err)
 	}
 	handed, err := readHandOffs(proc, run)
 	if err != nil {
-		return nil, RunRecord{}, Declaration{}, nil, err
+		return fail(err)
 	}
 	trials, err := readTrials(proc, run, run+"/trials")
 	if err != nil {
-		return nil, RunRecord{}, Declaration{}, nil, err
+		return fail(err)
 	}
 	tried := map[TrialKey]bool{}
 	for _, t := range trials {
@@ -384,7 +479,7 @@ func (l *copyLauncher) pick(run string, only *TrialKey) ([]launchPick, RunRecord
 		found = true
 		task, pin, err := taskAndPin(rec, d, h.Key)
 		if err != nil {
-			return nil, RunRecord{}, Declaration{}, nil, err
+			return fail(err)
 		}
 		var why string
 		switch {
@@ -397,20 +492,20 @@ func (l *copyLauncher) pick(run string, only *TrialKey) ([]launchPick, RunRecord
 		}
 		if why != "" {
 			if only != nil {
-				return nil, RunRecord{}, Declaration{}, nil, errors.New(why)
+				return fail(errors.New(why))
 			}
 			continue
 		}
 		alias, err := readAlias(proc, run, h.Key)
 		if err != nil {
-			return nil, RunRecord{}, Declaration{}, nil, err
+			return fail(err)
 		}
 		picks = append(picks, launchPick{h: h, pin: pin, task: task, alias: alias})
 	}
 	if only != nil && !found {
-		return nil, RunRecord{}, Declaration{}, nil, fmt.Errorf("the run %s handed off no copy %s", run, only)
+		return fail(fmt.Errorf("the run %s handed off no copy %s", run, only))
 	}
-	return picks, rec, d, trials, nil
+	return picks, rec, d, trials, handed, nil
 }
 
 // one launches one copy, and reports how it came out, what it spent (nil
@@ -435,29 +530,39 @@ func (l *copyLauncher) one(ctx context.Context, rec RunRecord, p launchPick) (La
 	}
 	defer root.Close()
 	setState := func(st HandOffState, reason string) error {
-		h.State, h.Reason = st, clipTo(termsafe.SanitizeLine(reason), maxReasonBytes)
+		next := h
+		next.State, next.Reason = st, clipTo(termsafe.SanitizeLine(reason), maxReasonBytes)
+		if err := l.writeHandOff(next); err != nil {
+			return err
+		}
+		h = next
 		lc.State, lc.Reason = h.State, h.Reason
-		return l.writeHandOff(h)
+		return nil
 	}
 	if err := setState(HandOffLaunching, "its launch began at "+l.now().Format(time.RFC3339)); err != nil {
-		return lc, nil, true, err
+		// Nothing of the launch is recorded, so the copy still waits for its
+		// runner: its claim is given back for a later launch.
+		if rerr := root.Remove(launchClaimName); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("and its claim could not be given back: %w", rerr))
+		}
+		return lc, nil, false, err
 	}
 	// The clone is scanned again just before its runner starts, as it was
 	// when it was handed off: nothing in it is sent to a provider unscanned.
 	if err := admitClone(l.repoRoot, h.Clone, p.pin); err != nil {
 		if rerr := os.RemoveAll(h.Clone); rerr != nil {
-			return lc, nil, true, errors.Join(err, rerr)
+			return lc, nil, true, errors.Join(err, rerr, setState(HandOffRefused, err.Error()+"; its clone could not be removed"))
 		}
 		h.Clone = ""
 		return lc, nil, true, setState(HandOffRefused, err.Error())
 	}
 	brief := launchBrief(p.task)
 	if err := fsutil.WriteFileAtomicInRoot(root, launchBriefName, []byte(brief), 0o600); err != nil {
-		return lc, nil, true, err
+		return lc, nil, true, errors.Join(err, setState(HandOffInterrupted, "its brief could not be written: "+err.Error()))
 	}
 	// Whatever sits where the answer goes was not written by this launch.
 	if err := root.Remove(receiptName(p.task.Kind)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return lc, nil, true, err
+		return lc, nil, true, errors.Join(err, setState(HandOffInterrupted, "what sat where its answer goes could not be removed: "+err.Error()))
 	}
 	dispatch, err := l.configure(p.pin)
 	if err != nil {
@@ -536,10 +641,7 @@ func claimCopy(store, run, alias string) (string, *os.Root, error) {
 	if !filepath.IsAbs(store) || !aliasRe.MatchString(alias) || !runIDRe.MatchString(run) {
 		return "", nil, errors.New("a copy's hand-off folder is named by an absolute store, a run id and an alias")
 	}
-	if err := os.MkdirAll(store, 0o700); err != nil {
-		return "", nil, fmt.Errorf("the hand-off store could not be made: %w", err)
-	}
-	if err := outsideWorkingTrees(store); err != nil {
+	if err := runFolder(store, run); err != nil {
 		return "", nil, err
 	}
 	if err := fsutil.EnsureRealDirAll(store, run+"/"+alias, 0o700); err != nil {
@@ -902,18 +1004,41 @@ type spendBudget struct {
 	unknown string
 }
 
-// newSpendBudget is run rec's budget, its trials' spend counted.
-func newSpendBudget(rec RunRecord, d Declaration, trials []TrialRecord) *spendBudget {
+// newSpendBudget is run rec's budget, counted from its records, so it holds
+// across launches as within one: each trial's spend, and each metered copy an
+// earlier launch began that holds no trial yet (one launching, one made and
+// awaiting its score, one interrupted), at the cost its kept trial reports,
+// else its cell's declared cost per copy, else unknown.
+func newSpendBudget(rec RunRecord, d Declaration, trials []TrialRecord, handed []HandOff) *spendBudget {
 	b := &spendBudget{cap: rec.SpendCap, perCopy: map[string]*Money{}}
 	for _, c := range d.Builders {
 		b.perCopy[c.ID] = c.CostPerCopy
 	}
+	tried := map[TrialKey]bool{}
 	for _, t := range trials {
+		tried[t.Key] = true
 		if !t.Source.Metered() || t.Status == StatusNotStarted {
 			continue
 		}
-		if !b.add(t.Key.Cell, t.Cost) {
+		if !b.add(t.Key.Cell, t.Cost) && b.unknown == "" {
 			b.unknown = t.Key.String()
+		}
+	}
+	for _, h := range handed {
+		if tried[h.Key] || !h.Source.Metered() {
+			continue
+		}
+		switch h.State {
+		case HandOffLaunching, HandOffLaunched, HandOffInterrupted:
+		default:
+			continue
+		}
+		var c *oracle.Cost
+		if h.Trial != nil {
+			c = h.Trial.Cost
+		}
+		if !b.add(h.Key.Cell, c) && b.unknown == "" {
+			b.unknown = h.Key.String()
 		}
 	}
 	return b

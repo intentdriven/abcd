@@ -4986,15 +4986,18 @@ hand-back is; a made code copy waits for its hidden tests' result, handed back
 with `abcd lab matrix copy --receipt`. A metered copy whose declared cost the
 spending cap's remainder does not cover is left waiting and named.
 
-An interrupt stops the launch: every runner at work is killed with its process
-group, and each copy it was making is left interrupted, which is the run's
-error and never the copy's score; such a copy is not launched again.
+An interrupt, a termination or a hangup stops the launch: every runner at work
+is killed with its process group, and each copy it was making is left
+interrupted, which is the run's error and never the copy's score; such a copy is
+not launched again. A launch killed outright leaves its copies interrupted too,
+once its run's launch lock is free.
 
 Refused, exit 2, with nothing launched: a key that is not one, a copy the run
 did not hand off, a host cell's copy, a refused cell's, one already launched,
 and a cell whose route, source or pin on this machine is not the one the run
-recorded. A launch stopped part-way exits 2 and says what it wrote. A halted lab
-exits 1.
+recorded. A launch stopped part-way exits 2 and says what it wrote. One launch
+per run runs at a time: a second, while one holds the run's launch lock, is
+refused at exit 3, naming who holds it. A halted lab exits 1.
 
 **Example:**
 

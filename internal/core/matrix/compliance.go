@@ -826,7 +826,9 @@ func isTestPath(p string) bool {
 //     against the copy's working folder: from its clone's root and from each
 //     folder depth inside it, a climb that reaches an existing path in the
 //     store outside the clone, and that no folder of the clone would keep
-//     inside it, is a read outside.
+//     inside it, is a read outside; and resolved against the copy's own
+//     folder in the hand-off store, which a launch hands it, a climb that
+//     reaches another copy's folder there is one too.
 //
 // What it does not see, the report lists among the run's limitations: a read
 // through a relative path with no climb after a cd out of the clone, a path a
@@ -854,7 +856,7 @@ func ownCopyOnly(ctx context.Context, in complianceInputs, tree frozenTree, tree
 		return unexamined(fmt.Sprintf("the copy's transcript is past %d bytes, so what it read was not examined", maxTranscriptBytes))
 	}
 	sc := &transcriptScan{ctx: ctx, forms: forms, clone: filepath.ToSlash(filepath.Clean(clone)), scan: scan,
-		scanned: scanErr == nil, homes: homeForms(), climbs: map[string]string{}}
+		scanned: scanErr == nil, homes: homeForms(), handoffs: ownHandoffs(in), climbs: map[string]string{}}
 	if seen, ok := sc.find(in.Transcript); ok {
 		return broken(seen)
 	}
@@ -924,6 +926,21 @@ func storeForms(in complianceInputs) []storeForm {
 // and outside the copy's own clone.
 func (f storeForm) outsideOwn(lp string) bool {
 	return under(lp, f.store) && (f.clone == "" || !under(lp, f.clone))
+}
+
+// ownHandoffs is the copy's own folder in the run's hand-off store, as given
+// and as the store's links resolve, none where no hand-off store is given.
+func ownHandoffs(in complianceInputs) []string {
+	if in.Handoff == "" {
+		return nil
+	}
+	own := []string{filepath.ToSlash(filepath.Join(in.Handoff, in.Run, in.Alias))}
+	if real, err := filepath.EvalSymlinks(in.Handoff); err == nil {
+		if r := filepath.ToSlash(filepath.Join(real, in.Run, in.Alias)); r != own[0] {
+			own = append(own, r)
+		}
+	}
+	return own
 }
 
 // homeForms is the home directory as given and as its links resolve, for a
@@ -1093,6 +1110,10 @@ type transcriptScan struct {
 	scan    cloneScan
 	scanned bool
 	homes   []string
+	// handoffs is the copy's own folder in the run's hand-off store, as
+	// given and as its links resolve, slash-separated and clean: a launched
+	// copy is handed that folder, so a climb is read from it too.
+	handoffs []string
 	// climbs is each relative climb already judged, cleaned, and what it
 	// was found to read ("" for nothing outside).
 	climbs map[string]string
@@ -1267,8 +1288,11 @@ func (sc *transcriptScan) climb(t string) (string, bool) {
 		rest = strings.TrimPrefix(strings.TrimPrefix(rest, ".."), "/")
 	}
 	seen := ""
-	if sc.outside(k, rest) && !sc.inside(k, rest) {
+	switch {
+	case sc.outside(k, rest) && !sc.inside(k, rest):
 		seen = "the copy's transcript climbs out of its own clone into the run's clone store: " + termsafe.Sanitize(t)
+	case sc.outsideHandoff(c) && !sc.inside(k, rest):
+		seen = "the copy's transcript climbs out of its own brief folder in the run's hand-off store: " + termsafe.Sanitize(t)
 	}
 	sc.climbs[c] = seen
 	return seen, seen != ""
@@ -1285,6 +1309,24 @@ func (sc *transcriptScan) outside(k int, rest string) bool {
 			continue
 		}
 		p := path.Join(base, rest)
+		lp := lowerASCII(p)
+		for _, f := range sc.forms {
+			if f.outsideOwn(lp) {
+				if _, err := os.Lstat(filepath.FromSlash(p)); err == nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// outsideHandoff reports whether the clean climb c, from the copy's own folder
+// in the hand-off store, reaches an existing path in a store outside the
+// copy's own (a sibling copy's brief or answer).
+func (sc *transcriptScan) outsideHandoff(c string) bool {
+	for _, own := range sc.handoffs {
+		p := path.Join(own, c)
 		lp := lowerASCII(p)
 		for _, f := range sc.forms {
 			if f.outsideOwn(lp) {

@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -248,24 +249,76 @@ func readHandOff(proc stateReader, run string, key TrialKey) (HandOff, error) {
 	if h.State != HandOffAwaitingRunner {
 		return h, nil
 	}
-	// A runner cell's copy reads as its launch left it: the stage it ended at,
-	// else the one it began.
+	return launchOverlay(proc, run, h), nil
+}
+
+// launchOverlay is runner cell's copy h as its launch left it: the stage it
+// ended at, else the one it began. A launch that began and recorded no end
+// that reads (none, or one torn by a kill mid-write) is still at work while a
+// launch of the run holds the run's lock, and otherwise is gone: the copy
+// reads as interrupted, saying why, and the rest of the run reads as it is.
+func launchOverlay(proc stateReader, run string, h HandOff) HandOff {
+	var begun *HandOff
+	var torn []string
 	for _, stage := range []string{launchEnded, launchBegun} {
-		raw, err := proc.ReadState(launchRel(run, key, stage))
+		rel := launchRel(run, h.Key, stage)
+		raw, err := proc.ReadState(rel)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err != nil {
-			return HandOff{}, err
-		}
 		var l HandOff
-		if err := jsonstrict.Decode(raw, &l); err != nil || l.SchemaVersion != HandOffSchema || l.Run != run || l.Key != key ||
-			l.Kind != h.Kind || l.Source != h.Source || launchStage(l.State) != stage {
-			return HandOff{}, fmt.Errorf("copy %s's launch record does not read as its own", key)
+		if err == nil {
+			err = jsonstrict.Decode(raw, &l)
 		}
-		return l, nil
+		if err != nil || l.SchemaVersion != HandOffSchema || l.Run != run || l.Key != h.Key ||
+			l.Kind != h.Kind || l.Source != h.Source || launchStage(l.State) != stage {
+			torn = append(torn, rel)
+			continue
+		}
+		if stage == launchEnded {
+			return l
+		}
+		begun = &l
 	}
-	return h, nil
+	if begun == nil && len(torn) == 0 {
+		return h
+	}
+	at := h
+	if begun != nil {
+		at = *begun
+	}
+	if launchHeld(proc, run) {
+		at.State = HandOffLaunching
+		if begun == nil {
+			at.Reason = "its launch began and is still at work"
+		}
+		return at
+	}
+	at.State = HandOffInterrupted
+	if len(torn) > 0 {
+		at.Reason = "its launch record " + strings.Join(torn, " and ") + " does not read (written in part when its launch was cut off), " +
+			"so the copy is read as interrupted and is not launched again"
+	} else {
+		at.Reason = "its launch began and left no record of how it ended (the launch was killed, or its machine lost), " +
+			"so the copy is read as interrupted and is not launched again"
+	}
+	return at
+}
+
+// launchHeld reports whether a launch of run holds the run's launch lock now.
+// A run read from anything but its lab (a carried run's folder) has no live
+// launch on this machine; one whose lock cannot be judged is held to be at
+// work, which keeps its copies where they are.
+func launchHeld(proc stateReader, run string) bool {
+	e, ok := proc.(interface{ Entry() lab.Entry })
+	if !ok {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return true
+	}
+	return runLockHeld(launchLockPath(handoffStore(home, e.Entry().RootSHA), run))
 }
 
 // launchStage is the stage of a launch whose copy is left at state, "" for a

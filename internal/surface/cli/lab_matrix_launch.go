@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -35,14 +36,17 @@ func newLabMatrixLaunchCommand(asJSON *bool) *cobra.Command {
 			"hand-back is; a made code copy waits for its hidden tests' result, handed back\n" +
 			"with `abcd lab matrix copy --receipt`. A metered copy whose declared cost the\n" +
 			"spending cap's remainder does not cover is left waiting and named.\n\n" +
-			"An interrupt stops the launch: every runner at work is killed with its process\n" +
-			"group, and each copy it was making is left interrupted, which is the run's\n" +
-			"error and never the copy's score; such a copy is not launched again.\n\n" +
+			"An interrupt, a termination or a hangup stops the launch: every runner at work\n" +
+			"is killed with its process group, and each copy it was making is left\n" +
+			"interrupted, which is the run's error and never the copy's score; such a copy is\n" +
+			"not launched again. A launch killed outright leaves its copies interrupted too,\n" +
+			"once its run's launch lock is free.\n\n" +
 			"Refused, exit 2, with nothing launched: a key that is not one, a copy the run\n" +
 			"did not hand off, a host cell's copy, a refused cell's, one already launched,\n" +
 			"and a cell whose route, source or pin on this machine is not the one the run\n" +
-			"recorded. A launch stopped part-way exits 2 and says what it wrote. A halted lab\n" +
-			"exits 1.",
+			"recorded. A launch stopped part-way exits 2 and says what it wrote. One launch\n" +
+			"per run runs at a time: a second, while one holds the run's launch lock, is\n" +
+			"refused at exit 3, naming who holds it. A halted lab exits 1.",
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix launch"
@@ -66,11 +70,17 @@ func newLabMatrixLaunchCommand(asJSON *bool) *cobra.Command {
 			if parent == nil {
 				parent = context.Background()
 			}
-			ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+			// A hangup (the terminal closed, the session dropped) stops the
+			// launch as an interrupt does: the runners lead process groups of
+			// their own, outside the terminal's, so nothing else would end them.
+			ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
 			res, err := matrix.LaunchCopies(ctx, root, home, args[0], args[1], only)
 			for i := range res.Copies {
 				res.Copies[i].Reason = fsutil.RedactHome(res.Copies[i].Reason)
+			}
+			if errors.Is(err, matrix.ErrLaunchHeld) {
+				return &exitError{Code: 3, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was launched"}
 			}
 			if err != nil {
 				if len(res.Copies) > 0 {
