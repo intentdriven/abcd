@@ -46,7 +46,10 @@ const (
 	crashSeedEnv = "ABCD_CRASH_LAB_SEED"
 
 	crashKillsDefault = 25
-	crashKillsMax     = 100000
+	// crashKillsForWindows is the kill count from which the lab asserts that
+	// every window it claims for was hit at least once.
+	crashKillsForWindows = 200
+	crashKillsMax        = 100000
 	// crashVersionsPerWriter spaces each writer's versions apart, so a version
 	// read back names the writer that wrote it.
 	crashVersionsPerWriter = 100000
@@ -80,8 +83,9 @@ func crashVersion(n int) checklist.Checklist {
 }
 
 // crashSecretVersion is version n with a token in one title: the write the
-// writer attempts beside every fifth version, which must be refused before any
-// byte of it reaches the tier.
+// writer attempts beside every odd version, which must be refused before any
+// byte of it reaches the tier. Beside every other version, not once a writer,
+// so a kill lands inside a refused write as often as inside a kept one.
 func crashSecretVersion(n int, tok string) checklist.Checklist {
 	c := crashVersion(n)
 	c.Items[0].Title = "Use " + tok
@@ -99,12 +103,22 @@ func versionOf(c checklist.Checklist) int {
 
 // TestCrashLabWriterProcess is not a test: it is the writer the crash lab
 // re-executes. It writes version after version through Update, attempts a
-// secret-bearing write beside every fifth one, and prints "wrote <n>" once
+// secret-bearing write before every odd one, printing "secret <n>" before the
+// attempt and "refused <n>" once it was refused, and prints "wrote <n>" once
 // version n's cycle has returned, until it is killed or its life runs out.
+//
+// It writes only under the system's temporary directory, where the lab's
+// t.TempDir checkout is: an environment that names any other root, by mistake
+// or on purpose, never turns a test binary into a writer of a real checklist.
 func TestCrashLabWriterProcess(t *testing.T) {
 	root := os.Getenv(crashWriterEnv)
 	if root == "" {
 		t.Skip("the crash lab's writer; runs only when re-executed")
+	}
+	if tmp := filepath.Clean(os.TempDir()); !filepath.IsAbs(root) || filepath.Clean(root) != root ||
+		!strings.HasPrefix(root, tmp+string(filepath.Separator)) {
+		fmt.Println("error: the writer's checkout is not under the system's temporary directory")
+		os.Exit(1)
 	}
 	start, err := strconv.Atoi(os.Getenv(crashStartEnv))
 	if err != nil {
@@ -114,7 +128,8 @@ func TestCrashLabWriterProcess(t *testing.T) {
 	tok := token()
 	deadline := time.Now().Add(crashWriterLife)
 	for n := start; time.Now().Before(deadline); n++ {
-		if n%5 == 0 {
+		if n%2 == 1 {
+			fmt.Printf("secret %d\n", n)
 			err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) {
 				return crashSecretVersion(n, tok), nil
 			})
@@ -123,6 +138,7 @@ func TestCrashLabWriterProcess(t *testing.T) {
 				fmt.Printf("error: a secret-bearing write was not refused: %v\n", err)
 				os.Exit(1)
 			}
+			fmt.Printf("refused %d\n", n)
 		}
 		if err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) {
 			return crashVersion(n), nil
@@ -145,8 +161,11 @@ type crashWriter struct {
 	mu     sync.Mutex
 	acked  int // the last version it acknowledged, -1 for none
 	writes int
-	failed string // an "error:" line it printed
-	reaped bool
+	// inSecret is whether its last word was "secret" with no "refused" after:
+	// once it is killed, whether the kill fell inside a refused write.
+	inSecret bool
+	failed   string // an "error:" line it printed
+	reaped   bool
 }
 
 // startCrashWriter re-executes the test binary as a writer in root, its
@@ -195,6 +214,10 @@ func startCrashWriter(t *testing.T, root string, start int) *crashWriter {
 					w.acked = v
 					w.writes++
 				}
+			} else if strings.HasPrefix(line, "secret ") {
+				w.inSecret = true
+			} else if strings.HasPrefix(line, "refused ") {
+				w.inSecret = false
 			} else if strings.HasPrefix(line, "error:") {
 				w.failed = line
 			}
@@ -349,7 +372,7 @@ func TestCrashLabKilledWriterLeavesAReadableList(t *testing.T) {
 	root := newRepo(t)
 	tier := abs(root, checklist.TierRelPath)
 	tok := token()
-	var tornLeft, afterRename, writes int
+	var tornLeft, afterRename, insideRefused, writes int
 	before := tempFiles(t, tier)
 	began := time.Now()
 
@@ -359,6 +382,9 @@ func TestCrashLabKilledWriterLeavesAReadableList(t *testing.T) {
 		w.mu.Lock()
 		acked := w.acked
 		writes += w.writes
+		if w.inSecret {
+			insideRefused++
+		}
 		w.mu.Unlock()
 
 		got := checklist.Read(root)
@@ -393,8 +419,22 @@ func TestCrashLabKilledWriterLeavesAReadableList(t *testing.T) {
 		}
 		before = now
 	}
-	t.Logf("crash lab: %d kills in %s, %d writes acknowledged, %d kills fell after a rename and before its acknowledgement, %d left a torn temp file",
-		kills, time.Since(began).Round(time.Millisecond), writes, afterRename, tornLeft)
+	t.Logf("crash lab: %d kills in %s, %d writes acknowledged, %d kills fell after a rename and before its acknowledgement, %d left a torn temp file, %d fell inside a refused secret-bearing write",
+		kills, time.Since(began).Round(time.Millisecond), writes, afterRename, tornLeft, insideRefused)
+	// A full lab must have reached each window it claims for: a kill after a
+	// rename, one between a temp file and its rename, and one inside a refused
+	// write. A short run only logs them; on a disk that flushes fast a few kills
+	// may miss the narrower windows, and the default run must not flake there.
+	if kills >= crashKillsForWindows {
+		for _, w := range []struct {
+			name string
+			n    int
+		}{{"after a rename and before its acknowledgement", afterRename}, {"between a temp file and its rename", tornLeft}, {"inside a refused write", insideRefused}} {
+			if w.n == 0 {
+				t.Errorf("no kill of %d fell %s, so the lab never tested that window", kills, w.name)
+			}
+		}
+	}
 
 	// What the kills left is removed by the next write, once it is old enough
 	// that no running write can own it.

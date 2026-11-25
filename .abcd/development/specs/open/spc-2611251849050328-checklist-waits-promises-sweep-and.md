@@ -24,6 +24,11 @@ The rest is built in the order the files allow, not the order of the stories: th
 - **The wake bound** is the earlier of the earliest `next_look` and the stall slice's existing deadline, so the half-lease bound stays with the code that holds it.
 - **Security review** is owed on steps 4 to 7 before each lands: each adds a read or a write in the home store, or injects another working copy's text into a session's context. The checklist reader's own checks (owner, mode, untracked, no hard link) are the only way a sibling copy's list is opened.
 
+## Footprint
+
+- packages: internal/core/checklist, internal/core/autonomy, internal/core/decide, internal/core/decisions, internal/core/mode, internal/core/statusline, internal/surface/cli, commands/checklist.md, commands/mode.md, commands/decide.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/02-constraints/03-invariants.md, .abcd/development/research/notes
+- tests: internal/core/checklist, internal/core/autonomy, internal/core/decide, internal/core/decisions, internal/core/statusline, internal/surface/cli
+
 ## Steps
 
 1. **A live capture in a real Claude Code session**

@@ -14,7 +14,8 @@ A writer killed at any point of its write cycle leaves the reader a list it can 
 - never older than the last write the writer acknowledged: either that version or, when
   the kill fell after the rename and before the acknowledgement, the next one;
 - last-good whole, and never newer than the checklist;
-- no byte of a refused secret-bearing write anywhere in the tier, a torn temp file included;
+- no byte of a refused secret-bearing write anywhere in the tier, a torn temp file included,
+  even when the kill falls inside that refused write;
 - a temp file a kill left is never read, and the next write removes it once it is more than
   a minute old.
 
@@ -28,9 +29,11 @@ tested by it; two hard power cuts, one on macOS and one on Linux, are what would
 re-executes the test binary as the writer (`TestCrashLabWriterProcess`). The writer runs the
 real path, `checklist.Update`, with its lock, its read, its scan and its two atomic writes, and
 flushes as a shipped binary does, whatever the run's own `ABCD_TEST_SKIP_FLUSH`. It writes
-version after version, each of a different size (20 to 79 items), attempts a write carrying a
-token beside every fifth version, which the scanner must refuse, and prints `wrote <n>` after
-each cycle returns.
+version after version, each of a different size (20 to 79 items), and before every odd version
+attempts a write carrying a token, which the scanner must refuse; it prints `secret <n>` before
+that attempt, `refused <n>` after it, and `wrote <n>` after each kept write returns, so the
+parent knows whether a kill fell inside a refused write. The writer refuses any checkout outside
+the system's temporary directory, so no environment can turn it on a real checklist.
 
 The parent waits for the writer's first acknowledged write, lets it run for a random 0 to
 150 ms (about two cycles), and sends SIGKILL to the writer's process group. The writer leads
@@ -38,7 +41,11 @@ its own group (`procgroup.Lead`), and the kill is addressed through the pid its 
 handle holds while the child is unreaped; before signalling, the test checks that the handle
 is unreaped and that the pid still leads its group, and after the reap it checks with signal 0
 that no member of the group still runs. Nothing is killed by pattern, and nothing outside the
-group the test started is signalled. Then it reads, and checks every claim above.
+group the test started is signalled. Then it reads, and checks every claim above. At 200 kills
+or more it also requires each window to have been hit at least once: a kill after a rename and
+before its acknowledgement, one between a temp file and its rename, and one inside a refused
+write. The default 25-kill run only logs those counts, since on a disk that flushes fast a few
+kills may miss the narrower windows.
 
 `TestCrashLabTornTempIsNeverRead` writes out every outcome a kill between a temp file's
 creation and its rename can leave: a temp file cut at each of the first and last 33 lengths of
@@ -56,11 +63,12 @@ One full run, through the load gate as a narrow run:
 | Measure | Value |
 |---|---|
 | Kills | 1,000 |
-| Seed | 1795632066181716000 |
-| Time | 3 min 37 s (about 217 ms a kill, the writer's start-up included) |
-| Writes acknowledged before the kills | 1,724 |
-| Kills after a rename and before its acknowledgement (the newer version read) | 214 |
-| Kills that left a torn temp file (between a temp file's creation and its rename) | 146 |
+| Seed | 1795634813977281000 |
+| Time | 2 min 53 s (about 173 ms a kill, the writer's start-up included) |
+| Writes acknowledged before the kills | 1,287 |
+| Kills after a rename and before its acknowledgement (the newer version read) | 139 |
+| Kills that left a torn temp file (between a temp file's creation and its rename) | 100 |
+| Kills inside a refused secret-bearing write | 280 |
 | Reads that fell back to last-good or "nothing" | 0 |
 | Reads older than the last acknowledged write | 0 |
 | Files in the tier holding any part of the refused token | 0 |
@@ -76,10 +84,17 @@ Both tests were run against a broken tree before they were kept:
   of by a rename: the kill loop failed at its fifth kill, the reader falling back to last-good
   because `checklist.json` did not decode;
 - the torn file planted at `checklist.last-good.json` instead of a temp name: the torn-temp
-  test failed at the whole-file cut, the reader showing it as last-good.
+  test failed at the whole-file cut, the reader showing it as last-good;
+- the list written to a temp file before the secret scan and removed on refusal: the kill loop
+  failed at its first kill, finding the refused token's prefix in the left temp file. An
+  earlier version of the lab, which attempted the refused write once per writer before its
+  first acknowledgement, could not have caught this, since no kill fell inside one; review
+  found it, and the attempt now comes before every odd version.
 
 ## What it found
 
-No defect in the store. One test-side lesson: a check for four-character runs of a random
+No defect in the store. Two test-side lessons. A kill window the lab never reaches proves
+nothing about it, so the lab now counts each window it claims for and, at 200 kills or more,
+requires every one to have been hit. And a check for four-character runs of a random
 token over tens of kilobytes of version numbers matches by chance (the first 1,000-kill run
 reported a false echo), so the tier check uses eight-character runs and the token's prefix.

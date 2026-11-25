@@ -6,9 +6,9 @@ on, what it waits on and what it has promised. A resumed or a fresh session in
 the same copy reads the same list, and every session start, a compaction's
 included, adds it back to the session's context. The list survives a killed
 writer: the crash lab's kill loop killed one at random points of its write
-1,000 times, and each time the reader got the list whole, no older than the
-last write the writer had finished, with no byte of a refused secret anywhere
-in the tier ([the crash lab's study](../../research/notes/2026-11-25-checklist-crash-lab-study.md)).
+1,000 times, 280 of them inside a write the secret scanner refused, and each
+time the reader got the list whole, no older than the last write the writer
+had finished, with no byte of the refused write anywhere in the tier ([the crash lab's study](../../research/notes/2026-11-25-checklist-crash-lab-study.md)).
 Two steps have not run and are owed in the remainder spec, spc-2611251849050328:
 the two hard power cuts, so nothing here shows the list surviving a power cut,
 and the live capture in a real session, so the re-injection after a compaction
