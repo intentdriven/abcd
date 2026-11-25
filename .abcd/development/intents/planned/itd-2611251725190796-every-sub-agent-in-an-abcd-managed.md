@@ -62,6 +62,8 @@ _None open. Whether a sub-agent that has not read the conventions is only report
 
 Hand-run four-piece table, 2026-11-25. One capability, this intent; the hook's wiring, the cap's handling, and the install report are plumbing, carried by its spec, the brief's configuration chapter (`05-internals/03-configuration.md`), and its ahoy chapter (`04-surfaces/01-ahoy.md`); no trust rule; the hold is the product thinker's ruling, and the stance "a hold never rests on a guess" has no principle and is held for them. Typed links: `builds_on` itd-3, itd-2611041636196213, and itd-2610030814013772; `related_issues` iss-2609300536239512. Flagged for the product thinker, never auto-classified: The finding of 2026-11-25 narrows itd-2610030814013772's condition cond-2610031156365364 (the host reads the file itself only while its own built-in plugin is on). Verdict: FILE-AS-IS.
 
+itd-2611251831138387 builds on this hook to carry its findings block.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
