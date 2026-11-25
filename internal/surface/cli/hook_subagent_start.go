@@ -35,21 +35,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // subagentStartBound is the hook's own deadline, set before stdin is read and
 // under the timeout hooks/hooks.json declares for the event, so the hook
 // answers for itself before the host kills it.
 var subagentStartBound = 5 * time.Second
-
-// abcdRootCommit is the root commit of the repository whose own script the
-// message names; tests repoint it.
-var abcdRootCommit = abcdrepo.RootCommit
 
 // newSubagentStartCommand builds `abcd hook subagent-start`.
 func newSubagentStartCommand() *cobra.Command {
@@ -189,7 +183,7 @@ func subagentStartMessage(ctx context.Context, in hookInput, notes io.Writer) ([
 	if err != nil || !c.Applies {
 		return nil, err
 	}
-	doc, err := composeSubagentStart(c, subagentAbcd(ctx, c.Root), notes)
+	doc, err := composeSubagentStart(c, subagentAbcd(), notes)
 	if err != nil {
 		return nil, err
 	}
@@ -281,21 +275,10 @@ func plainPath(p string) (string, bool) {
 	return p, true
 }
 
-// subagentAbcd is the abcd a sub-agent in root is told to run: the checkout's
-// own script in abcd's source tree, where an installed release or a build of
-// another commit is the wrong one, and elsewhere this hook's own executable, so
-// it exists and is the version that named the domains. The layout is looked at
-// first, and is no identity: the checkout's root commit is. It is asked of the
-// checkout looked in and not of the session's note, since a session's directory
-// can be a checkout of another repository than the one it started in.
-func subagentAbcd(ctx context.Context, root string) string {
-	if abcdrepo.LooksLikeSourceTree(root) {
-		if fi, err := os.Lstat(filepath.Join(root, "scripts", "abcd.sh")); err == nil && fi.Mode().IsRegular() {
-			if sha, err := gitutil.RootCommitContext(ctx, root); err == nil && sha == abcdRootCommit {
-				return "scripts/abcd.sh"
-			}
-		}
-	}
+// subagentAbcd is the abcd a sub-agent is told to run, in every checkout: this
+// hook's own executable, so it exists and is the version that named the
+// domains, and bare abcd where its path cannot be written plain.
+func subagentAbcd() string {
 	if exe, err := osExecutable(); err == nil && filepath.IsAbs(exe) {
 		if p, ok := plainPath(exe); ok {
 			return p

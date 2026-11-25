@@ -252,8 +252,7 @@ func TestSubagentStopSaysWhenTheHoldCouldNotBeJudged(t *testing.T) {
 // TestJudgeKnowsTheRulesCommandTheStartMessagePrinted: both commands, as the
 // start hook printed them, are the rules command at the stop.
 func TestJudgeKnowsTheRulesCommandTheStartMessagePrinted(t *testing.T) {
-	repo, sha := subagentRepo(t)
-	rootIsAbcds(t, sha)
+	repo, _ := subagentRepo(t)
 	printed := func(agent string) []string {
 		t.Helper()
 		var out []string
@@ -273,6 +272,8 @@ func TestJudgeKnowsTheRulesCommandTheStartMessagePrinted(t *testing.T) {
 	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
 	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
 	cmds = append(cmds, printed("a2")...)
+	// The script abcd's own conventions file names.
+	cmds = append(cmds, `scripts/abcd.sh rules --prompt "x"`, "./scripts/abcd.sh rules SHELL")
 	for _, c := range cmds {
 		for _, line := range []string{c, "cd /w && " + c, c + " | head"} {
 			if got := judgeSubagentTranscript([]byte(shellCallLine(t, line)), "AGENTS.md"); !got.RanRules {

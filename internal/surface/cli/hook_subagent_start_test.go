@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -260,62 +261,47 @@ func TestSubagentStartNamesTheWorktreeItLookedIn(t *testing.T) {
 	}
 }
 
-// rootIsAbcds makes a repository's root commit the one taken for abcd's own.
-func rootIsAbcds(t *testing.T, sha string) {
+// onAbcdsRoot puts the repository's history on abcd's own root commit, read
+// from the object store of the checkout the test runs in. A checkout that does
+// not hold that commit (a shallow clone) skips.
+func onAbcdsRoot(t *testing.T, repo *gittest.Repo) {
 	t.Helper()
-	orig := abcdRootCommit
-	abcdRootCommit = sha
-	t.Cleanup(func() { abcdRootCommit = orig })
+	cmd := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir")
+	cmd.Env = gittest.Env(t)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Skipf("the test's own checkout did not answer: %v", err)
+	}
+	objects := filepath.Join(strings.TrimSpace(string(out)), "objects")
+	probe := exec.Command("git", "--git-dir", filepath.Dir(objects), "cat-file", "-e", abcdrepo.RootCommit+"^{commit}")
+	probe.Env = cmd.Env
+	if probe.Run() != nil {
+		t.Skip("the test's own checkout does not hold abcd's root commit")
+	}
+	writeUnder(t, repo.Root(), ".git/objects/info/alternates", objects+"\n")
+	repo.Git("add", "-A")
+	tree := repo.Git("write-tree")
+	repo.Git("update-ref", "HEAD", repo.Git("commit-tree", tree, "-p", abcdrepo.RootCommit, "-m", "on abcd's root"))
+	if got := repo.Git("rev-list", "--max-parents=0", "HEAD"); got != abcdrepo.RootCommit {
+		t.Fatalf("the fixture's root commit is %s", got)
+	}
 }
 
-// TestSubagentStartNamesTheCheckoutsOwnScriptInAbcdsSourceTree: the script is
-// named in a checkout of abcd's own repository laid out as its source tree, and
-// nowhere else.
-func TestSubagentStartNamesTheCheckoutsOwnScriptInAbcdsSourceTree(t *testing.T) {
-	if abcdRootCommit != abcdrepo.RootCommit {
-		t.Fatalf("the hook takes %s for abcd's root commit", abcdRootCommit)
-	}
-	repo, sha := subagentRepo(t)
+// TestSubagentStartNamesTheHooksExecutableInEveryCheckout: the commands run
+// the hook's own executable, in a checkout laid out as abcd's source tree on
+// abcd's own root commit as anywhere else.
+func TestSubagentStartNamesTheHooksExecutableInEveryCheckout(t *testing.T) {
+	repo, _ := subagentRepo(t)
 	swapExecutable(t, func() (string, error) { return "/opt/release/abcd", nil })
-	says := func(agent, cwd string) string {
-		t.Helper()
-		return startMessage(t, startHookPayload(t, "s1", cwd, agent, "t"))
-	}
-	executable := func(what, msg string) {
-		t.Helper()
-		if !strings.Contains(msg, "  /opt/release/abcd rules --prompt") || strings.Contains(msg, "scripts/abcd.sh") {
-			t.Errorf("%s: something other than the executable is named:\n%s", what, msg)
+	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
+	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
+	onAbcdsRoot(t, repo)
+	for i, cwd := range []string{repo.Root(), filepath.Join(repo.Root(), "cmd")} {
+		msg := startMessage(t, startHookPayload(t, "s1", cwd, fmt.Sprintf("a%d", i), "t"))
+		if !strings.Contains(msg, "  /opt/release/abcd rules --prompt") || !strings.Contains(msg, "  /opt/release/abcd rules <DOMAIN>") || strings.Contains(msg, "abcd.sh") {
+			t.Errorf("%s: the commands do not run the hook's own executable:\n%s", cwd, msg)
 		}
 	}
-	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
-	rootIsAbcds(t, sha)
-	executable("a source tree with no script", says("a1", repo.Root()))
-	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
-	msg := says("a2", repo.Root())
-	if !strings.Contains(msg, "  scripts/abcd.sh rules --prompt") || strings.Contains(msg, "/opt/release") {
-		t.Errorf("abcd's own source tree is not sent to its own script:\n%s", msg)
-	}
-
-	// Another repository laid out the same, in a session abcd's own checkout
-	// started: the root commit asked is that of the checkout looked in.
-	if err := history.NoteSessionRepo(repo.Root(), sha, "s1"); err != nil {
-		t.Fatal(err)
-	}
-	other := gittest.OpenRepo(t, realPath(t, gittest.NewRepo(t).Root()))
-	for rel, body := range map[string]string{"AGENTS.md": "x\n", ".abcd/work/CONTEXT.md": "x\n", "cmd/abcd/main.go": "package main\n", "scripts/abcd.sh": "#!/bin/sh\n", "other.txt": "x\n"} {
-		writeUnder(t, other.Root(), rel, body)
-	}
-	executable("a repository with no commit", says("a3", other.Root()))
-	other.Git("add", "-A")
-	other.Git("commit", "-q", "-m", "another seed")
-	if other.Git("rev-list", "--max-parents=0", "HEAD") == sha {
-		t.Fatal("the two fixtures share a root commit")
-	}
-	executable("another repository laid out as abcd's source tree", says("a4", other.Root()))
-
-	// abcd's own root commit is the pinned one.
-	rootIsAbcds(t, abcdrepo.RootCommit)
-	executable("a repository whose root commit is not the pinned one", says("a5", repo.Root()))
 }
 
 func TestSubagentStartNeverCarriesTheCheckWord(t *testing.T) {
