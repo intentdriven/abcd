@@ -334,11 +334,14 @@ func parseMatcherLabels(data []byte, req MatcherRequest) ([]PairLabel, error) {
 
 // MatcherAgreement is the matcher checked against people: of the pairs they
 // labelled, how many it decided as they did, over how many leftovers, having
-// joined how many pairs. Agreed is not estimable with no label.
+// joined how many pairs. Agreed is not estimable with no label; NotEstimable
+// says why wherever the agreement is not reported as a figure: no matcher
+// declared, none asked, or too few pairs labelled (spec step 9).
 type MatcherAgreement struct {
-	Agreed    Rate `json:"agreed"`
-	Leftovers int  `json:"leftovers"`
-	Joined    int  `json:"joined"`
+	Agreed       Rate   `json:"agreed"`
+	Leftovers    int    `json:"leftovers"`
+	Joined       int    `json:"joined"`
+	NotEstimable string `json:"not_estimable,omitempty"`
 }
 
 // matcherAgreement scores the matcher's pairs on the labels: a pair it joined,

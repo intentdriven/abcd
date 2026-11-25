@@ -225,3 +225,87 @@ func TestADeclarationMayNameTheSmallestDifferenceThatMatters(t *testing.T) {
 		}
 	}
 }
+
+// withJudges is goodDeclaration with judge, a JSON fragment of top-level
+// fields naming a matcher or a proposer, added after its judging settings.
+func withJudges(judge string) string {
+	return strings.Replace(goodDeclaration, `"judging": {"guests_may_judge": false}`, `"judging": {"guests_may_judge": false}, `+judge, 1)
+}
+
+// A check's matcher and proposer are cells the person declares, each
+// optional, each a judge outside the matrix (spec step 9): either named as a
+// builder of the same run, on a builder's route or model or under a builder's
+// id, is refused, and so is either where the run has no check to judge.
+func TestADeclarationNamesAnOptionalMatcherAndProposerOutsideItsBuilders(t *testing.T) {
+	// A declaration written before the two fields existed reads as it did.
+	d, err := parseDeclaration([]byte(goodDeclaration))
+	if err != nil || d.Matcher != nil || d.Proposer != nil || len(d.cells()) != 3 {
+		t.Fatalf("parseDeclaration(goodDeclaration) = %+v, %v; want no matcher, no proposer and three cells", d, err)
+	}
+	doc := withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/judge"},
+  "proposer": {"id": "propose-host", "route": "proposer=runner:opencode@openrouter/vendor/other"}`)
+	d, err = parseDeclaration([]byte(doc))
+	if err != nil {
+		t.Fatalf("parseDeclaration: %v", err)
+	}
+	if d.Matcher == nil || d.Matcher.ID != "match-or" || d.Proposer == nil || d.Proposer.ID != "propose-host" {
+		t.Fatalf("judges = %+v %+v; want the matcher and the proposer", d.Matcher, d.Proposer)
+	}
+	roles := map[string]Role{}
+	for _, c := range d.cells() {
+		roles[c.ID] = c.role
+	}
+	if roles["match-or"] != RoleMatcher || roles["propose-host"] != RoleProposer || len(roles) != 5 {
+		t.Fatalf("cells = %v; want the two judges beside the three cells", roles)
+	}
+	for name, tc := range map[string]struct{ judge, want string }{
+		"a builder's route": {`"matcher": {"id": "match-host", "route": "host"}`, "named as the builder cell host-big"},
+		"a builder's model": {`"proposer": {"id": "propose-or", "route": "proposer=runner:claude@openrouter/vendor/model"}`, "named as the builder cell or-cheap"},
+		"a builder's id":    {`"matcher": {"id": "or-cheap", "route": "matcher=runner:opencode@openrouter/vendor/judge"}`, "named twice"},
+		"an unknown key":    {`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/judge", "weight": 2}`, "weight"},
+		"a route of none":   {`"proposer": {"id": "propose-or", "route": ""}`, "names no route"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseDeclaration([]byte(withJudges(tc.judge))); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("parseDeclaration = %v; want a refusal saying %q", err, tc.want)
+			}
+		})
+	}
+	noCheck := strings.Replace(withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/judge"}`),
+		`,
+    {"id": "fidelity", "kind": "check", "material": ["docs/reference"]}`, "", 1)
+	if _, err := parseDeclaration([]byte(noCheck)); err == nil || !strings.Contains(err.Error(), "no check task") {
+		t.Fatalf("a matcher with no check to judge = %v; want it refused", err)
+	}
+}
+
+// A code task names its hidden tests by a folder and the command that runs
+// them, the two together (spec step 9 lands them as schema; step 10 reads
+// them): an absolute, clean folder and a command of plain words.
+func TestACodeTasksHiddenTestsAndTestCommandParse(t *testing.T) {
+	code := `{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518"}`
+	with := func(task string) string { return strings.Replace(goodDeclaration, code, task, 1) }
+	d, err := parseDeclaration([]byte(with(`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518",
+      "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "TestHidden", "./..."]}`)))
+	if err != nil {
+		t.Fatalf("parseDeclaration: %v", err)
+	}
+	if got := d.Tasks[0]; got.HiddenTests != "/work/hidden/feature-a" || len(got.TestCommand) != 5 || got.TestCommand[4] != "./..." {
+		t.Fatalf("task = %+v; want its hidden tests and command", got)
+	}
+	for name, tc := range map[string]struct{ task, want string }{
+		"tests with no command":   {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "hidden_tests": "/work/hidden"}`, "come together"},
+		"a command with no tests": {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "test_command": ["go", "test"]}`, "come together"},
+		"a relative folder":       {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "hidden_tests": "hidden", "test_command": ["go"]}`, "absolute, clean path"},
+		"an unclean folder":       {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "hidden_tests": "/work/../hidden", "test_command": ["go"]}`, "absolute, clean path"},
+		"an empty word":           {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "hidden_tests": "/work/hidden", "test_command": ["go", ""]}`, "word 2"},
+		"a control word":          {`{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518", "hidden_tests": "/work/hidden", "test_command": ["go\u001b[2J"]}`, "word 1"},
+		"on a check task":         {`{"id": "feature-a", "kind": "check", "material": ["docs"], "hidden_tests": "/work/hidden", "test_command": ["go"]}`, "does not apply"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseDeclaration([]byte(with(tc.task))); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("parseDeclaration = %v; want a refusal saying %q", err, tc.want)
+			}
+		})
+	}
+}

@@ -104,6 +104,29 @@ good-enough counts only. Guests and the host's own self-blinded rankings are
 reported apart. Every report lists the run's limitations and the improvements
 it suggests for the next run.
 
+A check task is judged in two phases (spc-2610161949559050 step 9). The run
+first joins its copies' findings by their exact keys; a copy the compliance
+check set apart, or one never started, is in no comparison. Where the
+declaration names a matcher cell, the findings no key joins go to it alone, each
+under an opaque id with nothing of the copy, cell or model that raised it, and
+its answer is read as untrusted input, refused whole when any part of it fails;
+with no matcher those findings stay rows of their own and its agreement is not
+estimable. The person then judges each distinct finding alone, shuffled, under
+a code, with no model named and no verdict proposed, and their verdicts lock
+once. Only then is the second phase shown: each finding a row and each model a
+column, the verdict the proposer cell proposes where one is declared, each
+model's precision, unique valid findings, recall and overlap, and the matcher's
+agreement on a sample of its pairs the person labels, reported from ten
+labelled pairs up. The matcher and the proposer are cells the person declares,
+on their own routes and never on a builder's route or model, and each is
+optional: nothing is chosen for the person. One on a runner route waits for a
+launcher, and the host never answers for it. Nothing of a check is filed or
+written where the release gates read. A code task may name its hidden tests, a
+folder outside the checkout, and the command that runs them; the plan shows
+both with the line the person consents to, that abcd will run each copy's code
+with that command, though a code copy's result is still the host's report, as
+above.
+
 A model run is re-runnable, not reproducible. A re-run starts from a recorded
 run, named by its id in the lab or by a run's folder carried from elsewhere,
 and is planned from that run's own declaration under the person's consent to
@@ -303,6 +326,10 @@ Sub-verbs: none.
 | `--good` | string |
 | `--host` | string |
 | `--judges` | string |
+| `--labels` | string |
+| `--matcher` | string |
+| `--proposals` | string |
+| `--table` | bool |
 | `--verdicts` | string |
 
 ### `abcd lab matrix report`

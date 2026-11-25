@@ -14,6 +14,7 @@ import (
 	"math"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -78,7 +79,17 @@ type Role string
 const (
 	RoleBuilder  Role = "builder"
 	RoleReviewer Role = "reviewer"
+	// RoleMatcher joins the findings of a check's copies that no exact key
+	// joins, and RoleProposer proposes a verdict on each finding once the
+	// person's own are locked (spec step 9). Each is a judge outside the
+	// matrix: it makes no copy, and it is never one of the builders' models.
+	RoleMatcher  Role = "matcher"
+	RoleProposer Role = "proposer"
 )
+
+// judge reports whether r is a judge outside the matrix, a matcher or a
+// proposer, which makes no copy of any task.
+func (r Role) judge() bool { return r == RoleMatcher || r == RoleProposer }
 
 // Declaration is the person's matrix.
 type Declaration struct {
@@ -100,18 +111,34 @@ type Declaration struct {
 	LoadCap     *int    `json:"load_cap,omitempty"`
 	Concurrency int     `json:"concurrency"`
 	Judging     Judging `json:"judging"`
+	// Matcher and Proposer are a check's judges outside the matrix, each a
+	// cell on the person's own route, each optional (spec step 9): the
+	// matcher joins the findings no exact key joins, and the proposer's
+	// verdict on each finding is shown once the person's are locked. Nothing
+	// is chosen for the person: without a matcher the findings no key joins
+	// stay rows of their own, and without a proposer no verdict is proposed.
+	Matcher  *Cell `json:"matcher,omitempty"`
+	Proposer *Cell `json:"proposer,omitempty"`
 }
 
 // Task is one task the matrix does. Which fields apply follows its kind: a code
-// task names its intent; a writing task its source material and the judges'
-// criteria; a check the material it checks (scope condition 2).
+// task names its intent, and optionally its hidden tests; a writing task its
+// source material and the judges' criteria; a check the material it checks
+// (scope condition 2).
+//
+// HiddenTests is the folder outside the checkout that holds a code task's
+// hidden tests, and TestCommand the command, word by word and run without a
+// shell, that runs them over a copy's code (decision 9). They come together
+// or not at all; the plan shows the command for the person to consent to.
 type Task struct {
-	ID       string   `json:"id"`
-	Kind     TaskKind `json:"kind"`
-	Intent   string   `json:"intent,omitempty"`
-	Source   []string `json:"source,omitempty"`
-	Criteria string   `json:"criteria,omitempty"`
-	Material []string `json:"material,omitempty"`
+	ID          string   `json:"id"`
+	Kind        TaskKind `json:"kind"`
+	Intent      string   `json:"intent,omitempty"`
+	Source      []string `json:"source,omitempty"`
+	Criteria    string   `json:"criteria,omitempty"`
+	Material    []string `json:"material,omitempty"`
+	HiddenTests string   `json:"hidden_tests,omitempty"`
+	TestCommand []string `json:"test_command,omitempty"`
 }
 
 // Cell is one model route the matrix compares. Route is the per-invocation
@@ -216,8 +243,8 @@ func (d Declaration) validate() error {
 	if len(d.Builders) == 0 {
 		return errors.New("builders names no builder cell; a matrix compares at least one")
 	}
-	if n := len(d.Builders) + len(d.Reviewers); n > maxCells {
-		return fmt.Errorf("builders and reviewers name %d cells; a run compares at most %d", n, maxCells)
+	if n := len(d.cells()); n > maxCells {
+		return fmt.Errorf("the declaration names %d cells; a run compares at most %d", n, maxCells)
 	}
 	cells := map[string]bool{}
 	for _, c := range d.cells() {
@@ -231,6 +258,9 @@ func (d Declaration) validate() error {
 		if err := c.validate(); err != nil {
 			return fmt.Errorf("cell %s: %w", c.ID, err)
 		}
+	}
+	if err := d.validateJudges(); err != nil {
+		return err
 	}
 	r := d.Repeats
 	if r.Pilot < MinPilot || r.Pilot > MaxPilot {
@@ -262,7 +292,10 @@ func (t Task) validate() error {
 		if !intentRe.MatchString(t.Intent) {
 			return fmt.Errorf("a code task names its intent (itd-<N>); intent is %q", clip(t.Intent))
 		}
-		return only(t, "intent")
+		if err := t.validateHiddenTests(); err != nil {
+			return err
+		}
+		return only(t, "intent", "hidden_tests", "test_command")
 	case KindWriting:
 		if len(t.Source) == 0 {
 			return errors.New("a writing task names its source material in source")
@@ -290,11 +323,12 @@ func (t Task) validate() error {
 // carries a value that silently does nothing.
 func only(t Task, keep ...string) error {
 	set := map[string]bool{"intent": t.Intent != "", "source": len(t.Source) > 0,
-		"criteria": t.Criteria != "", "material": len(t.Material) > 0}
+		"criteria": t.Criteria != "", "material": len(t.Material) > 0,
+		"hidden_tests": t.HiddenTests != "", "test_command": len(t.TestCommand) > 0}
 	for _, k := range keep {
 		delete(set, k)
 	}
-	for _, k := range []string{"intent", "source", "criteria", "material"} {
+	for _, k := range []string{"intent", "source", "criteria", "material", "hidden_tests", "test_command"} {
 		if set[k] {
 			return fmt.Errorf("%s does not apply to a %s task", k, t.Kind)
 		}
@@ -349,16 +383,88 @@ type roleCell struct {
 	role Role
 }
 
-// cells is every cell, builders first, in declaration order.
+// cells is every cell, builders first, in declaration order, then the
+// matcher and the proposer where declared.
 func (d Declaration) cells() []roleCell {
-	out := make([]roleCell, 0, len(d.Builders)+len(d.Reviewers))
+	out := make([]roleCell, 0, len(d.Builders)+len(d.Reviewers)+2)
 	for _, c := range d.Builders {
 		out = append(out, roleCell{c, RoleBuilder})
 	}
 	for _, c := range d.Reviewers {
 		out = append(out, roleCell{c, RoleReviewer})
 	}
+	if d.Matcher != nil {
+		out = append(out, roleCell{*d.Matcher, RoleMatcher})
+	}
+	if d.Proposer != nil {
+		out = append(out, roleCell{*d.Proposer, RoleProposer})
+	}
 	return out
+}
+
+// validateJudges holds the matcher and the proposer to what they are: judges
+// of a check, outside the matrix. Either is refused where the run has no
+// check task, since it would judge nothing, and where its route, or the model
+// its route names, is a builder cell's, since a model would then judge the
+// findings of its own copies.
+func (d Declaration) validateJudges() error {
+	judges := []roleCell{}
+	for _, c := range d.cells() {
+		if c.role.judge() {
+			judges = append(judges, c)
+		}
+	}
+	if len(judges) == 0 {
+		return nil
+	}
+	check := slices.ContainsFunc(d.Tasks, func(t Task) bool { return t.Kind == KindCheck })
+	for _, j := range judges {
+		if !check {
+			return fmt.Errorf("the %s cell %s judges a check's findings, and the run declares no check task", j.role, j.ID)
+		}
+		for _, b := range d.Builders {
+			model := routeModel(j.Route)
+			if j.Route == b.Route || (model != "" && model == routeModel(b.Route)) {
+				return fmt.Errorf("the %s cell %s is named as the builder cell %s: a %s judges from outside the matrix, never on a builder's own route or model", j.role, j.ID, b.ID, j.role)
+			}
+		}
+	}
+	return nil
+}
+
+// The bounds of a code task's hidden tests: the folder's path, and the test
+// command's words and each word's length.
+const (
+	maxHiddenPathBytes = 4 << 10
+	maxCommandWords    = 64
+	maxCommandWord     = 1 << 10
+)
+
+// validateHiddenTests holds a code task's hidden tests to a folder named by
+// an absolute, clean path and a command of bounded plain words, the two
+// given together. The folder is checked to sit outside the checkout where the
+// run places the tests, which knows the checkout (spec step 10).
+func (t Task) validateHiddenTests() error {
+	if (t.HiddenTests == "") != (len(t.TestCommand) == 0) {
+		return errors.New("hidden_tests and test_command come together: the folder of the hidden tests, and the command that runs them")
+	}
+	if t.HiddenTests == "" {
+		return nil
+	}
+	p := t.HiddenTests
+	if len(p) > maxHiddenPathBytes || !path.IsAbs(p) || path.Clean(p) != p || p == "/" || !utf8.ValidString(p) ||
+		strings.IndexFunc(p, unicode.IsControl) >= 0 || termsafe.Sanitize(p) != p {
+		return fmt.Errorf("hidden_tests %q is not an absolute, clean path to a folder, at most %d bytes of plain text", clip(p), maxHiddenPathBytes)
+	}
+	if len(t.TestCommand) > maxCommandWords {
+		return fmt.Errorf("test_command has %d words; at most %d", len(t.TestCommand), maxCommandWords)
+	}
+	for i, w := range t.TestCommand {
+		if w == "" || len(w) > maxCommandWord || !utf8.ValidString(w) || strings.IndexFunc(w, unicode.IsControl) >= 0 || termsafe.Sanitize(w) != w {
+			return fmt.Errorf("test_command word %d is empty, longer than %d bytes or carries a control, bidirectional or zero-width character", i+1, maxCommandWord)
+		}
+	}
+	return nil
 }
 
 // paths holds each path a task names to a repository-relative, slash-separated

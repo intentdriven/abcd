@@ -243,6 +243,57 @@ refusal draws nothing. It is what the person's judging session shows; hand the s
 back with `--verdicts <file>` (and `--host <login>` when the host judged too,
 whose rankings are reported apart).
 
+**Judge a check task** in two phases, once every copy of it handed to you is
+back:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task>
+```
+
+It joins the copies' findings by their exact keys and shows the judging's
+`stage`, its `copies` (a copy the compliance check set apart is in none),
+`leftovers` (the findings no exact key joins) and the declaration's `matcher`
+and `proposer` cells. With no matcher declared, the leftovers stay rows of their
+own and the `packet` is drawn at once. With one, the verb first draws the
+`matcher_request` about the leftovers alone (`awaiting_matcher`): hand it, and
+nothing else, to a fresh sub-agent for a host matcher cell, save its one JSON
+answer, `{"schema_version": 1, "same": [["<id>", "<id>"]]}`, and record it:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --matcher <file>
+```
+
+The answer is refused whole, with nothing recorded, when it names a finding it
+was not shown; once taken, its pairs are joined, a `sample` of pairs is drawn
+for the person to label, and the `packet` is drawn. A matcher or proposer cell
+marked `awaiting_runner` waits for a launcher: never answer for it yourself, and
+tell the person it waits. The packet shows each distinct finding under a `code`,
+shuffled, with no model, cell, run or path named and no verdict proposed. Show
+it to the person and record their verdict on every code, locked, with
+`--verdicts <file>`: `{"schema_version": 1, "packet": "<packet_digest>",
+"locked": true, "verdicts": [{"code": "<code>", "valid": true}]}`. The verdicts
+lock once. Then build the second phase:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --table [--proposals <file>] [--labels <file>]
+```
+
+`--proposals` is the proposer cell's verdicts on the same packet, from a fresh
+sub-agent shown the packet alone: `{"schema_version": 1, "packet":
+"<packet_digest>", "proposed": [{"code": "<code>", "valid": true, "reason":
+"<one line>"}]}`. It is required when the declaration names a host proposer and
+refused when it names none. `--labels` is the person's labels on the sample,
+`{"schema_version": 1, "labels": [{"a": "<id>", "b": "<id>", "same": true}]}`.
+The table gives each finding's row, each model's `scores` (precision, unique
+valid findings, recall) and the `overlap`; `matcher` gives its agreement, or
+`not_estimable` saying why: no matcher declared, none asked, or fewer than ten
+pairs labelled. Asked again with no flag, the verb shows the judging as it
+stands. Refused, exit 2, with nothing written: a task with a copy handed to you
+and not back, a matcher, verdict, proposal or label file that does not
+validate, a second matcher answer, verdict file or table, a table before the
+verdicts are locked, and an answer for a runner cell. Nothing of a check is
+filed or written where the release gates read.
+
 **Read a recorded run's report**, which writes nothing:
 
 ```bash

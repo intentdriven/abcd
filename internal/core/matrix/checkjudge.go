@@ -549,9 +549,10 @@ func foundSeeded(c CheckCopy, s FindingEnd) bool {
 func checkRel(run, task, name string) string { return run + "/check/" + task + "/" + name }
 
 // writeCheckJudging writes a check's packet and key into its run's directory,
-// together and once, beside a run record and the record of every copy the key
-// names, all already written there.
-func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey) error {
+// together and once, with any other record of the draw in also, beside a run
+// record and the record of every copy the key names, all already written
+// there.
+func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey, also ...lab.StateFile) error {
 	if err := checkKeyed(p, k); err != nil {
 		return err
 	}
@@ -576,10 +577,10 @@ func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey) error 
 	if err != nil {
 		return err
 	}
-	return proc.WriteStates(
+	return proc.WriteStates(append(also,
 		lab.StateFile{Rel: checkRel(k.Run, k.Task, "packet.json"), Data: pd},
 		lab.StateFile{Rel: checkRel(k.Run, k.Task, "key.json"), Data: kd},
-	)
+	)...)
 }
 
 // readCheckJudging reads a check's packet and key back, held to each other and
