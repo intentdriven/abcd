@@ -1,6 +1,7 @@
 package findings
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const testRoot = "0123456789abcdef0123456789abcdef01234567"
@@ -37,9 +39,24 @@ func newTestStore(t *testing.T) (Store, string) {
 // entries: building one runs git, and what is judged there is not redaction.
 func cheapRedactor(t *testing.T) {
 	t.Helper()
-	prev := redact
-	redact = func(_, text string) (string, error) { return text, nil }
-	t.Cleanup(func() { redact = prev })
+	prev := newRedactor
+	newRedactor = func(context.Context, string) (textRedactor, error) { return passThrough{}, nil }
+	t.Cleanup(func() { newRedactor = prev })
+}
+
+type passThrough struct{}
+
+func (passThrough) Redact(text string) string { return text }
+
+var bg = context.Background()
+
+// put1 puts one entry.
+func put1(s Store, e Entry) (Entry, error) {
+	got, err := s.Put(bg, e)
+	if len(got) == 1 {
+		return got[0], err
+	}
+	return Entry{}, err
 }
 
 func entry(kind Kind, session, text string) Entry {
@@ -48,7 +65,7 @@ func entry(kind Kind, session, text string) Entry {
 
 func mustPut(t *testing.T, s Store, e Entry) Entry {
 	t.Helper()
-	got, err := s.Put(e)
+	got, err := put1(s, e)
 	if err != nil {
 		t.Fatalf("Put(%+v): %v", e, err)
 	}
@@ -124,7 +141,7 @@ func TestASettledEntryStaysSettledAndAReceiptSettledCheckDoesNot(t *testing.T) {
 	s, home := newTestStore(t)
 	cheapRedactor(t)
 	e := mustPut(t, s, entry(KindLine, "s1", "left for later"))
-	if _, err := s.Settle(SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: "prose", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: "prose", At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	again := mustPut(t, s, entry(KindLine, "s1", "left for later"))
@@ -136,7 +153,7 @@ func TestASettledEntryStaysSettledAndAReceiptSettledCheckDoesNot(t *testing.T) {
 	}
 
 	c := mustPut(t, s, entry(KindCheck, "s1", "TestX still fails"))
-	if _, err := s.Settle(SettleRequest{Handles: []string{c.Handle()}, Act: ActReceipt, Reason: "receipt at cafe", At: t0}); err != nil {
+	if _, err := s.SettleByReceipt(bg, []string{c.Handle()}, "receipt at cafe", t0); err != nil {
 		t.Fatalf("Settle by receipt: %v", err)
 	}
 	if v := mustRead(t, s); len(v.Open) != 0 {
@@ -164,7 +181,7 @@ func TestACrashInsideASettleLeavesTheSettledOneWinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Settle(SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "go test ./x passes on the base", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "go test ./x passes on the base", At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	// What a crash between the settled write and the open removal leaves.
@@ -173,6 +190,13 @@ func TestACrashInsideASettleLeavesTheSettledOneWinning(t *testing.T) {
 	}
 	if v := mustRead(t, s); len(v.Open) != 0 {
 		t.Fatalf("with both files standing the open one won: %+v", v.Open)
+	}
+	_, err = s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "again", At: t0})
+	if !errors.Is(err, ErrNoEntry) {
+		t.Fatalf("settling a handle settled/ already holds = %v; want ErrNoEntry, as the list reads it", err)
+	}
+	if _, err := os.Lstat(open); !os.IsNotExist(err) {
+		t.Fatalf("the stale open twin was left in place (%v)", err)
 	}
 }
 
@@ -185,7 +209,7 @@ func TestACrashInsideAMoveToPrivateLeavesThePrivateOneWinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Settle(SettleRequest{Handles: []string{e.Handle()}, Act: ActPrivate, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActPrivate, At: t0}); err != nil {
 		t.Fatalf("Settle --private: %v", err)
 	}
 	if err := os.WriteFile(open, raw, 0o600); err != nil {
@@ -193,6 +217,12 @@ func TestACrashInsideAMoveToPrivateLeavesThePrivateOneWinning(t *testing.T) {
 	}
 	if v := mustRead(t, s); len(v.Open) != 0 || len(v.Private) != 1 {
 		t.Fatalf("with both files standing: open %+v, private %+v; want the private one alone", v.Open, v.Private)
+	}
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
+		t.Fatalf("settling the private one with its open twin standing: %v", err)
+	}
+	if _, err := os.Lstat(open); !os.IsNotExist(err) {
+		t.Fatalf("the stale open twin was left in place (%v)", err)
 	}
 }
 
@@ -227,7 +257,7 @@ func TestAnUnsafeStoreIsRefusedAndNamed(t *testing.T) {
 		if err := os.Symlink(elsewhere, abcdhome.Path(home, "findings", testRoot)); err != nil {
 			t.Fatal(err)
 		}
-		_, err := s.Put(entry(KindUntested, "s1", "x"))
+		_, err := put1(s, entry(KindUntested, "s1", "x"))
 		var link *fsutil.HomeScopeLinkError
 		if !errors.As(err, &link) || !strings.Contains(err.Error(), testRoot) {
 			t.Fatalf("Put through a linked store = %v; want the link refused and named", err)
@@ -320,7 +350,7 @@ func TestReadingAnAbsentStoreMakesNothing(t *testing.T) {
 	if _, err := os.Lstat(abcdhome.Path(home)); !os.IsNotExist(err) {
 		t.Fatalf("reading an absent store made abcd's home (%v)", err)
 	}
-	if got, err := s.SettledView(50); err != nil || len(got) != 0 {
+	if got, bad, err := s.SettledView(50); err != nil || len(got)+len(bad) != 0 {
 		t.Fatalf("the settled view of an absent store = %v, %v", got, err)
 	}
 }
@@ -330,13 +360,13 @@ func TestTheBoundsHold(t *testing.T) {
 		s, home := newTestStore(t)
 		cheapRedactor(t)
 		e := mustPut(t, s, entry(KindUntested, "s1", "x"))
-		big := `{"schema_version":1,"kind":"untested","text":"` + strings.Repeat("y", MaxFileBytes) + `"}`
+		big := `{"schema_version":1,"kind":"untested","text":"` + strings.Repeat("y", maxFileBytes) + `"}`
 		if err := os.WriteFile(filepath.Join(storeDir(home, "open"), e.Name+".json"), []byte(big), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		v := mustRead(t, s)
 		if len(v.Open) != 0 || len(v.Unreadable) != 1 || v.Unreadable[0].Handle != e.Handle() {
-			t.Fatalf("a file past %d bytes: open %d, unreadable %+v; want it refused and named", MaxFileBytes, len(v.Open), v.Unreadable)
+			t.Fatalf("a file past %d bytes: open %d, unreadable %+v; want it refused and named", maxFileBytes, len(v.Open), v.Unreadable)
 		}
 	})
 	t.Run("entry text", func(t *testing.T) {
@@ -353,7 +383,7 @@ func TestTheBoundsHold(t *testing.T) {
 		for i := 0; i < MaxOpen; i++ {
 			plant(t, s, "open", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
 		}
-		_, err := s.Put(entry(KindUntested, "s1", "one more"))
+		_, err := put1(s, entry(KindUntested, "s1", "one more"))
 		if !errors.Is(err, ErrFull) {
 			t.Fatalf("a put past %d open entries = %v; want ErrFull", MaxOpen, err)
 		}
@@ -363,11 +393,11 @@ func TestTheBoundsHold(t *testing.T) {
 	})
 	t.Run("files read", func(t *testing.T) {
 		s, _ := newTestStore(t)
-		for i := 0; i <= MaxFilesRead; i++ {
+		for i := 0; i <= maxFilesRead; i++ {
 			plant(t, s, "private", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"private","text":"x","at":"2026-11-25T12:00:00Z"}`)
 		}
 		if _, err := s.Read(); !errors.Is(err, ErrTooManyFiles) {
-			t.Fatalf("a read past %d files = %v; want ErrTooManyFiles", MaxFilesRead, err)
+			t.Fatalf("a read past %d files = %v; want ErrTooManyFiles", maxFilesRead, err)
 		}
 	})
 }
@@ -401,11 +431,11 @@ func TestALaterSchemaAndAnUnknownKindAreANewerAbcds(t *testing.T) {
 		t.Fatalf("a later schema and an unknown kind read as open %+v, newer %v; want both a newer abcd's", v.Open, v.Newer)
 	}
 	for _, h := range []string{"f-aaaaaaaa", "f-bbbbbbbb"} {
-		if _, err := s.Settle(SettleRequest{Handles: []string{h}, Act: ActCaptured, Record: "iss-1", Records: holding{}, At: t0}); !errors.Is(err, ErrNewer) {
+		if _, err := s.Settle(bg, SettleRequest{Handles: []string{h}, Act: ActCaptured, Record: "iss-1", Records: holding{}, At: t0}); !errors.Is(err, ErrNewer) {
 			t.Errorf("settling a newer abcd's %s = %v; want ErrNewer", h, err)
 		}
 	}
-	if _, err := s.Put(entry(Kind("omen"), "s1", "x")); !errors.Is(err, ErrUnknownKind) {
+	if _, err := put1(s, entry(Kind("omen"), "s1", "x")); !errors.Is(err, ErrUnknownKind) {
 		t.Fatalf("putting a kind this build does not know = %v; want ErrUnknownKind", err)
 	}
 }
@@ -419,7 +449,7 @@ func TestTwoWritersAtOnceWriteOneFile(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := s.Put(entry(KindHandedUp, "s1", "the same finding")); err != nil {
+			if _, err := put1(s, entry(KindHandedUp, "s1", "the same finding")); err != nil {
 				errs <- err
 			}
 		}()
@@ -436,8 +466,11 @@ func TestTwoWritersAtOnceWriteOneFile(t *testing.T) {
 
 func TestTextIsRedactedAndWithheldWhenTheScannerCannotBeMade(t *testing.T) {
 	s, home := newTestStore(t)
+	repo := gittest.NewRepo(t).Root()
 	token := "ghp_" + strings.Repeat("A1", 18)
-	e := mustPut(t, s, entry(KindUntested, "s1", "the token "+token+" is in "+filepath.Join(home, "x.txt")))
+	planted := entry(KindUntested, "s1", "the token "+token+" is in "+filepath.Join(home, "x.txt"))
+	planted.Checkout = repo
+	e := mustPut(t, s, planted)
 	if strings.Contains(e.Text, token) || strings.Contains(e.Text, home) {
 		t.Fatalf("an entry kept the planted token or the home path: %q", e.Text)
 	}
@@ -449,9 +482,9 @@ func TestTextIsRedactedAndWithheldWhenTheScannerCannotBeMade(t *testing.T) {
 		t.Fatalf("the entry's file kept the planted token or the home path:\n%s", raw)
 	}
 
-	prev := redact
-	redact = func(string, string) (string, error) { return "", capture.ErrScannerUnavailable }
-	defer func() { redact = prev }()
+	prev := newRedactor
+	newRedactor = func(context.Context, string) (textRedactor, error) { return nil, capture.ErrScannerUnavailable }
+	defer func() { newRedactor = prev }()
 	w := mustPut(t, s, entry(KindUntested, "s1", "a second finding "+token))
 	if !w.Withheld || w.Text != "" {
 		t.Fatalf("with no scanner the entry was put as %+v; want its text withheld", w)
@@ -492,7 +525,7 @@ func TestTheKindTableIsWhatClearsAnEntry(t *testing.T) {
 					case ActNotAFinding:
 						req.Reason = "ordinary prose"
 					}
-					_, err := s.Settle(req)
+					_, err := s.Settle(bg, req)
 					cell := want && (kind != KindPrivate || person)
 					if cell && err != nil {
 						t.Fatalf("the table allows it and Settle refused: %v", err)
@@ -516,7 +549,7 @@ func TestTheKindTableIsWhatClearsAnEntry(t *testing.T) {
 					if len(v.Open)+len(v.Private) != 0 {
 						t.Fatalf("a settle the table allows left the entry on the list: %+v", v)
 					}
-					got, err := s.SettledView(50)
+					got, _, err := s.SettledView(50)
 					if err != nil || len(got) != 1 || got[0].Settled == nil || got[0].Settled.Act != act {
 						t.Fatalf("the settled view after %s = %+v, %v", act, got, err)
 					}
@@ -557,7 +590,7 @@ func TestASettleWritesNothingWhenAnyPartOfItIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			req.At = t0
-			if _, err := s.Settle(req); err == nil {
+			if _, err := s.Settle(bg, req); err == nil {
 				t.Fatal("Settle accepted it")
 			}
 			if v := mustRead(t, s); len(v.Open) != 2 {
@@ -565,7 +598,7 @@ func TestASettleWritesNothingWhenAnyPartOfItIsRefused(t *testing.T) {
 			}
 		})
 	}
-	_, err := s.Settle(SettleRequest{Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
+	_, err := s.Settle(bg, SettleRequest{Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
 	if !strings.Contains(fmt.Sprint(err), "resolved") || !strings.Contains(fmt.Sprint(err), "the default branch") {
 		t.Fatalf("a record that does not hold was refused as %v; want the state found named", err)
 	}
@@ -575,7 +608,7 @@ func TestAnAmbiguousHandleIsRefused(t *testing.T) {
 	s, _ := newTestStore(t)
 	plant(t, s, "open", "abcdef01"+strings.Repeat("1", 56), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
 	plant(t, s, "open", "abcdef01"+strings.Repeat("2", 56), `{"schema_version":1,"kind":"untested","text":"y","at":"2026-11-25T12:00:00Z"}`)
-	_, err := s.Settle(SettleRequest{Handles: []string{"f-abcdef01"}, Act: ActRefuted, Reason: "ran it", At: t0})
+	_, err := s.Settle(bg, SettleRequest{Handles: []string{"f-abcdef01"}, Act: ActRefuted, Reason: "ran it", At: t0})
 	if !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("an ambiguous handle = %v; want ErrAmbiguous", err)
 	}
@@ -602,11 +635,11 @@ func TestTheOpenViewPutsThisCheckoutFirstAndTheSettledViewKeepsTheLastFifty(t *t
 
 	for i := 0; i < 55; i++ {
 		e := mustPut(t, s, entry(KindLine, "s2", fmt.Sprintf("line %d", i)))
-		if _, err := s.Settle(SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: fmt.Sprintf("why %d", i), At: t0.Add(time.Duration(i) * time.Second)}); err != nil {
+		if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: fmt.Sprintf("why %d", i), At: t0.Add(time.Duration(i) * time.Second)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	last, err := s.SettledView(50)
+	last, _, err := s.SettledView(50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,5 +674,221 @@ func TestAPrivateEntryIsPutOnThePrivateList(t *testing.T) {
 	v := mustRead(t, s)
 	if len(v.Open) != 0 || len(v.Private) != 1 {
 		t.Fatalf("a private entry read as open %+v, private %+v", v.Open, v.Private)
+	}
+}
+
+// TestWhatTheStoreWritesFitsItsBound is review MUST 1: text and a reason that
+// JSON would escape, and a field past its bound, still make a file the store
+// reads back.
+func TestWhatTheStoreWritesFitsItsBound(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := mustPut(t, s, entry(KindLine, "s1", strings.Repeat("<", MaxTextBytes)))
+	reason := strings.Repeat("&", MaxTextBytes)
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: reason, At: t0}); err != nil {
+		t.Fatalf("Settle: %v", err)
+	}
+	got, bad, err := s.SettledView(50)
+	if err != nil || len(got) != 1 || got[0].Text != strings.Repeat("<", MaxTextBytes) || got[0].Settled.Reason != reason {
+		t.Fatalf("a 600-byte text of < and reason of & read back as %d entries, %+v unreadable, %v", len(got), bad, err)
+	}
+
+	long := entry(KindUntested, strings.Repeat("s", 5000), "a long session")
+	if _, err := put1(s, long); err != nil {
+		t.Fatalf("a 5,000-byte session: %v", err)
+	}
+	v := mustRead(t, s)
+	if len(v.Open) != 1 || len(v.Unreadable) != 0 || len(v.Open[0].Session) > maxIDBytes {
+		t.Fatalf("a 5,000-byte session read back as open %d, unreadable %+v", len(v.Open), v.Unreadable)
+	}
+}
+
+func TestTheSettledViewNamesAFileItCannotRead(t *testing.T) {
+	s, _ := newTestStore(t)
+	name := strings.Repeat("c", 64)
+	plant(t, s, "settled", name, `{"schema_version":1,"kind":"untested","text":"`+strings.Repeat("y", maxFileBytes)+`"}`)
+	_, bad, err := s.SettledView(50)
+	if err != nil || len(bad) != 1 || bad[0].Handle != "f-cccccccc" {
+		t.Fatalf("an oversized settled file: unreadable %+v, %v; want it named", bad, err)
+	}
+}
+
+// writePII gives a checkout a pattern file of its own.
+func writePII(t *testing.T, repo, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "pii.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTextTheFullScanCannotClearIsWithheld is review MUST 2: a scanner that
+// runs degraded clears nothing, so the text is withheld and the entry says so.
+func TestTextTheFullScanCannotClearIsWithheld(t *testing.T) {
+	s, _ := newTestStore(t)
+	repo := gittest.NewRepo(t).Root()
+	writePII(t, repo, `{`)
+	e := entry(KindUntested, "s1", "a finding the scan cannot clear")
+	e.Checkout = repo
+	got := mustPut(t, s, e)
+	if !got.Withheld || got.Text != "" {
+		t.Fatalf("under a degraded scan the entry was put as %+v; want its text withheld", got)
+	}
+}
+
+func TestASettleReasonIsRedactedWithItsEntrysPatterns(t *testing.T) {
+	s, _ := newTestStore(t)
+	repo := gittest.NewRepo(t).Root()
+	writePII(t, repo, `{"patterns":{"house_token":{"regex":"HOUSE-[0-9]{6}","kind":"house_token","label":"house token","severity":"hard_fail"}}}`)
+	e := entry(KindUntested, "s1", "a finding")
+	e.Checkout = repo
+	got := mustPut(t, s, e)
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it with HOUSE-123456", At: t0}); err != nil {
+		t.Fatalf("Settle: %v", err)
+	}
+	last, _, err := s.SettledView(50)
+	if err != nil || len(last) != 1 || strings.Contains(last[0].Settled.Reason, "HOUSE-123456") || last[0].Settled.Reason == "" {
+		t.Fatalf("the settled reason reads %+v (%v); want the repository's pattern redacted", last, err)
+	}
+}
+
+func TestAPutRacingASettleLeavesItSettled(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := mustPut(t, s, entry(KindUntested, "s1", "raced"))
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			_, _ = put1(s, entry(KindUntested, "s1", "raced"))
+		}
+	}()
+	var settleErr error
+	go func() {
+		defer wg.Done()
+		_, settleErr = s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
+	}()
+	wg.Wait()
+	if settleErr != nil {
+		t.Fatalf("Settle beside a Put: %v", settleErr)
+	}
+	if v := mustRead(t, s); len(v.Open) != 0 {
+		t.Fatalf("a settled entry read as open after a racing Put: %+v", v.Open)
+	}
+	if again := mustPut(t, s, entry(KindUntested, "s1", "raced")); again.Settled == nil {
+		t.Fatal("a Put after the race came back unsettled")
+	}
+}
+
+func TestThePrivateListHasItsOwnBoundAndTwinsCountOnce(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	for i := 0; i < MaxPrivate; i++ {
+		plant(t, s, "private", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"private","text":"x","at":"2026-11-25T12:00:00Z"}`)
+	}
+	if _, err := put1(s, entry(KindPrivate, "s1", "one more")); !errors.Is(err, ErrFull) {
+		t.Fatalf("a private put past %d = %v; want ErrFull", MaxPrivate, err)
+	}
+
+	s2, _ := newTestStore(t)
+	for i := 0; i < MaxOpen; i++ {
+		plant(t, s2, "open", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
+	}
+	plant(t, s2, "settled", fmt.Sprintf("%064x", 0), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z","settled":{"act":"refuted","reason":"r","at":"2026-11-25T12:00:00Z"}}`)
+	if _, err := put1(s2, entry(KindUntested, "s1", "one more")); err != nil {
+		t.Fatalf("a put with %d open files, one of them settled already: %v; want it counted once", MaxOpen, err)
+	}
+}
+
+func TestTheCommandReadsPastTheHooksBudget(t *testing.T) {
+	s, _ := newTestStore(t)
+	for i := 0; i <= maxFilesRead; i++ {
+		plant(t, s, "open", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
+	}
+	v, err := s.ReadWithin(2 * maxFilesRead)
+	if err != nil || len(v.Open) != maxFilesRead+1 {
+		t.Fatalf("a read within %d files = %d open, %v", 2*maxFilesRead, len(v.Open), err)
+	}
+}
+
+func TestPrivateTextReachesOnlyItsOneAccessor(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	const plantText = "PLANTED-PRIVATE-TEXT"
+	e := mustPut(t, s, entry(KindUntested, "s1", plantText))
+	moved, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActPrivate, At: t0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct := mustPut(t, s, entry(KindPrivate, "s1", plantText+" by command"))
+	again := mustPut(t, s, entry(KindUntested, "s1", plantText))
+	v := mustRead(t, s)
+	view, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, out := range map[string]string{
+		"the moved entry": fmt.Sprint(moved), "the private put": direct.Text,
+		"a put the private list holds": again.Text, "the view": string(view),
+	} {
+		if strings.Contains(out, plantText) {
+			t.Errorf("%s carries the private text: %s", what, out)
+		}
+	}
+	if got, err := s.PrivateText(e.Handle()); err != nil || got != plantText {
+		t.Fatalf("PrivateText = %q, %v; want the text", got, err)
+	}
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	last, _, err := s.SettledView(50)
+	if err != nil || len(last) != 1 || strings.Contains(fmt.Sprint(last), plantText) {
+		t.Fatalf("the settled view carries the private text: %+v, %v", last, err)
+	}
+}
+
+func TestOnlyTheReceiptEntryPointSettlesByReceipt(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	c := mustPut(t, s, entry(KindCheck, "s1", "TestX still fails"))
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{c.Handle()}, Act: ActReceipt, Reason: "receipt", At: t0}); !errors.Is(err, ErrNotCleared) {
+		t.Fatalf("Settle with ActReceipt = %v; want ErrNotCleared", err)
+	}
+	if v := mustRead(t, s); len(v.Open) != 1 {
+		t.Fatal("a refused receipt settle changed the list")
+	}
+}
+
+func TestARefusalQuotesTheRecordAndNamesNoHomePath(t *testing.T) {
+	s, home := newTestStore(t)
+	cheapRedactor(t)
+	a := mustPut(t, s, entry(KindUntested, "s1", "one"))
+	_, err := s.Settle(bg, SettleRequest{Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
+	if !strings.Contains(fmt.Sprint(err), `"iss-1"`) {
+		t.Fatalf("the refusal names the record as %v; want it quoted", err)
+	}
+	if err := os.Chmod(filepath.Join(storeDir(home, "open"), a.Name+".json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	v := mustRead(t, s)
+	if len(v.Unreadable) != 1 || strings.Contains(v.Unreadable[0].Reason, home) {
+		t.Fatalf("the unreadable reason names the home path: %+v", v.Unreadable)
+	}
+}
+
+// TestANameIsTheRedactedText is the coordinator's ruling: two sayings that
+// differ only in what the redactor removes are one entry.
+func TestANameIsTheRedactedText(t *testing.T) {
+	s, _ := newTestStore(t)
+	repo := gittest.NewRepo(t).Root()
+	// The redactor keeps a token's family and last two characters.
+	a := entry(KindUntested, "s1", "the token ghp_"+strings.Repeat("A1", 17)+"Z9 leaked")
+	b := entry(KindUntested, "s1", "the token ghp_"+strings.Repeat("B2", 17)+"Z9 leaked")
+	a.Checkout, b.Checkout = repo, repo
+	if x, y := mustPut(t, s, a), mustPut(t, s, b); x.Name != y.Name {
+		t.Fatalf("two sayings differing only in a redacted token got two names (%q, %q)", x.Text, y.Text)
 	}
 }

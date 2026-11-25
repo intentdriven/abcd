@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -151,22 +152,41 @@ func (r *ledgerRedactor) Degraded() string {
 	return scanNote(r.sc)
 }
 
-// ErrScannerUnavailable is RedactText's refusal when the ledger's scanner
-// cannot be made.
+// ErrScannerUnavailable is NewTextRedactor's refusal when the ledger's
+// scanner cannot be made or runs degraded.
 var ErrScannerUnavailable = errors.New("capture: the ledger's scanner cannot be made")
 
-// RedactText is the ledger's redactor as one function, for a store outside the
-// ledger that keeps free text under the same rule (the findings list,
-// spc-2611252115253843). Where redactLedgerText writes the text unredacted and
-// says so, this hands back no text and ErrScannerUnavailable, because its
-// caller can withhold the text and lose nothing else.
-func RedactText(repoRoot, text string) (string, error) {
-	sc, err := newLedgerScanner(repoRoot)
+// newContextScanner is the seam NewTextRedactor builds its scanner through.
+var newContextScanner = func(ctx context.Context, repoRoot string) (*scanner.Scanner, error) {
+	return scanner.NewContext(ctx, repoRoot)
+}
+
+// TextRedactor is the ledger's redactor for a store outside the ledger that
+// keeps free text under the same rule (the findings list,
+// spc-2611252115253843), built once with the caller's context and used for
+// many texts.
+type TextRedactor struct{ sc *scanner.Scanner }
+
+// NewTextRedactor builds the redactor for repoRoot's patterns. Where
+// redactLedgerText writes the text and says the scan was weakened, this
+// refuses with ErrScannerUnavailable both a scanner that cannot be made and
+// one that runs degraded (Scanner.Unavailable, a broken pii.json among the
+// causes), because its caller can withhold the text and lose nothing else.
+func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error) {
+	sc, err := newContextScanner(ctx, repoRoot)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
+		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
 	}
-	if findings := sc.ScanText(text, "issue"); len(findings) > 0 {
+	if unavailable, reason := sc.Unavailable(); unavailable {
+		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
+	}
+	return &TextRedactor{sc: sc}, nil
+}
+
+// Redact is text with every span the scanner finds rewritten.
+func (r *TextRedactor) Redact(text string) string {
+	if findings := r.sc.ScanText(text, "issue"); len(findings) > 0 {
 		text, _ = scanner.Redact(text, findings)
 	}
-	return text, nil
+	return text
 }

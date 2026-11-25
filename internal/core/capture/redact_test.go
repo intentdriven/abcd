@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -161,33 +162,41 @@ func TestResolveRedactsTheNote(t *testing.T) {
 	}
 }
 
-// TestRedactTextIsTheLedgerRedactorAsOneFunction holds the exported form a
-// store outside the ledger calls (the findings list, spc-2611252115253843):
-// the same redactor, so a home path and a planted token come back rewritten,
-// and a scanner that cannot be made is an error rather than the text handed
-// back unredacted, so the caller can withhold the text instead.
-func TestRedactTextIsTheLedgerRedactorAsOneFunction(t *testing.T) {
+// TestTheTextRedactorIsTheLedgerRedactor holds the exported form a store
+// outside the ledger builds once and calls for each text (the findings list,
+// spc-2611252115253843): the same redactor, so a home path and a planted token
+// come back rewritten; and a scanner that cannot be made, or one that runs
+// degraded, is an error rather than text handed back as cleared, so the caller
+// can withhold the text instead.
+func TestTheTextRedactorIsTheLedgerRedactor(t *testing.T) {
 	repo := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	token := "ghp_" + strings.Repeat("A1", 18)
 	in := "the token " + token + " sat in " + filepath.Join(home, "notes.txt")
-	out, err := RedactText(repo, in)
+	r, err := NewTextRedactor(context.Background(), repo)
 	if err != nil {
-		t.Fatalf("RedactText: %v", err)
+		t.Fatalf("NewTextRedactor: %v", err)
 	}
-	if strings.Contains(out, token) || strings.Contains(out, home) {
-		t.Fatalf("RedactText left the token or the home path in place: %q", out)
+	if out := r.Redact(in); strings.Contains(out, token) || strings.Contains(out, home) {
+		t.Fatalf("Redact left the token or the home path in place: %q", out)
 	}
 
-	orig := newLedgerScanner
-	newLedgerScanner = func(string) (*scanner.Scanner, error) { return nil, errors.New("no scanner") }
-	t.Cleanup(func() { newLedgerScanner = orig })
-	out, err = RedactText(repo, in)
-	if !errors.Is(err, ErrScannerUnavailable) {
-		t.Fatalf("RedactText with no scanner = %q, %v; want ErrScannerUnavailable", out, err)
+	degraded := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(degraded, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if out != "" {
-		t.Fatalf("RedactText with no scanner handed back text %q; want none", out)
+	if err := os.WriteFile(filepath.Join(degraded, ".abcd", "config", "pii.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewTextRedactor(context.Background(), degraded); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("NewTextRedactor over a broken pii.json = %v; want ErrScannerUnavailable", err)
+	}
+
+	orig := newContextScanner
+	newContextScanner = func(context.Context, string) (*scanner.Scanner, error) { return nil, errors.New("no scanner") }
+	t.Cleanup(func() { newContextScanner = orig })
+	if _, err := NewTextRedactor(context.Background(), repo); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("NewTextRedactor with no scanner = %v; want ErrScannerUnavailable", err)
 	}
 }

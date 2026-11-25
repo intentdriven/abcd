@@ -105,3 +105,23 @@ func TestWithNoDefaultBranchTheCheckoutAnswersAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestARecordQuestionGitCannotAnswerIsAnError(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Commit("empty")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got, err := NewRecords(ctx, repo.Root()).Answer(ActCaptured, "iss-2611250000000001"); err == nil {
+		t.Errorf("a question asked past its deadline = %+v; want an error", got)
+	}
+	notARepo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(notARepo, issues, "open"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(notARepo, issues, "open", "iss-2611250000000001-x.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewRecords(context.Background(), notARepo).Answer(ActCaptured, "iss-2611250000000001"); err == nil {
+		t.Errorf("a checkout git cannot read = %+v; want an error, not no default branch", got)
+	}
+}

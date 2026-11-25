@@ -39,20 +39,22 @@ No hook script and no `hooks/hooks.json` entry changes in any step.
 
 | Bound | Value | Past it |
 | --- | --- | --- |
-| One file | 4 KiB | refused as unreadable, named |
-| Entry text | 600 bytes | cut |
+| One file | 4 KiB | never written (every other field is cut first, and the text is written without HTML escaping); one found is refused as unreadable, named |
+| Entry text, and a settlement's reason | 600 bytes | cut |
+| Any other field | 128 bytes, a path 512 | cut |
 | A closing text read | 256 KiB | its last part is read, and one entry says so |
 | Entries from one closing text | 32 | one more entry holds the count of the rest |
 | Open entries for a root | 1,000 | nothing more is put; the stop and the board say the list is full |
-| Files read for one hook | 1,000 | the list is unreadable to that hook |
+| Private entries for a root | 100 | nothing more is put there |
+| Files read for one hook | 1,000 | the list is unreadable to that hook; `capture owed` names a budget of its own, so it can still list the handles past it |
 
 Each file carries `schema_version: 1`. A later version, and a kind this build does not know, is counted and shown by its handle as "a newer abcd's"; no command here settles it, it holds no stop, and it refuses a landing.
 
-**What an entry holds, and its name.** The session, the agent and its type, the checkout's root, the run and lane, the kind, the text, the time. The name is a hash: for an entry a reading made, of the kind, the normalised text, the place and the session; for one a gate made, of the kind, the place and the head. So a finding said again in one session is the same file, another session's saying of it is its own, and a gate's failure at a new head is a new one. One a person or an agent settled stays settled when it is put again. It is shown as `f-` and eight characters; an ambiguous handle is refused.
+**What an entry holds, and its name.** The session, the agent and its type, the checkout's root, the run and lane, the kind, the text, the time. The name is a hash: for an entry a reading made, of the kind, the normalised text (redacted, before its cut; a withheld text by the text as given, which never leaves the account's store), the place and the session; for one a gate made, of the kind, the place and the head. So a finding said again in one session is the same file, another session's saying of it is its own, and a gate's failure at a new head is a new one. One a person or an agent settled stays settled when it is put again. It is shown as `f-` and eight characters; an ambiguous handle is refused.
 
 The place is the checkout the payload's directory is in. It is a lane's when a run's state names that checkout as the lane's worktree. It is never read from what a transcript says. Any other entry is unplaced.
 
-Text goes through capture's own redactor, exported from `internal/core/capture/redact.go` as one function, then `termsafe` and `fsutil.RedactHome`. Where the scanner cannot be made, the entry is put with its text withheld.
+Text, and a settlement's reason, goes through capture's own redactor for the entry's checkout, exported from `internal/core/capture/redact.go` as one constructor built once for each checkout a call meets, then `termsafe` and `fsutil.RedactHome`. Where the scanner cannot be made, or runs degraded, the entry is put with its text withheld, and says so. A private entry's text is handed back by one accessor alone; every other read carries it blank.
 
 **The kinds.** Closed, and each is cleared by the flags the table marks.
 

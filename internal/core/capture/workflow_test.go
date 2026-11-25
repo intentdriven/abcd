@@ -1371,4 +1371,21 @@ func TestCaptureFixedSatisfiesTheResolutionGate(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("RS001 refused a fixed capture's trailer: %v\n%s", err, out)
 	}
+
+	// The control: the same change filing the finding open is refused.
+	base = repo.Git("rev-parse", "HEAD")
+	open := fixedRequest(repo.Root(), "")
+	open.Fixed, open.FixedImpact, open.Slug = "", "", "left-open"
+	res, err = testCapture(open)
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	repo.Write("fix2.go", "package fix\n")
+	repo.Commit("fix: another\n\nResolves: " + res.ID)
+	cmd = exec.Command("bash", gate, "commits", base, "HEAD")
+	cmd.Dir = repo.Root()
+	cmd.Env = repo.Env()
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("RS001 accepted a trailer over a record left open:\n%s", out)
+	}
 }

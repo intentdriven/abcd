@@ -26,7 +26,8 @@ const (
 // directory the first time an id of that family is asked; a record it lacks is
 // looked for with recordid.LookupOne in the checkout and then the session's
 // start copy, and nowhere else. With no default branch the checkouts answer
-// alone. Every git question is bounded by the context it was made with.
+// alone; a git that cannot read the checkout, or does not answer in time, is an
+// error. Every git question is bounded by the context it was made with.
 type Records struct {
 	ctx       context.Context
 	checkouts []string
@@ -127,6 +128,12 @@ func (r *Records) defaultListing(prefix string) (*recordid.Resolver, error) {
 	}
 	root := r.checkouts[0]
 	if !r.refRead {
+		// git is asked once whether it reads the checkout at all, so a git
+		// that fails, or a deadline that ends, is an error and never "no
+		// default branch".
+		if _, err := gitutil.RunCappedBytesAsStoredContext(r.ctx, root, "", 4<<10, "rev-parse", "--git-dir"); err != nil {
+			return nil, fmt.Errorf("findings: git cannot read the checkout: %w", err)
+		}
 		r.ref, r.refRead = gitutil.DefaultRefContext(r.ctx, root), true
 		if r.ref == "" && r.ctx.Err() != nil {
 			r.refRead = false
