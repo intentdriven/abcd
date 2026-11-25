@@ -19,9 +19,9 @@ impact: additive
 
 ## Press Release
 
-> **Type `abcd drain --drive` in a plain terminal and it works through the ledger on its own.** Frank opens a terminal on a spare machine and types `abcd drain --drive`. Before it touches anything, abcd tells him what it will do: work through up to eight issues, start Claude sessions on his own subscription, walled off from his own setup, about forty agent runs at most. It asks him once. He says yes. The terminal then shows one line per step: an issue judged, a lane opened, its checks run, its pull request queued. Then it moves to the next. It stops at the cap, when nothing eligible is left, or when Frank presses Ctrl-C, and it tells him what it left and how to pick it up again. Whatever it cannot finish, it hands back with the reason. It never leaves an issue held while it waits for someone who isn't coming.
+> **Type `abcd drain --drive` in a plain terminal and it works through the ledger on its own.** Frank opens a terminal on a spare machine and types `abcd drain --drive`. Before it touches anything, abcd tells him what it will do: work through up to eight issues, start Claude sessions on his own subscription, walled off from his own setup, about forty agent runs at most. It asks him once. He says yes. The terminal then shows one line per step: an issue judged, a lane opened, its checks run, its pull request queued. Then it moves to the next. It stops at the cap, when nothing eligible is left, or when Frank presses Ctrl-C, and it tells him what it left and how to pick it up again. Whatever it cannot finish, it hands back with the reason. It never keeps an issue held while it waits for someone who isn't coming: a lane it sets aside keeps its reservation only until the lease lapses, two hours at most.
 >
-> _Facilitator-proposed on 2026-10-22 from iss-2610222000271964 and revised after the Opus and Sonnet review round 1 the same night; signed off by the product thinker on 2026-10-23 (dcn-2610230813064058)._
+> _Facilitator-proposed on 2026-10-22 from iss-2610222000271964 and revised after the Opus and Sonnet review round 1 the same night; signed off by the product thinker on 2026-10-23 (dcn-2610230813064058). Its last sentence amended on 2026-11-25 for a set-aside lane's reservation (decision 12)._
 
 ## Why This Matters
 
@@ -41,7 +41,7 @@ We expect a terminal drive to land work with no person and no host session, beca
 - it starts each role through the person's runner;
 - it hands back what fails.
 
-The claim is shown wrong if a terminal drive on a scratch repository seeded with three minor issues, on a machine with the runner set up, needs any input after its one yes before it reaches its cap, or ends with an issue still reserved and no lane working on it.
+The claim is shown wrong if a terminal drive on a scratch repository seeded with three minor issues, on a machine with the runner set up, needs any input after its one yes before it reaches its cap, or ends with an issue still reserved, no lane working on it and no lease due to lapse. A set-aside lane's reservation that stands until its lease lapses, two hours at most, does not show it wrong (decision 12; amended 2026-11-25).
 
 ## Scope Conditions
 
@@ -106,10 +106,14 @@ The product thinker's walk and sign-off of 2026-10-23 (dcn-2610230813064058):
 
 11. **Signed off as written.** The six stories stand, both parts of the technical list are accepted, and the press release, the mechanism, the scope conditions and the reason for doing it now are signed off with no wording change. With the plan, adr-2610222222326104 is accepted, and AGENTS.md's host-delegated boundary names it as the one written exception, not built until this intent ships. The scope condition now says, as the product thinker was shown, that the fence and the login check apply to the helpers abcd starts.
 
+The product thinker's ruling of 2026-11-15, folded in on 2026-11-25:
+
+12. **A set-aside lane's reservation may stand until its lease lapses.** itd-2611141610197753, which builds on this intent, lets a drive set a lane aside when it cannot take it and open the next one; the product thinker ruled on 2026-11-15 that the set-aside lane's reservation is not released by a push but left to lapse, so the issue stays hidden from other sessions for at most the two-hour lease (its decision 4). The press release's last sentence and the mechanism's test are amended to say so: the drive still never keeps an issue held for someone who is not coming, and a reservation that only waits out its lease is not that case. The amendment was filed as iss-2611150635298371, resolved by this change.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 
 ## Grounds
 
-- pursued: a terminal drive lands work with no person and no host session once each thing a host does between steps becomes the driver's own act or a hand-back; shown wrong if a drive on a scratch repository seeded with three minor issues needs any input after its one yes before its cap, or ends with an issue still reserved and no lane working on it. Occasioned by 2026-10-22, when a drain typed in a plain terminal reserved the first of 213 issues, opened none, and held it for two hours (iss-2610222000271964).
+- pursued: a terminal drive lands work with no person and no host session once each thing a host does between steps becomes the driver's own act or a hand-back; shown wrong if a drive on a scratch repository seeded with three minor issues needs any input after its one yes before its cap, or ends with an issue still reserved, no lane working on it and no lease due to lapse (a set-aside lane's reservation standing until its lease lapses does not count, decision 12). Occasioned by 2026-10-22, when a drain typed in a plain terminal reserved the first of 213 issues, opened none, and held it for two hours (iss-2610222000271964).

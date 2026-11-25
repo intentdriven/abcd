@@ -143,7 +143,7 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
 4. **A set-aside lane's reservation is left to lapse** (product thinker, 2026-11-15; formerly open question 1).
    - Question (DQ-4): "What becomes of a set-aside lane's reservation?"
    - Answer: it is left to lapse. There is no push, and the issue stays hidden from other sessions until the lease lapses, at most two hours.
-   - What it needs: itd-2610222215485265 must be amended. Its press release says the drive never leaves an issue held while it waits for someone who is not coming, and its mechanism is shown wrong if a drive ends with an issue still reserved. Both are to say that a set-aside lane's reservation may stand until its lease lapses. That intent is not edited here; the amendment is filed as iss-2611150635298371.
+   - What it needs: itd-2610222215485265 must be amended. Its press release says the drive never leaves an issue held while it waits for someone who is not coming, and its mechanism is shown wrong if a drive ends with an issue still reserved. Both are to say that a set-aside lane's reservation may stand until its lease lapses. That intent is not edited here; the amendment is filed as iss-2611150635298371, and was made on 2026-11-25 as that intent's decision 12.
 5. **A set-aside lane gets another try in the same drive, after the other lanes are done** (product thinker, 2026-11-15; formerly open question 2).
    - Question (DQ-5): "Does a set-aside lane get another try in the same drive?"
    - Answer: yes, once the other lanes are done. A block that clears in a minute need not wait for a restart.
