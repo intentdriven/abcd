@@ -41,6 +41,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -829,16 +830,15 @@ func isTestPath(p string) bool {
 //     inside it, is a read outside; and resolved against the copy's own
 //     folder in the hand-off store, which a launch hands it, a climb that
 //     reaches another copy's folder there is one too; a pattern (*, ?, a
-//     class, a brace or **) is judged, from the copy's own brief folder and
-//     from the clone's folders apart, by what its matches outside the copy
-//     expose: another copy's brief or answer, or a file only a sibling clone
-//     holds, is a read outside; a match in a sibling clone at a path the
-//     copy's own clone holds too leaves the rule unexamined, since the scan
-//     cannot tell the folder the pattern ran in, and sets an honest copy that
-//     wrote ls ../* in a folder of its clone apart from the rates with one
-//     that read its sibling; the run's own files beside the copies' folders
-//     expose nothing; within maxGlobEntries entries a pattern and
-//     maxGlobPatterns patterns a transcript, past which it is broken.
+//     class, a brace or **, as the shell expands it) that matches outside
+//     the copy, from its own brief folder or a folder of its clone, and from
+//     no folder of the clone deep enough for its climb anything inside it,
+//     can only have read outside, and is broken; one that could also have
+//     read inside leaves the rule unexamined, since the scan cannot tell the
+//     folder it ran in, and so does a walk past maxGlobEntries entries or a
+//     transcript past maxGlobPatterns patterns; shell syntax the check does
+//     not evaluate exactly is judged by its literal prefix and never kept;
+//     the run's own files beside the copies' folders are not outside.
 //
 // What it does not see, the report lists among the run's limitations: a read
 // through a relative path with no climb after a cd out of the clone, a path a
@@ -876,7 +876,7 @@ func ownCopyOnly(ctx context.Context, in complianceInputs, tree frozenTree, tree
 		return unexamined("the copy's clone could not be read, so a climb or a link out of it cannot be examined")
 	}
 	if n := len(sc.unclear); n > 0 {
-		return unexamined(clipTo(fmt.Sprintf("the copy's transcript holds %d climbing path patterns that match another copy's place only where a read from its own clone would match the same path, so whether it read outside its copy cannot be told: %s", n, sc.example), maxDetailBytes))
+		return unexamined(clipTo(fmt.Sprintf("whether the copy read outside its copy cannot be told for %d climbing path patterns of its transcript; the first: %s", n, sc.example), maxDetailBytes))
 	}
 	return ComplianceCheck{Rule: RuleOwnCopyOnly, State: StateKept,
 		Detail: "the copy's transcript names nothing in the run's clone store outside its own clone, and its clone holds no link out into it; a heuristic scan, not a barrier"}
@@ -1173,6 +1173,18 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 		case c == '\\' && i+1 < len(b) && b[i+1] == '/':
 			tok = append(tok, '/')
 			i++
+		case c == '\\' && i+1 < len(b) && b[i+1] == '"' && quotedLen(tok, b[i:], `\"`) > 0:
+			n, part := quotedGoesOn(tok, b[i:], `\"`)
+			tok = append(tok, part...)
+			i += n - 1
+		case (c == '"' || c == '\'') && quotedLen(tok, b[i:], string(c)) > 0:
+			n, part := quotedGoesOn(tok, b[i:], string(c))
+			tok = append(tok, part...)
+			i += n - 1
+		case c == '{' && len(tok) == 0 && braceLed(b[i:]) > 0:
+			n := braceLed(b[i:])
+			tok = append(tok, b[i:i+n]...)
+			i += n - 1
 		case c == '\\':
 			if seen, ok := flush(); ok {
 				return seen, true
@@ -1191,7 +1203,7 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 			}
 			tok = append(tok, b[i:i+end+1]...)
 			i += end
-		case strings.IndexByte("[]{},", c) >= 0 && climbGoesOn(tok, c):
+		case strings.IndexByte("[]{},:()|", c) >= 0 && climbGoesOn(tok, c):
 			// A class or a brace in a climb is part of its pattern
 			// (../[a-z]*/x, ../{a,b}/x).
 			tok = append(tok, c)
@@ -1206,20 +1218,77 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 	return flush()
 }
 
-// climbGoesOn reports whether c, one of [ ] { } and a comma, goes on the climb
-// tok as part of its pattern: an opening class or brace in a token that starts
-// with "..", and a closing one or a comma only while one is open.
+// climbGoesOn reports whether c, one of [ ] { } ( ) | : and a comma, goes on
+// the climb tok as part of its pattern: an opening class or brace in a token
+// that starts with "..", an extended pattern's parenthesis after its operator
+// (@ ! + ? *), and a closing one, a class's colon ([[:alnum:]]) or a brace's
+// comma only while one is open.
 func climbGoesOn(tok []byte, c byte) bool {
 	if !bytes.HasPrefix(tok, []byte("..")) {
 		return false
 	}
+	open := func(o, cl string) bool { return bytes.Count(tok, []byte(o)) > bytes.Count(tok, []byte(cl)) }
 	switch c {
 	case '[', '{':
 		return true
-	case ']':
-		return bytes.Count(tok, []byte("[")) > bytes.Count(tok, []byte("]"))
+	case ']', ':':
+		return open("[", "]")
+	case ',', '}':
+		return open("{", "}")
+	case '(':
+		return strings.IndexByte("@!+?*", tok[len(tok)-1]) >= 0
+	case ')', '|':
+		return open("(", ")")
 	}
-	return bytes.Count(tok, []byte("{")) > bytes.Count(tok, []byte("}"))
+	return false
+}
+
+// quotedLen is the length quotedGoesOn reads, 0 where it reads none.
+func quotedLen(tok, b []byte, q string) int {
+	n, _ := quotedGoesOn(tok, b, q)
+	return n
+}
+
+// braceLed is the length of the brace group b starts with when it holds a
+// climb ({..,.}), so a token led by it is read whole; 0 otherwise.
+func braceLed(b []byte) int {
+	end := bytes.IndexByte(b[:min(len(b), 256)], '}')
+	if end < 0 || !bytes.Contains(b[:end], []byte("..")) {
+		return 0
+	}
+	for _, c := range b[1:end] {
+		if c <= ' ' || c == 0x7f || c == '\\' || c != ',' && c != '{' && strings.IndexByte(pathEnds, c) >= 0 {
+			return 0
+		}
+	}
+	return end + 1
+}
+
+// quotedGoesOn is the length of the quoted part q opens, quote marks
+// included, and the part, when the climb tok goes on through it and the part
+// holds a pattern character (../"*"/x, ../\"*\"/x JSON-escaped): the shell
+// joins the two into one word, and the check reads the part as a pattern,
+// which errs only toward a read outside. 0 where tok is no climb, or the
+// quote does not close on such a part.
+func quotedGoesOn(tok, b []byte, q string) (int, []byte) {
+	if !bytes.HasPrefix(tok, []byte("..")) {
+		return 0, nil
+	}
+	rest := b[len(q):min(len(b), len(q)+256)]
+	end := bytes.Index(rest, []byte(q))
+	if end <= 0 {
+		return 0, nil
+	}
+	part := rest[:end]
+	if !bytes.ContainsAny(part, "*?[") {
+		return 0, nil
+	}
+	for _, c := range part {
+		if c <= ' ' || c == 0x7f || c == '\\' || c == '"' || c == '\'' || c != '[' && c != ']' && strings.IndexByte(pathEnds, c) >= 0 {
+			return 0, nil
+		}
+	}
+	return len(q) + end + len(q), part
 }
 
 // homeGoesOn reports whether tok ends with $HOME or ${HOME} and next, the
@@ -1319,11 +1388,9 @@ func (sc *transcriptScan) climb(t string) (string, bool) {
 		return "", false
 	}
 	if strings.Contains(t, "{") {
-		forms, ok := expandBraces(t)
-		if !ok {
-			return fmt.Sprintf("the copy's transcript holds a climb whose braces expand past the %d paths the check reads, so it is not judged kept: %s", maxBraceForms, termsafe.Sanitize(t)), true
-		}
-		if len(forms) > 1 {
+		// Braces past maxBraceForms are left in, and judged by the literal
+		// prefix as syntax the check does not evaluate.
+		if forms, ok := expandBraces(t); ok && len(forms) > 1 {
 			for _, f := range forms {
 				if seen, ok := sc.climbForm(f, t); ok {
 					return seen, true
@@ -1345,7 +1412,7 @@ func (sc *transcriptScan) climbForm(a, t string) (string, bool) {
 	if seen, ok := sc.climbs[c]; ok {
 		return seen, seen != ""
 	}
-	if strings.ContainsAny(c, globChars) {
+	if strings.ContainsAny(c, patternChars) {
 		seen := sc.globClimb(t, c)
 		sc.climbs[c] = seen
 		return seen, seen != ""
@@ -1385,48 +1452,37 @@ func (sc *transcriptScan) outside(k int, rest string) bool {
 	return false
 }
 
-// globChars are the characters that make a path a shell pattern, which names
-// no file as written; a brace is expanded before (expandBraces).
+// globChars are the characters that make a path segment a shell pattern,
+// matched against a folder's names rather than looked up as written.
 const globChars = "*?["
 
+// patternChars are the characters that make a climb a shell pattern, judged by
+// what it matches (globClimb): the glob characters, a brace left unexpanded
+// and an extended pattern's parenthesis.
+const patternChars = "*?[{("
+
 // maxGlobEntries bounds the folder entries the check reads to judge one
-// climbing pattern, across every folder it is matched from. The walk never
-// enters the copy's own clone or brief folder, nor a folder off the way to a
-// store, so an honest pattern reads one run folder's entries (one per copy,
-// and the hidden tests) and the few of each sibling folder it names: ten
-// thousand is two orders above that for a run of tens of copies, and keeps
-// one pattern's walk to milliseconds. A pattern past it is broken, never kept.
+// climbing pattern outside the copy, and again inside its clone, across every
+// folder it is matched from. The outside walk never enters the copy's own
+// clone or brief folder, nor a folder off the way to a store, so an honest
+// pattern reads one run folder's entries (one per copy, and the hidden tests)
+// and the few of each sibling folder it names: ten thousand is two orders
+// above that for a run of tens of copies, and keeps one pattern's walk to
+// milliseconds. A pattern past it could not be examined.
 const maxGlobEntries = 10_000
 
 // maxGlobPatterns bounds the climbing patterns of one transcript the check
-// walks, so that every walk together reads at most a million entries, the
+// walks, so that every walk together reads at most a few million entries, the
 // order of the clone scan's own bound (maxScanEntries); an honest copy writes
-// a handful. A transcript past it is broken, never kept.
+// a handful. A pattern past it could not be examined.
 const maxGlobPatterns = 100
 
 // maxBraceForms bounds the paths one climb's braces expand to; a climb past it
-// is broken, never kept.
+// is judged by its literal prefix, as syntax the check does not evaluate.
 const maxBraceForms = 64
 
 // errGlobBound is a pattern's walk past maxGlobEntries.
 var errGlobBound = errors.New("the pattern matches past the entries the check reads")
-
-// exposure is what a climbing pattern's match outside the copy exposes, from
-// least to most.
-type exposure int
-
-const (
-	// exposesNothing: no match outside the copy, or only the run's own files
-	// beside the copies' folders in the hand-off store.
-	exposesNothing exposure = iota
-	// exposesUnclear: a match the same token also makes, read from a folder
-	// of the copy's own clone, or a folder that holds copies' folders: which
-	// the copy read cannot be told.
-	exposesUnclear
-	// exposesOther: a match only another copy's place holds (its brief or
-	// answer, a file only its clone holds, the hidden tests, the run's state).
-	exposesOther
-)
 
 // climbs is the clean climb c's count of leading ".." and the path after them.
 func climbs(c string) (int, string) {
@@ -1438,9 +1494,9 @@ func climbs(c string) (int, string) {
 	return k, rest
 }
 
-// expandBraces is the paths the shell's brace expansion makes of t, t alone
-// where it holds no brace with a comma at its top level; false past
-// maxBraceForms.
+// expandBraces is the paths the shell's brace expansion makes of t: a brace
+// holding a comma at its top level, or a sequence ({1..9}, {a..f}, with an
+// optional step); t alone where it holds neither; false past maxBraceForms.
 func expandBraces(t string) ([]string, bool) {
 	open, comma, depth := -1, false, 0
 	for i := 0; i < len(t); i++ {
@@ -1458,25 +1514,36 @@ func expandBraces(t string) ([]string, bool) {
 			if depth == 0 {
 				continue
 			}
-			if depth--; depth > 0 || !comma {
+			if depth--; depth > 0 {
 				continue
 			}
 			var alts []string
-			d, from := 0, open+1
-			for j := open + 1; j < i; j++ {
-				switch t[j] {
-				case '{':
-					d++
-				case '}':
-					d--
-				case ',':
-					if d == 0 {
-						alts = append(alts, t[from:j])
-						from = j + 1
+			if comma {
+				d, from := 0, open+1
+				for j := open + 1; j < i; j++ {
+					switch t[j] {
+					case '{':
+						d++
+					case '}':
+						d--
+					case ',':
+						if d == 0 {
+							alts = append(alts, t[from:j])
+							from = j + 1
+						}
 					}
 				}
+				alts = append(alts, t[from:i])
+			} else {
+				seq, isSeq, ok := braceSequence(t[open+1 : i])
+				if !isSeq {
+					continue
+				}
+				if !ok {
+					return nil, false
+				}
+				alts = seq
 			}
-			alts = append(alts, t[from:i])
 			var out []string
 			for _, a := range alts {
 				more, ok := expandBraces(t[:open] + a + t[i+1:])
@@ -1491,68 +1558,245 @@ func expandBraces(t string) ([]string, bool) {
 	return []string{t}, true
 }
 
-// globClimb judges the clean climb c, a pattern, by what its matches outside
-// the copy expose (exposure), from the copy's own folder in the hand-off
-// store and from the clone's root and each folder inside it as deep as the
-// climb needs, each apart, since the scan cannot tell the folder it ran in. A
-// match that exposes another copy's place read outside the copy, whatever
-// else the pattern matches; one only unclear leaves the token unexamined
-// (sc.unclear); a pattern that matches nothing outside (a copy in widget/ that
-// ran rm -f ../build/*.o) read nothing there. ** matches any number of
-// folders, within the same bound, and a walk past its bound is broken, naming
-// the bound.
+// braceSequenceRe is a brace sequence's body: two integers or two letters,
+// and an optional integer step.
+var braceSequenceRe = regexp.MustCompile(`^(?:(-?[0-9]+)\.\.(-?[0-9]+)|([a-zA-Z])\.\.([a-zA-Z]))(?:\.\.(-?[0-9]+))?$`)
+
+// braceSequence is what the brace body expands to as a sequence, whether it
+// is one, and false past maxBraceForms. An integer sequence whose either end
+// is written with a leading zero pads every number to the wider end.
+func braceSequence(body string) ([]string, bool, bool) {
+	m := braceSequenceRe.FindStringSubmatch(body)
+	if m == nil {
+		return nil, false, false
+	}
+	step := 1
+	if m[5] != "" {
+		s, err := strconv.Atoi(m[5])
+		if err != nil {
+			return nil, true, false
+		}
+		step = max(s, -s)
+		if step == 0 {
+			step = 1
+		}
+	}
+	var from, to, width int
+	letters := m[1] == ""
+	if letters {
+		from, to = int(m[3][0]), int(m[4][0])
+	} else {
+		a, errA := strconv.Atoi(m[1])
+		b, errB := strconv.Atoi(m[2])
+		if errA != nil || errB != nil {
+			return nil, true, false
+		}
+		from, to = a, b
+		for _, e := range []string{m[1], m[2]} {
+			if d := strings.TrimPrefix(e, "-"); len(d) > 1 && d[0] == '0' {
+				width = max(width, len(e))
+			}
+		}
+	}
+	n := (max(from, to)-min(from, to))/step + 1
+	if n > maxBraceForms {
+		return nil, true, false
+	}
+	dir := step
+	if to < from {
+		dir = -step
+	}
+	out := make([]string, 0, n)
+	for v, i := from, 0; i < n; v, i = v+dir, i+1 {
+		if letters {
+			out = append(out, string(rune(v)))
+		} else {
+			out = append(out, fmt.Sprintf("%0*d", width, v))
+		}
+	}
+	return out, true, true
+}
+
+// namedClasses are the POSIX classes a bracket expression may name, as the
+// characters path.Match reads in a class.
+var namedClasses = map[string]string{
+	"alnum":  "a-zA-Z0-9",
+	"alpha":  "a-zA-Z",
+	"digit":  "0-9",
+	"lower":  "a-z",
+	"upper":  "A-Z",
+	"space":  "\\ \t\n\r\v\f",
+	"xdigit": "0-9A-Fa-f",
+	"punct":  punctClass(),
+}
+
+// punctClass is every ASCII punctuation character, each escaped for a class.
+func punctClass() string {
+	var b strings.Builder
+	for c := byte('!'); c <= '~'; c++ {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// shellSegment is the shell pattern seg as path.Match reads it: a class's
+// leading ! negates it as ^ does, and a named class ([:alnum:]) is spelled
+// out. It is false where seg holds syntax the check does not evaluate exactly:
+// a brace left unexpanded, an extended pattern's parenthesis or bar, a class
+// that does not close, an unknown named class, an equivalence class or a
+// collating symbol.
+func shellSegment(seg string) (string, bool) {
+	if strings.ContainsAny(seg, "{}()|") {
+		return "", false
+	}
+	var b strings.Builder
+	for i := 0; i < len(seg); i++ {
+		c := seg[i]
+		if c != '[' {
+			b.WriteByte(c)
+			continue
+		}
+		j := i + 1
+		b.WriteByte('[')
+		if j < len(seg) && (seg[j] == '!' || seg[j] == '^') {
+			b.WriteByte('^')
+			j++
+		}
+		first, closed := true, false
+		for ; j < len(seg); j++ {
+			switch {
+			case seg[j] == ']' && !first:
+				closed = true
+			case seg[j] == ']':
+				b.WriteString(`\]`)
+			case seg[j] == '[' && j+1 < len(seg) && strings.IndexByte(":=.", seg[j+1]) >= 0:
+				end := strings.Index(seg[j+2:], string(seg[j+1])+"]")
+				if seg[j+1] != ':' || end < 0 {
+					return "", false
+				}
+				spelled, ok := namedClasses[seg[j+2:j+2+end]]
+				if !ok {
+					return "", false
+				}
+				b.WriteString(spelled)
+				j += 2 + end + 1
+			default:
+				b.WriteByte(seg[j])
+			}
+			if closed {
+				break
+			}
+			first = false
+		}
+		if !closed {
+			return "", false
+		}
+		b.WriteByte(']')
+		i = j
+	}
+	out := b.String()
+	if _, err := path.Match(out, ""); err != nil {
+		return "", false
+	}
+	return out, true
+}
+
+// shellPattern is the clean climb rest pattern, split into its segments as
+// path.Match reads them, and whether the check evaluates it exactly. Where it
+// does not, it is its literal prefix: the segments before the first it does
+// not evaluate, and that segment up to its first unevaluated character with
+// an extended pattern's operator dropped and * after it, a pattern that
+// matches every path the form could, and more.
+func shellPattern(rest string) ([]string, bool) {
+	segs := strings.Split(rest, "/")
+	out := make([]string, 0, len(segs))
+	for _, s := range segs {
+		if s == "**" {
+			out = append(out, s)
+			continue
+		}
+		if m, ok := shellSegment(s); ok {
+			out = append(out, m)
+			continue
+		}
+		pre := s[:strings.IndexAny(s+"[", "[{}()|")]
+		if i := strings.IndexAny(s, "()"); i >= 0 && len(pre) == i {
+			pre = strings.TrimRight(pre, "@!+?*")
+		}
+		if m, ok := shellSegment(pre); ok && !strings.HasSuffix(m, "*") {
+			return append(out, m+"*"), false
+		} else if ok {
+			return append(out, m), false
+		}
+		return append(out, "*"), false
+	}
+	return out, true
+}
+
+// globClimb judges the clean climb c, a pattern, written t, by what it
+// matches. The scan cannot tell the folder a pattern ran in, so it is matched
+// outside the copy, from the copy's own folder in the hand-off store and from
+// the clone's root and each folder inside it as deep as the climb needs, and
+// inside the clone, from every folder of it deep enough for the climb. A
+// pattern that matches outside and can match nothing inside can only have read
+// outside the copy, and is broken; one that matches both, or whose walk
+// passes its bound, leaves the token unexamined (sc.unclear); one that matches
+// nothing outside (a copy in widget/ that ran rm -f ../build/*.o) read nothing
+// there. Syntax the check does not evaluate exactly is judged by its literal
+// prefix (shellPattern) and is never kept: broken where that prefix matches
+// outside and cannot match inside, and unexamined otherwise.
 func (sc *transcriptScan) globClimb(t, c string) string {
-	k, pattern := climbs(c)
+	k, rest := climbs(c)
 	if k == 0 {
 		return ""
 	}
 	if sc.globs++; sc.globs > maxGlobPatterns {
-		return fmt.Sprintf("the copy's transcript holds more than the %d climbing patterns the check walks, so it is not judged kept: %s", maxGlobPatterns, termsafe.Sanitize(t))
+		sc.unclearToken(c, fmt.Sprintf("it holds more than the %d climbing path patterns the check walks: %s", maxGlobPatterns, termsafe.Sanitize(t)))
+		return ""
+	}
+	segs, exact := shellPattern(rest)
+	unread := func(err error) string {
+		if errors.Is(err, errGlobBound) {
+			sc.unclearToken(c, fmt.Sprintf("a climbing pattern matches past the %d folder entries the check reads: %s", maxGlobEntries, termsafe.Sanitize(t)))
+		}
+		// Otherwise the check's deadline passed: the caller reads the rule
+		// as unexamined, naming the deadline.
+		return ""
 	}
 	budget := maxGlobEntries
-	worst := exposesNothing
-	judge := func(base, read string) (string, bool) {
-		e, err := sc.globOutside(base, pattern, &budget)
-		switch {
-		case errors.Is(err, errGlobBound):
-			return fmt.Sprintf("the copy's transcript holds a climbing pattern that matches past the %d folder entries the check reads, so it is not judged kept: %s", maxGlobEntries, termsafe.Sanitize(t)), true
-		case err != nil:
-			// The check's deadline passed: the caller reads the rule as
-			// unexamined, naming the deadline.
-			return "", true
-		case e == exposesOther:
-			return read + termsafe.Sanitize(t), true
-		}
-		worst = max(worst, e)
-		return "", false
+	where, err := sc.globOutside(k, segs, &budget)
+	if err != nil {
+		return unread(err)
 	}
-	for _, own := range sc.handoffs {
-		if seen, done := judge(up(own, k), "the copy's transcript climbs out of its own brief folder into another copy's in the run's hand-off store: "); done {
-			return seen
+	if where == "" {
+		if !exact {
+			sc.unclearToken(c, "a climb holds shell syntax the check does not evaluate exactly: "+termsafe.Sanitize(t))
 		}
+		return ""
 	}
-	for j := 1; j <= k; j++ {
-		if k-j > sc.scan.heights[""] {
-			continue
-		}
-		if seen, done := judge(up(sc.clone, j), "the copy's transcript climbs out of its own clone into the run's clone store: "); done {
-			return seen
-		}
+	budget = maxGlobEntries
+	in, err := sc.globInside(k, segs, &budget)
+	switch {
+	case err != nil && !errors.Is(err, errGlobBound):
+		return ""
+	case err != nil || in:
+		sc.unclearToken(c, "a climbing pattern matches outside the copy and could match inside its own clone, from a folder the check cannot tell it ran in: "+termsafe.Sanitize(t))
+		return ""
 	}
-	if worst == exposesUnclear {
-		sc.unclearToken(c, t)
-	}
-	return ""
+	return where + termsafe.Sanitize(t)
 }
 
-// unclearToken records the climb c, written t, as a token whose read cannot be
-// told.
-func (sc *transcriptScan) unclearToken(c, t string) {
+// unclearToken records the climb c as a token whose read cannot be told, why
+// naming the first.
+func (sc *transcriptScan) unclearToken(c, why string) {
 	if sc.unclear == nil {
 		sc.unclear = map[string]bool{}
 	}
 	if !sc.unclear[c] && sc.example == "" {
-		sc.example = termsafe.Sanitize(t)
+		sc.example = why
 	}
 	sc.unclear[c] = true
 }
@@ -1565,110 +1809,148 @@ func up(dir string, n int) string {
 	return dir
 }
 
-// globOutside is the most that pattern, a clean slash-separated path of
-// pattern segments, matched one segment at a time from the folder base,
-// exposes outside the copy (exposure). base is taken as written, never as a
-// pattern, so a home or clone path holding a pattern's own characters still
-// matches. The walk enters only folders on the way to a store or in one,
-// never the copy's own clone or brief folder, where nothing matched is
-// outside the copy; it reads at most *budget entries, returning errGlobBound
-// past them. As a shell's, a * or ? does not match a leading dot, and a **
-// segment matches any number of folders, links not followed. A malformed
-// pattern matches nothing, as a shell leaves it unexpanded.
-func (sc *transcriptScan) globOutside(base, pattern string, budget *int) (exposure, error) {
-	segs := strings.Split(pattern, "/")
-	for _, s := range segs {
-		if _, err := path.Match(s, ""); err != nil {
-			return exposesNothing, nil
+// globOutside matches segs from the copy's own folder in the hand-off store
+// climbed k times, then from the clone climbed once to k times (each a folder
+// it may have run in, as deep as the climb needs), and returns the detail's
+// lead for the first that matches an existing path outside the copy
+// (outsideMatch), "" for none. It reads at most *budget entries.
+func (sc *transcriptScan) globOutside(k int, segs []string, budget *int) (string, error) {
+	w := globWalker{ctx: sc.ctx, budget: budget, enter: sc.mayHoldOutside, accept: sc.outsideMatch}
+	for _, own := range sc.handoffs {
+		if hit, err := w.walk(up(own, k), segs); err != nil || hit {
+			return "the copy's transcript climbs out of its own brief folder into another copy's in the run's hand-off store: ", err
 		}
 	}
-	return sc.globWalk(base, segs, budget)
+	for j := 1; j <= k; j++ {
+		if k-j > sc.scan.heights[""] {
+			continue
+		}
+		if hit, err := w.walk(up(sc.clone, j), segs); err != nil || hit {
+			return "the copy's transcript climbs out of its own clone into the run's clone store: ", err
+		}
+	}
+	return "", nil
 }
 
-// globEntry is one folder entry a pattern segment matched.
+// globInside reports whether segs, from some folder of the clone with
+// folders at least k deep below it (where k climbs from a folder that deep
+// stay inside the clone), match an existing path inside it. It reads at most
+// *budget entries.
+func (sc *transcriptScan) globInside(k int, segs []string, budget *int) (bool, error) {
+	clone := lowerASCII(sc.clone)
+	inClone := func(p string) bool { return under(lowerASCII(p), clone) }
+	w := globWalker{ctx: sc.ctx, budget: budget, enter: inClone, accept: inClone}
+	var from []string
+	for a, h := range sc.scan.heights {
+		if h >= k {
+			from = append(from, a)
+		}
+	}
+	slices.Sort(from)
+	for _, a := range from {
+		if hit, err := w.walk(path.Join(sc.clone, a), segs); err != nil || hit {
+			return hit, err
+		}
+	}
+	return false, nil
+}
+
+// globWalker matches a pattern's segments one at a time from a folder taken
+// as written, never as a pattern, so a home or clone path holding a pattern's
+// own characters still matches. It enters only the folders enter holds and
+// reports whether it reached an existing path accept holds, reading at most
+// *budget entries (errGlobBound past them). As a shell's, a * or ? does not
+// match a leading dot, a segment led by a dot also matches . and .. (as bash
+// before 5.2 does), and a ** segment matches any number of folders, links not
+// followed.
+type globWalker struct {
+	ctx           context.Context
+	budget        *int
+	enter, accept func(p string) bool
+}
+
+// globEntry is one path a pattern segment matched.
 type globEntry struct {
 	path string
 	dir  bool
 }
 
-// globWalk matches segs from the folder dir (globOutside).
-func (sc *transcriptScan) globWalk(dir string, segs []string, budget *int) (exposure, error) {
-	if sc.ctx != nil && sc.ctx.Err() != nil {
-		return exposesNothing, sc.ctx.Err()
+// walk matches segs from the folder dir.
+func (w globWalker) walk(dir string, segs []string) (bool, error) {
+	if w.ctx != nil && w.ctx.Err() != nil {
+		return false, w.ctx.Err()
 	}
-	if !sc.mayHoldOutside(dir) {
-		return exposesNothing, nil
+	if !w.enter(dir) {
+		return false, nil
 	}
 	seg, rest := segs[0], segs[1:]
-	worst := exposesNothing
 	if seg == "**" {
 		if len(rest) > 0 {
-			e, err := sc.globWalk(dir, rest, budget)
-			if err != nil || e == exposesOther {
-				return e, err
+			if hit, err := w.walk(dir, rest); err != nil || hit {
+				return hit, err
 			}
-			worst = e
 		}
-		ents, err := sc.globRead(dir, func(name string) bool { return name[0] != '.' }, budget)
+		ents, err := w.read(dir, func(name string) bool { return name[0] != '.' })
 		if err != nil {
-			return exposesNothing, err
+			return false, err
 		}
 		for _, en := range ents {
-			if len(rest) == 0 {
-				if worst = max(worst, sc.exposes(en.path)); worst == exposesOther {
-					return worst, nil
-				}
+			if len(rest) == 0 && w.accept(en.path) {
+				return true, nil
 			}
 			if en.dir {
-				e, err := sc.globWalk(en.path, segs, budget)
-				if err != nil || e == exposesOther {
-					return e, err
+				if hit, err := w.walk(en.path, segs); err != nil || hit {
+					return hit, err
 				}
-				worst = max(worst, e)
 			}
 		}
-		return worst, nil
+		return false, nil
 	}
 	var next []globEntry
 	if !strings.ContainsAny(seg, globChars) {
-		if *budget--; *budget < 0 {
-			return exposesNothing, errGlobBound
+		if *w.budget--; *w.budget < 0 {
+			return false, errGlobBound
 		}
 		p := path.Join(dir, seg)
 		if _, err := os.Lstat(filepath.FromSlash(p)); err != nil {
-			return exposesNothing, nil
+			return false, nil
 		}
 		next = []globEntry{{path: p}}
 	} else {
-		ents, err := sc.globRead(dir, func(name string) bool {
-			ok, _ := path.Match(seg, name)
-			return ok && (name[0] != '.' || seg[0] == '.')
-		}, budget)
-		if err != nil {
-			return exposesNothing, err
-		}
-		next = ents
-	}
-	for _, en := range next {
-		e := exposesNothing
-		if len(rest) == 0 {
-			e = sc.exposes(en.path)
-		} else {
-			var err error
-			if e, err = sc.globWalk(en.path, rest, budget); err != nil {
-				return exposesNothing, err
+		if seg[0] == '.' {
+			if ok, _ := path.Match(seg, "."); ok {
+				next = append(next, globEntry{path: dir})
+			}
+			if ok, _ := path.Match(seg, ".."); ok {
+				next = append(next, globEntry{path: path.Dir(dir)})
 			}
 		}
-		if worst = max(worst, e); worst == exposesOther {
-			return worst, nil
+		ents, err := w.read(dir, func(name string) bool {
+			ok, _ := path.Match(seg, name)
+			return ok && (name[0] != '.' || seg[0] == '.')
+		})
+		if err != nil {
+			return false, err
+		}
+		next = append(next, ents...)
+	}
+	for _, en := range next {
+		if len(rest) == 0 {
+			if w.accept(en.path) {
+				return true, nil
+			}
+			continue
+		}
+		if hit, err := w.walk(en.path, rest); err != nil || hit {
+			return hit, err
 		}
 	}
-	return worst, nil
+	return false, nil
 }
 
-// globRead is the entries of the folder dir whose names keep holds, each
-// entry read charged to *budget; none where dir cannot be read.
-func (sc *transcriptScan) globRead(dir string, keep func(name string) bool, budget *int) ([]globEntry, error) {
+// read is the entries of the folder dir whose names keep holds, each entry
+// read charged to the budget; none where dir cannot be read.
+func (w globWalker) read(dir string, keep func(name string) bool) ([]globEntry, error) {
 	f, err := os.Open(filepath.FromSlash(dir))
 	if err != nil {
 		return nil, nil
@@ -1678,7 +1960,7 @@ func (sc *transcriptScan) globRead(dir string, keep func(name string) bool, budg
 	for {
 		ents, err := f.ReadDir(256)
 		for _, e := range ents {
-			if *budget--; *budget < 0 {
+			if *w.budget--; *w.budget < 0 {
 				return nil, errGlobBound
 			}
 			if keep(e.Name()) {
@@ -1691,64 +1973,25 @@ func (sc *transcriptScan) globRead(dir string, keep func(name string) bool, budg
 	}
 }
 
-// exposes is what the existing path p, a match of a climbing pattern, exposes
-// outside the copy, the most of any store spelling it is in.
-func (sc *transcriptScan) exposes(p string) exposure {
+// outsideMatch reports whether the existing path p, a match of a climbing
+// pattern, is outside the copy: in a store, outside the copy's own clone and
+// brief folder, and not one of the run's own files beside the copies' folders
+// in the hand-off store (its launch lock and holder, the launcher's).
+func (sc *transcriptScan) outsideMatch(p string) bool {
 	lp := lowerASCII(p)
-	worst := exposesNothing
 	for _, f := range sc.forms {
-		if f.outsideOwn(lp) {
-			worst = max(worst, sc.exposesIn(f, p))
+		if !f.outsideOwn(lp) {
+			continue
+		}
+		if f.place != placeHandoff {
+			return true
+		}
+		segs := strings.Split(strings.Trim(lp[min(len(lp), len(f.store)):], "/"), "/")
+		if len(segs) < 2 || aliasRe.MatchString(segs[1]) {
+			return true
 		}
 	}
-	return worst
-}
-
-// exposesIn is what p, in f's place outside the copy's own folder there,
-// exposes. In the hand-off store, a path in another copy's folder is its
-// brief or answer; the run's own files beside the copies' folders (its launch
-// lock and holder) are the launcher's; a copy's folder itself, a run's
-// folder, and the store itself hold copies' folders, and expose them only to
-// a read that recurses. In the clone store, a path in a sibling clone is
-// unclear where the copy's own clone holds the same path (both are clones of
-// one commit) and another copy's otherwise; the hidden tests' folder for a
-// task and what it holds are the hidden tests; the folders above them and
-// above the clones hold copies' places. The run's state is never a copy's.
-func (sc *transcriptScan) exposesIn(f storeForm, p string) exposure {
-	var segs []string
-	if rel := strings.Trim(p[min(len(p), len(f.store)):], "/"); rel != "" {
-		segs = strings.Split(lowerASCII(rel), "/")
-	}
-	switch f.place {
-	case placeState:
-		return exposesOther
-	case placeHandoff:
-		switch {
-		case len(segs) <= 1:
-			return exposesUnclear
-		case !aliasRe.MatchString(segs[1]):
-			return exposesNothing
-		case len(segs) == 2:
-			return exposesUnclear
-		}
-		return exposesOther
-	}
-	switch {
-	case len(segs) <= 1:
-		return exposesUnclear
-	case segs[0] == "hidden":
-		if len(segs) == 2 {
-			return exposesUnclear
-		}
-		return exposesOther
-	case !aliasRe.MatchString(segs[1]):
-		return exposesOther
-	}
-	rel := strings.Join(strings.Split(strings.Trim(p[min(len(p), len(f.store)):], "/"), "/")[2:], "/")
-	if _, err := os.Lstat(filepath.Join(filepath.FromSlash(sc.clone), filepath.FromSlash(rel))); err == nil {
-		return exposesUnclear
-	}
-	return exposesOther
+	return false
 }
 
 // mayHoldOutside reports whether the folder dir, or a path below it, can be in

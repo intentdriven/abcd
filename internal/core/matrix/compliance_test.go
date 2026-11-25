@@ -713,14 +713,12 @@ func TestOwnCopyOnlyJudgesAGlobByItsLiteralPrefix(t *testing.T) {
 	for cmd, want := range map[string]ComplianceState{
 		"cd " + own + " && cat ../*/" + launchDocName:                StateBroken,
 		"cd " + own + " && cat ../copy_?*/" + launchDocName:          StateBroken,
-		"cd " + c.clone + " && cat ../*/README.md":                   StateUnexamined,
+		"cd " + c.clone + " && cat ../*/README.md":                   StateBroken,
 		"cd " + filepath.Join(c.clone, "widget") + " && cat ../*.md": StateKept,
 		// A pattern that matches nothing outside the copy reads nothing there.
-		"cd " + filepath.Join(c.clone, "widget") + " && rm -f ../build/*.o": StateKept,
-		"cd " + filepath.Join(c.clone, "widget") + " && ls ../*.go":         StateKept,
-		// A sibling clone holds the same commit: a match there at a path
-		// the copy's own clone holds too cannot be told from a read of it.
-		"cd " + filepath.Join(c.clone, "widget") + " && cat ../../*/widget/widget.go": StateUnexamined,
+		"cd " + filepath.Join(c.clone, "widget") + " && rm -f ../build/*.o":           StateKept,
+		"cd " + filepath.Join(c.clone, "widget") + " && ls ../*.go":                   StateKept,
+		"cd " + filepath.Join(c.clone, "widget") + " && cat ../../*/widget/widget.go": StateBroken,
 	} {
 		c.in.Transcript = bash(cmd)
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != want {
@@ -752,20 +750,20 @@ func globHandoff(t *testing.T, c *complianceCase, parent string) (string, func(c
 	}
 }
 
-// TestOwnCopyOnlyJudgesAGlobsOutsideMatchesFirst: what a climbing pattern
-// matches outside the copy's own clone and its own brief folder is judged
-// first and apart, so a pattern that matches another copy's files read them,
-// though from some folder of the clone it matches a file inside it too; one
-// holding ** is judged by the folder before its first pattern character, since
-// a shell may expand it across any number of folders. A pattern that matches
+// TestOwnCopyOnlyJudgesAGlobsOutsideMatchesFirst: a pattern that matches
+// another copy's files is never kept, though from some folder of the clone it
+// matches a file inside it too: then which it read cannot be told, and the
+// copy is unexamined; ** matches any number of folders. A pattern that matches
 // nothing outside the copy stayed in it.
 func TestOwnCopyOnlyJudgesAGlobsOutsideMatchesFirst(t *testing.T) {
 	c := newComplianceCase(t, func(r *gittest.Repo) { r.Write("docs/guide.md", "a guide\n") })
 	own, bash := globHandoff(t, &c, t.TempDir())
 	widget := filepath.Join(c.clone, "widget")
 	for cmd, want := range map[string]ComplianceState{
-		"cd " + own + " && cat ../*/*.md":           StateBroken,
-		"cd " + c.clone + " && cat ../*/*":          StateBroken,
+		// docs/guide.md: from the clone's root the same pattern reads
+		// inside it, so which it read cannot be told.
+		"cd " + own + " && cat ../*/*.md":           StateUnexamined,
+		"cd " + c.clone + " && cat ../*/*":          StateUnexamined,
 		"cd " + c.clone + " && ls ../*":             StateUnexamined,
 		"cd " + c.clone + " && cat ../**/widget.go": StateUnexamined,
 		"cd " + widget + " && rm -f ../build/*.o":   StateKept,
@@ -813,7 +811,7 @@ func TestOwnCopyOnlyJoinsAPatternToItsFolderAsWritten(t *testing.T) {
 // TestOwnCopyOnlyBoundsWhatAPatternWalks: the check reads at most
 // maxGlobEntries folder entries for one pattern and judges at most
 // maxGlobPatterns patterns of one transcript, and a copy past either bound is
-// broken, naming the bound, never kept on a walk it did not finish.
+// unexamined, naming the bound, never kept on a walk it did not finish.
 func TestOwnCopyOnlyBoundsWhatAPatternWalks(t *testing.T) {
 	t.Run("entries", func(t *testing.T) {
 		c := newComplianceCase(t)
@@ -825,8 +823,8 @@ func TestOwnCopyOnlyBoundsWhatAPatternWalks(t *testing.T) {
 		}
 		c.in.Transcript = append(c.in.Transcript, []byte("cd "+c.clone+" && ls ../*/*.none\n")...)
 		got := ruleOf(t, c.check(t), RuleOwnCopyOnly)
-		if got.State != StateBroken || !strings.Contains(got.Detail, fmt.Sprint(maxGlobEntries)) {
-			t.Fatalf("a pattern past the entries the check reads: %+v; want broken naming %d", got, maxGlobEntries)
+		if got.State != StateUnexamined || !strings.Contains(got.Detail, fmt.Sprint(maxGlobEntries)) {
+			t.Fatalf("a pattern past the entries the check reads: %+v; want unexamined naming %d", got, maxGlobEntries)
 		}
 	})
 	t.Run("patterns", func(t *testing.T) {
@@ -842,22 +840,21 @@ func TestOwnCopyOnlyBoundsWhatAPatternWalks(t *testing.T) {
 		}
 		c.in.Transcript = fmt.Appendf(c.in.Transcript, "ls ../none%d/*.x\n", maxGlobPatterns)
 		got := ruleOf(t, c.check(t), RuleOwnCopyOnly)
-		if got.State != StateBroken || !strings.Contains(got.Detail, fmt.Sprint(maxGlobPatterns)) {
-			t.Fatalf("a transcript past the patterns the check judges: %+v; want broken naming %d", got, maxGlobPatterns)
+		if got.State != StateUnexamined || !strings.Contains(got.Detail, fmt.Sprint(maxGlobPatterns)) {
+			t.Fatalf("a transcript past the patterns the check judges: %+v; want unexamined naming %d", got, maxGlobPatterns)
 		}
 	})
 }
 
 // TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes: the scan cannot tell the
-// folder a pattern ran in, so a climbing pattern is judged by what its matches
-// outside the copy expose. A match inside another copy's hand-off folder (its
-// brief or answer), or a file only a sibling clone holds, read outside the
-// copy; a match in a sibling clone at a path the copy's own clone holds too
-// (sibling clones are clones of the same commit) leaves the read unexamined,
-// as does a copy's folder itself; the run's own files beside the copies'
-// folders, and a place that does not exist, expose nothing.
+// folder a pattern ran in. A pattern that matches outside the copy (another
+// copy's brief or answer, a sibling clone's file) and that no folder of the
+// clone deep enough would match inside read outside the copy; one that would
+// (widget/README.md answers ../*/README.md from widget/) leaves the read
+// unexamined; the run's own files beside the copies' folders, and a place
+// that does not exist, match nothing outside.
 func TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes(t *testing.T) {
-	c := newComplianceCase(t)
+	c := newComplianceCase(t, func(r *gittest.Repo) { r.Write("widget/README.md", "the widget\n") })
 	own, bash := globHandoff(t, &c, t.TempDir())
 	if err := os.WriteFile(filepath.Join(filepath.Dir(own), launchLockName), nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -879,7 +876,7 @@ func TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes(t *testing.T) {
 		"a tsconfig's ../shared/**/* the copy read":      {tsconfig, StateKept},
 		"../*.lock from the brief folder":                {bash("cd " + own + " && cat ../*.lock"), StateKept},
 		"ls ../* beside the run's launch.lock":           {bash("cd " + own + " && ls ../*"), StateUnexamined},
-		"cat ../*/*.md from the brief folder":            {bash("cd " + own + " && cat ../*/*.md"), StateBroken},
+		"cat ../*/*.md from the brief folder":            {bash("cd " + own + " && cat ../*/*.md"), StateUnexamined},
 		"cat ../**/document.md from the brief folder":    {bash("cd " + own + " && cat ../**/" + launchDocName), StateBroken},
 		"cat ../**/widget.go, mirrored in its own clone": {bash("cd " + own + " && cat ../**/widget.go"), StateUnexamined},
 		"a file only a sibling clone holds":              {bash("cd " + c.clone + " && cat ../*/answer.txt"), StateBroken},
@@ -891,5 +888,64 @@ func TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes(t *testing.T) {
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
 			t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
 		}
+	}
+}
+
+// TestOwnCopyOnlyReadsWhatOnlyAReadOutsideCouldMatch: a climbing pattern that
+// matches outside the copy and, from no folder of its clone deep enough for
+// the climb, anything inside it can only have read outside, so the copy is
+// broken, however the shell spells it (a sequence brace, a negated or named
+// class, a dot segment that matches . and .., a brace or a quote around the
+// climb). One that could also have read inside the clone, or whose walk
+// passes its bound, is unexamined; syntax the check does not evaluate
+// exactly is never kept; and an unexamined copy is set apart, never counted
+// with the copies whose blinding held.
+func TestOwnCopyOnlyReadsWhatOnlyAReadOutsideCouldMatch(t *testing.T) {
+	c := newComplianceCase(t, func(r *gittest.Repo) { r.Write("docs/guide/notes.md", "notes\n") })
+	own, bash := globHandoff(t, &c, t.TempDir())
+	sibling := cloneDir(c.store, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}))
+	for name, data := range map[string]string{"answer.txt": "a sibling's own work\n", "new.go": "package sibling\n"} {
+		if err := os.WriteFile(filepath.Join(sibling, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(sibling, "bulk"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range maxGlobEntries + 1 {
+		if err := os.WriteFile(filepath.Join(sibling, "bulk", fmt.Sprintf("f%05d", i)), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	guide, widget := filepath.Join(c.clone, "docs", "guide"), filepath.Join(c.clone, "widget")
+	for name, tc := range map[string]struct {
+		cmd  string
+		want ComplianceState
+	}{
+		"sequence braces":                               {"cd " + own + " && cat ../copy_{0..9}*/document.md ../copy_{a..f}*/document.md", StateBroken},
+		"a class negated with !":                        {"cd " + own + " && cat ../[!x]*/document.md", StateBroken},
+		"a named class":                                 {"cd " + own + " && cat ../[[:alnum:]]*/document.md", StateBroken},
+		"a dot segment":                                 {"cd " + own + " && cat ../.*/*/document.md", StateBroken},
+		"a brace around the climb":                      {"cd " + c.clone + " && cat {..,.}/*/answer.txt", StateBroken},
+		"a quoted pattern":                              {"cd " + c.clone + ` && cat ../\"*\"/answer.txt ../'*'/answer.txt`, StateBroken},
+		"an extended pattern":                           {"cd " + own + " && cat ../!(x)/document.md", StateUnexamined},
+		"ls ../*/*.md two folders deep":                 {"cd " + guide + " && ls ../*/*.md", StateUnexamined},
+		"ls ../*/*.go where the sibling's tree differs": {"cd " + widget + " && ls ../*/*.go", StateUnexamined},
+		"../**/x past the bound":                        {"cd " + widget + " && cat ../**/absent.txt", StateUnexamined},
+	} {
+		c.in.Transcript = bash(tc.cmd)
+		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
+			t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
+		}
+	}
+	c.in.Transcript = bash("cd " + guide + " && ls ../*/*.md")
+	got := c.check(t)
+	if v := got.verdict(); v != StatusUnexamined {
+		t.Fatalf("an unclear pattern gives the verdict %q; want unexamined", v)
+	}
+	tr := fullTrial()
+	tr.Status = StatusPassed
+	if tr = got.apply(tr); tr.Status != StatusUnexamined || tr.Passed() || !tr.Apart() {
+		t.Fatalf("an unexamined copy counts: status %s, passed %v, apart %v", tr.Status, tr.Passed(), tr.Apart())
 	}
 }
