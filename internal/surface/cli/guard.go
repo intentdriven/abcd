@@ -261,9 +261,21 @@ func newGuardHookCommand() *cobra.Command {
 			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
 			"which git ignores) are written silently. A file call naming no path, a\n" +
 			"relative path with no absolute session directory, or a count that cannot\n" +
-			"be made, lets the write run and warns loudly. A call through\n" +
-			"any other tool never reaches the guard: a command a tool from another\n" +
-			"extension runs is neither checked nor warned about. That is the guard's\n" +
+			"be made, lets the write run and warns loudly.\n\n" +
+			"A sub-agent's write is held until the sub-agent has read the conventions\n" +
+			"file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd\n" +
+			"manages whose rules are on. A write is a call of one of the file-writing\n" +
+			"tools, or a shell line naming git commit, merge, rebase, cherry-pick,\n" +
+			"revert, am, pull or push. The host's payload names the sub-agent, and the\n" +
+			"sub-agent's own transcript is read once: a call in it that names the file\n" +
+			"and writes nothing is a reading, and one that names the brief of a build's\n" +
+			"lane stands for it. Without one the write is refused with the host's deny,\n" +
+			"whose reason names the file, where abcd looked for it and the read to make.\n" +
+			"The session's own calls, abcd's cold-reading agents and a drive's stage are\n" +
+			"never held, and what cannot be judged is not held: the sub-agent's stop\n" +
+			"says so.\n\n" +
+			"A call through any other tool never reaches the guard: a command a tool from\n" +
+			"another extension runs is neither checked nor warned about. That is the guard's\n" +
 			"standing scope, not a degradation, and the guard: line of abcd ahoy does\n" +
 			"not report it.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
@@ -407,7 +419,12 @@ func guardHookDecide(cmd *cobra.Command) error {
 	}
 	// A file the host's own tools write is judged by the occupancy of the
 	// working tree it lands in, not the registry (iss-2610280051498465).
+	// A sub-agent's is held first, until it has read the conventions
+	// (spc-2611251757228271).
 	if isFileWriteTool(in.ToolName) {
+		if err := subagentHold(in, orProcessDir(in.Cwd)); err != nil {
+			return err
+		}
 		return fileWriteGate(cmd, in.ToolName, in.Cwd, in.ToolInput.FilePath, in.ToolInput.NotebookPath)
 	}
 	// The manifest scopes this hook to the shell, question and file-writing
@@ -423,12 +440,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 
 	// The payload names the session's working directory; fall back to the
 	// process cwd only when it does not, exactly as the other hooks do.
-	cwd := in.Cwd
-	if cwd == "" {
-		if wd, err := os.Getwd(); err == nil {
-			cwd = wd
-		}
-	}
+	cwd := orProcessDir(in.Cwd)
 	// The repository roots are asked first, git bound to the hook's git
 	// deadline: every later git call reads the configuration this call
 	// reads, so a git that cannot answer here is told in seconds, not at the
@@ -447,6 +459,14 @@ func guardHookDecide(cmd *cobra.Command) error {
 		}
 	}
 	cancel()
+	// A sub-agent's commit, or the sending of one, is held until it has read
+	// the conventions (spc-2611251757228271). Only a sub-agent's command that
+	// names one of the held git commands asks.
+	if in.AgentID != "" && len(guard.RecordActs(candidate)) > 0 {
+		if err := subagentHold(in, cwd); err != nil {
+			return err
+		}
+	}
 	// The away mode's created-branch recorder runs before the registry
 	// loads and refuses nothing, so the registry's state never decides
 	// whether a branch the session cuts is seen as its own
@@ -665,7 +685,14 @@ type guardHookInput struct {
 	SessionID string `json:"session_id"`
 	Cwd       string `json:"cwd"`
 	ToolName  string `json:"tool_name"`
-	ToolInput struct {
+	// AgentID and AgentType name the sub-agent the call is made inside, and are
+	// absent from the session's own calls; TranscriptPath is the session's
+	// transcript, beside which its sub-agents' are kept. The hold on a
+	// sub-agent's writes reads them (guard_subagent.go).
+	AgentID        looseString `json:"agent_id"`
+	AgentType      looseString `json:"agent_type"`
+	TranscriptPath looseString `json:"transcript_path"`
+	ToolInput      struct {
 		Command string `json:"command"`
 		// Workdir is the per-call working directory a host's shell tool may
 		// carry beside the command (opencode's bash tool names it `workdir`).

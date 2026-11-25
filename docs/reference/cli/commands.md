@@ -2736,9 +2736,23 @@ so a linked worktree, a checkout one session or none works in, a path in no
 checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
 which git ignores) are written silently. A file call naming no path, a
 relative path with no absolute session directory, or a count that cannot
-be made, lets the write run and warns loudly. A call through
-any other tool never reaches the guard: a command a tool from another
-extension runs is neither checked nor warned about. That is the guard's
+be made, lets the write run and warns loudly.
+
+A sub-agent's write is held until the sub-agent has read the conventions
+file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd
+manages whose rules are on. A write is a call of one of the file-writing
+tools, or a shell line naming git commit, merge, rebase, cherry-pick,
+revert, am, pull or push. The host's payload names the sub-agent, and the
+sub-agent's own transcript is read once: a call in it that names the file
+and writes nothing is a reading, and one that names the brief of a build's
+lane stands for it. Without one the write is refused with the host's deny,
+whose reason names the file, where abcd looked for it and the read to make.
+The session's own calls, abcd's cold-reading agents and a drive's stage are
+never held, and what cannot be judged is not held: the sub-agent's stop
+says so.
+
+A call through any other tool never reaches the guard: a command a tool from
+another extension runs is neither checked nor warned about. That is the guard's
 standing scope, not a degradation, and the guard: line of abcd ahoy does
 not report it.
 

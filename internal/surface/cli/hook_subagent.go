@@ -37,6 +37,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -128,6 +129,7 @@ func newSubagentStopCommand() *cobra.Command {
 						diagnosticLine(cmd.ErrOrStderr(),
 							"abcd history: could not record the sub-agent payload gap (%v)", err)
 					}
+					keepSubagentLine(cmd.ErrOrStderr(), in, repoRoot, rootSHA, nil, history.SubagentNoTranscript)
 				}
 				return warn("this harness fired %s with no agent_transcript_path, so no sub-agent transcript can be captured here; `abcd history staged` reports this",
 					orDefault(in.Event, "SubagentStop"))
@@ -154,8 +156,12 @@ func newSubagentStopCommand() *cobra.Command {
 
 			raw, settled, err := readSettledTranscript(in.AgentTranscriptPath)
 			if err != nil {
+				keepSubagentLine(cmd.ErrOrStderr(), in, repoRoot, rootSHA, nil, transcriptCause(in.AgentTranscriptPath))
 				return warn("%v; staging nothing", err)
 			}
+			// Before the stage, and beside it: nothing here changes what is
+			// staged, or the exit.
+			keepSubagentLine(cmd.ErrOrStderr(), in, repoRoot, rootSHA, raw, "")
 			if !settled {
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"abcd history: sub-agent %s: the transcript's last line was still incomplete after %d reads; staging what is on disk, which may be short\n",
@@ -404,4 +410,157 @@ func readSettledTranscript(path string) ([]byte, bool, error) {
 		}
 	}
 	return raw, false, nil
+}
+
+// keepSubagentLine keeps the one line a stopping sub-agent leaves when it was
+// told where the conventions and the rules are and its transcript shows it
+// skipped either, or could not be judged (spc-2611251757228271). raw is the
+// transcript's bytes; without them cause says why. It returns nothing: the hook
+// stages what it would have staged, and the stop refuses nothing. A panic in it
+// ends the reading alone.
+func keepSubagentLine(w io.Writer, in hookInput, repoRoot, rootSHA string, raw []byte, cause history.SubagentLineCause) {
+	defer func() {
+		if r := recover(); r != nil {
+			diagnosticLine(w, "abcd history: the sub-agent's reading was not judged (an internal fault, %T)", r)
+		}
+	}()
+	line, keep := subagentStopLine(in, raw, cause)
+	if !keep {
+		return
+	}
+	if err := history.NoteSubagentLine(repoRoot, rootSHA, line, history.SubagentStopLock); err != nil {
+		diagnosticLine(w, "abcd history: the line a sub-agent's stop keeps could not be kept (%s)", scrubPaths(err))
+		return
+	}
+	if err := rules.WriteSubagentFact(in.SessionID, in.AgentID, rules.SubagentJudged, rules.SubagentRecord{}); err != nil {
+		diagnosticLine(w, "abcd history: that the sub-agent's line was kept could not be noted (%s)", scrubPaths(err))
+	}
+}
+
+// subagentStopLine is the line for one stop, and whether there is one. A
+// sub-agent that was never told has none, and so has one whose line an earlier
+// stop kept.
+func subagentStopLine(in hookInput, raw []byte, cause history.SubagentLineCause) (history.SubagentLine, bool) {
+	line := history.SubagentLine{AgentType: safeTextScalar(in.AgentType), AgentID: in.AgentID}
+	if !subagentKey(in.SessionID, in.AgentID) {
+		return line, false
+	}
+	fact := func(f rules.SubagentFact) bool {
+		_, found, err := rules.ReadSubagentFact(in.SessionID, in.AgentID, f)
+		return found || err != nil && !errors.Is(err, rules.ErrSubagentStore)
+	}
+	if fact(rules.SubagentJudged) {
+		return line, false
+	}
+	held, unjudged := fact(rules.SubagentHeld), fact(rules.SubagentUnjudged)
+	switch {
+	case held && unjudged:
+		line.Hold = history.SubagentHoldBoth
+	case held:
+		line.Hold = history.SubagentHoldHeld
+	case unjudged:
+		line.Hold = history.SubagentHoldNotJudged
+	}
+	told, found, err := rules.ReadSubagentFact(in.SessionID, in.AgentID, rules.SubagentTold)
+	switch {
+	case errors.Is(err, rules.ErrSubagentStore):
+		return line, false // nothing is known of any sub-agent
+	case err != nil:
+		line.Kind, line.Cause = history.SubagentNotJudged, history.SubagentFactUnread
+		return line, true
+	case !found && unjudged:
+		// The guard could not learn whether the conventions apply here, so
+		// nothing told this sub-agent and nothing held it: this line is where
+		// that is said.
+		line.Kind, line.Cause = history.SubagentNotJudged, history.SubagentConventionsUnknown
+		return line, true
+	case !found:
+		return line, false
+	}
+	if cause != "" {
+		line.Kind, line.Cause = history.SubagentNotJudged, cause
+		return line, true
+	}
+	got := judgeSubagentTranscript(raw, told.File)
+	noFile := told.File != "" && !got.ReadFile && !got.ReadBrief
+	// A sub-agent only the guard told was never given the commands.
+	noRules := told.By == rules.SubagentToldByStart && !got.RanRules
+	switch {
+	case noFile && noRules:
+		line.Kind = history.SubagentSkippedBoth
+	case noFile:
+		line.Kind = history.SubagentFileUnread
+	case noRules:
+		line.Kind = history.SubagentRulesNotRun
+	default:
+		return line, false
+	}
+	switch {
+	case !noFile:
+		line.Hold = "" // the file was read, so nothing about its writes is owed
+	case line.Hold == "" && got.Wrote && told.By == rules.SubagentToldByStart && !fact(rules.SubagentPassed):
+		// It wrote and the guard left no word of it: the host did not say
+		// whose call it was.
+		line.Hold = history.SubagentHoldNotJudged
+	}
+	return line, true
+}
+
+// transcriptCause is why a transcript that did not read could not be judged.
+func transcriptCause(path string) history.SubagentLineCause {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode().IsRegular() && fi.Size() > maxTranscriptBytes {
+		return history.SubagentTranscriptTooLarge
+	}
+	return history.SubagentTranscriptUnread
+}
+
+// subagentLineText is a kept line in words, for `abcd history staged`.
+func subagentLineText(l history.SubagentLine) string {
+	who := "sub-agent"
+	if l.AgentID != "" {
+		who += " " + termsafe.Sanitize(l.AgentID)
+	}
+	if l.AgentType != "" {
+		who += " (" + termsafe.Sanitize(l.AgentType) + ")"
+	}
+	what := map[history.SubagentLineKind]string{
+		history.SubagentFileUnread:  "had not read the conventions file",
+		history.SubagentRulesNotRun: "had not run the rules command",
+		history.SubagentSkippedBoth: "had not read the conventions file or run the rules command",
+		history.SubagentNotJudged:   "could not be judged",
+		history.SubagentStartFailed: "was not told where the conventions and the rules are: the start hook failed",
+	}[l.Kind]
+	if what == "" {
+		what = "is kept under a kind this abcd does not know"
+	}
+	if why := map[history.SubagentLineCause]string{
+		history.SubagentNoTranscript:       "its stop named no transcript",
+		history.SubagentTranscriptUnread:   "its transcript could not be read",
+		history.SubagentTranscriptTooLarge: "its transcript is over the size abcd reads",
+		history.SubagentFactUnread:         "abcd's note that it was told could not be read",
+		history.SubagentConventionsUnknown: "abcd could not learn whether the conventions apply to it",
+	}[l.Cause]; why != "" {
+		what += ": " + why
+	}
+	if hold := map[history.SubagentLineHold]string{
+		history.SubagentHoldHeld:      "its writes were held",
+		history.SubagentHoldNotJudged: "its writes could not be judged and were not held",
+		history.SubagentHoldBoth:      "its writes were held, and later could not be judged and were not held",
+	}[l.Hold]; hold != "" {
+		what += "; " + hold
+	}
+	return who + " " + what
+}
+
+// subagentLineNotices is the session-start notice for the lines kept since the
+// last one, each counted once. Silent when there is none.
+func subagentLineNotices(repoRoot, rootSHA string) []string {
+	n, err := history.TakeSubagentLines(repoRoot, rootSHA)
+	switch {
+	case err != nil:
+		return []string{fmt.Sprintf("abcd: the record of sub-agents that skipped the conventions or the rules could not be read (%s).", scrubPaths(err))}
+	case n == 0:
+		return nil
+	}
+	return []string{fmt.Sprintf("abcd: %d sub-agent line(s) kept since the last notice: a sub-agent had not read the conventions file or run the rules command, could not be judged, or was not told at its start; `abcd history staged` lists the newest.", n)}
 }
