@@ -351,7 +351,7 @@ func xargsView(s segment, site int) segment {
 		return s
 	}
 	toks := append([]string(nil), s.tokens...)
-	repl, ok, unsure := xargsReplacement(s, x+1, site)
+	repl, ok, _, unsure := xargsReplacement(s, x+1, site)
 	switch {
 	case unsure:
 		for i := site + 1; i < len(toks); i++ {
@@ -371,37 +371,53 @@ func xargsView(s segment, site int) segment {
 
 // xargsReplacement is the replacement string xargs's options between from and
 // site name: -I and -J take one, glued or the next word, and -i and --replace
-// take one glued on, `{}` by default. ok is false where none is named. unsure
-// says the line does not fix the string, or an option word, which may name
-// one, so any word of the command may hold it.
-func xargsReplacement(s segment, from, site int) (repl string, ok, unsure bool) {
+// take one glued on, `{}` by default, each also last in a cluster of flags
+// (`-tI%`). ok is false where none is named; all says -J named it, which puts
+// every word xargs reads where the string stands. unsure says the line does not
+// fix the string, or an option word, which may name one, so any word of the
+// command may hold it.
+func xargsReplacement(s segment, from, site int) (repl string, ok, all, unsure bool) {
 	for i := from; i < site; i++ {
 		t := s.tokens[i]
 		if isUnknown(t) || strings.ContainsRune(t, varMark) {
 			unsure = true
 			continue
 		}
-		switch {
-		case t == "-I" || t == "-J":
-			if i+1 < site {
-				repl, ok = s.tokens[i+1], true
+		if strings.HasPrefix(t, "--replace") {
+			repl, ok, all = strings.TrimPrefix(strings.TrimPrefix(t, "--replace"), "="), true, false
+			continue
+		}
+		if len(t) < 2 || t[0] != '-' || t[1] == '-' {
+			continue
+		}
+		// A cluster of flags ends at the first that takes a value, which is
+		// the rest of the word, or for -I and -J the next word.
+		k := 1
+		for k < len(t) && strings.IndexByte(xargsFlagLetters, t[k]) >= 0 {
+			k++
+		}
+		if k == len(t) {
+			continue
+		}
+		switch t[k] {
+		case 'I', 'J':
+			repl, ok, all = t[k+1:], true, t[k] == 'J'
+			if repl == "" && i+1 < site {
+				repl = s.tokens[i+1]
 				i++
 			}
-		case strings.HasPrefix(t, "-I") || strings.HasPrefix(t, "-J"):
-			repl, ok = t[2:], true
-		case t == "-i" || t == "--replace":
-			repl, ok = "{}", true
-		case strings.HasPrefix(t, "-i"):
-			repl, ok = t[2:], true
-		case strings.HasPrefix(t, "--replace="):
-			repl, ok = strings.TrimPrefix(t, "--replace="), true
+		case 'i':
+			repl, ok, all = t[k+1:], true, false
 		}
 	}
 	if ok && repl == "" {
 		repl = "{}"
 	}
-	return repl, ok, unsure
+	return repl, ok, all, unsure
 }
+
+// xargsFlagLetters are the short options of GNU and BSD xargs that take no value.
+const xargsFlagLetters = "0oprtx"
 
 // tarValueLetters are the short options GNU tar and bsdtar give a value;
 // bsdtar alone gives -s one (a substitution), which GNU tar reads as a flag.

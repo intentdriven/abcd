@@ -21,7 +21,7 @@ func TestEachCommandAFindRunsIsRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		var got []string
-		for _, a := range findActions(segs[0], 1) {
+		for _, a := range findActions(segs[0], 1, false) {
 			got = append(got, strings.Join(a.seg.tokens, " "))
 		}
 		if !reflect.DeepEqual(got, want) {
@@ -39,7 +39,7 @@ func TestReadingAFindsCommandsCostsWhatItsWordsDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	words, last := 0, ""
-	for _, a := range findActions(segs[0], 1) {
+	for _, a := range findActions(segs[0], 1, false) {
 		words += len(a.seg.tokens)
 		last = strings.Join(a.seg.tokens, " ")
 	}

@@ -147,7 +147,7 @@ func withFindActions(placed []placedSeg) []placedSeg {
 			if strings.ToLower(filepath.Base(p.seg.tokens[a.idx])) != "find" {
 				continue
 			}
-			for _, run := range findActions(p.seg, a.idx+1) {
+			for _, run := range findActions(p.seg, a.idx+1, false) {
 				states := p.states
 				if run.elsewhere {
 					states = nil

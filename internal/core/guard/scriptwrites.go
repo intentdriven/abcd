@@ -218,7 +218,7 @@ func (w writerArgs) goBuildTarget() []writeTarget {
 // the found file's directory, which the line does not fix.
 func findRuns(rc *readCtx, s segment, st *shellState, from int) []writeTarget {
 	var out []writeTarget
-	for _, run := range findActions(s, from) {
+	for _, run := range findActions(s, from, false) {
 		in := st
 		if run.elsewhere {
 			in = st.unresolved()
@@ -237,8 +237,10 @@ type findAction struct {
 
 // findActions is what a find whose arguments start at from runs. Between two
 // terminators it reads at most maxUnknownSites words no line fixes as an action,
-// so its cost is linear in the words.
-func findActions(s segment, from int) []findAction {
+// so its cost is linear in the words. several reads a `{}` as the words it can
+// stand for (placeholderWords): every path found, before a `+`, and in a word
+// holding a blank, text a shell splits.
+func findActions(s segment, from int, several bool) []findAction {
 	var out []findAction
 	unknown := 0
 	for i := from; i < len(s.tokens); i++ {
@@ -263,12 +265,21 @@ func findActions(s segment, from int) []findAction {
 			end++
 		}
 		if end > i+1 {
+			plus := several && end < len(s.tokens) && s.tokens[end] == "+"
 			toks := make([]string, 0, end-i-1)
+			globbed := s.globSlice(i+1, end)
 			for _, t := range s.tokens[i+1 : end] {
-				toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
+				if !several {
+					toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
+					continue
+				}
+				toks = append(toks, placeholderWords(t, "{}", plus)...)
+			}
+			if len(toks) != end-i-1 {
+				globbed = nil
 			}
 			out = append(out, findAction{
-				seg:       segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)},
+				seg:       segment{tokens: toks, chain: s.chain, globbed: globbed},
 				elsewhere: action == "-execdir" || action == "-okdir" || open,
 			})
 		}
