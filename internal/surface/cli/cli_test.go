@@ -248,9 +248,6 @@ func hermeticRepo(t *testing.T) string {
 	return repo
 }
 
-// TestAhoyInstallWiredAndIdempotent proves `abcd ahoy install` reaches the core
-// engine from the CLI front door (the Phase 1 install milestone) and that a
-// re-run is an exact no-op.
 // TestAhoyNamesTheUnwiredSubagentStartHook: a plugin whose manifest is from
 // before a sub-agent's start was wired is named on the bare verb's envelope.
 func TestAhoyNamesTheUnwiredSubagentStartHook(t *testing.T) {
@@ -288,6 +285,9 @@ func TestAhoyNamesTheUnwiredSubagentStartHook(t *testing.T) {
 	}
 }
 
+// TestAhoyInstallWiredAndIdempotent proves `abcd ahoy install` reaches the core
+// engine from the CLI front door (the Phase 1 install milestone) and that a
+// re-run is an exact no-op.
 func TestAhoyInstallWiredAndIdempotent(t *testing.T) {
 	repo := hermeticRepo(t)
 

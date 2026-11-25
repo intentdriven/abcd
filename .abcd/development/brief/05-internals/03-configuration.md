@@ -1370,7 +1370,11 @@ event takes only a build's exit 0 as its answer: none of those verbs exits 2 on
 purpose, and a Go crash does, which the host would read as a block. Any other
 exit, a death by a signal included, is said on stderr and the installed release runs the same
 event from the same input, so a verb the build began before it died runs again
-whole. A build that answers is the reviewed tip's answer, so a defect the
+whole. A sub-agent's start takes exit 1 as a build's answer too: that verb fails
+at exit 1 on purpose, within its own bound and with the failure counted, and a
+second run does not fit the manifest's timeout and would count the one start
+twice. A build too old to carry the verb exits 1 as well, so such a start is not
+told, with the build's line on stderr. A build that answers is the reviewed tip's answer, so a defect the
 reviewed branch carries is one these hooks carry too. A machine with no list
 pays one file test per hook.
 
@@ -2052,11 +2056,14 @@ output is one JSON object, whole or absent, whose
   that file
   ([`../04-surfaces/17-guard.md`](../04-surfaces/17-guard.md#the-hold-on-a-sub-agents-writes));
 - the two commands: `rules --prompt "<your task in one sentence>"`, which names
-  the domains a task recalls, and `rules <DOMAIN>`, which prints one. In abcd's
-  own source tree they run `scripts/abcd.sh`, and anywhere else the hook's own
-  executable by its absolute path, bare `abcd` where that path holds a byte a
-  shell word cannot carry plain;
-- the names of the domains in force, with their count. The document fits
+  the domains a task recalls, and `rules <DOMAIN>`, which prints one. They run
+  `scripts/abcd.sh` in a checkout laid out as abcd's source tree whose root commit
+  is abcd's own (`abcdrepo.RootCommit`, asked of the checkout within the hook's
+  bound: the layout is no identity), and anywhere else, or with no answer, the
+  hook's own executable by its absolute path, bare `abcd` where that path holds a
+  byte a shell word cannot carry plain;
+- the names of the domains in force, with their count, each one an override names
+  labelled as `abcd rules` labels it. The document fits
   `rules.InjectionBudgetBytes`: a list that does not is replaced whole by the
   count and the command that prints it, and no name is cut.
 
@@ -2078,10 +2085,11 @@ where there is none.
 under the same folder, guard and age (`internal/core/rules/subagent.go`). Each is
 one small file, named by a digest of the session id and the agent id and by the
 fact: `told` (the file, the root, and whether the start hook or the guard told
-it), `passed` (it has read the file, or a build lane's brief that carries it),
+it; the start hook keeps it last, with its answer made and not yet written), `passed` (it has read the file, or a build lane's brief that carries it),
 `held` and `unjudged` (what the guard did about its writes) and `judged` (its
 stop's line is kept). A fact is written once and never rewritten from a read, so
-two hooks answering for one sub-agent cannot lose each other's. They are no part
+two hooks answering for one sub-agent cannot lose each other's; an `unjudged` fact
+whose cause settles nothing is replaced whole by one whose cause does. They are no part
 of the session's ledger, which every prompt rewrites and each session start
 removes. A payload whose ids can key nothing leaves no fact, and that sub-agent is
 told and never judged or held. A fact is swept seven days after it was written,

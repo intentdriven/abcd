@@ -548,7 +548,8 @@ tools' own gate and, for the shell tool, once the session's root has resolved.
 lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `am`, `pull` and `push`. `guard.RecordActs`
 reads each command of the line after the guard's own tokenizer, steps over
-assignment words and git's global options with their values, and takes the
+assignment words, the shell's reserved words that lead to a command (`if`, `then`,
+`do`, `{`, `!`) and git's global options with their values, and takes the
 subcommand by position, so `git stash push` and `echo git commit` are no write. A
 word a substitution or a variable prints is allowed as a global option's value
 and after the subcommand; as the program, an option word or the subcommand it
@@ -575,7 +576,11 @@ and every later call answers from it.
 pass, that the read goes in a call of its own, since one in the same shell line
 as the held command is not counted and one sent in the same turn may not be, and
 says to send the write again after it. It does not give way after some number of
-refusals. A sub-agent the start hook never reached is held too: the guard asks
+refusals: that would let through one that declines to read. So a sub-agent whose
+every tool writes can name the file in no call that counts, and stays held. The
+refusal says what such a one does, which is to end and say so to the session that
+started it, never held for this; its stop's line says its writes were held. None
+of the agents the plugin ships is one. A sub-agent the start hook never reached is held too: the guard asks
 the start hook's own test, and the refusal is what tells it.
 
 **Who is never held.** The session itself, whose calls the host's payload names
@@ -588,9 +593,11 @@ run in the checkout exempts nobody.
 **What cannot be judged is not held.** An agent or session id that can key no
 fact, a fact that cannot be read, git that does not answer inside the hook's
 deadline, a rules file that will not load, a payload with no absolute transcript
-path, and a transcript that is absent, unreadable or over the size abcd reads
-each let the write go on to the guard's other checks. Where there is a key to
-keep it under, a fact says why, and that sub-agent is not judged again; its stop
+path, and a transcript that is absent, empty, unreadable or over the size abcd
+reads each let the write go on to the guard's other checks. Where there is a key
+to keep it under, a fact says why, and that sub-agent is not judged again, with
+one exception: an absent or empty transcript is one the host has not written yet,
+so the next write is judged on what stands then. Its stop
 keeps a line saying so, which the staged listing prints
 ([`11-history.md`](11-history.md#a-stopping-sub-agents-line)).
 
