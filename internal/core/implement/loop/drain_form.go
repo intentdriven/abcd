@@ -33,16 +33,6 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// laneMember is one member a bundle's lane opens with: its issue, the
-// footprint it is reserved with, and the hold the drain took to judge it,
-// which the lane starts on as it starts on the lead's (heldReservation); nil
-// in a checkout with no remote named origin, where nothing is reserved.
-type laneMember struct {
-	issue     string
-	footprint []string
-	held      *heldReservation
-}
-
 // errMembersUnwired is startBundle's refusal of members where the start does
 // not yet carry them onto the new run.
 var errMembersUnwired = errors.New("this build's start does not carry a bundle's members onto its run")
