@@ -777,7 +777,8 @@ removals of the stop's files are refused as `implement-stop-store-write`, since 
 
 **Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
 `abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
-build, a `go run` of a file or an unnamed package in a directory named for abcd) as
+build, a `go run` of a file or an unnamed package after the line enters a directory named for abcd, or that
+names one with `-C` or in the file's path) as
 `abcd-update-tag-any-program`. A word the line does not fix counts as a tag, as the verb too, so
 `abcd "$V" README.md` is refused; so do the words `xargs` and `find -exec` supply (`xargs abcd update`), there
 and as the words of the two acts above. A

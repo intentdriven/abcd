@@ -220,7 +220,8 @@ stop is read from (`abcd-ahoy-shared-folder-any-program`). An update that names
 a release tag is refused through the binary as `abcd-update-tag`, and as
 `abcd-update-tag-any-program` under a program whose basename carries abcd's or
 holds a part the line does not fix, or a `go run` of a Go file or an unnamed
-package in a directory named for abcd: its words are common to other programs,
+package after the line enters a directory named for abcd, or that names one with
+`-C` or in the file's path: its words are common to other programs,
 so a program of any other name is left alone wherever it stands
 (`"$DIR/deploy.sh" update v1.2.3`), and so are an update with no tag, its flags
 and its news sub-verb. A word the line does not fix is read as each word it can

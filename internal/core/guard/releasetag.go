@@ -80,9 +80,10 @@ func entersAbcd(s segment) bool {
 
 // tagAct reports whether any way the site's words may run is an update with a
 // release tag as its operand, under a program whose name carries abcd's, one the
-// line does not fix, or a `go run` of a file or an unnamed package in a directory
-// named for abcd. Its words are common to other programs, so a program of any
-// other name is left alone.
+// line does not fix, or a `go run` of a file or an unnamed package after the line
+// enters a directory named for abcd, or that names one with -C or in the file's
+// path. Its words are common to other programs, so a program of any other name is
+// left alone.
 func (a personAct) tagAct(s segment, site arrival, inAbcd bool) bool {
 	for _, r := range actReadings(s, site) {
 		if r.from == site.idx+1 && !r.fixedName {
