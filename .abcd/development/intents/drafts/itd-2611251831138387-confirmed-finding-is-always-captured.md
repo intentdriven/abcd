@@ -31,10 +31,14 @@ We expect a list abcd keeps to hold where a rule in words did not, because an ag
 
 - Holds for a host that runs a hook as a session and a sub-agent stop and shows it the closing text.
 - Holds in a repository abcd manages whose rules are not switched off.
-- Holds for a finding an agent declares; one it never mentions leaves nothing for a hook to read.
+- Holds for a finding an agent declares, or shows in its closing text or its failing tests; one it never mentions leaves nothing for a hook to read, and is met only by a person or a reviewer reading a sample.
 
 ## Acceptance Criteria
 
+- **Given** a fault an agent meets while building, **when** it is in what has landed (the base the change starts from shows it), or would still be there when the change lands, or is in the tools, the records, or the process around the change, **then** it is a finding and is captured; **when** the change made it and the change removes it before landing, a test failing on the way among them, **then** it is building and nothing is captured.
+- **Given** a test that fails in a lane, **when** abcd can run it on the base, **then** it does, and a failure there too is put on the list as a finding in what has landed; one it cannot run there, or that passes and fails by turns, is put on the list as untested.
+- **Given** a closing text that calls something pre-existing, unrelated, known, flaky, out of scope, skipped, worked around, or left for later, **when** it names no open record beside it, **then** that line is put on the list as a finding taken for granted.
+- **Given** a doubt on which side a fault falls, **when** the agent declares it, **then** it is captured.
 - **Given** a sub-agent's brief in a managed repository, **when** it starts, **then** it is told to end with its findings in a fixed block, each with one state: captured under a named record, fixed or not; refuted with the test that did it; kept in the private store; or untested.
 - **Given** a sub-agent that stops, **when** its closing text declares a finding in no state, or untested, **then** abcd adds it to the session's list and the starting session is told.
 - **Given** a session with a finding on its list, **when** it stops, **then** the stop is held once, naming each finding and the act that clears it; a second stop goes through and the list stays.
@@ -52,6 +56,7 @@ _None open. What the rule means for the safe-fix discipline was put to the produ
 
 1. The product thinker's, on 2026-11-25: the rule, that abcd must enforce it, that it is built, and that this comes straight after itd-2611251725190796 and itd-2611251725203320. They asked whether it is an intent; the criteria are the writing session's, for their review.
 2. The product thinker's, on 2026-11-25 (dcn-2611251833399124): a confirmed finding is always captured, and built at once when small or feasible; a fix in a commit alone is no longer a state of its own.
+3. The product thinker's, on 2026-11-25 (dcn-2611251839563777): what is fixed anyway in the course of building is not captured; what is taken for granted, put off, or passed by always is. Where the line runs, and that the base is the test of it, is the writing session's statement of that, for their review.
 
 ## Decomposition
 
