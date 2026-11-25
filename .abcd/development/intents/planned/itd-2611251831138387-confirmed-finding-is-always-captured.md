@@ -1,8 +1,8 @@
 ---
 id: itd-2611251831138387
 slug: confirmed-finding-is-always-captured
-spec_id: null
-kind: null
+spec_id: spc-2611252115253843
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611251725190796]
@@ -29,10 +29,10 @@ We expect a list abcd keeps to hold where a rule in words did not, because an ag
 
 ## Scope Conditions
 
-- Holds for a host that runs a hook as a session and a sub-agent stop and shows it the closing text. The record shows that for a session's stop; for a sub-agent's it is checked live, as a criterion below says.
-- Holds in a repository abcd manages whose rules are not switched off.
-- Holds for a finding an agent declares, or shows in its closing text or its failing tests; one it never mentions leaves nothing for a hook to read, and is met only by a person or a reviewer reading a sample.
-- Changes neither the capture verb's own gates nor abcd's automatic filers; those rungs of the safe-fix discipline stay iss-2610271115000748's build, as amended.
+- Holds for a host that runs a hook as a session and a sub-agent stop and shows it the closing text. The record shows that for a session's stop; for a sub-agent's it is checked live, as a criterion below says. <!-- cond: cond-2611252115258021 -->
+- Holds in a repository abcd manages whose rules are not switched off. <!-- cond: cond-2611252115254944 -->
+- Holds for a finding an agent declares, or shows in its closing text or its failing tests; one it never mentions leaves nothing for a hook to read, and is met only by a person or a reviewer reading a sample. <!-- cond: cond-2611252115250400 -->
+- Changes neither the capture verb's own gates nor abcd's automatic filers; those rungs of the safe-fix discipline stay iss-2610271115000748's build, as amended. <!-- cond: cond-2611252115253496 -->
 
 ## Acceptance Criteria
 
