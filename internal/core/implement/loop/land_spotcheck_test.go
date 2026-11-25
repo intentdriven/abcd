@@ -171,9 +171,10 @@ func keptWhy(why string) string {
 // The spot-check's observation of a landing is turned off for every test of
 // the package but the ones that count it: an observation reaches origin and
 // the beacon, which no other test here is about.
-func init() {
+var _ = func() bool {
 	observeLanding = func(context.Context, spotcheck.Observed) string { return "" }
-}
+	return true
+}()
 
 // TestALaneLandingIsObservedOnce: the lane landing the ancestor check proves
 // is observed for the spot-check once, from the run's checkout at origin's

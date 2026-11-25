@@ -336,9 +336,10 @@ func TestAMaintainersApprovedPullRequestInAutoModeIsRecorded(t *testing.T) {
 // The spot-check's observation of a landing is turned off for every test of
 // the package but the ones that count it: an observation reaches origin and
 // the beacon, which no other test here is about.
-func init() {
+var _ = func() bool {
 	observeLanding = func(context.Context, spotcheck.Observed) string { return "" }
-}
+	return true
+}()
 
 // countObservations replaces the observation for the test with one that
 // counts and answers a note.
