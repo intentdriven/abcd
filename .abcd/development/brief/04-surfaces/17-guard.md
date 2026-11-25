@@ -573,7 +573,8 @@ loader's ledgers
 ([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)),
 and every later call answers from it.
 
-**The refusal** names the file and the root abcd looked in, says which calls
+**The refusal** names the file and the root abcd looked in (the root left out
+where its path holds a space or a byte the start message would not print), says which calls
 pass, that the read goes in a call of its own, since one in the same shell line
 as the held command is not counted and one sent in the same turn may not be, and
 says to send the write again after it. It does not give way after some number of

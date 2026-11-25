@@ -2047,7 +2047,9 @@ output is one JSON object, whole or absent, whose
 `hookSpecificOutput.additionalContext` carries:
 
 - the conventions file, `AGENTS.md` at the checkout root or else `CLAUDE.md`, the
-  root the hook looked in, and that a sub-agent given another worktree reads the
+  root the hook looked in (left out where its path holds a space or any byte
+  outside letters, digits and `/ . _ - + @ ~ , : =`, so no word of a directory's
+  name reads as abcd's), and that a sub-agent given another worktree reads the
   copy at that worktree's root: the payload carries the session's directory and
   never the sub-agent's own. The file is looked at and never opened, so no word
   of it, its check word included, can reach the output. With neither file the
@@ -2058,12 +2060,15 @@ output is one JSON object, whole or absent, whose
 - the two commands: `rules --prompt "<your task in one sentence>"`, which names
   the domains a task recalls, and `rules <DOMAIN>`, which prints one. They run
   the hook's own executable by its absolute path, in every checkout
-  (dcn-2611252223137667), and bare `abcd` where that path holds a byte a shell
-  word cannot carry plain;
+  (dcn-2611252223137667), in single quotes where it holds any other printable
+  byte. Where it cannot be printed (not valid UTF-8, or a rune that does not
+  print) the two commands are left out and the message says so: no other abcd
+  is named in its place;
 - the names of the domains in force, with their count, each one an override names
   labelled as `abcd rules` labels it. The document fits
   `rules.InjectionBudgetBytes`: a list that does not is replaced whole by the
-  count and the command that prints it, and no name is cut.
+  count and the command that prints it (the count alone where the commands are
+  left out), and no name is cut.
 
 It carries no rule's text. The hook is silent, at exit 0 and with nothing
 written, in a repository abcd does not manage, where the rules are switched off in

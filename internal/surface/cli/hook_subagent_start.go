@@ -32,6 +32,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -255,36 +257,58 @@ func subagentConventions(ctx context.Context, cwd string, errOut io.Writer) (con
 	return c, nil
 }
 
-// plainPath is p as a message and a command write it: in single quotes where it
-// holds a space. ok is false where it holds any byte outside letters, digits,
-// the space and / . _ - + @ ~ , : =, and it is then left out.
+// plainPath is p as a message writes it. ok is false where it holds any byte
+// outside letters, digits and / . _ - + @ ~ , : =, the space included, and it
+// is then left out: no word of a directory's name is written into a message.
 func plainPath(p string) (string, bool) {
 	if p == "" {
 		return "", false
 	}
 	for i := range len(p) {
-		c := p[i]
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte(" /._-+@~,:=", c) >= 0 {
-			continue
+		if !plainByte(p[i]) {
+			return "", false
 		}
-		return "", false
-	}
-	if strings.Contains(p, " ") {
-		return "'" + p + "'", true
 	}
 	return p, true
 }
 
+// plainByte reports whether c is written into a message and a command as it is.
+func plainByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("/._-+@~,:=", c) >= 0
+}
+
+// shellPath is p as a shell word: as it is where every byte is plain, and else
+// in single quotes, each quote inside it closing the quotes, escaped, and
+// opening them again. ok is false where p is not valid UTF-8 or holds a rune
+// that does not print, and it is then left out.
+func shellPath(p string) (string, bool) {
+	if p == "" || !utf8.ValidString(p) {
+		return "", false
+	}
+	plain := true
+	for _, r := range p {
+		if !unicode.IsPrint(r) {
+			return "", false
+		}
+		plain = plain && r < utf8.RuneSelf && plainByte(byte(r))
+	}
+	if plain {
+		return p, true
+	}
+	return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'", true
+}
+
 // subagentAbcd is the abcd a sub-agent is told to run, in every checkout: this
 // hook's own executable, so it exists and is the version that named the
-// domains, and bare abcd where its path cannot be written plain.
+// domains. It is "" where that path cannot be printed, and the message then
+// names no command.
 func subagentAbcd() string {
 	if exe, err := osExecutable(); err == nil && filepath.IsAbs(exe) {
-		if p, ok := plainPath(exe); ok {
+		if p, ok := shellPath(exe); ok {
 			return p
 		}
 	}
-	return "abcd"
+	return ""
 }
 
 // The two commands a sub-agent is told, each after the abcd that runs it.
@@ -313,6 +337,9 @@ func composeSubagentStart(c conventionsScope, abcd string, notes io.Writer) ([]b
 		return doc, err
 	}
 	counted := func(abcd string) string {
+		if abcd == "" {
+			return fmt.Sprintf("Domains in force: %d, too many to name here.", len(names))
+		}
 		return fmt.Sprintf("Domains in force: %d, too many to name here; %s rules lists them.", len(names), abcd)
 	}
 	diagnosticLine(notes, "abcd: the %d rules domains in force do not fit what a sub-agent can be told, so it is told their count and the command that lists them", len(names))
@@ -321,7 +348,7 @@ func composeSubagentStart(c conventionsScope, abcd string, notes io.Writer) ([]b
 		return doc, err
 	}
 	// Paths this long name nothing a message has room for.
-	return subagentStartDoc(c.File, "", "abcd", counted("abcd"))
+	return subagentStartDoc(c.File, "", "", counted(""))
 }
 
 // subagentStartDoc is the host's output object for one message.
@@ -338,9 +365,13 @@ func subagentStartDoc(file, root, abcd, domains string) ([]byte, error) {
 		fmt.Fprintf(&b, "Writes: the guard refuses your file writes, and the git commands that record or send your work, until a call of your own has read %s.\n", file)
 		from = "that root"
 	}
-	fmt.Fprintf(&b, "Rules: abcd's rules are not sent to you; fetch them from %s.\n", from)
-	fmt.Fprintf(&b, "  %s%s   names the domains your task recalls\n", abcd, subagentRulesFor)
-	fmt.Fprintf(&b, "  %s%s   prints one domain's rules\n", abcd, subagentRulesDomain)
+	if abcd == "" {
+		b.WriteString("Rules: abcd's rules are not sent to you, and the path of the abcd that runs this hook cannot be printed here.\n")
+	} else {
+		fmt.Fprintf(&b, "Rules: abcd's rules are not sent to you; fetch them from %s.\n", from)
+		fmt.Fprintf(&b, "  %s%s   names the domains your task recalls\n", abcd, subagentRulesFor)
+		fmt.Fprintf(&b, "  %s%s   prints one domain's rules\n", abcd, subagentRulesDomain)
+	}
 	b.WriteString(domains)
 
 	var out bytes.Buffer

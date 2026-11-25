@@ -272,6 +272,8 @@ func TestJudgeKnowsTheRulesCommandTheStartMessagePrinted(t *testing.T) {
 	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
 	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
 	cmds = append(cmds, printed("a2")...)
+	swapExecutable(t, func() (string, error) { return "/opt/it's here/abcd", nil })
+	cmds = append(cmds, printed("a3")...)
 	// The script abcd's own conventions file names.
 	cmds = append(cmds, `scripts/abcd.sh rules --prompt "x"`, "./scripts/abcd.sh rules SHELL")
 	for _, c := range cmds {

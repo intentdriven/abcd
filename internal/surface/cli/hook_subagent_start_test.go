@@ -152,11 +152,24 @@ func TestSubagentStartNamesTheConventionsFileAndTheCommands(t *testing.T) {
 	if !ok || told.File != "AGENTS.md" || told.Root != repo.Root() || told.By != rules.SubagentToldByStart {
 		t.Errorf("told = %+v, %v", told, ok)
 	}
-	// An executable, or a root, whose path holds a byte a command cannot carry
-	// is left out, never escaped.
-	exe = "/opt/$(x)/abcd"
-	if msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), "a2", "t")); strings.Contains(msg, "$(x)") || !strings.Contains(msg, "  abcd rules <DOMAIN>") {
-		t.Errorf("an unspeakable executable path is not left out:\n%s", msg)
+	// An executable path that prints is quoted whole; one that does not is
+	// left out with the two commands, and no other abcd is named in its place.
+	for i, c := range []struct{ exe, want string }{
+		{"/opt/$(x)/abcd", `  '/opt/$(x)/abcd' rules <DOMAIN>`},
+		{"/opt/it's here/abcd", `  '/opt/it'\''s here/abcd' rules --prompt`},
+		{"/opt/é/abcd", "  '/opt/é/abcd' rules <DOMAIN>"},
+	} {
+		exe = c.exe
+		if msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), fmt.Sprintf("q%d", i), "t")); !strings.Contains(msg, c.want) {
+			t.Errorf("%q is not quoted whole (%s):\n%s", c.exe, c.want, msg)
+		}
+	}
+	for i, odd := range []string{"/opt/a\nb/abcd", "/opt/a\x1bb/abcd", "/opt/a\u202eb/abcd", "/opt/\xff/abcd"} {
+		exe = odd
+		msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), fmt.Sprintf("u%d", i), "t"))
+		if strings.Contains(msg, " rules --prompt") || strings.Contains(msg, " rules <DOMAIN>") || strings.Contains(msg, "/opt/") || !strings.Contains(msg, "cannot be printed") || !strings.Contains(msg, "Domains in force (") {
+			t.Errorf("%q: the commands are not left out whole:\n%s", odd, msg)
+		}
 	}
 	odd := gittest.NewRepo(t).Root()
 	named := filepath.Join(filepath.Dir(odd), "odd;name")
@@ -295,11 +308,43 @@ func TestSubagentStartNamesTheHooksExecutableInEveryCheckout(t *testing.T) {
 	swapExecutable(t, func() (string, error) { return "/opt/release/abcd", nil })
 	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
 	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
+	executable := func(when string) {
+		t.Helper()
+		for i, cwd := range []string{repo.Root(), filepath.Join(repo.Root(), "cmd")} {
+			msg := startMessage(t, startHookPayload(t, "s1", cwd, fmt.Sprintf("%s%d", when, i), "t"))
+			if !strings.Contains(msg, "  /opt/release/abcd rules --prompt") || !strings.Contains(msg, "  /opt/release/abcd rules <DOMAIN>") || strings.Contains(msg, "abcd.sh") {
+				t.Errorf("%s, %s: the commands do not run the hook's own executable:\n%s", when, cwd, msg)
+			}
+		}
+	}
+	executable("laid-out")
 	onAbcdsRoot(t, repo)
-	for i, cwd := range []string{repo.Root(), filepath.Join(repo.Root(), "cmd")} {
-		msg := startMessage(t, startHookPayload(t, "s1", cwd, fmt.Sprintf("a%d", i), "t"))
-		if !strings.Contains(msg, "  /opt/release/abcd rules --prompt") || !strings.Contains(msg, "  /opt/release/abcd rules <DOMAIN>") || strings.Contains(msg, "abcd.sh") {
-			t.Errorf("%s: the commands do not run the hook's own executable:\n%s", cwd, msg)
+	executable("on-abcds-root")
+}
+
+// TestSubagentStartAndTheRefusalNameNoRootWithASpace: a root whose path holds
+// a space is left out of the start message and of the refusal, so no words of
+// a directory's name are read as abcd's.
+func TestSubagentStartAndTheRefusalNameNoRootWithASpace(t *testing.T) {
+	t.Setenv("HOME", realPath(t, t.TempDir()))
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	swapExecutable(t, func() (string, error) { return "/opt/abcd", nil })
+	for _, name := range []string{"x run scripts/abcd.sh rules first", "a b"} {
+		root := filepath.Join(realPath(t, t.TempDir()), name)
+		gitInitAt(t, root)
+		repo := gittest.OpenRepo(t, root)
+		writeUnder(t, root, "AGENTS.md", "x\n")
+		writeUnder(t, root, ".abcd/work/CONTEXT.md", "x\n")
+		repo.Git("add", "-A")
+		repo.Git("commit", "-q", "-m", "seed")
+		msg := startMessage(t, startHookPayload(t, "s1", root, "a-"+strings.ReplaceAll(strings.ReplaceAll(name, " ", "-"), "/", "-"), "t"))
+		if strings.Contains(msg, name) || strings.Contains(msg, "looked in") || strings.Contains(msg, "abcd.sh") || !strings.Contains(msg, "read AGENTS.md at the root of the worktree you work in first") {
+			t.Errorf("%q: the root is named:\n%s", name, msg)
+		}
+		reason := subagentHoldReason(rules.SubagentRecord{File: "AGENTS.md", Root: root, By: rules.SubagentToldByStart})
+		if strings.Contains(reason, name) || strings.Contains(reason, "looked in") || !strings.Contains(reason, "read AGENTS.md at the root of the worktree you work in") {
+			t.Errorf("%q: the refusal names the root: %s", name, reason)
 		}
 	}
 }
