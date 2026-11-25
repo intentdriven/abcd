@@ -23,6 +23,17 @@ func (st DrainState) textWritten() bool {
 	texts := []string{st.Rule, st.Stopped}
 	for _, l := range st.Lanes {
 		texts = append(texts, l.Issue, l.RunID, l.Outcome)
+		texts = append(texts, l.Bundle...)
+	}
+	// A forming bundle's lead and members, and each hold the drain took on
+	// them, are as the judging issue's (spc-2611201455051897 step 4).
+	if f := st.Forming; f != nil {
+		texts = append(texts, f.Lead)
+		texts = append(texts, holdTexts(f.Hold)...)
+		for _, m := range f.Members {
+			texts = append(texts, m.Issue)
+			texts = append(texts, holdTexts(m.Hold)...)
+		}
 	}
 	for _, r := range st.HandBacks {
 		texts = append(texts, r.Issue, r.From, r.Kind, r.Route, r.Draft, r.Question, r.Rule, r.Home, r.Reason, r.Wrote, r.Blob)
@@ -54,4 +65,12 @@ func (st DrainState) textWritten() bool {
 		texts = append(texts, s.Target, s.Reason)
 	}
 	return !slices.ContainsFunc(texts, func(s string) bool { return termsafe.Sanitize(s) != s })
+}
+
+// holdTexts is every text field of a hold the drain took, none for nil.
+func holdTexts(h *DrainHold) []string {
+	if h == nil {
+		return nil
+	}
+	return []string{h.Commit, h.ForkUnchecked, h.ForkAllowed}
 }
