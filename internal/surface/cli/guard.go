@@ -266,7 +266,9 @@ func newGuardHookCommand() *cobra.Command {
 			"file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd\n" +
 			"manages whose rules are on. A write is a call of one of the file-writing\n" +
 			"tools, or a shell line naming git commit, merge, rebase, cherry-pick,\n" +
-			"revert, am, pull or push. The host's payload names the sub-agent, and the\n" +
+			"revert, am, pull or push, in a conditional, a loop or a function body\n" +
+			"too; a git command run through a wrapper (time, env, sudo, sh -c, a\n" +
+			"script, an alias) is not seen. The host's payload names the sub-agent, and the\n" +
 			"sub-agent's own transcript is read once: a call in it that names the file\n" +
 			"and writes nothing is a reading, and one that names the brief of a build's\n" +
 			"lane stands for it. Without one the write is refused with the host's deny,\n" +

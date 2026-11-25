@@ -338,7 +338,9 @@ A **sub-agent's write is held** until that sub-agent has read the conventions
 file at its checkout root, `AGENTS.md` or else `CLAUDE.md`, in a repository abcd
 manages whose rules are on. A write is a call of one of those file-writing tools,
 or a shell line naming `git commit`, `merge`, `rebase`, `cherry-pick`, `revert`,
-`am`, `pull` or `push`. The refusal names the file, where abcd looked for it and
+`am`, `pull` or `push`, in a conditional, a loop or a function body too; a git
+command run through a wrapper (`time`, `env`, `sudo`, `sh -c`, a script, an alias)
+is not seen. The refusal names the file, where abcd looked for it and
 the way out: one call of its own that names the file and writes nothing (the
 host's reading tool, `cat AGENTS.md`, or a search for it), and then the same
 write again. A read in the same shell line as the held command is not counted,

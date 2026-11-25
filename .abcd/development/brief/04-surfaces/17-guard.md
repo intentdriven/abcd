@@ -547,14 +547,15 @@ tools' own gate and, for the shell tool, once the session's root has resolved.
 **What is a write.** A call of one of the file-writing tools, wherever the file
 lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `am`, `pull` and `push`. `guard.RecordActs`
-reads each command of the line after the guard's own tokenizer, steps over
-assignment words, the shell's reserved words that lead to a command (`if`, `then`,
-`do`, `{`, `!`) and git's global options with their values, and takes the
+reads each command of the line after the guard's own tokenizer, steps the words
+the registry's walker steps before a command (assignment words, the reserved
+words `if`, `then`, `do`, `{` and `!`, `coproc`, `function NAME` and
+`repeat COUNT`) and git's global options with their values, and takes the
 subcommand by position, so `git stash push` and `echo git commit` are no write. A
 word a substitution or a variable prints is allowed as a global option's value
 and after the subcommand; as the program, an option word or the subcommand it
-reads as no act. A command run through a wrapper (`env`, `sh -c`, a script, an
-alias) is not seen, and neither is `abcd land`, since what it sends was held at
+reads as no act. A command run through a wrapper (`time`, `env`, `sudo`,
+`sh -c`, a script, an alias) is not seen, and neither is `abcd land`, since what it sends was held at
 its commit. Any other shell command goes on unasked: no closed reading of a line
 tells a write from a read, and an edit made through the shell is held at its
 commit.

@@ -2742,7 +2742,9 @@ A sub-agent's write is held until the sub-agent has read the conventions
 file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd
 manages whose rules are on. A write is a call of one of the file-writing
 tools, or a shell line naming git commit, merge, rebase, cherry-pick,
-revert, am, pull or push. The host's payload names the sub-agent, and the
+revert, am, pull or push, in a conditional, a loop or a function body
+too; a git command run through a wrapper (time, env, sudo, sh -c, a
+script, an alias) is not seen. The host's payload names the sub-agent, and the
 sub-agent's own transcript is read once: a call in it that names the file
 and writes nothing is a reading, and one that names the brief of a build's
 lane stands for it. Without one the write is refused with the host's deny,

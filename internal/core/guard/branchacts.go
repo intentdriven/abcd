@@ -99,28 +99,25 @@ func branchActsIn(toks []string) []BranchAct {
 	return nil
 }
 
-// commandWords is a command's tokens from its program on: past the assignment
-// words, and the shell's reserved words, that lead to a command (`if`, `then`,
-// `do`, `{`, `!`), as the registry's walker steps them.
+// commandWords is a command's tokens from its program on, past the words the
+// registry's walker steps before one (commandArrivals): assignment words
+// (isAssignment), the shell's reserved words (`if`, `then`, `do`, `{`, `!`),
+// `coproc` with its NAME, and `function NAME` and `repeat COUNT`. It steps no
+// wrapper: a command run through `time`, `env`, `sudo` or `sh -c` is not read.
 func commandWords(toks []string) []string {
-	for len(toks) > 0 && (isAssignmentWord(toks[0]) || reserved[toks[0]]) {
-		toks = toks[1:]
-	}
-	return toks
-}
-
-// isAssignmentWord is a NAME=value word in command position.
-func isAssignmentWord(w string) bool {
-	eq := strings.IndexByte(w, '=')
-	if eq <= 0 {
-		return false
-	}
-	for j, r := range w[:eq] {
-		if !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || j > 0 && r >= '0' && r <= '9') {
-			return false
+	for i := 0; i < len(toks); {
+		switch t := toks[i]; {
+		case isAssignment(t) || reserved[t]:
+			i++
+		case t == "coproc":
+			i = skipCoproc(toks, i+1)
+		case t == "function" || t == "repeat":
+			i = skipFunction(toks, i+1)
+		default:
+			return toks[i:]
 		}
 	}
-	return true
+	return nil
 }
 
 // flagValue reads a value-taking option at args[i] spelled one of names:
