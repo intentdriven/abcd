@@ -112,6 +112,190 @@ func TestEachPersonsActSaysWhatItsRegistryEntrySays(t *testing.T) {
 	}
 }
 
+// TestNamingAReleaseTagIsThePersonsAct: `abcd update` with a release tag as its
+// operand is refused through the binary the registry names and under any program
+// whose name carries abcd's: the source-checkout wrapper, a cross-compiled build,
+// a plugin root's copy, a program the line assigns, a wrapper or a launcher
+// stepped through. The verb with no tag, its flags, its news sub-verb and the
+// update of another program are left alone.
+func TestNamingAReleaseTagIsThePersonsAct(t *testing.T) {
+	const entry, anyProgram = "abcd-update-tag", "abcd-update-tag-any-program"
+	reg := Defaults()
+	for _, c := range []struct{ cmd, entry string }{
+		{`abcd update v0.7.0`, entry},
+		{`abcd update v0.7.0 --json`, entry},
+		{`abcd update --json v0.7.0`, entry},
+		{`abcd update --yes v0.7.0`, entry},
+		{`abcd update --yes=true v0.7.0`, entry},
+		{`abcd update --check=false v0.7.0`, entry},
+		{`abcd update -- v0.7.0`, entry},
+		{`abcd --json update v0.7.0`, entry},
+		{`abcd update v0.7.0-rc.1`, entry},
+		{`abcd update v1`, entry},
+		{`abcd update 0.7.0`, entry},
+		{`abcd update V0.7.0`, entry},
+		{`abcd update "v0.7.0"`, entry},
+		{`abcd update v0.7.'0'`, entry},
+		{`abcd update $'v0.7.0'`, entry},
+		{`abcd update v0.{7,8}.0`, entry},
+		{`abcd update v0.?.0`, entry},
+		{`abcd update "$TAG"`, entry},
+		{`abcd update v"$N"`, entry},
+		{`abcd update "v0.${N}.0"`, entry},
+		{`abcd update $(cat tag.txt)`, entry},
+		{`T=v0.7.0; abcd update "$T"`, entry},
+		{`abcd "$V" v0.7.0`, entry},
+		{`abcd $(echo update) v0.7.0`, entry},
+		{"abcd update \\\n  v0.7.0", entry},
+		{`npx abcd update v0.7.0`, entry},
+		{`f() { abcd update "$1"; }; f v0.7.0`, entry},
+		{`/usr/local/bin/abcd update v0.7.0`, entry},
+		{`"${CLAUDE_PLUGIN_ROOT}/abcd" update v0.7.0 --json`, entry},
+		{`~/.claude/plugins/cache/abcd/abcd/0.31.0/abcd update v0.7.0`, entry},
+		{`ABCD update v0.7.0`, entry},
+		{`go run ./cmd/abcd update v0.7.0`, entry},
+		{`go run -C /src/abcd ./cmd/abcd update v0.7.0 --yes`, entry},
+		{`go run github.com/intentdriven/abcd/cmd/abcd@v0.15.1 update v0.7.0`, entry},
+		{`env FOO=1 abcd update v0.7.0`, entry},
+		{`FOO=1 abcd update v0.7.0`, entry},
+		{`nohup abcd update v0.7.0`, entry},
+		{`timeout 60 abcd update v0.7.0`, entry},
+		{`nice -n 5 abcd update v0.7.0`, entry},
+		{`command abcd update v0.7.0`, entry},
+		{`sudo abcd update v0.7.0`, entry},
+		{`xargs abcd update v0.7.0`, entry},
+		{`sh -c 'abcd update v0.7.0'`, entry},
+		{`bash -lc "cd x && abcd update v0.7.0"`, entry},
+		{`eval 'abcd update v0.7.0'`, entry},
+		{`(abcd update v0.7.0)`, entry},
+		{`echo x && abcd update v0.7.0 | tail -3`, entry},
+
+		{`scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`./scripts/abcd.sh update v0.7.0 --json`, anyProgram},
+		{`scripts/abcd.sh --json update v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update --yes v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update --yes --json v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update --check=false v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update -- v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update 0.7.0`, anyProgram},
+		{`scripts/abcd.sh update v0.?.0`, anyProgram},
+		{`scripts/abcd.sh update "$TAG"`, anyProgram},
+		{`scripts/abcd.sh update v"$N"`, anyProgram},
+		{`scripts/abcd.sh update "$F" v0.7.0`, anyProgram},
+		{`scripts/abcd.sh update --"$F" v0.7.0`, anyProgram},
+		{`scripts/abcd.sh "$F" update v0.7.0`, anyProgram},
+		{`scripts/abcd.sh "$V" v0.7.0`, anyProgram},
+		{`scripts/abcd.sh up"$X" v0.7.0`, anyProgram},
+		{`scripts/abcd.sh $(echo update) v0.7.0`, anyProgram},
+		{`T=v0.7.0; scripts/abcd.sh update "$T"`, anyProgram},
+		{`V=update; scripts/abcd.sh "$V" v0.7.0`, anyProgram},
+		{`A='update v0.7.0'; scripts/abcd.sh $A`, anyProgram},
+		{`bash scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`bash -- scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`bash -x scripts/abcd.sh update "$TAG"`, anyProgram},
+		{`source scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`. scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`script -q /dev/null scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`caffeinate -i scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`arch -arm64 bin/abcd-darwin-arm64 update v0.7.0`, anyProgram},
+		{`bin/abcd-darwin-arm64 update v0.7.0`, anyProgram},
+		{`./bin/abcd-linux-amd64 update --yes v0.7.0`, anyProgram},
+		{`nohup bin/abcd-darwin-arm64 update v0.7.0`, anyProgram},
+		{`nice -n 5 scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`env FOO=1 scripts/abcd.sh update v0.7.0`, anyProgram},
+		{`sh -c 'scripts/abcd.sh update v0.7.0'`, anyProgram},
+		{`cd cmd/abcd && go run . update v0.7.0`, anyProgram},
+		{`go run -C cmd/abcd . update v0.7.0`, anyProgram},
+		{`"$B" update v0.7.0`, anyProgram},
+		{`B=scripts/abcd.sh; "$B" update v0.7.0`, anyProgram},
+	} {
+		d, err := reg.Check(c.cmd)
+		// A program a variable names is refused as unknown first.
+		varProgram := strings.Contains(c.cmd, `"$B"`) && d.EntryID == unknownProgramEntryID
+		if err != nil || d.Verdict != VerdictBlock || (d.EntryID != c.entry && !varProgram) {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, program := range []string{
+		`abcd`, `scripts/abcd.sh`, `bash scripts/abcd.sh`, `go run ./cmd/abcd`, `bin/abcd-darwin-arm64`,
+		`"${CLAUDE_PLUGIN_ROOT}/abcd"`, `nice -n 5 abcd`, `nohup scripts/abcd.sh`,
+	} {
+		for _, args := range []string{
+			`update`,
+			`update --yes`,
+			`update --yes --json`,
+			`update --json`,
+			`--json update`,
+			`update --check`,
+			`update --check --json`,
+			`update --help`,
+			`update -h`,
+			`update news`,
+			`update news --json`,
+			`update news --full`,
+			`update news --seen`,
+			`update news --answer yes`,
+			`update news --answer not-now`,
+			`update news --answer="$A"`,
+			`update news --answer "$A"`,
+			`update news v0.7.0`,
+			`update latest`,
+			`update ./notes.txt`,
+			`help update`,
+			`explain update`,
+			`docs update v0.7.0`,
+			`capture "an agent ran abcd update v0.7.0"`,
+			`announce "$ID"`,
+			`reflect write v0.7.0`,
+		} {
+			cmd := program + " " + args
+			if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+				t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+			}
+		}
+	}
+	for _, cmd := range []string{
+		`npm update v1.2.3`,
+		`brew update`,
+		`git submodule update v1`,
+		`go run . update v1.2.3`,
+		`go run ./cmd/other update v1.2.3`,
+		`./deploy.sh update v1.2.3`,
+		`bash deploy.sh update v1.2.3`,
+		`git commit -m 'abcd update v0.7.0'`,
+		`grep -rn 'abcd update v0.7.0' commands`,
+		`echo abcd update v0.7.0`,
+		`cat scripts/abcd.sh update v0.7.0`,
+		`git log --grep update v0.7.0`,
+		`"$PM" update lodash`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
+	}
+}
+
+// TestNamingAReleaseTagIsRefusedInEveryMode: the mode decides who merges, never
+// who names a release, and a repository's own guard file cannot claim the id.
+func TestNamingAReleaseTagIsRefusedInEveryMode(t *testing.T) {
+	const anyProgram = "abcd-update-tag-any-program"
+	for _, human := range []bool{true, false} {
+		reads := 0
+		reg := Defaults().WithMergeMode(modeOf(human, &reads))
+		for cmd, id := range map[string]string{
+			`abcd update v0.7.0`:            "abcd-update-tag",
+			`scripts/abcd.sh update v0.7.0`: anyProgram,
+		} {
+			if d, err := reg.Check(cmd); err != nil || d.Verdict != VerdictBlock || d.EntryID != id {
+				t.Errorf("human %v: Check(%q) = %q via %q, %v; want a block via %q", human, cmd, d.Verdict, d.EntryID, err, id)
+			}
+		}
+	}
+	if !containsString(reservedEntryIDs, anyProgram) {
+		t.Errorf("reservedEntryIDs lacks %q", anyProgram)
+	}
+}
+
 // homeDir and upperHomeDir spell abcd's home folder as a line does, the second as a
 // volume that folds case resolves it.
 var (

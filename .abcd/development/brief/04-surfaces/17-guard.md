@@ -216,7 +216,13 @@ program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
 flipping a sources ledger line (`abcd-source-ledger-flip-any-program`, and
 `abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
 or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
-stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+stop is read from (`abcd-ahoy-shared-folder-any-program`). An update that names
+a release tag is refused through the binary as `abcd-update-tag`, and as
+`abcd-update-tag-any-program` under a program whose name carries abcd's, one the
+line does not fix, or a `go run` of an unnamed package after the line enters a
+directory named for abcd: its words are common to other programs, so a program of any other
+name is left alone, and so are an update with no tag, its flags and its news
+sub-verb. Writes, moves and
 removals of the stop's files are refused as `implement-stop-store-write`, since
 removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
@@ -227,7 +233,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-the six any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
+the seven any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against

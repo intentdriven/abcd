@@ -1788,7 +1788,8 @@ func sitesNamed(s segment, name string) []arrival {
 // operandWant is what an entry asks of a command's operands: operand 0 and 1
 // by name, a count, an argument prefix, a resource path and a written shape
 // carried by some operand, and one of a set of exact words standing as some
-// operand.
+// operand. The release-tag shape is one operand's alone: the first after the
+// subcommands (tagAt).
 type operandWant struct {
 	sub, sub2 string
 	// subNamed reads a word that is nothing but substitutions as no subcommand
@@ -1840,7 +1841,7 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 			continue
 		}
 		r := readWord(a, valueFlags)
-		hits := 0
+		hits, tagHit := 0, 0
 		if r.operand {
 			for j, prefix := range want.prefixes {
 				if want.prefixLiteral && strings.HasPrefix(knownLead(a), prefix) ||
@@ -1857,8 +1858,12 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 				hits |= 1 << (len(want.prefixes) + len(want.paths))
 			}
 			for j, shape := range want.shapes {
-				if (shape == ShapeUnguardedVariablePath && varLead[i]) || (shape == ShapeForgeRefPath && forgeRefPathCouldBe(a)) {
-					hits |= 1 << (len(want.prefixes) + len(want.paths) + nv + j)
+				bit := 1 << (len(want.prefixes) + len(want.paths) + nv + j)
+				switch {
+				case shape == ShapeUnguardedVariablePath && varLead[i], shape == ShapeForgeRefPath && forgeRefPathCouldBe(a):
+					hits |= bit
+				case shape == ShapeReleaseTag && releaseTagCouldBe(a, glob(i)):
+					tagHit |= bit
 				}
 			}
 		}
@@ -1871,10 +1876,14 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 			if k2 > need {
 				k2 = need
 			}
+			carried := hits
+			if k == want.tagAt() {
+				carried |= tagHit
+			}
 			for met := 0; met <= full; met++ {
 				v := (r.vanish || r.flag) && acc[at(i+1, k, met)]
 				v = v || (r.takes && acc[at(i+2, k, met)])
-				v = v || (operand && acc[at(i+1, k2, met|hits)])
+				v = v || (operand && acc[at(i+1, k2, met|carried)])
 				acc[at(i, k, met)] = v
 			}
 		}
@@ -1886,8 +1895,20 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 	return out
 }
 
-// need is how many operands a reading must place: the count asked for, and at
-// least one more than the last subcommand position named.
+// tagAt is the place of the operand the release-tag shape reads: the first after
+// the subcommands the entry names.
+func (w operandWant) tagAt() int {
+	switch {
+	case w.sub2 != "":
+		return 2
+	case w.sub != "":
+		return 1
+	}
+	return 0
+}
+
+// need is how many operands a reading must place: the count asked for, at least
+// one more than the last subcommand position named, and the release-tag shape's.
 func (w operandWant) need() int {
 	n := w.min
 	if w.sub != "" && n < 1 {
@@ -1896,12 +1917,15 @@ func (w operandWant) need() int {
 	if w.sub2 != "" && n < 2 {
 		n = 2
 	}
+	if containsString(w.shapes, ShapeReleaseTag) && n < w.tagAt()+1 {
+		n = w.tagAt() + 1
+	}
 	return n
 }
 
 // operandNeed is operandWant.need for an entry's pattern.
 func operandNeed(p Pattern) int {
-	return operandWant{sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands}.need()
+	return operandWant{sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands, shapes: p.ArgShapes}.need()
 }
 
 // operandIs reports whether an operand can be want — literally, as a word its

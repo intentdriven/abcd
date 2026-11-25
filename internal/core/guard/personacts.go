@@ -37,6 +37,10 @@ const (
 	// (itd-2611041549471712).
 	implementStopAnyEntryID = "abcd-implement-stop-any-program"
 	sharedFolderAnyEntryID  = "abcd-ahoy-shared-folder-any-program"
+
+	// updateTagAnyEntryID is the reserved id an update that names a release tag
+	// is refused under when the program is not one abcd-update-tag names.
+	updateTagAnyEntryID = "abcd-update-tag-any-program"
 )
 
 // personAct is one act only the person takes: the verbs that name it, in
@@ -51,7 +55,10 @@ type personAct struct {
 	valueFlags        []string
 	// adjacent holds the verbs to consecutive words: an act no flag names, whose
 	// two common words would otherwise match a search that merely mentions them.
-	adjacent       bool
+	adjacent bool
+	// tag makes the act its one verb with a release tag as its operand, under a
+	// program named for abcd alone (tagAct).
+	tag            bool
 	why, successor string
 }
 
@@ -92,6 +99,12 @@ var personActs = []personAct{
 		why:       "Choosing the shared folder is the person's own act: it decides where this account reads a stop from, so a choice an agent makes can put every run out of reach of the person's stop.",
 		successor: "Leave this one to the person: tell them what the folder is for and let them run `abcd ahoy shared-folder <folder>` themselves, in each account.",
 	},
+	{
+		id: updateTagAnyEntryID, entry: "abcd-update-tag", family: "update",
+		verbs: []string{"update"}, tag: true,
+		why:       "Choosing which release of abcd this computer runs is the person's own act: `abcd update` with a tag installs the release the tag names, so a tag an agent names is a choice no person made.",
+		successor: "Leave this one to the person: tell them which release you believe they want and why, and let them run `abcd update <tag>` themselves.",
+	},
 }
 
 // actOf reports whether segment s runs act a under a program other than one
@@ -101,14 +114,21 @@ var personActs = []personAct{
 // side by side, since a flag's value may sit between them; a line whose
 // words carry them in order with other words between is refused too, the
 // over-blocking direction the guard takes where the reading is a guess, and
-// the flag each act needs keeps that to lines that name the act.
-func (a personAct) actOf(s segment) bool {
+// the flag each act needs keeps that to lines that name the act. inAbcd says the
+// line has entered a directory named for abcd.
+func (a personAct) actOf(s segment, inAbcd bool) bool {
 	for _, site := range commandSites(s) {
 		if commandNamed(s, site, "abcd") {
 			continue
 		}
 		if a.adjacent {
 			if a.adjacentAct(s, site) {
+				return true
+			}
+			continue
+		}
+		if a.tag {
+			if a.tagAct(s, site, inAbcd) {
 				return true
 			}
 			continue
@@ -139,8 +159,8 @@ func (a personAct) actOf(s segment) bool {
 // actWord is one word a site is handed: as the line fixes it, or unfixed with its
 // variable parts read as substitutions.
 type actWord struct {
-	text    string
-	unfixed bool
+	text          string
+	unfixed, glob bool
 }
 
 // actWordsOf is the words after a site, a word the line assigned read as what it holds.
@@ -149,7 +169,7 @@ func actWordsOf(s segment, from int) []actWord {
 	for i := from; i < len(s.tokens); i++ {
 		tok := s.tokens[i]
 		if !isUnknown(tok) && !strings.ContainsRune(tok, varMark) {
-			out = append(out, actWord{text: tok})
+			out = append(out, actWord{text: tok, glob: s.globAt(i)})
 			continue
 		}
 		if lit, has := s.literal[i]; has {
@@ -348,9 +368,12 @@ func allTrue(bs []bool) bool {
 // for the segments of one reading.
 func personActSignals(segs []segment) []payloadSignal {
 	var out []payloadSignal
+	entered := map[int]bool{}
 	for _, s := range segs {
+		inAbcd := entered[s.chain]
+		entered[s.chain] = inAbcd || entersAbcd(s)
 		for _, a := range personActs {
-			if !a.actOf(s) {
+			if !a.actOf(s, inAbcd) {
 				continue
 			}
 			sig := payloadSignal{id: a.id, verdict: VerdictBlock, family: a.family, reason: a.why, successor: a.successor}

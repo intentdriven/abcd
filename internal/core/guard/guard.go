@@ -132,6 +132,9 @@ type Pattern struct {
 	// ShapeForgeRefPath is a forge API path to a git ref (`…/git/refs/…`), or a
 	// word a substitution helps to
 	// write that can still be one (forgeRefPathCouldBe).
+	//
+	// ShapeReleaseTag is a release tag, or a word that can still be one
+	// (releaseTagCouldBe), standing as the first operand after the subcommand.
 	ArgShapes []string `json:"arg_shapes,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —

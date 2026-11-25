@@ -169,6 +169,11 @@ var wordReaders = map[string]string{
 	// personacts.go: the person's own acts under any program name.
 	"actOf": "commandSites and commandNamed for the program; a verb or boolean flag the line does not fix reads as empty, deliberately fail-open, so a flag a substitution prints is not taken as set, as commands/guard.md names; a value flag is read fail-closed through knownText and unknownFlagCouldBe",
 
+	// releasetag.go: the release tag as an operand.
+	"tagFrom":        "knownText and vanishable through actWordsOf, unknownCouldBe for the verb and releaseTagCouldBe for the operand: a word the line does not fix is read as each it can be",
+	"entersAbcd":     "commandSites and nameCouldBeAny for the program; its words only widen what tagAct refuses",
+	"unnamedPackage": "exempt: reads a package path only to widen what tagAct refuses",
+
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
 	"allNoglob":     "commandSites",

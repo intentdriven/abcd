@@ -775,6 +775,11 @@ other program names as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-f
 removals of the stop's files are refused as `implement-stop-store-write`, since removing a stop is lifting it
 (`commands/implement.md`).
 
+**Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
+`abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
+build) as `abcd-update-tag-any-program`. A word the line does not fix counts as a tag. `abcd update` with no
+tag, its flags and `abcd update news` are not refused (`commands/update.md`).
+
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
 file per line, and read only when this account owns it and no one else can
 write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.
