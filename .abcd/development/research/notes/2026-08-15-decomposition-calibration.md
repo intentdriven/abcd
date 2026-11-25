@@ -2977,7 +2977,7 @@ The proposal: drains started with `abcd drain --drive` on several machines and a
 | what may be published about a machine on the shared remote | trust rule | adr-2611251746369732, with a line in the brief's status chapter |
 | a stuck hand-back that is the machine's bars that machine only | capability | iss-2611251810162964; it uses the count of hand-backs in a row the state-line intent's ninth criterion states |
 | a machine's fault is not the ledger's verdict | stance | held; one case is not a principle |
-| the start fetches before it refuses | plumbing | iss-2611251741261124 | <!-- record-lint: forward-looking -->
+| the start fetches before it refuses | plumbing | iss-2611251741261124, resolved |
 | the state field, the archive, the published form, the keys and the flag | plumbing | the spec, carried into the brief by its steps |
 
 Verdict at filing: SPLIT, one intent, two ADRs, one decision on an open issue, two issues, one answer into an existing draft. Typed links: builds on itd-2611141610197753; refines itd-2610222215485265, itd-2610161016394967, itd-2610161016401115 and adr-2610222222326104. It also refines dcn-2611222342270127: the repository now sets the ceiling by the product thinker's ruling, a machine may lower it and never raise it, and the clause of that record's grounds that kept `reservation.max_live` the machine's alone is replaced while its ruling on the bundle cap stands.

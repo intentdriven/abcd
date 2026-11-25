@@ -87,7 +87,7 @@ We expect a person to answer "are the drains working?" from one machine, because
 - A daily number of lanes. Not asked for (decision 1).
 - More than one lane at a time inside one drive (iss-2610230724404433).
 - A stuck hand-back that is the machine's fault barring only that machine. It needs the count of hand-backs in a row that itd-2611141610197753's ninth criterion states, so it is captured as iss-2611251810162964 and is not a criterion here (decision 12).
-- The drive's start fetching before it refuses, and a fast-forward at the start: iss-2611251741261124, and itd-2611141610201875. <!-- record-lint: forward-looking -->
+- The drive's start fetching before it refuses, and a fast-forward at the start. The start fetches before it refuses (iss-2611251741261124, resolved); the fast-forward is itd-2611141610201875.
 - A reservation whose landing has stopped moving, back-off traces, and clock skew between holders: iss-2611201429249531, iss-2611011010338815, iss-2610241424428420, iss-2610142200372105.
 - Subscription windows, profiles and model fallback: itd-2611040344170206 and itd-2611150636483483.
 - One machine starting or stopping a drive on another.
