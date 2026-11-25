@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -145,7 +146,7 @@ func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 		fmt.Fprintln(stderr, noteLine(n))
 	}
 	set.Disabled = false
-	res, err := statusline.Compose(root, statusline.Payload{}, set)
+	res, err := statusline.Compose(context.Background(), root, statusline.Payload{}, set, landing.LiveMerging)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the presence line is omitted — %s\n", termsafe.Sanitize(err.Error()))
 		return nil

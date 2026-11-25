@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestBoardPresenceLineIsTheRendersPlainForm(t *testing.T) {
 	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
 		t.Fatal(err)
 	}
-	want, err := statusline.Compose(root, statusline.Payload{}, statusline.Defaults())
+	want, err := statusline.ComposeContext(context.Background(), root, statusline.Payload{}, statusline.Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}

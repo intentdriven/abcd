@@ -23,7 +23,7 @@ func fullInput(t *testing.T) Input {
 		Payload: p,
 		Counts:  Counts{Intents: 12, Issues: 34},
 
-		AutonomousMerging: true,
+		Merging: Merging{State: MergingAuto},
 	}
 }
 

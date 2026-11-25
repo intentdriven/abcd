@@ -113,7 +113,13 @@ technical facilitator` or `waiting on the product thinker`, from the state
 repository, the branch, `autonomous merging` while the repository's
 `facilitator.mode` is `auto` (read as the merge gate reads it, from the default
 branch's committed `.abcd/config.json` and the machine layer; absent under
-`human`), and the record's counts. Relay the `plain` text when the
+`human`), and the record's counts. The board reads that mode as it draws. The
+host's status line shows it as last read instead: the prompt hook keeps the
+reading it takes on each prompt, the default branch as of the last fetch, and
+the row shows the kept one beside the computer's file as it is now, so a refresh
+asks git nothing for it. After a fetch that moves the default branch the row
+goes on naming the kept mode until the next prompt. Nothing that decides a merge
+reads the kept one. Relay the `plain` text when the
 state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and
 never changes it; `/abcd:mode` is the writer.

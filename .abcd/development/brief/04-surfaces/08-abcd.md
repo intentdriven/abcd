@@ -195,7 +195,21 @@ same row the host's status line shows — the badge first (`abcd-managed`,
 `waiting on the technical facilitator`, `waiting on the product thinker`), then
 the repository, the branch, the `autonomous merging` element (key `merging`)
 while the repository's `facilitator.mode` is `auto`, and the record's counts;
-[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The state behind the badge is what `abcd mode` stores at
+[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The
+board reads the mode as it draws; the host's row shows it as last read, which is
+the default branch as of the last fetch (iss-2610302057380175): on each prompt
+the prompt hook keeps what that branch's file said, with the ref and the tip it
+was read at and the time, in one owner-only file per repository under
+`~/.abcd.noindex/facilitator-mode/`, which its worktrees share. A refresh reads
+that file, the ref files that say whether the tip still stands, and the machine
+layer as it is now, and asks git nothing for the mode. A tip that moved leaves
+the kept mode named until a later read replaces it. A kept reading that is
+missing, malformed, another repository's or not this account's alone is not
+known, never `auto` and never `human`, and so is the mode of a repository with
+commits and no default branch to key one on; with no commit at all, the machine
+layer alone is asked. It is for the row to show: the merge gate, `abcd land`,
+the guard, the prompt line and the board each take their own reading and never
+open it. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where

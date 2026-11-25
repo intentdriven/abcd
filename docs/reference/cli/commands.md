@@ -7506,9 +7506,9 @@ row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
 the technical facilitator` or `waiting on the product thinker`, from the state
 `abcd mode` stores, its colour ending at the badge — then the session's
 name when the harness supplies one, the repository name, the branch,
-`autonomous merging` while the repository's facilitator.mode is auto (read
-as the merge gate reads it: the default branch's committed
-`.abcd/config.json` and the machine layer), the model, the context
+`autonomous merging` while the repository's facilitator.mode is auto (the
+default branch's committed `.abcd/config.json` as the prompt hook last read it
+and kept it, and the machine layer as it is now), the model, the context
 percentage, the five-hour and seven-day usage percentages, and the record's
 counts of intents not yet shipped and open issues. Each element after the
 session name is switchable in

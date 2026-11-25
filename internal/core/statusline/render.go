@@ -157,9 +157,9 @@ type Input struct {
 	Repo    Repo    `json:"repo"`
 	Payload Payload `json:"payload"`
 	Counts  Counts  `json:"counts"`
-	// AutonomousMerging reports that the repository's facilitator.mode is
-	// auto, as the merge gate reads it. False renders no merging element.
-	AutonomousMerging bool `json:"autonomous_merging"`
+	// Merging is the repository's facilitator.mode as the composition knows
+	// it. Only MergingAuto renders the merging element.
+	Merging Merging `json:"merging"`
 }
 
 // renderRow composes the row.
@@ -215,7 +215,7 @@ func elementText(k ElementKey, in Input) string {
 	case KeyBranch:
 		return termsafe.Sanitize(strings.TrimSpace(in.Repo.Branch))
 	case KeyMerging:
-		if in.AutonomousMerging {
+		if in.Merging.State == MergingAuto {
 			return MergingText
 		}
 		return ""
