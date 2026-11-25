@@ -368,8 +368,8 @@ func allTrue(bs []bool) bool {
 }
 
 // personActSignals are the refusals of the person's acts under any program,
-// for the segments of one reading of text.
-func personActSignals(text string, segs []segment) []payloadSignal {
+// for the segments of one reading, whose fixed programs fixed reads.
+func personActSignals(fixed *fixedReader, segs []segment) []payloadSignal {
 	var out []payloadSignal
 	entered := map[int]bool{}
 	for k, s := range segs {
@@ -381,7 +381,7 @@ func personActSignals(text string, segs []segment) []payloadSignal {
 			for i := 0; i < len(supplied) && !acts && (a.adjacent || a.tag); i++ {
 				acts = a.actOf(supplied[i], inAbcd)
 			}
-			if !acts || a.tag && programFixed(text, segs, k) {
+			if !acts || a.tag && fixed.program(k) {
 				continue
 			}
 			sig := payloadSignal{id: a.id, verdict: VerdictBlock, family: a.family, reason: a.why, successor: a.successor}
