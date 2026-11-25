@@ -538,3 +538,60 @@ func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestAnActsProgramIsReadByItsBasename: what a program may be is read from its
+// basename, as the registry reads it: one the line fixes as another program's,
+// wherever it stands, is that program, and one the line leaves unfixed, or fixes
+// as abcd's, is read as abcd for every act.
+func TestAnActsProgramIsReadByItsBasename(t *testing.T) {
+	reg := Defaults()
+	for _, c := range []struct{ cmd, entry string }{
+		{`"$DIR/abcd" update v0.7.0`, "abcd-update-tag"},
+		{`"$DIR/abcd" update "$TAG"`, "abcd-update-tag"},
+		{`"${X}abcd" update v0.7.0`, "abcd-update-tag"},
+		{`"$DIR/bin/abcd-darwin-arm64" update "$TAG"`, updateTagAnyEntryID},
+		{`"$DIR/scripts/abcd.sh" update v0.7.0`, updateTagAnyEntryID},
+		{`"$DIR/${B}.sh" update v0.7.0`, updateTagAnyEntryID},
+		{`"$DIR/$B" update v0.7.0`, unknownProgramEntryID},
+		{`"$B" update v0.7.0`, unknownProgramEntryID},
+		{`"$BIN/bash" scripts/abcd.sh update v0.7.0`, updateTagAnyEntryID},
+		{`"$BIN/bash" "$DIR/abcd.sh" update v0.7.0`, updateTagAnyEntryID},
+
+		{`"$DIR/abcd" implement "$V"`, "abcd-implement-stop"},
+		{`"$DIR/abcd" "$V" stop`, "abcd-implement-stop"},
+		{`"$DIR/scripts/abcd.sh" implement "$V"`, implementStopAnyEntryID},
+		{`"$DIR/scripts/abcd.sh" "$V" stop`, implementStopAnyEntryID},
+		{`"$DIR/bin/abcd-darwin-arm64" ahoy "$V"`, sharedFolderAnyEntryID},
+		{`"$DIR/${B}.sh" implement "$V"`, implementStopAnyEntryID},
+		{`"$DIR/${B}.sh" "$V" stop`, implementStopAnyEntryID},
+		{`"$DIR/${B}.sh" ahoy "$V"`, sharedFolderAnyEntryID},
+		{`"$B" implement "$V"`, unknownProgramEntryID},
+		{`"$DIR/deploy.sh" implement stop`, implementStopAnyEntryID},
+		{`"$DIR/deploy.sh" ahoy shared-folder /x`, sharedFolderAnyEntryID},
+		{`"$DIR/deploy.sh" land --approve`, approveAnyEntryID},
+		{`"$DIR/deploy.sh" library ledger --flip 3`, ledgerFlipAnyEntryID},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{
+		`"$SCRIPT_DIR/deploy.sh" update v1.2.3`,
+		`$HOME/bin/tool update v2`,
+		`sudo "$HOME/bin/tool" update v2.1.0`,
+		`"$(pwd)/deploy.sh" update v1.2.3`,
+		`"$VENV/bin/python" -m tool update v2`,
+		`"$DIR/deploy.sh" update "$TAG"`,
+		`"$BIN/bash" deploy.sh update v1.2.3`,
+		`sh -c "$DIR/deploy.sh update v1.2.3"`,
+		`"$DIR/deploy.sh" implement "$V"`,
+		`"$DIR/deploy.sh" "$V" stop`,
+		`"$DIR/deploy.sh" ahoy "$V"`,
+		`"$BIN/grep" implement "$F"`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+}

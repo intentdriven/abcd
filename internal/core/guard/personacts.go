@@ -224,7 +224,9 @@ func firstAbcdWord(s segment, from int) int {
 }
 
 // actReading is one place a site's act may start from: the first word it reads, whether
-// the program before it is fixed as abcd's, and whether it may be abcd's.
+// the program before it is fixed as abcd's, and whether it may be abcd's. A name is
+// read from its basename, as nameCouldBe reads it: a directory the line does not fix
+// leaves the name in it fixed.
 type actReading struct {
 	from             int
 	fixedName, named bool
@@ -236,9 +238,9 @@ type actReading struct {
 // not model, the program run is the first word that names abcd.
 func actReadings(s segment, site arrival) []actReading {
 	tok := s.tokens[site.idx]
-	fixed := carriesAbcd(tok)
-	out := []actReading{{from: site.idx + 1, fixedName: fixed, named: fixed || isUnknown(tok)}}
-	if isUnknown(tok) || strings.ContainsRune(tok, varMark) {
+	fixed, open := carriesAbcd(tok), unfixed(path.Base(tok))
+	out := []actReading{{from: site.idx + 1, fixedName: fixed, named: fixed || open}}
+	if open {
 		return out
 	}
 	name := strings.ToLower(path.Base(tok))
@@ -251,7 +253,7 @@ func actReadings(s segment, site arrival) []actReading {
 	if !runs {
 		return out
 	}
-	open := !shell
+	open = !shell
 	if shell {
 		args := s.tokens[site.idx+1:]
 		for _, c := range shellCalls(name, args) {
