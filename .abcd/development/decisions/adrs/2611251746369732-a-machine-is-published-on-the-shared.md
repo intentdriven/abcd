@@ -5,7 +5,7 @@ status: proposed
 date: 2026-11-25
 supersedes: null
 superseded_by: null
-related_intents: [itd-2611141610197753, itd-2611141610201875, itd-2609151838312703]
+related_intents: [itd-2611141610197753, itd-2611141610201875, itd-2609151838312703, itd-2611251809580662]
 related_rfcs: []
 related_adrs: [adr-2610150729333337, adr-2610031352212697, adr-2611251746361324]
 ---
@@ -29,10 +29,11 @@ We will publish a machine on the shared remote only as a label the person chose,
    - the state word (`working`, `waiting`, `stalled` or `stopped`), and for a wait or a block the enumerated word of its cause (an outage, a usage window, a fast-forward declined), never the sentence the drive composed for it;
    - times: since when, until when where the wait names an end, when the line was written, and the drive's end time;
    - counts: lanes done, in progress, set aside and handed back, and the records waiting on that machine for a person to take in;
-   - the ids of records and pull requests the remote already shows, such as the issue a reservation names.
+   - the ids of records and pull requests the remote already shows, such as the issue a reservation names, and where a fast-forward of the drive's checkout was declined, how many commits it is behind;
+   - what every reservation already publishes and what names no machine: the opaque holder id, the working copy's random key and abcd's version.
 2. **What is never published.** A host name, a path (absolute or relative, of a checkout, a worktree, a log or a home), an account name on the machine, a network address, and any free text the drive composed: a refusal's remedy, a log line, an issue's title. The published form is built from typed fields, never by cutting the local line, so nothing composed for the terminal reaches the remote by accident.
-3. **The label is the person's, and it is checked.** It is set in the person's own configuration on that machine, never in a repository file, and it is a short word of lower-case letters, digits and hyphens. The write refuses a label that equals or contains the machine's host name or the account's name, or that carries a path separator. Until a label is chosen, the drive publishes nothing and its start says how to choose one.
-4. **Where and when.** One fixed-form, empty-tree commit on the person's own status branch, written as `abcd announce` writes, pushed when the state word or a count changes and with the reservation's renewal, never more often. The person's forge login is not written into it: the view by login is built from what the forge already records of each status branch and reservation.
+3. **The label is the person's, and it is checked.** It is `drive.label` in the person's own configuration on that machine (`~/.abcd.noindex/config.json`), never in a repository file, so no repository names a person's machines. It is 1 to 24 lower-case letters, digits and hyphens, and a label equal to the machine's host name or the account's name, in any case, is refused. Until a label is chosen, the drive publishes under a label drawn from the working copy's random key, which names no machine, and its start says how to set one.
+4. **Where and when.** One empty-tree commit of fixed fields on the person's own status branch, validated field by field as an announcement is, but a form of its own, since an announcement's kinds and day-long life do not fit a state line. It is pushed when the state word or what the drive waits on changes, and with the hourly renewal of what the drive holds, never more often, and at the drive's end it says `stopped`. Its author and committer are those a reservation's commit has. The person's forge login is not written into it: the view is headed with the login read on the reading machine, and a person is told by their holder id and the ids their home declares, as reservations already tell them (itd-2611251809580662, decision 7).
 
 ## Alternatives Considered
 
@@ -45,6 +46,6 @@ We will publish a machine on the shared remote only as a label the person chose,
 ## Consequences
 
 - **Easier:** one view by login shows every drive of a person, its state and its counts, from any machine that can read the repository, with no service to run.
-- **Harder:** everyone who can read the repository sees each drive's state, times and counts, permanently, which the product thinker accepted. A person who does not want that chooses no label, and that drive publishes nothing.
+- **Harder:** everyone who can read the repository sees each drive's state, times and counts, permanently, which the product thinker accepted. A machine with no label chosen still publishes, under a label drawn from its working copy's random key.
 - **A declined fast-forward is published as its cause word**, with no path, so the view by login carries it (itd-2611141610201875, decision 5) without naming the dirty file.
 - **New obligations:** the brief gains an invariant beside the reservation and status-branch rules, written in the change that builds the published line: nothing about a machine but a chosen label, a state word, times, counts and already-public ids reaches the shared remote. The reader that renders the view treats every published field as untrusted text, as it does an announcement. A test feeds the publisher a state whose local line names a path and a host name, and asserts that neither reaches the commit.
