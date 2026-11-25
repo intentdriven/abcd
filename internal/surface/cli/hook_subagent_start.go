@@ -39,12 +39,17 @@ import (
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // subagentStartBound is the hook's own deadline, set before stdin is read and
 // under the timeout hooks/hooks.json declares for the event, so the hook
 // answers for itself before the host kills it.
 var subagentStartBound = 5 * time.Second
+
+// abcdRootCommit is the root commit of the repository whose own script the
+// message names; tests repoint it.
+var abcdRootCommit = abcdrepo.RootCommit
 
 // newSubagentStartCommand builds `abcd hook subagent-start`.
 func newSubagentStartCommand() *cobra.Command {
@@ -184,13 +189,23 @@ func subagentStartMessage(ctx context.Context, in hookInput, notes io.Writer) ([
 	if err != nil || !c.Applies {
 		return nil, err
 	}
+	doc, err := composeSubagentStart(c, subagentAbcd(ctx, c.Root), notes)
+	if err != nil {
+		return nil, err
+	}
+	// The note comes last, so a bound spent above leaves none. It comes before
+	// the answer is written and not after: a note that cannot be kept sends
+	// nothing, so every sub-agent that was told has one.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("it did not finish within %s", subagentStartBound)
+	}
 	if subagentKey(in.SessionID, in.AgentID) {
 		told := rules.SubagentRecord{File: c.File, Root: c.Root, By: rules.SubagentToldByStart}
 		if err := rules.WriteSubagentFact(in.SessionID, in.AgentID, rules.SubagentTold, told); err != nil {
 			return nil, errors.New("the note that it was told could not be kept")
 		}
 	}
-	return composeSubagentStart(c, notes)
+	return doc, nil
 }
 
 // conventionsScope is where a sub-agent's conventions come from: the checkout
@@ -269,11 +284,16 @@ func plainPath(p string) (string, bool) {
 // subagentAbcd is the abcd a sub-agent in root is told to run: the checkout's
 // own script in abcd's source tree, where an installed release or a build of
 // another commit is the wrong one, and elsewhere this hook's own executable, so
-// it exists and is the version that named the domains.
-func subagentAbcd(root string) string {
+// it exists and is the version that named the domains. The layout is looked at
+// first, and is no identity: the checkout's root commit is. It is asked of the
+// checkout looked in and not of the session's note, since a session's directory
+// can be a checkout of another repository than the one it started in.
+func subagentAbcd(ctx context.Context, root string) string {
 	if abcdrepo.LooksLikeSourceTree(root) {
 		if fi, err := os.Lstat(filepath.Join(root, "scripts", "abcd.sh")); err == nil && fi.Mode().IsRegular() {
-			return "scripts/abcd.sh"
+			if sha, err := gitutil.RootCommitContext(ctx, root); err == nil && sha == abcdRootCommit {
+				return "scripts/abcd.sh"
+			}
 		}
 	}
 	if exe, err := osExecutable(); err == nil && filepath.IsAbs(exe) {
@@ -291,15 +311,15 @@ const (
 )
 
 // composeSubagentStart is the stdout document, whole and within
-// rules.InjectionBudgetBytes. A list of domains that does not fit is replaced
-// whole by its count and the command that prints it, said on notes; no name is
-// ever cut.
-func composeSubagentStart(c conventionsScope, notes io.Writer) ([]byte, error) {
+// rules.InjectionBudgetBytes; abcd is the one the commands run. A domain an
+// override names carries the label it has wherever a domain is printed. A list
+// of domains that does not fit is replaced whole by its count and the command
+// that prints it, said on notes; no name is ever cut.
+func composeSubagentStart(c conventionsScope, abcd string, notes io.Writer) ([]byte, error) {
 	var names []string
 	for _, d := range c.Rules.Active() {
-		names = append(names, d.Name)
+		names = append(names, rules.Label(d.Name, d.Source))
 	}
-	abcd := subagentAbcd(c.Root)
 	root, _ := plainPath(c.Root)
 	list := fmt.Sprintf("Domains in force (%d): %s", len(names), strings.Join(names, ", "))
 	if len(names) == 0 {

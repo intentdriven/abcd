@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -259,18 +260,62 @@ func TestSubagentStartNamesTheWorktreeItLookedIn(t *testing.T) {
 	}
 }
 
+// rootIsAbcds makes a repository's root commit the one taken for abcd's own.
+func rootIsAbcds(t *testing.T, sha string) {
+	t.Helper()
+	orig := abcdRootCommit
+	abcdRootCommit = sha
+	t.Cleanup(func() { abcdRootCommit = orig })
+}
+
+// TestSubagentStartNamesTheCheckoutsOwnScriptInAbcdsSourceTree: the script is
+// named in a checkout of abcd's own repository laid out as its source tree, and
+// nowhere else.
 func TestSubagentStartNamesTheCheckoutsOwnScriptInAbcdsSourceTree(t *testing.T) {
-	repo, _ := subagentRepo(t)
-	swapExecutable(t, func() (string, error) { return "/opt/release/abcd", nil })
-	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
-	if msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), "a1", "t")); !strings.Contains(msg, "  /opt/release/abcd rules") {
-		t.Errorf("a source tree with no script names something other than the executable:\n%s", msg)
+	if abcdRootCommit != abcdrepo.RootCommit {
+		t.Fatalf("the hook takes %s for abcd's root commit", abcdRootCommit)
 	}
+	repo, sha := subagentRepo(t)
+	swapExecutable(t, func() (string, error) { return "/opt/release/abcd", nil })
+	says := func(agent, cwd string) string {
+		t.Helper()
+		return startMessage(t, startHookPayload(t, "s1", cwd, agent, "t"))
+	}
+	executable := func(what, msg string) {
+		t.Helper()
+		if !strings.Contains(msg, "  /opt/release/abcd rules --prompt") || strings.Contains(msg, "scripts/abcd.sh") {
+			t.Errorf("%s: something other than the executable is named:\n%s", what, msg)
+		}
+	}
+	writeUnder(t, repo.Root(), "cmd/abcd/main.go", "package main\n")
+	rootIsAbcds(t, sha)
+	executable("a source tree with no script", says("a1", repo.Root()))
 	writeUnder(t, repo.Root(), "scripts/abcd.sh", "#!/bin/sh\n")
-	msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), "a2", "t"))
+	msg := says("a2", repo.Root())
 	if !strings.Contains(msg, "  scripts/abcd.sh rules --prompt") || strings.Contains(msg, "/opt/release") {
 		t.Errorf("abcd's own source tree is not sent to its own script:\n%s", msg)
 	}
+
+	// Another repository laid out the same, in a session abcd's own checkout
+	// started: the root commit asked is that of the checkout looked in.
+	if err := history.NoteSessionRepo(repo.Root(), sha, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	other := gittest.OpenRepo(t, realPath(t, gittest.NewRepo(t).Root()))
+	for rel, body := range map[string]string{"AGENTS.md": "x\n", ".abcd/work/CONTEXT.md": "x\n", "cmd/abcd/main.go": "package main\n", "scripts/abcd.sh": "#!/bin/sh\n", "other.txt": "x\n"} {
+		writeUnder(t, other.Root(), rel, body)
+	}
+	executable("a repository with no commit", says("a3", other.Root()))
+	other.Git("add", "-A")
+	other.Git("commit", "-q", "-m", "another seed")
+	if other.Git("rev-list", "--max-parents=0", "HEAD") == sha {
+		t.Fatal("the two fixtures share a root commit")
+	}
+	executable("another repository laid out as abcd's source tree", says("a4", other.Root()))
+
+	// abcd's own root commit is the pinned one.
+	rootIsAbcds(t, abcdrepo.RootCommit)
+	executable("a repository whose root commit is not the pinned one", says("a5", repo.Root()))
 }
 
 func TestSubagentStartNeverCarriesTheCheckWord(t *testing.T) {
@@ -323,7 +368,7 @@ func TestSubagentStartFitsTheHostLimitWithEveryDomainNamed(t *testing.T) {
 	active := rs.Active()
 	var names []string
 	for _, d := range active {
-		names = append(names, d.Name)
+		names = append(names, rules.Label(d.Name, d.Source))
 		for _, r := range d.Rules {
 			if strings.Contains(so, r) {
 				t.Errorf("the message carries a rule's text of %s", d.Name)
@@ -333,7 +378,7 @@ func TestSubagentStartFitsTheHostLimitWithEveryDomainNamed(t *testing.T) {
 	if want := fmt.Sprintf("Domains in force (%d): %s", len(names), strings.Join(names, ", ")); !strings.Contains(so, want) {
 		t.Errorf("the message does not name every domain in force (%s):\n%s", want, so)
 	}
-	if strings.Contains(so, "no message carries") || strings.Contains(so, "SCRATCH") || !strings.Contains(so, "OWNDOMAIN") {
+	if strings.Contains(so, "no message carries") || strings.Contains(so, "SCRATCH") || !strings.Contains(so, "OWNDOMAIN (repo override)") {
 		t.Errorf("the message names the wrong domains or a rule's text:\n%s", so)
 	}
 	if strings.Contains(so, `\u003c`) {
@@ -370,6 +415,44 @@ func TestSubagentStartCountsTheDomainsItCannotFitAndCutsNone(t *testing.T) {
 	}
 	if !strings.Contains(so, "read AGENTS.md") || strings.Count(se, "\n") != 1 || !strings.Contains(se, "do not fit") {
 		t.Errorf("stdout %q, stderr %q", so, se)
+	}
+}
+
+// TestSubagentStartLabelsADomainAnOverrideNames: a domain carries the label it
+// carries everywhere else, and the labels count against the host's limit.
+func TestSubagentStartLabelsADomainAnOverrideNames(t *testing.T) {
+	repo, _ := subagentRepo(t)
+	swapExecutable(t, func() (string, error) { return "/opt/abcd", nil })
+	home := abcdhome.Path(os.Getenv("HOME"))
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "rules.json"), []byte(`{"schema_version":1,"domains":{"LOAD":{"rules":["r"]},"ISSUES":{"rules":["r"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeUnder(t, repo.Root(), ".abcd/rules.json", `{"schema_version":1,"domains":{"ISSUES":{"rules":["s"]}}}`)
+	msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), "a1", "t"))
+	_, list, _ := strings.Cut(msg, "Domains in force (")
+	for _, want := range []string{" LOAD (user override)", " ISSUES (repo override)", " COMMITTING,"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the list does not name%s:\n%s", want, list)
+		}
+	}
+
+	// Names that fit only without their labels are counted, and none is cut.
+	var b strings.Builder
+	n := 0
+	for b.Len() < 1 || n*len("DOMAIN_0000, ") < rules.InjectionBudgetBytes/2 {
+		fmt.Fprintf(&b, `"DOMAIN_%04d":{"recall":["x"],"rules":["r"]},`, n)
+		n++
+	}
+	writeUnder(t, repo.Root(), ".abcd/rules.json", `{"schema_version":1,"domains":{`+strings.TrimSuffix(b.String(), ",")+`}}`)
+	so, se, code := runSubagentStart(t, strings.NewReader(startHookPayload(t, "s1", repo.Root(), "a2", "t")))
+	if code != 0 || len(so) > rules.InjectionBudgetBytes {
+		t.Fatalf("exit %d, %d bytes, stderr %q", code, len(so), se)
+	}
+	if !strings.Contains(so, "Domains in force: ") || strings.Contains(so, "DOMAIN_") || strings.Contains(so, "override") || !strings.Contains(se, "do not fit") {
+		t.Errorf("labelled names over the limit are not counted whole: stdout %q, stderr %q", so, se)
 	}
 }
 
@@ -532,6 +615,38 @@ func TestSubagentStartStopsAtItsOwnBound(t *testing.T) {
 	t.Chdir(realPath(t, t.TempDir()))
 	if so, se, code := runSubagentStart(t, never()); so != "" || se != "" || code != 0 {
 		t.Errorf("outside a managed checkout: exit %d stdout %q stderr %q", code, so, se)
+	}
+}
+
+// TestSubagentStartNotesOnlyASubagentItAnswersFor: the note that a sub-agent
+// was told is the last thing before the answer, so one whose bound is spent
+// while the message is being made is not noted, then or later.
+func TestSubagentStartNotesOnlyASubagentItAnswersFor(t *testing.T) {
+	repo, sha := subagentRepo(t)
+	if err := history.NoteSessionRepo(repo.Root(), sha, "s1"); err != nil {
+		t.Fatal(err)
+	}
+	setBound(t, &subagentStartBound, 2*time.Second)
+	entered, release := make(chan struct{}), make(chan struct{})
+	swapExecutable(t, func() (string, error) { close(entered); <-release; return "/opt/abcd", nil })
+	failedStart(t, "a message not made in time", strings.NewReader(startHookPayload(t, "s1", repo.Root(), "a1", "t")))
+	select {
+	case <-entered:
+	default:
+		t.Fatal("the bound was spent before the message was being made")
+	}
+	noted := func(when string) {
+		t.Helper()
+		if _, ok := fact(t, "s1", "a1", rules.SubagentTold); ok {
+			t.Errorf("%s: a sub-agent that was not told is noted as told", when)
+		}
+	}
+	noted("at the bound")
+	close(release)
+	time.Sleep(200 * time.Millisecond)
+	noted("after the bound")
+	if n := startFailures(t, repo.Root(), sha); n != 1 {
+		t.Errorf("the failure was counted %d time(s), want 1", n)
 	}
 }
 

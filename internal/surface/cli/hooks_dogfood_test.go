@@ -153,6 +153,9 @@ func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 			continue // the guard's own fall-back is the test below
 		}
 		for _, died := range []string{"1", "2", "137"} {
+			if e.event == "SubagentStart" && died == "1" {
+				continue // that verb's own answer, the test below
+			}
 			t.Run(e.event+"/exit-"+died, func(t *testing.T) {
 				root, _ := dogfoodRig(t, "BUILD", died)
 				stdout, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
@@ -186,6 +189,22 @@ func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSubagentStartTakesTheBuildsOwnFailureAsItsAnswer: the start hook fails
+// at exit 1 on purpose, within its own bound and with the failure counted, so
+// the installed release does not run the same start again: two bounds do not
+// fit the manifest's timeout, and one start would be counted twice.
+func TestSubagentStartTakesTheBuildsOwnFailureAsItsAnswer(t *testing.T) {
+	root, _ := dogfoodRig(t, "BUILD", "1")
+	stdout, stderr, code := hookRunHome(t, "SubagentStart", root, "", t.TempDir(), dogfoodListHome(t))
+	calls := callLog(t, filepath.Join(root, "calls.log"))
+	if code != 1 || stdout != "" || stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want the build's exit 1, nothing on stdout and nothing of the shim's own", code, stdout, stderr)
+	}
+	if !strings.Contains(calls, "dogfood hook subagent-start") || releaseRan(calls, "hook subagent-start") {
+		t.Errorf("the start did not run on the build alone; calls %q", calls)
 	}
 }
 

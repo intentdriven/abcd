@@ -252,7 +252,8 @@ func TestSubagentStopSaysWhenTheHoldCouldNotBeJudged(t *testing.T) {
 // TestJudgeKnowsTheRulesCommandTheStartMessagePrinted: both commands, as the
 // start hook printed them, are the rules command at the stop.
 func TestJudgeKnowsTheRulesCommandTheStartMessagePrinted(t *testing.T) {
-	repo, _ := subagentRepo(t)
+	repo, sha := subagentRepo(t)
+	rootIsAbcds(t, sha)
 	printed := func(agent string) []string {
 		t.Helper()
 		var out []string
