@@ -324,3 +324,190 @@ drive iss-2609300000000103's lane, run <RUN>: run `abcd implement step` to take 
   "updated_at": "<TIME>",
   "window_started_at": "<TIME>"
 }
+== brief
+# Lane brief: lane-1 of <RUN>
+
+You are the implementer of lane-1 in the run `abcd build iss-2609300000000103` started: you fix one issue. You did not
+write this brief and no one will answer a question about it: what the record below does not settle,
+you settle and say so in your report, or you hand the issue back (below).
+
+Rendered from, at the lane's base (, <BASE>):
+
+- the issue: iss-2609300000000103, `.abcd/work/issues/open/iss-2609300000000103-renderer.md`
+- the conventions: `AGENTS.md`, its working-conventions section
+- 0 decision record(s) in `.abcd/work/decisions/` and 0 entries of the frozen log `.abcd/work/DECISIONS.md` naming iss-2609300000000103
+
+## Your lane
+
+- Fix iss-2609300000000103 by its remedy, below, and nothing else.
+- Work only in the worktree ``.
+- Commit on its branch, ``, cut from the default branch at `<BASE>`. Never push, never switch
+  branch, and never commit anywhere else.
+- Do not resolve iss-2609300000000103 yourself: the landing runs `capture resolve` with the commit your receipt names.
+
+## Files beyond the issue's place
+
+The run reserves iss-2609300000000103 on the shared remote with the path its found_at names, so no other copy
+edits it while you work. You may change any other file the fix needs, and you run nothing to
+reserve it: once you hand your receipt back, the loop reserves every path your commits change
+beyond that hold, before it judges the receipt and before the validators start, and again before
+each later round and before the landing's push. The decision records you write and the issue's
+own record are reserved the same way.
+
+- A path another copy holds: the loop does not take it from them. Your receipt is taken all the
+  same, the run's record names the path and its holder, and the lane waits before its validators.
+  If the hold has not ended by the drain's bound of minutes, the lane is handed back, naming the
+  path and its holder.
+- A path no reservation may carry: one whose name has a backslash, a control, non-printing,
+  bidirectional or zero-width character, or a leading or trailing space, or one with `..` or a
+  leading `/`. Your receipt is refused, naming it. Take the change out of the branch.
+- A gate file (`Makefile`, `GNUmakefile`, `makefile`, `.abcd/rules.json`, `.abcd/guard.json`, `.abcd/config.json`, anything under `scripts/`, `.githooks/`, `hooks/`, `.github/`, `.abcd/config/`, `.abcd/.work.local/preflight-receipts/`, `.abcd/.work.local/approvals/`, `.abcd/.work.local/review-receipts/` or `.abcd/.work.local/reservation/`, or under the hooks path the repository configures): an unattended drive does not land a lane that changes one, and hands it to
+  a person's own session. Change one only when the remedy names it.
+
+## The work: iss-2609300000000103's remedy
+
+The records below are quoted as the lane's base holds them, save one substitution: an HTML
+comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end
+its fence early.
+
+<!-- begin remedy -->
+
+Name the flag in the page.
+
+<!-- end remedy -->
+
+## The definition of done
+
+Reproduce, then fix: write a detector (a test) that fails before the fix and passes after, and
+watch it fail before you change the code. Then run the repository's definition of done, as the
+conventions below state it, in your worktree. The validators judge the fix with the detector as
+evidence; they, not the detector, are the oracle.
+
+Run a Go package's tests through abcd's load gate in its narrow form, which waits behind other
+narrow runs and gives way to a whole preflight for 5 minutes at most (where the
+conventions below spell the narrow form for this repository, use theirs, still without `-race`):
+
+`abcd implement load --wait --narrow --timeout 6h -- go test -count=1 -timeout 40m ./<package>`
+
+One run names at most 3 packages outright, so run it once for each 3 you changed. The gate
+reads `-run`, `-skip`, `-v`, `-short`, `-failfast`, `-json`, `-timeout` and `-count=1` as narrow (a gate newer than
+v0.16.2 reads `-trimpath` as narrow too); any other flag, a wildcard such as `./...` or more
+packages makes it a whole run, which waits behind every preflight on the machine.
+
+Leave out `-race`: the gate reads a race run as a whole run whatever its size. Where the
+repository's pre-push gate, which the landing waits for, runs the race detector, it runs there.
+Where it runs none and the conventions ask for race tests, run them as a whole run of their own:
+
+`abcd implement load --wait --timeout 6h -- go test -race -count=1 -timeout 40m ./<package>`
+
+## Handing the issue back
+
+An issue reaches you because its fields say it needs no decision. If you find one in it, stop:
+do not decide it. Write the receipt below with a `handback` in place of `resolves`, and the loop
+discards the lane's work and hands the issue back to a person by its kind:
+
+- `user-visible`: the fix changes what a user sees, which the remedy did not name; the issue is promoted to an intent draft for a person to plan
+- `trust-rule`: the fix turns on a rule about trust or safety; the issue is flagged as needing a decision record, with your reason as the question, which is also written onto the open issue as its decision_needed: field
+- `design-finding`: a reviewer's finding, or your own, is a design decision; the issue is flagged with the home you name
+- `second-package`: the fix reaches a second package the remedy did not name; the issue is flagged with the home you name
+
+`reason` says what you found, in a sentence; `home` names where the decision belongs (an intent,
+a decision record, a principle, the brief) and is required for `design-finding` and `second-package`.
+
+## What you hand back
+
+Write these three files, then stop:
+
+1. Your report, `<LANE>/report.md`: what you fixed, the detector you watched fail, and what a reviewer should
+   look at. It carries no verdict: only the loop records a verdict, from the validators it runs after you.
+2. The definition of done's output, `<LANE>/dod.log`: its whole output.
+3. Your receipt, `<LANE>/receipt.json`, in exactly this shape (strict JSON: any other field refuses it):
+
+```json
+{
+  "schema_version": 1,
+  "run_id": "<RUN>",
+  "lane": "lane-1",
+  "branch": "",
+  "commits": ["<the full object name of every commit you made on the branch>"],
+  "definition_of_done": {"command": "<what you ran>", "exit_code": 0, "output": "dod.log"},
+  "report": "report.md",
+  "model": "<the model id your harness reports, or leave the field out>",
+  "resolves": [{"issue": "iss-2609300000000103", "commit": "<the commit of yours that fixed it>", "note": "<the resolution>",
+                "impact": "additive|breaking|fix|internal", "grounds": "pursued: <what is expected, and what would show it wrong>"}]
+}
+```
+
+`resolves` must name iss-2609300000000103: a receipt that does not is refused. To hand the issue back instead,
+leave `resolves` out and add `"handback": {"kind": "<kind>", "reason": "<what you found>", "home": "<where it belongs>"}`.
+
+`output` and `report` are paths inside `<LANE>`. The loop verifies the receipt before anything else
+runs, and a receipt short of what it must carry is refused, naming what is missing.
+
+## Outward-facing text
+
+A pull-request body, an issue, a comment, a commit message and a release note are public the moment
+they exist. This holds whatever the conventions below say:
+
+> Never put a live session URL or a tool's own attribution footer ("generated with/by <tool>") into public text — a pull-request body, an issue, a comment, a commit message or a release note. Disclosure goes in the repository's own trailer (Assisted-by: <Vendor>:<model-version>) and nowhere else. After creating ANY pull request, issue or comment, re-read what was actually created and strip any session URL or attribution footer from it: the harness appends them outside your own output, so text that left you clean can arrive dirty, and the forge keeps the pre-edit revision of what was posted — which is why the strip has to happen immediately, not at review time.
+
+## A lost connection
+
+If the network (git, gh, a download) or the model service fails you (a connection error, an API
+error, overloaded, a timed-out request): do not retry, and do not commit what you have. Stop, and
+end your hand-back with exactly one line, `NETWORK: <the failing command>`, and no receipt.
+The run waits the outage out and restarts the lane from its last commit; your uncommitted edits are
+kept for review, never built on. A usage or rate limit is not a lost connection.
+
+---
+
+## The issue: iss-2609300000000103
+
+<!-- begin .abcd/work/issues/open/iss-2609300000000103-renderer.md -->
+
+---
+schema_version: 1
+id: "iss-2609300000000103"
+slug: "renderer"
+severity: "minor"
+category: "documentation"
+source: "manual-test"
+found_during: "the loop's tests"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "commands/drain.md"
+remedy: "Name the flag in the page."
+---
+
+The renderer panics on an empty list (iss-2609300000000103)
+
+<!-- end .abcd/work/issues/open/iss-2609300000000103-renderer.md -->
+
+## The conventions: AGENTS.md
+
+<!-- begin AGENTS.md -->
+
+## Working conventions
+
+- Commit on a branch; never push.
+
+<!-- end AGENTS.md -->
+
+### Decision records in `.abcd/work/decisions/` naming iss-2609300000000103
+
+None.
+
+### Entries of the frozen log `.abcd/work/DECISIONS.md` naming iss-2609300000000103
+
+None.
+
+== pull request title
+fix(iss-2609300000000103): The renderer panics on an empty list (iss-2609300000000103)
+== pull request body
+This pull request fixes iss-2609300000000103 ("The renderer panics on an empty list (iss-2609300000000103)") by its remedy. The implement loop built it in run <RUN> as lane-1, and wrote this text from the run's records.
+
+- Branch ``, from <BASE> to .
+
+Admitted-by: drain adr-2609300000000001
+Assisted-by: abcd:dev
+

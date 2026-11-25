@@ -15,8 +15,9 @@ import (
 // A bundle of one is today's drain (itd-2611201450052326 criterion 8,
 // spc-2611201455051897 step 4): with a cap of 1, and with a lead that has no
 // candidates under a cap above 1, the drain's first two moves leave the
-// drain's state, the run's state, the judgement request and the moves' next
-// lines as the drain before bundles left them. The fixtures under
+// drain's state, the run's state, the judgement request, the moves' next
+// lines, the lane's brief and its pull request's title and body as the drain
+// before bundles left them. The fixtures under
 // testdata/drain_bundle_one were taken from the default branch before step 4
 // (b8250514c) with ABCD_UPDATE_BUNDLE_ONE=1. The comparison masks the schema
 // versions and the drain state's bundle_max, and, as every run differs in
@@ -68,6 +69,7 @@ func bundleOneSnapshot(t *testing.T, repo *gittest.Repo, request string, first, 
 		"== drain state\n" + bundleOneJSON(t, filepath.Join(repo.Root(), filepath.FromSlash(DrainStateRel))),
 		"== run state\n" + bundleOneJSON(t, filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(second.Start.RunID)))),
 	}
+	parts = append(parts, bundleOneLaneText(t, repo, second.Start.RunID)...)
 	s := strings.Join(parts, "\n") + "\n"
 	for _, p := range []string{repo.Root(), os.Getenv("HOME")} {
 		if p != "" {
@@ -78,6 +80,34 @@ func bundleOneSnapshot(t *testing.T, repo *gittest.Repo, request string, first, 
 		s = m.re.ReplaceAllString(s, m.with)
 	}
 	return s
+}
+
+// bundleOneLaneText is the opened lane's brief and its pull request's title
+// and body, as the lane's later stages render them from the run's state, on
+// the fixture's default branch as the lane's base; the base's names are
+// masked, as every run commits afresh.
+func bundleOneLaneText(t *testing.T, repo *gittest.Repo, runID string) []string {
+	t.Helper()
+	run, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lane := run.Lanes[0]
+	lane.BaseSHA = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	src, err := readIssueBriefSources(repo.Root(), run, &lane)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{
+		"== brief\n" + string(renderIssueBrief(run, lane, "<LANE>", src)),
+		"== pull request title\n" + prTitle(run, lane),
+		"== pull request body\n" + prBody(run, lane, nil),
+	}
+	for i := range out {
+		out[i] = strings.ReplaceAll(out[i], lane.BaseSHA, "<BASE>")
+		out[i] = strings.ReplaceAll(out[i], shortSHA(lane.BaseSHA), "<BASE>")
+	}
+	return out
 }
 
 // TestABundleOfOneIsTodaysDrain is criterion 8.
