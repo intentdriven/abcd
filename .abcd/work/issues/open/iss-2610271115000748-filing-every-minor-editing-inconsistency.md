@@ -13,3 +13,5 @@ remedy: "Build the four rungs of the discipline itd-2610271130017437, in order: 
 ---
 
 Filing every minor editing inconsistency as an issue costs far more than fixing it where it is found. The 2026-10-26 consistency pass filed 1301 records from 1307 findings. Its triage then found 584 of them to be one-passage edits with a known fix, 648 to need no change at all (duplicates, conflicts a later record already settles, or no real conflict), and only 69 to need a person's ruling. Every one was filed, read by a triage agent and approved, and the edits still have to be made: work an in-place fix at discovery would have done once, with none of the noise. The product thinker's lesson (2026-10-27): a minor editing inconsistency should become an issue only when it cannot be fixed in place, because it needs a ruling, crosses a boundary the finder may not change, or is too large for the change at hand. Otherwise it is fixed in place as it is discovered.
+
+2026-11-25: The discipline is amended (dcn-2611251833399124): A finding fixed where it is found is captured too, and its fix resolves the record. The build is itd-2611251831138387's.

@@ -18,7 +18,7 @@ production_mode: hand-written
 ## The rule
 
 **A confirmed finding with a safe fix is fixed in the change that found it, and
-only a finding that needs a ruling is filed.** The rule holds in every repository
+only a finding that needs a ruling, or cannot be fixed there, is left open.** Either way it is captured (amended 2026-11-25, dcn-2611251833399124). The rule holds in every repository
 abcd manages and for every finder: an automated pass (a lint, the consistency pass,
 a review), an agent at work, and a person.
 
@@ -32,16 +32,17 @@ a review), an agent at work, and a person.
    what the project requires, or when a record the change cites (an ADR, a
    decision, the passage that is the rule's one home) already decides it. A safe fix
    is made in the change that found the finding, or, when it is too large to review
-   beside that work, in the next change of its own. It is not filed: the commit that
-   makes it is its record.
+   beside that work, in the next change of its own. It is captured all the
+   same, and the change that fixes it resolves the record (amended 2026-11-25,
+   dcn-2611251833399124; before that the commit alone was its record).
 3. **Fix a shared cause once.** Findings with one cause are one finding with many
    locations. Its detector lands first, then every instance is cleared in one
    mechanical change, and the detector stops new ones.
 4. **Propose across a boundary.** A safe fix to something the finder may not change
    (another person's area, a peer's uncommitted work, a checkout it must not write
    to) is proposed to its owner as a change, not filed.
-5. **File only a ruling.** A finding whose fix would change what a passage requires,
-   with no record saying which version wins, is filed, and its remedy names the
+5. **Leave open only a ruling.** Every confirmed finding is captured (dcn-2611251833399124); one whose fix would change what a passage requires,
+   with no record saying which version wins, stays open, and its remedy names the
    decision and its defensible answers. A finding about a security topic follows its
    own private route and is never filed here.
 
@@ -105,7 +106,9 @@ detector, and propose rather than file across a boundary.
 
 ## Staging
 
-Nothing is armed yet. The rungs, in order:
+The first two gates above are from before the amendment of 2026-11-25 (dcn-2611251833399124): Where
+they refuse a capture or file nothing, the build captures and resolves instead
+(itd-2611251831138387). Nothing is armed yet. The rungs, in order:
 
 1. **Taught.** The bundled `ISSUES` rules domain, which every managed repository
    loads, states the rule, so an agent meets it before it files.
