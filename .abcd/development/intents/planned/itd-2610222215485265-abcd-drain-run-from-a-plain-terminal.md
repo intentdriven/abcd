@@ -64,7 +64,7 @@ _Facilitator-proposed on 2026-10-22 and revised after review round 1; walked and
 - **Given** a role whose runner fails or answers out of shape during a lane, **when** the driver meets that fallback, **then** the lane is handed back as stuck with the runner's reason, its reservation is released, and the drive moves on. No lane is left waiting for a host.
 - **Given** three runner failures in a row, or a judgement whose runner fails, **when** the driver meets them, **then** it treats them as an outage: it waits 1, 5 and 10 minutes, then hourly, saying so each time. It stops after eight hours of failures, and hands no issue back for an outage.
 - **Given** the drain's own waits (its pace window, its cap wait, a wait for origin), **when** a move returns one, **then** the driver sleeps until the earliest time the move named, never less than thirty seconds, and holds the drain's lock only during a move.
-- **Given** a drive, **when** Frank presses Ctrl-C or the terminal closes, **then** the agent in a call finishes that call, the open lane is left on its branch with its reservation and claims released, and the drive prints the run, the lane and the command that resumes it, so the next `abcd drain --drive` or a peer picks it up. A second Ctrl-C kills the agent and exits at once (amended 2026-11-04 with decision 8).
+- **Given** a drive, **when** Frank presses Ctrl-C once, **then** the lane in hand runs to its end, no further lane opens, and the drive says how to stop it now. **When** he presses it a second time, or the terminal closes, **then** the agent in a call finishes that call, the open lane is left on its branch with its reservation and claims released, and the drive prints the run, the lane and the command that resumes it, so the next `abcd drain --drive` or a peer picks it up. A third Ctrl-C kills the agent and exits at once (amended 2026-11-04 with decision 8, and 2026-11-25 with decision 13).
 - **Given** `abcd drain` without `--drive`, **when** it runs, in a terminal or a host session, **then** it does what it does today, one move per call. The host's page always calls it that way.
 
 ## Open Questions
@@ -109,6 +109,10 @@ The product thinker's walk and sign-off of 2026-10-23 (dcn-2610230813064058):
 The product thinker's ruling of 2026-11-15, folded in on 2026-11-25:
 
 12. **A set-aside lane's reservation may stand until its lease lapses.** itd-2611141610197753, which builds on this intent, lets a drive set a lane aside when it cannot take it and open the next one; the product thinker ruled on 2026-11-15 that the set-aside lane's reservation is not released by a push but left to lapse, so the issue stays hidden from other sessions for at most the two-hour lease (its decision 4). The press release's last sentence and the mechanism's test are amended to say so: the drive still never keeps an issue held for someone who is not coming, and a reservation that only waits out its lease is not that case. The amendment was filed as iss-2611150635298371, resolved by this change.
+
+The product thinker's ruling of 2026-11-25, folded in the same day:
+
+13. **The first Ctrl-C stops after the lane in hand.** itd-2611150636498012 (its decision 6) makes an interrupt take two steps before the kill: the first press lets the lane in hand run to its end and opens no further lane, and says how to stop now; the second makes the orderly stop that decision 8 gave the first press; the hard kill that decision 8 gave the second press moves to a third. The eighth criterion is amended to say so. A closed terminal still makes the orderly stop at once, since nobody is there to press again.
 
 ## Audit Notes
 

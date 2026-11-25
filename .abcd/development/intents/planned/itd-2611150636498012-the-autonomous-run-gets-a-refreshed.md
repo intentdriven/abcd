@@ -1,8 +1,8 @@
 ---
 id: itd-2611150636498012
 slug: the-autonomous-run-gets-a-refreshed
-spec_id: null
-kind: null
+spec_id: spc-2611251808081374
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611141610192096]
@@ -82,11 +82,11 @@ We expect a person to stop a drive after its lane without a lane left to take up
 
 ## Scope Conditions
 
-- A terminal that can hand the drive single key presses. The repository has no code for that terminal mode today, and the terminal-output draft lists what it costs to add (its DQ-10).
-- Where input is not a terminal, no key is read and no option line is drawn. The drive runs as it does today, and the headless mode or a flag carries the choice.
-- The footer's three lines and their words are those of itd-2611141610192096 and itd-2611141610197753. This intent adds the option line and the keys.
-- A stop after the lane in hand is recorded state a person sets, as every stop is (adr-2611050740453233). Its place among the existing stops is part of planning.
-- The native app is not part of this intent. The headless mode is built so that one can connect later, on the same machine and for the same account.
+- A terminal that can hand the drive single key presses. The repository has a raw terminal mode, which the interviews use (`internal/term/raw.go`); what it lacks is a mode that reads single keys and leaves the terminal's signals and output alone, which the spec adds. <!-- cond: cond-2611251808084722 -->
+- Where input is not a terminal, no key is read and no option line is drawn. The drive runs as it does today, and the headless mode or a flag carries the choice. <!-- cond: cond-2611251808084851 -->
+- The footer's three lines and their words are those of itd-2611141610192096 and itd-2611141610197753. This intent adds the option line and the keys. <!-- cond: cond-2611251808088680 -->
+- A stop after the lane in hand is recorded state a person sets, as every stop is (adr-2611050740453233). Its place among the existing stops is part of planning. <!-- cond: cond-2611251808083254 -->
+- The native app is not part of this intent. The headless mode is built so that one can connect later, on the same machine and for the same account. <!-- cond: cond-2611251808084304 -->
 
 ## What's Out of Scope
 
@@ -99,22 +99,20 @@ We expect a person to stop a drive after its lane without a lane left to take up
 ## Acceptance Criteria
 
 - **Given** a drive running at a terminal, **when** nothing has been pressed, **then** the option line names an option that changes nothing, and Enter leaves the drive exactly as it was.
-- **Given** a drive running at a terminal, **when** a person presses Space, **then** the option line names the next option, and after the last option it returns to the one that changes nothing.
+- **Given** a drive running at a terminal, **when** a person presses Space, **then** the option line names the next option, and after the last option it returns to the one that changes nothing. Besides the option that changes nothing and the stop after this lane, the list holds only options that show detail (the full sentence of the last event that may need a person, and the log's path), and none that acts on the run (decision 3).
 - **Given** the option to stop after the current lane is shown, **when** a person presses Enter, **then** the lane in hand runs to its end, no further lane opens, the drive stops, and the state line and the run's record say that a person set the stop from the terminal.
 - **Given** an option has been accepted, **when** the option line is drawn again, **then** it shows the option that changes nothing, so a second Enter does not repeat or undo the first.
 - **Given** a drive running at a terminal of 50 columns or more, **when** it runs, **then** the three live lines of itd-2611141610192096 are redrawn in place with every event a line above them, and the option line does not wrap.
-- **Given** input or output that is not a terminal, or `TERM=dumb`, **when** the drive runs, **then** no key is read, no option line and no control code is written, and the output is the plain lines of itd-2611141610192096.
+- **Given** output that is not a terminal, input that is not the output's terminal, or `TERM=dumb` or unset, **when** the drive runs, **then** no key is read, no option line, no redrawn region and no control code is written, and the output is the plain lines of itd-2611141610192096.
   - Evidence: itd-2610030810370060, criteria B3 and B4.
 - **Given** `NO_COLOR` at a terminal, **when** the drive runs, **then** no colour code is written, the keys still work, and the option shown is told apart by its words and never by colour alone.
   - Evidence: itd-2610030810370060, criterion B4.
 - **Given** an issue title or any other text the drive did not write, **when** it is drawn in the footer or sent over the headless interface, **then** it is made safe first.
   - Evidence: itd-2610030810370060, criterion B7.
-- **Given** a run that an app started in headless mode as its own child process, **when** the app reads the run's standard output and writes to its standard input, one JSON value a line, **then** it can read the state line, the progress of the lanes and the lane in hand as typed values, and can set each option the terminal offers, with the same effect and the same record.
+- **Given** a run that an app started in headless mode as its own child process, **when** the app reads the run's standard output and writes to its standard input, one JSON value a line, **then** it can read the state line, the progress of the lanes and the lane in hand as typed values over the standard input and output of the process it started, and can set each option the terminal offers, with the same effect and the same record. Nothing but that process's starter can reach the run: the drive opens no socket, writes no token and listens on nothing but its own pipes (decisions 1 and 2).
 - **Given** a headless run and a terminal run of the same recorded fixture, **when** both are read, **then** the state, the lanes and the events agree in every value.
-- **Given** a headless run with no client connected, **when** it runs, **then** it works as a drive at a plain terminal does and waits on no client.
-- **Given** a drive started at a terminal, **when** a program other than the drive's own parent asks to join it, **then** there is no way in: the drive opens no socket, writes no token and listens on nothing but its own pipes (decisions 1 and 2).
-- **Given** the option line at a terminal, **when** a person cycles through it, **then** besides the option that changes nothing and the stop after this lane, it offers only options that show detail (the full sentence of the last event that may need a person, and the log's path), and none that acts on the run (decision 3).
-- **Given** a drive running at a terminal, **when** a person presses Ctrl-C once, **then** the lane in hand runs to its end, no further lane opens, and the drive says that a second Ctrl-C stops it at once; **when** they press it again, **then** it stops at once. The start screen and the command's page say what an interrupt now does (decision 6).
+- **Given** a headless run whose client is slow or silent, **when** it runs, **then** the drive waits on no client and works as a drive with plain lines does; **given** a client that has gone, so that either pipe is closed, **then** the drive takes it as a hang-up and stops in order now, as a drive whose terminal closed does (decision 1).
+- **Given** a drive running at a terminal, **when** a person presses Ctrl-C once, **then** the lane in hand runs to its end, no further lane opens, and the drive says how to stop it now; **when** they press it a second time, **then** it stops now in order, as today's first interrupt does: an agent in a call finishes that call, the lane is left on its branch and its reservation released; **when** they press it a third time, **then** the agent is killed at once. The start screen and the command's page say what an interrupt now does (decision 6).
 
 ## Open Questions
 
@@ -162,6 +160,7 @@ The product thinker's, given in the planning interview of 2026-11-25, except dec
 1. **The app starts the drive as its own child and speaks JSON lines over its pipes** (product thinker, 2026-11-25; formerly question 1).
    - Answer: the headless interface is one JSON value a line on the standard input and output of a drive the app starts itself. The app does not join a drive a person started at a terminal.
    - What it costs: only the app that started a run can read it, and a drive started at a terminal stays the terminal's. There is no address to find, and the process ends with the app.
+   - How a client's going is read (settled by the spec's review, 2026-11-25): when either pipe closes, the drive takes it as a hang-up and stops in order now, as a drive whose terminal closed does. A client that is slow or silent is still never waited on.
 2. **The drive trusts only its own parent, over its own pipes** (technical facilitator, 2026-11-25, as a consequence of decision 1; formerly question 2).
    - Answer: the program that started the drive and holds its standard input and output is the app, so the drive needs no token and opens no socket. Nothing else on the machine can reach it.
    - What it costs: nothing beyond decision 1's own cost; a second reader, or a client on another machine or account, has no way in, which is out of scope already.
@@ -175,8 +174,9 @@ The product thinker's, given in the planning interview of 2026-11-25, except dec
    - Answer: where output is piped or read by a screen reader, the terminal writes plain lines with no option list, as the plain-output criterion already says. Nothing extra is built in the terminal for it, and the native app, when it exists, is the accessible way to set an option.
    - What it costs: until an app exists, a person on a screen reader has no option line and no single key.
 6. **Ctrl-C takes two steps** (product thinker, 2026-11-25; formerly question 6).
-   - Answer: the first interrupt stops the drive after the lane in hand and says that a second interrupt stops it at once; a second interrupt stops it at once.
-   - What it costs and departs from: it changes what an interrupt means today. itd-2610222215485265's interrupt criterion and its decision 8 have the first Ctrl-C let the agent finish its call and leave the lane to take up, and a second kill the agent; under this decision the first press waits for the lane's end, and the second stops at once. How that stop at once maps onto today's stop and kill is planning's to settle, and planning carries the change to that intent's criterion. The command's page and the start screen say what an interrupt now does. There are then two ways to ask for the same stop, the option and the first interrupt.
+   - Answer: the first interrupt stops the drive after the lane in hand and says so, with how to stop it now; a second interrupt stops it at once.
+   - How "at once" is read (settled by the spec's review, 2026-11-25): it is the phrase this intent's question used for today's first interrupt, so the second press does today's orderly stop now (an agent in a call finishes that call, the lane is left on its branch and its reservation released), and today's hard kill moves to a third press. The other reading, a second press that kills, would take the orderly stop off the keyboard.
+   - What it costs and departs from: it changes what an interrupt means today. itd-2610222215485265's interrupt criterion and its decision 8 have the first Ctrl-C let the agent finish its call and leave the lane to take up, and a second kill the agent; under this decision the first press waits for the lane's end, the second makes today's orderly stop, and the third kills. That intent's interrupt criterion is amended to match (its decision 13). The command's page and the start screen say what an interrupt now does. There are then two ways to ask for the same stop, the option and the first interrupt.
 
 ## Typed Links
 
