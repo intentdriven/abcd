@@ -68,15 +68,15 @@ type openedBundle struct {
 }
 
 // recordBundles makes the drain's bundle start record what each lane opens
-// with and start the lead's run; the run's members are the start's to write
-// (loop.go), not this step's.
+// with and then start it as the drain does, the run's start writing the
+// members (loop.go).
 func recordBundles(t *testing.T) *[]openedBundle {
 	t.Helper()
 	var got []openedBundle
 	was := startBundle
 	startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
 		got = append(got, openedBundle{lead: lead, members: members})
-		return startLane(repoRoot, lead, o)
+		return was(repoRoot, lead, o, members)
 	}
 	t.Cleanup(func() { startBundle = was })
 	return &got
@@ -375,40 +375,13 @@ func TestABundleOpensAtTheReservationCapWithoutWaiting(t *testing.T) {
 	}
 }
 
-// writeMembers makes the drain's bundle start write each member onto the
-// lead's new run, with the hold it opened on, as the run's start does once it
-// carries members (loop.go), and returns what each lane opened with.
-func writeMembers(t *testing.T) *[]openedBundle {
-	t.Helper()
-	var got []openedBundle
-	was := startBundle
-	startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
-		got = append(got, openedBundle{lead: lead, members: members})
-		started, err := startLane(repoRoot, lead, o)
-		if err != nil {
-			return started, err
-		}
-		err = mutate(repoRoot, started.RunID, func(_ *os.Root, st *State) (bool, error) {
-			for _, m := range members {
-				at := m.held.at
-				st.Bundle = append(st.Bundle, Member{Issue: m.issue, Footprint: m.footprint, ReservedAt: &at})
-				st.Record = append(st.Record, Entry{At: at, Stage: StageReservation, Note: m.held.note, Issue: m.issue})
-			}
-			return true, nil
-		})
-		return started, err
-	}
-	t.Cleanup(func() { startBundle = was })
-	return &got
-}
-
 // openedBundleLane is the fixture drained, under a cap of 3, to a bundle's
-// lane opened on the lead with the first two candidates as members, written
-// onto its run; it returns the lead, the members and the run.
+// lane opened on the lead with the first two candidates as members, which
+// the run's start writes onto its run; it returns the lead, the members and
+// the run.
 func openedBundleLane(t *testing.T, repo *gittest.Repo) (lead, m1, m2, runID string) {
 	t.Helper()
 	bundleMachineConfig(t, `{"drain":{"bundle_max":3}}`)
-	writeMembers(t)
 	res := mustDrain(t, repo, Options{}, DrainOptions{})
 	lead, m1, m2, _ = orderOf(t, res)
 	for range 3 {
@@ -724,4 +697,45 @@ func TestAClosedBundleWhoseLeadWentAloneRoutesTheRunsIssues(t *testing.T) {
 			t.Fatalf("%s is routed by the closed hand-back: %+v", m, res.Routed)
 		}
 	}
+}
+
+// TestABundleStartsEndToEndWithItsMember: through the drain's own moves and
+// the run's own start, with no seam in between, a lead and one candidate that
+// both answer no form under a cap of 2, and the lane opens on a run that
+// carries both: the member written on the run with the hold it was judged
+// on, a reservation line naming it, and both holds kept on origin.
+func TestABundleStartsEndToEndWithItsMember(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	o := Options{}
+	first := mustDrain(t, repo, o, DrainOptions{})
+	lead, m1, _, _ := orderOf(t, first)
+	leadHold := refOf(t, bare, lead)
+	second := judge(t, repo, o, first, JudgementNo, "", noReason)
+	if second.Judging == nil || second.Judging.Issue != m1 {
+		t.Fatalf("the lead's no asks over the first candidate: %+v", second)
+	}
+	m1Hold := refOf(t, bare, m1)
+	third := judge(t, repo, o, second, JudgementNo, "", noReason)
+	if third.Start == nil || third.Lane == nil || third.Lane.Issue != lead || !slices.Equal(third.Lane.Bundle, []string{m1}) {
+		t.Fatalf("at the cap the bundle's lane opens with the lead and its member: %+v", third)
+	}
+	run, err := ReadState(repo.Root(), third.Lane.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Key != lead || !slices.Equal(run.Issues(), []string{lead, m1}) {
+		t.Fatalf("the run carries the lead and the member: key %s, issues %v", run.Key, run.Issues())
+	}
+	if len(run.Bundle) != 1 || run.Bundle[0].ReservedAt == nil || len(run.Bundle[0].Footprint) != 1 || !strings.HasPrefix(run.Bundle[0].Footprint[0], "internal/a/") {
+		t.Fatalf("the member is written with its hold and footprint: %+v", run.Bundle)
+	}
+	if !slices.ContainsFunc(run.Record, func(e Entry) bool { return e.Stage == StageReservation && e.Issue == m1 }) {
+		t.Fatalf("a reservation line names the member: %+v", run.Record)
+	}
+	if st := formedState(t, repo); st.Forming != nil {
+		t.Fatalf("an opened bundle forms no longer: %+v", st.Forming)
+	}
+	heldStill(t, bare, lead, leadHold)
+	heldStill(t, bare, m1, m1Hold)
 }

@@ -19,7 +19,6 @@ package loop
 // the way the drain went before bundles, with no forming written.
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -33,18 +32,12 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// errMembersUnwired is startBundle's refusal of members where the start does
-// not yet carry them onto the new run.
-var errMembersUnwired = errors.New("this build's start does not carry a bundle's members onto its run")
-
 // startBundle starts the lane of lead with members, a seam a test replaces to
 // read what a bundle opens with. The start carries the members on the new
 // run, each with the hold it was reserved on (Options.members, loop.go); a
-// lane with no members is startLane's.
+// lane with no members starts as startLane's does.
 var startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
-	if len(members) > 0 {
-		return StartResult{}, errMembersUnwired
-	}
+	o.members = members
 	return startLane(repoRoot, lead, o)
 }
 
