@@ -438,9 +438,9 @@ func TestStartWithNoProfileMakesOneAndPrintsTheLoginCommand(t *testing.T) {
 	}
 	out := w.out.String()
 	for _, want := range []string{
-		"abcd start: this account held no profile, so one was made: ~/.abcd.noindex/profiles/drive\n",
+		"abcd start: this account held no profile, so one was made: " + abcdhome.Display("profiles", "drive") + "\n",
 		"a separate login and settings on this one account, not a sandbox",
-		"\n\n  CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/drive claude auth login\n\n",
+		"\n\n  CLAUDE_CONFIG_DIR=" + abcdhome.Display("profiles", "drive") + " claude auth login\n\n",
 		"abcd start: no session was started; run abcd start again once the login is done (abcd drain --drive runs on the same profile)\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -470,7 +470,7 @@ func TestStartMakesTheProfileUnderTheNameGiven(t *testing.T) {
 		t.Fatalf("exit %d:\n%s%s", code, w.out.String(), w.errb.String())
 	}
 	names, err := runner.ProfileNames(w.home)
-	if err != nil || !slices.Equal(names, []string{"mine"}) || !strings.Contains(w.out.String(), "CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/mine claude auth login") {
+	if err != nil || !slices.Equal(names, []string{"mine"}) || !strings.Contains(w.out.String(), "CLAUDE_CONFIG_DIR="+abcdhome.Display("profiles", "mine")+" claude auth login") {
 		t.Fatalf("the account holds %q %v:\n%s", names, err, w.out.String())
 	}
 }
@@ -618,7 +618,7 @@ func TestStartRefusesALoggedOutProfileWithTheLoginCommand(t *testing.T) {
 	w := newStartWorld(t)
 	w.loggedIn(t, false)
 	text := w.refuses(t, "start/not-logged-in")
-	if !strings.Contains(text, "\n  CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/walled claude auth login\n") || strings.Contains(text, "never-kept") {
+	if !strings.Contains(text, "\n  CLAUDE_CONFIG_DIR="+abcdhome.Display("profiles", "walled")+" claude auth login\n") || strings.Contains(text, "never-kept") {
 		t.Errorf("the refusal carries the login command on its own line, and nothing else the host said:\n%s", text)
 	}
 	if calls := w.hostCalls(); !slices.Equal(calls, []string{"auth_status_--json"}) {
@@ -633,7 +633,7 @@ func TestStartRefusesALoggedOutProfileWithTheLoginCommand(t *testing.T) {
 	w.loggedIn(t, false)
 	w.profiles(t, "a-long-profile-name", "another")
 	for _, args := range [][]string{{"--profile", "a-long-profile-name"}, {"--profile=a-long-profile-name", "some words of a prompt"}} {
-		if text := w.refuses(t, "start/not-logged-in", args...); !strings.Contains(text, "\n  CLAUDE_CONFIG_DIR=~/.abcd.noindex/profiles/a-long-profile-name claude auth login\n") {
+		if text := w.refuses(t, "start/not-logged-in", args...); !strings.Contains(text, "\n  CLAUDE_CONFIG_DIR="+abcdhome.Display("profiles", "a-long-profile-name")+" claude auth login\n") {
 			t.Errorf("%q: the login command is whole:\n%s", args, text)
 		}
 	}
@@ -831,7 +831,7 @@ func TestStartWithProfileStartsOnTheOneNamed(t *testing.T) {
 	if !slices.Contains(call.env, beta) || !slices.Contains(strings.Split(string(launched), "\n"), beta) {
 		t.Errorf("the session or the short launch is not on beta")
 	}
-	if !strings.Contains(w.out.String(), "abcd start: found the profile ~/.abcd.noindex/profiles/beta as it was; nothing in it is changed (a separate login and settings on this one account, not a sandbox)\n") {
+	if !strings.Contains(w.out.String(), "abcd start: found the profile "+abcdhome.Display("profiles", "beta")+" as it was; nothing in it is changed (a separate login and settings on this one account, not a sandbox)\n") {
 		t.Errorf("what was found is said:\n%s", w.out.String())
 	}
 }

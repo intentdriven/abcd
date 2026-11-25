@@ -69,11 +69,16 @@ const plantedServers = `{"mcpServers":{"abcd-planted":{"command":"/bin/sh","args
 // launch must not load.
 const plantedPrefix = "abcd-planted-"
 
-// plantedPages are those three, by their path below the working directory.
+// plantedPages are those three, each by its path below the working directory and its name.
 var plantedPages = map[string]string{
-	filepath.Join(".claude", "agents", plantedPrefix+"agent.md"):          "---\nname: " + plantedPrefix + "agent\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
-	filepath.Join(".claude", "skills", plantedPrefix+"skill", "SKILL.md"): "---\nname: " + plantedPrefix + "skill\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
-	filepath.Join(".claude", "commands", plantedPrefix+"command.md"):      "---\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
+	filepath.Join(".claude", "agents", plantedPrefix+"agent.md"):          plantedPrefix + "agent",
+	filepath.Join(".claude", "skills", plantedPrefix+"skill", "SKILL.md"): plantedPrefix + "skill",
+	filepath.Join(".claude", "commands", plantedPrefix+"command.md"):      plantedPrefix + "command",
+}
+
+// plantedPage is the body of the one named.
+func plantedPage(name string) []byte {
+	return []byte("---\nname: " + name + "\ndescription: abcd's check of a launch\n" + "---\n\nDo nothing.\n")
 }
 
 // ProfileNames is every profile directory the account holds below home, sorted, read as
@@ -394,8 +399,8 @@ func ProveSession(ctx context.Context, s Session, harness, repo string, ledger *
 		filepath.Join(".claude", "settings.local.json"): workingTreeSettings(marker),
 		".mcp.json": []byte(plantedServers),
 	}
-	for name, body := range plantedPages {
-		planted[name] = []byte(body)
+	for path, name := range plantedPages {
+		planted[path] = plantedPage(name)
 	}
 	var laid error
 	for name, body := range planted {

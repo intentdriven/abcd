@@ -608,7 +608,7 @@ endif
 # it does instead. make preflight runs the same three lines beside its wait.
 PRECHECK_AUDIT_PACKAGES := ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat ./internal/reachaudit ./internal/abcdhome ./cmd/precheck-audits
 PRECHECK_NAMED_PACKAGES := ./internal/surface/cli ./internal/core/site
-PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand|Sentence|HookEvent|SalvageEntry|FilledInInput
+PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand|Sentence|HookEvent|SalvageEntry|FilledInInput|SeparateLogin|StartsASession
 
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...

@@ -21,10 +21,8 @@ checks catch a start made by mistake. They are not a wall, and prove nothing abo
 typed the line. Give the person the line to type, in a plain terminal, in a checkout abcd
 manages:
 
-```bash
-abcd start                              # opens waiting for them
-abcd start "read the handover first"    # opens with that prompt
-```
+- `abcd start` opens waiting for them;
+- `abcd start "read the handover first"` opens with that prompt.
 
 `--profile <name>` names the profile where the account holds several, and
 `--permission-mode <mode>` the mode the session starts in. With no mode named the
