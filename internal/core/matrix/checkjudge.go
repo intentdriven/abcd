@@ -675,6 +675,15 @@ func recordCheckTable(repoRoot, labID, run, task string, in checkTableInputs) (C
 		if proposed, err = parseCheckProposals(p, k, in.Proposals); err != nil {
 			return CheckTable{}, err
 		}
+		// A reason is a model's text, so it passes the secret screen every
+		// copy's findings pass before any of it reaches the table.
+		reasons, err := encodeCheck(proposed)
+		if err != nil {
+			return CheckTable{}, err
+		}
+		if err := screen(repoRoot, []screened{{lab.StateFile{Rel: checkRel(run, task, "table.json"), Data: reasons}, reasons}}); err != nil {
+			return CheckTable{}, fmt.Errorf("the proposals are refused, and nothing of them is recorded: %w", err)
+		}
 	}
 	copies := make([]CheckCopy, 0, len(k.Copies))
 	for _, key := range k.Copies {

@@ -309,3 +309,22 @@ func TestACodeTasksHiddenTestsAndTestCommandParse(t *testing.T) {
 		})
 	}
 }
+
+// The builder separation compares the model a route names, not its text: the
+// same model named through another provider, in another case, is still the
+// builder's own (spec step 9).
+func TestAJudgeNamingABuildersModelThroughAnotherProviderIsRefused(t *testing.T) {
+	for name, judge := range map[string]string{
+		"another provider": `"matcher": {"id": "match-x", "route": "matcher=runner:other@vendor/model"}`,
+		"another case":     `"proposer": {"id": "propose-x", "route": "proposer=runner:opencode@openrouter/Vendor/MODEL"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseDeclaration([]byte(withJudges(judge))); err == nil || !strings.Contains(err.Error(), "named as the builder cell or-cheap") {
+				t.Fatalf("parseDeclaration = %v; want the judge refused as the builder or-cheap's model", err)
+			}
+		})
+	}
+	if _, err := parseDeclaration([]byte(withJudges(`"matcher": {"id": "match-x", "route": "matcher=runner:other@vendor/judge"}`))); err != nil {
+		t.Fatalf("a judge on another model = %v; want it taken", err)
+	}
+}

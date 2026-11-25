@@ -406,7 +406,10 @@ func (d Declaration) cells() []roleCell {
 // of a check, outside the matrix. Either is refused where the run has no
 // check task, since it would judge nothing, and where its route, or the model
 // its route names, is a builder cell's, since a model would then judge the
-// findings of its own copies.
+// findings of its own copies. The model is compared by modelKey, so the same
+// model named through another provider or in another case is still the
+// builder's; a host builder names its model only once it has run, and
+// judgeApart holds the judges to that model before the check is drawn.
 func (d Declaration) validateJudges() error {
 	judges := []roleCell{}
 	for _, c := range d.cells() {
@@ -423,13 +426,30 @@ func (d Declaration) validateJudges() error {
 			return fmt.Errorf("the %s cell %s judges a check's findings, and the run declares no check task", j.role, j.ID)
 		}
 		for _, b := range d.Builders {
-			model := routeModel(j.Route)
-			if j.Route == b.Route || (model != "" && model == routeModel(b.Route)) {
-				return fmt.Errorf("the %s cell %s is named as the builder cell %s: a %s judges from outside the matrix, never on a builder's own route or model", j.role, j.ID, b.ID, j.role)
+			model := modelKey(routeModel(j.Route))
+			if j.Route == b.Route || (model != "" && model == modelKey(routeModel(b.Route))) {
+				return judgeOnBuilder(j.role, j.ID, b.ID)
 			}
 		}
 	}
 	return nil
+}
+
+// judgeOnBuilder is the refusal of a judge named as a builder cell.
+func judgeOnBuilder(role Role, judge, builder string) error {
+	return fmt.Errorf("the %s cell %s is named as the builder cell %s: a %s judges from outside the matrix, never on a builder's own route or model", role, judge, builder, role)
+}
+
+// modelKey is the model a route's <provider>/<model> names, with every
+// provider and vendor prefix cut and its case folded: openrouter/vendor/model-x,
+// vendor/model-x and Model-X are one model. Two models that differ only in
+// their prefix are taken as one, so a judge is refused rather than let judge
+// what may be its own copies.
+func modelKey(model string) string {
+	if i := strings.LastIndexByte(model, '/'); i >= 0 {
+		model = model[i+1:]
+	}
+	return strings.ToLower(model)
 }
 
 // The bounds of a code task's hidden tests: the folder's path, and the test

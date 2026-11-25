@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // checkTrial is copy key's trial as its hand-back writes it: passed, failed
@@ -43,6 +45,7 @@ type checkCopyAt struct {
 	key    TrialKey
 	answer []byte
 	status TrialStatus
+	served string
 }
 
 // checkFlowLab is a recorded run of the guard chapter's check, each edit made
@@ -55,7 +58,11 @@ func checkFlowLab(t *testing.T, copies []checkCopyAt, edits ...func(*runInputs))
 		if _, _, err := collect(t, r, m, rec, store, c.key, c.answer); err != nil {
 			t.Fatalf("collecting %s: %v", c.key, err)
 		}
-		if err := writeTrial(r.Root(), m.ID, checkTrial(t, rec, c.key, c.status)); err != nil {
+		tr := checkTrial(t, rec, c.key, c.status)
+		if c.served != "" {
+			tr.ModelServed = c.served
+		}
+		if err := writeTrial(r.Root(), m.ID, tr); err != nil {
 			t.Fatalf("writeTrial(%s): %v", c.key, err)
 		}
 	}
@@ -97,11 +104,11 @@ func absent(t *testing.T, what, p string) {
 func TestACheckIsJudgedFromTheCommandLineInTwoPhases(t *testing.T) {
 	const registry = "The guard reads its registry from the plugin root."
 	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
-		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, registry, "public:docs/guide.md:Run ahoy first."), StatusPassed},
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, registry, "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
 		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, "The guard  reads its registry\tfrom the plugin root.",
-			"public:docs/guide.md:Always run ahoy before anything else."), StatusPassed},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, []byte("{"), StatusFailed},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 3}, dfAnswer(t, "It refuses a hazard"), StatusExcluded},
+			"public:docs/guide.md:Always run ahoy before anything else."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, []byte("{"), StatusFailed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 3}, dfAnswer(t, "It refuses a hazard"), StatusExcluded, ""},
 	})
 	gates, err := snapshotGates(r.Root())
 	if err != nil {
@@ -203,9 +210,9 @@ func TestACheckIsJudgedFromTheCommandLineInTwoPhases(t *testing.T) {
 func TestACheckMatcherIsAskedOnlyTheLeftoversAndItsAnswerIsRefusedWhole(t *testing.T) {
 	const shared = "The guard reads its registry from the plugin root."
 	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
-		{TrialKey{Task: checkTask, Cell: "or-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Always run ahoy before anything else."), StatusPassed},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed},
+		{TrialKey{Task: checkTask, Cell: "or-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Always run ahoy before anything else."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
 	}, hostJudges)
 	j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
 	if err != nil {
@@ -248,6 +255,11 @@ func TestACheckMatcherIsAskedOnlyTheLeftoversAndItsAnswerIsRefusedWhole(t *testi
 		!strings.Contains(err.Error(), "recorded already") {
 		t.Fatalf("a second matcher answer = %v; want it refused", err)
 	}
+	// A table before the lock is refused as that, never by asking for the
+	// proposer's verdicts while the person is still judging.
+	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, nil, nil); err == nil || !strings.Contains(err.Error(), "not locked") {
+		t.Fatalf("a table before the lock = %v; want it refused as not locked", err)
+	}
 	k := CheckKey{Packet: j.PacketDigest}
 	if _, err := RecordCheckVerdicts(r.Root(), m.ID, rec.RunID, checkTask, checkVerdicts(t, *j.Packet, k, true, nil)); err != nil {
 		t.Fatal(err)
@@ -260,6 +272,16 @@ func TestACheckMatcherIsAskedOnlyTheLeftoversAndItsAnswerIsRefusedWhole(t *testi
 		proposals.Proposed = append(proposals.Proposed, CheckProposal{Code: it.Code, Valid: true, Reason: "the code agrees"})
 	}
 	pdata, _ := json.Marshal(proposals)
+	// A reason is a model's text: one carrying a credential is refused, and
+	// nothing of the table is written.
+	leaky := proposals
+	leaky.Proposed = slices.Clone(proposals.Proposed)
+	leaky.Proposed[0].Reason = "it matches ghp_" + testsecret.Synthetic(61, 36)
+	ldata, _ := json.Marshal(leaky)
+	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, ldata, nil); err == nil || !strings.Contains(err.Error(), "proposals are refused") {
+		t.Fatalf("a proposal reason carrying a token = %v; want the proposals refused", err)
+	}
+	absent(t, "the table", checkState(home, m, rec.RunID, "table.json"))
 	outside := fmt.Sprintf(`{"schema_version":1,"labels":[{"a":%q,"b":%q,"same":true}]}`, x, x+"0")
 	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, pdata, []byte(outside)); err == nil || !strings.Contains(err.Error(), "labels are refused") {
 		t.Fatalf("labels on a finding the matcher was not shown = %v; want them refused", err)
@@ -334,8 +356,8 @@ func TestARunnerMatcherWaitsForItsLauncher(t *testing.T) {
 			Model: "openrouter/vendor/judge", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}})
 	}
 	r, _, m, rec := checkFlowLab(t, []checkCopyAt{
-		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed},
-		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed},
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
 	}, runnerMatcher)
 	j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
 	if err != nil {
@@ -348,5 +370,139 @@ func TestARunnerMatcherWaitsForItsLauncher(t *testing.T) {
 	if _, err := RecordCheckMatcher(r.Root(), m.ID, rec.RunID, checkTask, []byte(`{"schema_version":1,"same":[["`+a+`","`+b+`"]]}`)); err == nil ||
 		!strings.Contains(err.Error(), "runner cell") {
 		t.Fatalf("a host answer for a runner matcher = %v; want it refused", err)
+	}
+}
+
+// A host builder pins no model before it runs, so its model is the one its
+// copies say they were served: a judge on a runner route naming that model,
+// through any provider, judges its own copies and is refused before anything
+// of the check is drawn (spec step 9).
+func TestAJudgeNamingTheModelAHostBuilderServedIsRefused(t *testing.T) {
+	const shared = "The guard reads its registry from the plugin root."
+	runnerMatcher := func(in *runInputs) {
+		in.Declaration = []byte(withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/host-model"}`))
+		in.Cells = append(in.Cells, CellPin{Cell: "match-or", Role: RoleMatcher, Source: SourceOpenRouter, Runner: "opencode",
+			Model: "openrouter/vendor/host-model", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}})
+	}
+	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, "Host-Model"},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
+	}, runnerMatcher)
+	if _, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); err == nil || !strings.Contains(err.Error(), "host-big") {
+		t.Fatalf("DrawCheck = %v; want the matcher refused as the model host-big served", err)
+	}
+	absent(t, "the matcher's request", checkState(home, m, rec.RunID, "match.json"))
+}
+
+// A runner proposer's verdicts come only through a launcher: once the
+// person's verdicts lock, the judging stops at awaiting_proposer and says
+// why, and the table is refused saying the same.
+func TestARunnerProposerLeavesTheTableWaitingAndSaysSo(t *testing.T) {
+	const shared = "The guard reads its registry from the plugin root."
+	runnerProposer := func(in *runInputs) {
+		in.Declaration = []byte(withJudges(`"proposer": {"id": "propose-or", "route": "proposer=runner:opencode@openrouter/vendor/judge"}`))
+		in.Cells = append(in.Cells, CellPin{Cell: "propose-or", Role: RoleProposer, Source: SourceOpenRouter, Runner: "opencode",
+			Model: "openrouter/vendor/judge", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}})
+	}
+	r, _, m, rec := checkFlowLab(t, []checkCopyAt{
+		{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
+	}, runnerProposer)
+	j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil || j.Stage != CheckAwaitingVerdicts || j.Waiting != "" {
+		t.Fatalf("DrawCheck = %+v, %v; want the packet drawn, nothing waited on", j, err)
+	}
+	if _, err := RecordCheckVerdicts(r.Root(), m.ID, rec.RunID, checkTask, checkVerdicts(t, *j.Packet, CheckKey{Packet: j.PacketDigest}, true, nil)); err != nil {
+		t.Fatal(err)
+	}
+	j, err = DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil || j.Stage != CheckAwaitingProposer || !strings.Contains(j.Waiting, "propose-or is a runner cell") || !strings.Contains(j.Waiting, "launcher") {
+		t.Fatalf("judging after the lock = %+v, %v; want it awaiting the runner proposer, saying so", j, err)
+	}
+	if _, err := RecordCheckTable(r.Root(), m.ID, rec.RunID, checkTask, nil, nil); err == nil || !strings.Contains(err.Error(), j.Waiting) {
+		t.Fatalf("a table for a runner proposer = %v; want it refused with the wait", err)
+	}
+}
+
+// A judge is read from the run's pin in its role, and one the record does not
+// pin so is refused rather than taken as the host's.
+func TestAJudgeTheRunDoesNotPinIsRefused(t *testing.T) {
+	rec := RunRecord{Cells: []CellPin{{Cell: "match-host", Role: RoleMatcher, Source: SourceHost}, {Cell: "x", Role: RoleBuilder, Source: SourceHost}}}
+	if c, err := judgeCellOf(rec, &Cell{ID: "match-host"}, RoleMatcher); err != nil || c.AwaitingRunner || c.Source != SourceHost {
+		t.Fatalf("a pinned host matcher = %+v, %v", c, err)
+	}
+	for name, id := range map[string]string{"unpinned": "match-gone", "pinned in another role": "x"} {
+		if c, err := judgeCellOf(rec, &Cell{ID: id}, RoleMatcher); err == nil || !strings.Contains(err.Error(), "pins no such matcher") {
+			t.Errorf("%s: judgeCellOf = %+v, %v; want it refused", name, c, err)
+		}
+	}
+}
+
+// The matcher's answer and the packet are written together, so only an
+// interruption between the writes leaves the answer alone: the judging names
+// it, a second answer is refused saying how to go on, and the verb alone
+// draws the packet from the answer recorded.
+func TestAMatcherAnswerLeftWithoutItsPacketIsDrawnOnByTheVerbAlone(t *testing.T) {
+	const shared = "The guard reads its registry from the plugin root."
+	r, home, m, rec := checkFlowLab(t, []checkCopyAt{
+		{TrialKey{Task: checkTask, Cell: "or-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Always run ahoy before anything else."), StatusPassed, ""},
+		{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 2}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
+	}, hostJudges)
+	j, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := j.MatcherRequest.Items
+	pair := [2]string{items[0].ID, items[1].ID}
+	data, err := encodeCheck(checkMatcherRecord{SchemaVersion: CheckJudgingSchema, Run: rec.RunID, Task: checkTask,
+		Pairs: [][2]string{pair}, Sample: [][2]string{pairKey(pair[0], pair[1])}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCheckState(r.Root(), m.ID, checkRel(rec.RunID, checkTask, "matcher.json"), data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecordCheckMatcher(r.Root(), m.ID, rec.RunID, checkTask, []byte(`{"schema_version":1,"same":[]}`)); err == nil ||
+		!strings.Contains(err.Error(), "draw the packet with the verb alone") {
+		t.Fatalf("a matcher answer over an interrupted draw = %v; want it refused naming the verb alone", err)
+	}
+	absent(t, "the packet", checkState(home, m, rec.RunID, "packet.json"))
+	j, err = DrawCheck(r.Root(), m.ID, rec.RunID, checkTask)
+	if err != nil || j.Stage != CheckAwaitingVerdicts || j.Packet == nil || len(j.Packet.Items) != 3 || j.Waiting != "" {
+		t.Fatalf("DrawCheck over an interrupted draw = %+v, %v; want the packet drawn from the answer, the pair joined", j, err)
+	}
+	if _, err := os.Stat(checkState(home, m, rec.RunID, "packet.json")); err != nil {
+		t.Fatalf("the packet is not recorded: %v", err)
+	}
+}
+
+// The sample people label is shown in a seeded order: a pair's place in it
+// says nothing of whether the matcher joined it.
+func TestTheMatchersSampleIsShownInASeededOrder(t *testing.T) {
+	req := MatcherRequest{SchemaVersion: 1}
+	for i := range 12 {
+		req.Items = append(req.Items, MatcherItem{ID: fmt.Sprintf("m-%08x", i)})
+	}
+	var pairs [][2]string
+	joined := map[[2]string]bool{}
+	for i := 0; i < 12; i += 2 {
+		p := [2]string{req.Items[i].ID, req.Items[i+1].ID}
+		pairs = append(pairs, p)
+		joined[pairKey(p[0], p[1])] = true
+	}
+	mixed := false
+	for s := range 8 {
+		var seed [32]byte
+		seed[0] = byte(s)
+		sample := drawMatcherSample(req, pairs, matcherSampleSize, seed)
+		for i := range len(pairs) {
+			if !joined[sample[i]] {
+				mixed = true
+			}
+		}
+	}
+	if !mixed {
+		t.Fatal("over eight seeds the matcher's joins always lead the sample; want them shown in a drawn order")
 	}
 }

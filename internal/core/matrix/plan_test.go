@@ -392,7 +392,7 @@ func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
 		t.Fatalf("hidden tests = %+v; want none where no task names any", bare.HiddenTests)
 	}
 	decl := strings.Replace(string(planDecl(builders, ``, ``)), `"intent": "itd-2610161733316518"}`,
-		`"intent": "itd-2610161733316518", "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "Test Hidden", "./..."]}`, 1)
+		`"intent": "itd-2610161733316518", "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "Test Hidden", "One\u00a0Two", "./..."]}`, 1)
 	p, err := plan(t, []byte(decl), ResolvedCap{})
 	if err != nil {
 		t.Fatal(err)
@@ -401,8 +401,11 @@ func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
 		t.Fatalf("hidden tests = %+v; want the code task's", p.HiddenTests)
 	}
 	h := p.HiddenTests[0]
-	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" ./...`, in an export of the copy with the hidden tests from /work/hidden/feature-a added, never in its clone"
-	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 5 || h.Consent != want {
+	// Every word holding a space, a Unicode one among them, is quoted, and so
+	// is the folder; the line says no hidden test is run by this build.
+	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone; " +
+		"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report"
+	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 6 || h.Consent != want {
 		t.Fatalf("hidden tests = %+v\nwant consent %q", h, want)
 	}
 	if p.Digest == bare.Digest {

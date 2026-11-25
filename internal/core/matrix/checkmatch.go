@@ -371,9 +371,11 @@ func matcherAgreement(req MatcherRequest, pairs [][2]string, labels []PairLabel)
 	return out
 }
 
-// drawMatcherSample draws n pairs of req's findings for people to label: the
-// matcher's own joins first, up to half, then pairs drawn from the rest, so
-// the sample tests both its joins and what it left apart.
+// drawMatcherSample draws n pairs of req's findings for people to label: up
+// to half of them the matcher's own joins, the rest pairs drawn from all of
+// them, so the sample tests both its joins and what it left apart. The sample
+// is shown in an order drawn from seed, so a pair's place says nothing of
+// whether the matcher joined it.
 func drawMatcherSample(req MatcherRequest, pairs [][2]string, n int, seed [32]byte) [][2]string {
 	rng := rand.New(rand.NewChaCha8(seed))
 	seen := map[[2]string]bool{}
@@ -401,6 +403,7 @@ func drawMatcherSample(req MatcherRequest, pairs [][2]string, n int, seed [32]by
 		seen[k] = true
 		out = append(out, k)
 	}
+	rng.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
 	return out
 }
 

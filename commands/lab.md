@@ -265,9 +265,13 @@ answer, `{"schema_version": 1, "same": [["<id>", "<id>"]]}`, and record it:
 
 The answer is refused whole, with nothing recorded, when it names a finding it
 was not shown; once taken, its pairs are joined, a `sample` of pairs is drawn
-for the person to label, and the `packet` is drawn. A matcher or proposer cell
-marked `awaiting_runner` waits for a launcher: never answer for it yourself, and
-tell the person it waits. The packet shows each distinct finding under a `code`,
+for the person to label, in an order that says nothing of which pairs the
+matcher joined, and the `packet` is drawn. A matcher or proposer cell marked
+`awaiting_runner` waits for a launcher this build does not have: the judging
+stops at `awaiting_matcher` or `awaiting_proposer` with `waiting` saying so.
+Never answer for it yourself, and tell the person it waits. Where `waiting` says
+the matcher's answer is recorded and its packet is not drawn, run the verb with
+no flag: it draws the packet from that answer. The packet shows each distinct finding under a `code`,
 shuffled, with no model, cell, run or path named and no verdict proposed. Show
 it to the person and record their verdict on every code, locked, with
 `--verdicts <file>`: `{"schema_version": 1, "packet": "<packet_digest>",
@@ -282,7 +286,8 @@ lock once. Then build the second phase:
 sub-agent shown the packet alone: `{"schema_version": 1, "packet":
 "<packet_digest>", "proposed": [{"code": "<code>", "valid": true, "reason":
 "<one line>"}]}`. It is required when the declaration names a host proposer and
-refused when it names none. `--labels` is the person's labels on the sample,
+refused when it names none, and its reasons pass the secret screen before the
+table is written. `--labels` is the person's labels on the sample,
 `{"schema_version": 1, "labels": [{"a": "<id>", "b": "<id>", "same": true}]}`.
 The table gives each finding's row, each model's `scores` (precision, unique
 valid findings, recall) and the `overlap`; `matcher` gives its agreement, or
@@ -291,7 +296,9 @@ pairs labelled. Asked again with no flag, the verb shows the judging as it
 stands. Refused, exit 2, with nothing written: a task with a copy handed to you
 and not back, a matcher, verdict, proposal or label file that does not
 validate, a second matcher answer, verdict file or table, a table before the
-verdicts are locked, and an answer for a runner cell. Nothing of a check is
+verdicts are locked, an answer for a runner cell, and a matcher or proposer
+the run's record does not pin. A run that cannot be read is refused as it is,
+whatever the task. Nothing of a check is
 filed or written where the release gates read.
 
 **Read a recorded run's report**, which writes nothing:

@@ -19,9 +19,12 @@ package matrix
 //
 // A matcher or a proposer on a runner route answers through a launcher, and
 // nothing stands in for it: an answer handed in for one is refused, as a
-// runner reviewer cell's is. Nothing here starts a process, and nothing is
-// written outside the run's state in the lab: a check's findings are
-// compared, never filed (decision 22).
+// runner reviewer cell's is, and the judging names that wait (Waiting) at the
+// stage it stops at. No launcher answers a judge cell yet, so a run whose
+// judges are runner cells is judged from the command line up to that stage.
+// Nothing here starts a process, and nothing is written outside the run's
+// state in the lab: a check's findings are compared, never filed (decision
+// 22).
 
 import (
 	"crypto/rand"
@@ -55,6 +58,9 @@ const (
 	// CheckVerdictsLocked: the verdicts are locked, and the table is not
 	// built.
 	CheckVerdictsLocked CheckStage = "verdicts_locked"
+	// CheckAwaitingProposer: the verdicts are locked, and the table waits
+	// for a proposer on a runner route, whose verdicts only a launcher gives.
+	CheckAwaitingProposer CheckStage = "awaiting_proposer"
 	// CheckTabled: the second phase is recorded.
 	CheckTabled CheckStage = "tabled"
 )
@@ -72,10 +78,12 @@ type JudgeCell struct {
 // the copies compared, the findings the exact keys left apart, the judges
 // the person declared, and what is to be handed out at this stage: the
 // matcher's request and the sample of its pairs to label, and the packet the
-// person and the proposer judge.
+// person and the proposer judge. Waiting says what the judging waits for
+// where no command the person can give moves it on.
 type CheckJudging struct {
 	Task           string          `json:"task"`
 	Stage          CheckStage      `json:"stage"`
+	Waiting        string          `json:"waiting,omitempty"`
 	Copies         int             `json:"copies"`
 	Leftovers      int             `json:"leftovers"`
 	Matcher        *JudgeCell      `json:"matcher"`
@@ -84,6 +92,9 @@ type CheckJudging struct {
 	Sample         [][2]string     `json:"sample,omitempty"`
 	Packet         *CheckPacket    `json:"packet,omitempty"`
 	PacketDigest   string          `json:"packet_digest,omitempty"`
+
+	// answered marks a matcher's answer recorded.
+	answered bool
 }
 
 // checkMatchState is a matcher's request as the run keeps it: the copies
@@ -148,17 +159,58 @@ func checkRun(proc stateReader, run, task string) (RunRecord, Declaration, error
 }
 
 // judgeCellOf is the declared judge c as rec pins it, nil where none is
-// declared.
-func judgeCellOf(rec RunRecord, c *Cell) *JudgeCell {
+// declared. A declared judge the run does not pin in its role is refused: what
+// its answer is and who may give it are read from its pin, never assumed.
+func judgeCellOf(rec RunRecord, c *Cell, role Role) (*JudgeCell, error) {
 	if c == nil {
-		return nil
+		return nil, nil
 	}
 	for _, p := range rec.Cells {
-		if p.Cell == c.ID {
-			return &JudgeCell{Cell: p.Cell, Source: p.Source, AwaitingRunner: p.Source != SourceHost}
+		if p.Cell == c.ID && p.Role == role {
+			return &JudgeCell{Cell: p.Cell, Source: p.Source, AwaitingRunner: p.Source != SourceHost}, nil
 		}
 	}
-	return &JudgeCell{Cell: c.ID}
+	return nil, fmt.Errorf("the run declares the %s cell %s and its record pins no such %s, so nothing of its judging is taken", role, c.ID, role)
+}
+
+// runnerWait is what a judge on a runner route leaves the judging waiting
+// for.
+func runnerWait(role Role, c *JudgeCell) string {
+	return fmt.Sprintf("the %s cell %s is a runner cell: its answer waits for a launcher this build of abcd does not have, and nothing stands in for it", role, c.Cell)
+}
+
+// judgeApart holds the judges to the models the run's host builders were
+// served, which a host builder names only once it has run: a judge on a
+// runner route naming the model a host builder's copy of the check was
+// served, by modelKey, would judge that copy's findings.
+func judgeApart(rec RunRecord, d Declaration, trials []TrialRecord) error {
+	for _, judge := range []*Cell{d.Matcher, d.Proposer} {
+		if judge == nil || judge.Route == "host" {
+			continue
+		}
+		model := modelKey(routeModel(judge.Route))
+		for _, t := range trials {
+			p, ok := pinFor(rec, t.Key.Cell)
+			if ok && p.Role == RoleBuilder && p.Source == SourceHost && t.ModelServed != "" && modelKey(t.ModelServed) == model {
+				role := RoleMatcher
+				if judge == d.Proposer {
+					role = RoleProposer
+				}
+				return judgeOnBuilder(role, judge.ID, p.Cell)
+			}
+		}
+	}
+	return nil
+}
+
+// pinFor is cell's pin in rec.
+func pinFor(rec RunRecord, cell string) (CellPin, bool) {
+	for _, p := range rec.Cells {
+		if p.Cell == cell {
+			return p, true
+		}
+	}
+	return CellPin{}, false
 }
 
 // stateExists reports whether rel is written in the run's state.
@@ -177,18 +229,21 @@ func stateExists(proc stateReader, rel string) (bool, error) {
 // trial is passed or failed, with its recorded findings, in key order. A copy
 // the compliance check set apart or could not examine, or one never started,
 // is in no comparison, as it is in no rate.
-func checkCopiesOf(proc stateReader, run, task string) ([]CheckCopy, error) {
+func checkCopiesOf(proc stateReader, run, task string) ([]CheckCopy, []TrialRecord, error) {
 	trials, err := readTrials(proc, run, run+"/trials")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var keys []TrialKey
+	var compared []TrialRecord
 	for _, t := range trials {
 		if t.Key.Task == task && (t.Status == StatusPassed || t.Status == StatusFailed) {
 			keys = append(keys, t.Key)
+			compared = append(compared, t)
 		}
 	}
-	return readCheckCopies(proc, run, keys)
+	copies, err := readCheckCopies(proc, run, keys)
+	return copies, compared, err
 }
 
 // readCheckCopies reads the recorded findings of each copy keys names, each
@@ -279,7 +334,15 @@ func readCheckState(proc *lab.Procedure, run, task string) (*checkMatchState, *c
 
 // checkJudgingOf is task's judging as it stands.
 func checkJudgingOf(proc *lab.Procedure, rec RunRecord, d Declaration, task string) (CheckJudging, bool, error) {
-	j := CheckJudging{Task: task, Matcher: judgeCellOf(rec, d.Matcher), Proposer: judgeCellOf(rec, d.Proposer)}
+	matcher, err := judgeCellOf(rec, d.Matcher, RoleMatcher)
+	if err != nil {
+		return CheckJudging{}, false, err
+	}
+	proposer, err := judgeCellOf(rec, d.Proposer, RoleProposer)
+	if err != nil {
+		return CheckJudging{}, false, err
+	}
+	j := CheckJudging{Task: task, Matcher: matcher, Proposer: proposer}
 	st, mr, p, k, err := readCheckState(proc, rec.RunID, task)
 	if err != nil {
 		return CheckJudging{}, false, err
@@ -287,27 +350,47 @@ func checkJudgingOf(proc *lab.Procedure, rec RunRecord, d Declaration, task stri
 	if st != nil {
 		req := st.Request
 		j.MatcherRequest, j.Copies, j.Leftovers, j.Stage = &req, len(st.Copies), len(req.Items), CheckAwaitingMatcher
+		if matcher != nil && matcher.AwaitingRunner {
+			j.Waiting = runnerWait(RoleMatcher, matcher)
+		}
 	}
 	if mr != nil {
-		j.Sample = mr.Sample
+		j.Sample, j.answered = mr.Sample, true
 	}
 	if p == nil {
+		if mr != nil {
+			j.Waiting = interruptedDraw(task)
+		}
 		return j, st != nil, nil
 	}
-	j.Packet, j.PacketDigest, j.Copies, j.Stage = p, k.Packet, len(k.Copies), CheckAwaitingVerdicts
+	j.Packet, j.PacketDigest, j.Copies, j.Stage, j.Waiting = p, k.Packet, len(k.Copies), CheckAwaitingVerdicts, ""
 	if st == nil {
 		j.Leftovers = leftoverCount(*k)
 	}
-	for stage, name := range map[CheckStage]string{CheckVerdictsLocked: "verdicts.json", CheckTabled: "table.json"} {
-		ok, err := stateExists(proc, checkRel(rec.RunID, task, name))
+	for _, at := range []struct {
+		name  string
+		stage CheckStage
+	}{{"verdicts.json", CheckVerdictsLocked}, {"table.json", CheckTabled}} {
+		ok, err := stateExists(proc, checkRel(rec.RunID, task, at.name))
 		if err != nil {
 			return CheckJudging{}, false, err
 		}
-		if ok && (j.Stage != CheckTabled) {
-			j.Stage = stage
+		if ok {
+			j.Stage = at.stage
 		}
 	}
+	if j.Stage == CheckVerdictsLocked && proposer != nil && proposer.AwaitingRunner {
+		j.Stage, j.Waiting = CheckAwaitingProposer, runnerWait(RoleProposer, proposer)
+	}
 	return j, true, nil
+}
+
+// interruptedDraw is what a judging whose matcher's answer is recorded with
+// no packet beside it waits for: the two are written together, so only an
+// interruption between the writes leaves it, and the verb alone draws the
+// packet from the answer recorded.
+func interruptedDraw(task string) string {
+	return fmt.Sprintf("the matcher's answer on %s is recorded and its packet is not drawn, as an interrupted draw leaves it: draw the packet with the verb alone", task)
 }
 
 // DrawCheck starts check task's judging in run, once: it joins the findings
@@ -327,6 +410,9 @@ func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
 		return CheckJudging{}, err
 	}
 	j, started, err := checkJudgingOf(proc, rec, d, task)
+	if err == nil && started && j.Packet == nil && j.answered {
+		return redrawCheck(repoRoot, labID, proc, j, run, task)
+	}
 	if err != nil || started {
 		proc.Close()
 		return j, err
@@ -335,8 +421,11 @@ func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
 		proc.Close()
 		return CheckJudging{}, err
 	}
-	copies, err := checkCopiesOf(proc, run, task)
+	copies, trials, err := checkCopiesOf(proc, run, task)
 	proc.Close()
+	if err == nil {
+		err = judgeApart(rec, d, trials)
+	}
 	if err != nil {
 		return CheckJudging{}, err
 	}
@@ -371,8 +460,47 @@ func DrawCheck(repoRoot, labID, run, task string) (CheckJudging, error) {
 			return CheckJudging{}, err
 		}
 		j.Stage, j.MatcherRequest = CheckAwaitingMatcher, &req
+		if j.Matcher.AwaitingRunner {
+			j.Waiting = runnerWait(RoleMatcher, j.Matcher)
+		}
 		return j, nil
 	}
+	return drawCheck(repoRoot, labID, j, run, task, copies, m, seed)
+}
+
+// redrawCheck draws the packet of a judging whose matcher's answer is
+// recorded with no packet beside it, from that answer, closing proc. The
+// packet was never written, so nobody has seen it, and drawing it afresh shows
+// nothing twice.
+func redrawCheck(repoRoot, labID string, proc *lab.Procedure, j CheckJudging, run, task string) (CheckJudging, error) {
+	st, mr, _, _, err := readCheckState(proc, run, task)
+	var copies []CheckCopy
+	if err == nil {
+		copies, err = readCheckCopies(proc, run, st.Copies)
+	}
+	proc.Close()
+	if err != nil {
+		return CheckJudging{}, err
+	}
+	m := matchExact(copies)
+	ids, err := requestIDs(m, *st)
+	if err != nil {
+		return CheckJudging{}, err
+	}
+	for _, pair := range mr.Pairs {
+		if _, ok := ids[pair[0]]; !ok || pair[0] == pair[1] {
+			return CheckJudging{}, fmt.Errorf("the matcher's answer recorded for %s no longer reads against its request", task)
+		}
+		if _, ok := ids[pair[1]]; !ok {
+			return CheckJudging{}, fmt.Errorf("the matcher's answer recorded for %s no longer reads against its request", task)
+		}
+	}
+	m.applyMatcher(ids, mr.Pairs)
+	var seed [32]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		return CheckJudging{}, err
+	}
+	j.Waiting = ""
 	return drawCheck(repoRoot, labID, j, run, task, copies, m, seed)
 }
 
@@ -478,7 +606,9 @@ func matcherAdmits(j CheckJudging, st *checkMatchState, task string) error {
 	case j.Matcher == nil:
 		return fmt.Errorf("the run declares no matcher cell, so the findings of %s no exact key joins stay rows of their own", task)
 	case j.Matcher.AwaitingRunner:
-		return fmt.Errorf("the matcher cell %s is a runner cell: its answer waits for a launcher, and nothing stands in for it", j.Matcher.Cell)
+		return errors.New(runnerWait(RoleMatcher, j.Matcher))
+	case j.Packet == nil && j.answered:
+		return errors.New(interruptedDraw(task))
 	case j.Packet != nil && st != nil:
 		return fmt.Errorf("the matcher's answer on %s is recorded already; it is taken once", task)
 	case j.Packet != nil:
@@ -565,8 +695,12 @@ func RecordCheckTable(repoRoot, labID, run, task string, proposals, labels []byt
 	if err != nil {
 		return CheckTable{}, err
 	}
-	if j.Stage == CheckTabled {
+	switch j.Stage {
+	case CheckTabled:
 		return CheckTable{}, fmt.Errorf("the table of %s is recorded already; it is built once", task)
+	case CheckVerdictsLocked, CheckAwaitingProposer:
+	default:
+		return CheckTable{}, errNotLocked
 	}
 	if err := proposalsAdmitted(j, proposals); err != nil {
 		return CheckTable{}, err
@@ -588,7 +722,7 @@ func proposalsAdmitted(j CheckJudging, proposals []byte) error {
 	case j.Proposer == nil:
 		return nil
 	case j.Proposer.AwaitingRunner:
-		return fmt.Errorf("the proposer cell %s is a runner cell: its verdicts wait for a launcher, and nothing stands in for them", j.Proposer.Cell)
+		return errors.New(runnerWait(RoleProposer, j.Proposer))
 	case proposals == nil:
 		return fmt.Errorf("the run declares the proposer cell %s: hand it the packet, and give its verdicts with the table", j.Proposer.Cell)
 	}

@@ -341,7 +341,11 @@ func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if kind, err := matrix.RunTaskKind(root, args[0], args[1], args[2]); err == nil && kind == matrix.KindCheck {
+			kind, err := matrix.RunTaskKind(root, args[0], args[1], args[2])
+			if err != nil {
+				return verbFailure(verb, err)
+			}
+			if kind == matrix.KindCheck {
 				return judgeCheck(cmd, *asJSON, verb, root, args, checkJudgeFlags{matcher: matcher, verdicts: verdicts,
 					proposals: proposals, labels: labels, table: table})
 			}
@@ -515,7 +519,7 @@ func judgeCellLine(c *matrix.JudgeCell) string {
 	}
 	s := termsafe.Sanitize(c.Cell) + " (" + termsafe.Sanitize(string(c.Source)) + ")"
 	if c.AwaitingRunner {
-		s += ", a runner cell: its answer waits for a launcher"
+		s += ", a runner cell: its answer waits for a launcher this build does not have"
 	}
 	return s
 }
@@ -526,7 +530,10 @@ func renderCheckJudging(w io.Writer, verb string, j matrix.CheckJudging) {
 	fmt.Fprintf(w, "%s %s: %s; %d copies, %d finding(s) left apart by the exact keys\n", verb, termsafe.Sanitize(j.Task),
 		termsafe.Sanitize(string(j.Stage)), j.Copies, j.Leftovers)
 	fmt.Fprintf(w, "  matcher:  %s\n  proposer: %s\n", judgeCellLine(j.Matcher), judgeCellLine(j.Proposer))
-	if j.MatcherRequest != nil && j.Stage == matrix.CheckAwaitingMatcher {
+	if j.Waiting != "" {
+		fmt.Fprintf(w, "  waiting: %s\n", termsafe.SanitizeLine(j.Waiting))
+	}
+	if j.MatcherRequest != nil && j.Stage == matrix.CheckAwaitingMatcher && j.Waiting == "" {
 		fmt.Fprintf(w, "  the matcher's request holds %d finding(s) (--json shows it); record its answer with --matcher <file>\n", len(j.MatcherRequest.Items))
 	}
 	if len(j.Sample) > 0 {

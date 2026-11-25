@@ -118,14 +118,18 @@ column, the verdict the proposer cell proposes where one is declared, each
 model's precision, unique valid findings, recall and overlap, and the matcher's
 agreement on a sample of its pairs the person labels, reported from ten
 labelled pairs up. The matcher and the proposer are cells the person declares,
-on their own routes and never on a builder's route or model, and each is
-optional: nothing is chosen for the person. One on a runner route waits for a
-launcher, and the host never answers for it. Nothing of a check is filed or
+on their own routes and never on a builder's route or model (the model compared
+with its provider and case set aside, and a host builder's by the model its
+copies were served), and each is optional: nothing is chosen for the person.
+One on a runner route waits for a launcher abcd does not have yet, and the host
+never answers for it: the plan's judges line says so, and the judging stops at
+that cell's stage saying so. Nothing of a check is filed or
 written where the release gates read. A code task may name its hidden tests, a
-folder outside the checkout, and the command that runs them; the plan shows
-both with the line the person consents to, that abcd will run each copy's code
-with that command, though a code copy's result is still the host's report, as
-above.
+folder outside the checkout, and the command that runs them; the printed plan
+shows both, the folder quoted and each word of the command quoted where it
+holds anything but plain printable text, with the line the person consents to:
+that abcd will run each copy's code with that command, and that until it runs
+hidden tests itself a code copy's result is the host's report, as above.
 
 A model run is re-runnable, not reproducible. A re-run starts from a recorded
 run, named by its id in the lab or by a run's folder carried from elsewhere,

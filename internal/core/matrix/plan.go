@@ -381,6 +381,11 @@ func checkJudges(d Declaration, t Task) JudgeNeed {
 		j.Who += "; the findings no exact key joins stay unmatched, each a row of its own"
 		j.Note = "no matcher cell is declared, so the matcher's agreement is not estimable"
 	}
+	for _, c := range []*Cell{d.Matcher, d.Proposer} {
+		if c != nil && c.Route != "host" {
+			j.Note += "; " + c.ID + " is a runner cell, and its answer waits for a launcher this build of abcd does not have, so the check's judging stops there until one does"
+		}
+	}
 	return j
 }
 
@@ -393,19 +398,22 @@ func hiddenTestsOf(d Declaration) []HiddenTestsConsent {
 			continue
 		}
 		out = append(out, HiddenTestsConsent{Task: t.ID, Folder: t.HiddenTests, Command: slices.Clone(t.TestCommand),
-			Consent: fmt.Sprintf("abcd will run each copy's code of %s with `%s`, in an export of the copy with the hidden tests from %s added, never in its clone",
-				t.ID, commandLine(t.TestCommand), t.HiddenTests)})
+			Consent: fmt.Sprintf("abcd will run each copy's code of %s with `%s`, in an export of the copy with the hidden tests from %s added, never in its clone; "+
+				"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report",
+				t.ID, commandLine(t.TestCommand), strconv.Quote(t.HiddenTests))})
 	}
 	return out
 }
 
-// commandLine is a command's words as one line, each word that holds a space
-// or a quote quoted, so the person reads where each word ends.
+// commandLine is a command's words as one line, each word holding anything
+// but printable ASCII other than a space or a quote quoted, so the person
+// reads where each word ends: a Unicode space inside a word is shown escaped,
+// never as the gap between two words.
 func commandLine(words []string) string {
 	out := make([]string, len(words))
 	for i, w := range words {
 		out[i] = w
-		if strings.ContainsAny(w, " \t\"'`\\") {
+		if strings.ContainsFunc(w, func(r rune) bool { return r <= ' ' || r > '~' || strings.ContainsRune("\"'`\\", r) }) {
 			out[i] = strconv.Quote(w)
 		}
 	}
