@@ -16,7 +16,10 @@ func init() {
 			Summary:     "the issue ledger is per-repository, and this call was made outside a checkout",
 			Explanation: outsideCheckout,
 			Next:        NoNext,
-			RaisedBy:    []string{"abcd capture", "abcd capture list"},
+			RaisedBy: []string{"abcd capture", "abcd capture admit", "abcd capture defer", "abcd capture disposition",
+				"abcd capture link", "abcd capture list", "abcd capture mentions", "abcd capture migrate",
+				"abcd capture promote", "abcd capture reframe", "abcd capture remedy", "abcd capture resolve",
+				"abcd capture surprise", "abcd capture wontfix"},
 		},
 		Entry{
 			Code:    CaptureHeldByPeer,

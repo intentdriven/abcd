@@ -29,6 +29,9 @@ const (
 	EmbargoOutsideCheckout Code = "embargo/outside-checkout"
 	EmbargoUnknownHome     Code = "embargo/unknown-home"
 	EmbargoNotAway         Code = "embargo/not-away"
+	EmbargoMissingStore    Code = "embargo/missing-store"
+	EmbargoMissingInput    Code = "embargo/missing-input"
+	EmbargoEmbargoedText   Code = "embargo/embargoed-text"
 	EmbargoInvalidRequest  Code = "embargo/invalid-request"
 
 	// banlist's own refusals.
@@ -69,11 +72,14 @@ func init() {
 		},
 		Entry{
 			Code:    ReserveExceededCap,
-			Summary: "you already hold as many live reservations as this machine allows",
+			Summary: "you already hold as many live reservations as this machine allows; wait for a merge",
 			Explanation: "A person holds at most reservation.max_live live reservations at once (the\n" +
 				"machine's ~/.abcd.noindex/config.json). The refusal lists the ones you hold.\n" +
-				"Release one you have finished with, then reserve again; nothing was pushed.",
-			Next:     "abcd reserve <record-id> --release",
+				"Most are work whose pull request waits to merge, and the merge ends its\n" +
+				"reservation, so wait for one to merge. Release only a reservation whose work\n" +
+				"is abandoned: releasing finished work frees its record for someone to build\n" +
+				"again. Nothing was pushed.",
+			Next:     "abcd peers",
 			RaisedBy: []string{"abcd reserve"},
 		},
 		Entry{
@@ -170,7 +176,8 @@ func init() {
 			Summary:     "the embargo store is kept per repository, and this call was made outside a checkout",
 			Explanation: outsideCheckout,
 			Next:        NoNext,
-			RaisedBy:    []string{"abcd embargo intake"},
+			RaisedBy: []string{"abcd embargo", "abcd embargo check", "abcd embargo close", "abcd embargo fixed",
+				"abcd embargo intake", "abcd embargo publish", "abcd embargo queue", "abcd embargo triage"},
 		},
 		Entry{
 			Code:    EmbargoUnknownHome,
@@ -178,8 +185,9 @@ func init() {
 			Explanation: "The embargo store lives under your abcd home, which is found from HOME, and HOME\n" +
 				"is unset or empty. Run the verb from your own account's environment; nothing\n" +
 				"was written.",
-			Next:     NoNext,
-			RaisedBy: []string{"abcd embargo intake"},
+			Next: NoNext,
+			RaisedBy: []string{"abcd embargo", "abcd embargo check", "abcd embargo close", "abcd embargo fixed",
+				"abcd embargo intake", "abcd embargo publish", "abcd embargo queue", "abcd embargo triage"},
 		},
 		Entry{
 			Code:    EmbargoNotAway,
@@ -191,14 +199,44 @@ func init() {
 			RaisedBy: []string{"abcd embargo queue"},
 		},
 		Entry{
+			Code:    EmbargoMissingStore,
+			Summary: "this repository has no embargo store on this machine, or one that names no repository",
+			Explanation: "The act reads the advisories an intake took into the embargo store, and there\n" +
+				"is no store for this repository here, or the store predates the repository it\n" +
+				"was made for being recorded in it. An intake makes the store and records the\n" +
+				"repository; then run the act again. Nothing was written or sent.",
+			Next:     "abcd embargo intake",
+			RaisedBy: []string{"abcd embargo close", "abcd embargo fixed", "abcd embargo publish", "abcd embargo triage"},
+		},
+		Entry{
+			Code:    EmbargoMissingInput,
+			Summary: "the check was given nothing to check",
+			Explanation: "The check reads a commit range, texts or records, and the call named none.\n" +
+				"Name a commit range with --range <a>..<b>, or a text with --file <path> (- for\n" +
+				"stdin). Nothing was checked.",
+			Next:     "abcd embargo check --range <commit-range>",
+			RaisedBy: []string{"abcd embargo check"},
+		},
+		Entry{
+			Code:    EmbargoEmbargoedText,
+			Summary: "what was checked names an advisory under embargo; the findings are above",
+			Explanation: "The check found an unpublished advisory's id, a reserved CVE id, an advisory's\n" +
+				"title or an embargo store path in the range or the texts it read, and listed\n" +
+				"each finding in its result. The refusal repeats none of them. Take each out of\n" +
+				"the text, or wait until the advisory is published.",
+			Next:     NoNext,
+			RaisedBy: []string{"abcd embargo check"},
+		},
+		Entry{
 			Code:    EmbargoInvalidRequest,
-			Summary: "the embargo store cannot act on the request; the refusal names the remedy",
-			Explanation: "There is no store for this repository yet, the advisory has no verdict or no\n" +
-				"reason, a release tag is outside its shape, or there is nothing to check: the\n" +
-				"refusal names which and the command that gets past it. Nothing was written.",
-			Next: "abcd embargo intake",
-			RaisedBy: []string{"abcd embargo check", "abcd embargo close", "abcd embargo publish",
-				"abcd embargo triage"},
+			Summary: "the embargo store refused the act on what it asks for; the refusal names the remedy",
+			Explanation: "The advisory has no verdict or no reason, a release tag, a commit or a range\n" +
+				"is outside its shape, the store is not one this account can trust, or GitHub\n" +
+				"could not be read: the refusal names which and what gets past it. Nothing was\n" +
+				"written.",
+			Next: NoNext,
+			RaisedBy: []string{"abcd embargo", "abcd embargo check", "abcd embargo close", "abcd embargo fixed",
+				"abcd embargo intake", "abcd embargo publish", "abcd embargo queue", "abcd embargo triage"},
 		},
 		Entry{
 			Code:    BanlistInvalidEntry,
@@ -207,7 +245,7 @@ func init() {
 				"severity one of the store's levels; the refusal names which part is wrong,\n" +
 				"never the pattern itself. Nothing was written.",
 			Next:     "abcd explain banlist add",
-			RaisedBy: []string{"abcd banlist add"},
+			RaisedBy: []string{"abcd banlist add", "abcd banlist migrate"},
 		},
 		Entry{
 			Code:    BanlistDuplicateKey,
@@ -241,7 +279,7 @@ func init() {
 				"are whole-line patterns with no keys. `abcd banlist migrate` keys them in place;\n" +
 				"then run the act again. Nothing was written.",
 			Next:     "abcd banlist migrate",
-			RaisedBy: []string{"abcd banlist add"},
+			RaisedBy: []string{"abcd banlist add", "abcd banlist remove"},
 		},
 		Entry{
 			Code:    BanlistInvalidStore,
@@ -249,8 +287,9 @@ func init() {
 			Explanation: "The layer's store could not be used as it stands: it is absent, does not parse,\n" +
 				"is held by another run, or (the private one) is not ignored by git, so a pattern\n" +
 				"could be committed. The refusal names which; nothing was written.",
-			Next:     NoNext,
-			RaisedBy: []string{"abcd banlist remove"},
+			Next: NoNext,
+			RaisedBy: []string{"abcd banlist", "abcd banlist add", "abcd banlist list", "abcd banlist migrate",
+				"abcd banlist remove"},
 		},
 	)
 }

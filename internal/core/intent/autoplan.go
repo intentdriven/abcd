@@ -112,7 +112,7 @@ func AutoPlanChecks(repoRoot, intentID string) (AutoPlanResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return AutoPlanResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return AutoPlanResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(it.Path)), it.Path)
 	if err != nil {

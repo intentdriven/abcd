@@ -3222,43 +3222,33 @@ func intentStoreRoot(cmd *cobra.Command) (string, error) {
 	return root, nil
 }
 
-// newIntentCommand builds the `intent` verb — the front door onto
-// internal/core/intent (itd-80). Bare `abcd intent` renders the read-only
-// lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
-// the mutations. Usage/lookup failures exit 2.
-// intentRefusalCode is the code of a refusal the intent core decided. The
-// core names no sentinel for most of them, so the one it words the same way
-// at every act, an id no bucket holds, is read from its wording (the probes
-// in refusal_raisers_intent_test.go hold the wording to the code), and every
-// other refusal of the store is intent/invalid-request, its message naming
-// the reason. A code the core put on the error (refusal.Wrap) comes first.
+// intentRefusalCode is the code of a refusal the intent core decided: the
+// code the core put on the error (refusal.Wrap), such as
+// intent/unknown-intent for an id no bucket holds, and otherwise
+// intent/invalid-request, the message naming the reason. The code is never
+// read from the wording (spc-2610301431108175 approach 1).
 func intentRefusalCode(err error) refusal.Code {
 	if c := refusal.CodeOf(err); c != refusal.None {
 		return c
-	}
-	if msg := err.Error(); strings.Contains(msg, "not found in any bucket") || strings.Contains(msg, "no intent in any bucket has the id") {
-		return refusal.IntentUnknownIntent
 	}
 	return refusal.IntentInvalidRequest
 }
 
 // specRefusalCode is intentRefusalCode for `spec close`, whose core is the
-// intent store's reconcile: a spec id no folder holds, and a ship whose
-// intent records no impact, are read from their wording.
+// intent store's reconcile: it codes a spec id no folder holds and a ship
+// whose intent records no impact, and every other refusal of the close is
+// spec/invalid-request.
 func specRefusalCode(err error) refusal.Code {
 	if c := refusal.CodeOf(err); c != refusal.None {
 		return c
 	}
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "has no impact and none was supplied"):
-		return refusal.SpecMissingImpact
-	case strings.HasPrefix(msg, "intent: spec ") && strings.Contains(msg, " not found"):
-		return refusal.SpecUnknownSpec
-	}
 	return refusal.SpecInvalidRequest
 }
 
+// newIntentCommand builds the `intent` verb — the front door onto
+// internal/core/intent (itd-80). Bare `abcd intent` renders the read-only
+// lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
+// the mutations. Usage/lookup failures exit 2.
 func newIntentCommand(asJSON *bool) *cobra.Command {
 	var intentTitle, intentImpact, intentProductionMode string
 	intentCmd := &cobra.Command{
@@ -7770,7 +7760,30 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if errors.As(err, &coded) {
 		code = coded.ExitCode()
 	}
-	if msg := scrubPaths(err); msg != "" {
+	msg := scrubPaths(err)
+	if msg == "" {
+		// A silent exit means the command already rendered its output. One
+		// that carries a code (a refusal whose findings are its result, such
+		// as embargo/embargoed-text) adds the code's line alone: the code, its
+		// hint and its next, which the registry holds, and no message text, so
+		// it repeats nothing the command chose not to print.
+		if ref := silentRefusalCode(err); ref != refusal.None {
+			if refusalCodeCheck != nil {
+				refusalCodeCheck(code, ref, args)
+			}
+			env := newErrorEnvelope("", code)
+			env.withRefusal(ref, called)
+			if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				_ = enc.Encode(env)
+			} else if line := env.refusalLine(); line != "" {
+				fmt.Fprintln(stderr, "abcd:", line)
+			}
+		}
+		return code
+	}
+	{
 		// The refusal's code, read before the message is reworded below, so
 		// cobra's own wording is still there for the usage classifier
 		// (spc-2610301431108175 approaches 2 and 3).

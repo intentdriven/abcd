@@ -249,7 +249,14 @@ func embargoFailure(verb string, err error) error {
 	msg := fsutil.RedactHome(strings.TrimPrefix(err.Error(), "embargo: "))
 	var r *embargo.RefusalError
 	if errors.As(err, &r) {
-		return refused(2, refusal.EmbargoInvalidRequest, verb+": "+msg)
+		// The code the core put on the refusal where its cure is a step of
+		// its own (no store yet, nothing to check), and otherwise
+		// embargo/invalid-request, whose message names the remedy.
+		ref := refusal.CodeOf(err)
+		if ref == refusal.None {
+			ref = refusal.EmbargoInvalidRequest
+		}
+		return exitWith(2, ref, verb+": "+msg)
 	}
 	var cf *embargo.CloseFailedError
 	var pf *embargo.PublishFailedError
@@ -484,10 +491,10 @@ func newEmbargoCheckCommand(asJSON *bool) *cobra.Command {
 				return rerr
 			}
 			if !res.Clean() {
-				// A finding is the check's result, already rendered, not a
-				// refusal: the silent exit renders no refusal and so carries
-				// no code a reader could see.
-				return exitWith(2, refusal.None, "")
+				// A finding refuses the text, and the findings are already
+				// rendered: the refusal carries its code and no message, so
+				// Run adds the code's line alone and repeats nothing found.
+				return refused(2, refusal.EmbargoEmbargoedText, "")
 			}
 			return nil
 		},

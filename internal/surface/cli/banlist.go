@@ -168,7 +168,9 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 			if pattern == stdinPattern {
 				pattern, err = readPatternFromStdin(cmd)
 				if err != nil {
-					return usageError("abcd banlist add", err)
+					// The pattern's fault, never the store's: the store was
+					// not opened.
+					return refused(2, refusal.BanlistInvalidEntry, "abcd banlist add: "+scrubPaths(err))
 				}
 			}
 			if layer == layerPrivate {

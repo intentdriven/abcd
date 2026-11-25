@@ -29,7 +29,7 @@ func init() {
 				"cannot be read, does not parse, runs out before a question, or gives a value the\n" +
 				"question does not offer: the refusal names the question. Nothing was recorded.",
 			Next:     explainCommand,
-			RaisedBy: []string{"abcd reflect interview"},
+			RaisedBy: []string{"abcd intent interview", "abcd reflect interview"},
 		},
 		Entry{
 			Code:    InterviewMissingTerminal,
@@ -38,7 +38,7 @@ func init() {
 				"stdin, stdout or stderr is not one. Run it at a terminal, or answer from a file\n" +
 				"with --answers. Nothing was run.",
 			Next:     explainCommand,
-			RaisedBy: []string{"abcd reflect interview"},
+			RaisedBy: []string{"abcd intent interview", "abcd reflect interview"},
 		},
 		Entry{
 			Code:    InterviewInvalidConfig,
@@ -47,7 +47,7 @@ func init() {
 				"the interview cannot use as it stands: the refusal names the key and the file.\n" +
 				"Fix that layer, then run the interview again. Nothing was run.",
 			Next:     NoNext,
-			RaisedBy: []string{"abcd reflect interview"},
+			RaisedBy: []string{"abcd intent interview", "abcd reflect interview"},
 		},
 	)
 }

@@ -84,17 +84,28 @@ func coordinationRaiserProbes(t *testing.T) []raiserProbe {
 }
 
 // embargoRaiserProbes builds the embargo surface's checkout, with no store
-// first and then one holding an advisory, and returns embargo's probes.
+// first and then one an intake made, and returns embargo's probes.
 func embargoRaiserProbes(t *testing.T) []raiserProbe {
 	r := embargoSurfaceRepo(t)
 	outside := t.TempDir()
+	leak := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(leak, []byte("fixes "+surfaceGHSA+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	seeded := func(t *testing.T) {
+		t.Chdir(r.Root())
+		seedEmbargo(t)
+	}
 	return []raiserProbe{
-		probe("embargo/invalid-request", "embargo", "publish"),
-		probe("embargo/invalid-request", "embargo", "close", surfaceGHSA),
-		probe("embargo/invalid-request", "embargo", "triage", surfaceGHSA, "vulnerability", "--by", "Alice"),
-		probe("embargo/invalid-request", "embargo", "check"),
+		probe("embargo/missing-store", "embargo", "publish"),
+		probe("embargo/missing-store", "embargo", "triage", surfaceGHSA, "vulnerability", "--by", "Alice"),
+		probe("embargo/missing-input", "embargo", "check"),
 		probe("embargo/not-away", "embargo", "queue"),
 		probe("embargo/outside-checkout", "embargo", "intake").from(inDir(outside)),
+		probe("embargo/embargoed-text", "embargo", "check", "--file", leak).from(seeded),
+		probe("embargo/invalid-request", "embargo", "check", "--range", "not-a-range"),
+		probe("embargo/invalid-request", "embargo", "triage", surfaceGHSA, "not-a-vulnerability", "--by", "Alice"),
+		probe("embargo/invalid-request", "embargo", "close", surfaceGHSA),
 		// Last: no later probe runs without a home.
 		probe("embargo/unknown-home", "embargo", "intake").from(func(t *testing.T) {
 			t.Chdir(r.Root())
@@ -122,10 +133,30 @@ func banlistRaiserProbes(t *testing.T) []raiserProbe {
 		probe("usage/missing-required-flag", "banlist", "add", "k", "p"),
 		probe("usage/flag-conflict", "banlist", "list", "--private", "--public"),
 		probe("banlist/invalid-entry", "banlist", "add", "--private", "bad key", "widgetworks"),
+		probe("banlist/invalid-entry", "banlist", "add", "--private", "k3", "-").from(stdinHolding("one\ntwo\n")),
 		probe("banlist/duplicate-key", "banlist", "add", "--private", "widget-partner", "other"),
 		probe("banlist/unknown-key", "banlist", "remove", "--private", "nosuchkey"),
 		probe("banlist/unmanaged-entry", "banlist", "remove", "--public", "harness/gemini"),
 		probe("banlist/legacy-store", "banlist", "add", "--private", "k2", "other").from(inDir(legacy)),
 		probe("banlist/invalid-store", "banlist", "remove", "--public", "nokey").from(inDir(bare)),
+	}
+}
+
+// stdinHolding is a probe's in that hands the call text on stdin: Run reads
+// os.Stdin, so the probe swaps it for a file holding text until the subtest
+// ends.
+func stdinHolding(text string) func(t *testing.T) {
+	return func(t *testing.T) {
+		p := filepath.Join(t.TempDir(), "stdin")
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved := os.Stdin
+		os.Stdin = f
+		t.Cleanup(func() { os.Stdin = saved; f.Close() })
 	}
 }

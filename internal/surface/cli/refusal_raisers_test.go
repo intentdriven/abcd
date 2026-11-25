@@ -104,11 +104,11 @@ func raiserPath(args []string) string {
 	return strings.Join(append([]string{"abcd"}, path...), " ")
 }
 
-// TestRaisedByIsWhatTheVerbsRaise drives every command a verb's own code
-// names into that refusal, and every refusal it can reach in a fixture
-// into its code, and holds the registry's RaisedBy to exactly the pairs
-// seen: a listed command that never raises the code fails, and so does a
-// command seen raising a code it is not listed for. Usage codes are raised
+// TestRaisedByIsWhatTheVerbsRaise drives refusals into their codes and
+// holds the registry's RaisedBy to them. RaisedBy lists every command that
+// can raise a code, read from where the code is raised, so a fixture need
+// not reach each of them: a command seen raising a code it does not list
+// fails, and so does a code no probe raises at all. Usage codes are raised
 // by every command and list none. Each family's probes run in the fixture
 // its own set makes, as a subtest, in the order of the sets' names.
 func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
@@ -142,14 +142,17 @@ func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
 			}
 			continue
 		}
-		var got []string
-		for path := range seen[e.Code] {
-			got = append(got, path)
+		if e.Retired != "" {
+			continue
 		}
-		slices.Sort(got)
-		listed := slices.Sorted(slices.Values(e.RaisedBy))
-		if !slices.Equal(got, listed) {
-			t.Errorf("%s: RaisedBy lists %v, but the commands seen raising it are %v", e.Code, listed, got)
+		if len(seen[e.Code]) == 0 {
+			t.Errorf("%s: no probe raises it; add one to the family's probe set", e.Code)
+			continue
+		}
+		for _, path := range slices.Sorted(maps.Keys(seen[e.Code])) {
+			if !slices.Contains(e.RaisedBy, path) {
+				t.Errorf("%s: %s was seen raising it, and RaisedBy lists only %v", e.Code, path, e.RaisedBy)
+			}
 		}
 	}
 }

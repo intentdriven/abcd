@@ -71,7 +71,16 @@
       "code": "decide/outside-checkout"
     },
     {
+      "code": "embargo/embargoed-text"
+    },
+    {
       "code": "embargo/invalid-request"
+    },
+    {
+      "code": "embargo/missing-input"
+    },
+    {
+      "code": "embargo/missing-store"
     },
     {
       "code": "embargo/not-away"

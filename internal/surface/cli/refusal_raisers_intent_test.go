@@ -62,6 +62,15 @@ func intentRaiserProbes(t *testing.T) []raiserProbe {
 		probe("intent/unknown-intent", "intent", "condition", unknownIntentID),
 		probe("intent/unknown-intent", "intent", "prepass", unknownIntentID),
 		probe("intent/unknown-intent", "intent", "interview", unknownIntentID, "--answers", missing),
+		probe("intent/unknown-intent", "intent", "link", unknownIntentID, "spc-1"),
+		probe("intent/unknown-intent", "intent", "reclassify", unknownIntentID, "--kind", "standalone"),
+		probe("intent/unknown-intent", "intent", "reclassify", "itd-2", "--kind", "superseded", "--by", unknownIntentID,
+			"--reason", "the new plan replaces it"),
+		probe("intent/unknown-intent", "intent", "audit", unknownIntentID),
+		probe("intent/unknown-intent", "intent", "ready", unknownIntentID, "--grounds",
+			"pursued: the parser rewrite lands first, and a slower parse would show it wrong"),
+		probe("intent/unknown-intent", "intent", "plan", unknownIntentID, "itd-10", "--bundle", "pair"),
+		probe("intent/unknown-intent", "intent", "edge", "itd-2", "--builds-on", unknownIntentID),
 
 		probe("intent/insufficient-grounds", "intent", "ready", "itd-2", "--grounds", "bogus"),
 		probe("intent/invalid-verdict", "intent", "audit", "ingest", "--verdict-json", missing),
@@ -125,5 +134,8 @@ func peerHeldRaiserProbes(t *testing.T) []raiserProbe {
 	return []raiserProbe{
 		probe("capture/held-by-peer", "capture", "resolve", "iss-100", "fixed", "--impact", "fix"),
 		probe("intent/held-by-peer", "intent", "audit", "itd-77"),
+		// The consistency report needs a commit to name, which this
+		// checkout has; an id no checkout holds is no peer's.
+		probe("intent/unknown-intent", "intent", "consistency", unknownIntentID),
 	}
 }

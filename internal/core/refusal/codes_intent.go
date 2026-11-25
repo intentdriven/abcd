@@ -1,10 +1,11 @@
 package refusal
 
 // codes_intent.go — the codes of the intent store's verbs, intent and spec
-// (spc-2610301431108175 step 3). The intent core names no sentinel for most of
-// its refusals, so the front door reads the few it can tell apart (an id no
-// bucket holds, an impact a close needs) and gives every other refusal of the
-// store its verb's invalid-request code; the message names the reason.
+// (spc-2610301431108175 step 3). The intent core puts a code on the refusals
+// a caller acts on by kind (an id no bucket holds, a spec no folder holds, an
+// impact a close needs) with Wrap, where it decides them, and the front door
+// gives every other refusal of the store its verb's invalid-request code; the
+// message names the reason.
 
 const (
 	// intent's own refusals.
@@ -30,7 +31,11 @@ func init() {
 			Summary:     "the intent store is per-repository, and this call was made outside a checkout",
 			Explanation: outsideCheckout,
 			Next:        NoNext,
-			RaisedBy:    []string{"abcd intent", "abcd intent plan"},
+			RaisedBy: []string{"abcd intent", "abcd intent audit", "abcd intent audit ingest", "abcd intent condition",
+				"abcd intent consistency", "abcd intent consistency ingest", "abcd intent edge",
+				"abcd intent hold", "abcd intent interview", "abcd intent link", "abcd intent plan",
+				"abcd intent prepass", "abcd intent ready", "abcd intent reclassify", "abcd intent target",
+				"abcd intent unhold"},
 		},
 		Entry{
 			Code:    IntentUnknownIntent,
@@ -39,8 +44,10 @@ func init() {
 				"intent id at all. Check the id against the store's listing; when the record is\n" +
 				"on another branch, `abcd peers` shows where. Nothing was written.",
 			Next: "abcd intent",
-			RaisedBy: []string{"abcd intent condition", "abcd intent edge", "abcd intent hold", "abcd intent interview",
-				"abcd intent plan", "abcd intent prepass", "abcd intent ready", "abcd intent target", "abcd intent unhold"},
+			RaisedBy: []string{"abcd intent audit", "abcd intent condition", "abcd intent consistency",
+				"abcd intent edge", "abcd intent hold", "abcd intent interview", "abcd intent link",
+				"abcd intent plan", "abcd intent prepass", "abcd intent ready", "abcd intent reclassify",
+				"abcd intent target", "abcd intent unhold"},
 		},
 		Entry{
 			Code:    IntentHeldByPeer,
@@ -49,7 +56,7 @@ func init() {
 				"holder's branch, path and folder. Work on it where it is, or bring that branch's\n" +
 				"record here; nothing was written.",
 			Next:     "abcd peers",
-			RaisedBy: []string{"abcd intent audit"},
+			RaisedBy: []string{"abcd intent audit", "abcd intent consistency"},
 		},
 		Entry{
 			Code:    IntentInsufficientGrounds,
@@ -67,7 +74,7 @@ func init() {
 				"writes, or names an intent or criteria the store does not hold: the refusal\n" +
 				"names which. Nothing was recorded; fix the verdict and ingest it again.",
 			Next:     "abcd explain intent audit ingest",
-			RaisedBy: []string{"abcd intent audit ingest"},
+			RaisedBy: []string{"abcd intent audit", "abcd intent audit ingest"},
 		},
 		Entry{
 			Code:    IntentInvalidFindings,
@@ -85,15 +92,18 @@ func init() {
 				"plan of one already planned), a value is outside its shape (a version, an\n" +
 				"impact, a kind, a link), or the store could not be read: the refusal names which.\n" +
 				"Nothing was written.",
-			Next:     explainCommand,
-			RaisedBy: []string{"abcd intent interview", "abcd intent link", "abcd intent target", "abcd intent unhold"},
+			Next: explainCommand,
+			RaisedBy: []string{"abcd intent", "abcd intent audit", "abcd intent condition", "abcd intent consistency",
+				"abcd intent edge", "abcd intent hold", "abcd intent interview", "abcd intent link",
+				"abcd intent plan", "abcd intent prepass", "abcd intent ready", "abcd intent reclassify",
+				"abcd intent target", "abcd intent unhold"},
 		},
 		Entry{
 			Code:        SpecOutsideCheckout,
 			Summary:     "the spec store is per-repository, and this call was made outside a checkout",
 			Explanation: outsideCheckout,
 			Next:        NoNext,
-			RaisedBy:    []string{"abcd spec close"},
+			RaisedBy:    []string{"abcd spec", "abcd spec close"},
 		},
 		Entry{
 			Code:    SpecUnknownSpec,
