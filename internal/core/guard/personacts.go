@@ -238,12 +238,13 @@ type actReading struct {
 // not model, the program run is the first word that names abcd.
 func actReadings(s segment, site arrival) []actReading {
 	tok := s.tokens[site.idx]
-	fixed, open := carriesAbcd(tok), unfixed(path.Base(tok))
+	base := path.Base(tok)
+	fixed, open := carriesAbcd(tok), isUnknown(base) || strings.ContainsRune(base, varMark)
 	out := []actReading{{from: site.idx + 1, fixedName: fixed, named: fixed || open}}
 	if open {
 		return out
 	}
-	name := strings.ToLower(path.Base(tok))
+	name := strings.ToLower(base)
 	if s.globAt(site.idx) {
 		if member, ok := shellFamilyGlob(name); ok {
 			name = member
@@ -367,11 +368,11 @@ func allTrue(bs []bool) bool {
 }
 
 // personActSignals are the refusals of the person's acts under any program,
-// for the segments of one reading.
-func personActSignals(segs []segment) []payloadSignal {
+// for the segments of one reading of text.
+func personActSignals(text string, segs []segment) []payloadSignal {
 	var out []payloadSignal
 	entered := map[int]bool{}
-	for _, s := range segs {
+	for k, s := range segs {
 		inAbcd := entered[s.chain]
 		entered[s.chain] = inAbcd || entersAbcd(s)
 		supplied := suppliedReadings(s)
@@ -380,7 +381,7 @@ func personActSignals(segs []segment) []payloadSignal {
 			for i := 0; i < len(supplied) && !acts && (a.adjacent || a.tag); i++ {
 				acts = a.actOf(supplied[i], inAbcd)
 			}
-			if !acts {
+			if !acts || a.tag && programFixed(text, segs, k) {
 				continue
 			}
 			sig := payloadSignal{id: a.id, verdict: VerdictBlock, family: a.family, reason: a.why, successor: a.successor}

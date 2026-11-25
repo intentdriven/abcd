@@ -594,6 +594,90 @@ func TestAnActsProgramIsReadByItsBasename(t *testing.T) {
 	}
 }
 
+// TestAProgramTheLineFixesIsNotReadAsAbcd: a variable that names the program, set
+// on the line to fixed words no other command of it can change, is the program those
+// words name. Where the line does not fix it, the update with a tag stays refused,
+// and the refusal says what stands in the name's place.
+func TestAProgramTheLineFixesIsNotReadAsAbcd(t *testing.T) {
+	reg := Defaults()
+	for _, cmd := range []string{
+		`PM=npm; "$PM" update "$PKG"`,
+		`PM=npm; "$PM" update v1.2.3`,
+		`PM=npm && $PM update "$PKG"`,
+		"PM=npm\n${PM} update \"$PKG\"",
+		`PKG=lodash; PM=npm; "$PM" update "$PKG"`,
+		`PM=npm; "$PM" ci; "$PM" update "$PKG"`,
+		`PM=npm; BIN=/opt/bin; "$BIN/$PM" update v1.2.3`,
+		`PM=npm; "$PM" ci < list.txt || "$PM" update v1.2.3`,
+		`for PM in npm yarn; do "$PM" update "$PKG"; done`,
+		`for PM in npm yarn; do "$PM" update v1.2.3; done`,
+		`for PM in npm pnpm; do echo "$PM"; "$PM" update "$PKG" || exit 1; done`,
+		`PM=npm; ls | xargs "$PM" update`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+	const entry = "abcd-update-tag"
+	for _, c := range []struct{ cmd, entry string }{
+		{`"$PM" update "$PKG"`, unknownProgramEntryID},
+		{`"$PM" update v1.2.3`, unknownProgramEntryID},
+		{`$(which npm) update "$PKG"`, unknownProgramEntryID},
+		{`PM=abcd; "$PM" update "$PKG"`, entry},
+		{`for PM in npm abcd; do "$PM" update "$PKG"; done`, entry},
+		{`PM=npm; PM=abcd; "$PM" update v0.7.0`, entry},
+		{`PM=abcd; PM=npm; "$PM" update v0.7.0`, entry},
+		{`PM=scripts/abcd.sh; "$PM" update v0.7.0`, updateTagAnyEntryID},
+		{`PM=npm "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM="$X"; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=np*; $PM update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; PM+=x; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`(PM=npm); "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm & "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm | "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`false && PM=npm; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`if x; then PM=npm; fi; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`X=1 || PM=npm; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`X=1 < list.txt && PM=npm; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; . ./env.sh; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; eval "$X"; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; "$X" y; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; read PM; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; read "$X"; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; printf -v PM '%s' x; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; declare "$X"; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; declare -n R=PM; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; unset PM; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; f() { PM=y; }; f; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; : $((PM=1)); "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`for PM in "$@"; do "$PM" update v1.2.3; done`, unknownProgramEntryID},
+		{`for PM in bin/*; do "$PM" update v1.2.3; done`, unknownProgramEntryID},
+		{`for PM in npm; do :; done; PM="$X"; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`for PM in; do :; done; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=env; "$PM" "$X" update v1.2.3`, unknownProgramEntryID},
+		{`PM=env; "$PM" abcd update v0.7.0`, entry},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{`"$PM" update "$PKG"`, `$(which npm) update "$PKG"`} {
+		d, err := reg.Check(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"variable", "substitution"} {
+			if !strings.Contains(d.Reason, want) {
+				t.Errorf("%q: the reason does not name a %s: %s", cmd, want, d.Reason)
+			}
+		}
+		if strings.Contains(d.Reason, "is the output of") || strings.Contains(d.Successor, "in a variable") {
+			t.Errorf("%q: the refusal calls the name a substitution's output, or sends it to a variable: %s %s", cmd, d.Reason, d.Successor)
+		}
+	}
+}
+
 // TestARepositorysGuardFileCannotClaimAPersonActsID: a repository's guard file that
 // declares an entry under an act's reserved id does not load, and the act stays
 // refused under the registry that is left.

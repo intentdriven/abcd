@@ -689,7 +689,7 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// merge rule (merge.go): the merge commands while facilitator.mode is
 	// human, and an approving review on the forge in any mode. The acts come
 	// first, so a line holding both names the act.
-	signals = append(signals, personActSignals(segs)...)
+	signals = append(signals, personActSignals(command, segs)...)
 	signals = append(signals, r.mergeSignals(segs)...)
 
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
@@ -815,7 +815,7 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 					segHit, segNamed = true, n
 				}
 			}
-			if !segHit {
+			if !segHit || !segNamed && readsFixedProgram(id) && programFixed(command, segs, i) {
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {

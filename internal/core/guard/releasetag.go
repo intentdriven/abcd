@@ -44,6 +44,17 @@ func releaseTagCouldBe(tok string, glob bool) bool {
 	return ReleaseTagWord.MatchString(fixed)
 }
 
+// readsFixedProgram reports whether the registry entry id is an act whose words are
+// common to other programs, so a program the line fixes is not read as abcd too.
+func readsFixedProgram(id string) bool {
+	for _, a := range personActs {
+		if a.entry == id {
+			return a.tag
+		}
+	}
+	return false
+}
+
 // unnamedPackage reports whether a word is a package path that names no directory
 // (`.`, `./`, `..`), so the program a `go run` of it starts takes the name of the
 // directory it runs in.
@@ -102,7 +113,8 @@ func firstAbcdBefore(s segment, site int) bool {
 // option before the verb may take the word after it; none of the verb's own takes
 // one. A word the line does not fix may be the verb, an option, an option's value
 // or no word, and a value the line assigned may split into several. On a program
-// the line does not fix, the verb and a tag must be spelled.
+// whose name the line fixes in part, the verb and a tag must be spelled; one whose
+// whole name it leaves open the registry entry reads (unknownProgramSignal).
 func (a personAct) tagFrom(s segment, r actReading) bool {
 	verb := a.verbs[0]
 	atVerb, atTag, value := true, false, false

@@ -1704,18 +1704,18 @@ func unknownSitesBlockSignal() payloadSignal {
 const unknownProgramEntryID = "program-name-unknown"
 
 // unknownProgramSignal is the substitution family's verdict on a command whose
-// program name a substitution prints and whose words fit the entry id. Nothing
-// fixes the name, so it can be the program id names, and the lesson is the
-// substitution's: spell the name, and the guard checks the program that runs.
+// program name a substitution prints, or a variable holds, and whose words fit
+// the entry id. Nothing fixes the name, so it can be the program id names, and
+// the lesson is the family's: spell the name, and the guard checks the program
+// that runs.
 func unknownProgramSignal(v Verdict, id string) payloadSignal {
 	return payloadSignal{
 		id:      unknownProgramEntryID,
 		verdict: v,
 		family:  familySubstitution,
-		reason: "This command's program name is the output of a command substitution, so it can be any program, " +
-			"and with the words after it the command reads as one the registry refuses (" + id + ").",
-		successor: "Spell the program's name, and keep a substitution's output in a variable if you need it, " +
-			"so the guard checks the program that actually runs.",
+		reason: "The line does not fix this command's program name, which holds a variable's value or a substitution's output, " +
+			"so it can be any program, and with the words after it the command reads as one the registry refuses (" + id + ").",
+		successor: "Spell the program's name where the command runs, so the guard checks the program that actually runs.",
 	}
 }
 
