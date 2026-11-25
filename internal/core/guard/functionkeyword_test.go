@@ -19,6 +19,10 @@ func TestFunctionKeywordBodyIsJudged(t *testing.T) {
 		{"function f () { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"function f ( " + hazardLine + " ); f", VerdictBlock, "git-push-force"},
 		{"function f { if true; then " + hazardLine + "; fi; }; f", VerdictBlock, "git-push-force"},
+		// zsh's keyword takes several names, and options before them.
+		{"function f g { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
+		{"function -T f { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
+		{"function f g h if true; then " + hazardLine + "; fi; f", VerdictBlock, "git-push-force"},
 		{"function f if true; then " + hazardLine + "; fi; f", VerdictBlock, "git-push-force"},
 		{"f() { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"bash -c 'function f { " + hazardLine + "; }; f'", VerdictBlock, "git-push-force"},

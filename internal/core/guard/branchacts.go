@@ -102,7 +102,7 @@ func branchActsIn(toks []string) []BranchAct {
 // commandWords is a command's tokens from its program on, past the words the
 // registry's walker steps before one (commandArrivals): assignment words
 // (isAssignment), the shell's reserved words (`if`, `then`, `do`, `{`, `!`),
-// `coproc` with its NAME, and `function NAME` and `repeat COUNT`. It steps no
+// `coproc` with its NAME, `function` with its NAMEs, and `repeat COUNT`. It steps no
 // wrapper: a command run through `time`, `env`, `sudo` or `sh -c` is not read.
 func commandWords(toks []string) []string {
 	for i := 0; i < len(toks); {
@@ -111,8 +111,10 @@ func commandWords(toks []string) []string {
 			i++
 		case t == "coproc":
 			i = skipCoproc(toks, i+1)
-		case t == "function" || t == "repeat":
+		case t == "function":
 			i = skipFunction(toks, i+1)
+		case t == "repeat":
+			i = skipWord(toks, i+1)
 		default:
 			return toks[i:]
 		}

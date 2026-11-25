@@ -63,6 +63,8 @@ var wordReaders = map[string]string{
 	// and refuses nothing.
 	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
 	"commandWords": "exempt: steps reserved words, grammar no substitution prints, and words whose NAME= the line writes; its callers refuse an unknown word as the program",
+	// match.go: the `function` keyword's NAMEs.
+	"skipFunction": "exempt: looks a word up in reserved only to find where the body begins; the words it steps are names and options the keyword defines, which run nothing, and its callers judge the body",
 	// recordacts.go: the sub-agent hold's reading of the git commands that
 	// record or send work.
 	"recordActIn": "isUnknown on the program, every option word and the subcommand: a word nothing fixes there is read as no act",

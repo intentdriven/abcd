@@ -1573,10 +1573,14 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				push(state{pos: skipCoproc(tokens, st.pos+1), noglob: st.noglob})
 				continue
 			}
-			// `function NAME` and zsh's `repeat COUNT` each take one word of
-			// their own before the command they run (skipFunction).
-			if tok == "function" || tok == "repeat" {
+			// `function NAME…` and zsh's `repeat COUNT` each take words of
+			// their own before the command they run (skipFunction, skipWord).
+			if tok == "function" {
 				push(state{pos: skipFunction(tokens, st.pos+1), noglob: st.noglob})
+				continue
+			}
+			if tok == "repeat" {
+				push(state{pos: skipWord(tokens, st.pos+1), noglob: st.noglob})
 				continue
 			}
 			// The wrapper name is folded to lower case before lookup: on a

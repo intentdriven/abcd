@@ -1294,7 +1294,7 @@ func skipCoproc(tokens []string, pos int) int {
 	return pos
 }
 
-// skipFunction advances past the `function` keyword's NAME, from pos (the
+// skipFunction advances past the `function` keyword's NAMEs, from pos (the
 // token just after `function`), and returns the index where the function's
 // body begins. `function NAME { …; }` defines a function as `NAME() { …; }`
 // does, and the body runs when the line calls it (iss-2610090821313095): the
@@ -1306,11 +1306,27 @@ func skipCoproc(tokens []string, pos int) int {
 // The NAME is any word: bash accepts a function name no identifier rule
 // covers (`function a-b {`), so it is never read as the body.
 //
-// zsh's `repeat COUNT command` is the same shape, a keyword and one word of
-// its own before the command it runs, and is stepped the same way. Like
-// `coproc`, it is a keyword of one shell only; elsewhere it names a program
-// that is not found, so the command after it never runs there.
+// zsh's keyword takes several NAMEs, each defined with the one body, and
+// options before them (`function -T f g { …; }`): where a `{` or a reserved
+// word follows the words after the keyword, every one of them is stepped. Where
+// none does, the one NAME is stepped, as bash takes it.
 func skipFunction(tokens []string, pos int) int {
+	for i := pos; i < len(tokens); i++ {
+		if reserved[tokens[i]] {
+			if i > pos {
+				return i
+			}
+			break
+		}
+	}
+	return skipWord(tokens, pos)
+}
+
+// skipWord advances past the one word at pos: zsh's `repeat COUNT command`, a
+// keyword and one word of its own before the command it runs. Like `coproc`,
+// it is a keyword of one shell only; elsewhere it names a program that is not
+// found, so the command after it never runs there.
+func skipWord(tokens []string, pos int) int {
 	if pos < len(tokens) {
 		return pos + 1
 	}
