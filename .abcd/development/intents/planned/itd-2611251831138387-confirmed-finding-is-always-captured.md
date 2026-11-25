@@ -1,0 +1,77 @@
+---
+id: itd-2611251831138387
+slug: confirmed-finding-is-always-captured
+spec_id: spc-2611252115253843
+kind: standalone
+suggested_kind: null
+reclassification_history: []
+builds_on: [itd-2611251725190796]
+severity: major
+impact: breaking
+related_issues: [iss-2611251828531764]
+origin: extracted-from-record
+production_mode: hand-written
+---
+
+# A confirmed finding is always captured, and abcd holds a session to it
+
+## Press Release
+
+> A finding met while working is tested and captured before the work moves on, and abcd holds every session to it. Maya, an autonomous-development practitioner, leaves a run overnight; whatever its agents meet on the way, a defect, a drift, a page that says the wrong thing, is tested, and once confirmed it is in the record by morning, fixed or not. What a change itself breaks and mends on the way is building, and is never listed. A session that says it found something and captured nothing is told so before it stops, a change does not land with a finding in nobody's record, and a run that ends with one still owed names it in its report and at the next start. A finding the agent judges unsafe to publish is kept in a private list and never in the public ledger.
+
+## Why This Matters
+
+Graduated from iss-2611251828531764, which holds the observation: on 2026-11-25 a session kept several confirmed or confirmable findings in a local log and filed them only when told to. The product thinker stated the rule that day as a basic one with no exceptions, and that abcd must enforce it. The same day they drew its line (decision 3): what is fixed on the way in building is not a finding, so the rule has no exception among findings and does not reach building. The deferral discipline (itd-2610141956319695) holds the findings a review confirms; nothing holds a finding met on the way.
+
+## Mechanism
+
+We expect a list abcd keeps to hold where a rule in words did not, because an agent names a finding in the act of reporting it and the stop is a place abcd already stands: A finding declared and left in none of its states is then a fact the hook reads, not a judgement. Shown wrong if a session that keeps the list still ends with a finding in its transcript that no record or refutation answers, counted by a reader on a sample of sessions.
+
+## Scope Conditions
+
+- Holds for a host that runs a hook as a session and a sub-agent stop and shows it the closing text. The record shows that for a session's stop; for a sub-agent's it is checked live, as a criterion below says. <!-- cond: cond-2611252115258021 -->
+- Holds in a repository abcd manages whose rules are not switched off. <!-- cond: cond-2611252115254944 -->
+- Holds for a finding an agent declares, or shows in its closing text or its failing tests; one it never mentions leaves nothing for a hook to read, and is met only by a person or a reviewer reading a sample. <!-- cond: cond-2611252115250400 -->
+- Changes neither the capture verb's own gates nor abcd's automatic filers; those rungs of the safe-fix discipline stay iss-2610271115000748's build, as amended. <!-- cond: cond-2611252115253496 -->
+
+## Acceptance Criteria
+
+- **Given** the ISSUES rules domain and what a sub-agent is told at its start, **when** an agent reads either, **then** it finds the line in these terms: a fault is a finding, and is captured, when it was there before the change began (the base shows it; the tools, the records and the process as they stood then are part of that), or when the change will land with it still there; a fault the change itself made and removes before it lands is building, a test that fails on the way among them, and is never captured or listed; in doubt, it is captured.
+- **Given** a check that failed in a lane, **when** it passes at the head the lane offers for landing, **then** nothing is listed or captured for it, however often it failed on the way, a test the change added among them. **When** the lane offers a head at which it still fails, or its closing text passes the failure by, **then** it is listed as untested and the act that clears it is the agent's: the same check run on the base. Failing there too, it is captured as a finding in what has landed; passing and failing by turns there, it is captured as that; passing or absent there, it is the change's own, is taken off the list naming the run, and the landing checks hold the change as today. abcd runs no check on the base itself.
+- **Given** a closing text that calls something pre-existing, unrelated, known, flaky, out of scope, skipped, worked around, left for later, deferred, a follow-up, tracked by, accepted, or carried to a later change, **when** it names no open issue, open spec, or draft or planned intent beside it, **then** that line is put on the list as a line to answer. It is cleared by one of the states of the block below, or by "not a finding" with one line of reason, which is kept on the list.
+- **Given** a doubt on which side a fault falls, **when** the agent declares it in the block, **then** it is listed as owed a capture and cleared only by a record.
+- **Given** a sub-agent's brief in a managed repository, **when** it starts, **then** it is told to end with its findings in a fixed block, each with one state: captured under a named record, fixed or not; settled by a named record (an open issue, an ADR, a decision, a wontfix); refuted with the test that did it; kept in the private list; confirmed and handed up, for a sub-agent that may not write; or untested. A sub-agent the start hook of itd-2611251725190796 tells nothing, or whose shipped definition fixes its reply as one document, is told nothing of the block, and its reply is not read for one.
+- **Given** a sub-agent that stops, **when** its closing text declares a finding in no state, handed up, or untested, **then** abcd adds it to the list of the session that started it, and that session reads it at its next stop or prompt; the sub-agent's own stop is never held; a closing text abcd cannot read is recorded as not judged. One live check on the installed host, with a dated receipt in the local tier naming the host's version, shows that the hook at a sub-agent's stop is handed its closing text.
+- **Given** a session with a finding on its list, **when** it stops, whether the person is present or recorded as away, **then** the stop is held once for that state of the list, naming each finding and the act that clears it. A finding or a line said again is the same state and not a new one. A later stop with the list unchanged is not held for the list, the list stays, and the person, where present, reads the count and the command that lists them. While they are away the hold is one answer with the away mode's own check, whose own holds are unchanged. While they are present nothing but the list holds a stop: work owed is allowed and flagged as today, and the check reads the disk alone. A list that cannot be read holds nothing, and the stop says so.
+- **Given** a list that is not empty for a lane, **when** `abcd land` runs in that lane's checkout, or a build or a drive reaches that lane's landing, **then** the landing is refused naming each finding and its clearing act, the work stays on its branch, and the run goes on to its next lane. **When** a session leaves a run or a drive ends with a list not empty, **then** it ends, and its report and the next session start in that checkout name each finding still owed. A finding the session cannot test is cleared by capturing it as it stands, the record saying which test is owed and why it could not be run. A handover written by hand is not read.
+- **Given** a confirmed finding the agent fixes in the change at hand, **when** it files it, **then** one command writes the record to `resolved/` naming what fixed it, and `lint-issues` accepts its `Resolves:` trailer in that change. A fix outside what the lane has reserved is not made there: the finding is captured and left open.
+- **Given** a finding that is untested, **when** the list is shown, **then** it is named as owed a test, and is never dropped by age, by a new session in the same checkout, or by the removal of the worktree it was met in; the list is kept under abcd's home, keyed on the root commit, and the board and the session-start notice give its count and the command that lists it.
+- **Given** a finding the agent marks as a security one, **when** it is declared, **then** its text is kept only in the list under abcd's home, which no checkout tracks; every render to a session and every committed file carries its count alone; the person reads the text with the list command in a terminal that carries none of a session's markers; and it clears a hold as kept for the person. The embargo store is not this store, and a capture of category `security` stays as legal as it is today.
+- **Given** a finding said to be already known, **when** it names a record, **then** that record must exist and be open, or be a wontfix, an ADR or a decision that settles it; a resolved record, or none, lists the finding again naming the record's state.
+
+## SOTA
+
+Not searched for this draft: no source was opened. What the record already holds is the check behind the safe-fix discipline ([the fix-in-place note](../../research/notes/2026-10-27-fix-in-place-or-file-sota.md)): findings filed in a batch were rarely acted on (one analyser's "almost none"; in another, 1,746 reports filed from 3,954 reviewed warnings and 640 warnings ever fixed), and the first analyser's findings met at review were mostly fixed (over 70%). This intent keeps the fix at discovery and adds a record to it, which is the one point of that discipline the ruling of 2026-11-25 reverses (dcn-2611251833399124). Whether a record for every fixed finding lowers the share that gets fixed, as filing did in that evidence, was not searched and is not known; the criterion that files a fixed finding in one command is there to keep the cost down. Not searched either: how other agent harnesses hold an agent to reporting what it met, and whether any reads a closing text for one.
+
+Path 2: a native list on abcd's own hooks and ledger, and no dependency. The seam is the list: the three readings that put a line on it (the block, the words of a closing text, a check still failing) are crude, and the hold and the landing read the list and not the readings, so a better reader, a host's own or a reviewer's, writes to the same list and changes neither. The independent fit-challenge is owed before the build.
+
+## Open Questions
+
+_None open. What the rule means for the safe-fix discipline was put to the product thinker and ruled on 2026-11-25 (decision 2), and where its line runs the same day (decision 3)._
+
+## Decisions
+
+1. The product thinker's, on 2026-11-25 (dcn-2611251921171761): the rule, that abcd must enforce it, and that this is built in their six-day unattended run with nobody to ask, straight after itd-2611251725190796 and itd-2611251725203320. They asked whether it is an intent, chose it from a sentence or two, and gave no wording for a criterion; the criteria were not listed to them and are the writing session's, for their review on return. To reverse: leave it a draft until they have read the criteria.
+2. The product thinker's, on 2026-11-25 (dcn-2611251833399124): a confirmed finding is always captured, and built at once when small or feasible; a fix in a commit alone is no longer a state of its own.
+3. The product thinker's, on 2026-11-25 (dcn-2611251839563777): what is fixed anyway in the course of building is not captured; what is taken for granted, put off, or passed by always is. Where the line runs, and that the base is the test of it, is the writing session's statement of that, for their review.
+4. The product thinker's, on 2026-11-25 (dcn-2611252038554826): a confirmed finding is always captured, whether they are present or away. Asked whether a session that stops owing one is only flagged while they are present, they answered that the question should not need putting, so the stop is held in both cases. That it is held once for each state of the list, so that a session cannot be caught in a loop, is the writing session's, for their review; so is that the same finding said again makes no new state. To reverse: hold only while away.
+5. The writing session's, for review: the impact is `breaking`. `abcd land` refuses a landing it accepted before whenever the lane's list is not empty, and itd-2610141646454347 was stamped so for a call refused where it was accepted. The refusal is made in the command's run, so the release's surface guard does not see it. The stamp is the product thinker's to change before the close.
+6. The writing session's, no question put, after a second reader's review on 2026-11-25: abcd runs no check on a base itself and is shown no test an agent runs in its own shell, so the agent runs the check on the base and the list holds the failure until it has; the private list is a file under abcd's home, since the embargo store takes only advisories the forge holds; and a sub-agent whose reply is fixed as one document is told nothing of the block. Each is technical and follows what has landed.
+
+## Decomposition
+
+Hand-run four-piece table, 2026-11-25. The capability is this intent; the rule itself is a stance whose homes are the two disciplines (`refines` itd-2610141956319695, and it `reverses` in part itd-2610271130017437, confirmed by the product thinker); the list, the block, and the hooks are plumbing for the spec; no new trust rule: what changes is the stop rule, which has its home. It `reverses` in part itd-2610170638184486, whose ruling on the stop check is that a stop is refused "only while the product thinker is recorded as away; while they are present the stop is allowed and flagged" (restated by dcn-2610180913413137, built by itd-2610180912189125): for an owed finding alone the stop is now held while they are present too, confirmed by the product thinker (dcn-2611252038554826). The rest of that ruling stands, and so does the criterion of itd-2610180912189125 by which owed work met while they are present is allowed and named. The discipline's rungs at the capture verb and at the automatic filers are not this intent's: they are iss-2610271115000748's build, whose remedy is amended to say so. Typed links: `builds_on` itd-2611251725190796, whose hook at a sub-agent's start carries the block; `related_issues` iss-2611251828531764, which the change that ships this resolves. Verdict: FILE-AS-IS, the routing for a person to confirm.
+
+## Audit Notes
+
+_Empty. Populated by intent-auditor when intent moves to shipped/._
