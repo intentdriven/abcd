@@ -210,7 +210,7 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
+All resolved by the product thinker: on 2026-11-15 (decisions 1 to 3), and the start screen's review line, which the planning of 2026-11-25 put to them, on 2026-11-25 (decision 4).
 
 ## Decisions
 
@@ -221,6 +221,11 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
    - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today.
 3. **The terminal shows the footer, not the table** (product thinker, 2026-11-15; formerly DQ-12).
    - Answer: the footer, three live lines with every event a line above. The cost is more scrollback, 23 rows for the whole fixture run against 15 for the table.
+4. **The start's `review` line names the reviewers only** (product thinker, 2026-11-25; the planning's product question on what that line holds).
+   - Question: today's start names the review pair with each class's model and effort on one line of about 190 characters, which a shipped criterion of itd-2611101419006280 asks for before the yes, and a test pins those models before the question; this intent's first criterion asks for a start of at most seven lines, none wrapping at 50 columns. The line cannot be both.
+   - Answer: the line names the reviewers and nothing more, as the draft draws it (`review   ruthless and security reviewers`). The models and efforts are in the full plan that `?` shows and in the log, where every start writes the full plan. The start keeps at most seven lines. The shipped test that pins the models before the question is rewritten to pin them on `?` and in the log. The shipped criterion's letter still holds: the pair is named before the yes, and no class name is shown alone.
+   - Alternatives and what each costs: one line per review role with its class, model and effort, which the product thinker first chose and then set aside for this answer; it shows what a round runs on before the yes, makes the start nine lines and amends the first criterion, and still cuts a long model name at 50 columns. The reviewers' names with what a round costs in agent runs, which keeps seven lines but shows a count in place of a model and adds a figure the estimate must keep right.
+   - What it costs: a person who answers `y` without pressing `?` has not seen which models a review round runs on. The full plan is one key away, and the `lanes` line already carries the agent runs the drive is expected to spend.
 
 ## Typed Links
 

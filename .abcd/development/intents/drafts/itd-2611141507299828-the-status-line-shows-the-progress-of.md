@@ -139,7 +139,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 1 to 10).
+All resolved by the product thinker on 2026-11-15 (decisions 1 to 10). Whether the session-matching question of itd-2610281253044600 must be answered first was settled by the technical facilitator on 2026-11-25: it need not (decision 11).
 
 ## Decisions
 
@@ -153,11 +153,12 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 10).
 8. **A running check's progress is step k of n, for checks this session started, and the row drops a check when it ends** (product thinker, 2026-11-15; formerly question 8). The cost is that steps differ in length by orders of magnitude, so 14 of 17 can mean most of the time is still ahead.
 9. **One wording for both views, always in product terms** (product thinker, 2026-11-15; formerly question 9). The row uses none of the drive's internal terms, such as `in flight`, `set aside` or `handed back`. The spec proposes the words.
 10. **With several drives, the row shows the worst state among them, with a count** (product thinker, 2026-11-15; formerly question 10). The cost is more than one state file read on every refresh.
+11. **Planned on the planner's spec as written, without waiting on itd-2610281253044600** (technical facilitator, 2026-11-25, on delegation; no product question blocks it). A session's own pull requests are those the session armed: the command that arms one names its session at that act and records the pull request under the session's id, and a check this session started is matched the same way by the load gate's waiter. The drive's part is the repository's on the machine and matches no session. So the match between a session and the record it holds, which that draft's open question asks about, is not needed here, and the store-worktree case it turns on does not arise. The cost: a pull request armed by a session that has since ended, or by a drive, shows in no session's row, which the criterion as ruled already excludes. Reading "own" as the pull requests of the work a session holds would be a later extension that waits on that draft, and nothing built here is undone by it.
 
 ## Typed Links
 
 - builds_on: itd-2611031342000215 (the row's views, its dropping order by width, its per-element settings, its warning style and the rule that the row never waits on the network).
-- builds_on: itd-2610281253044600 (the match between a session and the work it holds, which "this session's own pull requests" depends on; its second open question is the same question).
+- builds_on: itd-2610281253044600 (the status line says what each session is working on). Its open question on matching a session to the record it holds is not this intent's: "this session's own pull requests" means those the session armed, recorded under the session's id at the arming (decision 11).
 - related: itd-2610222215485265 (the drive whose state the row shows), itd-200, itd-2609212130146198 and itd-2610111707085098 (the row, its badge and the session's name, all shipped), itd-2611031342011261 (the launch ledger, whose remaining spec has an open question on whether the status path may gain a second written file; this intent adds no write, so it does not wait on that answer, and it must not be read as settling it).
 - depends on: itd-2611141610197753, which defines the drive's one stored line of state (in `blocked_by`).
 - evidence: `.abcd/development/research/notes/drive-operations-2026-11.md`, events 3, 4 and 5.

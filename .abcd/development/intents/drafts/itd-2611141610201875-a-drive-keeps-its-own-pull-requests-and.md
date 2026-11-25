@@ -17,7 +17,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> **A drive keeps its own pull requests and its own checkout moving.** A person starts a drive and leaves. When the merge queue removes one of the drive's pull requests, the drive arms it again, a few times at most at one head, and says so on one line. When the pull request is removed again after those few times, the drive hands the lane back and names the check and the command that re-runs it. Between lanes the drive brings its own checkout up to the default branch whenever that is safe, and when it is not, the drive says what blocks it. Nobody watches the forge for the drive, and nobody moves a file aside so that its checkout can catch up.
+> **A drive keeps its own pull requests and its own checkout moving.** A person starts a drive and leaves. When the merge queue removes one of the drive's pull requests, the drive arms it again, a few times at most at one head, and says so on one line. When the pull request is removed again after those few times, the drive hands the lane back and names the check and the command that re-runs it. At its start and between lanes the drive brings its own checkout up to the default branch whenever that is safe, and when it is not, the drive says what blocks it. Nobody watches the forge for the drive, and nobody moves a file aside so that its checkout can catch up.
 
 > "Four of its pull requests fell out of the queue on a test that fails now and then. I found out from the line that said it had armed each one again." — Iris, a product thinker (they/them)
 
@@ -48,7 +48,7 @@ The note makes a third point that the lab did not probe. Two fixes reached the d
 
 - One line when a pull request is armed again, saying which and how many times so far.
 - A hand-back that names the failed check and the command that re-runs it.
-- What blocks the checkout from catching up, when something does. Where that is shown is the fifth open question.
+- What blocks the checkout from catching up, when something does: one line among the events when the fast-forward is declined, named again by `abcd implement status` and in the view by login across machines (decision 5).
 
 ### What a person never has to know
 
@@ -83,15 +83,16 @@ We expect the drive's checkout to stay near the default branch, because the driv
 
 - **Given** a pull request the merge queue removed, **when** it has been re-armed fewer times at that head than the stated number, **then** the drive re-arms it and says so on one line; otherwise it hands the lane back naming the check and the command that re-runs it (decision 1). The number, a few, is the run's to propose when the step is planned.
   - Evidence: lab-261114145658-67e1f9b, F-6, F-10 and F-18.
-- **Given** a drive's checkout behind origin's default branch, with no dirty path that an incoming commit changes and no lane in progress, **when** a lane ends, **then** the checkout is fast-forwarded, including over a commit that changes a hook or a setting the drive holds, after which the drive re-reads its hold (decision 3); **given** a dirty path that an incoming commit changes, **then** it is not, and the drive says what blocks it. The records the drive writes are outside the checkout (decision 2). Where the block is shown waits on the fifth open question.
+- **Given** a drive's checkout behind origin's default branch, with no dirty path that an incoming commit changes and no lane in progress, **when** the drive starts or a lane ends, **then** the checkout is fast-forwarded, including over a commit that changes a hook or a setting the drive holds, after which the drive reads its hold again (decisions 3 and 6); **given** a dirty path that an incoming commit changes, **then** it is not, and the drive writes one event line that says what blocks it, which `abcd implement status` names and the view by login across machines carries, while the state line keeps its one `on` field (decision 5). The records the drive writes are outside the checkout (decision 2).
   - Evidence: lab-261114145658-67e1f9b, F-12 and F-19.
 
 ## Open Questions
 
-Questions 1 to 4 are resolved by the product thinker on 2026-11-15 (decisions 1 to 4). Question 5 is the product thinker's to decide, and it is not answered here.
+Questions 1 to 4 are resolved by the product thinker on 2026-11-15 (decisions 1 to 4). Question 5 was settled by the technical facilitator on 2026-11-25 (decision 5); it is kept below as it was put.
 
 5. **"Where does a person see that the checkout's fast-forward is blocked?"** (F-12; the lab's brief put it on the state line)
-   - What is known: the state line of itd-2611141610197753 has one `on` field, for what the drive is working or waiting on, and one act. A drive whose fast-forward is declined is usually working on a lane, so the block is not what the line is on. The lab's brief says "the state line says what blocks it" and its state-line design has no field for it. No answer is proposed here.
+   - What is known: the state line of itd-2611141610197753 has one `on` field, for what the drive is working or waiting on, and one act. A drive whose fast-forward is declined is usually working on a lane, so the block is not what the line is on. The lab's brief says "the state line says what blocks it" and its state-line design has no field for it.
+   - Resolved (decision 5): one event line when the fast-forward is declined, named in `abcd implement status` and carried in the view by login; not on the state line.
 
 ## Decisions
 
@@ -107,6 +108,14 @@ Questions 1 to 4 are resolved by the product thinker on 2026-11-15 (decisions 1 
 4. **When the default branch carries a fix the drive lacks, the drive does nothing new and relies on releases** (product thinker, 2026-11-15; formerly the fourth question).
    - Answer: a release build already takes each new release at a lane boundary (itd-2611062149308723), and a source build never updates itself (adr-2611062149324491). Nothing is added.
    - What it costs: a fix reaches a drive only when a release is cut, and a drive on a source build is not covered.
+5. **A declined fast-forward is one event line, not part of the state line** (technical facilitator, 2026-11-25, on delegation; formerly the fifth question).
+   - Answer: when the fast-forward is declined, the drive writes one event line that says what blocks it. `abcd implement status` names the block, and the view by login across machines carries it, so a person need not be at the drive's terminal to learn it. The state line keeps its one `on` field, for what the drive is working or waiting on.
+   - Why: a drive whose fast-forward is declined is usually working on a lane, so the block is not what the state line is on, and a second field there would cost the line its one-glance reading.
+   - What it costs: the block is not on the line a person reads first; it is one command away, and it scrolls up among the events at the terminal.
+6. **The drive fast-forwards at its start as well as between lanes** (technical facilitator, 2026-11-25, on delegation).
+   - Answer: the second criterion is widened to the drive's start. A start is a boundary like the end of a lane, so it fast-forwards under the same conditions and reads its hold after, in place of refusing a checkout that is behind a tip whose hooks have changed and naming a hand-typed `git pull --ff-only`.
+   - Why: decision 3 already lets a running drive fast-forward over a hooks change at a boundary, and with several machines landing work a checkout behind origin at the start is the normal state each morning.
+   - What it costs: a start may now move the checkout before its first move, which a person who left a deliberate older checkout would not expect; the same safety conditions as at a lane's end apply, so a dirty path an incoming commit changes still stops it.
 
 ## Typed Links
 

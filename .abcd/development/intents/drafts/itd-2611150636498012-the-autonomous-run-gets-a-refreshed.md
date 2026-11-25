@@ -109,42 +109,74 @@ We expect a person to stop a drive after its lane without a lane left to take up
   - Evidence: itd-2610030810370060, criterion B4.
 - **Given** an issue title or any other text the drive did not write, **when** it is drawn in the footer or sent over the headless interface, **then** it is made safe first.
   - Evidence: itd-2610030810370060, criterion B7.
-- **Given** a run started in headless mode, **when** a client connects by the interface open question 1 decides, **then** it can read the state line, the progress of the lanes and the lane in hand as typed values, and can set each option the terminal offers, with the same effect and the same record.
+- **Given** a run that an app started in headless mode as its own child process, **when** the app reads the run's standard output and writes to its standard input, one JSON value a line, **then** it can read the state line, the progress of the lanes and the lane in hand as typed values, and can set each option the terminal offers, with the same effect and the same record.
 - **Given** a headless run and a terminal run of the same recorded fixture, **when** both are read, **then** the state, the lanes and the events agree in every value.
 - **Given** a headless run with no client connected, **when** it runs, **then** it works as a drive at a plain terminal does and waits on no client.
+- **Given** a drive started at a terminal, **when** a program other than the drive's own parent asks to join it, **then** there is no way in: the drive opens no socket, writes no token and listens on nothing but its own pipes (decisions 1 and 2).
+- **Given** the option line at a terminal, **when** a person cycles through it, **then** besides the option that changes nothing and the stop after this lane, it offers only options that show detail (the full sentence of the last event that may need a person, and the log's path), and none that acts on the run (decision 3).
+- **Given** a drive running at a terminal, **when** a person presses Ctrl-C once, **then** the lane in hand runs to its end, no further lane opens, and the drive says that a second Ctrl-C stops it at once; **when** they press it again, **then** it stops at once. The start screen and the command's page say what an interrupt now does (decision 6).
 
 ## Open Questions
 
-Each question below is the product thinker's to decide, and none is answered here. Each is given with the answers that can be defended and what each costs.
+All resolved on 2026-11-25: questions 1 and 3 to 6 by the product thinker, and question 2 by the technical facilitator as a consequence of question 1 (decisions 1 to 6). Each question is kept below as it was put, with the answers that could be defended, and the answer taken is marked.
 
 1. **What is the headless interface?**
    - A local socket with a versioned message protocol. An app can connect to a run that is already going, and more than one client can read. Cost: a protocol to design, version and keep; a socket's place and lifetime to manage across a stop and a restart.
    - JSON lines on the standard input and output of one long-running process that the app starts. No address to find, and the process ends with the app. Cost: the app cannot join a drive a person started at a terminal, and only the starter can read it.
    - The existing `--json` outputs, polled. Nothing new to keep running, and every verb's output is already there. Cost: no event arrives until the next poll, each poll starts a process, and setting an option is a separate command with its own race against the loop.
+   - Resolved (decision 1): JSON lines on the standard input and output of a process the app starts.
 
 2. **How does the command line know that the app is the person's own, on the same machine?**
    - The interface is reachable only by the account that started the run, by where it is kept and who may open it. Cost: nothing tells two programs of the same account apart.
    - The run writes a one-time value where only the account can read it, and a client presents it. Cost: one more thing to create, store and clear, and an app has to find it.
    - The app starts the process itself and talks to its own child. Cost: this fits only the second answer to question 1.
+   - Resolved (decision 2): the app talks to its own child, which follows from decision 1.
 
 3. **What does the menu offer beyond stopping after the lane?**
    - Only the two options: carry on, and stop after this lane. Cost: every other wish still needs a second terminal.
    - Also showing detail: the full sentence of the last event that may need a person, and the log's path. Cost: the menu both shows and changes things, and a person has to read which.
    - Also acting on the run: stop now, set the lane in hand aside, open no new lane until told. Cost: each is a new recorded state with its own rules, and a longer list makes the option that does nothing harder to return to.
+   - Resolved (decision 3): the two options and options that show detail; none that acts on the run.
 
 4. **Does the refresh cover only the drive, or every interactive verb?**
    - Only the drive. Cost: the plain-terminal interviews and the build keep their own way of asking, and a person learns two.
    - The drive first, with the keys and the option line written so the other interactive verbs can take them. Cost: a shared piece designed before its second user exists.
    - Every interactive verb at once. Cost: a large change to verbs whose criteria on plain output and on answers from a file were confirmed separately (itd-2610030810370060).
+   - Resolved (decision 4): the drive first, with the keys and the option line built as a shared piece.
 
 5. **How do screen readers and piped output fare?** The plain-terminal interview intent's criteria on plain output apply.
    - The plain output is the accessible form: a person using a screen reader runs the drive with output that is not redrawn, and sets an option by a flag or a second command. Cost: that person has no option line and no single key.
    - A setting that keeps the keys and writes each change of option as a new plain line, with no redrawing. Cost: a third way of drawing to build and test.
    - The headless interface is the accessible form, and an app speaks for it. Cost: nothing until an app exists.
+   - Resolved (decision 5): the future app is the accessible form, and the terminal keeps plain lines with no option list; nothing extra is built in the terminal.
 
 6. **Does the first interrupt change its meaning?** The terminal-output draft's DQ-11 offered "stop after the current lane" as the first interrupt's meaning. The ruling puts it in the menu.
    - An interrupt keeps today's meaning and stops at once. Cost: the quickest key still leaves a lane to take up.
    - The first interrupt stops after the lane and a second stops at once. Cost: it changes what an interrupt does today, and there are then two ways to ask for the same stop.
+   - Resolved (decision 6): the first interrupt stops after the lane and a second stops at once.
+
+## Decisions
+
+The product thinker's, given in the planning interview of 2026-11-25, except decision 2, which the technical facilitator settled the same day as a consequence of decision 1.
+
+1. **The app starts the drive as its own child and speaks JSON lines over its pipes** (product thinker, 2026-11-25; formerly question 1).
+   - Answer: the headless interface is one JSON value a line on the standard input and output of a drive the app starts itself. The app does not join a drive a person started at a terminal.
+   - What it costs: only the app that started a run can read it, and a drive started at a terminal stays the terminal's. There is no address to find, and the process ends with the app.
+2. **The drive trusts only its own parent, over its own pipes** (technical facilitator, 2026-11-25, as a consequence of decision 1; formerly question 2).
+   - Answer: the program that started the drive and holds its standard input and output is the app, so the drive needs no token and opens no socket. Nothing else on the machine can reach it.
+   - What it costs: nothing beyond decision 1's own cost; a second reader, or a client on another machine or account, has no way in, which is out of scope already.
+3. **The menu also shows detail, and never acts on the run** (product thinker, 2026-11-25; formerly question 3).
+   - Answer: besides "carry on" and "stop after this lane", the option list offers options that show detail: the full sentence of the last event that may need a person, and the log's path. It offers no option that acts on the run (stop now, set the lane aside, open no new lane).
+   - What it costs: the menu both shows and changes things, and its words have to make plain which an option does. Every other act on the run still needs a second terminal.
+4. **The drive first, with the keys and the option line as a shared piece** (product thinker, 2026-11-25; formerly question 4).
+   - Answer: this intent builds the drive's interface, and the keys and the option line are built as a piece the other interactive verbs (the interviews, the build) adopt in a later release.
+   - What it costs: a shared piece designed before its second user exists, and until that release a person meets two ways of asking.
+5. **The future app is the accessible form; the terminal keeps plain lines** (product thinker, 2026-11-25; formerly question 5).
+   - Answer: where output is piped or read by a screen reader, the terminal writes plain lines with no option list, as the plain-output criterion already says. Nothing extra is built in the terminal for it, and the native app, when it exists, is the accessible way to set an option.
+   - What it costs: until an app exists, a person on a screen reader has no option line and no single key.
+6. **Ctrl-C takes two steps** (product thinker, 2026-11-25; formerly question 6).
+   - Answer: the first interrupt stops the drive after the lane in hand and says that a second interrupt stops it at once; a second interrupt stops it at once.
+   - What it costs and departs from: it changes what an interrupt means today. itd-2610222215485265's interrupt criterion and its decision 8 have the first Ctrl-C let the agent finish its call and leave the lane to take up, and a second kill the agent; under this decision the first press waits for the lane's end, and the second stops at once. How that stop at once maps onto today's stop and kill is planning's to settle, and planning carries the change to that intent's criterion. The command's page and the start screen say what an interrupt now does. There are then two ways to ask for the same stop, the option and the first interrupt.
 
 ## Typed Links
 
