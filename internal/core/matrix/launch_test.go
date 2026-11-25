@@ -833,3 +833,48 @@ func TestAClaimIsReleasedWhenTheLaunchCannotRecordItsStart(t *testing.T) {
 		t.Fatalf("a later launch makes it: %+v %v", res, err)
 	}
 }
+
+// endLands is a run's state as a reader racing a launch's last moment sees
+// it: the end record of hidden is not there at the first read, and is at
+// every read after.
+type endLands struct {
+	stateReader
+	hidden string
+	reads  int
+}
+
+func (e *endLands) ReadState(rel string) ([]byte, error) {
+	if rel == e.hidden {
+		e.reads++
+		if e.reads == 1 {
+			return nil, fmt.Errorf("%s is not written: %w", rel, fs.ErrNotExist)
+		}
+	}
+	return e.stateReader.ReadState(rel)
+}
+
+// TestAnEndRecordWrittenAsTheLockIsFreedIsRead: a launch that writes its end
+// record and lets go of the run's lock between a reader's first read and its
+// look at the lock is read at its end, never as interrupted.
+func TestAnEndRecordWrittenAsTheLockIsFreedIsRead(t *testing.T) {
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	awaitRunner(t, r, home, m, rec, key, KindCode)
+	h := handOffNow(t, r, m, rec, key)
+	end := h
+	end.State, end.Reason = HandOffLaunched, "its runner made the copy"
+	data, err := encodeCheck(end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeBegun(t, r, m, rec, key, data)
+	proc, err := lab.OpenProcedure(r.Root(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	got := launchOverlay(&endLands{stateReader: proc, hidden: launchRel(rec.RunID, key, launchEnded)}, rec.RunID, h)
+	if got.State != HandOffLaunched {
+		t.Fatalf("a copy whose end landed as its lock was freed reads at its end: %+v", got)
+	}
+}

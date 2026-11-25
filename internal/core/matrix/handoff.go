@@ -257,30 +257,16 @@ func readHandOff(proc stateReader, run string, key TrialKey) (HandOff, error) {
 // that reads (none, or one torn by a kill mid-write) is still at work while a
 // launch of the run holds the run's lock, and otherwise is gone: the copy
 // reads as interrupted, saying why, and the rest of the run reads as it is.
+// The end is read once more after the lock is found free, since a launch
+// writes its last end record and then lets go of the lock: a reader between
+// the two reads the end it wrote, never an interrupted copy.
 func launchOverlay(proc stateReader, run string, h HandOff) HandOff {
-	var begun *HandOff
-	var torn []string
-	for _, stage := range []string{launchEnded, launchBegun} {
-		rel := launchRel(run, h.Key, stage)
-		raw, err := proc.ReadState(rel)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		var l HandOff
-		if err == nil {
-			err = jsonstrict.Decode(raw, &l)
-		}
-		if err != nil || l.SchemaVersion != HandOffSchema || l.Run != run || l.Key != h.Key ||
-			l.Kind != h.Kind || l.Source != h.Source || launchStage(l.State) != stage {
-			torn = append(torn, rel)
-			continue
-		}
-		if stage == launchEnded {
-			return l
-		}
-		begun = &l
+	ended, endTorn := readLaunchStage(proc, run, h, launchEnded)
+	if ended != nil {
+		return *ended
 	}
-	if begun == nil && len(torn) == 0 {
+	begun, begunTorn := readLaunchStage(proc, run, h, launchBegun)
+	if begun == nil && !endTorn && !begunTorn {
 		return h
 	}
 	at := h
@@ -294,6 +280,16 @@ func launchOverlay(proc stateReader, run string, h HandOff) HandOff {
 		}
 		return at
 	}
+	if ended, endTorn = readLaunchStage(proc, run, h, launchEnded); ended != nil {
+		return *ended
+	}
+	var torn []string
+	if endTorn {
+		torn = append(torn, launchRel(run, h.Key, launchEnded))
+	}
+	if begunTorn {
+		torn = append(torn, launchRel(run, h.Key, launchBegun))
+	}
 	at.State = HandOffInterrupted
 	if len(torn) > 0 {
 		at.Reason = "its launch record " + strings.Join(torn, " and ") + " does not read (written in part when its launch was cut off), " +
@@ -303,6 +299,24 @@ func launchOverlay(proc stateReader, run string, h HandOff) HandOff {
 			"so the copy is read as interrupted and is not launched again"
 	}
 	return at
+}
+
+// readLaunchStage is copy h's launch record at stage, nil where it is not
+// written, and torn where it is written and does not read as its own.
+func readLaunchStage(proc stateReader, run string, h HandOff, stage string) (*HandOff, bool) {
+	raw, err := proc.ReadState(launchRel(run, h.Key, stage))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false
+	}
+	var l HandOff
+	if err == nil {
+		err = jsonstrict.Decode(raw, &l)
+	}
+	if err != nil || l.SchemaVersion != HandOffSchema || l.Run != run || l.Key != h.Key ||
+		l.Kind != h.Kind || l.Source != h.Source || launchStage(l.State) != stage {
+		return nil, true
+	}
+	return &l, false
 }
 
 // launchHeld reports whether a launch of run holds the run's launch lock now.
