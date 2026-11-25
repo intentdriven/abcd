@@ -1,14 +1,18 @@
 # `/abcd:checklist` — Keep the Working Copy's Checklist on Disk
 
 `/abcd:checklist` keeps what a session in this working copy is doing on disk
-(itd-2610170638184486, spc-2610230805429429 steps 1 to 6): what it works on,
-what it waits on and what it has promised. A resumed or a fresh session in the
-same copy reads the same list, and every session start, a compaction's
-included, adds it back to the session's context. Two of the spec's steps have
-not run: the crash lab (step 7), so nothing here yet shows the list surviving a
-crash or a power cut, and the live capture in a real session (step 8), so the
-re-injection after a compaction is shown by the hook's tests, not yet in a live
-session.
+(itd-2610170638184486, spc-2610230805429429 steps 1 to 7 and 9): what it works
+on, what it waits on and what it has promised. A resumed or a fresh session in
+the same copy reads the same list, and every session start, a compaction's
+included, adds it back to the session's context. The list survives a killed
+writer: the crash lab's kill loop killed one at random points of its write
+1,000 times, and each time the reader got the list whole, no older than the
+last write the writer had finished, with no byte of a refused secret anywhere
+in the tier ([the crash lab's study](../../research/notes/2026-11-25-checklist-crash-lab-study.md)).
+Two steps have not run and are owed in the remainder spec, spc-2611251849050328:
+the two hard power cuts, so nothing here shows the list surviving a power cut,
+and the live capture in a real session, so the re-injection after a compaction
+is shown by the hook's tests, not yet in a live session.
 It is an agent's verb, listed in the agents group, and every sub-verb runs in
 the process, touching no network.
 
