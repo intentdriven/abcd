@@ -678,6 +678,41 @@ func TestAProgramTheLineFixesIsNotReadAsAbcd(t *testing.T) {
 	}
 }
 
+// TestGoRunOfAFileIsTheProgramOfItsDirectory: a `go run` of a Go file is the program
+// whose directory the file stands in, as a `go run` of an unnamed package is.
+func TestGoRunOfAFileIsTheProgramOfItsDirectory(t *testing.T) {
+	reg := Defaults()
+	for _, cmd := range []string{
+		`cd cmd/abcd && go run main.go update v0.7.0`,
+		`cd cmd/abcd && go run ./main.go update "$TAG"`,
+		`cd cmd/abcd && go run main.go flags.go update v0.7.0`,
+		`cd cmd/abcd && go run *.go update v0.7.0`,
+		`pushd cmd/abcd; go run -v main.go --json update v0.7.0`,
+		`go run -C cmd/abcd main.go update v0.7.0`,
+		`go run cmd/abcd/main.go update v0.7.0`,
+		`go run ./cmd/abcd/main.go ./cmd/abcd/flags.go update v0.7.0`,
+		`cat tag.txt | xargs go run cmd/abcd/main.go update`,
+	} {
+		d, err := reg.Check(cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != updateTagAnyEntryID {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", cmd, d.Verdict, d.EntryID, err, updateTagAnyEntryID)
+		}
+	}
+	for _, cmd := range []string{
+		`go run main.go update v1.2.3`,
+		`go run cmd/other/main.go update v1.2.3`,
+		`cd cmd/other && go run main.go update v1.2.3`,
+		`cd cmd/abcd && go run main.go update`,
+		`cd cmd/abcd && go run main.go update --check`,
+		`cd cmd/abcd && go run main.go update news --seen`,
+		`cd cmd/abcd && go vet main.go && ./deploy.sh update v1.2.3`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+}
+
 // TestARepositorysGuardFileCannotClaimAPersonActsID: a repository's guard file that
 // declares an entry under an act's reserved id does not load, and the act stays
 // refused under the registry that is left.

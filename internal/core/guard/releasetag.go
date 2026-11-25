@@ -63,6 +63,10 @@ func unnamedPackage(tok string) bool {
 	return base == "." || base == ".."
 }
 
+// goFile reports whether a word is a Go file, so the program a `go run` of it starts
+// is the one of the directory the file stands in.
+func goFile(tok string) bool { return strings.HasSuffix(tok, ".go") }
+
 // entersAbcd reports whether a segment is a `cd`, `pushd` or `popd` with a word
 // naming abcd's directory.
 func entersAbcd(s segment) bool {
@@ -76,9 +80,9 @@ func entersAbcd(s segment) bool {
 
 // tagAct reports whether any way the site's words may run is an update with a
 // release tag as its operand, under a program whose name carries abcd's, one the
-// line does not fix, or a `go run` of an unnamed package where the line enters a
-// directory named for abcd. Its words are common to other programs, so a program
-// of any other name is left alone.
+// line does not fix, or a `go run` of a file or an unnamed package in a directory
+// named for abcd. Its words are common to other programs, so a program of any
+// other name is left alone.
 func (a personAct) tagAct(s segment, site arrival, inAbcd bool) bool {
 	for _, r := range actReadings(s, site) {
 		if r.from == site.idx+1 && !r.fixedName {
@@ -86,8 +90,14 @@ func (a personAct) tagAct(s segment, site arrival, inAbcd bool) bool {
 				r.fixedName = carriesAbcd(lit.text)
 				r.named = r.fixedName
 			}
-			if unnamedPackage(s.tokens[site.idx]) && (inAbcd || firstAbcdBefore(s, site.idx)) {
+			tok := s.tokens[site.idx]
+			file := goFile(tok)
+			if (file || unnamedPackage(tok)) && (inAbcd || firstAbcdBefore(s, site.idx) || file && carriesAbcd(path.Dir(tok))) {
 				r.fixedName, r.named = true, true
+			}
+			// The other files of the package stand before the program's words.
+			for file && r.from < len(s.tokens) && goFile(s.tokens[r.from]) {
+				r.from++
 			}
 		}
 		if r.named && a.tagFrom(s, r) {
