@@ -1079,6 +1079,7 @@ func (b *reportBuilder) runLimits() {
 		b.limit("no runner reports what a copy reached on the network, so the run's network policy is asserted for every copy, not examined")
 		b.limit("whether a copy read only its own clone rests on a heuristic scan of its transcript, not a barrier: a read the transcript does not record is not seen")
 		b.limit("a path pattern in a copy's transcript is matched when the copy is judged, so a sibling check copy's deleted clone is not seen; answers in the hand-off store are")
+		b.limit("the scan cannot tell the folder a path pattern ran in, so a pattern that matches a sibling clone only where the copy's own clone holds the same path leaves the copy unexamined, set apart from the rates with an honest copy that listed a parent folder of its own clone")
 	}
 	b.limit("a model run is re-runnable, not reproducible: a re-run starts from this record and reports where it drifted")
 }

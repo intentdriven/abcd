@@ -713,13 +713,14 @@ func TestOwnCopyOnlyJudgesAGlobByItsLiteralPrefix(t *testing.T) {
 	for cmd, want := range map[string]ComplianceState{
 		"cd " + own + " && cat ../*/" + launchDocName:                StateBroken,
 		"cd " + own + " && cat ../copy_?*/" + launchDocName:          StateBroken,
-		"cd " + c.clone + " && cat ../*/README.md":                   StateBroken,
+		"cd " + c.clone + " && cat ../*/README.md":                   StateUnexamined,
 		"cd " + filepath.Join(c.clone, "widget") + " && cat ../*.md": StateKept,
 		// A pattern that matches nothing outside the copy reads nothing there.
 		"cd " + filepath.Join(c.clone, "widget") + " && rm -f ../build/*.o": StateKept,
 		"cd " + filepath.Join(c.clone, "widget") + " && ls ../*.go":         StateKept,
-		// One that matches a sibling's files read them.
-		"cd " + filepath.Join(c.clone, "widget") + " && cat ../../*/widget/widget.go": StateBroken,
+		// A sibling clone holds the same commit: a match there at a path
+		// the copy's own clone holds too cannot be told from a read of it.
+		"cd " + filepath.Join(c.clone, "widget") + " && cat ../../*/widget/widget.go": StateUnexamined,
 	} {
 		c.in.Transcript = bash(cmd)
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != want {
@@ -765,8 +766,8 @@ func TestOwnCopyOnlyJudgesAGlobsOutsideMatchesFirst(t *testing.T) {
 	for cmd, want := range map[string]ComplianceState{
 		"cd " + own + " && cat ../*/*.md":           StateBroken,
 		"cd " + c.clone + " && cat ../*/*":          StateBroken,
-		"cd " + c.clone + " && ls ../*":             StateBroken,
-		"cd " + c.clone + " && cat ../**/widget.go": StateBroken,
+		"cd " + c.clone + " && ls ../*":             StateUnexamined,
+		"cd " + c.clone + " && cat ../**/widget.go": StateUnexamined,
 		"cd " + widget + " && rm -f ../build/*.o":   StateKept,
 		"cd " + widget + " && ls ../*.go":           StateKept,
 	} {
@@ -793,9 +794,13 @@ func TestOwnCopyOnlyJoinsAPatternToItsFolderAsWritten(t *testing.T) {
 	c.store, c.in.Store = moved, moved
 	c.clone = cloneDir(moved, cloneRun, c.in.Alias)
 	own, bash := globHandoff(t, &c, parent)
+	sibling := cloneDir(moved, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}))
+	if err := os.WriteFile(filepath.Join(sibling, "answer.txt"), []byte("a sibling's own work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for cmd, want := range map[string]ComplianceState{
 		"cd " + own + " && cat ../*/" + launchDocName:               StateBroken,
-		"cd " + c.clone + " && cat ../*/README.md":                  StateBroken,
+		"cd " + c.clone + " && cat ../*/answer.txt":                 StateBroken,
 		"cd " + filepath.Join(c.clone, "widget") + " && ls ../*.go": StateKept,
 	} {
 		c.in.Transcript = bash(cmd)
@@ -841,4 +846,50 @@ func TestOwnCopyOnlyBoundsWhatAPatternWalks(t *testing.T) {
 			t.Fatalf("a transcript past the patterns the check judges: %+v; want broken naming %d", got, maxGlobPatterns)
 		}
 	})
+}
+
+// TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes: the scan cannot tell the
+// folder a pattern ran in, so a climbing pattern is judged by what its matches
+// outside the copy expose. A match inside another copy's hand-off folder (its
+// brief or answer), or a file only a sibling clone holds, read outside the
+// copy; a match in a sibling clone at a path the copy's own clone holds too
+// (sibling clones are clones of the same commit) leaves the read unexamined,
+// as does a copy's folder itself; the run's own files beside the copies'
+// folders, and a place that does not exist, expose nothing.
+func TestOwnCopyOnlyJudgesAGlobByWhatItsMatchExposes(t *testing.T) {
+	c := newComplianceCase(t)
+	own, bash := globHandoff(t, &c, t.TempDir())
+	if err := os.WriteFile(filepath.Join(filepath.Dir(own), launchLockName), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sibling := cloneDir(c.store, cloneRun, keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}))
+	if err := os.WriteFile(filepath.Join(sibling, "answer.txt"), []byte("a sibling's own work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	widget := filepath.Join(c.clone, "widget")
+	tsconfig := append(bash("cd "+widget+" && cat tsconfig.json"),
+		[]byte(`{"type":"tool_result","content":"{\"include\": [\"../shared/**/*\"]}"}`+"\n")...)
+	for name, tc := range map[string]struct {
+		transcript []byte
+		want       ComplianceState
+	}{
+		"ls ../* from a folder of the clone":             {bash("cd " + widget + " && ls ../*"), StateUnexamined},
+		"cat ../*/README.md from a folder of the clone":  {bash("cd " + widget + " && cat ../*/README.md"), StateUnexamined},
+		"rm -rf ../dist/** from a folder of the clone":   {bash("cd " + widget + " && rm -rf ../dist/**"), StateKept},
+		"a tsconfig's ../shared/**/* the copy read":      {tsconfig, StateKept},
+		"../*.lock from the brief folder":                {bash("cd " + own + " && cat ../*.lock"), StateKept},
+		"ls ../* beside the run's launch.lock":           {bash("cd " + own + " && ls ../*"), StateUnexamined},
+		"cat ../*/*.md from the brief folder":            {bash("cd " + own + " && cat ../*/*.md"), StateBroken},
+		"cat ../**/document.md from the brief folder":    {bash("cd " + own + " && cat ../**/" + launchDocName), StateBroken},
+		"cat ../**/widget.go, mirrored in its own clone": {bash("cd " + own + " && cat ../**/widget.go"), StateUnexamined},
+		"a file only a sibling clone holds":              {bash("cd " + c.clone + " && cat ../*/answer.txt"), StateBroken},
+		"a class-led read of a sibling clone's file":     {bash("cd " + c.clone + " && cat ../[c]*/answer.txt"), StateBroken},
+		"a class-led read of a sibling's answer":         {bash("cd " + own + " && cat ../[c]*/" + launchDocName), StateBroken},
+		"a brace-led read of a sibling's answer":         {bash("cd " + own + " && cat ../{x,copy_*}/" + launchDocName), StateBroken},
+	} {
+		c.in.Transcript = tc.transcript
+		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
+			t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
+		}
+	}
 }
