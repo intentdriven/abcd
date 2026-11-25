@@ -2614,6 +2614,9 @@ operand it is one operand; in command position (`$(echo git) push`) it is
 any program its known text allows, so an unknown name with any operand
 reads as `pkill` too; a block that fires only on such a name is reported
 as program-name-unknown, and the way past is to spell the program's name.
+A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,
+as the program's name, as a flag (`--$VAR`) and in a string handed to a
+shell, and a value the line assigns before it uses it is read in place.
 Text beside one in the same word is also read as bash
 leaves it when the output is empty. One nested more than eight
 double-quoted substitutions deep, holding a case command, or more than
@@ -2644,9 +2647,9 @@ or a process substitution is blocked, and so is a line over 64 KiB.
 An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
-all: a word that is wholly a `$(…)` standing where a flag would be (read as
-an operand, the way a commit message or a branch is spelled), a delete
-target printed whole by one (`rm -rf $(echo /)`, read by its known text
+all: a word that is wholly a `$(…)` or a variable standing where a flag
+would be (read as an operand, the way a commit message or a branch is
+spelled), a delete target printed whole by one (`rm -rf $(echo /)`, read by its known text
 the way `rm -rf $(find …)` names its targets every day), one launched
 through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
@@ -2654,16 +2657,16 @@ wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 only the warn, not the entry that names it),
 one whose API path an entry names by its ROOT segment but the host serves
 under a prefix (a GitHub Enterprise Server install mounts the same endpoints
-under `/api/v3/`; the api.github.com URL form IS read), a parameter
-expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it
-stands — as the program's name, as a flag (`--$VAR`), or inside an
-interpreter payload (an execute-a-string payload IS read — `sh -c`,
-`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),
-because the guard sees the variable, not what the shell expands it to,
+under `/api/v3/`; the api.github.com URL form IS read), what a variable
+the line did not assign carries in from an earlier command (a pid list, a
+stream path, shell text run through `eval`, or `pkill` or `killall` as the
+program's whole name, `$P make`),
 an IFS the shell already holds when the line starts or gains during the
 line through a name the guard does not read (every line is read from the
 default IFS),
-a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
+a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`;
+an execute-a-string payload IS read, `sh -c` and `env -S`, and one the guard
+cannot read is warned or, for `env -S`, blocked) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
 a lone substitution standing as the whole command (`$(cat msg.txt)`,

@@ -85,6 +85,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"any program its known text allows, so an unknown name with any operand\n" +
 			"reads as `pkill` too; a block that fires only on such a name is reported\n" +
 			"as program-name-unknown, and the way past is to spell the program's name.\n" +
+			"A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,\n" +
+			"as the program's name, as a flag (`--$VAR`) and in a string handed to a\n" +
+			"shell, and a value the line assigns before it uses it is read in place.\n" +
 			"Text beside one in the same word is also read as bash\n" +
 			"leaves it when the output is empty. One nested more than eight\n" +
 			"double-quoted substitutions deep, holding a case command, or more than\n" +
@@ -115,9 +118,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"An unquoted brace group IS\n" +
 			"expanded as bash expands it, and one past 4096 words is blocked. What an\n" +
 			"allow still does not see is a hazard that never reaches command position at\n" +
-			"all: a word that is wholly a `$(…)` standing where a flag would be (read as\n" +
-			"an operand, the way a commit message or a branch is spelled), a delete\n" +
-			"target printed whole by one (`rm -rf $(echo /)`, read by its known text\n" +
+			"all: a word that is wholly a `$(…)` or a variable standing where a flag\n" +
+			"would be (read as an operand, the way a commit message or a branch is\n" +
+			"spelled), a delete target printed whole by one (`rm -rf $(echo /)`, read by its known text\n" +
 			"the way `rm -rf $(find …)` names its targets every day), one launched\n" +
 			"through a known\n" +
 			"wrapper carrying a value-taking flag the guard does not name (`sudo -u bob\n" +
@@ -125,16 +128,16 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"only the warn, not the entry that names it),\n" +
 			"one whose API path an entry names by its ROOT segment but the host serves\n" +
 			"under a prefix (a GitHub Enterprise Server install mounts the same endpoints\n" +
-			"under `/api/v3/`; the api.github.com URL form IS read), a parameter\n" +
-			"expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it\n" +
-			"stands — as the program's name, as a flag (`--$VAR`), or inside an\n" +
-			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
-			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
-			"because the guard sees the variable, not what the shell expands it to,\n" +
+			"under `/api/v3/`; the api.github.com URL form IS read), what a variable\n" +
+			"the line did not assign carries in from an earlier command (a pid list, a\n" +
+			"stream path, shell text run through `eval`, or `pkill` or `killall` as the\n" +
+			"program's whole name, `$P make`),\n" +
 			"an IFS the shell already holds when the line starts or gains during the\n" +
 			"line through a name the guard does not read (every line is read from the\n" +
 			"default IFS),\n" +
-			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
+			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`;\n" +
+			"an execute-a-string payload IS read, `sh -c` and `env -S`, and one the guard\n" +
+			"cannot read is warned or, for `env -S`, blocked) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +
 			"a lone substitution standing as the whole command (`$(cat msg.txt)`,\n" +
