@@ -92,7 +92,10 @@ start abcd cannot see.
 - **abcd's hooks**, handed over as a launch argument: every event the plugin's manifest
   wires. An event whose hook this binary lacks is left out, and said.
 - **The conventions file**, `AGENTS.md` at the checkout's root, whole, as it stands at
-  that moment. A later edit does not reach an open session.
+  that moment. A later edit does not reach an open session. It goes over in the
+  session's command line, and stays there for the session's life, so any account on
+  this machine that can list its processes can read it; a host started without abcd
+  reads the file from disk instead.
 - **The person's home and shell environment**, less what the host signs in or bills
   through, every other variable of the host's and a walled stage's. The names left out
   are printed, never a value.

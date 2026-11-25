@@ -735,6 +735,20 @@ func TestStartNamesTheProfileItRefuses(t *testing.T) {
 	}
 }
 
+// TestStartPagesSayTheConventionsShowInTheCommandLine: the conventions file goes over as a
+// launch argument, so both pages say who can read it there.
+func TestStartPagesSayTheConventionsShowInTheCommandLine(t *testing.T) {
+	for _, rel := range []string{"commands/start.md", ".abcd/development/brief/04-surfaces/43-start.md"} {
+		raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if text := strings.Join(strings.Fields(string(raw)), " "); !strings.Contains(text, "any account on this machine that can list its processes can read it") {
+			t.Errorf("%s does not say who can read the conventions text in the command line", rel)
+		}
+	}
+}
+
 // TestStartTakesItsHomeFromTheMachineLayer: a home inside a working tree that is not the
 // account's own is no home, and the note says so.
 func TestStartTakesItsHomeFromTheMachineLayer(t *testing.T) {
