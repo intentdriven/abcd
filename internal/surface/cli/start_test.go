@@ -722,6 +722,19 @@ func TestStartRefusesWhereTheCheckoutsGuardDoesNotRefuse(t *testing.T) {
 	w.opens(t)
 }
 
+// TestStartNamesTheProfileItRefuses: a name the account holds is printed in each refusal
+// of that directory, as the login command is.
+func TestStartNamesTheProfileItRefuses(t *testing.T) {
+	w := newStartWorld(t)
+	w.profiles(t, "a-long-profile-name", "another")
+	if err := os.Chmod(abcdhome.Path(w.home, "profiles", "a-long-profile-name"), 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if text := w.refuses(t, "start/profile-unusable", "--profile", "a-long-profile-name"); !strings.Contains(text, abcdhome.Display("profiles", "a-long-profile-name")+" is one group or other can write") {
+		t.Errorf("the refusal names the profile:\n%s", text)
+	}
+}
+
 // TestStartTakesItsHomeFromTheMachineLayer: a home inside a working tree that is not the
 // account's own is no home, and the note says so.
 func TestStartTakesItsHomeFromTheMachineLayer(t *testing.T) {
@@ -940,7 +953,7 @@ func TestStartSaysWhenTheHostCannotBeStarted(t *testing.T) {
 func TestStartSaysANamedToolTheLaunchDidNotReport(t *testing.T) {
 	w := newStartWorld(t)
 	w.launch(t, map[string]any{"type": "system", "subtype": "init", "tools": []string{"Bash", "Read", "Task"}, "apiKeySource": "none",
-		"mcp_servers": []any{}, "plugins": []any{}, "claude_code_version": "2.1.332"}, true)
+		"mcp_servers": []any{}, "plugins": []any{}, "agents": []any{}, "skills": []any{}, "slash_commands": []any{}, "claude_code_version": "2.1.332"}, true)
 	w.opens(t)
 	want := "tools Bash, Read, Task; named and not reported: Edit, Write, TaskStop, AskUserQuestion, Monitor, ScheduleWakeup, CronCreate, CronList, CronDelete;"
 	if !strings.Contains(w.out.String(), want) {

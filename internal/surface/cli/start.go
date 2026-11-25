@@ -159,13 +159,16 @@ func runStart(cmd *cobra.Command, r startRequest) error {
 	if len(names) == 0 {
 		return startMakesProfile(cmd, home, r, say)
 	}
+	// A name the account holds is a directory's, so a refusal may name it: withheld as the
+	// caller's word, it would leave the refusals of that directory and the login command it
+	// prints unusable.
+	if slices.Contains(names, r.profile) {
+		declareClosedSet(cmd.Flags(), "profile", r.profile)
+	}
 	p, err := runner.DriveProfile(home, r.profile)
 	if err != nil {
 		return refused(2, refusal.StartProfileUnusable, startText("%s", err.Error()))
 	}
-	// The name is now a directory's the account holds, so a refusal may name it: withheld as
-	// the caller's word, it would leave the login command it prints unusable.
-	declareClosedSet(cmd.Flags(), "profile", p.Name())
 	shown := abcdhome.Display("profiles", p.Name())
 	if entry := runner.ProfileLoads(p); entry != "" {
 		way := "move it out by hand"

@@ -486,9 +486,9 @@ func readSessionProof(out []byte) (SessionProof, error) {
 			HookStdout string        `json:"stdout"`
 			Servers    *[]wallServer `json:"mcp_servers"`
 			Plugins    *[]wallPlugin `json:"plugins"`
-			Commands   []string      `json:"slash_commands"`
-			Agents     []string      `json:"agents"`
-			Skills     []string      `json:"skills"`
+			Commands   *[]string     `json:"slash_commands"`
+			Agents     *[]string     `json:"agents"`
+			Skills     *[]string     `json:"skills"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(line), &ev) != nil || ev.Type != "system" {
 			continue
@@ -536,8 +536,14 @@ func readSessionProof(out []byte) (SessionProof, error) {
 				}
 				proof.Plugins = append(proof.Plugins, hostName(pl.Name))
 			}
-			for _, list := range [][]string{ev.Commands, ev.Agents, ev.Skills} {
-				for _, name := range list {
+			for _, l := range []struct {
+				what string
+				list *[]string
+			}{{"commands", ev.Commands}, {"agents", ev.Agents}, {"skills", ev.Skills}} {
+				if l.list == nil {
+					return proof, &WallError{WallWorkingTree, "the harness did not report its " + l.what + ", so nothing shows that the working tree's are not loaded"}
+				}
+				for _, name := range *l.list {
 					if strings.HasPrefix(name, "abcd:") {
 						return proof, &WallError{WallPlugins, "the launch loaded " + hostName(name) + ", and abcd's own pages and agents are not in a session"}
 					}
@@ -546,10 +552,10 @@ func readSessionProof(out []byte) (SessionProof, error) {
 					}
 				}
 			}
-			for _, name := range ev.Skills {
+			for _, name := range *ev.Skills {
 				proof.Skills = append(proof.Skills, hostName(name))
 			}
-			for _, name := range ev.Agents {
+			for _, name := range *ev.Agents {
 				proof.Agents = append(proof.Agents, hostName(name))
 			}
 			switch ev.APIKey {
