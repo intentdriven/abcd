@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The committed pre-push hook's spot-check row (itd-2610301750162657,
@@ -31,7 +33,7 @@ func (c *prePushCase) storeCommit(parent string, files ...storeFile) string {
 	git := func(args ...string) string {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = c.dir
-		cmd.Env = append(append([]string{}, c.env...), "GIT_INDEX_FILE="+index)
+		cmd.Env = append(gittest.Env(c.t), "GIT_INDEX_FILE="+index)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			c.t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -119,7 +121,7 @@ func TestPrePushGatesEveryOtherPushToTheStore(t *testing.T) {
 		c := newPrePushCase(t)
 		mktree := func(entry string) string {
 			cmd := exec.Command("git", "mktree")
-			cmd.Dir, cmd.Env, cmd.Stdin = c.dir, c.env, strings.NewReader(entry+"\n")
+			cmd.Dir, cmd.Env, cmd.Stdin = c.dir, gittest.Env(t), strings.NewReader(entry+"\n")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("git mktree: %v\n%s", err, out)
