@@ -9,7 +9,7 @@ found_during: "the fix for iss-2610231004140527, 2026-10-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/claim/crowd.go"
-remedy: "Waits on ruling (one ceiling per person, or a count per account and machine): if per account and machine, count against this machine's reservation.max_live only the live holds whose copy is this machine's (this copy and its sibling worktrees, as claim.CeilingFor already tells them apart), keep the login-wide total shown beside it, and test that a hold from another clone under the same login no longer refuses this machine's next reservation"
+remedy: "Ruled 2026-11-25 (dcn-2611251747513582): replace the single login-wide gate with two limits. A per-drain limit on lanes in work, set per repository, overridable per run, default 1, counting only the lane being implemented (a lane whose pull request is queued keeps its hold but leaves the count). A per-person ceiling in the repository's configuration, default 10, counting every live hold under the login across machines and accounts, queued pull requests included; a machine's reservation.max_live may lower it and never raise it. Test that a second drain under the same login opens its next lane while the first's queued pull request still holds its issue, and that a machine setting above the repository's ceiling is held to the repository's value. Built as a later step of the intent for drives that keep working across machines."
 refines: [iss-2610231004140527]
 ---
 
