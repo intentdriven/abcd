@@ -925,3 +925,100 @@ func TestDrainDryRunShowsTheMembersEachLeadWouldTake(t *testing.T) {
 		}
 	}
 }
+
+// The drain's summary of its bundles (itd-2611201450052326,
+// spc-2611201455051897 step 4): each lane's line names its lead and members,
+// the bundle the drain is forming is shown, and --json carries both; a lane of
+// one prints the line it always has.
+
+// bundledDrainMove is a drain move with a lane of one, a bundle of three and
+// a bundle forming.
+func bundledDrainMove() drainMoveView {
+	res := loop.DrainResult{State: loop.DrainStateRel, Rule: "adr-1", Order: "by category", Next: "drain again",
+		Lanes: []loop.DrainLane{
+			{Issue: "iss-2611010000000001", RunID: "run-2611010000000001", Outcome: loop.DrainLanePullRequest, PR: 7},
+			{Issue: "iss-2611010000000002", RunID: "run-2611010000000002", Outcome: loop.DrainLaneInProgress,
+				Bundle: []string{"iss-2611010000000003", "iss-2611010000000004"}},
+		}}
+	return drainMoveView{DrainResult: res, Forming: formingView(&loop.DrainForming{Lead: "iss-2611010000000005",
+		Members: []loop.DrainFormingMember{{Issue: "iss-2611010000000006"}}})}
+}
+
+// TestADrainLaneLineNamesItsLeadAndMembers: a bundle's line names its lead
+// and every member; a lane of one prints today's line, byte for byte.
+func TestADrainLaneLineNamesItsLeadAndMembers(t *testing.T) {
+	var b bytes.Buffer
+	renderDrainMove(&b, bundledDrainMove())
+	text := b.String()
+	if !strings.Contains(text, "\n    iss-2611010000000001  run-2611010000000001  pull-request (pull request #7)\n") {
+		t.Errorf("a lane of one prints the line it always has:\n%s", text)
+	}
+	want := "    iss-2611010000000002  run-2611010000000002  in-progress; a bundle of 3: lead iss-2611010000000002, members iss-2611010000000003, iss-2611010000000004\n"
+	if !strings.Contains(text, want) {
+		t.Errorf("a bundle's line names its lead and members, want %q:\n%s", want, text)
+	}
+}
+
+// TestTheDrainSummaryShowsTheBundleForming: the text names the bundle forming,
+// its lead and the members taken so far, or that none is yet; --json carries
+// it in `forming` and each lane's members in `bundle`, and a move forming
+// nothing carries no `forming` and no line.
+func TestTheDrainSummaryShowsTheBundleForming(t *testing.T) {
+	v := bundledDrainMove()
+	var b bytes.Buffer
+	renderDrainMove(&b, v)
+	if want := "  forming: a bundle led by iss-2611010000000005, with iss-2611010000000006 so far, each held until its lane opens\n"; !strings.Contains(b.String(), want) {
+		t.Errorf("the text shows the bundle forming, want %q:\n%s", want, b.String())
+	}
+
+	var j bytes.Buffer
+	if err := render(&j, true, v, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Lanes []struct {
+			Issue  string   `json:"issue"`
+			Bundle []string `json:"bundle"`
+		} `json:"lanes"`
+		Forming *struct {
+			Lead    string   `json:"lead"`
+			Members []string `json:"members"`
+		} `json:"forming"`
+		Next string `json:"next"`
+	}
+	if err := json.Unmarshal(j.Bytes(), &got); err != nil {
+		t.Fatalf("--json is not JSON: %v\n%s", err, j.Bytes())
+	}
+	if got.Next != "drain again" || len(got.Lanes) != 2 || got.Lanes[0].Bundle != nil ||
+		!slices.Equal(got.Lanes[1].Bundle, []string{"iss-2611010000000003", "iss-2611010000000004"}) {
+		t.Errorf("--json keeps the move's payload and each lane's members: %s", j.Bytes())
+	}
+	if got.Forming == nil || got.Forming.Lead != "iss-2611010000000005" || !slices.Equal(got.Forming.Members, []string{"iss-2611010000000006"}) {
+		t.Errorf("--json carries the bundle forming: %s", j.Bytes())
+	}
+
+	v.Forming = formingView(&loop.DrainForming{Lead: "iss-2611010000000005"})
+	b.Reset()
+	renderDrainMove(&b, v)
+	if want := "  forming: a bundle led by iss-2611010000000005, no member yet, its hold kept until its lane opens\n"; !strings.Contains(b.String(), want) {
+		t.Errorf("a bundle with no member yet says so, want %q:\n%s", want, b.String())
+	}
+	j.Reset()
+	if err := render(&j, true, v, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(j.String(), `"members": []`) {
+		t.Errorf("a bundle with no member yet carries an empty list, not null: %s", j.Bytes())
+	}
+
+	v.Forming = nil
+	b.Reset()
+	renderDrainMove(&b, v)
+	j.Reset()
+	if err := render(&j, true, v, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "forming") || strings.Contains(j.String(), `"forming"`) {
+		t.Errorf("a move forming nothing shows no bundle forming:\n%s\n%s", b.String(), j.Bytes())
+	}
+}

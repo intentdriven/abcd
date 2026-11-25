@@ -206,7 +206,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
-			"pull request is open, and it routes the lane's outcome and opens the next. A lane\n" +
+			"pull request is open, and it routes the lane's outcome and opens the next. Under\n" +
+			"drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not\n" +
+			"open its lane at once: that move and the next reserve and judge each member in turn,\n" +
+			"keeping every hold, a yes routing that member alone, and the lane opens with the lead\n" +
+			"and the members a no took once none is left, the cap is reached or the next\n" +
+			"reservation would reach reservation.max_live. The summary names each lane's lead and\n" +
+			"members (bundle in --json) and the bundle forming (forming). A lane\n" +
 			"that cannot finish does not hold the drain: each refused step of its run, until its\n" +
 			"pull request is armed or left open, is logged on the lane (refused in the run's state: the stage, the check, the reason, a count\n" +
 			"of the same refusal in a row, since when and when last it refused there, and why it\n" +
@@ -471,14 +477,57 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 		res.Start.Next = fsutil.RedactHome(res.Start.Next)
 		res.Start.ForkUnchecked = fsutil.RedactHome(res.Start.ForkUnchecked)
 	}
-	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDrainRun(w, res) })
+	v := drainMoveView{DrainResult: res}
+	// The bundle forming is read from the drain's state the move left; a
+	// state that cannot be read again leaves the summary without it, said on
+	// stderr, since the move itself is made.
+	if f, err := loop.ReadDrainForming(repoRoot); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd drain: the bundle forming could not be read: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	} else {
+		v.Forming = formingView(f)
+	}
+	return render(cmd.OutOrStdout(), asJSON, v, func(w io.Writer) { renderDrainMove(w, v) })
 }
 
-// renderDrainRun is the text summary of one drain move: the rule, the order,
-// the cap and the pace; every lane the drain opened with its outcome; every
-// hand-back with its route and the record change it made; the rule's flags;
-// and the next move. Every runtime string is sanitised.
+// formingView is a forming bundle as the summary names it: its lead and the
+// members judged so far, never null; nil when none forms.
+func formingView(f *loop.DrainForming) *drainFormingView {
+	if f == nil {
+		return nil
+	}
+	v := &drainFormingView{Lead: f.Lead, Members: make([]string, 0, len(f.Members))}
+	for _, m := range f.Members {
+		v.Members = append(v.Members, m.Issue)
+	}
+	return v
+}
+
+// drainMoveView is one drain move as the front door shows it: the core's
+// result and, read from the drain's state after the move, the bundle the
+// drain is forming (spc-2611201455051897 step 4).
+type drainMoveView struct {
+	loop.DrainResult
+	Forming *drainFormingView `json:"forming,omitempty"`
+}
+
+// drainFormingView is a forming bundle's lead and the members judged so far.
+type drainFormingView struct {
+	Lead    string   `json:"lead"`
+	Members []string `json:"members"`
+}
+
+// renderDrainRun is renderDrainMove for a move forming no bundle.
 func renderDrainRun(w io.Writer, res loop.DrainResult) {
+	renderDrainMove(w, drainMoveView{DrainResult: res})
+}
+
+// renderDrainMove is the text summary of one drain move: the rule, the order,
+// the cap and the pace; every lane the drain opened with its outcome, and a
+// bundle's lead and members; the bundle forming; every hand-back with its
+// route and the record change it made; the rule's flags; and the next move.
+// Every runtime string is sanitised.
+func renderDrainMove(w io.Writer, v drainMoveView) {
+	res := v.DrainResult
 	verb := "continues"
 	if res.Started {
 		verb = "begins"
@@ -513,6 +562,10 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		if l.PR > 0 {
 			line += fmt.Sprintf(" (pull request #%d)", l.PR)
 		}
+		if len(l.Bundle) > 0 {
+			line += fmt.Sprintf("; a bundle of %d: lead %s, members %s", len(l.Bundle)+1,
+				termsafe.Sanitize(l.Issue), termsafe.Sanitize(strings.Join(l.Bundle, ", ")))
+		}
 		fmt.Fprintln(w, line)
 	}
 	if res.Judged != nil {
@@ -524,6 +577,14 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	if res.Judging != nil {
 		fmt.Fprintf(w, "  awaiting the host judgement on %s: request %s, answer %s\n",
 			termsafe.Sanitize(res.Judging.Issue), termsafe.Sanitize(res.Judging.Request), termsafe.Sanitize(res.Judging.Answer))
+	}
+	if f := v.Forming; f != nil {
+		if len(f.Members) == 0 {
+			fmt.Fprintf(w, "  forming: a bundle led by %s, no member yet, its hold kept until its lane opens\n", termsafe.Sanitize(f.Lead))
+		} else {
+			fmt.Fprintf(w, "  forming: a bundle led by %s, with %s so far, each held until its lane opens\n",
+				termsafe.Sanitize(f.Lead), termsafe.Sanitize(strings.Join(f.Members, ", ")))
+		}
 	}
 	if len(res.HandBacks) > 0 {
 		fmt.Fprintln(w, "  handed back by their lanes or the host judgement:")
