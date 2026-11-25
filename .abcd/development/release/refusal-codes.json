@@ -2,6 +2,39 @@
   "format_version": 1,
   "codes": [
     {
+      "code": "announce/invalid-request"
+    },
+    {
+      "code": "announce/not-public"
+    },
+    {
+      "code": "announce/outside-checkout"
+    },
+    {
+      "code": "announce/unreachable-origin"
+    },
+    {
+      "code": "banlist/duplicate-key"
+    },
+    {
+      "code": "banlist/invalid-entry"
+    },
+    {
+      "code": "banlist/invalid-store"
+    },
+    {
+      "code": "banlist/legacy-store"
+    },
+    {
+      "code": "banlist/unknown-key"
+    },
+    {
+      "code": "banlist/unmanaged-entry"
+    },
+    {
+      "code": "capture/held-by-peer"
+    },
+    {
       "code": "capture/insufficient-grounds"
     },
     {
@@ -17,6 +50,9 @@
       "code": "capture/not-open"
     },
     {
+      "code": "capture/outside-checkout"
+    },
+    {
       "code": "capture/remedy-machine-specific"
     },
     {
@@ -26,6 +62,27 @@
       "code": "capture/unknown-reading-record"
     },
     {
+      "code": "decide/invalid-text"
+    },
+    {
+      "code": "decide/missing-shared-tier"
+    },
+    {
+      "code": "decide/outside-checkout"
+    },
+    {
+      "code": "embargo/invalid-request"
+    },
+    {
+      "code": "embargo/not-away"
+    },
+    {
+      "code": "embargo/outside-checkout"
+    },
+    {
+      "code": "embargo/unknown-home"
+    },
+    {
       "code": "explain/unknown-code"
     },
     {
@@ -33,6 +90,93 @@
     },
     {
       "code": "explain/unrecognized-input"
+    },
+    {
+      "code": "ideate/invalid-verdict"
+    },
+    {
+      "code": "ideate/missing-root-commit"
+    },
+    {
+      "code": "ideate/outside-checkout"
+    },
+    {
+      "code": "ideate/shallow-checkout"
+    },
+    {
+      "code": "intent/held-by-peer"
+    },
+    {
+      "code": "intent/insufficient-grounds"
+    },
+    {
+      "code": "intent/invalid-findings"
+    },
+    {
+      "code": "intent/invalid-request"
+    },
+    {
+      "code": "intent/invalid-verdict"
+    },
+    {
+      "code": "intent/outside-checkout"
+    },
+    {
+      "code": "intent/unknown-intent"
+    },
+    {
+      "code": "interview/invalid-answers"
+    },
+    {
+      "code": "interview/invalid-config"
+    },
+    {
+      "code": "interview/missing-terminal"
+    },
+    {
+      "code": "interview/unreachable-role"
+    },
+    {
+      "code": "peers/outside-checkout"
+    },
+    {
+      "code": "reserve/already-held"
+    },
+    {
+      "code": "reserve/exceeded-cap"
+    },
+    {
+      "code": "reserve/invalid-request"
+    },
+    {
+      "code": "reserve/not-held"
+    },
+    {
+      "code": "reserve/outside-checkout"
+    },
+    {
+      "code": "reserve/unknown-holder"
+    },
+    {
+      "code": "reserve/unreachable-origin"
+    },
+    {
+      "code": "rules/unknown-domain"
+    },
+    {
+      "code": "spec/invalid-request"
+    },
+    {
+      "code": "spec/missing-impact"
+    },
+    {
+      "code": "spec/outside-checkout"
+    },
+    {
+      "code": "spec/unknown-spec"
+    },
+    {
+      "code": "status/outside-checkout"
     },
     {
       "code": "usage/extra-argument"

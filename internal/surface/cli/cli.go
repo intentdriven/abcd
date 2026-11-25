@@ -110,6 +110,15 @@ func exitWith(exit int, ref refusal.Code, msg string) *exitError {
 	return &exitError{Code: exit, Msg: msg, ref: ref}
 }
 
+// argCountCode is the usage code of a call that gave got positional
+// arguments where the command takes want: too few, or too many.
+func argCountCode(got, want int) refusal.Code {
+	if got < want {
+		return refusal.UsageMissingArgument
+	}
+	return refusal.UsageExtraArgument
+}
+
 // helpRunE is the RunE every sub-verb parent carries. A cobra parent with no RunE
 // is not Runnable, so cobra prints help and exits 0 WITHOUT running the command's
 // Args validator: an unknown sub-verb — a typo, or a retired spelling like the
@@ -344,7 +353,7 @@ func NewRootCommand() *cobra.Command {
 				if err != nil {
 					// Not here is not "not found" when a peer holds it
 					// (itd-2609091416295622): the consult runs only now.
-					return peerHeldRefusal(cwd, "", args[0], err)
+					return peerHeldRefusal(cwd, "", args[0], refusal.None, err)
 				}
 				// An issue is read from this checkout's ledger, so the answer
 				// names that ledger as every capture verb does
@@ -3094,15 +3103,15 @@ Read-only.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			byPrompt := cmd.Flags().Changed("prompt")
 			if byPrompt && len(args) == 1 {
-				return &exitError{Code: 2, Msg: `abcd rules: --prompt and a DOMAIN are two forms; run abcd rules <DOMAIN> to render one domain, or abcd rules --prompt "<text>" to see what one prompt brings back (nothing rendered)`}
+				return refused(2, refusal.UsageFlagConflict, `abcd rules: --prompt and a DOMAIN are two forms; run abcd rules <DOMAIN> to render one domain, or abcd rules --prompt "<text>" to see what one prompt brings back (nothing rendered)`)
 			}
 			var used *float64
 			if cmd.Flags().Changed("fill") {
 				if !byPrompt {
-					return &exitError{Code: 2, Msg: `abcd rules: --fill goes with --prompt; run abcd rules --prompt "<text>" --fill <percent-used> (nothing rendered)`}
+					return refused(2, refusal.UsageMissingRequiredFlag, `abcd rules: --fill goes with --prompt; run abcd rules --prompt "<text>" --fill <percent-used> (nothing rendered)`)
 				}
 				if rules.BracketForUsed(fillUsed) == rules.BracketUnknown {
-					return &exitError{Code: 2, Msg: "abcd rules: --fill takes the share of the context window used, from 0 to 100 (nothing rendered)"}
+					return refused(2, refusal.UsageInvalidFlagValue, "abcd rules: --fill takes the share of the context window used, from 0 to 100 (nothing rendered)")
 				}
 				used = &fillUsed
 			}
@@ -3140,7 +3149,7 @@ Read-only.`,
 				d, ok := rs.Lookup(name)
 				if !ok {
 					known := slices.Sorted(maps.Keys(rs.Domains))
-					return &exitError{Code: 2, Msg: "abcd rules: no domain of that name (the name is not repeated here); the domains are " + strings.Join(known, ", ")}
+					return refused(2, refusal.RulesUnknownDomain, "abcd rules: no domain of that name (the name is not repeated here); the domains are "+strings.Join(known, ", "))
 				}
 				return render(cmd.OutOrStdout(), *asJSON, d, func(w io.Writer) {
 					fmt.Fprint(w, rules.RenderListing([]rules.ResolvedDomain{d}))
@@ -3205,7 +3214,7 @@ func intentStoreRoot(cmd *cobra.Command) (string, error) {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the intent store")
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd intent: " + err.Error() + " (nothing read, nothing written)"}
+		return "", refused(2, refusal.IntentOutsideCheckout, "abcd intent: "+err.Error()+" (nothing read, nothing written)")
 	}
 	for _, note := range strayStoreNotes(cwd, root, intent.IntentsRelDir, "intent store") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent: %s\n", termsafe.Sanitize(note))
@@ -3217,6 +3226,39 @@ func intentStoreRoot(cmd *cobra.Command) (string, error) {
 // internal/core/intent (itd-80). Bare `abcd intent` renders the read-only
 // lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
 // the mutations. Usage/lookup failures exit 2.
+// intentRefusalCode is the code of a refusal the intent core decided. The
+// core names no sentinel for most of them, so the one it words the same way
+// at every act, an id no bucket holds, is read from its wording (the probes
+// in refusal_raisers_intent_test.go hold the wording to the code), and every
+// other refusal of the store is intent/invalid-request, its message naming
+// the reason. A code the core put on the error (refusal.Wrap) comes first.
+func intentRefusalCode(err error) refusal.Code {
+	if c := refusal.CodeOf(err); c != refusal.None {
+		return c
+	}
+	if msg := err.Error(); strings.Contains(msg, "not found in any bucket") || strings.Contains(msg, "no intent in any bucket has the id") {
+		return refusal.IntentUnknownIntent
+	}
+	return refusal.IntentInvalidRequest
+}
+
+// specRefusalCode is intentRefusalCode for `spec close`, whose core is the
+// intent store's reconcile: a spec id no folder holds, and a ship whose
+// intent records no impact, are read from their wording.
+func specRefusalCode(err error) refusal.Code {
+	if c := refusal.CodeOf(err); c != refusal.None {
+		return c
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "has no impact and none was supplied"):
+		return refusal.SpecMissingImpact
+	case strings.HasPrefix(msg, "intent: spec ") && strings.Contains(msg, " not found"):
+		return refusal.SpecUnknownSpec
+	}
+	return refusal.SpecInvalidRequest
+}
+
 func newIntentCommand(asJSON *bool) *cobra.Command {
 	var intentTitle, intentImpact, intentProductionMode string
 	intentCmd := &cobra.Command{
@@ -3241,22 +3283,22 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// A far miss names no sub-verb, so the refusal lists them all rather
 				// than filing the words as a draft title (iss-2609091647589392).
 				if instead, ok := removedSubverbs["intent"][args[0]]; ok {
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", instead)}
+					return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", instead))
 				}
 				if hint := recordReadHint("intent", args); hint != "" {
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", hint)}
+					return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", hint))
 				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
-						return &exitError{Code: 2, Msg: fmt.Sprintf(
+						return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
 							"unknown intent subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
-							strings.Join(subverbNames(cmd), ", "))}
+							strings.Join(subverbNames(cmd), ", ")))
 					}
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
+					return refused(2, refusal.UsageUnknownCommand, fmt.Sprintf(
 						"unknown intent subcommand (the first argument, not repeated here); did you mean %q? (nothing created — reword the text if you meant to file a draft)",
-						sug)}
+						sug))
 				}
 				// Guard: a lone bare word near NO sub-verb fell through the
 				// did-you-mean above and was filed as a draft title
@@ -3264,9 +3306,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// shape; only prose is a draft title.
 				if loneBareToken(args) {
 					if args[0] == "" {
-						return &exitError{Code: 2, Msg: "abcd intent: the draft title is empty (nothing created)"}
+						return refused(2, refusal.UsageMissingArgument, "abcd intent: the draft title is empty (nothing created)")
 					}
-					return &exitError{Code: 2, Msg: "unknown intent subcommand (the first argument, not repeated here; nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)"}
+					return refused(2, refusal.UsageUnknownCommand, "unknown intent subcommand (the first argument, not repeated here; nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)")
 				}
 				// Changed, not the value: `--title ""` is a title the user gave and
 				// the core refuses it, where an unset flag leaves the H1 derived.
@@ -3322,15 +3364,15 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			// The bundle's name is the planner's to give: the plugin page asks for
 			// it, and this door refuses its absence rather than inventing one.
 			if len(args) > 1 && planBundle == "" {
-				return &exitError{Code: 2, Msg: "abcd intent plan: several intents are planned as one bundle, and --bundle <name> names it; re-run with --bundle (nothing moved)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent plan: several intents are planned as one bundle, and --bundle <name> names it; re-run with --bundle (nothing moved)")
 			}
 			if len(args) == 1 && planBundle != "" {
-				return &exitError{Code: 2, Msg: "abcd intent plan: --bundle names a bundle of two or more intents; plan one intent without it (nothing moved)"}
+				return refused(2, refusal.UsageFlagConflict, "abcd intent plan: --bundle names a bundle of two or more intents; plan one intent without it (nothing moved)")
 			}
 			// A target is one intent's promise, not a bundle's: each member is
 			// targeted on its own once planned (itd-2609212103572513).
 			if len(args) > 1 && planTarget != "" {
-				return &exitError{Code: 2, Msg: "abcd intent plan: --target names the release one intent must land by; plan the bundle without it, then target each member with `abcd intent target <itd-N> <version>` (nothing moved)"}
+				return refused(2, refusal.UsageFlagConflict, "abcd intent plan: --target names the release one intent must land by; plan the bundle without it, then target each member with `abcd intent target <itd-N> <version>` (nothing moved)")
 			}
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
@@ -3341,7 +3383,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
-			mode, err := resolveProductionMode(repoRoot, planProductionMode)
+			mode, err := resolveProductionMode(repoRoot, planProductionMode, refusal.IntentInvalidRequest)
 			if err != nil {
 				return err
 			}
@@ -3355,7 +3397,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			// record already carries, before anything moves.
 			res, err := intent.Plan(repoRoot, args[0], intent.PlanOptions{ProductionMode: mode, Impact: planImpact, Target: planTarget})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent plan: "+err.Error())
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
@@ -3427,11 +3469,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if strings.TrimSpace(readyGrounds) != "" {
 				g, perr := grounds.Parse(readyGrounds)
 				if perr != nil {
-					return &exitError{Code: 2, Msg: "abcd intent ready: " + perr.Error() + " (nothing recorded)"}
+					return refused(2, refusal.IntentInsufficientGrounds, "abcd intent ready: "+perr.Error()+" (nothing recorded)")
 				}
 				rec, rerr := intent.RecordGrounds(repoRoot, args[0], g)
 				if rerr != nil {
-					return &exitError{Code: 2, Msg: "abcd intent ready: " + rerr.Error()}
+					return exitWith(2, intentRefusalCode(rerr), "abcd intent ready: "+rerr.Error())
 				}
 				recorded = &rec
 				// The receipt is emitted HERE, before the gate is consulted. A
@@ -3448,7 +3490,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			// (iss-2610101610446956).
 			res, err := intent.ReadyWithQuestions(repoRoot, args[0])
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent ready: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent ready: "+err.Error())
 			}
 			// With the flag, the payload is an envelope carrying BOTH halves: the
 			// write the flag performed and the report the verb makes. Without it the
@@ -3495,7 +3537,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				return rerr
 			}
 			if !res.Ready {
-				return &exitError{Code: 1}
+				return exitWith(1, refusal.None, "")
 			}
 			return nil
 		},
@@ -3518,7 +3560,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent link: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent link — %s -> %s\n  intent: %s\n", res.Intent.ID, res.Spec.ID, termsafe.Sanitize(res.Intent.Path))
@@ -3547,7 +3589,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				BuildsOn: splitIDList(edgeBuildsOn), DropBuildsOn: splitIDList(edgeDropBuildsOn),
 			})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent edge: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent edge: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent edge — %s  blocked_by: [%s]  builds_on: [%s]\n",
@@ -3579,11 +3621,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if strings.TrimSpace(holdReason) == "" {
-				return &exitError{Code: 2, Msg: "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)")
 			}
 			res, err := intent.Hold(repoRoot, args[0], holdReason)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent hold: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent hold: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				// The reason is the operator's prose and the path is a filename
@@ -3610,7 +3652,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.Unhold(repoRoot, args[0])
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent unhold: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent unhold: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent unhold — %s lifted (%s); the hold was: %s\n", res.IntentID, termsafe.Sanitize(res.Bucket), termsafe.Sanitize(res.Reason))
@@ -3635,7 +3677,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.Target(repoRoot, args[0], args[1])
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent target: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent target: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				switch {
@@ -3678,7 +3720,7 @@ func closeReviewResults(res intent.ReconcileResult) []intent.ReconcileResult {
 func planIntentBundle(cmd *cobra.Command, repoRoot string, ids []string, opts intent.BundleOptions, asJSON bool) error {
 	res, err := intent.PlanBundle(repoRoot, ids, opts)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
+		return exitWith(2, intentRefusalCode(err), "abcd intent plan: "+err.Error())
 	}
 	emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
 	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
@@ -3707,7 +3749,7 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if kind == "" {
-				return &exitError{Code: 2, Msg: "abcd intent reclassify: --kind is required: standalone, bundle-member (with --bundle) or superseded (with --by and --reason) (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent reclassify: --kind is required: standalone, bundle-member (with --bundle) or superseded (with --by and --reason) (nothing written)")
 			}
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
@@ -3718,7 +3760,7 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.Reclassify(repoRoot, args[0], intent.ReclassifyRequest{Kind: kind, Bundle: bundle, By: by, Reason: reason})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent reclassify: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent reclassify: "+err.Error())
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "intent reclassify", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
@@ -3773,12 +3815,12 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 1 {
 				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
 					if cmd.Flags().Changed(f) {
-						return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent condition: --%s writes a disposition and needs the condition id: `abcd intent condition <itd-N> <cond-id> ...` (nothing written)", f)}
+						return refused(2, refusal.UsageMissingArgument, fmt.Sprintf("abcd intent condition: --%s writes a disposition and needs the condition id: `abcd intent condition <itd-N> <cond-id> ...` (nothing written)", f))
 					}
 				}
 				v, err := intent.ConditionStanding(repoRoot, args[0])
 				if err != nil {
-					return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+					return exitWith(2, intentRefusalCode(err), "abcd intent condition: "+err.Error())
 				}
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
 					fmt.Fprintf(w, "abcd intent condition — %s: %d condition(s), %d disposition(s) recorded\n", v.IntentID, len(v.Standing), len(v.Dispositions))
@@ -3792,7 +3834,7 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 				Date: time.Now().UTC().Format(time.DateOnly),
 			})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+				return exitWith(2, intentRefusalCode(err), "abcd intent condition: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent condition — %s on %s: %s, occasioned by %s (%s)\n",
@@ -3859,17 +3901,17 @@ const ideateRoutingRule = "  a big, unproven idea? `abcd ideate` runs the option
 // It is deliberately NOT used by the ledger transitions: a resolve or wontfix
 // that declares no mode must leave the record's existing stamp alone, and
 // defaulting there would silently overwrite it.
-func resolveProductionMode(repoRoot, flag string) (string, error) {
+func resolveProductionMode(repoRoot, flag string, ref refusal.Code) (string, error) {
 	if flag != "" {
 		m, err := provenance.ParseMode(flag)
 		if err != nil {
-			return "", &exitError{Code: 2, Msg: "abcd: " + err.Error() + " (nothing written)"}
+			return "", refused(2, refusal.UsageInvalidFlagValue, "abcd: "+err.Error()+" (nothing written)")
 		}
 		return string(m), nil
 	}
 	m, err := provenance.DeclaredMode(repoRoot)
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd: " + err.Error() + " (nothing written)"}
+		return "", exitWith(2, ref, "abcd: "+err.Error()+" (nothing written)")
 	}
 	return string(m), nil
 }
@@ -3899,7 +3941,7 @@ var productionModeTail = " (default: the repo's declared mode, else " + string(p
 // renders the created record. The engine refuses empty/whitespace text and
 // mints the id under the store lock, so this surface stays a thin marshaller.
 func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent.TextOptions, asJSON bool) error {
-	mode, err := resolveProductionMode(repoRoot, opts.ProductionMode)
+	mode, err := resolveProductionMode(repoRoot, opts.ProductionMode, refusal.IntentInvalidRequest)
 	if err != nil {
 		return err
 	}
@@ -3915,7 +3957,7 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 	}
 	it, err := intent.CreateFromTextMatched(repoRoot, text, opts, m)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
+		return exitWith(2, intentRefusalCode(err), "abcd intent: "+err.Error())
 	}
 	if it.Match == nil {
 		it.Match = refused
@@ -3943,21 +3985,21 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if owed {
 				switch {
 				case issueDrift:
-					return &exitError{Code: 2, Msg: "abcd intent audit --owed: the drain and --issue-drift are separate passes; run one at a time"}
+					return refused(2, refusal.UsageFlagConflict, "abcd intent audit --owed: the drain and --issue-drift are separate passes; run one at a time")
 				case strict:
-					return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
+					return refused(2, refusal.UsageFlagConflict, "abcd intent audit: --strict applies to --issue-drift only")
 				case len(args) > 0:
-					return &exitError{Code: 2, Msg: "abcd intent audit --owed: the drain walks the whole owed set and takes no <itd-N>; " +
-						"`abcd intent audit " + args[0] + "` emits that one intent's request"}
+					return refused(2, refusal.UsageExtraArgument, "abcd intent audit --owed: the drain walks the whole owed set and takes no <itd-N>; "+
+						"`abcd intent audit "+args[0]+"` emits that one intent's request")
 				}
 				return runOwedDrain(cmd, *asJSON, maxOwed, auditRoute)
 			}
 			if cmd.Flags().Changed("max") {
-				return &exitError{Code: 2, Msg: "abcd intent audit: --max applies to --owed only (it caps the drain queue)"}
+				return refused(2, refusal.UsageFlagConflict, "abcd intent audit: --max applies to --owed only (it caps the drain queue)")
 			}
 			if issueDrift {
 				if len(args) > 0 {
-					return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: the drift check walks the whole corpus and takes no <itd-N>"}
+					return refused(2, refusal.UsageExtraArgument, "abcd intent audit --issue-drift: the drift check walks the whole corpus and takes no <itd-N>")
 				}
 				if _, err := auditRoute.resolve(cmd, "abcd intent audit --issue-drift", ""); err != nil {
 					return err
@@ -3965,7 +4007,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				return runIssueDrift(cmd, *asJSON, strict)
 			}
 			if strict {
-				return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
+				return refused(2, refusal.UsageFlagConflict, "abcd intent audit: --strict applies to --issue-drift only")
 			}
 			if len(args) == 0 {
 				// The listing is read-only and dispatches no agent: a --route is refused.
@@ -3993,8 +4035,8 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			res, err := intent.ReEmitAuditWith(repoRoot, args[0],
 				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
-				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
-					&exitError{Code: 2, Msg: "abcd intent audit: " + fsutil.RedactHome(err.Error())})
+				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0], refusal.IntentHeldByPeer,
+					exitWith(2, intentRefusalCode(err), "abcd intent audit: "+fsutil.RedactHome(err.Error())))
 			}
 			if res.RequestWritten && route.OnProvider() {
 				return dispatchAudit(cmd, auditRoute, route, repoRoot, res, *asJSON)
@@ -4042,7 +4084,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if verdictJSON == "" {
-				return &exitError{Code: 2, Msg: "abcd intent audit ingest: --verdict-json <path> is required"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent audit ingest: --verdict-json <path> is required")
 			}
 			route, err := ingestRoute.resolve(cmd, "abcd intent audit ingest", auditAgent)
 			if err != nil {
@@ -4056,12 +4098,12 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			// model_reported is read from them, so the two describe one read.
 			payload, err := intent.ReadVerdict(verdictJSON)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+				return refused(2, refusal.IntentInvalidVerdict, "abcd intent audit ingest: "+err.Error())
 			}
 			if ingestDryRun {
 				plan, err := intent.PlanVerdictIngest(repoRoot, payload)
 				if err != nil {
-					return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+					return refused(2, refusal.IntentInvalidVerdict, "abcd intent audit ingest: "+err.Error())
 				}
 				res := plan.Result
 				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd intent audit ingest", withReceipt(res, route, payload), plan.Plan, func(w io.Writer) {
@@ -4073,7 +4115,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.IngestVerdictBytes(repoRoot, payload)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+				return refused(2, refusal.IntentInvalidVerdict, "abcd intent audit ingest: "+err.Error())
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent audit ingest — %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
@@ -4160,7 +4202,7 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 	}
 	l, err := intent.Reviews(repoRoot)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
+		return refused(2, refusal.IntentInvalidRequest, "abcd intent audit: "+err.Error())
 	}
 	return render(cmd.OutOrStdout(), asJSON, l, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d · hand-audited %d (of %d shipped)\n",
@@ -4229,7 +4271,7 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 	}
 	res, err := capture.IssueDrift(capture.IssueDriftRequest{RepoRoot: repoRoot})
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: " + err.Error()}
+		return refused(2, refusal.IntentInvalidRequest, "abcd intent audit --issue-drift: "+err.Error())
 	}
 	// The warnings are the human rendering's; --json carries the same findings
 	// in the envelope on stdout, and a machine reader needs them once.
@@ -4247,7 +4289,7 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 		return err
 	}
 	if strict && len(res.Findings) > 0 {
-		return &exitError{Code: 1}
+		return exitWith(1, refusal.None, "")
 	}
 	return nil
 }
@@ -4291,7 +4333,7 @@ func specStoreRoot(cmd *cobra.Command) (string, error) {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the spec store")
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd spec: " + err.Error() + " (nothing read, nothing written)"}
+		return "", refused(2, refusal.SpecOutsideCheckout, "abcd spec: "+err.Error()+" (nothing read, nothing written)")
 	}
 	for _, note := range strayStoreNotes(cwd, root, spec.SpecsRelDir, "spec store") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd spec: %s\n", termsafe.Sanitize(note))
@@ -4381,11 +4423,11 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			// without --remainder there is no record for it to describe: refuse
 			// rather than accept a disclosure that goes nowhere.
 			if closeMode != "" && closeRemainder == "" {
-				return &exitError{Code: 2, Msg: "abcd spec close: --production-mode stamps the spec --remainder mints, and no remainder was asked for (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd spec close: --production-mode stamps the spec --remainder mints, and no remainder was asked for (nothing written)")
 			}
 			rem := intent.RemainderRequest{Slug: closeRemainder}
 			if closeRemainder != "" {
-				mode, err := resolveProductionMode(repoRoot, closeMode)
+				mode, err := resolveProductionMode(repoRoot, closeMode, refusal.SpecInvalidRequest)
 				if err != nil {
 					return err
 				}
@@ -4409,7 +4451,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
+				return exitWith(2, specRefusalCode(err), "abcd spec close: "+err.Error())
 			}
 			// The fidelity-review emit is report-only: a failure does NOT fail the
 			// close (the intent already shipped), but it is surfaced loudly on stderr.
@@ -5634,7 +5676,13 @@ func ledgerRootFor(cmd *cobra.Command, verb string) (string, error) {
 	}
 	root, err := capture.LedgerRoot(cwd)
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: verb + ": " + err.Error() + " (nothing read, nothing written)"}
+		msg := verb + ": " + err.Error() + " (nothing read, nothing written)"
+		if verb != "abcd capture" {
+			// The drain reads the ledger through this door too; its codes are
+			// step 4's (spc-2610301431108175), so its refusal stays uncoded here.
+			return "", &exitError{Code: 2, Msg: msg}
+		}
+		return "", refused(2, refusal.CaptureOutsideCheckout, msg)
 	}
 	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", verb, termsafe.Sanitize(note))
@@ -6018,7 +6066,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				Remedy:      remedy,
 				BlockedBy:   splitIDList(blockedBy),
 			}
-			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
+			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode, refusal.CaptureInvalidInput); err != nil {
 				return err
 			}
 			// The filing-time match (itd-2609212137116617): configured through the
@@ -6200,7 +6248,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: resolveModeRestamp,
 			})
 			if errors.Is(err, capture.ErrUnknownIssueID) {
-				err = peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
+				err = peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], refusal.None, err)
 			}
 			if err != nil {
 				return captureRefusal("resolve", err)
@@ -6303,7 +6351,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			// The mode belongs to the DRAFT this mints; stamp-only mode mints
 			// nothing, so it carries none.
-			mode, err := resolveProductionMode(repoRoot, promoteProductionMode)
+			mode, err := resolveProductionMode(repoRoot, promoteProductionMode, refusal.CaptureInvalidInput)
 			if err != nil {
 				return err
 			}
@@ -6777,7 +6825,7 @@ func captureRefusal(verb string, err error) error {
 	// rest of those verbs' refusals, not here (spc-2610301431108175 step 3).
 	var held *peerHeldError
 	if errors.As(err, &held) {
-		return &exitError{Code: 2, Msg: msg}
+		return refused(2, refusal.CaptureHeldByPeer, msg)
 	}
 	// The core's own messages carry the verb, some as "capture link:", so it is
 	// trimmed before the surface names it once.

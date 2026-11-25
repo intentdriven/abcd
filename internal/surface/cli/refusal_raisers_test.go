@@ -26,6 +26,20 @@ type raiserProbe struct {
 	// exit is the exit the refusal leaves with: 2 when unset, or 3 for a
 	// refusal that says someone else holds what the call needs.
 	exit int
+	// in, when set, readies the call before it runs: the directory it runs
+	// in, the environment it runs under. It is set with from.
+	in func(t *testing.T)
+}
+
+// from is p run after in readies it.
+func (p raiserProbe) from(in func(t *testing.T)) raiserProbe {
+	p.in = in
+	return p
+}
+
+// inDir is a probe's in that runs the call in dir.
+func inDir(dir string) func(t *testing.T) {
+	return func(t *testing.T) { t.Chdir(dir) }
 }
 
 // probe is a refusal at exit 2 that carries want.
@@ -102,6 +116,9 @@ func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
 	for _, name := range slices.Sorted(maps.Keys(raiserProbeSets)) {
 		t.Run(name, func(t *testing.T) {
 			for _, p := range raiserProbeSets[name](t) {
+				if p.in != nil {
+					p.in(t)
+				}
 				code, env, out := codedRefusal(t, p.args...)
 				if code != p.wantExit() || env.Code != p.want {
 					t.Errorf("abcd %s: exit %d code %q, want exit %d and %s:\n%s", strings.Join(p.args, " "), code, env.Code, p.wantExit(), p.want, out)

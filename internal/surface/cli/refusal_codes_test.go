@@ -28,7 +28,7 @@ import (
 // the list's length when the list was made, and it only falls: a step that
 // codes a file's last refusal removes the file from the list and lowers this
 // number with it, so a file cannot be added without one being taken off.
-const refusalUncodedCeiling = 80
+const refusalUncodedCeiling = 66
 
 // refusalUncodedFiles reads the exemption list: the files, from the package
 // directory, whose literals carry no code yet.
