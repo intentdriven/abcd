@@ -29,9 +29,10 @@ var parkedMembers = []string{bundleTwo, bundleThree}
 // branch, major so the drain takes neither up, since a tombstone names its
 // hand-back's kind only over a record origin holds; a test that merges the
 // lane's head leaves them out, the default branch moving only by that merge.
-// With aloneThird, the third is handed back alone before the pull request is
-// read, its reservation tombstoned, as a fix round's receipt leaves it.
-func parkBundleLane(t *testing.T, records, aloneThird bool) (*landFixture, Lane) {
+// With alone an issue of the run's, the lead or a member, that issue is
+// handed back alone before the pull request is read, its reservation
+// tombstoned, as a fix round's receipt leaves it.
+func parkBundleLane(t *testing.T, records bool, alone string) (*landFixture, Lane) {
 	t.Helper()
 	f, l := parkDrainLane(t)
 	if records {
@@ -53,10 +54,8 @@ func parkBundleLane(t *testing.T, records, aloneThird bool) (*landFixture, Lane)
 			st.Bundle = append(st.Bundle, Member{Issue: id, Footprint: []string{bundleFiles[id]}, ReservedAt: &held})
 			st.Record = append(st.Record, Entry{At: held, Stage: StageReservation, Note: "reserved " + id, Issue: id})
 		}
-		if aloneThird {
-			handBackAlone(st, st.Lanes[0].ID, []issueHandedBack{{issue: bundleThree,
-				hb: HandBack{Kind: HandBackUserVisible, Reason: "the correction changes what a reader is told"}}}, held)
-			releaseAlone(f.repo.Root(), st, held)
+		if alone != "" {
+			handBackOneAlone(f.repo.Root(), st, alone, held)
 		}
 		return true, nil
 	}); err != nil {
@@ -77,6 +76,14 @@ func parkBundleLane(t *testing.T, records, aloneThird bool) (*landFixture, Lane)
 	return f, l
 }
 
+// handBackOneAlone hands id back alone on st as a fix round's receipt does,
+// and releases it with its own kind.
+func handBackOneAlone(repoRoot string, st *State, id string, at time.Time) {
+	handBackAlone(st, st.Lanes[0].ID, []issueHandedBack{{issue: id,
+		hb: HandBack{Kind: HandBackUserVisible, Reason: "the correction changes what a reader is told"}}}, at)
+	releaseAlone(repoRoot, st, at)
+}
+
 // releasedOnce reports whether origin's reservation on id ends in a tombstone
 // whose parent is not one: the issue was released, and only once.
 func releasedOnce(t *testing.T, bare, id string) bool {
@@ -90,7 +97,7 @@ func releasedOnce(t *testing.T, bare, id string) bool {
 // both members, names each, marks the drain's lane done, and tombstones every
 // issue the run held.
 func TestAMergedBundleIsDoneForEveryMember(t *testing.T) {
-	f, l := parkBundleLane(t, false, false)
+	f, l := parkBundleLane(t, false, "")
 	f.merged(t, l.Landing.Pushed)
 
 	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
@@ -119,7 +126,7 @@ func TestAMergedBundleIsDoneForEveryMember(t *testing.T) {
 // the lead and the other member alone, the run keeps the member's hand-back,
 // and origin keeps the tombstone of its own kind, pushed nothing over it.
 func TestAMemberHandedBackAloneBeforeTheMergeStaysHandedBack(t *testing.T) {
-	f, l := parkBundleLane(t, false, true)
+	f, l := parkBundleLane(t, false, bundleThree)
 	alone := tipOf(t, f.bare, bundleThree)
 	if !alone.released {
 		t.Fatalf("the member handed back alone is tombstoned: %+v", alone)
@@ -167,8 +174,12 @@ func TestAClosedBundleHandsBackEachHeldIssueAsClosed(t *testing.T) {
 		"a member handed back before": {true, []string{bundleTwo}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f, l := parkBundleLane(t, true, tc.alone)
-			alone := tipOf(t, f.bare, bundleThree)
+			alone := ""
+			if tc.alone {
+				alone = bundleThree
+			}
+			f, l := parkBundleLane(t, true, alone)
+			aloneTip := tipOf(t, f.bare, bundleThree)
 			if kind, _ := tombstoneTrailers(t, f.bare, bundleThree); tc.alone && kind != HandBackUserVisible {
 				t.Fatalf("the member handed back alone is tombstoned with its own kind: %q", kind)
 			}
@@ -201,8 +212,8 @@ func TestAClosedBundleHandsBackEachHeldIssueAsClosed(t *testing.T) {
 				}
 			}
 			if tc.alone {
-				if tip := tipOf(t, f.bare, bundleThree); tip.commit != alone.commit {
-					t.Fatalf("the member handed back alone keeps its own tombstone: before %+v, now %+v", alone, tip)
+				if tip := tipOf(t, f.bare, bundleThree); tip.commit != aloneTip.commit {
+					t.Fatalf("the member handed back alone keeps its own tombstone: before %+v, now %+v", aloneTip, tip)
 				}
 				if strings.Contains(p.Note, bundleThree) {
 					t.Fatalf("the closed hand-back does not name the member handed back before: %s", p.Note)
@@ -280,5 +291,115 @@ func TestTextWrittenReadsEveryMemberID(t *testing.T) {
 		if st.textWritten() {
 			t.Fatalf("%s carrying a rune the drain never writes is refused", name)
 		}
+	}
+}
+
+// TestALeadHandedBackAloneIsNeitherFinishedNorHandedBackAgain: the lead
+// handed back alone in a fix round is not the lane's issue once its pull
+// request is read: a merge finishes the two members alone, naming the lane by
+// its run, and a closed pull request hands back the two members alone, the
+// lead keeping its own tombstone.
+func TestALeadHandedBackAloneIsNeitherFinishedNorHandedBackAgain(t *testing.T) {
+	t.Run("merged", func(t *testing.T) {
+		f, l := parkBundleLane(t, false, secondIssue)
+		lead := tipOf(t, f.bare, secondIssue)
+		if !lead.released {
+			t.Fatalf("the lead handed back alone is tombstoned: %+v", lead)
+		}
+		f.merged(t, l.Landing.Pushed)
+
+		res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Finished) != 1 || !res.Finished[0].Done || res.Finished[0].Issue != "" || !slices.Equal(res.Finished[0].Bundle, parkedMembers) {
+			t.Fatalf("the merge finishes the two members, not the lead handed back alone: %+v", res.Finished)
+		}
+		note := finishedNote(res.Finished)
+		if strings.Contains(note, secondIssue) || !strings.Contains(note, "run "+f.runID) {
+			t.Fatalf("the finish names the lane by its run and its members, not the lead: %s", note)
+		}
+		if tip := tipOf(t, f.bare, secondIssue); tip.commit != lead.commit {
+			t.Fatalf("the finish pushes nothing over the lead handed back alone: before %+v, now %+v", lead, tip)
+		}
+		for _, id := range parkedMembers {
+			if !releasedOnce(t, f.bare, id) {
+				t.Fatalf("finishing the merged bundle tombstones %s once: %+v", id, tipOf(t, f.bare, id))
+			}
+		}
+	})
+	t.Run("closed", func(t *testing.T) {
+		f, l := parkBundleLane(t, true, secondIssue)
+		lead := tipOf(t, f.bare, secondIssue)
+		f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "CLOSED", Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN"})
+
+		res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := parkedOf(t, res, f.runID)
+		if p.State != ParkedClosed || p.Issue != "" || !slices.Equal(p.Bundle, parkedMembers) {
+			t.Fatalf("the closed bundle names the two members it holds, not the lead: %+v", p)
+		}
+		if strings.Contains(p.Note, secondIssue) {
+			t.Fatalf("the closed hand-back does not name the lead handed back before: %s", p.Note)
+		}
+		if tip := tipOf(t, f.bare, secondIssue); tip.commit != lead.commit {
+			t.Fatalf("the lead handed back alone keeps its own tombstone: before %+v, now %+v", lead, tip)
+		}
+		for _, id := range parkedMembers {
+			if kind, _ := tombstoneTrailers(t, f.bare, id); !releasedOnce(t, f.bare, id) || kind != claim.HandBackClosed {
+				t.Fatalf("%s is tombstoned once as closed: %+v %q", id, tipOf(t, f.bare, id), kind)
+			}
+		}
+	})
+}
+
+// TestAClosedBundleNamesWhatItsLockedSaveHandsBack: a member handed back
+// alone after the move listed the parked runs, and before the closed pull
+// request's hand-back takes the run's lock, is left out of the issues the
+// reading names, as the save hands them back.
+func TestAClosedBundleNamesWhatItsLockedSaveHandsBack(t *testing.T) {
+	f, l := parkBundleLane(t, true, "")
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "CLOSED", Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN"})
+	was := afterParkedFetch
+	t.Cleanup(func() { afterParkedFetch = was })
+	afterParkedFetch = func() {
+		if err := mutate(f.repo.Root(), f.runID, func(_ *os.Root, st *State) (bool, error) {
+			handBackOneAlone(f.repo.Root(), st, bundleThree, time.Now().UTC().Truncate(time.Second))
+			return true, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parkedOf(t, res, f.runID)
+	if p.State != ParkedClosed || p.Issue != secondIssue || !slices.Equal(p.Bundle, []string{bundleTwo}) {
+		t.Fatalf("the reading names what the locked save handed back, not the listing: %+v", p)
+	}
+	if kind, _ := tombstoneTrailers(t, f.bare, bundleThree); kind != HandBackUserVisible {
+		t.Fatalf("the member handed back meanwhile keeps its own tombstone: %q", kind)
+	}
+}
+
+// TestALaneOfOnesHandBackLineNamesItsIssue: the record's line for a lane of
+// one issue handed back as closed opens with the issue, not a blank key.
+func TestALaneOfOnesHandBackLineNamesItsIssue(t *testing.T) {
+	f, l := parkDrainLane(t)
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "CLOSED", Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN"})
+	if _, err := Drain(f.repo.Root(), Options{}, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := linesAt(st, string(StageHandedBack))
+	if len(lines) == 0 || !strings.HasPrefix(lines[len(lines)-1].Note, secondIssue+" is handed back as closed") {
+		t.Fatalf("the hand-back's line opens with the issue: %+v", lines)
 	}
 }
