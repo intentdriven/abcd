@@ -1,8 +1,8 @@
 ---
 id: itd-2611141610201875
 slug: a-drive-keeps-its-own-pull-requests-and
-spec_id: null
-kind: null
+spec_id: spc-2611251808377435
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611141610197753]
@@ -63,12 +63,12 @@ We expect the drive's checkout to stay near the default branch, because the driv
 
 ## Scope Conditions
 
-- The forge data the code parses today cannot tell a failure that is the change's from one that is not. For a removal it reads the reason, the merge group's workflow runs (name, branch, commit, conclusion) and that commit's check runs (name, conclusion); none names a file, a path or a test. Two removals that differ only in whether the failed check tests the change's files read identically, byte for byte (F-10). The drive therefore does not try to tell them apart: it re-arms a removal always, up to a few times at one head (decision 1), and a real failure spends those few merge-queue cycles before it is handed back.
-- A checkout whose HEAD is the default branch and an ancestor of origin's, with no merge, rebase or stash in progress and nothing staged (F-12).
-- The records the drive writes are outside the checkout (decision 2), so a dirty path in the checkout is never one of the drive's own records, and the drive needs no list to tell its records from a person's edit (F-12, case D).
-- No lane in progress at the moment of a fast-forward. A lane parked on its pull request already re-reads the default branch at each move.
-- A source build never updates itself (adr-2611062149324491). A fast-forwarded checkout is newer records and source, and the running binary is unchanged.
-- The lab measured the drain's move on fixtures, not a drive on a live forge, and wired neither re-arming rule into the loop.
+- The forge data the code parses today cannot tell a failure that is the change's from one that is not. For a removal it reads the reason, the merge group's workflow runs (name, branch, commit, conclusion) and that commit's check runs (name, conclusion); none names a file, a path or a test. Two removals that differ only in whether the failed check tests the change's files read identically, byte for byte (F-10). The drive therefore does not try to tell them apart: it re-arms a removal always, up to a few times at one head (decision 1), and a real failure spends those few merge-queue cycles before it is handed back. <!-- cond: cond-2611251808376685 -->
+- A checkout whose HEAD is the default branch and an ancestor of origin's, with no merge, rebase or stash in progress and nothing staged (F-12). <!-- cond: cond-2611251808376820 -->
+- The records the drive writes are outside the checkout (decision 2), so a dirty path in the checkout is never one of the drive's own records, and the drive needs no list to tell its records from a person's edit (F-12, case D). <!-- cond: cond-2611251808376388 -->
+- No lane in progress at the moment of a fast-forward. A lane parked on its pull request already re-reads the default branch at each move. <!-- cond: cond-2611251808374463 -->
+- A source build never updates itself (adr-2611062149324491). A fast-forwarded checkout is newer records and source, and the running binary is unchanged. <!-- cond: cond-2611251808377425 -->
+- The lab measured the drain's move on fixtures, not a drive on a live forge, and wired neither re-arming rule into the loop. <!-- cond: cond-2611251808376133 -->
 
 ## What's Out of Scope
 
