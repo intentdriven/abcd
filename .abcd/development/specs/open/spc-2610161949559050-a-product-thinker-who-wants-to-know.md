@@ -77,7 +77,7 @@ the judging session. The intent ships whole: no step before 14 closes this spec,
 step 14 waits on the session kind itd-2610091016262335 builds (decisions 19, 23, 25).
 Three points of the shape above are narrowed by these steps and stated where they
 apply: a runner cell's copy is made by the cell's runner dispatched in the copy's
-clone, not through the build loop's trial mode (step 11); the matcher and the outside
+clone, not through the build loop's trial mode (step 11, dcn-2611251746554510); the matcher and the outside
 judge are cells the person declares (step 9); and a code task's hidden tests and test
 command are named by the declaration (step 10).
 
@@ -150,7 +150,7 @@ command are named by the declaration (step 10).
    - the step that first runs the compliance check on a real trial puts the whole check, every git call and the transcript scan together, under one overall deadline, past which the copy is marked unexamined; step 4 bounds each call alone
    - landed: 3a24b096b6d0
 9. Check judging from the command line, with a declared matcher
-   - packages: internal/core/matrix/declaration.go, internal/core/matrix/declaration_test.go, internal/core/matrix/plan.go, internal/core/matrix/plan_test.go, internal/core/matrix/run.go, internal/core/matrix/run_test.go, internal/core/matrix/testdata/declaration-plan.json, internal/core/matrix/checkflow.go, internal/core/matrix/checkflow_test.go, internal/core/matrix/checkjudge.go, internal/core/matrix/checkmatch.go, internal/surface/cli/lab_matrix_copy.go, internal/surface/cli/lab_matrix_check_test.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
+   - packages: internal/core/matrix/declaration.go, internal/core/matrix/declaration_test.go, internal/core/matrix/plan.go, internal/core/matrix/plan_test.go, internal/core/matrix/run.go, internal/core/matrix/run_test.go, internal/core/matrix/checkflow.go, internal/core/matrix/checkflow_test.go, internal/core/matrix/checkjudge.go, internal/core/matrix/checkmatch.go, internal/surface/cli/lab_matrix_copy.go, internal/surface/cli/lab_matrix_check_test.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
    - tests: a declaration names an optional `matcher` and an optional `proposer` cell, and either named as a builder of the same run is refused; unknown keys are still refused; a declaration written before this step still parses and a run recorded before it still reports; the plan digest changes when either cell is added; a check task with no matcher plans with its leftovers stated as unmatched; a code task's `hidden_tests` and `test_command` parse and a plan carrying them shows the consent line saying abcd will run each copy's code with that command; `lab matrix judge` on a check task draws the shuffled finding packet with no model named and no proposed verdict; a verdict file locks once and a second is refused; the overlap table is refused until the verdicts lock; exact-key matching runs first and the matcher's request holds only the leftovers; a matcher answer naming an unknown finding id is refused whole with nothing recorded; the matcher's agreement on a labelled sample is reported, and "not estimable" under the floor; with no matcher declared the leftovers stay rows of their own; the doc-fidelity receipts and the issue ledger are unchanged; every refusal reaches the terminal through the sanitiser
    - needs: 7, 8
    - acceptance: ac-4 and ac-15 from the command line, with ac-20's receipts untouched. The table's proposed verdict comes from the declared `proposer` cell and is absent when none is declared.
@@ -167,14 +167,14 @@ command are named by the declaration (step 10).
    - The step starts no process and writes only the run's state in the lab. The
      matcher's answer and the verdict file are untrusted input, validated whole.
 10. Hidden tests placed and run by abcd
-   - packages: internal/core/matrix/hiddenrun.go, internal/core/matrix/hiddenrun_test.go, internal/core/matrix/hiddenrun_unix_test.go, internal/core/matrix/hidden.go, internal/core/matrix/handoff.go, internal/core/matrix/launch.go, internal/core/matrix/trial.go, internal/core/matrix/report.go, internal/surface/cli/lab_matrix.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
+   - packages: internal/core/matrix/hiddenrun.go, internal/core/matrix/hiddenrun_test.go, internal/core/matrix/hiddenrun_unix_test.go, internal/core/matrix/hidden.go, internal/core/matrix/hidden_test.go, internal/core/matrix/handoff.go, internal/core/matrix/launch.go, internal/core/matrix/launch_test.go, internal/core/matrix/trial.go, internal/core/matrix/trial_test.go, internal/core/matrix/report.go, internal/core/matrix/report_test.go, internal/surface/cli/lab_matrix.go, internal/surface/cli/lab_matrix_test.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
    - tests: the hidden tests are placed at the run's start outside every clone, under a name made from their digest; the test run happens in an export of the copy with the tests added, never in the copy's clone; the run is one owned process group, ended whole at its deadline through the handle the run holds; a run past its deadline is "unexamined", never "failed"; the run's environment carries no credential; the exit status maps to pass or fail and the output is screened for credentials before it is kept; a consented run places the hidden tests and an unconsented one places nothing; a host copy handed back and a runner copy launched are both scored by abcd's run; the trial says abcd placed and ran the tests; the report drops the host-reported qualifier for those copies only
    - needs: 4, 9
    - acceptance: ac-2's pass rate is abcd's own run of the hidden tests, and ac-11's hidden tests sit outside the clone from the run's start.
    - The step has two halves and lands once. The core half (placing and running,
      the `hidden*` files) needs steps 4 and 9 only. The wiring half (`handoff.go`,
-     `launch.go`, `trial.go`, `report.go` and the plan line in `lab_matrix.go`)
-     also needs step 11, whose `launch.go` it edits; a `needs:` line names
+     `launch.go`, `trial.go`, `report.go`, their tests and the plan line in
+     `lab_matrix.go`) also needs step 11, whose `launch.go` it edits; a `needs:` line names
      earlier steps only, so that order is stated here. A lane that opens this
      step before step 11 has landed builds the core half and leaves the step
      unlanded.
@@ -196,12 +196,12 @@ command are named by the declaration (step 10).
      compliance check, the review and the check collection do not read
      (dcn-2611211517021229). This narrows decision 4's wording; trial mode
      stays as step 3 built it, with no caller, and this step changes nothing in
-     `internal/core/implement/loop`.
+     `internal/core/implement/loop` (dcn-2611251746554510).
    - The brief and the receipt sit in a third store,
      `~/.abcd.noindex/matrix-handoff/<root-sha>/<run>/<alias>/`, and
      own_copy_only treats any path in that store outside the copy's own alias
      folder as a read outside its copy. This settles the point
-     dcn-2611211433133728 left open.
+     dcn-2611211433133728 left open (dcn-2611251746554510).
    - A new sub-verb, `lab matrix launch <lab-id> <run-id> [<key>]`, launches the
      runner cells' copies in the foreground, up to the declared concurrency.
      Consent keeps handing off only: a launch can run for hours, longer than a
@@ -211,7 +211,7 @@ command are named by the declaration (step 10).
      a real run exists. The step starts a process and writes outside the tree on
      a blinding boundary, so the change takes a security review before it lands.
 12. One local inference server for local cells
-   - packages: internal/core/matrix/launch.go, internal/core/matrix/localserver.go, internal/core/matrix/localserver_test.go, internal/core/runner/config.go, .abcd/development/brief/05-internals/03-configuration.md, .abcd/development/brief/04-surfaces/31-lab.md
+   - packages: internal/core/matrix/launch.go, internal/core/matrix/launch_test.go, internal/core/matrix/localserver.go, internal/core/matrix/localserver_test.go, internal/core/runner/config.go, internal/core/runner/config_test.go, .abcd/development/brief/05-internals/03-configuration.md, .abcd/development/brief/04-surfaces/31-lab.md
    - tests: one server serves at a time across the run's local cells; it starts as one owned process group and stops as one when its cells end, through the handle the run holds; a second cell's server waits for the first's to stop; no server starts without the consented load cap; the start command is read from the person's machine layer, and one named by the declaration or the repository is refused
    - needs: 11
    - acceptance: ac-18.
@@ -220,7 +220,7 @@ command are named by the declaration (step 10).
      step starts a long-lived child process, so the change takes a security
      review before it lands.
 13. Sized repeats, seeded-defect copies, runner reviewers and clone bundling
-   - packages: internal/core/matrix/launch.go, internal/core/matrix/handoff.go, internal/core/matrix/handback.go, internal/core/matrix/review.go, internal/core/matrix/stats.go, internal/core/matrix/clone.go, internal/surface/cli/lab_matrix_copy.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
+   - packages: internal/core/matrix/launch.go, internal/core/matrix/launch_test.go, internal/core/matrix/handoff.go, internal/core/matrix/handback.go, internal/core/matrix/handback_test.go, internal/core/matrix/review.go, internal/core/matrix/review_test.go, internal/core/matrix/stats.go, internal/core/matrix/stats_test.go, internal/core/matrix/clone.go, internal/core/matrix/clone_test.go, internal/surface/cli/lab_matrix_copy.go, internal/surface/cli/lab_matrix_run_test.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
    - tests: the repeats past the pilot are sized from the pilot by the power estimate, and capped by `repeats.max` and by the spending cap's remainder; a seeded-defect copy keeps its source copy's key, and reviewer recall is measured on it; a runner reviewer cell answers a blinded request in cell mode with no host fallback; a scored code or writing copy's clone is bundled, then deleted, and a copy not yet scored keeps its clone
    - needs: 5, 8, 10, 11
    - acceptance: ac-5's power estimate sizes the run rather than only qualifying its report; ac-14's reviewer recall rests on seeded-defect copies the run makes; the shape's "bundled and deleted once scored" holds for code and writing copies as it does for check copies.
