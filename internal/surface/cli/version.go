@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/termsafe"
+	"github.com/intentdriven/abcd/internal/urlguard"
 )
 
 // newReleaseFetcher is the seam through which `update --check` reaches the
@@ -19,7 +20,11 @@ import (
 // two things: the check path fetches exactly once, and NO other path
 // (`--version`, ahoy, session-start, install) ever constructs it — the
 // zero-network invariant of adr-38 tier 1.
-var newReleaseFetcher = vintage.NewGitHubReleaseFetcher
+// It trusts the roots the update path does, loaded with the CA overrides out of
+// the environment; a pool that cannot be loaded falls back as that path's does.
+var newReleaseFetcher = func() vintage.ReleaseFetcher {
+	return vintage.NewGitHubReleaseFetcherWithRoots(urlguard.OverrideFreeRoots())
+}
 
 // resolveUpdateTarget is the disk-only install classification the next-step
 // line consults; a package var so a test can pin a shape without a PATH fixture.
@@ -138,8 +143,12 @@ func runReleaseCheck(currentVersion string) *checkResult {
 		res.Verdict = "the latest release could not be determined (no network, or the source is unreachable)"
 		return res
 	}
-	// The tag is read off an HTTP redirect (shape-checked only by the tag regex);
-	// sanitise it before it is rendered, as the retired skew notice does.
+	// The tag is read off an HTTP redirect, so one without the shape the update
+	// path holds a tag to is no release.
+	if !ahoy.ReleaseTagShape.MatchString(exp.Revision) {
+		res.Verdict = "the latest release could not be determined (the source named no release tag)"
+		return res
+	}
 	res.Latest = termsafe.Sanitize(exp.Revision)
 	cur := vintage.Current{Revision: currentVersion, Known: currentVersion != "" && currentVersion != "dev"}
 	if !cur.Known {
