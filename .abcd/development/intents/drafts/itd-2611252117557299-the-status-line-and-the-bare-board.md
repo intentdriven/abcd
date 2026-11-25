@@ -67,6 +67,7 @@ _None._
 5. The session's, no question put: the board keeps no reading, so that "Writes nothing" stays true of it without an exception. To reverse: name an exception on its page.
 6. The session's, no question put: the row says `not read` and not what an unread mode counts as. What a gate does with a mode it cannot read is the gate's to say, where it says it. To reverse: add the words.
 7. The session's, no question put: the element's key stays `merging`, since a file and a program may name it. The short words for whose setting it is are the builder's, within the criteria; they say whose and not how strongly, so `enforced` and `prevented` are left for itd-2611252049031692.
+8. The session's, while the product thinker is away, for review (dcn-2611252203455379): what planning would have asked, in one record with its grounds and how each answer is reversed: when the row shows the reading's time, what tells one repository's reading from another's, what a refused home and a repository with no commit read, the board's word for a mode not read, and that iss-2610262036211949 stays open. The product thinker has not walked these criteria, confirmed any of them, or run the plan, which the pages keep for them; this draft waits for that act.
 
 ## Decomposition
 
