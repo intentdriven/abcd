@@ -235,15 +235,28 @@ type findAction struct {
 	elsewhere bool
 }
 
-// findActions is what a find whose arguments start at from runs.
+// findActions is what a find whose arguments start at from runs. Between two
+// terminators it reads at most maxUnknownSites words no line fixes as an action,
+// so its cost is linear in the words.
 func findActions(s segment, from int) []findAction {
 	var out []findAction
+	unknown := 0
 	for i := from; i < len(s.tokens); i++ {
 		action := s.tokens[i]
+		if action == ";" {
+			unknown = 0
+		}
 		// An unknown word may be -exec (unknown.go), so what follows it is
-		// read as the command find runs.
-		if action != "-exec" && action != "-execdir" && action != "-ok" && action != "-okdir" && !isUnknown(action) {
+		// read as the command find runs, and may be none, so the words after
+		// it are read for an action of their own too.
+		open := isUnknown(action)
+		if action != "-exec" && action != "-execdir" && action != "-ok" && action != "-okdir" && !open {
 			continue
+		}
+		if open {
+			if unknown++; unknown > maxUnknownSites {
+				continue
+			}
 		}
 		end := i + 1
 		for end < len(s.tokens) && s.tokens[end] != ";" && (s.tokens[end] != "+" || s.tokens[end-1] != "{}") {
@@ -256,10 +269,13 @@ func findActions(s segment, from int) []findAction {
 			}
 			out = append(out, findAction{
 				seg:       segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)},
-				elsewhere: action == "-execdir" || action == "-okdir" || isUnknown(action),
+				elsewhere: action == "-execdir" || action == "-okdir" || open,
 			})
 		}
-		i = end
+		if !open {
+			i = end
+			unknown = 0
+		}
 	}
 	return out
 }
