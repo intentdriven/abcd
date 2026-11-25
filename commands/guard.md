@@ -777,8 +777,17 @@ removals of the stop's files are refused as `implement-stop-store-write`, since 
 
 **Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
 `abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
-build) as `abcd-update-tag-any-program`. A word the line does not fix counts as a tag. `abcd update` with no
-tag, its flags and `abcd update news` are not refused (`commands/update.md`).
+build, a `go run` of a file or an unnamed package in a directory named for abcd) as
+`abcd-update-tag-any-program`. A word the line does not fix counts as a tag, as the verb too, so
+`abcd "$V" README.md` is refused; so do the words `xargs` and `find -exec` supply (`xargs abcd update`), there
+and as the words of the two acts above. A
+program named by a variable alone (`"$PM" update "$PKG"`) can be abcd and is refused as
+`program-name-unknown`: spell the program, or open the line with its value (`PM=npm; "$PM" update "$PKG"`)
+or a loop over fixed words, and each value is read as the program it names. A program another name is fixed for (`"$DIR/deploy.sh" update v1.2.3`) is left
+alone. Behind a launcher the guard does not step through (`gtimeout`, `watch`, `mise exec`, `fd -x`, an
+unquoted `parallel`) the update only warns (`unrecognised-launcher`) where the line spells it through the
+binary with a tag or `{}`, and is not reached through a wrapper script or where neither stands. `abcd update`
+with no tag, its flags and `abcd update news` are not refused (`commands/update.md`).
 
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
 file per line, and read only when this account owns it and no one else can
@@ -923,7 +932,8 @@ push --force` block, and so does an unknown name followed by a shell's `-c`
 string, a wrapper's options or an alias, because the name can be the shell, the
 wrapper or git. Where the only entries that fire are ones the unknown name can
 be, the block is reported as `program-name-unknown`, with the entries the line
-reads as among its matches, and its way past is to spell the program's name. A
+reads as among its matches, and its way past is to spell the program's name where
+the command runs. A
 program name nothing fixes can be `pkill` or `killall`, so an unknown name
 followed by any operand (`"$(which python3)" script.py`, `$(date) x`) blocks —
 an accepted over-block, answered the same way. So is a here-document whose
