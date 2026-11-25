@@ -27,8 +27,10 @@ var (
 
 // releaseTagCouldBe reports whether an operand is a release tag, or can still be
 // one: a word with a part the line does not fix, or a glob's, whose fixed text a
-// tag can hold.
+// tag can hold. `{}` is such a part, the placeholder find -exec and xargs -I put
+// an operand in.
 func releaseTagCouldBe(tok string, glob bool) bool {
+	tok = strings.ReplaceAll(tok, "{}", unknownText)
 	if glob {
 		tok = strings.NewReplacer("*", unknownText, "?", unknownText).Replace(bracketsAsStar(tok))
 	}

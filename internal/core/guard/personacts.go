@@ -372,8 +372,13 @@ func personActSignals(segs []segment) []payloadSignal {
 	for _, s := range segs {
 		inAbcd := entered[s.chain]
 		entered[s.chain] = inAbcd || entersAbcd(s)
+		supplied := suppliedReadings(s)
 		for _, a := range personActs {
-			if !a.actOf(s, inAbcd) {
+			acts := a.actOf(s, inAbcd)
+			for i := 0; i < len(supplied) && !acts && (a.adjacent || a.tag); i++ {
+				acts = a.actOf(supplied[i], inAbcd)
+			}
+			if !acts {
 				continue
 			}
 			sig := payloadSignal{id: a.id, verdict: VerdictBlock, family: a.family, reason: a.why, successor: a.successor}

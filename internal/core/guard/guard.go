@@ -774,7 +774,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// (matchSegmentNamed) is kept apart: it is in Matches, but the verdict
 	// speaks for the substitution unless an entry fired on a name the line
 	// spells.
+	//
+	// An act only the person takes is read once more with the words an xargs or
+	// a find supplies (supplied.go).
 	var blockers, warns, unnamedBlockers, unnamedWarns []string
+	supplied := make([][]segment, len(segs))
+	for i, s := range segs {
+		supplied[i] = suppliedReadings(s)
+	}
 	hitSeg := map[string]int{}
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
@@ -803,6 +810,11 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
+			if !segNamed && len(supplied[i]) > 0 && readsSupplied(id) {
+				if h, n := suppliedMatch(p, supplied[i]); h {
+					segHit, segNamed = true, n
+				}
+			}
 			if !segHit {
 				continue
 			}

@@ -174,6 +174,9 @@ var wordReaders = map[string]string{
 	"entersAbcd":     "commandSites and nameCouldBeAny for the program; its words only widen what tagAct refuses",
 	"unnamedPackage": "exempt: reads a package path only to widen what tagAct refuses",
 
+	// supplied.go: the words xargs and a find hand the command they run.
+	"suppliedReadings": "commandSites, commandNamed and anyProgram for xargs and find: a name nothing fixes is read as neither, and a supplied word is unknownText",
+
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
 	"allNoglob":     "commandSites",
