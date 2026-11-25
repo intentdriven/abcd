@@ -90,9 +90,10 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 	// by spc-2611041701500441, as a person's verb over a record of the launches,
 	// and landings joins records by spc-2610301950480609's approach 8; sweep
 	// joins set-up beside ahoy, whose worktree prune it calls
-	// (spc-2610230730269295, step 5).
+	// (spc-2610230730269295, step 5); start joins set-up too, as the verb a person
+	// types to work on abcd alone (spc-2611251757236507).
 	for group, want := range map[string][]string{
-		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "session", "sweep", "update"},
+		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "session", "start", "sweep", "update"},
 		"Records:":     {"agents", "build", "capture", "decide", "ideate", "intent", "land", "landings", "library", "status"},
 		"Checks:":      {"lab", "reading"},
 		"Portability:": {"disembark", "embark"},

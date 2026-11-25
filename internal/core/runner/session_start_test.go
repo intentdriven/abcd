@@ -53,7 +53,8 @@ func sessionStream(init map[string]any, refused bool) []byte {
 }
 
 // fakeSession plays the host a session's short launch runs. session-ok breaks
-// nothing; session-tree reads the working tree's settings whatever the launch says.
+// nothing; session-tree reads the working tree's settings whatever the launch says, and
+// session-agents, session-skills and session-commands load what else it holds.
 func fakeSession(mode string) int {
 	if log := os.Getenv(fakeLogEnv); log != "" {
 		raw, _ := json.Marshal(os.Args[1:])
@@ -64,6 +65,7 @@ func fakeSession(mode string) int {
 		planted, _ := os.ReadFile(".mcp.json")
 		_ = os.WriteFile(filepath.Join(log, "claude.mcp.json"), planted, 0o600)
 	}
+	init := sessionInit()
 	switch mode {
 	case "session-limit":
 		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"s"}`)
@@ -85,7 +87,18 @@ func fakeSession(mode string) int {
 			}
 		}
 	}
-	_, _ = os.Stdout.Write(sessionStream(sessionInit(), true))
+	if list := map[string]string{"session-agents": "agents", "session-skills": "skills", "session-commands": "commands"}[mode]; list != "" {
+		// A host that loads the working tree's own names what it found there.
+		entries, _ := os.ReadDir(filepath.Join(".claude", list))
+		field := list
+		if list == "commands" {
+			field = "slash_commands"
+		}
+		for _, e := range entries {
+			init[field] = append(init[field].([]string), strings.TrimSuffix(e.Name(), ".md"))
+		}
+	}
+	_, _ = os.Stdout.Write(sessionStream(init, true))
 	return 0
 }
 
@@ -525,6 +538,15 @@ func TestJudgeSessionProof(t *testing.T) {
 		{"an abcd skill", with(func(m map[string]any) { m["skills"] = []string{"abcd:abcd"} }), WallPlugins, "abcd:abcd"},
 		{"a key", with(func(m map[string]any) { m["apiKeySource"] = "ANTHROPIC_API_KEY" }), WallKey, "ANTHROPIC_API_KEY"},
 		{"no key source", with(func(m map[string]any) { delete(m, "apiKeySource") }), WallKey, "did not report"},
+		{"a planted agent", with(func(m map[string]any) { m["agents"] = []string{"Plan", "abcd-planted-agent"} }), WallWorkingTree, "abcd-planted-agent"},
+		{"a planted skill", with(func(m map[string]any) { m["skills"] = []string{"abcd-planted-skill"} }), WallWorkingTree, "abcd-planted-skill"},
+		{"a planted command", with(func(m map[string]any) { m["slash_commands"] = []string{"project:abcd-planted-command"} }), WallWorkingTree, "project:abcd-planted-command"},
+		{"a plugin switched off", with(func(m map[string]any) {
+			m["plugins"] = []map[string]string{{"name": "cc-plugin-agents-md", "path": "builtin", "source": "cc-plugin-agents-md@builtin"}}
+		}), WallPlugins, "cc-plugin-agents-md"},
+		{"a plugin switched off, under another name", with(func(m map[string]any) {
+			m["plugins"] = []map[string]string{{"name": "telemetry", "path": "builtin", "source": "cc-plugin-telemetry@builtin"}}
+		}), WallPlugins, "telemetry"},
 		{"no guard refusal", sessionStream(sessionInit(), false), WallGuard, "guard"},
 		{"a refusal in another event's words", []byte(strings.Replace(string(sessionStream(sessionInit(), true)), `"PreToolUse"`, `"PostToolUse"`, 1)), WallGuard, "guard"},
 		{"no first event", sessionStream(nil, true), WallTools, "no tool list"},
@@ -659,6 +681,21 @@ func TestProveSessionRefusesWhenAWorkingTreeFileWasRead(t *testing.T) {
 	var we *WallError
 	if !errors.As(err, &we) || we.Wall != WallWorkingTree || !strings.Contains(we.Detail, "2.1.332") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+// TestProveSessionRefusesWhenTheWorkingTreeWasLoaded: a host that loads an agent, a skill
+// or a command page from the working tree names what the launch planted there.
+func TestProveSessionRefusesWhenTheWorkingTreeWasLoaded(t *testing.T) {
+	for _, what := range []string{"agent", "skill", "command"} {
+		t.Run(what, func(t *testing.T) {
+			f, s, harness, ledger := proveWorld(t, "session-"+what+"s")
+			_, err := ProveSession(context.Background(), s, harness, f.repo, ledger)
+			var we *WallError
+			if !errors.As(err, &we) || we.Wall != WallWorkingTree || !strings.Contains(we.Detail, "abcd-planted-"+what) {
+				t.Fatalf("got %v", err)
+			}
+		})
 	}
 }
 

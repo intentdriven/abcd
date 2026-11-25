@@ -74,6 +74,19 @@ func TestNoWalledDirectoryRefusesNamingTheOneToMake(t *testing.T) {
 	}
 }
 
+// TestNoWalledDirectoryForANameGivenSaysHowToMakeThatOne: a name given where the account
+// holds none is the name the first profile is made under, and is not repeated.
+func TestNoWalledDirectoryForANameGivenSaysHowToMakeThatOne(t *testing.T) {
+	_, err := DriveProfile(t.TempDir(), "second")
+	if !errors.Is(err, ErrNoProfile) || !strings.Contains(err.Error(), "`abcd start --profile <name>`, with the name you gave,") ||
+		strings.Contains(err.Error(), "second") {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := DriveProfile(t.TempDir(), ""); err == nil || strings.Contains(err.Error(), "--profile") {
+		t.Fatalf("with no name given none is asked for: %v", err)
+	}
+}
+
 // TestSeveralWalledDirectoriesRefuseNamingThemAndTheFlag: with no name a drive
 // does not choose among several, and the refusal says how to.
 func TestSeveralWalledDirectoriesRefuseNamingThemAndTheFlag(t *testing.T) {

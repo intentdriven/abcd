@@ -128,11 +128,27 @@ func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
 		{[]string{"explain", "zzz-no-such-verb"}, "explain/unknown-path"},
 		{[]string{"explain", "capture", "--input", "zzz"}, "explain/unrecognized-input"},
 		{[]string{"explain", "zzz/no-such-code"}, "explain/unknown-code"},
+
+		{[]string{"start"}, "start/outside-a-terminal"},
+		{[]string{"start"}, "start/profile-unusable"},
+		{[]string{"start"}, "start/repository-unready"},
+		{[]string{"start"}, "start/host-not-runnable"},
+		{[]string{"start"}, "start/not-logged-in"},
+		{[]string{"start"}, "start/no-verdict"},
+		{[]string{"start"}, "start/wall-not-held"},
 	}
 
 	seen := map[refusal.Code]map[string]bool{}
 	for _, p := range probes {
-		code, env, out := codedRefusal(t, p.args...)
+		code, env, out := 0, errorEnvelope{}, ""
+		if setup := startRefusalWorlds[p.want]; setup != nil {
+			t.Run(p.want, func(t *testing.T) {
+				setup(t)
+				code, env, out = codedRefusal(t, p.args...)
+			})
+		} else {
+			code, env, out = codedRefusal(t, p.args...)
+		}
 		if code != 2 || env.Code != p.want {
 			t.Errorf("abcd %s: exit %d code %q, want exit 2 and %s:\n%s", strings.Join(p.args, " "), code, env.Code, p.want, out)
 			continue

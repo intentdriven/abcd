@@ -65,6 +65,17 @@ const sessionProofRole = "session-proof"
 // under a fixed name, whose command does nothing.
 const plantedServers = `{"mcpServers":{"abcd-planted":{"command":"/bin/sh","args":["-c",":"]}}}`
 
+// plantedPrefix opens the names of the agent, the skill and the command page the short
+// launch must not load.
+const plantedPrefix = "abcd-planted-"
+
+// plantedPages are those three, by their path below the working directory.
+var plantedPages = map[string]string{
+	filepath.Join(".claude", "agents", plantedPrefix+"agent.md"):          "---\nname: " + plantedPrefix + "agent\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
+	filepath.Join(".claude", "skills", plantedPrefix+"skill", "SKILL.md"): "---\nname: " + plantedPrefix + "skill\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
+	filepath.Join(".claude", "commands", plantedPrefix+"command.md"):      "---\ndescription: abcd's check of a launch\n---\n\nDo nothing.\n",
+}
+
 // ProfileNames is every profile directory the account holds below home, sorted, read as
 // DriveProfile reads the folder: directories and links. None is no error.
 func ProfileNames(home string) ([]string, error) {
@@ -216,6 +227,9 @@ func KeepSessionBinary(home, self string) (kept string, _ error) {
 	return kept, nil
 }
 
+// GuardProofCommand is the command the guard is meant to refuse, harmless where it runs.
+func GuardProofCommand() string { return guardProofCommand }
+
 // SessionTools is every tool a session is started with.
 func SessionTools() []string { return slices.Clone(sessionTools) }
 
@@ -358,8 +372,8 @@ type SessionProof struct {
 }
 
 // ProveSession runs harness once, with s's own arguments and environment on its profile,
-// in an empty repository of its own holding settings and a server the launch must not
-// read, and judges what it reports. The launch is written to ledger for the checkout at
+// in a repository of its own holding settings, a server, an agent, a skill and a command
+// page the launch must not load, and judges what it reports. The launch is written to ledger for the checkout at
 // repo, and one the ledger cannot hold is not started. A *WallError other than the launch's
 // own is a wall that does not hold; a *LimitError or a *NoVerdictError is none.
 func ProveSession(ctx context.Context, s Session, harness, repo string, ledger *Ledger) (SessionProof, error) {
@@ -375,14 +389,22 @@ func ProveSession(ctx context.Context, s Session, harness, repo string, ledger *
 		return SessionProof{}, &NoVerdictError{Detail: "its working directory could not be made a repository"}
 	}
 	marker := filepath.Join(dir, workingTreeMarker)
-	laid := os.Mkdir(filepath.Join(dir, ".claude"), 0o700)
-	for name, body := range map[string][]byte{
+	planted := map[string][]byte{
 		filepath.Join(".claude", "settings.json"):       workingTreeSettings(marker),
 		filepath.Join(".claude", "settings.local.json"): workingTreeSettings(marker),
 		".mcp.json": []byte(plantedServers),
-	} {
+	}
+	for name, body := range plantedPages {
+		planted[name] = []byte(body)
+	}
+	var laid error
+	for name, body := range planted {
+		path := filepath.Join(dir, name)
 		if laid == nil {
-			laid = os.WriteFile(filepath.Join(dir, name), body, 0o600)
+			laid = os.MkdirAll(filepath.Dir(path), 0o700)
+		}
+		if laid == nil {
+			laid = os.WriteFile(path, body, 0o600)
 		}
 	}
 	if laid != nil {
@@ -504,12 +526,18 @@ func readSessionProof(out []byte) (SessionProof, error) {
 				if !pl.harnessOwn() {
 					return proof, &WallError{WallPlugins, "the launch loaded the plugin " + hostName(pl.Name) + ", which is not the harness's own"}
 				}
+				if switchedOff(pl) {
+					return proof, &WallError{WallPlugins, "the launch holds the plugin " + hostName(pl.Name) + ", which its settings switch off"}
+				}
 				proof.Plugins = append(proof.Plugins, hostName(pl.Name))
 			}
 			for _, list := range [][]string{ev.Commands, ev.Agents, ev.Skills} {
 				for _, name := range list {
 					if strings.HasPrefix(name, "abcd:") {
 						return proof, &WallError{WallPlugins, "the launch loaded " + hostName(name) + ", and abcd's own pages and agents are not in a session"}
+					}
+					if strings.Contains(name, plantedPrefix) {
+						return proof, &WallError{WallWorkingTree, "the launch loaded " + hostName(name) + " from its working tree"}
 					}
 				}
 			}
@@ -535,6 +563,12 @@ func readSessionProof(out []byte) (SessionProof, error) {
 		return proof, &WallError{WallGuard, "the guard hook did not refuse the command it is meant to refuse (" + guardProofCommand + ")"}
 	}
 	return proof, nil
+}
+
+// switchedOff reports whether a reported plugin is one the session's settings switch off,
+// by its name or by the source the settings name it under.
+func switchedOff(p wallPlugin) bool {
+	return slices.ContainsFunc(sessionBuiltinPlugins, func(name string) bool { return p.Name == name || p.Source == name+"@builtin" })
 }
 
 // hostName renders a name the harness reports for a line: safeWord word by word, so a

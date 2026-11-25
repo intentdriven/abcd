@@ -166,16 +166,16 @@ func DriveProfile(home, name string) (Profile, error) {
 	}
 	sort.Strings(names)
 	held := termsafe.Sanitize(strings.Join(names, ", "))
-	const makeOne = "run `abcd start` in a plain terminal, which makes one and prints the harness's own login command, " +
+	const makes = " in a plain terminal, which makes one and prints the harness's own login command, " +
 		"to run once in your own shell; abcd never logs a harness in"
 	switch {
 	case name != "" && slices.Contains(names, name):
 	case name != "" && len(names) == 0:
-		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: %s", ErrNoProfile, shown, makeOne)
+		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: run `abcd start --profile <name>`, with the name you gave,%s", ErrNoProfile, shown, makes)
 	case name != "":
 		return Profile{}, fmt.Errorf("%w named by --profile under %s (the value given is not repeated here), which holds %s", ErrNoProfile, shown, held)
 	case len(names) == 0:
-		return Profile{}, fmt.Errorf("%w under %s: %s", ErrNoProfile, shown, makeOne)
+		return Profile{}, fmt.Errorf("%w under %s: run `abcd start`%s", ErrNoProfile, shown, makes)
 	case len(names) > 1:
 		return Profile{}, fmt.Errorf("%w under %s (%s): name the one this drive runs on with --profile <name>; a drive never chooses among them or moves from one to another",
 			ErrSeveralProfiles, shown, held)

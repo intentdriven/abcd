@@ -434,6 +434,9 @@ var sentences = map[string]string{
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
 
+	"abcd start": "Start a session on abcd alone, making its separate login where none exists: " +
+		"Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.",
+
 	"abcd sweep": "List the worktrees, branches, reservations and reports left lying around, or clear the spent: " +
 		"Writes only the fetch bare; refuses a failed fetch.",
 
