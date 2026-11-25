@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestTransitionSerializesOnLedgerLock (iss-71 C4) proves a status transition
@@ -1260,5 +1262,113 @@ func TestASkippedOpenRecordStillBlocksItsDependents(t *testing.T) {
 	}
 	if got := blockedOpen(t, status.RecentOpen); len(got) != 1 || got[0] != blocker.ID {
 		t.Fatalf("Status: dependent's blocked_by_open = %v, want [%s] — a skipped open record still blocks", got, blocker.ID)
+	}
+}
+
+// fixedRequest is a capture of a finding fixed in the change at hand
+// (criterion 9 of itd-2611251831138387).
+func fixedRequest(repo, ir string) CaptureRequest {
+	return CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: "the gate read the base, not the head\n",
+		Severity: SeverityMinor, Category: "bug", Source: "user-observation",
+		FoundDuring: "the findings build", Slug: "gate-read-the-base",
+		Fixed: "the gate reads the head it is offered", FixedImpact: "fix",
+	}
+}
+
+// recordFiles is every record file under the ledger's status folders.
+func recordFiles(t *testing.T, ir string) []string {
+	t.Helper()
+	var out []string
+	for _, st := range []string{"open", "resolved", "wontfix"} {
+		ents, err := os.ReadDir(filepath.Join(ir, st))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		for _, e := range ents {
+			if strings.HasSuffix(e.Name(), ".md") {
+				out = append(out, st+"/"+e.Name())
+			}
+		}
+	}
+	return out
+}
+
+func TestCaptureFixedWritesOneRecordIntoResolved(t *testing.T) {
+	repo, ir := ledger(t)
+	res, err := testCapture(fixedRequest(repo, ir))
+	if err != nil {
+		t.Fatalf("Capture --fixed: %v", err)
+	}
+	files := recordFiles(t, ir)
+	if len(files) != 1 || !strings.HasPrefix(files[0], "resolved/"+res.ID+"-") {
+		t.Fatalf("a fixed capture left %v; want one record in resolved/", files)
+	}
+	if res.Status != StateResolved || !strings.Contains(filepath.ToSlash(res.Path), "/resolved/") {
+		t.Fatalf("the result says %s at %s; want resolved", res.Status, res.Path)
+	}
+	list, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateResolved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Issues) != 1 || list.Issues[0].Resolution != "the gate reads the head it is offered" || len(list.Skipped) != 0 {
+		t.Fatalf("the resolved list reads %+v (skipped %+v)", list.Issues, list.Skipped)
+	}
+	raw, err := os.ReadFile(filepath.Join(ir, files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "\nimpact: fix\n") {
+		t.Fatalf("the record does not carry its impact bare:\n%s", raw)
+	}
+}
+
+func TestCaptureFixedRefusesAndWritesNothing(t *testing.T) {
+	for name, mutate := range map[string]func(*CaptureRequest){
+		"an impact outside the set": func(r *CaptureRequest) { r.FixedImpact = "huge" },
+		"no impact":                 func(r *CaptureRequest) { r.FixedImpact = "" },
+		"an impact with no fix":     func(r *CaptureRequest) { r.Fixed = "" },
+		"a blank fix":               func(r *CaptureRequest) { r.Fixed = "  " },
+		"no remedy":                 func(r *CaptureRequest) { r.Remedy = " " },
+		"a bad severity":            func(r *CaptureRequest) { r.Severity = "dire" },
+		"a found_at not here":       func(r *CaptureRequest) { r.FoundAt = "no/such/file.go" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, ir := ledger(t)
+			req := fixedRequest(repo, ir)
+			req.Remedy = testRemedy
+			mutate(&req)
+			if _, err := Capture(req); err == nil {
+				t.Fatal("Capture accepted it")
+			}
+			if files := recordFiles(t, ir); len(files) != 0 {
+				t.Fatalf("a refused fixed capture wrote %v", files)
+			}
+		})
+	}
+}
+
+// TestCaptureFixedSatisfiesTheResolutionGate runs RS001 itself over a change
+// that files a fixed finding and says it resolves it.
+func TestCaptureFixedSatisfiesTheResolutionGate(t *testing.T) {
+	gate, err := filepath.Abs(filepath.Join("..", "..", "..", "scripts", "check-issue-resolution.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := gittest.NewRepo(t)
+	repo.Write("README.md", "x\n")
+	repo.Commit("base")
+	base := repo.Git("rev-parse", "HEAD")
+	res, err := testCapture(fixedRequest(repo.Root(), ""))
+	if err != nil {
+		t.Fatalf("Capture --fixed: %v", err)
+	}
+	repo.Write("fix.go", "package fix\n")
+	repo.Commit("fix: read the head\n\nResolves: " + res.ID)
+	cmd := exec.Command("bash", gate, "commits", base, "HEAD")
+	cmd.Dir = repo.Root()
+	cmd.Env = repo.Env()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("RS001 refused a fixed capture's trailer: %v\n%s", err, out)
 	}
 }

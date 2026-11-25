@@ -103,6 +103,20 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 			"%w: every new issue carries a remedy — name the fix it proposes, one line; an automatic filer with no fix yet writes %q (nothing captured)",
 			ErrRemedyRequired, issueschema.MachineRemedy))
 	}
+	// A finding fixed in the change at hand (criterion 9 of
+	// itd-2611251831138387) is judged as resolve judges a resolution, here,
+	// before anything is written: what fixed it, and the impact resolved/
+	// requires, never defaulted.
+	if req.Fixed != "" || req.FixedImpact != "" {
+		if strings.TrimSpace(req.Fixed) == "" {
+			return CaptureResult{}, refused(fmt.Errorf("capture: --fixed names what fixed the finding; nothing captured"))
+		}
+		impact, err := changelog.ParseImpact(req.FixedImpact)
+		if err != nil {
+			return CaptureResult{}, refused(fmt.Errorf("capture --fixed: %w; nothing captured", err))
+		}
+		req.FixedImpact = string(impact)
+	}
 	// A found_at that names a path must name one in THIS checkout
 	// (iss-2609120511058115). Checked before the preamble, so a refused capture
 	// writes nothing at all — not even the ledger directories.
@@ -152,6 +166,15 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 			degraded = deg
 		}
 	}
+	// What fixed it is the resolution note, free text redacted as resolve
+	// redacts its note.
+	if req.Fixed != "" {
+		r, n, deg := redactLedgerText(repoRoot, strings.TrimSpace(req.Fixed))
+		req.Fixed, redacted = r, redacted+n
+		if deg != "" {
+			degraded = deg
+		}
+	}
 
 	// When no explicit slug was supplied, derive it HERE — from the text that
 	// redaction has already rewritten — never from the raw caller text upstream. A
@@ -179,6 +202,7 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	req.FoundAt = termsafe.EncodeHiddenRunesBlock(req.FoundAt)
 	req.FoundDuring = termsafe.EncodeHiddenRunesBlock(req.FoundDuring)
 	req.Remedy = termsafe.EncodeHiddenRunesBlock(req.Remedy)
+	req.Fixed = termsafe.EncodeHiddenRunesBlock(req.Fixed)
 
 	// The mint is timestamp-numeric (adr-45; mechanics per spc-33): it consults
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
@@ -305,10 +329,18 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 		fm["finding_ref"] = req.FindingRef
 	}
 
+	// A fixed finding's record is the resolved one, judged as resolved/ judges
+	// it, and written there in place of the placeholder.
+	target, dst := StateOpen, placeholder
+	if req.Fixed != "" {
+		fields = append(fields, kv{"resolution", req.Fixed}, kv{"impact", rawScalar(req.FixedImpact)})
+		fm["resolution"], fm["impact"] = req.Fixed, req.FixedImpact
+		target, dst = StateResolved, filepath.Join(issuesRoot, statusDirName[StateResolved], filepath.Base(placeholder))
+	}
 	if err := validateStrict(fm); err != nil {
 		return CaptureResult{}, err
 	}
-	if err := validateInvariants(fm, StateOpen, placeholder); err != nil {
+	if err := validateInvariants(fm, target, dst); err != nil {
 		return CaptureResult{}, err
 	}
 
@@ -353,10 +385,18 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 			}
 			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, text, req.MatchExcept, content, fm)
 		}
-		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
+		if dst != placeholder {
+			// The placeholder goes first, under the same hold, so no reader
+			// sees the id in two folders; a write that then fails leaves
+			// nothing, and the refusal says so.
+			if rerr := removeLedgerFile(repoRoot, issuesRoot, placeholder); rerr != nil {
+				return rerr
+			}
+		}
+		if werr := writeLedgerFile(repoRoot, issuesRoot, dst, []byte(content)); werr != nil {
 			return werr
 		}
-		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen, Match: matched}
+		result = CaptureResult{ID: issID, Slug: slug, Path: dst, Status: target, Match: matched}
 		return nil
 	})
 	if err != nil {

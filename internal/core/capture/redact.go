@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -148,4 +149,24 @@ func (r *ledgerRedactor) Degraded() string {
 		return r.degraded
 	}
 	return scanNote(r.sc)
+}
+
+// ErrScannerUnavailable is RedactText's refusal when the ledger's scanner
+// cannot be made.
+var ErrScannerUnavailable = errors.New("capture: the ledger's scanner cannot be made")
+
+// RedactText is the ledger's redactor as one function, for a store outside the
+// ledger that keeps free text under the same rule (the findings list,
+// spc-2611252115253843). Where redactLedgerText writes the text unredacted and
+// says so, this hands back no text and ErrScannerUnavailable, because its
+// caller can withhold the text and lose nothing else.
+func RedactText(repoRoot, text string) (string, error) {
+	sc, err := newLedgerScanner(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
+	}
+	if findings := sc.ScanText(text, "issue"); len(findings) > 0 {
+		text, _ = scanner.Redact(text, findings)
+	}
+	return text, nil
 }

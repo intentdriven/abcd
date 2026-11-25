@@ -831,3 +831,23 @@ func TestOpinionsPreferSOTARuleNamesRemedyGrounds(t *testing.T) {
 	}
 	t.Fatal("OPINIONS carries no rule pointing at principles/prefer-sota.md")
 }
+
+// TestIssuesDomainCarriesTheFindingLine holds criterion 1's domain half and
+// criterion 9's rule (itd-2611251831138387): the ISSUES domain says where a
+// finding ends and building begins, and that a fix outside the lane's
+// reservation is captured and left open.
+func TestIssuesDomainCarriesTheFindingLine(t *testing.T) {
+	rules := strings.Join(Defaults().Domains["ISSUES"].Rules, "\n")
+	for _, want := range []string{
+		"a fault is a finding, and is captured, when it was there before the change began",
+		"the base shows it; the tools, the records and the process as they stood then are part of that",
+		"or when the change will land with it still there",
+		"a fault the change itself made and removes before it lands is building, a test that fails on the way among them, and is never captured or listed",
+		"in doubt, it is captured",
+		"a fix outside what the lane has reserved is not made there: the finding is captured and left open",
+	} {
+		if !strings.Contains(strings.ToLower(rules), strings.ToLower(want)) {
+			t.Errorf("the ISSUES domain does not say %q; it says:\n%s", want, rules)
+		}
+	}
+}

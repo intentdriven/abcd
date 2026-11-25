@@ -224,6 +224,11 @@ type CaptureRequest struct {
 	// writes no key; any other value is refused unless it is a key's shape,
 	// cfk- and sixteen lowercase hex digits.
 	FindingRef string
+	// Fixed files a finding the change at hand fixes (criterion 9 of
+	// itd-2611251831138387): the record is written straight into resolved/
+	// with Fixed as its resolution and FixedImpact as its impact.
+	Fixed       string
+	FixedImpact string
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric
@@ -233,7 +238,7 @@ type CaptureResult struct {
 	ID     string `json:"id"`
 	Slug   string `json:"slug"`
 	Path   string `json:"path"`
-	Status State  `json:"status"` // always "open"
+	Status State  `json:"status"` // "open", or "resolved" for a Fixed capture
 	// Redacted counts the spans the ledger redactor rewrote on write, and
 	// Degraded is non-empty when it ran with a weakened pattern set. Both exist
 	// so a surface can SAY the text was altered: redacting in silence would edit

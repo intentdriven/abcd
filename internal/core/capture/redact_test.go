@@ -1,10 +1,13 @@
 package capture
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
 
 // TestCaptureRedactsHomePathOnWrite is the regression for
@@ -155,5 +158,36 @@ func TestResolveRedactsTheNote(t *testing.T) {
 	}
 	if tr.Redacted == 0 {
 		t.Fatalf("Redacted = 0, want the home path in the note counted")
+	}
+}
+
+// TestRedactTextIsTheLedgerRedactorAsOneFunction holds the exported form a
+// store outside the ledger calls (the findings list, spc-2611252115253843):
+// the same redactor, so a home path and a planted token come back rewritten,
+// and a scanner that cannot be made is an error rather than the text handed
+// back unredacted, so the caller can withhold the text instead.
+func TestRedactTextIsTheLedgerRedactorAsOneFunction(t *testing.T) {
+	repo := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	token := "ghp_" + strings.Repeat("A1", 18)
+	in := "the token " + token + " sat in " + filepath.Join(home, "notes.txt")
+	out, err := RedactText(repo, in)
+	if err != nil {
+		t.Fatalf("RedactText: %v", err)
+	}
+	if strings.Contains(out, token) || strings.Contains(out, home) {
+		t.Fatalf("RedactText left the token or the home path in place: %q", out)
+	}
+
+	orig := newLedgerScanner
+	newLedgerScanner = func(string) (*scanner.Scanner, error) { return nil, errors.New("no scanner") }
+	t.Cleanup(func() { newLedgerScanner = orig })
+	out, err = RedactText(repo, in)
+	if !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("RedactText with no scanner = %q, %v; want ErrScannerUnavailable", out, err)
+	}
+	if out != "" {
+		t.Fatalf("RedactText with no scanner handed back text %q; want none", out)
 	}
 }
