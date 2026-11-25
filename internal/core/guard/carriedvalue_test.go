@@ -67,3 +67,30 @@ func TestALineCarriesTheValueItAssigns(t *testing.T) {
 		{`X='` + hazardLine + `'; echo "$X"`, VerdictAllow, ""},
 	})
 }
+
+// TestEveryCombinationOfAWordsValuesIsRead: a word spelled with several variables
+// the line assigns is read with every combination of their values, so a program
+// two values spell together is that program; past the bound, the combinations
+// left are read as output the guard did not read.
+func TestEveryCombinationOfAWordsValuesIsRead(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`A=x; A=pk; for B in ill y; do "$A$B" make; done`, VerdictBlock, "pkill-by-pattern"},
+		{`A=x; A=pk; B=ill; B=y; "$A$B" make`, VerdictBlock, "pkill-by-pattern"},
+		{`A=pk; A=x; B=y; B=ill; "$A$B" make`, VerdictBlock, "pkill-by-pattern"},
+		{`A=x; A=kill; B=y; B=all; "$A$B" node`, VerdictBlock, "killall-by-name"},
+		{`A=x; A=y; B=1; B=2; "$A$B" make`, VerdictAllow, ""},
+		{`A=go; B=x; B=y; "$A" build "$B"`, VerdictAllow, ""},
+	})
+	// Three names of eight values each: the combinations past the bound stand for
+	// output the guard did not read, run here as a string.
+	var line string
+	for _, n := range []string{"A", "B", "C"} {
+		for _, v := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+			line += n + "=" + v + "; "
+		}
+	}
+	runVerdictCases(t, []verdictCase{
+		{line + `eval "$A$B$C"`, VerdictBlock, syntheticEntryID},
+		{line + `"$A$B$C" make`, VerdictAllow, ""},
+	})
+}

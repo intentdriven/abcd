@@ -31,7 +31,8 @@ import (
 // (`"$GO" build`) stay allowed. Which assignment reaches which use is not
 // modelled past order — a subshell's, a branch's or a loop's assignment is
 // read as reaching every later use — so a name assigned more than once is
-// read once with each of its values (maxCarriedValues).
+// read once with each of its values (maxCarriedValues), and a word spelled with
+// several names once with each combination of theirs (maxCarriedReadings).
 
 // carriedValue is one value an assignment gave a variable, as the word it
 // left: tok holds unknownMark where a substitution's output goes; tmpl is the
@@ -53,6 +54,12 @@ type carriedValue struct {
 // stands for the rest: output the guard did not read, fed by every command
 // any of them held, so a value past the bound is never dropped unread.
 const maxCarriedValues = 8
+
+// maxCarriedReadings bounds the readings of one command with values in place.
+// Past it, the first maxCarriedReadings-1 combinations are read, and then one
+// that stands for the rest, in which each name holding several values holds
+// output the guard did not read, fed by every command any of them held.
+const maxCarriedReadings = 64
 
 // declarers assign each NAME=VALUE operand as a plain assignment does.
 var declarers = map[string]bool{"export": true, "declare": true, "typeset": true, "local": true, "readonly": true}
@@ -256,6 +263,16 @@ func addValue(vs []carriedValue, v carriedValue) []carriedValue {
 	return append(out, merged)
 }
 
+// foldedValue is one value standing for every value of vs: output the guard did
+// not read, fed by every command any of them held.
+func foldedValue(vs []carriedValue) carriedValue {
+	var feeds []feed
+	for _, v := range vs {
+		feeds = append(feeds, v.feeds...)
+	}
+	return carriedValue{tok: unknownText, output: true, feeds: mergeRuns(feeds)}
+}
+
 // carriedUse is one word of a segment whose every variable the text assigned:
 // its index, and the name at each of its sites in order.
 type carriedUse struct {
@@ -264,9 +281,10 @@ type carriedUse struct {
 }
 
 // carriedSegments returns the readings of s with each word whose every
-// variable the text assigned spelled with those values, one reading per value
-// a name holds, the commands whose output those values hold, and whether a
-// value holding output the guard did not read reaches a string s runs.
+// variable the text assigned spelled with those values, one reading per
+// combination of the values its names hold, the commands whose output those
+// values hold, and whether a value holding output the guard did not read
+// reaches a string s runs.
 func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []feed, bool) {
 	idx := make([]int, 0, len(s.variable))
 	for i := range s.variable {
@@ -274,7 +292,6 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 	}
 	sort.Ints(idx)
 	var uses []carriedUse
-	n := 0
 	for _, i := range idx {
 		tmpl := s.variable[i]
 		if tmpl == "" || i >= len(s.tokens) || len(s.spelled[i]) != 1 {
@@ -289,7 +306,6 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 				ok = false
 				break
 			}
-			n = max(n, len(vals[nm]))
 		}
 		if ok {
 			uses = append(uses, carriedUse{i: i, names: names})
@@ -306,17 +322,45 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 			}
 		}
 	}
+	// The shell may give each name any of its values, so the readings are every
+	// combination of them, the first name's varying fastest.
+	var names []string
+	for _, u := range uses {
+		for _, nm := range u.names {
+			if !containsString(names, nm) {
+				names = append(names, nm)
+			}
+		}
+	}
+	combos := 1
+	for _, nm := range names {
+		if combos *= len(vals[nm]); combos > maxCarriedReadings {
+			break
+		}
+	}
+	folded := combos > maxCarriedReadings
+	combos = min(combos, maxCarriedReadings)
+	pick := make(map[string]carriedValue, len(names))
 	var out []segment
 	runsOutput := false
-	for k := 0; k < n; k++ {
+	for k := 0; k < combos; k++ {
+		r := k
+		for _, nm := range names {
+			vs := vals[nm]
+			if folded && k == combos-1 && len(vs) > 1 {
+				pick[nm] = foldedValue(vs)
+				continue
+			}
+			pick[nm] = vs[r%len(vs)]
+			r /= len(vs)
+		}
 		d := carriedCopy(s)
 		var outputAt []int
 		for _, u := range uses {
 			picked := make([]carriedValue, len(u.names))
 			output := false
 			for j, nm := range u.names {
-				vs := vals[nm]
-				picked[j] = vs[min(k, len(vs)-1)]
+				picked[j] = pick[nm]
 				output = output || picked[j].output
 			}
 			placeValues(&d, u.i, s.variable[u.i], u.names, picked)
