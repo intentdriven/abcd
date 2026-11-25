@@ -23,14 +23,14 @@ func fullInput(t *testing.T) Input {
 		Payload: p,
 		Counts:  Counts{Intents: 12, Issues: 34},
 
-		Merging: Merging{State: MergingAuto},
+		Merging: Merging{State: MergingAuto, Whose: WhoseProject},
 	}
 }
 
 // wantFullRow is ac-11: the nine elements in the order itd-200 fixes, with
-// the merging element after the branch (itd-2610150602547271), each separated
+// the merging element after the branch (itd-2611252117557299), each separated
 // the same way.
-const wantFullRow = "abcd-managed · abcd · main · autonomous merging · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+const wantFullRow = "abcd-managed · abcd · main · facilitator: auto (project) · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 
 // TestRenderFullRow is ac-11. Nine elements (the spec's "twelve" is a
 // miscount of its own list), in the order the intent's commitments fix, with
@@ -667,7 +667,7 @@ func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
 	in := fullInput(t)
 	in.Payload.SessionName = "Alice"
 	row := renderRow(in, Defaults())
-	want := "abcd-managed · Alice · abcd · main · autonomous merging · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+	want := "abcd-managed · Alice · abcd · main · facilitator: auto (project) · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 	if got := row.Plain(); got != want {
 		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, want)
 	}
@@ -685,5 +685,36 @@ func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
 	in.Payload.SessionName = ""
 	if got := renderRow(in, Defaults()).Plain(); got != wantFullRow {
 		t.Fatalf("an absent name renders %q, want %q", got, wantFullRow)
+	}
+}
+
+// TestTheMergingElementNamesTheModeInEveryState pins the element's words: the
+// mode in both values and whose setting it is, the time a reading was made
+// where the default branch may have moved since, and `not read` with no mode
+// beside it. Unasked draws nothing.
+func TestTheMergingElementNamesTheModeInEveryState(t *testing.T) {
+	for _, c := range []struct {
+		m    Merging
+		want string
+	}{
+		{Merging{State: MergingAuto, Whose: WhoseProject}, "facilitator: auto (project)"},
+		{Merging{State: MergingHuman, Whose: WhoseProject}, "facilitator: human (project)"},
+		{Merging{State: MergingHuman, Whose: WhoseComputer}, "facilitator: human (computer)"},
+		{Merging{State: MergingAuto, Whose: WhoseComputer}, "facilitator: auto (computer)"},
+		{Merging{State: MergingHuman, Whose: WhoseUnset}, "facilitator: human (not set)"},
+		{Merging{State: MergingHuman, Whose: WhoseComputerUnread}, "facilitator: human (computer's file not read)"},
+		{Merging{State: MergingAuto, Whose: WhoseProject, Read: "14:02"}, "facilitator: auto (project, read 14:02)"},
+		{Merging{State: MergingHuman, Whose: WhoseComputer, Read: "2026-11-24 14:02"}, "facilitator: human (computer, read 2026-11-24 14:02)"},
+		{Merging{State: MergingUnknown}, "facilitator: not read"},
+		{Merging{State: MergingUnknown, Read: "14:02"}, "facilitator: not read"},
+		{Merging{State: "\x1b[31mauto"}, "facilitator: not read"},
+		{Merging{}, ""},
+	} {
+		in := fullInput(t)
+		in.Merging = c.m
+		el, ok := renderRow(in, Defaults()).Element(KeyMerging)
+		if got := el.Plain; got != c.want || ok != (c.want != "") {
+			t.Errorf("%+v renders %q (drawn %t), want %q", c.m, got, ok, c.want)
+		}
 	}
 }

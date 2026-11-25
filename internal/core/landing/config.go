@@ -316,23 +316,12 @@ func AutoAt(r layered.Roots, repoRoot, tip, name string) bool {
 	return err == nil && m.Mode == ModeAuto
 }
 
-// ReadDefaultFacilitator resolves facilitator.mode for the repository holding
-// cwd as the merge gate does (readFacilitatorAt), at the tip of the default
-// branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
-// caller's home (layered.HomeRoots, as RootsFor resolves it). The board shows
-// the mode through it; the shell guard reads ReadFetchedFacilitator. A repository with no default branch to read is
-// an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
-// as human.
-func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
-	return readDefaultFacilitatorContext(context.Background(), cwd)
-}
-
 // FetchedReadTimeout bounds ReadFetchedFacilitator as a whole: the shell
 // guard asks it inside a host's hook, which may give up on a slow hook and
 // run the command anyway, so a slow origin must end the read first, as human.
 const FetchedReadTimeout = 15 * time.Second
 
-// ReadFetchedFacilitator is ReadDefaultFacilitator for a caller that judges
+// ReadFetchedFacilitator is readDefaultFacilitatorContext for a caller that judges
 // an act by the mode and so must not take it from refs an agent can move
 // (`git remote set-head`, `git update-ref` on a remote-tracking ref): the
 // shell guard, deciding a merge command. It asks Remote which branch is its
@@ -442,15 +431,22 @@ func forgeRemote(ctx context.Context, root string) (string, error) {
 	return "", nil
 }
 
-// ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with
+// ErrNoDefaultBranch is readDefaultFacilitatorContext's answer for a repository with
 // no default branch to read facilitator.mode at: one with no commit yet, say.
 // It is not a refusal of anything a file declares, so a caller that only
 // shows the mode (the status line) may stay quiet over it.
 var ErrNoDefaultBranch = errors.New("the repository has no default branch to read " + KeyFacilitatorMode + " at")
 
-// readDefaultFacilitatorContext is ReadDefaultFacilitator with every git
-// question bounded by ctx: a git still running when ctx ends is killed and the
-// read fails with ctx's error wrapped, never with ErrNoDefaultBranch. It asks
+// readDefaultFacilitatorContext resolves facilitator.mode for the repository
+// holding cwd as the merge gate does (readFacilitatorAt), at the tip of the
+// default branch git tracks for it (gitutil.DefaultRef), with the machine layer
+// of the caller's home (layered.HomeRoots, as RootsFor resolves it). The board
+// shows the mode through it (ShownFacilitator); the shell guard reads
+// ReadFetchedFacilitator. A repository with no default branch to read is an
+// error (ErrNoDefaultBranch): a caller that cannot read the mode takes it as
+// human. Every git question is bounded by ctx: a git still running when ctx
+// ends is killed and the read fails with ctx's error wrapped, never with
+// ErrNoDefaultBranch. It asks
 // the network nothing: the default branch is the one last fetched, and its
 // configuration is read from the local object store. The board and the prompt
 // hook read the mode through it; the status line's row reads what the hook
@@ -553,23 +549,35 @@ func LiveMerging(ctx context.Context, root string) (statusline.Merging, string) 
 	return f.merging(), ""
 }
 
-// unreadNote says on the front door's stderr that the mode could not be read,
-// with the home and the checkout's own path masked.
+// unreadNote says on the front door's stderr why the mode was not read, with
+// the home and the checkout's own path masked; the element itself says
+// `facilitator: not read`.
 func unreadNote(root string, err error) string {
 	msg := fsutil.RedactHome(err.Error())
 	if root != "" {
 		msg = strings.ReplaceAll(msg, root, ".")
 	}
-	return "statusline: DROPPED the merging element — " + KeyFacilitatorMode +
-		" could not be read (" + termsafe.CleanProseLine(msg, 300) + ")"
+	return "statusline: " + KeyFacilitatorMode + " was not read (" + termsafe.CleanProseLine(msg, 300) + ")"
 }
 
-// merging is the mode in the row's own type. The row's package cannot import
-// this one: landing reaches ahoy (through embargo, capture and site), and ahoy
-// reads statusline, so the front door hands the readers over.
+// merging is the mode in the row's own type, with whose setting it is. The
+// row's package cannot import this one: landing reaches ahoy (through embargo,
+// capture and site), and ahoy reads statusline, so the front door hands the
+// readers over.
 func (f Facilitator) merging() statusline.Merging {
+	m := statusline.Merging{State: statusline.MergingHuman}
 	if f.Mode == ModeAuto {
-		return statusline.Merging{State: statusline.MergingAuto}
+		m.State = statusline.MergingAuto
 	}
-	return statusline.Merging{State: statusline.MergingHuman}
+	switch {
+	case f.HomeRefused:
+		m.Whose = statusline.WhoseComputerUnread
+	case f.Layer == layered.Repo.String():
+		m.Whose = statusline.WhoseProject
+	case f.Layer == layered.Machine.String():
+		m.Whose = statusline.WhoseComputer
+	default:
+		m.Whose = statusline.WhoseUnset
+	}
+	return m
 }

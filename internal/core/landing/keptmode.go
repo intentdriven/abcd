@@ -296,10 +296,14 @@ func noCommit(common string) bool {
 	return err == nil && none
 }
 
-// shownFacilitator resolves facilitator.mode for the repository holding cwd as
-// the board's presence line shows it: ReadDefaultFacilitator's answer, and for
-// a repository with no commit the computer's file alone. Nothing that decides
-// a merge reads it.
+// ShownFacilitator resolves facilitator.mode for the repository holding cwd as
+// the board shows it: readDefaultFacilitatorContext's answer, and for a repository
+// with no commit the computer's file alone. Nothing that decides a merge reads
+// it.
+func ShownFacilitator(cwd string) (Facilitator, error) {
+	return shownFacilitator(context.Background(), cwd)
+}
+
 func shownFacilitator(ctx context.Context, cwd string) (Facilitator, error) {
 	f, err := readDefaultFacilitatorContext(ctx, cwd)
 	if !errors.Is(err, ErrNoDefaultBranch) {

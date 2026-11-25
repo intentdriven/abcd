@@ -121,8 +121,8 @@ func TestAnUnreadableModeDropsTheMergingElementAndSaysSo(t *testing.T) {
 			if m.State != statusline.MergingUnknown {
 				t.Errorf("a mode that does not read read as %q", m)
 			}
-			if !strings.Contains(note, "DROPPED the merging element") || !strings.Contains(note, "facilitator.mode") {
-				t.Fatalf("note = %q, want one dropping the merging element over facilitator.mode", note)
+			if !strings.Contains(note, "facilitator.mode was not read") || !strings.Contains(note, "facilitator.mode") {
+				t.Fatalf("note = %q, want one saying facilitator.mode was not read", note)
 			}
 			if strings.ContainsRune(note, 0x1b) {
 				t.Errorf("the note carries a raw escape byte: %q", note)
@@ -134,10 +134,10 @@ func TestAnUnreadableModeDropsTheMergingElementAndSaysSo(t *testing.T) {
 	}
 }
 
-// TestTheMergingElementDropsWhenGitRunsOut: the mode is read with git's
-// questions bounded by the row's own deadline; with that time spent the
-// element drops and says why.
-func TestTheMergingElementDropsWhenGitRunsOut(t *testing.T) {
+// TestTheMergingElementIsNotReadWhenGitRunsOut: the mode is read with git's
+// questions bounded by the board's own deadline; with that time spent the
+// mode is not read and the note says why.
+func TestTheMergingElementIsNotReadWhenGitRunsOut(t *testing.T) {
 	_, root := mergingRepo(t, autoConfig)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -145,7 +145,7 @@ func TestTheMergingElementDropsWhenGitRunsOut(t *testing.T) {
 	if m.State != statusline.MergingUnknown {
 		t.Errorf("with git's time spent the mode read as %q", m)
 	}
-	if !strings.Contains(note, "DROPPED the merging element") {
-		t.Errorf("note = %q, want the drop named", note)
+	if !strings.Contains(note, "facilitator.mode was not read") {
+		t.Errorf("note = %q, want the unread mode named", note)
 	}
 }

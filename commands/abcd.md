@@ -24,8 +24,9 @@ Paste its output to the user unchanged, in one fenced block: add nothing inside 
 
 ## Who merges
 
-In a repository abcd manages the board also says what the merge gate does
-with a ready pull request: the repository's `facilitator.mode`, read as the
+In a repository abcd manages the board also draws a `facilitator:` line: the
+repository's `facilitator.mode`, whose setting decides it, and what the merge
+gate does with a ready pull request in it. The mode is read as the
 gate reads it (the default branch's committed `.abcd/config.json` beside the
 machine layer, never the checkout's working tree), and the layer that set it.
 So an `auto` written in the checkout but not on the default branch changes
@@ -34,23 +35,26 @@ and asks the network nothing, while the gate fetches it first, so after the
 mode changes on origin the two can disagree until the next fetch. Under `human` the gate merges once
 the technical facilitator approves the head; under `auto` it merges
 autonomously once a review pair has passed the head. The product view draws one
-line above the version (`merges: once the technical facilitator approves (the
-bundled default)`, or `merges: autonomously, once a review pair passes (set in
-.abcd/config.json at origin/main)`); the facilitator view draws it as a `merges:` row
-after the status block, naming the key and the mode as configured (`merges:
-once the technical facilitator approves the head (facilitator.mode human, from
-the bundled default)`). A pull request a contributor opens needs an approval of
+line above the version (`facilitator: human (not set, the bundled default):
+merges once the technical facilitator approves`, or `facilitator: auto (the
+project's, set in .abcd/config.json at origin/main): merges autonomously, once a
+review pair passes`, or `facilitator: human (this computer's, set in
+~/.abcd.noindex/config.json): …`); the facilitator view draws the same as a row
+after the status block, said of the head. A pull request a contributor opens needs an approval of
 its head by someone with write access in either mode, which the line does not
 repeat. `--json` carries it as `facilitator` (`key`, `mode`, `layer`, `origin`,
 and `home_refused` when a refused home decided it). A `human` from any layer
 wins, so a `human` in `~/.abcd.noindex/config.json` reads as `human`
 whatever the repository says, and a refused home reads as `human`
-(`merges: once the technical facilitator approves (the home directory was
-refused, so a machine-wide setting cannot be read)`). When the mode cannot be
-read, or the repository has no default branch to read it at, the line says it
-is unreadable, and `--json` carries only `key` and the refusal as `error`. This
-is not `/abcd:mode`'s `facilitator` state, which says whose answer the loop is
-waiting on right now; `facilitator.mode` declares who merges.
+(`facilitator: human (this computer's file could not be read: the home
+directory was refused): merges once the technical facilitator approves`). A
+repository with no commit has no default branch that could say anything, so the
+line reads the computer's file alone. When the mode cannot be read, or the
+repository has commits and no default branch to read it at, the line says
+`facilitator: not read`, with the refusal in brackets, and `--json` carries only
+`key` and the refusal as `error`. This is not `/abcd:mode`'s `facilitator`
+state, which says whose answer the loop is waiting on right now;
+`facilitator.mode` declares who merges.
 
 ## The version
 
@@ -110,16 +114,24 @@ In a repository abcd manages the board also carries one line of presence — the
 shows, in plain words: the badge first (`abcd-managed`, `waiting on the
 technical facilitator` or `waiting on the product thinker`, from the state
 `/abcd:mode` stores), then the
-repository, the branch, `autonomous merging` while the repository's
-`facilitator.mode` is `auto` (read as the merge gate reads it, from the default
-branch's committed `.abcd/config.json` and the machine layer; absent under
-`human`), and the record's counts. The board reads that mode as it draws. The
-host's status line shows it as last read instead: the prompt hook keeps the
-reading it takes on each prompt, the default branch as of the last fetch, and
-the row shows the kept one beside the computer's file as it is now, so a refresh
-asks git nothing for it. After a fetch that moves the default branch the row
-goes on naming the kept mode until the next prompt. Nothing that decides a merge
-reads the kept one. Relay the `plain` text when the
+repository, the branch, the `facilitator:` element naming the repository's
+`facilitator.mode` and whose setting decides it, in both modes
+(`facilitator: auto (project)`, `facilitator: human (computer)`,
+`facilitator: human (not set)`; read as the merge gate reads it, from the
+default branch's committed `.abcd/config.json` and the machine layer), and the
+record's counts. The board reads that mode as it draws. The host's status line
+names it as last read instead: the prompt hook keeps the reading it takes on
+each prompt, the default branch as of the last fetch, and the row shows the kept
+one beside the computer's file as it is now, so a refresh asks git nothing for
+it. After a fetch that moves the default branch the row goes on naming the kept
+mode, with the time it was read (`facilitator: auto (project, read 14:02)`, the
+date before it on another day), until the next prompt reads it again. With no
+reading kept, or a kept file that is malformed, another repository's, or one
+another account could read or change, it says `facilitator: not read`; under a
+refused home, `facilitator: human (computer's file not read)`. The merge gate
+does not rely on the row: it and everything else that decides a merge take
+their own reading. `facilitator.mode` is not the state `/abcd:mode` keeps.
+Relay the `plain` text when the
 state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and
 never changes it; `/abcd:mode` is the writer.

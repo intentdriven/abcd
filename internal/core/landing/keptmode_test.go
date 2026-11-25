@@ -516,7 +516,7 @@ func TestTheKeptModeDecidesNothing(t *testing.T) {
 	if f, err := readFacilitatorAt(roots, root, tip, "main"); err != nil || f.Mode != ModeHuman {
 		t.Errorf("the merge gate reads %+v, %v; want human", f, err)
 	}
-	if f, err := ReadDefaultFacilitator(root); err != nil || f.Mode != ModeHuman {
+	if f, err := ShownFacilitator(root); err != nil || f.Mode != ModeHuman {
 		t.Errorf("the board reads %+v, %v; want human", f, err)
 	}
 	if m, _ := LiveMerging(context.Background(), root); m.State != statusline.MergingHuman {

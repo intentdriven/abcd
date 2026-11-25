@@ -90,16 +90,16 @@ type Input struct {
 	Version core.VersionInfo
 	// Merges is facilitator.mode as the merge gate resolves it
 	// (spc-2610161609350616): the default branch's committed configuration
-	// beside the machine layer. It is drawn just above the version line in both
-	// views and both forms; nil draws no line.
+	// beside the machine layer. It is drawn as the facilitator: line just above
+	// the version line in both views and both forms; nil draws no line.
 	Merges *Merges
 }
 
-// Merges is how a ready pull request merges: facilitator.mode and the layer
-// and origin that set it, or, when the mode could not be read, the refusal. It
-// is worded by outcome ("merges: once the technical facilitator approves"),
-// never as a bare mode, so it does not read as abcd mode's facilitator state,
-// which is whose answer the loop waits on.
+// Merges is facilitator.mode and the layer and origin that set it, or, when the
+// mode could not be read, the refusal. It is drawn under its own label,
+// `facilitator:` (iss-2610262034286775), naming the mode, whose setting it is
+// and what becomes of a ready pull request, and never as a bare `mode`, which
+// is abcd mode's word for whose answer the loop waits on.
 type Merges struct {
 	Mode    string // human or auto
 	Layer   string // bundled, machine, repo, …
@@ -144,7 +144,7 @@ func Render(in Input, f Frame) []string {
 	}
 	if f.View != Facilitator {
 		if t := mergesText(in.Merges, f.View); t != "" {
-			l := "merges: " + t
+			l := facilitatorLabel + t
 			switch f.Form {
 			case Markdown:
 				out = append(out, "- "+l)
@@ -166,37 +166,42 @@ func Render(in Input, f Frame) []string {
 	return out
 }
 
-// mergesText says what the merge gate does in the mode it reads, and where
-// that was set, without its label: under human it merges once the technical
-// facilitator approves the head, under auto autonomously once a review pair has
-// passed the head (landing's mergeGate). The product view says the outcome and
-// the place, a line of its own above the version; the facilitator view adds
-// the key and the mode as configured, a labelled row after the status block. A
-// refused read says the mode is unreadable and carries the refusal; a refused
-// home names itself, not a file. The text is masked: an origin or a refusal
-// can carry what a configuration file wrote.
+// facilitatorLabel opens the line, with its own space: it is a column longer
+// than the other rows' labels.
+const facilitatorLabel = "facilitator: "
+
+// mergesText is the facilitator: line without its label: the mode, whose
+// setting it is and where it was set, and what the merge gate does with a
+// ready pull request in it (landing's mergeGate): under human it merges once
+// the technical facilitator approves, under auto autonomously once a review
+// pair passes. The facilitator view says it of the head. A refused read says
+// the mode was not read and carries the refusal; a refused home names itself,
+// not a file. The text is masked: an origin or a refusal can carry what a
+// configuration file wrote.
 func mergesText(m *Merges, v View) string {
 	if m == nil {
 		return ""
 	}
 	if m.Refused != "" {
-		return termsafe.Sanitize("unreadable (" + m.Refused + ")")
+		return termsafe.Sanitize("not read (" + m.Refused + ")")
 	}
-	from, set := m.Origin, "set in "+m.Origin
+	whose := "the project's, set in " + m.Origin
 	switch {
-	case m.Layer == "bundled":
-		from, set = "the bundled default", "the bundled default"
 	case m.HomeRefused:
-		from, set = "a refused home", "the home directory was refused, so a machine-wide setting cannot be read"
+		whose = "this computer's file could not be read: the home directory was refused"
+	case m.Layer == "bundled":
+		whose = "not set, the bundled default"
+	case m.Layer == "machine":
+		whose = "this computer's, set in " + m.Origin
 	}
-	outcome := "once the technical facilitator approves"
+	outcome := "merges once the technical facilitator approves"
 	if m.Mode == "auto" {
-		outcome = "autonomously, once a review pair passes"
+		outcome = "merges autonomously, once a review pair passes"
 	}
 	if v == Facilitator {
-		return termsafe.Sanitize(outcome + " the head (facilitator.mode " + m.Mode + ", from " + from + ")")
+		outcome += " the head"
 	}
-	return termsafe.Sanitize(outcome + " (" + set + ")")
+	return termsafe.Sanitize(m.Mode + " (" + whose + "): " + outcome)
 }
 
 // versionLine is the board's last line, the installed version as `abcd
@@ -335,7 +340,8 @@ type entry struct {
 }
 
 // labelWidth is the column a labelled row's value starts at, the full board's
-// own alignment ("work tiers: " is the longest label).
+// own alignment ("work tiers: " is the longest label it pads; the facilitator:
+// line, a column longer, carries its own space).
 const labelWidth = 12
 
 // facilitator is the full board below its label, in its own order: the
@@ -376,7 +382,7 @@ func facilitator(in Input, f Frame) []string {
 		es = append(es, entry{2, fmt.Sprintf("Later: %d %s", len(b.Later), noun)})
 	}
 	if t := mergesText(in.Merges, f.View); t != "" {
-		es = append(es, entry{1, fmt.Sprintf("%-*s%s", labelWidth, "merges:", t)})
+		es = append(es, entry{1, facilitatorLabel + t})
 	}
 
 	var out []string
