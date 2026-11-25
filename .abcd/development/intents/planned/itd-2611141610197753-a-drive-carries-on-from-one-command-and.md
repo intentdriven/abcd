@@ -90,8 +90,8 @@ We expect a person to stop asking whether the drive is working, because the loop
 
 ## Acceptance Criteria
 
-- **Given** a run that was taken over from a terminal, **when** `abcd drain --drive` is typed in that terminal, **then** the drive takes the run and its lanes go on, with nothing else typed.
-  - Evidence: lab-261114145658-67e1f9b, F-3 and F-8.
+- **Given** a run that was taken over from a terminal, **when** `abcd drain --drive` is typed in that terminal and the take-over claim's conditions hold there (nothing but shells runs beneath the recorded driver besides the drive, and every session marker can be read), **then** the drive takes the run and its lanes go on, with nothing else typed. **Given** the same run where a live pipe or helper runs in that terminal beside the drive, or a session marker cannot be read, **then** the drive leaves that run waiting and names the act that frees it (end the process, close the terminal, or repair or remove the marker file); the take-over is not widened to take it (decision 10).
+  - Evidence: lab-261114145658-67e1f9b, F-3 and F-8; the claim's conditions as pull request #1544 put them on the default branch.
 - **Given** a drive that was interrupted, whether or not its stop settled and whether or not abcd was rebuilt since, **when** `abcd drain --drive` is typed again, **then** the drive carries on with every lane its drain still lists that the interrupt left, lanes parked on a pull request included, and its output names no other command for them. **Given** a run an interrupt parked that the drain no longer lists, **then** the drive takes it up too, because at its start it takes every interrupted run in the checkout and not only those its drain's state lists (decision 2).
   - Evidence: lab-261114145658-67e1f9b, F-4, F-8 and F-15.
 - **Given** a run whose recorded driver is alive and is not the starting drive's own terminal (another terminal, or a host session), **when** the drive starts, **then** it does not take the run, says who holds it, and goes on to other work. **Given** a run a person's own stop halted, **then** the drive does not take it while the stop stands and names it, and once the person has lifted the stop the next start takes it up (decision 1).
@@ -113,7 +113,7 @@ We expect a person to stop asking whether the drive is working, because the loop
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7, 8 and 9).
+All resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7, 8 and 9). The spec's open note on the take-over claim's conditions was answered on 2026-11-25 (decision 10).
 
 ## Decisions
 
@@ -169,6 +169,11 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
    - Answer: the drive keeps waiting. It tries the set-aside lanes again every hour until its end time (`--until`, or its other end conditions), and the line reads `waiting`, not `stopped`. It does not read `stalled` while those hourly retries are its named next try.
    - Reconciling with the stall criterion: that criterion says a look-again time is not a named end, and the stall rule by time of decision 6 treats only the pace window's next eligible time and a rate limit's named reset as ends. This decision makes the hourly retry of set-aside lanes a named end, so a drive waiting on it reads `waiting` and not `stalled`. The planning step must reconcile the two, and says in the stall rule which look-again times are ends.
    - What it costs, which the product thinker accepted: a drive process stays running, mostly idle, until its end time. A lane whose block still stands is tried again every hour and set aside again.
+
+10. **The first criterion is narrowed to the take-over claim's conditions** (product thinker, 2026-11-25; formerly the spec's open note).
+    - Question: the first criterion promised that a drive typed in the terminal a run was taken over from takes the run with nothing else typed, while the claim pull request #1544 put on the default branch takes such a run only when nothing but shells runs beneath the recorded driver besides the drive and every session marker can be read. Is the criterion narrowed to the claim's conditions, or is the claim widened?
+    - Answer: the criterion is narrowed. A live pipe or helper in the old terminal, or a session marker that cannot be read, leaves that run waiting, and the refusal names the act that frees it. The take-over is not widened.
+    - What it costs: in those cases the run waits for the person, while step 3 of the spec sets its lane aside at the bound so other lanes open. The press release's single command stands for the runs an interrupt left and for a take-over run whose terminal meets the claim's conditions.
 
 ## Typed Links
 
