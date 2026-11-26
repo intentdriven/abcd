@@ -85,7 +85,9 @@ func TestGuardAsksTheProverForEveryTargetTheLineFixes(t *testing.T) {
 	lb := func(b string) DeleteTarget { return DeleteTarget{Kind: DeleteLocalBranch, Dir: dir, Branch: b} }
 	cases := map[string][]DeleteTarget{
 		"git push origin --delete a b":          {rb("a"), rb("b")},
-		"git push --delete origin refs/heads/a": {rb("a")},
+		"git push --delete origin refs/heads/a": {{Kind: DeleteRemoteBranch, Dir: dir, Remote: "origin", Branch: "a", Ref: "refs/heads/a"}},
+		"git push origin --delete heads/a":      {rb("heads/a")},
+		"git push origin :tags/v1":              {rb("tags/v1")},
 		"git push -d origin a":                  {rb("a")},
 		"git push --del origin a":               {rb("a")},
 		"git push -qd origin a":                 {rb("a")},

@@ -167,9 +167,6 @@ const (
 	// lsRemoteTimeout bounds one check of the declared remote.
 	lsRemoteTimeout = 60 * time.Second
 
-	// maxLsRemoteBytes caps what the check reads back: one ref is one line.
-	maxLsRemoteBytes = 64 << 10
-
 	// allowedProtocols are the transports a check may use (GIT_ALLOW_PROTOCOL),
 	// the two remoteRefusal admits. A declared URL cannot name a transport that
 	// runs a program (ext::), a repository this account can write (file, which
@@ -875,9 +872,12 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // dir (a directory of the store, with discovery stopped at its parent, so no
 // repository's config applies), under the isolated environment, with no
 // credential prompt of any kind, the transports held to allowedProtocols, and
-// output capped. git matches a pattern against the tail of each ref, so the
-// answer is the line naming exactly refs/heads/<branch>, and it must be the
-// only one.
+// each line of output bounded. git matches a pattern against the tail of
+// each ref, so the listing also names every branch whose name ends in the
+// branch's path (refs/heads/x/refs/heads/<branch>), as many as anyone who can
+// push makes: it is read line by line to its end (gitutil.NewLineWriter),
+// never whole under a bound, and the answer is the line naming exactly
+// refs/heads/<branch> (gitutil.RefListing), which must be the only one.
 func lsRemoteGit(ctx context.Context, dir, remote, branch string) (string, error) {
 	ref := "refs/heads/" + branch
 	args := append(gitutil.ExecPins(), "ls-remote", "--", remote, ref)
@@ -893,7 +893,8 @@ func lsRemoteGit(ctx context.Context, dir, remote, branch string) (string, error
 	)
 	cmd.Stdin = nil
 	cmd.WaitDelay = 5 * time.Second
-	out := &boundedBuffer{limit: maxLsRemoteBytes}
+	l := gitutil.RefListing{Ref: ref}
+	out := gitutil.NewLineWriter(gitutil.RefLineMax, l.Line)
 	errOut := &boundedBuffer{limit: 2048}
 	cmd.Stdout, cmd.Stderr = out, errOut
 	if err := cmd.Run(); err != nil {
@@ -910,31 +911,20 @@ func lsRemoteGit(ctx context.Context, dir, remote, branch string) (string, error
 		// git names the URL in its own messages; credentials in it stay out.
 		return "", errors.New(strings.ReplaceAll(msg, remote, displayURL(remote)))
 	}
-	if out.overflow {
-		return "", fmt.Errorf("its answer exceeded %d bytes", maxLsRemoteBytes)
-	}
-	return tipFromLsRemote(out.buf.String(), branch)
+	out.Flush()
+	return tipOf(l, branch)
 }
 
-// tipFromLsRemote reads the commit refs/heads/<branch> names from the output
-// of `git ls-remote`: the one line naming exactly that ref.
-func tipFromLsRemote(out, branch string) (string, error) {
-	ref := "refs/heads/" + branch
-	var tip string
-	for _, line := range strings.Split(out, "\n") {
-		oid, name, ok := strings.Cut(strings.TrimRight(line, "\r"), "\t")
-		if !ok || name != ref {
-			continue
-		}
-		if tip != "" || !gitutil.IsFullSHA(oid) {
-			return "", fmt.Errorf("its answer for %s is not one commit", ref)
-		}
-		tip = oid
-	}
-	if tip == "" {
+// tipOf is the commit l, a listing's lines naming refs/heads/<branch>, names:
+// one line, a full object name.
+func tipOf(l gitutil.RefListing, branch string) (string, error) {
+	switch {
+	case l.Tips == 0:
 		return "", fmt.Errorf("it has no branch %s", branch)
+	case l.Tips > 1 || !gitutil.IsFullSHA(l.Tip):
+		return "", fmt.Errorf("its answer for %s is not one commit", l.Ref)
 	}
-	return tip, nil
+	return l.Tip, nil
 }
 
 // hasCommit reports whether repo holds commit as a commit object, read with
