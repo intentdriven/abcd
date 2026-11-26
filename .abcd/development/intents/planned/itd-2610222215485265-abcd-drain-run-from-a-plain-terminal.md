@@ -114,6 +114,8 @@ The product thinker's ruling of 2026-11-25, folded in the same day:
 
 13. **The first Ctrl-C stops after the lane in hand.** itd-2611150636498012 (its decision 6) makes an interrupt take two steps before the kill: the first press lets the lane in hand run to its end and opens no further lane, and says how to stop now; the second makes the orderly stop that decision 8 gave the first press; the hard kill that decision 8 gave the second press moves to a third. The eighth criterion is amended to say so. A closed terminal still makes the orderly stop at once, since nobody is there to press again.
 
+_Ideate verdict, 2026-11-26, recorded here as a pointer and not a decision (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`): a terminal build of one READY intent was judged reframed as spc-2609202134338445 step 12, which waits on this intent shipping. The verdict asks whether that step should wait only on this intent's built subscription-route steps rather than on its remainder, the key route of spc-2610230813348813 step 8; the product thinker rules. Nothing in this intent changes._
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
