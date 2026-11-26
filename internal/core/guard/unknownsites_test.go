@@ -63,14 +63,14 @@ var wordReaders = map[string]string{
 	// and refuses nothing.
 	"branchActsIn":     "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
 	"commandWordsRead": "exempt: steps reserved words, grammar no substitution prints, and words whose NAME= the line writes; its callers refuse an unknown word as the program",
-	"argumentsChange":  "exempt: reads the program at each command site commandSites places, which unknown.go walks; a name nothing fixes there holds the call (functionCallReadings)",
-	"setsArguments":    "exempt: an option of `set` is a dash the line writes; a word nothing fixes is read as setting the arguments",
 	// match.go: the `function` keyword's NAMEs.
-	"plainFunctionName":    "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
-	"argumentBody":         "exempt: reads the body of a `${…}` expansion the tokenizer hands it, never a command's word",
-	"functionCallReadings": "commandSites places each call; a name nothing fixes names no function the line defines",
-	"functionBody":         "exempt: reads only `{`, `}`, reserved words and `function` to bound a body; each command in it is read by its own walk",
-	"functionQuoted":       "exempt: reads only the keyword, its NAME and the word after it, and the tokenizer's record of which the line left unquoted",
+	"plainFunctionName": "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
+	"argumentBody":      "exempt: reads the body of a `${…}` expansion the tokenizer hands it, never a command's word",
+	"functionBody":      "exempt: reads only `{`, `}`, reserved words and `function` to bound a body; each command in it is read by its own walk",
+	"plainCallName":     "exempt: a function's name the line writes, read against the reserved words and the walk itself (walkToCommand)",
+	"simpleFunction":    "exempt: refuses any word nothing fixes, and reads the one program through arrivalsOf; a name or program it cannot place leaves the call held",
+	"spliceCall":        "exempt: refuses any word nothing fixes, and steps only the reserved words before a call arrivalsOf placed",
+	"functionQuoted":    "exempt: reads only the keyword, its NAME and the word after it, and the tokenizer's record of which the line left unquoted",
 	// recordacts.go: the sub-agent hold's reading of the git commands that
 	// record or send work.
 	"recordActIn": "isUnknown on the program, every option word and the subcommand: a word nothing fixes there is read as no act",

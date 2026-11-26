@@ -228,8 +228,6 @@ func TestFunctionCallIsReadOnlyInTheSimpleCase(t *testing.T) {
 	}
 	for _, line := range []string{
 		`f() { echo "$1"; }; f x`,
-		`f() { set -e; echo "$1"; }; f x`,
-		`f() { shift; echo "$@"; }; f x y`,
 		`f() { git status; }; g() { f; }; g x`,
 	} {
 		if d := readingOf(t, line); d.Verdict == VerdictBlock {
@@ -238,10 +236,10 @@ func TestFunctionCallIsReadOnlyInTheSimpleCase(t *testing.T) {
 	}
 }
 
-// TestFunctionCallReadingStaysWithinItsBudget: the readings of a line's calls
-// put no more than maxFunctionWords words, however many sites, words, shifts
-// or definitions the line holds; past it the line is held, and the cost
-// stays linear in the line.
+// TestFunctionCallReadingStaysWithinItsBudget: however many sites, words,
+// shifts or definitions a line holds, its calls are held, or read within
+// maxFunctionWords and maxFunctionLineBytes, and the cost stays linear in the
+// line.
 func TestFunctionCallReadingStaysWithinItsBudget(t *testing.T) {
 	sites := func(m int) string { return `f() { shift; echo` + strings.Repeat(` "$@"`, m) + `; }; f` }
 	words := func(n int) string { return strings.Repeat(" w", n) }
@@ -258,15 +256,85 @@ func TestFunctionCallReadingStaysWithinItsBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 		walkSegments(segs)
-		out, hold := functionCallReadings(segs)
-		n := 0
-		for _, s := range out {
-			n += len(s.tokens)
-		}
-		if !hold || n > maxFunctionWords {
-			t.Errorf("a %d-byte line: hold %v, %d words put; want it held within %d", len(line), hold, n, maxFunctionWords)
+		if lines, hold := functionCallReadings(line, segs); !hold || len(lines) > 0 {
+			t.Errorf("a %d-byte line: hold %v, %d readings; want it held", len(line), hold, len(lines))
 		}
 	}
 	assertWorkGrowth(t, func(n int) string { return sites(16) + words(n) }, 256, "the words a call's readings put are charged to one budget")
 	assertWorkGrowth(t, func(n int) string { return shifted + words(n) }, 1280, "each offset a shift reads from is charged to the budget")
+}
+
+// TestFunctionCallIsReadInOneShapeOnly: a call is read with its words only
+// where the function is one command on its own line, its program a word the
+// line fixes and no launcher, its arguments read only as "$@", $@, "$N", $N,
+// "${N}" or ${N}, its name no wrapper or keyword, and the call stands at a
+// plain command position; the reading is judged as the line with the call
+// replaced. Every other call with words of a function that reads its
+// arguments is held.
+func TestFunctionCallIsReadInOneShapeOnly(t *testing.T) {
+	const held = "function-form-unread"
+	args := strings.TrimPrefix(hazardLine, "git ")
+	for _, line := range []string{
+		// More than one command, a loop, an assignment, a declaration.
+		`f() { for a in "$@"; do x="$x $a"; done; git $x; }; f ` + args,
+		`f() { local x="$*"; git $x; }; f ` + args,
+		`f() { x=$1; git $x; }; f "` + args + `"`,
+		`f() { a=("$@"); git "${a[@]}"; }; f ` + args,
+		`f() { set -e; echo "$1"; }; f x`,
+		`f() { shift; echo "$@"; }; f x y`,
+		`f() { 1=--force; git push "$1" origin main; }; f x`,
+		// A launcher, or an argument as the program.
+		`f() { sh -c "$1"; }; f '` + hazardLine + `'`,
+		`f() { eval "$1"; }; f '` + hazardLine + `'`,
+		`f() { "$@"; }; f ` + hazardLine,
+		`f() { env git "$@"; }; f ` + args,
+		// An argument read in any other form.
+		`f() { git push ${!#} origin main; }; f --force`,
+		`f() { git $*; }; f ` + args,
+		`f() { git "${1:-push}" "$2" "$3" "$4"; }; f ` + args,
+		`f() { echo $(( $1 )); }; f 'a[$(rm -rf ~)]'`,
+		`IFS=,; f() { git $1; }; f push,--force,origin,main`,
+		`IFS=,; f() { git $*; }; f push,--force,origin,main`,
+		// Not on one line, or not one group.
+		"f() {\n git \"$@\"\n}; f " + args,
+		"f() (\n git \"$@\"\n); f " + args,
+		`f() ( git "$@" ); f ` + args,
+		// A name a wrapper or keyword spells, two names, two definitions.
+		`nohup() { git "$@"; }; nohup ` + args,
+		`env() { git "$@"; }; env ` + args,
+		`repeat() { git "$@"; }; repeat ` + args,
+		`a b() { git "$@"; }; b ` + args,
+		`f() { git "$@"; }; f() { :; }; f ` + args,
+		// A call after a wrapper, an assignment or in a substitution, a
+		// redirection, an alias on the line.
+		`f() { git "$@"; }; time f ` + args,
+		`f() { git "$@"; }; X=1 f ` + args,
+		`f() { git "$@"; }; echo "$(f ` + args + `)"`,
+		`f() { git "$@" >/dev/null; }; f ` + args,
+		`alias g=f; f() { git "$@"; }; g ` + args,
+		`shopt -s expand_aliases; alias g=f; f() { git "$@"; }; g ` + args,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock || !containsString(d.Matches, held) {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want a block holding %q", line, d.Verdict, d.EntryID, d.Matches, held)
+		}
+	}
+	// The one shape read: the call's verdict is the command's it makes, read
+	// where the call stands.
+	for call, direct := range map[string]string{
+		`f() { git "$@"; }; f ` + args:                  hazardLine,
+		`function f { git "$@"; }; f ` + args:           hazardLine,
+		`f() { git push "$1" origin main; }; f --force`: hazardLine,
+		`f() { git ${1} $2 "${3}" "$4"; }; f ` + args:   hazardLine,
+		`f() { rm -rf "$1"; }; f *`:                     `rm -rf *`,
+		`f() { cd "$1"; }; f /tmp && rm -rf *`:          `cd /tmp && rm -rf *`,
+		`f(){ abcd "$@"; }; f update v1.2.3`:            `abcd update v1.2.3`,
+		`f() { git status "$@"; }; f --short`:           `git status --short`,
+		`f() { echo "$1"; }; f x`:                       `echo x`,
+		`f() { git "$@"; }; { f ` + args + `; }`:        `{ ` + hazardLine + `; }`,
+	} {
+		got, want := readingOf(t, call), readingOf(t, direct)
+		if got.Verdict != want.Verdict || containsString(got.Matches, held) {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want %q as Check(%q) and no hold", call, got.Verdict, got.EntryID, got.Matches, want.Verdict, direct)
+		}
+	}
 }

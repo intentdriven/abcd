@@ -4,6 +4,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // wrappers are commands that RUN another command with the same intent, so the
@@ -1439,35 +1441,86 @@ func argumentBody(body string) bool {
 	return rest == "" || rest[0] == '-' || rest[0] == '=' || rest[0] == '?'
 }
 
-// maxFunctionWords bounds the words functionCallReadings puts for one line:
-// the commands it scans for the bodies' spans and every word of each reading.
-// Past it the line is held (functionArgumentsSignal).
-const maxFunctionWords = 4096
+// maxFunctionWords bounds the words functionCallReadings scans for one line,
+// the commands it scans for the bodies' spans and the words each reading puts
+// included, and maxFunctionLineBytes the text it hands the guard again, all
+// the readings together. Past either the line is held
+// (functionArgumentsSignal).
+const (
+	maxFunctionWords     = 4096
+	maxFunctionLineBytes = 1 << 16
+)
+
+// functionLaunchers are the programs a function's one command may not run for
+// its call to be read (simpleFunction), and the names it may not have: a
+// shell, a string or a file run as commands, a wrapper that runs the command
+// after it, and the builtins that change the shell's own state. The walk's own
+// wrappers (walkToCommand) are refused besides.
+var functionLaunchers = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "mksh": true, "yash": true,
+	"posh": true, "fish": true, "csh": true, "tcsh": true, "busybox": true,
+	"eval": true, "source": true, ".": true, "exec": true, "env": true, "nohup": true,
+	"command": true, "builtin": true, "xargs": true, "time": true, "repeat": true, "coproc": true,
+	"sudo": true, "doas": true, "su": true, "nice": true, "ionice": true, "timeout": true,
+	"stdbuf": true, "setsid": true, "chroot": true, "flock": true, "watch": true, "script": true,
+	"nocorrect": true, "noglob": true, "function": true, "declare": true, "local": true,
+	"typeset": true, "export": true, "readonly": true, "integer": true, "float": true, "set": true,
+	"shift": true, "unset": true, "alias": true, "unalias": true, "shopt": true, "setopt": true,
+	"unsetopt": true, "emulate": true, "trap": true, "read": true, "mapfile": true,
+	"readarray": true, "getopts": true, "let": true, "enable": true, "hash": true, "autoload": true,
+	"zmodload": true, "disable": true, "return": true, "caller": true, "fc": true, "[[": true,
+}
+
+// bodyWord is one word after the program of a function's one command
+// (simpleFunction): a word the line fixes (ref 0), or one argument as it
+// stands alone, `$@` (ref -1) or `$N` (ref N), quoted or not.
+type bodyWord struct {
+	text   string
+	glob   bool
+	ref    int
+	quoted bool
+}
+
+// simpleBody is a function whose calls are read with their words: its one
+// command's program and the words after it.
+type simpleBody struct {
+	prog  string
+	words []bodyWord
+	// unquoted records an argument the command reads unquoted, which a line
+	// that names IFS splits as the guard does not.
+	unquoted bool
+}
 
 // functionCallReadings reads each call, with words, of a function the line
-// defines (segment.definesFunction) with those words in its arguments' place,
-// in the one case it reads: the body's span is certain (functionBody), no
-// command in it calls a function the line defines or a program the line does
-// not name, it changes its arguments by a bare `shift` alone
-// (argumentsChange), and the readings put no more than maxFunctionWords words.
-// Every command of such a body that reads an argument is read once more for
-// each call, its `$1`…`$9`, `$@` and `$*` replaced by the call's words, and
-// from each offset a `shift` leaves. hold reports a call with words of a
-// function that reads its arguments in any other case, an argument read in a
-// form no word stands for (segment.argumentsUnread) included, and zsh's
-// anonymous function on a line that reads an argument.
-func functionCallReadings(segs []segment) (out []segment, hold bool) {
+// defines with those words in its arguments' place, in the one case it reads
+// (simpleFunction): a function of one command on its own line, called at a
+// plain command position of the line itself (spliceCall). Each reading is the
+// line again with the call's command replaced by the command its words make,
+// which Check judges as a line of its own. hold reports any other call with
+// words of a function that reads its arguments (mayReadArgument), one at a
+// wrapper's place or after one, a line that defines an alias beside such a
+// function, zsh's anonymous function on a line that reads an argument, and a
+// line past maxFunctionWords or maxFunctionLineBytes.
+func functionCallReadings(command string, segs []segment) (lines []string, hold bool) {
 	defs := map[string][]int{}
-	anonymous := false
+	anonymous, aliases, ifs := false, false, false
 	for i, s := range segs {
 		for _, n := range s.definesFunction {
 			defs[n] = append(defs[n], i)
 		}
 		anonymous = anonymous || s.anonymousFunction
+		for _, a := range arrivalsOf(s) {
+			if t := s.tokens[a.idx]; t == "alias" || t == "shopt" || t == "setopt" {
+				aliases = true
+			}
+		}
+		for _, t := range s.tokens {
+			ifs = ifs || strings.Contains(t, "IFS")
+		}
 	}
 	if anonymous {
 		for _, s := range segs {
-			if s.argumentsUnread || readsArgument(s) {
+			if mayReadArgument(s) {
 				return nil, true
 			}
 		}
@@ -1475,136 +1528,335 @@ func functionCallReadings(segs []segment) (out []segment, hold bool) {
 	if len(defs) == 0 {
 		return nil, false
 	}
-	budget := maxFunctionWords
+	budget, bytes := maxFunctionWords, maxFunctionLineBytes
 	charge := func(n int) bool {
 		budget -= n
 		return budget >= 0
 	}
-	// names reports a command position in s that runs a function the line
-	// defines, or a program the line does not name; in a body, a word an
-	// argument writes there is read with the call's words instead.
-	names := func(s segment, body bool) bool {
-		for _, a := range commandSites(s) {
-			t := s.tokens[a.idx]
-			if _, ok := defs[t]; ok && !containsString(s.definesFunction, t) {
-				return true
-			}
-			if isUnknown(t) {
-				if refs, ok := argumentRefs(s, a.idx); body && ok && readsArgumentRefs(refs) {
-					continue
-				}
-				return true
+	type info struct {
+		reads bool
+		body  *simpleBody
+	}
+	infos := map[string]*info{}
+	infoOf := func(name string) *info {
+		if in, ok := infos[name]; ok {
+			return in
+		}
+		in := &info{}
+		infos[name] = in
+		for _, at := range defs[name] {
+			lo, hi, _ := functionBody(segs, at, charge)
+			for j := lo; j <= hi && !in.reads; j++ {
+				// A span past the budget is not read: it is taken to read
+				// its arguments, and its call is held.
+				in.reads = !charge(len(segs[j].tokens)+1) || mayReadArgument(segs[j])
 			}
 		}
+		if in.reads && len(defs[name]) == 1 {
+			in.body = simpleFunction(command, segs, defs[name][0], defs)
+		}
+		return in
+	}
+	// A function whose name a wrapper or a keyword spells is not seen where
+	// it is called (`nohup NAME`, `repeat NAME`), and one the line names
+	// through an alias is called by another name: either is held once it
+	// reads its arguments.
+	for name := range defs {
+		if (aliases || !plainCallName(name)) && infoOf(name).reads {
+			return nil, true
+		}
+	}
+	for ci, s := range segs {
+		wrapped := false
+		for _, a := range arrivalsOf(s) {
+			name := s.tokens[a.idx]
+			_, defined := defs[name]
+			if !defined || a.idx+1 >= len(s.tokens) || containsString(s.definesFunction, name) {
+				wrapped = wrapped || a.wrapper
+				continue
+			}
+			in := infoOf(name)
+			if budget < 0 {
+				return nil, true
+			}
+			if !in.reads {
+				wrapped = wrapped || a.wrapper
+				continue
+			}
+			if in.body == nil || a.wrapper || wrapped || ifs && in.body.unquoted {
+				return nil, true
+			}
+			line, ok := spliceCall(command, segs, ci, a, in.body)
+			if !ok {
+				return nil, true
+			}
+			if bytes -= len(line); bytes < 0 {
+				return nil, true
+			}
+			lines = append(lines, line)
+			wrapped = wrapped || a.wrapper
+		}
+	}
+	return lines, false
+}
+
+// simpleFunction is the body of the function segs[at] defines when it is the
+// one shape whose calls are read: `NAME() { CMD; }` or `function NAME { CMD;
+// }` on one line, where NAME is a plain name no wrapper, keyword or launcher
+// spells, defined once and alone, and CMD is one command with no assignment
+// before it and no redirection, whose program is a word the line fixes that is
+// no launcher (functionLaunchers), no function the line defines and no wrapper
+// the walk steps, and whose every other word is fixed or is exactly one of
+// `"$@"`, `$@`, `"$N"`, `$N`, `"${N}"` and `${N}` (N from 1 to 9). It is nil
+// for any other function.
+func simpleFunction(command string, segs []segment, at int, defs map[string][]int) *simpleBody {
+	def := segs[at]
+	if len(def.definesFunction) != 1 || def.functionQuoted || def.home != segs[0].home || def.nest != 0 {
+		return nil
+	}
+	name := def.definesFunction[0]
+	if !plainCallName(name) {
+		return nil
+	}
+	var body, closing segment
+	off := 0
+	switch {
+	case len(def.tokens) == 1 && def.tokens[0] == name || len(def.tokens) == 2 && def.tokens[0] == "function" && def.tokens[1] == name:
+		if at+2 >= len(segs) || len(def.redirects) > 0 {
+			return nil
+		}
+		body, closing, off = segs[at+1], segs[at+2], 1
+		if len(body.tokens) == 0 || body.tokens[0] != "{" {
+			return nil
+		}
+	case len(def.tokens) >= 3 && def.tokens[0] == "function" && def.tokens[1] == name && def.tokens[2] == "{":
+		if at+1 >= len(segs) {
+			return nil
+		}
+		body, closing, off = def, segs[at+1], 3
+	default:
+		return nil
+	}
+	if len(closing.tokens) != 1 || closing.tokens[0] != "}" || len(closing.redirects) > 0 || len(body.redirects) > 0 {
+		return nil
+	}
+	for _, s := range []segment{body, closing} {
+		if s.home != def.home || s.nest != def.nest || s.chain != def.chain || s.braceOdd ||
+			s.argumentsUnread || s.functionQuoted || s.heredocUnterminated || s.substitutionUnread {
+			return nil
+		}
+	}
+	if def.begin < 0 || closing.end > len(command) || def.begin > closing.end || strings.ContainsAny(command[def.begin:closing.end], "\n\r") {
+		return nil
+	}
+	if len(body.tokens) <= off {
+		return nil
+	}
+	arr := arrivalsOf(body)
+	if len(arr) != 1 || arr[0].idx != off || arr[0].wrapper {
+		return nil
+	}
+	prog := body.tokens[off]
+	if _, isVar := body.variable[off]; isVar || isUnknown(prog) || body.globAt(off) || isAssignment(prog) ||
+		reserved[prog] || functionLaunchers[prog] || functionLaunchers[path.Base(prog)] {
+		return nil
+	}
+	if _, ok := defs[prog]; ok {
+		return nil
+	}
+	sb := &simpleBody{prog: prog}
+	for k := off + 1; k < len(body.tokens); k++ {
+		tok := body.tokens[k]
+		if v, isVar := body.variable[k]; isVar {
+			sp := body.spelled[k]
+			if v != string(varMark) || len(sp) == 0 {
+				return nil
+			}
+			// A default, an alternative or any other text the word can
+			// print besides the argument (`${1:-x}`) is no plain argument.
+			for _, alt := range sp[1:] {
+				if alt != "" {
+					return nil
+				}
+			}
+			w := bodyWord{}
+			switch t := sp[0]; {
+			case t == "$@":
+				w.ref, w.quoted = -1, !body.ifsSplit[k]
+			case len(t) == 2 && t[0] == '$' && t[1] >= '1' && t[1] <= '9':
+				w.ref, w.quoted = int(t[1]-'0'), !body.fieldSplit[k]
+			case len(t) == 4 && t[:2] == "${" && t[2] >= '1' && t[2] <= '9' && t[3] == '}':
+				w.ref, w.quoted = int(t[2]-'0'), !body.fieldSplit[k]
+			default:
+				return nil
+			}
+			sb.unquoted = sb.unquoted || !w.quoted
+			sb.words = append(sb.words, w)
+			continue
+		}
+		if isUnknown(tok) {
+			return nil
+		}
+		sb.words = append(sb.words, bodyWord{text: tok, glob: body.globAt(k)})
+	}
+	return sb
+}
+
+// plainCallName reports whether name is one a call reaches as the function:
+// a shell name the walk takes as a command, not a keyword, a launcher
+// (functionLaunchers) or a wrapper it steps through.
+func plainCallName(name string) bool {
+	if !isShellName(name) || reserved[name] || functionShellWords[name] || functionLaunchers[name] {
 		return false
 	}
-	type read struct{ at, many int }
-	type body struct {
-		reads  []read
-		shifts bool
-		held   bool
+	out, _, _ := walkToCommand([]string{name, "x"})
+	return len(out) == 1 && out[0].idx == 0 && !out[0].wrapper
+}
+
+// spliceCall is command with the call at arrival a of segs[ci] replaced by
+// the command body makes of the call's words: the call must stand at a plain
+// command position of the line's own text (only reserved words before it, no
+// redirection, not inside a substitution), and every word it hands must be
+// one the line fixes. ok is false otherwise, and where a word cannot be
+// written back as the shell would read it (renderWord).
+func spliceCall(command string, segs []segment, ci int, a arrival, body *simpleBody) (string, bool) {
+	s := segs[ci]
+	if s.home != segs[0].home || s.nest != 0 || len(s.redirects) > 0 || s.heredocUnterminated ||
+		s.begin < 0 || s.end > len(command) || s.begin > s.end || !strings.HasPrefix(command[s.begin:], s.tokens[0]) {
+		return "", false
 	}
-	bodies := map[string]*body{}
-	bodyOf := func(name string) *body {
-		if b, ok := bodies[name]; ok {
-			return b
-		}
-		b := &body{}
-		bodies[name] = b
-		reads, odd := false, false
-		for _, at := range defs[name] {
-			lo, hi, certain := functionBody(segs, at, charge)
-			odd = odd || !certain
-			for j := lo; j <= hi; j++ {
-				s := segs[j]
-				// A span past the budget is not read: the call is held.
-				if !charge(len(s.tokens) + 1) {
-					b.held = true
-					return b
-				}
-				shift, other := argumentsChange(s)
-				b.shifts = b.shifts || shift
-				odd = odd || other || s.argumentsUnread || names(s, true)
-				reads = reads || s.argumentsUnread
-				if !readsArgument(s) {
-					continue
-				}
-				reads = true
-				r := read{at: j}
-				for idx := range s.variable {
-					refs, _ := argumentRefs(s, idx)
-					for _, ref := range refs {
-						if ref.name != "" && argumentIndex(ref.name) == -1 {
-							r.many++
-						}
-					}
-				}
-				b.reads = append(b.reads, r)
-			}
-		}
-		b.held = reads && odd
-		if !reads {
-			b.reads = nil
-		}
-		return b
-	}
-	type call struct {
-		body *body
-		args []argumentWord
-	}
-	var calls []call
-	seen := map[string]bool{}
-	for _, s := range segs {
-		for _, a := range commandSites(s) {
-			name := s.tokens[a.idx]
-			if _, ok := defs[name]; !ok || a.idx+1 >= len(s.tokens) || containsString(s.definesFunction, name) {
-				continue
-			}
-			b := bodyOf(name)
-			if budget < 0 || b.held {
-				return nil, true
-			}
-			if len(b.reads) == 0 {
-				continue
-			}
-			if !charge(len(s.tokens) - a.idx) {
-				return nil, true
-			}
-			if key := name + "\x00" + strings.Join(s.tokens[a.idx+1:], "\x00\x00"); !seen[key] {
-				seen[key] = true
-				calls = append(calls, call{body: b, args: wordsOf(s, a.idx+1)})
-			}
+	for _, t := range s.tokens[:a.idx] {
+		if !reserved[t] {
+			return "", false
 		}
 	}
-	for _, c := range calls {
-		last := 0
-		if c.body.shifts {
-			last = len(c.args)
+	var args []bodyWord
+	for k := a.idx + 1; k < len(s.tokens); k++ {
+		if _, isVar := s.variable[k]; isVar || isUnknown(s.tokens[k]) {
+			return "", false
 		}
-		for k := 0; k <= last; k++ {
-			if !charge(len(c.args) - k + 1) {
-				return nil, true
+		args = append(args, bodyWord{text: s.tokens[k], glob: s.globAt(k)})
+	}
+	parts := append([]string(nil), s.tokens[:a.idx]...)
+	prog, ok := renderWord(body.prog, false, true)
+	if !ok {
+		return "", false
+	}
+	parts = append(parts, prog)
+	put := func(w bodyWord, quoted bool) bool {
+		text, ok := renderWord(w.text, w.glob, quoted)
+		if ok && text != "" {
+			parts = append(parts, text)
+		}
+		return ok
+	}
+	for _, w := range body.words {
+		switch {
+		case w.ref == 0:
+			if !put(w, true) {
+				return "", false
 			}
-			for _, split := range argumentSplits(c.args[k:]) {
-				for _, r := range c.body.reads {
-					if !charge(len(segs[r.at].tokens) + r.many*len(split)) {
-						return nil, true
-					}
-					d, ok := withArguments(segs[r.at], split)
-					if !ok {
-						return nil, true
-					}
-					walked := []segment{d}
-					walkSegments(walked)
-					if names(walked[0], false) {
-						return nil, true
-					}
-					out = append(out, walked[0])
+		case w.ref == -1:
+			for _, arg := range args {
+				if !put(arg, w.quoted) {
+					return "", false
 				}
 			}
+		case w.ref <= len(args):
+			if !put(args[w.ref-1], w.quoted) {
+				return "", false
+			}
+		case w.quoted:
+			parts = append(parts, "''")
 		}
 	}
-	return out, false
+	return command[:s.begin] + strings.Join(parts, " ") + command[s.end:], true
+}
+
+// renderWord writes a word back as shell text that reads as the word does,
+// or more widely: as it stands where every byte is one the shell takes as it
+// is (a glob's pattern bytes included, where the word was a pattern), and
+// single-quoted otherwise. A word read unquoted, which the shell would split
+// and match as a pattern, is written only as it stands, and an empty one is
+// no word; a pattern or a home spelling that needs quoting is not written.
+func renderWord(text string, glob, quoted bool) (string, bool) {
+	if text == "" {
+		if quoted {
+			return "''", true
+		}
+		return "", true
+	}
+	plain := true
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.IndexByte("_./:,+=@%~-", c) >= 0:
+		case glob && strings.IndexByte("*?[]", c) >= 0:
+		default:
+			plain = false
+		}
+	}
+	switch {
+	case plain:
+		return text, true
+	case !quoted || glob || strings.HasPrefix(text, "~"):
+		return "", false
+	}
+	return shellquote.Single(text), true
+}
+
+// mayReadArgument reports whether a command can read a function's
+// arguments: a word that reads one (readsArgument), one in a form no word
+// stands for (segment.argumentsUnread), or a spelling that names one in any
+// form (spellsArgument) or that a line naming IFS capped.
+func mayReadArgument(s segment) bool {
+	if s.argumentsUnread || readsArgument(s) {
+		return true
+	}
+	for _, texts := range s.spelled {
+		for _, t := range texts {
+			// A spelling a line that names IFS capped (capIFSSplits) may
+			// have been one.
+			if t == spellCapped || spellsArgument(t) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// spellsArgument reports whether text holds a `$` that can read a
+// function's arguments in any form: `$1`, `$@`, `$*`, `${!…}`, `${#1}`, a
+// flag in parentheses, zsh's `$=1`, `$~1`, `$^1` and `$argv`.
+func spellsArgument(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] != '$' {
+			continue
+		}
+		j := i + 1
+		if j < len(text) && text[j] == '{' {
+			j++
+			if j < len(text) && text[j] == '(' {
+				return true
+			}
+		}
+		for j < len(text) && strings.IndexByte("=~^", text[j]) >= 0 {
+			j++
+		}
+		if j >= len(text) {
+			continue
+		}
+		switch c := text[j]; {
+		case c >= '1' && c <= '9', c == '@', c == '*', c == '!':
+			return true
+		case c == '#' && j+1 < len(text) && (text[j+1] >= '1' && text[j+1] <= '9' || text[j+1] == '@' || text[j+1] == '*'):
+			return true
+		case strings.HasPrefix(text[j:], "argv"):
+			return true
+		}
+	}
+	return false
 }
 
 // functionBody is the span of segs, lo to hi, that holds the body of the
@@ -1656,107 +1908,6 @@ func functionBody(segs []segment, at int, charge func(int) bool) (lo, hi int, ce
 		}
 	}
 	return lo, hi, false
-}
-
-// argumentsChange reports how a command changes the arguments of the function
-// it runs in: shift for a bare `shift`, and other for anything else that can
-// (a `shift` with a count or through `builtin` or `command`, a `set` that
-// sets them, `eval`, `.` and `source`, which run text that can, and zsh's
-// `argv` assigned).
-func argumentsChange(s segment) (shift, other bool) {
-	if s.arrayOf == "argv" {
-		other = true
-	}
-	for _, t := range s.tokens {
-		if strings.HasPrefix(t, "argv=") || strings.HasPrefix(t, "argv+=") || strings.HasPrefix(t, "argv[") {
-			other = true
-		}
-	}
-	lead := len(s.tokens) - len(commandWords(s.tokens))
-	for _, a := range commandSites(s) {
-		w := s.tokens[a.idx:]
-		stepped := a.idx != lead
-		for len(w) > 1 && (w[0] == "builtin" || w[0] == "command") {
-			w, stepped = w[1:], true
-		}
-		switch w[0] {
-		case "shift":
-			if len(w) == 1 && !stepped {
-				shift = true
-			} else {
-				other = true
-			}
-		case "set":
-			other = other || setsArguments(w[1:])
-		case "eval", ".", "source":
-			other = true
-		}
-	}
-	return shift, other
-}
-
-// setsArguments reports whether `set` with words sets the positional
-// arguments: `--` or `-`, or a word that is no option (or no option's value,
-// as `-o pipefail`'s is).
-func setsArguments(words []string) bool {
-	for i := 0; i < len(words); i++ {
-		w := words[i]
-		switch {
-		case isUnknown(w), w == "--", w == "-":
-			return true
-		case strings.HasPrefix(w, "-") || strings.HasPrefix(w, "+"):
-			if strings.HasSuffix(w, "o") {
-				i++
-			}
-		default:
-			return true
-		}
-	}
-	return false
-}
-
-// argumentWord is one word a call hands its function, with its records: the
-// place its values go (segment.variable) and the texts it can print
-// (segment.spelled), so a body read with it reads a variable's value as the
-// call's own reading does.
-type argumentWord struct {
-	tok      string
-	variable string
-	isVar    bool
-	spelled  []string
-}
-
-// wordsOf is s's words from idx on, with their records.
-func wordsOf(s segment, idx int) []argumentWord {
-	out := make([]argumentWord, 0, len(s.tokens)-idx)
-	for i := idx; i < len(s.tokens); i++ {
-		v, isVar := s.variable[i]
-		out = append(out, argumentWord{tok: s.tokens[i], variable: v, isVar: isVar, spelled: s.spelled[i]})
-	}
-	return out
-}
-
-// argumentSplits is args as a call hands them, and, where a word the line
-// fixes holds a blank, once more with each such word split at its blanks, as
-// an unquoted `$1` is.
-func argumentSplits(args []argumentWord) [][]argumentWord {
-	var split []argumentWord
-	blank := false
-	for _, a := range args {
-		f := strings.Fields(a.tok)
-		if a.isVar || len(f) == 1 && f[0] == a.tok {
-			split = append(split, a)
-			continue
-		}
-		blank = true
-		for _, w := range f {
-			split = append(split, argumentWord{tok: w})
-		}
-	}
-	if !blank {
-		return [][]argumentWord{args}
-	}
-	return [][]argumentWord{args, split}
 }
 
 // argumentRef is one parameter a word reads, as the line wrote it, from the
@@ -1880,77 +2031,6 @@ func argumentIndex(name string) int {
 		}
 	}
 	return n
-}
-
-// withArguments is s read with args in its arguments' place: a word that is
-// wholly `$@` or `$*` becomes the words, and each `$N` in a word the Nth (an
-// empty one past the last). A parameter that is no argument keeps the mark of
-// a value the line does not hold. ok is false for a spelling that does not
-// line up.
-func withArguments(s segment, args []argumentWord) (segment, bool) {
-	d := segment{tokens: make([]string, 0, len(s.tokens)+len(args)), chain: s.chain}
-	put := func(w argumentWord) {
-		if w.isVar {
-			if d.variable == nil {
-				d.variable, d.spelled = map[int]string{}, map[int][]string{}
-			}
-			d.variable[len(d.tokens)] = w.variable
-			if w.spelled != nil {
-				d.spelled[len(d.tokens)] = w.spelled
-			}
-		}
-		d.tokens = append(d.tokens, w.tok)
-	}
-	for idx, tok := range s.tokens {
-		refs, ok := argumentRefs(s, idx)
-		if !ok {
-			return segment{}, false
-		}
-		v, isVar := s.variable[idx]
-		if len(refs) == 0 || !readsArgumentRefs(refs) {
-			put(argumentWord{tok: tok, variable: v, isVar: isVar, spelled: s.spelled[idx]})
-			continue
-		}
-		if len(refs) == 2 && refs[0].literal == "" && refs[1].literal == "" {
-			switch n := argumentIndex(refs[0].name); {
-			case n == -1:
-				for _, a := range args {
-					put(a)
-				}
-				continue
-			case n > 0 && n <= len(args):
-				put(args[n-1])
-				continue
-			}
-		}
-		var b strings.Builder
-		for _, r := range refs {
-			b.WriteString(r.literal)
-			if r.name == "" {
-				continue
-			}
-			switch n := argumentIndex(r.name); {
-			case n == -1 && len(args) > 0:
-				// `$@` and `$*` inside a longer word: the first word joins
-				// the text before, the last the text after, and the words
-				// between stand alone (`$*` quoted joins them with a blank,
-				// which the same words read).
-				b.WriteString(args[0].tok)
-				for _, a := range args[1:] {
-					d.tokens = append(d.tokens, b.String())
-					b.Reset()
-					b.WriteString(a.tok)
-				}
-			case n == -1:
-			case n == 0:
-				b.WriteString(unknownText)
-			case n <= len(args):
-				b.WriteString(args[n-1].tok)
-			}
-		}
-		d.tokens = append(d.tokens, b.String())
-	}
-	return d, true
 }
 
 // readsArgumentRefs reports whether any of refs is a function's argument.

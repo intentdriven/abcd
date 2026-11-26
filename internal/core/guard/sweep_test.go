@@ -55,7 +55,13 @@ import (
 // scripts/check-attribution.sh, scripts/check-attribution-cases.sh,
 // scripts/preflight-scans.sh) call a function whose body calls another
 // function the script defines, or a program a variable names, and are held as
-// function-form-unread.
+// function-form-unread. Raised to 42 when a call came to be read only where
+// the function is one command on its own line, every other call with words of
+// a function that reads its arguments held: three more scripts read whole
+// (scripts/abcd.sh, scripts/pr-keep-current.sh, scripts/records-only.sh) call
+// a function of more than one command with words, and are held as
+// function-form-unread; scripts/check-wip-source-cases.sh is now held the
+// same way rather than blocked as the command its case runs.
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -71,7 +77,7 @@ import (
 // (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
 // same two warns.
 const (
-	maxSweepBlocks = 39
+	maxSweepBlocks = 42
 	maxSweepWarns  = 39
 )
 

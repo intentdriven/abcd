@@ -630,6 +630,12 @@ type verdicts struct {
 // judged without Tier 2. rc is the check's file reading, nil when the
 // registry reads no file.
 func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, error) {
+	return r.judgeCalls(command, rc, run, true)
+}
+
+// judgeCalls is judge; readCalls false judges a reading of a call
+// (functionCallReadings) without reading its line's calls again.
+func (r Registry) judgeCalls(command string, rc *readCtx, run *scriptRun, readCalls bool) (verdicts, error) {
 	// No argv word can hold a NUL, and bash drops one from its input; the byte
 	// is the tokenizer's mark for a substitution's output (unknown.go), so the
 	// line's own are removed before a word is read.
@@ -650,17 +656,31 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// never inside a per-entry callee (that path went quadratic). Every entry then
 	// sees the payload segments for free, and any payload the guard cannot read
 	// raises a synthetic (entry-less) signal folded in by severity below.
+	// The line's own commands, before the payloads are read, are what a
+	// call of a function it defines is read from (functionCallReadings).
+	own := append([]segment(nil), segs...)
 	segs, signals := expandPayloads(segs, depth)
 	walkSegments(segs)
-	// A function the line defines is read at each call with the call's
-	// words in its arguments' place (functionCallReadings). A script the
-	// line runs is read as it stands.
-	if run == nil {
-		if calls, hold := functionCallReadings(segs); hold {
-			signals = append(signals, functionArgumentsSignal())
-		} else if len(calls) > 0 {
-			segs = append(segs, calls...)
-			walkSegments(segs)
+	// A call of a function the line defines is read with the call's words
+	// in its arguments' place where the function is of the one shape read
+	// (functionCallReadings): the line, the call replaced by the command it
+	// makes, is judged as a line of its own, and what it finds is the line's.
+	// A script the line runs is read as it stands, and a payload's own
+	// functions are held where their calls read their arguments: none is
+	// called at a command position of the line's text.
+	var calls []verdicts
+	callsHeld := false
+	if run == nil && readCalls {
+		lines, hold := functionCallReadings(command, own)
+		_, inPayload := functionCallReadings(command, segs)
+		callsHeld = hold || inPayload
+		for _, l := range lines {
+			v, err := r.judgeCalls(l, rc, nil, false)
+			if err != nil {
+				callsHeld = true
+				break
+			}
+			calls = append(calls, v)
 		}
 	}
 
@@ -778,6 +798,11 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 			break
 		}
 	}
+	// A call held unread comes after the line's other signals, so a refusal
+	// that names what it found speaks for the line first.
+	if callsHeld {
+		signals = append(signals, functionArgumentsSignal())
+	}
 
 	// Tier 1: the registry match at command position. matchedSeg records WHICH
 	// segments fired, because Tier 2's gate is per segment — a line-wide gate would
@@ -858,8 +883,44 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	if run == nil {
 		signals = append(signals, r.speculate(segs, matchedSeg, ids)...)
 	}
-	return verdicts{segs: segs, blockers: blockers, unnamedBlockers: unnamedBlockers,
-		warns: warns, unnamedWarns: unnamedWarns, hitSeg: hitSeg, signals: signals}, nil
+	v := verdicts{segs: segs, blockers: blockers, unnamedBlockers: unnamedBlockers,
+		warns: warns, unnamedWarns: unnamedWarns, hitSeg: hitSeg, signals: signals}
+	for _, c := range calls {
+		v.merge(c)
+	}
+	return v, nil
+}
+
+// merge folds what a reading of one of the line's calls found into v: its
+// entries, each first hit at the reading's own segment, and its signals, each
+// once.
+func (v *verdicts) merge(c verdicts) {
+	add := func(to *[]string, ids []string) {
+		for _, id := range ids {
+			if !containsString(*to, id) {
+				*to = append(*to, id)
+			}
+		}
+	}
+	for id, i := range c.hitSeg {
+		if _, ok := v.hitSeg[id]; !ok {
+			v.hitSeg[id] = len(v.segs) + i
+		}
+	}
+	v.segs = append(v.segs, c.segs...)
+	add(&v.blockers, c.blockers)
+	add(&v.unnamedBlockers, c.unnamedBlockers)
+	add(&v.warns, c.warns)
+	add(&v.unnamedWarns, c.unnamedWarns)
+	for _, sig := range c.signals {
+		seen := false
+		for _, have := range v.signals {
+			seen = seen || have.entryID() == sig.entryID() && have.reason == sig.reason
+		}
+		if !seen {
+			v.signals = append(v.signals, sig)
+		}
+	}
 }
 
 // decide merges what a reading found into the one decision a front door

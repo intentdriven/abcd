@@ -52,6 +52,10 @@ type segment struct {
 	nest              int
 	braceOdd          bool
 	anonymousFunction bool
+	// begin is the offset in the text tokenized of the command's first word;
+	// end, below, is where the command ends. Only a command of the text's
+	// own, at nest 0, reads them as offsets into that text (spliceCall).
+	begin int
 	// heredocUnterminated records that this command opened a here-document
 	// whose delimiter line never came, so the tokenizer read the rest of the
 	// input as body without knowing whether it WAS body. bash runs such a line
@@ -616,6 +620,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it (segment.anonymousFunction), and closingSub records the flush
 		// of a substitution's last command, one level in (segment.nest).
 		braceOdd, anonNext, closingSub bool
+		// segBegin is where the command being built began (segment.begin).
+		segBegin int
 		// curGlob rides with the WORD being built and globs with the segment:
 		// an unquoted `*`, `?` or `[` marks the word as a pattern bash expands.
 		// Only the default branch sets it — bytes that arrive through a quote,
@@ -1170,7 +1176,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), functionQuoted: quotedFn, definesFunction: definedFn, argumentsUnread: argsUnread,
-				nest: nest, braceOdd: braceOdd, anonymousFunction: anonymous,
+				nest: nest, braceOdd: braceOdd, anonymousFunction: anonymous, begin: segBegin,
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
 				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
@@ -1238,6 +1244,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// substitution inside it runs, so each one is followed.
 	arithmetic := func(body string) {
 		tally(len(body))
+		argsUnread = argsUnread || spellsArgument(body)
 		for j := 0; j < len(body); {
 			switch {
 			case body[j] == '\\':
@@ -1416,6 +1423,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// bare `(( … ))` command prints nothing and leaves no word.
 	closeArithmetic := func(f parenFrame) {
 		e := f.saved
+		// An argument the expression reads is a value bash evaluates as an
+		// expression of its own: no word stands for it.
+		lo, hi := f.pos, f.end
+		if hi > len(line) {
+			hi = len(line)
+		}
+		readsArg := lo >= 0 && lo < hi && spellsArgument(line[lo:hi])
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
@@ -1426,6 +1440,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curRedirs, andNext = e.redirs, e.andNext
 		inTest = e.inTest
 		resumeDocs(e)
+		argsUnread = argsUnread || readsArg
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 			curSplit = true
@@ -1505,6 +1520,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	for i := 0; i < len(line); {
 		c := line[i]
 		pos = i
+		if len(toks) == 0 && !hasCur {
+			segBegin = i
+		}
 		// Inside an arithmetic expansion only a command substitution is read:
 		// every other byte is expression, stepped over up to the final `)`,
 		// which resumes the enclosing command with the number in its word.
