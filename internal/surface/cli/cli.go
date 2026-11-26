@@ -5880,6 +5880,7 @@ func indefiniteArticle(noun string) string {
 // core.
 func newCaptureCommand(asJSON *bool) *cobra.Command {
 	var severity, category, source, slug, foundDuring, foundAt, lapsedAt, remedy, blockedBy, captureProductionMode string
+	var fixed, fixedImpact string
 
 	captureCmd := &cobra.Command{
 		Use:  "capture [text]",
@@ -6064,6 +6065,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				LapsedAt:    lapsedAt,
 				Remedy:      remedy,
 				BlockedBy:   splitIDList(blockedBy),
+				Fixed:       fixed,
+				FixedImpact: fixedImpact,
 			}
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode, refusal.CaptureInvalidInput); err != nil {
 				return err
@@ -6142,6 +6145,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// as --severity. There is no flag for `origin`: a capture is
 	// researcher-authored by construction (itd-178).
 	productionModeFlag(captureCmd.Flags(), &captureProductionMode, productionModeLead, productionModeTail)
+	// A finding the change at hand fixes is filed and resolved in one command
+	// (criterion 9 of itd-2611251831138387): capture's and resolve's checks are
+	// all made first and the record is written straight into resolved/, so a
+	// refusal writes nothing and the change's Resolves: trailer is accepted.
+	captureCmd.Flags().StringVar(&fixed, "fixed", "", "what fixed the finding in the change at hand: the record is written straight into resolved/ (needs --impact)")
+	enumFlag(captureCmd.Flags(), &fixedImpact, "impact", "", "with --fixed, the product impact the resolved record carries: ", changelog.ImpactNames(), "")
+	captureCmd.AddCommand(newCaptureOwedCommand(asJSON))
 
 	// list — the earned SD001 exception: a filter flag is REQUIRED.
 	var lsOpen, lsResolved, lsWontfix, lsAll bool

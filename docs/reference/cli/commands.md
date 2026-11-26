@@ -803,7 +803,7 @@ abcd build next
 
 ### `abcd capture`
 
-File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
+File an issue from quoted text, or render the ledger's status bare: Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
@@ -812,8 +812,10 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
 ```
       --blocked-by string            comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string              issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
+      --fixed string                 what fixed the finding in the change at hand: the record is written straight into resolved/ (needs --impact)
       --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string          session/command context (default manual-capture)
+      --impact string                with --fixed, the product impact the resolved record carries: additive | breaking | fix | internal
       --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string       how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
@@ -963,6 +965,32 @@ Rewrite retired promote back-links as related_intents and related_issues: Writes
 
 ```
 abcd capture migrate
+```
+
+#### `abcd capture owed`
+
+List, put or settle the findings owed a capture: Writes only the findings list under ~/.abcd.noindex/; refuses an act the entry's kind does not take.
+
+**Usage:** `abcd capture owed [<handle>...] [--captured <iss-N> | --settled <record> | --refuted <test> | --own <run> | --not-a-finding <reason> | --private] | owed --untested|--doubt|--handed-up|--private - | owed --settled [flags]`
+
+**Flags:**
+
+```
+      --captured string           settle the handles by the issue that captures them, fixed or not
+      --doubt[=true|false]        put one finding in doubt on which side of the line it falls, read from standard input (-); cleared only by a record
+      --handed-up[=true|false]    put one confirmed finding handed up by an agent that may not write, read from standard input (-)
+      --not-a-finding string      settle lines the words put on the list, with one line of reason, which is kept
+      --own string                settle failing checks as the change's own, naming the run on the base
+      --private[=true|false]      with -, put one finding kept on the private list, read from standard input; beside handles, move them there
+      --refuted string            settle the handles as refuted, naming the test that did it
+      --settled string[="list"]   bare, list the last fifty settled entries; beside handles, settle them by a record (an open issue, a wontfix, an ADR or a decision)
+      --untested[=true|false]     put one finding not yet tested, its line read from standard input (-)
+```
+
+**Example:**
+
+```
+abcd capture owed
 ```
 
 #### `abcd capture promote`
