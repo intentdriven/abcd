@@ -132,6 +132,9 @@ type Pattern struct {
 	// ShapeForgeRefPath is a forge API path to a git ref (`…/git/refs/…`), or a
 	// word a substitution helps to
 	// write that can still be one (forgeRefPathCouldBe).
+	//
+	// ShapeReleaseTag is a release tag, or a word that can still be one
+	// (releaseTagCouldBe), standing as the first operand after the subcommand.
 	ArgShapes []string `json:"arg_shapes,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —
@@ -686,7 +689,8 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// merge rule (merge.go): the merge commands while facilitator.mode is
 	// human, and an approving review on the forge in any mode. The acts come
 	// first, so a line holding both names the act.
-	signals = append(signals, personActSignals(segs)...)
+	fixed := newFixedReader(command, segs)
+	signals = append(signals, personActSignals(fixed, segs)...)
 	signals = append(signals, r.mergeSignals(segs)...)
 
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
@@ -771,7 +775,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// (matchSegmentNamed) is kept apart: it is in Matches, but the verdict
 	// speaks for the substitution unless an entry fired on a name the line
 	// spells.
+	//
+	// An act only the person takes is read once more with the words an xargs or
+	// a find supplies (supplied.go).
 	var blockers, warns, unnamedBlockers, unnamedWarns []string
+	supplied := make([][]segment, len(segs))
+	for i, s := range segs {
+		supplied[i] = suppliedReadings(s)
+	}
 	hitSeg := map[string]int{}
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
@@ -800,7 +811,12 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
-			if !segHit {
+			if !segNamed && len(supplied[i]) > 0 && readsSupplied(id) {
+				if h, n := suppliedMatch(p, supplied[i]); h {
+					segHit, segNamed = true, n
+				}
+			}
+			if !segHit || !segNamed && readsFixedProgram(id) && fixed.program(i) {
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {
@@ -852,13 +868,19 @@ func (r Registry) decide(v verdicts) Decision {
 
 	// The first synthetic block and warn (id order is not meaningful for the
 	// entry-less verdicts, so the first encountered wins its pool).
+	// A signal marked last wins only a pool no other signal reaches.
 	var synBlock, synWarn *payloadSignal
-	for i := range signals {
-		switch {
-		case signals[i].verdict == VerdictBlock && synBlock == nil:
-			synBlock = &signals[i]
-		case signals[i].verdict == VerdictWarn && synWarn == nil:
-			synWarn = &signals[i]
+	for _, last := range []bool{false, true} {
+		for i := range signals {
+			if signals[i].last != last {
+				continue
+			}
+			switch {
+			case signals[i].verdict == VerdictBlock && synBlock == nil:
+				synBlock = &signals[i]
+			case signals[i].verdict == VerdictWarn && synWarn == nil:
+				synWarn = &signals[i]
+			}
 		}
 	}
 

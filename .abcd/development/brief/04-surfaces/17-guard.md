@@ -216,7 +216,29 @@ program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
 flipping a sources ledger line (`abcd-source-ledger-flip-any-program`, and
 `abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
 or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
-stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+stop is read from (`abcd-ahoy-shared-folder-any-program`). An update that names
+a release tag is refused through the binary as `abcd-update-tag`, and as
+`abcd-update-tag-any-program` under a program whose basename carries abcd's or
+holds a part the line does not fix, or a `go run` of a Go file or an unnamed
+package after the line enters a directory named for abcd, or that names one with
+`-C` or in the file's path: its words are common to other programs,
+so a program of any other name is left alone wherever it stands
+(`"$DIR/deploy.sh" update v1.2.3`), and so are an update with no tag, its flags
+and its news sub-verb. A word the line does not fix is read as each word it can
+be, so `abcd "$V" README.md` is refused: `$V` can be the verb, and `README.md`
+is spelled as a tag can be. So is a word `xargs` adds or puts where its
+replacement string stands, and a path a `find` puts where `{}` stands, for this
+act and for the two above that no flag names: `xargs abcd update` and `find …
+-exec abcd update {} \;` are refused. A program the line names by nothing but a
+variable can be abcd, so `"$PM" update "$PKG"` and `"$PM" update v1.2.3` are
+refused as `program-name-unknown`, unless the line opens by giving the variable
+a fixed value (`PM=npm; "$PM" update "$PKG"`), or with a loop over fixed words,
+and nothing else on it can set the variable; the command is then read as the
+program each value names. Behind a launcher the guard does not
+step through (`gtimeout`, `watch`, `mise exec`, `fd -x`, an unquoted `parallel`)
+the update is the warn `unrecognised-launcher` where the line spells it through
+the binary with a tag or `{}`, and is not reached through a wrapper script or
+another build, or where neither stands. Writes, moves and
 removals of the stop's files are refused as `implement-stop-store-write`, since
 removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
@@ -227,7 +249,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-the six any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
+the seven any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against
@@ -1257,17 +1279,21 @@ command: a pid list (`p=$(pgrep make); kill $p`), a stream path handed to a
 shell, shell text run through `eval "$X"` or placed in a string a shell runs,
 or `pkill` or `killall` as a variable's value standing as the program with an
 operand (`$P make`), because reading each would refuse the ordinary commands a
-variable carries a value for; whether to is an open ruling. Nor does an allow see what a
-lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
-`$(date)`): such a name can be any program, but with no operand after it no
-entry matches, so it allows by the posture above, where an allow means no entry
-matched. What a substitution prints is read only for the exact shape `cat
-<<DELIM`, a newline, the body, the delimiter line and blanks. `/bin/cat`,
-`command cat`, `cat -`, a redirection after the delimiter word, a
-backslash-newline before the `<<`, a command after the document, a
-backslash-newline after a backtick's document, and an output inside a `${…}`
-all leave it unknown, so each of those standing alone as the command allows,
-though bash runs what it prints; handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
+variable carries a value for; whether to is an open ruling. A command whose
+program is a substitution's output the guard does not read, alone (`$(cat
+msg.txt)`, `$(date)`) or through a variable the line set from one, is refused
+under `program-name-unknown`, because which program runs is unchecked. What a
+substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
+the body, the delimiter line and blanks, and for the path a lookup of one fixed
+name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
+with `|| true`), on a line that defines no function of that name or of the
+lookup's, no alias, and runs no eval or source. A value placed unquoted where
+the shell splits it is read as the words it splits into, and a line that gives
+IFS a value other than blanks holds every such word. `/bin/cat`, `command cat`, `cat -`, a redirection after the
+delimiter word, a backslash-newline before the `<<`, a command after the
+document, a backslash-newline after a backtick's document, and an output inside
+a `${…}` all leave it unknown, so each of those as the program is refused;
+handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,6 +78,23 @@ type segment struct {
 	// speculate on it: the command's own reading was speculated on, and a
 	// value in place only spells out more text for a guess to fire on.
 	valuesPlaced bool
+	// programSupplied records a reading xargsSupplied built whose program is
+	// xargs's -J string, so the program and the words after it are all input
+	// xargs reads: any of them can be a verb.
+	programSupplied bool
+	// speculative records a window Tier 2 reads from a later word of a command
+	// (speculate.go): a guess, which holds none of the per-word records.
+	speculative bool
+	// casePattern records a command a `)` with no `(` open ended, with the
+	// ones a `|` joined to it: a case pattern and its alternatives, whose
+	// words are matched against and never run.
+	casePattern bool
+	// ifsAssignInText records, on the segment namesIFSInText rides on, that the
+	// text assigns IFS where no word reads it (unwordedIFSAssign).
+	ifsAssignInText bool
+	// definesFunction records a command that is a function's name, which a
+	// `()` after it defines.
+	definesFunction bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
@@ -87,6 +105,11 @@ type segment struct {
 	// unknown.go), and a string handed to a shell carries the value's mark
 	// for the re-read to take as a variable's (payloadView).
 	variable map[int]string
+	// transformed records, per token index, a word filed under variable one of
+	// whose sites is written with a trim, a replacement, a substring or a case
+	// change (varSite.transform): it prints another text than the value, so no
+	// reading takes it for the value of the names it spells.
+	transformed map[int]bool
 	// spelled records, per token index, a word holding a parameter
 	// expansion's mark as the line WROTE it, as the set of texts it can
 	// print (spellWritten): each variable's mark replaced by each text its
@@ -370,6 +393,8 @@ type segList struct {
 	segs     []segment
 	hits     map[*Pattern][]int
 	payloads map[int][]segment
+	// defs caches what segs define (defines).
+	defs *definitions
 }
 
 // addPayload files the segments of a command string segment at runs.
@@ -618,6 +643,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it as segment.leadFrom.
 		leads    map[int]bool
 		leadFrom map[int]leadSource
+		// transforms rides with the segment (segment.transformed).
+		transforms map[int]bool
 		// keywords records, per token index of the command being built, a
 		// for, case, in or [[ the line leaves wholly unquoted, which
 		// bashParens and testsWords read.
@@ -697,6 +724,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds    map[int][]feed
 		curFeeds []feed
 		pipeFrom int
+		// patAlts holds the commands of the line so far that a `|` ended
+		// outside every paren: a case pattern's alternatives if a `)` with
+		// no `(` open ends the next (segment.casePattern).
+		patAlts []int
 		// braceFrom holds, per `{ … }` group still open, the pipeFrom its
 		// opening word stood in. A group's output is everything its commands
 		// print, so the pipeline a `}` closes resumes where the group began:
@@ -886,6 +917,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			vars = map[int]string{}
 		}
 		vars[len(toks)] = text
+		for _, site := range curVarAt {
+			if site.transform {
+				if transforms == nil {
+					transforms = map[int]bool{}
+				}
+				transforms[len(toks)] = true
+				break
+			}
+		}
 	}
 	// addVar leaves the mark of a parameter expansion where its value goes,
 	// and records the texts it can print as the line wrote them
@@ -1105,7 +1145,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
-				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
+				stdinIn: groupIn, home: list, at: len(segs), variable: vars, transformed: transforms, spelled: spells,
 				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
@@ -1117,6 +1157,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			globs = nil
 			lits = nil
 			vars = nil
+			transforms = nil
 			spells = nil
 			splits = nil
 			fieldSplits = nil
@@ -1269,7 +1310,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub, curSplit: curSplit,
+			toks: toks, globs: globs, lits: lits, vars: vars, transforms: transforms, curVar: curVar, curSub: curSub, curSplit: curSplit,
 			spells: spells, curVarAt: curVarAt, splits: splits, fieldSplits: fieldSplits, leads: leads, leadFrom: leadFrom, keywords: keywords,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
@@ -1282,6 +1323,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curQuoted = false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub, curSplit = nil, nil, false, false, false
+		transforms = nil
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
@@ -1354,6 +1396,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		transforms = e.transforms
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
@@ -1382,6 +1425,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		transforms = e.transforms
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
@@ -1557,6 +1601,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
+					curVarAt[len(curVarAt)-1].transform = modifiedParam(line, k)
 					// Only a plain `"$NAME"` or `"$1"` is one word: `"$@"`
 					// yields one per element, and zsh reads a subscript or a
 					// modifier after the name (`"$a[@]"`, `"$v:h"`).
@@ -1570,6 +1615,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					// zsh's `"$=V"`, `"$^@"` and `"$~@"` split or expand
 					// what they print.
 					addParam("$" + strings.TrimLeft(line[j+1:k], zshParamFlags))
+					curVarAt[len(curVarAt)-1].transform = modifiedParam(line, k)
 					curSplit = true
 					j = k
 					continue
@@ -1657,6 +1703,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			i++
 		case c == '\n':
 			flushSegment()
+			patAlts = nil
 			i++
 			// A pending heredoc body starts on the NEXT LINE, and is DATA, not
 			// commands: writing a document that names a hazard must never read
@@ -1908,6 +1955,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// as a pattern, read as an unquoted one is.
 			end := zshFlaggedParamEnd(line, i+1)
 			addParam("$" + strings.TrimLeft(line[i+1:end], zshParamFlags))
+			curVarAt[len(curVarAt)-1].transform = modifiedParam(line, end)
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false
@@ -1919,6 +1967,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
 			addParam(paramText(line[i:end]))
+			curVarAt[len(curVarAt)-1].transform = modifiedParam(line, end)
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false
@@ -2008,7 +2057,35 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					}
 				}
 			}
+			before := len(segs)
 			flushSegment()
+			if c == '(' && len(segs) > before && strings.HasPrefix(strings.TrimLeft(line[i+1:], " \t"), ")") {
+				// `NAME ()` opens a function's definition.
+				if t := segs[len(segs)-1].tokens; len(t) == 1 && t[0] != "" && !strings.Contains(t[0], "=") ||
+					len(t) == 2 && t[0] == "function" {
+					segs[len(segs)-1].definesFunction = true
+				}
+			}
+			if len(parens) == 0 {
+				grew := len(segs) > before
+				switch {
+				case c == '|' && !(i+1 < len(line) && (line[i+1] == '|' || line[i+1] == '&')):
+					if grew {
+						patAlts = append(patAlts, len(segs)-1)
+					}
+				case c == ')':
+					// A `)` no `(` opened ends a case pattern: its words are
+					// matched against, not run.
+					if grew {
+						for _, k := range append(patAlts, len(segs)-1) {
+							segs[k].casePattern = true
+						}
+					}
+					patAlts = nil
+				default:
+					patAlts = nil
+				}
+			}
 			if c == '&' && !(i+1 < len(line) && line[i+1] == '&') && len(segs) > 0 {
 				segs[len(segs)-1].background = true
 			}
@@ -2202,10 +2279,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
-	if depth == 0 && (unwordedIFS(line, segs) || targetsAnExpansion(line)) {
-		// The text of every substitution depth is in the line read at
-		// depth 0, so it is read once, there.
-		segs = append(segs, segment{chain: chain, namesIFSInText: true})
+	if depth == 0 {
+		if unwordedIFS(line, segs) || targetsAnExpansion(line) {
+			// The text of every substitution depth is in the line read at
+			// depth 0, so it is read once, there.
+			segs = append(segs, segment{chain: chain, namesIFSInText: true, ifsAssignInText: unwordedIFSAssign(line, segs)})
+		}
 	}
 	if depth == 0 {
 		if names, numbers := expansionAssigns(line), numberAssigns(line); len(names) > 0 || len(numbers) > 0 {
@@ -2424,6 +2503,22 @@ func unwordedIFS(line string, segs []segment) bool {
 	}
 	return n > 0
 }
+
+// unwordedIFSAssign reports whether line assigns IFS more times than the words
+// segs read from it do: `IFS` followed by `=`, `+=` or `:=`, in an arithmetic
+// body, a subscript or a default (`: $((IFS=1))`, `${IFS:=x}`).
+func unwordedIFSAssign(line string, segs []segment) bool {
+	n := len(ifsAssign.FindAllStringIndex(line, -1))
+	for _, s := range segs {
+		for _, tok := range s.tokens {
+			n -= len(ifsAssign.FindAllStringIndex(tok, -1))
+		}
+	}
+	return n > 0
+}
+
+// ifsAssign is an assignment to IFS in text.
+var ifsAssign = regexp.MustCompile(`IFS\s*[+:]?=`)
 
 // arithmeticOperand is the word an arithmetic expansion leaves in its
 // command: a number, which is all `$(( … ))` can print. Its value is not
@@ -2787,6 +2882,14 @@ func plainParam(line string, j, k int) bool {
 	return true
 }
 
+// modifiedParam reports whether the text at k, straight after an unbraced
+// parameter, is one zsh reads as part of it: a subscript (`$v[1]`) or a modifier
+// (`$v:t`, `$v:s/a/b/`), so the expansion prints another text than the value.
+func modifiedParam(line string, k int) bool {
+	return k < len(line) && (line[k] == '[' ||
+		line[k] == ':' && k+1 < len(line) && strings.IndexByte(zshModifiers, line[k+1]) >= 0)
+}
+
 // zshModifiers are the characters that, after a `:` that follows an unbraced
 // parameter, zsh reads as a modifier rather than text (zshexpn(1),
 // Modifiers): `$v:h`, `$v:s/a/b/`, `$v:gs/a/b/`, `$v:&`.
@@ -3019,6 +3122,7 @@ type enclosing struct {
 	fieldSplits map[int]bool
 	leads       map[int]bool
 	leadFrom    map[int]leadSource
+	transforms  map[int]bool
 	keywords    map[int]bool
 	cur         []byte
 	curMask     []byte

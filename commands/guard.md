@@ -791,6 +791,21 @@ other program names as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-f
 removals of the stop's files are refused as `implement-stop-store-write`, since removing a stop is lifting it
 (`commands/implement.md`).
 
+**Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
+`abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
+build, a `go run` of a file or an unnamed package after the line enters a directory named for abcd, or that
+names one with `-C` or in the file's path) as
+`abcd-update-tag-any-program`. A word the line does not fix counts as a tag, as the verb too, so
+`abcd "$V" README.md` is refused; so do the words `xargs` and `find -exec` supply (`xargs abcd update`), there
+and as the words of the two acts above. A
+program named by a variable alone (`"$PM" update "$PKG"`) can be abcd and is refused as
+`program-name-unknown`: spell the program, or open the line with its value (`PM=npm; "$PM" update "$PKG"`)
+or a loop over fixed words, and each value is read as the program it names. A program another name is fixed for (`"$DIR/deploy.sh" update v1.2.3`) is left
+alone. Behind a launcher the guard does not step through (`gtimeout`, `watch`, `mise exec`, `fd -x`, an
+unquoted `parallel`) the update only warns (`unrecognised-launcher`) where the line spells it through the
+binary with a tag or `{}`, and is not reached through a wrapper script or where neither stands. `abcd update`
+with no tag, its flags and `abcd update news` are not refused (`commands/update.md`).
+
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
 file per line, and read only when this account owns it and no one else can
 write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.
@@ -934,7 +949,8 @@ push --force` block, and so does an unknown name followed by a shell's `-c`
 string, a wrapper's options or an alias, because the name can be the shell, the
 wrapper or git. Where the only entries that fire are ones the unknown name can
 be, the block is reported as `program-name-unknown`, with the entries the line
-reads as among its matches, and its way past is to spell the program's name. A
+reads as among its matches, and its way past is to spell the program's name where
+the command runs. A
 program name nothing fixes can be `pkill` or `killall`, so an unknown name
 followed by any operand (`"$(which python3)" script.py`, `$(date) x`) blocks —
 an accepted over-block, answered the same way. So is a here-document whose
@@ -1550,16 +1566,22 @@ because reading every such command as one would turn allexport on after
 ordinary commands, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
-dangerous form no entry describes. Nor does an allow see what a lone substitution
-prints when it stands as the whole command (`$(cat msg.txt)`, `$(date)`): the
-name can be any program, but with no operand after it no entry matches, so it
-allows, because an allow means no entry matched. What a substitution prints is
-read only for the exact shape `cat <<DELIM`, a newline, the body, the delimiter
-line and blanks; `/bin/cat`, `command cat`, `cat -`, a redirection after the
-delimiter word, a backslash-newline before the `<<`, a command after the
-document, a backslash-newline after a backtick's document, and an output inside
-a `${…}` all leave it unknown, so each of those alone as the command allows,
-though bash runs what it prints (handed to `sh -c` as its string, each warns).
+dangerous form no entry describes. A command whose program is a substitution's
+output the guard does not read, alone (`$(cat msg.txt)`, `$(date)`) or through a
+variable the line set from one (`P=$(cat f); $P make`), is refused under
+`program-name-unknown`, because which program runs is unchecked. What a
+substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
+the body, the delimiter line and blanks, and for the path a lookup of one fixed
+name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
+with `|| true`), read as that program on a line that defines no function of that
+name or of the lookup's, no alias, and runs no eval or source. A value placed
+unquoted where the shell splits it (`P='git prune'; $P`) is read as the words it
+splits into, and a line that gives IFS a value other than blanks holds every such
+word. `/bin/cat`, `command cat`, `cat -`, a
+redirection after the delimiter word, a backslash-newline before the `<<`, a
+command after the document, a backslash-newline after a backtick's document, and
+an output inside a `${…}` all leave it unknown, so each of those as the program
+is refused (handed to `sh -c` as its string, each warns).
 Coverage is what the registry names. Say exactly this if a user asks about
 coverage — never that the guard cleared the command.
 

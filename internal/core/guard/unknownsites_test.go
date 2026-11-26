@@ -120,6 +120,7 @@ var wordReaders = map[string]string{
 	"targetsAnExpansion":     "exempt: reads the raw text for an assignment target that holds an expansion (`--` a decrement or a flag), never a command word's flag",
 	"operatorAt":             "exempt: reads an assignment or step operator (`--`, `-=`) in the raw text, never a command word or a flag",
 	"namesIFS":               "exempt: reads a declaration's literal nameref flag (`-n`); a flag word holding an expansion is already read as a name the builtin assigns (nameMarked)",
+	"assignsIFS":             "exempt: hands each IFS value to blankIFS, where one no line fixes splits anywhere unless a variable that only saves $IFS holds it, and a name an expansion spells handed to a builtin that names what it sets counts as IFS",
 	"guessedEvalPayload":     "exempt: reads eval's literal `--`; vanishable drops a word that may print nothing",
 	"evalPayload":            "exempt: reads eval's literal `--`, which no substitution spells (the rule's terminator clause)",
 	"trapAction":             "exempt: reads trap's literal `-p`, `-l`, `--` and `-`; an unknown first word falls to the ACTION reading, which is judged, never skipped",
@@ -168,6 +169,31 @@ var wordReaders = map[string]string{
 
 	// personacts.go: the person's own acts under any program name.
 	"actOf": "commandSites and commandNamed for the program; a verb or boolean flag the line does not fix reads as empty, deliberately fail-open, so a flag a substitution prints is not taken as set, as commands/guard.md names; a value flag is read fail-closed through knownText and unknownFlagCouldBe",
+
+	// releasetag.go: the release tag as an operand.
+	"tagFrom":        "knownText and vanishable through actWordsOf, unknownCouldBe for the verb and releaseTagCouldBe for the operand: a word the line does not fix is read as each it can be",
+	"entersAbcd":     "commandSites and nameCouldBeAny for the program; its words only widen what tagAct refuses",
+	"unnamedPackage": "exempt: reads a package path only to widen what tagAct refuses",
+
+	// fixedprogram.go: the program a variable the line sets names.
+	"program":       "commandSites, isUnknown and unfixed: a word nothing on the line fixes is no fixed program",
+	"segmentMaySet": "commandSites and unfixed: a word no line fixes may set the variable",
+	"maySetBy":      "exempt: reads the words a builtin is handed, and a word no line fixes (unfixed) counts as naming the variable",
+	"quietCommand":  "isUnknown and unfixed: a word no line fixes, other than a plain variable's value, makes the command one that may set a variable",
+
+	// carried.go: the values a line assigns, in place.
+	"programWords":    "commandSites: every word the walk may run as a program, but the name command -v looks up",
+	"carriedSegments": "isUnknown: a value placed as a running program that the guard did not read holds the line (unreadProgram)",
+	"looksUp":         "exempt: reads the literal command and its -v or -V option ahead of the first word commandSites places; any other word is read as running",
+	"setsPositionals": "unfixed: a word no line fixes among set's words gives positional parameters no fixed value, read as unknown",
+	"unreadProgram":   "isUnknown: a running program the guard did not read holds the line",
+	"lookupShape":     "unfixed: a lookup of a name no line fixes prints no fixed program",
+	"segmentDefines":  "unfixed: a function whose name no line fixes can be any name, so no lookup on the line is read as a path",
+	"rebindsProgram":  "unfixed: a word no line fixes among hash's words may bind a name, so the line is held",
+	"leadsDash":       "exempt: reads a value the line assigned, as fixed text, not a word of the line",
+
+	// supplied.go: the words xargs and a find hand the command they run.
+	"suppliedReadings": "commandSites, commandNamed and anyProgram for xargs and find: a name nothing fixes is read as neither, and a supplied word is unknownText",
 
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
@@ -222,6 +248,7 @@ var wordReaders = map[string]string{
 	"readTar":            "isUnknown: a word no line fixes may be -P, so the archive is judged as able to land anywhere",
 	"unzipTargets":       "exempt: reads unzip's literal option letters; a word no line fixes is read as the archive, and -d's value goes through resolveToken or valueAt, which refuse an unknown word",
 	"xargsReplacement":   "isUnknown: an option word no line fixes may name a replacement string, so every word of the command is read as unknown (xargsView)",
+	"xargsRunsInput":     "isUnknown: a program word or a command string xargs fills from its input, or with an option no line fixes, holds the line",
 	"plainFrom":          "isUnknown: a word the line does not fix voids the no-file exemption it guards",
 	"gitOutputs":         "exempt: each --output value goes through at or valueAt, which refuse an unknown word",
 	"moverReads":         "exempt: matches the command's name literally and hands its words to readOptsEach or gitRead, which read an unknown word as unsure or loose",

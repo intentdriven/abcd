@@ -87,13 +87,12 @@ To take the update, run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" update --yes --json
 ```
 
-An explicit tag pins the release; the bare form resolves the latest and the
-receipt names what it resolved (`--yes` skips the terminal confirmation,
-which cannot be answered here):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" update v0.7.0 --json
-```
+The bare form resolves the latest release and the receipt names what it
+resolved (`--yes` skips the terminal confirmation, which cannot be answered
+here). An explicit tag, `abcd update v0.7.0`, pins the release, and naming one
+is the person's own act: the shell guard refuses it to an agent
+(`abcd-update-tag`). When the person asks for a named release, give them that
+command to run themselves.
 
 Report the receipt's `action`, `tag`, `digest`, `attested_by` (the verified
 provenance signer), `target_path`, and `old_version` → `new_version` from the
