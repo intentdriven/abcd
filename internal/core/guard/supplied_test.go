@@ -115,3 +115,29 @@ func TestSuppliedWordsAreReadAsAnActsWords(t *testing.T) {
 		}
 	}
 }
+
+// TestAPlaceholderAsTheProgramIsReadAsItsWords: xargs's replacement string standing
+// as the program's own word is the words xargs puts there, and GNU's abbreviation
+// of --replace names one too.
+func TestAPlaceholderAsTheProgramIsReadAsItsWords(t *testing.T) {
+	reg := Defaults()
+	for _, cmd := range []string{
+		`echo abcd | xargs -I{} {} update v0.7.0`,
+		`echo abcd | xargs -tI% % update v0.7.0`,
+		`echo abcd update | xargs -J % % v0.7.0`,
+		`echo abcd | xargs -i {} update v0.7.0`,
+		`echo v0.7.0 | xargs --repl=% abcd update %`,
+		`echo v0.7.0 | xargs --r=% abcd update %`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+	for _, cmd := range []string{
+		`echo x | xargs --repl=% echo %`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+}

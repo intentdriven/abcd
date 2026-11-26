@@ -77,6 +77,10 @@ type segment struct {
 	// speculate on it: the command's own reading was speculated on, and a
 	// value in place only spells out more text for a guess to fire on.
 	valuesPlaced bool
+	// programSupplied records a reading xargsSupplied built whose program is
+	// xargs's -J string, so the program and the words after it are all input
+	// xargs reads: any of them can be a verb.
+	programSupplied bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word

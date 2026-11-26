@@ -56,20 +56,22 @@ func suppliedReadings(s segment) []segment {
 
 // suppliedMatch reports whether entry p fires on a reading of s with the words
 // xargs or a find supplies. A program of a wholly unknown name counts only where
-// the line spells the entry's verb.
+// the line spells the entry's verb, or where xargs's input is the program and its
+// words (segment.programSupplied).
 func suppliedMatch(p Pattern, readings []segment) (hit, named bool) {
 	for _, r := range readings {
 		h, n := matchSegmentNamed(p, r)
 		if n {
 			return true, true
 		}
-		hit = hit || h && containsString(r.tokens, p.Subcommand)
+		hit = hit || h && (r.programSupplied || containsString(r.tokens, p.Subcommand))
 	}
 	return hit, false
 }
 
 // xargsSupplied is the command at site as the xargs at x runs it, from its program
-// on. A word holding xargs's replacement string holds the words xargs reads there
+// on. A word holding xargs's replacement string, the program's own included, holds
+// the words xargs reads there
 // (placeholderWords); with no replacement string, xargs adds two words after the
 // command's own, since its input may hold the verb and its operand; and where the
 // line does not fix the options, every word of the command can be any.
@@ -81,10 +83,11 @@ func xargsSupplied(s segment, x, site int) segment {
 		d.tokens = append(d.tokens, t)
 		globbed = append(globbed, glob)
 	}
+	d.programSupplied = ok && all && s.tokens[site] == repl
 	for i := site; i < len(s.tokens); i++ {
 		t := s.tokens[i]
 		switch {
-		case i == site || !ok && !unsure:
+		case !ok && !unsure || i == site && unsure:
 			add(t, s.globAt(i))
 		case unsure:
 			add(unknownText, false)

@@ -371,7 +371,7 @@ func xargsView(s segment, site int) segment {
 
 // xargsReplacement is the replacement string xargs's options between from and
 // site name: -I and -J take one, glued or the next word, and -i and --replace
-// take one glued on, `{}` by default, each also last in a cluster of flags
+// (or a start of it) take one glued on, `{}` by default, each also last in a cluster of flags
 // (`-tI%`). ok is false where none is named; all says -J named it, which puts
 // every word xargs reads where the string stands. unsure says the line does not
 // fix the string, or an option word, which may name one, so any word of the
@@ -383,8 +383,10 @@ func xargsReplacement(s segment, from, site int) (repl string, ok, all, unsure b
 			unsure = true
 			continue
 		}
-		if strings.HasPrefix(t, "--replace") {
-			repl, ok, all = strings.TrimPrefix(strings.TrimPrefix(t, "--replace"), "="), true, false
+		// GNU xargs reads any start of --replace as it (`--repl=%`): no other
+		// of its long options starts --r.
+		if key, val, _ := strings.Cut(t, "="); len(key) > 2 && strings.HasPrefix("--replace", key) {
+			repl, ok, all = val, true, false
 			continue
 		}
 		if len(t) < 2 || t[0] != '-' || t[1] == '-' {
