@@ -85,7 +85,7 @@ func TestRemoteHeadBranchErrsOnAnInvalidName(t *testing.T) {
 // answered it for intentdriven/abcd on 2026-10-16, byte for byte.
 const liveAbcdAnswer = "ref: refs/heads/main\tHEAD\n816b5286bb3bfd133378aa7f880b0affc8903823\tHEAD\n"
 
-func TestRemoteHeadFromParsesEachAnswer(t *testing.T) {
+func TestRemoteHeadBranchReadsEachAnswer(t *testing.T) {
 	root := gittest.NewRepo(t).Root()
 	sha := "816b5286bb3bfd133378aa7f880b0affc8903823"
 	cases := []struct {
@@ -104,7 +104,8 @@ func TestRemoteHeadFromParsesEachAnswer(t *testing.T) {
 		{"a symref for another ref", "ref: refs/heads/main\trefs/remotes/x\n", ""},
 	}
 	for _, c := range cases {
-		got, err := gitutil.RemoteHeadFrom(root, "origin", c.out)
+		answer := func(string, ...string) (string, error) { return c.out, nil }
+		got, err := gitutil.RemoteHeadBranch(answer, root, "origin")
 		if c.want == "" {
 			if err == nil {
 				t.Errorf("%s: got %q, nil; want an error", c.name, got)
