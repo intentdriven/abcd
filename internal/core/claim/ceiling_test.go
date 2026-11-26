@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // worktree adds a worktree of p's clone named name, with its own local tier
@@ -80,10 +82,12 @@ func TestTheViewNamesTheSiblingWorktreeAReservationWasMadeFrom(t *testing.T) {
 
 // TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit
 // (iss-2610231004140527): a person's live holds are counted by copy (this
-// one, each sibling worktree here, and elsewhere) against this machine's
-// reservation.max_live, with a warning from four fifths of it that says
-// every account whose holds are the person's counts too: here another
-// computer's, whose holder id this home declares.
+// one, each sibling worktree here, and elsewhere) against the ceiling, here
+// this machine's reservation.max_live lowering the default and named as the
+// layer that set it, with a warning from four fifths of it that says every
+// account whose holds are the person's counts too: here another computer's,
+// whose holder id this home declares. A lane whose stage is land, its pull
+// request queued, still counts.
 func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	w := newWorld(t)
 	home := t.TempDir()
@@ -101,6 +105,9 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 		}
 	}
 	declareHolderIDs(t, home, far.keptHolderID()+"\n")
+	if _, err := p.do(Request{Record: "iss-1", Renew: true, Stage: "land"}); err != nil {
+		t.Fatalf("renewing iss-1 at land: %v", err)
+	}
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +119,9 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	if !ok {
 		t.Fatal("no ceiling for the reader")
 	}
+	if c.LimitLayer != LimitMachine || c.LimitOrigin != abcdhome.Display("config.json") {
+		t.Fatalf("ceiling set by %q at %q; want this machine's file", c.LimitLayer, c.LimitOrigin)
+	}
 	if c.Holder != p.keptHolderID() || c.Live != 4 || c.Limit != 5 || c.ThisCopy != 2 || c.Elsewhere != 1 ||
 		len(c.Siblings) != 1 || c.Siblings[0].Name != "lane-b" || c.Siblings[0].Live != 1 {
 		t.Fatalf("ceiling = %+v; want the holder id 4 of 5: this copy 2, lane-b 1, elsewhere 1", c)
@@ -120,7 +130,7 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 		t.Fatal("4 of 5 is not warned of")
 	}
 	msg := c.Warning()
-	for _, want := range []string{"4 of", "5", "account whose holds are yours", "not readable here"} {
+	for _, want := range []string{"4 of", "5", "this machine's lower ceiling", "account whose holds are yours", "not readable here"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("warning %q lacks %q", msg, want)
 		}
@@ -326,7 +336,7 @@ func TestTheCapRefusalNamesOnlyTheHoldersOwnCopiesAndWhyNoSiblingIs(t *testing.T
 		{Record: "iss-1", Holder: "mallory", State: StateLive, Copy: CopyThis},
 		{Record: "iss-1", Holder: "octo", State: StateExpired, Copy: CopyThis},
 	}}
-	err := capRefusalIn(&snap, t.TempDir(), Self{Login: "octo"}, []string{"iss-1"}, 1, "")
+	err := capRefusalIn(&snap, t.TempDir(), Self{Login: "octo"}, []string{"iss-1"}, liveLimit{N: 1, Layer: LimitBundled}, "")
 	for _, want := range []string{"elsewhere: iss-1", "could not be listed"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q lacks %q", err, want)
@@ -367,5 +377,28 @@ func TestASiblingsNameAndPathAreTerminalSafe(t *testing.T) {
 	}
 	if strings.ContainsRune(at.Name, 0x1b) || strings.ContainsRune(at.Path, 0x1b) {
 		t.Fatalf("sibling = %+v; want no escape character", at)
+	}
+}
+
+// TestTheWarningNamesTheRepositorysCeiling (itd-2611251809580662): with the
+// repository setting 5 and this machine none, the ceiling is the
+// repository's, named with its file at the branch, and the warning names the
+// repository's ceiling, not this machine's.
+func TestTheWarningNamesTheRepositorysCeiling(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 5}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	reserveN(t, p, 4)
+	snap, err := View(p.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, ok := CeilingFor(p.dir, &snap, p.opts())
+	if !ok || c.Limit != 5 || c.LimitLayer != LimitRepository || c.LimitOrigin != ".abcd/config.json at origin/main" || !c.Warn {
+		t.Fatalf("ceiling = %+v, %v; want 4 of the repository's 5, warned", c, ok)
+	}
+	if msg := c.Warning(); !strings.Contains(msg, "the repository's ceiling (reservation.max_live in .abcd/config.json at origin/main)") ||
+		strings.Contains(msg, "this machine's") {
+		t.Fatalf("warning %q; want the repository's ceiling named, not this machine's", msg)
 	}
 }

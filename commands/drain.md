@@ -969,8 +969,9 @@ what it did in `next`:
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
-  live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
+  live reservations (ten unless the repository's `reservation.max_live` in
+  `.abcd/config.json` at origin's default branch sets another, from 1 to 100,
+  or their computer's `~/.abcd.noindex/config.json` lowers it), counted in the move's view
   before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or

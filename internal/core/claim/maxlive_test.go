@@ -12,11 +12,11 @@ import (
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// The cap on one person's live reservations is the person's own machine
-// setting (iss-2610170717515674): reservation.max_live in
-// ~/.abcd.noindex/config.json, a whole number from 1 to 100, ten when absent.
-// No repository file is read for it, so a checkout cannot raise a person's
-// ceiling.
+// The cap on one person's live reservations (iss-2610170717515674) is
+// reservation.max_live, a whole number from 1 to 100: the repository's, read
+// at origin's default branch, over the bundled ten, which the person's own
+// ~/.abcd.noindex/config.json may lower and never raise (itd-2611251809580662
+// decision 3; maxlive_repo_test.go holds the repository's cases).
 
 // reserveN has p reserve iss-1 to iss-n, each with its own file.
 func reserveN(t *testing.T, p *participant, n int) {
@@ -28,12 +28,13 @@ func reserveN(t *testing.T, p *participant, n int) {
 	}
 }
 
-// TestARaisedCapAdmitsPastTen: reservation.max_live 12 in the person's own
-// config.json admits an eleventh and a twelfth, and the thirteenth is refused
-// naming twelve and the setting.
+// TestARaisedCapAdmitsPastTen: reservation.max_live 12 in the repository's
+// file on origin's default branch admits an eleventh and a twelfth, and the
+// thirteenth is refused naming twelve and the setting.
 func TestARaisedCapAdmitsPastTen(t *testing.T) {
 	w := newWorld(t)
-	p := w.clone("1234+octo@users.noreply.github.com", machineConfig(t, `{"reservation": {"max_live": 12}}`))
+	w.ceilingOnMain(`{"reservation": {"max_live": 12}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
 	reserveN(t, p, 12)
 	_, err := p.reserve("iss-13", "f13.go")
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "you hold 12 live reservations, the most one person may hold") ||
@@ -105,9 +106,10 @@ func TestAnUnusableCapNeverStopsARelease(t *testing.T) {
 	}
 }
 
-// TestTheRepositoryCannotRaiseTheCap: a checkout's own .abcd/config.json
-// setting reservation.max_live is never read for it.
-func TestTheRepositoryCannotRaiseTheCap(t *testing.T) {
+// TestALocalCommitCannotRaiseTheCap: a checkout's own .abcd/config.json
+// setting reservation.max_live, committed on its local main but not on
+// origin's default branch, is never read for it.
+func TestALocalCommitCannotRaiseTheCap(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	if err := os.WriteFile(filepath.Join(p.dir, ".abcd", "config.json"), []byte(`{"reservation": {"max_live": 50}}`), 0o644); err != nil {
@@ -179,20 +181,35 @@ func TestAHomeInsideAWorkingTreeCannotRaiseTheCap(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "HOME lies inside the git working tree") || w.remoteTip("iss-1") != "" {
 		t.Fatalf("a reservation under a HOME inside a working tree setting 50 = %v; want it refused, nothing pushed", err)
 	}
-	if n, note, err := maxLive(home); err != nil || n != MaxLive || !strings.Contains(note, "HOME lies inside a git working tree") {
-		t.Fatalf("the cap under such a HOME = %d, %q, %v; want ten, saying why", n, note, err)
+	if n, note, err := maxLive("", "", home); err != nil || n.N != MaxLive || !strings.Contains(note, "HOME lies inside a git working tree") {
+		t.Fatalf("the cap under such a HOME = %d, %q, %v; want ten, saying why", n.N, note, err)
 	}
 }
 
-// TestAtTheCeilingTheRefusalOffersNoRaise: at 100 the setting cannot go
-// higher, so the refusal does not offer raising it.
-func TestAtTheCeilingTheRefusalOffersNoRaise(t *testing.T) {
-	err := capRefusal([]string{"iss-1"}, nil, MaxLiveCeiling, "")
-	if strings.Contains(err.Error(), "raise") {
-		t.Fatalf("the refusal at the ceiling = %v; want no offer to raise it", err)
-	}
-	if err := capRefusal([]string{"iss-1"}, nil, 1, ""); !strings.Contains(err.Error(), "raise reservation.max_live") {
-		t.Fatalf("the refusal below the ceiling = %v; want the offer to raise it", err)
+// TestTheRefusalNamesWhereTheCapIsSetAndOffersNoRaise: whichever layer set
+// the cap, the refusal never tells a person to raise the machine's key: it
+// names the repository's file, changed through a reviewed change, and the
+// machine's file as the one that may only lower it.
+func TestTheRefusalNamesWhereTheCapIsSetAndOffersNoRaise(t *testing.T) {
+	for _, c := range []struct {
+		lim  liveLimit
+		want []string
+	}{
+		{liveLimit{N: 4, Layer: LimitRepository, Origin: ".abcd/config.json at origin/main"},
+			[]string{"the ceiling of 4 is the repository's reservation.max_live in .abcd/config.json at origin/main", "reviewed change", "may only lower it"}},
+		{bundledLimit(), []string{"the ceiling of 10 is abcd's default", "reservation.max_live in .abcd/config.json", "reviewed change", "may only lower it"}},
+		{liveLimit{N: 3, Layer: LimitMachine, Origin: abcdhome.Display("config.json")},
+			[]string{"the ceiling of 3 is this machine's reservation.max_live", "may only lower the repository's", ".abcd/config.json"}},
+	} {
+		err := capRefusal([]string{"iss-1"}, nil, c.lim, "")
+		if strings.Contains(err.Error(), "raise") {
+			t.Errorf("%s: %v; want no offer to raise the cap", c.lim.Layer, err)
+		}
+		for _, want := range c.want {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: %v; want %q", c.lim.Layer, err, want)
+			}
+		}
 	}
 }
 

@@ -17,8 +17,9 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
 (how many live reservations one person may hold across all of their sessions:
-1 to 100 and 10 by default), read from the machine layer alone
-(`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
+1 to 100 and 10 by default), set by the repository's file at origin's default
+branch and lowered, never raised, by the machine's (below;
+`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), the load gate's
@@ -180,9 +181,11 @@ hand-set: the binary reads them and never writes them.
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
   },
   "reservation": {
-    "fork_origin": "refuse"             // "refuse" | "<owner>/<name>": the one fork, if any, on which a
+    "fork_origin": "refuse",            // "refuse" | "<owner>/<name>": the one fork, if any, on which a
                                         //   reservation is made when GitHub names an origin push URL a
                                         //   fork (04-surfaces/37-reserve.md)
+    "max_live": 10                      // one person's ceiling on live reservations, 1 to 100, read at
+                                        //   origin's default branch; a machine's figure may only lower it
   },
   "facilitator": {
     "mode": "human"                     // "human" (default) | "auto": whether a person or abcd merges, read
@@ -259,6 +262,22 @@ a reservation on a fork naming the file and never stops one anywhere else. The m
 layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
+
+The `reservation.max_live` key, one person's ceiling on live reservations, 1
+to 100 and 10 by default, runs the other way (itd-2611251809580662 decisions 3
+and 8, refining dcn-2611222342270127 for this key alone): the repository's
+`.abcd/config.json` sets it, read at the commit origin's default branch stood
+at when the checkout last fetched it, as stored, never from a working tree or
+another branch, and `~/.abcd.noindex/config.json` may lower it on that machine
+and never raise it, a higher figure there ignored and named. A checkout with no
+default branch of origin reads no repository figure and says so. In the
+repository's file the `reservation` namespace takes `max_live` and
+`fork_origin`; `reservation.github_username` is refused there, naming the file
+and the commit. A repository value out of range or an unknown key refuses an
+act that adds a reservation, naming the file at the branch; a machine file that
+cannot be read is read past, the figure so far applying, which the refusal at
+the cap says. Neither refuses a release or a renewal
+(`internal/core/claim/maxlive.go`).
 
 The `drain.bundle_max` key is read through the same reader, and a repository
 may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the
@@ -1514,9 +1533,7 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
 `review.max_reviewers`, `models.classes` and `models.effort` (a repository's skipped with a warning),
-`reservation.github_username`, `reservation.max_live` (1 to
-100, 10 by default, read past to 10 when the file cannot be read, which the
-refusal at the cap says), `load.preflights` (how many preflights the first
+`reservation.github_username`, `load.preflights` (how many preflights the first
 gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other

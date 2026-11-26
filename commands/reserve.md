@@ -515,11 +515,18 @@ renewing one that has lapsed counts as a new one. The refusal advises waiting
 for one of the user's pull requests to merge, which ends its reservation: most
 of them are usually lanes whose pull requests wait on a merge, and releasing
 one would free an issue whose work is done. Release one only when its work is
-abandoned, if the user agrees. A person who runs many sessions at once raises
-the cap with `reservation.max_live` in their own `~/.abcd.noindex/config.json`
-(a whole number from 1 to 100), never in a repository's `.abcd/config.json`,
-which is not read for it; a value outside that range, or a misspelt key beside
-it, is refused naming the file.
+abandoned, if the user agrees. The repository sets the cap with
+`reservation.max_live` in its `.abcd/config.json` (a whole number from 1 to
+100), read at the commit origin's default branch stood at when this checkout
+last fetched it and never from a working tree or another branch, so every
+computer of one person reads the same number; changing it is a reviewed
+change to that file. The user's own `~/.abcd.noindex/config.json` may lower it
+on their computer and never raise it: a higher figure there is ignored and
+named. The refusal names which of the two set the cap. A value outside that
+range in either file, a misspelt key beside it, or
+`reservation.github_username` in the repository's file (a person's username is
+never the repository's to say) refuses a new reservation naming the file, and
+the repository's at its branch; it never refuses a release or a renewal.
 
 **Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
 whether each URL origin pushes to is a fork; a renewal and a release never ask,

@@ -6361,9 +6361,12 @@ hold), a live drain lane's stage when its renewal names one, the worktree of
 this repository on this machine that made one (by its folder's name, with
 parent folders added only where two would otherwise read alike),
 each person's count of live reservations, the reader's own counted by copy
-(this copy, each such worktree, elsewhere) against this machine's
-reservation.max_live with a warning from four fifths of it, since every
-session and account on the same login counts toward the same total, and a
+(this copy, each such worktree, elsewhere) against the ceiling, named by
+the layer that set it: reservation.max_live in the repository's
+.abcd/config.json at origin's default branch, which this machine's own
+figure may only lower, ten when neither sets it; with a warning from four
+fifths of it, since every session and account on the same login counts
+toward the same total, and a
 line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the

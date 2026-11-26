@@ -400,34 +400,48 @@ branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
 
-The cap is ten unless the person's own machine sets `reservation.max_live` in
-`~/.abcd.noindex/config.json`, a whole number from 1 to 100
-(`internal/core/claim/maxlive.go`, iss-2610170717515674). It stays one ceiling
-per person, counted across all of their sessions and copies, so a person who
-runs many sessions on one account raises it rather than releasing and
-re-taking holds to make room. It is read from the machine layer alone: a
-repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
-raise anyone's ceiling, nor can a `HOME` set inside a working tree that is not
-the account's own. A value outside the range, or a key under `reservation`
-that nothing reads, refuses an act that adds a reservation (reviving a lapsed
-one among them) naming the file, never falling back to ten; no other act reads
-the setting, so a bad value never stops a release or the renewal of a live
-reservation. The holder's reader (`reservation.github_username`) reads the
+The cap is ten unless the repository sets `reservation.max_live` in its
+`.abcd/config.json`, a whole number from 1 to 100
+(`internal/core/claim/maxlive.go`, iss-2610170717515674; itd-2611251809580662
+decisions 3 and 8). It stays one ceiling per person, counted across all of
+their sessions, copies and accounts, the lanes whose pull requests are queued
+included, and every computer of one person applies the same number. The
+repository's figure is read at the commit origin's default branch stood at when
+the checkout last fetched it, as the object store holds it (no replace ref
+followed), and never from a working tree or another branch: a lane's agent can
+write its worktree and its own branch, never origin's default branch. A
+checkout with no default branch of origin to read reads no repository figure
+and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
+ceiling on that machine and never raise it: a higher figure there is ignored
+and named in the note `abcd peers` and the refusal at the cap carry, and a
+`HOME` set inside a working tree that is not the account's own is not read at
+all. In the repository's file the `reservation` namespace takes `max_live` and
+the fork check's `fork_origin`; `reservation.github_username` names a person
+and is refused there, naming the file and the commit. A value outside the
+range in either file, or a key under `reservation` that nothing reads, refuses
+an act that adds a reservation (reviving a lapsed one among them) naming the
+file, the repository's at its branch, never falling back to ten; no other act
+reads the setting, so a bad value never stops a release or the renewal of a
+live reservation. The holder's reader (`reservation.github_username`) reads the
 same file first for every person whose git email is not a GitHub no-reply
 address, so an unknown key under `reservation`, or a file that cannot be read,
 stops every act of such a person, a username from their token included. For
 anyone else a `config.json` that cannot be read at all (writable by others,
 not valid JSON) is read past, ten applies, and the refusal at the cap says
-why; at the ceiling of 100 the refusal no longer offers raising it.
+why. The refusal names the layer that set the cap and where it is changed:
+the repository's file through a reviewed change, and the machine's file, which
+may only lower it; it never offers raising the machine's figure.
 
 The count is by whose holds are the person's (their holder id, the ids they
-declare, and their login on older holds), while each machine reads its own
-ceiling, so another account whose id is declared here is counted against the
-same total under a ceiling no session here can read (iss-2610231004140527). Two
+declare, and their login on older holds), against the repository's ceiling,
+which another machine of theirs may lower for itself by a figure no session
+here can read (iss-2610231004140527). Two
 places say so. The refusal at the cap groups the held records by the copy each
 was made from: this copy, each other worktree of the repository on this machine
 by its directory's name, and elsewhere. And `abcd peers` counts the reader's own
-live reservations the same way against this machine's ceiling, warning from four
+live reservations the same way against the ceiling, with the layer that set it
+beside the number (`your holds: <holder> 7 of 10 (repository) (this copy 2,
+...)`), warning from four
 fifths of it that the total is shared with every session and account whose holds
 are the reader's. A sibling worktree is told apart by the copy key kept in its
 local tier, read without minting one and only for the reader's own holds; the

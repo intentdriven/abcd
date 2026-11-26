@@ -12,8 +12,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
-// MaxLive is the most live reservations one person may hold unless their
-// machine's reservation.max_live says otherwise (maxlive.go), counted across
+// MaxLive is the most live reservations one person may hold unless the
+// repository's reservation.max_live, or a lower figure on their machine, says
+// otherwise (maxlive.go), counted across
 // every record in the view by whose holds are the person's own (Self.Owns):
 // their holder id, the ids their home declares, and their login on a hold
 // made before the id. A release subject is not counted.
@@ -108,7 +109,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 	// A release subject sits outside the cap: it neither counts toward a
 	// person's cap nor is refused by it (release.go).
 	if !isRelease(p.id) && addsOne(j) {
-		limit, note, err := maxLive(p.home)
+		limit, note, err := maxLive(p.root, j.defaultRef, p.home)
 		if err != nil {
 			return err
 		}
@@ -118,7 +119,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 				mine = append(mine, r.Record)
 			}
 		}
-		if len(mine) >= limit {
+		if len(mine) >= limit.N {
 			return capRefusalIn(&snap, p.root, p.self, mine, limit, note)
 		}
 	}
@@ -260,8 +261,9 @@ func addsOne(j judged) bool {
 }
 
 // CapError is the cap's refusal (spc-2610161044461448 step 6): an act that
-// would take its holder past their cap (MaxLive, or reservation.max_live), naming the holder's live reservations
-// as the view lists them. It is an ErrRefused refusal, so `abcd reserve`
+// would take its holder past their cap (MaxLive, or reservation.max_live as
+// maxlive.go resolves it), naming the holder's live reservations as the view
+// lists them, and the layer and file that set the cap. It is an ErrRefused refusal, so `abcd reserve`
 // exits 2 on it as before; a drain reads it by its type and waits instead.
 // Its advice is to wait for a pull request to merge: most of a drain's live
 // reservations are lanes whose pull requests wait on one, and the merge ends
@@ -273,17 +275,23 @@ type CapError struct {
 	// the person can tell this machine's holds from the rest
 	// (iss-2610231004140527).
 	Where map[string]string
-	// Limit is the cap they reached, the person's reservation.max_live
-	// (maxlive.go); zero means MaxLive.
+	// Limit is the cap they reached, reservation.max_live as maxlive.go
+	// resolves it; zero means MaxLive.
 	Limit int
-	// Note says why the machine's configuration was read past for the cap,
-	// and why the worktrees could not be listed to name the copies; "" when
-	// neither.
+	// LimitLayer is the layer that set Limit (LimitBundled, LimitRepository
+	// or LimitMachine) and LimitOrigin where: "bundled", the repository's
+	// file at origin's default branch, or the machine's file. "" reads as
+	// the bundled default.
+	LimitLayer  string
+	LimitOrigin string
+	// Note says what was read past or ignored for the cap (a machine figure
+	// above the repository's among them), and why the worktrees could not be
+	// listed to name the copies; "" when neither.
 	Note string
 }
 
-// Error names the cap, the reservations and the advice, with how to raise
-// the cap below its ceiling.
+// Error names the cap, the reservations and the advice, with the place the
+// cap is set and the one place it may be lowered.
 func (e *CapError) Error() string {
 	limit := e.Limit
 	if limit == 0 {
@@ -293,11 +301,8 @@ func (e *CapError) Error() string {
 	if len(e.Where) > 0 {
 		ids = heldByPlace(e.Held, e.Where)
 	}
-	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release)"
-	if limit < MaxLiveCeiling {
-		advice += fmt.Sprintf(", or raise %s in %s (a whole number from 1 to %d, %d when unset)",
-			MaxLiveKey, layered.Config.MachineOrigin(), MaxLiveCeiling, MaxLive)
-	}
+	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release); " +
+		capSetBy(limit, e.LimitLayer, e.LimitOrigin)
 	if e.Note != "" {
 		advice += "; " + e.Note
 	}
@@ -309,6 +314,24 @@ func (e *CapError) Error() string {
 
 // Is makes the cap an ErrRefused refusal.
 func (e *CapError) Is(target error) bool { return target == ErrRefused }
+
+// capSetBy names where a cap of limit set by layer at origin is changed: the
+// repository's file, through a reviewed change, and the machine's file, which
+// may only lower it.
+func capSetBy(limit int, layer, origin string) string {
+	lower := fmt.Sprintf("%s in %s may only lower it on this machine", MaxLiveKey, layered.Config.MachineOrigin())
+	switch layer {
+	case LimitRepository:
+		return fmt.Sprintf("the ceiling of %d is the repository's %s in %s, changed through a reviewed change to that file; %s",
+			limit, MaxLiveKey, origin, lower)
+	case LimitMachine:
+		return fmt.Sprintf("the ceiling of %d is this machine's %s in %s, which may only lower the repository's; "+
+			"the repository's is set in %s on its default branch, through a reviewed change",
+			limit, MaxLiveKey, origin, layered.Config.RepoOrigin())
+	}
+	return fmt.Sprintf("the ceiling of %d is abcd's default; the repository sets another with %s in %s on its default branch, "+
+		"through a reviewed change, and %s", limit, MaxLiveKey, layered.Config.RepoOrigin(), lower)
+}
 
 // heldByPlace is the held ids grouped by the copy each was made from: this
 // copy first, then each sibling worktree by name, then elsewhere, each group's
@@ -353,7 +376,7 @@ func heldByPlace(held []string, where map[string]string) string {
 // holder's tip on the same record, and why the worktrees could not be listed
 // when they could not (iss-2610272352179242). The worktrees are listed only
 // now, for the refusal's words.
-func capRefusalIn(s *Snapshot, root string, self Self, mine []string, limit int, note string) error {
+func capRefusalIn(s *Snapshot, root string, self Self, mine []string, limit liveLimit, note string) error {
 	s.NameSiblings(root, self)
 	where := map[string]string{}
 	for _, r := range s.Reservations {
@@ -365,10 +388,11 @@ func capRefusalIn(s *Snapshot, root string, self Self, mine []string, limit int,
 }
 
 // capRefusal names the cap and the holder's live reservations, as the view
-// lists them, the cap they reached, and note: why the machine's
-// configuration was read past for it, or the worktrees could not be listed.
-func capRefusal(mine []string, where map[string]string, limit int, note string) error {
-	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit, Note: note}
+// lists them, the cap they reached with the layer and file that set it, and
+// note: what was read past or ignored for it, or why the worktrees could not
+// be listed.
+func capRefusal(mine []string, where map[string]string, limit liveLimit, note string) error {
+	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit.N, LimitLayer: limit.Layer, LimitOrigin: limit.Origin, Note: note}
 }
 
 // LiveHeldBy is the records self holds live in the view (Self.Owns), from any copy,

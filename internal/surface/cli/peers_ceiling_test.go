@@ -13,8 +13,9 @@ import (
 // TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling (iss-2610231004140527):
 // one login's holds come from this copy, a sibling worktree here and another
 // clone; peers names the sibling by its worktree, counts the reader's holds by
-// copy against this machine's reservation.max_live, and from four fifths of
-// it warns that another account on the same login counts too.
+// copy against the ceiling, here this machine's reservation.max_live lowering
+// the default and named as its layer, and from four fifths of it warns that
+// another account on the same login counts too.
 func TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling(t *testing.T) {
 	w := newReserveWorld(t)
 	cfg := abcdhome.Path(w.home, "config.json")
@@ -89,7 +90,7 @@ func TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling(t *testing.T) {
 	}
 	id := heldBy(t, p)
 	for _, want := range []string{`from the worktree "lane-b" on this machine`,
-		`your holds: ` + id + ` 4 of 5 (this copy 2, "lane-b" 1, elsewhere 1)`, "warning: " + id + " holds 4 of the 5"} {
+		`your holds: ` + id + ` 4 of 5 (machine) (this copy 2, "lane-b" 1, elsewhere 1)`, "warning: " + id + " holds 4 of the 5"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing lacks %q:\n%s", want, text)
 		}
@@ -121,7 +122,59 @@ func TestPeersTextSaysWhyTheCeilingIsTheDefault(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("peers: exit %d\n%s", code, text)
 	}
-	for _, want := range []string{"your holds: " + heldBy(t, p) + " 1 of 10", "note: the machine configuration could not be read"} {
+	for _, want := range []string{"your holds: " + heldBy(t, p) + " 1 of 10 (bundled)", "note: the machine configuration could not be read"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the listing lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+// TestPeersNamesTheRepositorysCeiling (itd-2611251809580662): with the
+// repository's file on origin's default branch setting reservation.max_live
+// 5, the row names the layer beside the number, the warning names the
+// repository's ceiling and not this machine's, and --json carries
+// limit_layer and limit_origin.
+func TestPeersNamesTheRepositorysCeiling(t *testing.T) {
+	w := newReserveWorld(t)
+	seed := filepath.Join(w.home, "seed")
+	writeRel(t, seed, ".abcd/config.json", `{"reservation": {"max_live": 5}}`)
+	gitCmd(t, seed, "add", "-A")
+	gitCommit(t, seed, "commit", "-q", "-m", "the repository's ceiling")
+	gitCmd(t, seed, "push", "-q", "origin", "main")
+	p := w.clone(t, "p", octoMail)
+	for _, id := range []string{"iss-1", "iss-2", "iss-3", "iss-4"} {
+		if code, out, errOut := reserveRun(t, p, "reserve", id, "--footprint", id+".go"); code != 0 {
+			t.Fatalf("reserve %s: exit %d\n%s%s", id, code, out, errOut)
+		}
+	}
+	code, raw, errOut := reserveRun(t, p, "peers", "--json")
+	if code != 0 {
+		t.Fatalf("peers: exit %d\n%s%s", code, raw, errOut)
+	}
+	var got struct {
+		Ceiling *struct {
+			Live        int    `json:"live"`
+			Limit       int    `json:"limit"`
+			LimitLayer  string `json:"limit_layer"`
+			LimitOrigin string `json:"limit_origin"`
+			Warning     string `json:"warning"`
+		} `json:"ceiling"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("peers --json: %v\n%s", err, raw)
+	}
+	c := got.Ceiling
+	if c == nil || c.Live != 4 || c.Limit != 5 || c.LimitLayer != "repository" || c.LimitOrigin != ".abcd/config.json at origin/main" ||
+		!strings.Contains(c.Warning, "the repository's ceiling") || strings.Contains(c.Warning, "this machine's") {
+		t.Fatalf("ceiling = %+v; want 4 of the repository's 5, its file at the branch, warned of the repository's ceiling", c)
+	}
+	code, text, _ := reserveRun(t, p, "peers")
+	if code != 0 {
+		t.Fatalf("peers: exit %d\n%s", code, text)
+	}
+	id := heldBy(t, p)
+	for _, want := range []string{"your holds: " + id + " 4 of 5 (repository) (this copy 4, elsewhere 0)",
+		"warning: " + id + " holds 4 of the 5 live reservations the repository's ceiling"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing lacks %q:\n%s", want, text)
 		}
