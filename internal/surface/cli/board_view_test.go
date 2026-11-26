@@ -305,3 +305,45 @@ func TestBoardShowsTheVersion(t *testing.T) {
 		t.Errorf("--json version = %q (%v), want the version --version reports, v9.9.9", got.Version, err)
 	}
 }
+
+// TestBoardCountsWhatIsOwed is criterion 10 at the board: a list holding
+// entries gives the facilitator's view one line with the count and the
+// command that lists them, and --json the count; an empty list gives none.
+func TestBoardCountsWhatIsOwed(t *testing.T) {
+	findingsRepo(t)
+	statusRecord(t, mustGetwd(t))
+	setBoardWidth(t, wideBoard)
+	if text := string(runCLI(t, "--view", "facilitator")); strings.Contains(text, "findings:") {
+		t.Errorf("an empty list gives a board line:\n%s", text)
+	}
+	if raw := runCLI(t, "--json"); strings.Contains(string(raw), `"findings"`) {
+		t.Errorf("an empty list gives a --json member:\n%s", raw)
+	}
+	owedPut(t, "--untested", "the parser drops the last line of a file")
+	owedPut(t, "--private", "a text the board never shows")
+	text := string(runCLI(t, "--view", "facilitator"))
+	if !strings.Contains(text, "findings:") || !strings.Contains(text, "1 owed") || !strings.Contains(text, "1 private") || !strings.Contains(text, "abcd capture owed") {
+		t.Errorf("the board does not count what is owed:\n%s", text)
+	}
+	if strings.Contains(text, "a text the board never shows") || strings.Contains(text, "the parser drops") {
+		t.Errorf("the board carries an entry's text:\n%s", text)
+	}
+	var got struct {
+		Findings *struct {
+			Open    int `json:"open"`
+			Private int `json:"private"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil || got.Findings == nil || got.Findings.Open != 1 || got.Findings.Private != 1 {
+		t.Errorf("--json findings = %+v (%v), want 1 open and 1 private", got.Findings, err)
+	}
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wd
+}
