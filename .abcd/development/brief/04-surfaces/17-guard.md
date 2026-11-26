@@ -1265,7 +1265,10 @@ under `program-name-unknown`, because which program runs is unchecked. What a
 substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
 the body, the delimiter line and blanks, and for the path a lookup of one fixed
 name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
-with `|| true`). `/bin/cat`, `command cat`, `cat -`, a redirection after the
+with `|| true`), on a line that defines no function of that name or of the
+lookup's, no alias, and runs no eval or source. A value placed unquoted where
+the shell splits it is read as the words it splits into, and a line that gives
+IFS a value other than blanks holds every such word. `/bin/cat`, `command cat`, `cat -`, a redirection after the
 delimiter word, a backslash-newline before the `<<`, a command after the
 document, a backslash-newline after a backtick's document, and an output inside
 a `${…}` all leave it unknown, so each of those as the program is refused;

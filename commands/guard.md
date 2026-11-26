@@ -1557,7 +1557,11 @@ variable the line set from one (`P=$(cat f); $P make`), is refused under
 substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
 the body, the delimiter line and blanks, and for the path a lookup of one fixed
 name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
-with `|| true`), read as that program; `/bin/cat`, `command cat`, `cat -`, a
+with `|| true`), read as that program on a line that defines no function of that
+name or of the lookup's, no alias, and runs no eval or source. A value placed
+unquoted where the shell splits it (`P='git prune'; $P`) is read as the words it
+splits into, and a line that gives IFS a value other than blanks holds every such
+word. `/bin/cat`, `command cat`, `cat -`, a
 redirection after the delimiter word, a backslash-newline before the `<<`, a
 command after the document, a backslash-newline after a backtick's document, and
 an output inside a `${…}` all leave it unknown, so each of those as the program

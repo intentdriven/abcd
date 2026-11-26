@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -88,6 +89,12 @@ type segment struct {
 	// ones a `|` joined to it: a case pattern and its alternatives, whose
 	// words are matched against and never run.
 	casePattern bool
+	// ifsAssignInText records, on the segment namesIFSInText rides on, that the
+	// text assigns IFS where no word reads it (unwordedIFSAssign).
+	ifsAssignInText bool
+	// definesFunction records a command that is a function's name, which a
+	// `()` after it defines.
+	definesFunction bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
@@ -386,6 +393,8 @@ type segList struct {
 	segs     []segment
 	hits     map[*Pattern][]int
 	payloads map[int][]segment
+	// defs caches what segs define (defines).
+	defs *definitions
 }
 
 // addPayload files the segments of a command string segment at runs.
@@ -2050,6 +2059,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			before := len(segs)
 			flushSegment()
+			if c == '(' && len(segs) > before && strings.HasPrefix(strings.TrimLeft(line[i+1:], " \t"), ")") {
+				// `NAME ()` opens a function's definition.
+				if t := segs[len(segs)-1].tokens; len(t) == 1 && t[0] != "" && !strings.Contains(t[0], "=") ||
+					len(t) == 2 && t[0] == "function" {
+					segs[len(segs)-1].definesFunction = true
+				}
+			}
 			if len(parens) == 0 {
 				grew := len(segs) > before
 				switch {
@@ -2263,10 +2279,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
-	if depth == 0 && (unwordedIFS(line, segs) || targetsAnExpansion(line)) {
-		// The text of every substitution depth is in the line read at
-		// depth 0, so it is read once, there.
-		segs = append(segs, segment{chain: chain, namesIFSInText: true})
+	if depth == 0 {
+		if unwordedIFS(line, segs) || targetsAnExpansion(line) {
+			// The text of every substitution depth is in the line read at
+			// depth 0, so it is read once, there.
+			segs = append(segs, segment{chain: chain, namesIFSInText: true, ifsAssignInText: unwordedIFSAssign(line, segs)})
+		}
 	}
 	if depth == 0 {
 		if names, numbers := expansionAssigns(line), numberAssigns(line); len(names) > 0 || len(numbers) > 0 {
@@ -2485,6 +2503,22 @@ func unwordedIFS(line string, segs []segment) bool {
 	}
 	return n > 0
 }
+
+// unwordedIFSAssign reports whether line assigns IFS more times than the words
+// segs read from it do: `IFS` followed by `=`, `+=` or `:=`, in an arithmetic
+// body, a subscript or a default (`: $((IFS=1))`, `${IFS:=x}`).
+func unwordedIFSAssign(line string, segs []segment) bool {
+	n := len(ifsAssign.FindAllStringIndex(line, -1))
+	for _, s := range segs {
+		for _, tok := range s.tokens {
+			n -= len(ifsAssign.FindAllStringIndex(tok, -1))
+		}
+	}
+	return n > 0
+}
+
+// ifsAssign is an assignment to IFS in text.
+var ifsAssign = regexp.MustCompile(`IFS\s*[+:]?=`)
 
 // arithmeticOperand is the word an arithmetic expansion leaves in its
 // command: a number, which is all `$(( … ))` can print. Its value is not

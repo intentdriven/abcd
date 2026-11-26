@@ -96,6 +96,12 @@ type carriedBudget struct {
 	// suppliedHeld records an xargs that runs words it reads from its input
 	// as commands (xargsRunsInput).
 	suppliedHeld bool
+	// ifsNamed records a text read so far that names IFS (namesIFS), which
+	// splits a value where the guard does not read.
+	ifsNamed bool
+	// rebound records a hash that binds a program's name to another file
+	// (rebindsProgram).
+	rebound bool
 }
 
 // grant adds the words of segs to the text the line has read.
@@ -140,12 +146,17 @@ func carriedReadings(segs []segment, budget *carriedBudget) (map[int][]segment, 
 	var signals []payloadSignal
 	ends := loopEnds(segs)
 	var args *[]string
+	budget.ifsNamed = budget.ifsNamed || assignsIFS(segs)
 	for k, s := range segs {
 		readings := []segment{s}
 		// The words a `set` gives the positional parameters are the arguments
 		// a later `"$@"` or `"$1"` hands its command.
 		if args != nil && !budget.unread {
-			if d, ok := positionalReading(s, *args); ok {
+			d, ok, unread := positionalReading(s, *args, budget.ifsNamed)
+			if unread {
+				budget.unread = true
+				signals = append(signals, carriedUnreadSignal())
+			} else if ok {
 				if out == nil {
 					out = map[int][]segment{}
 				}
@@ -200,6 +211,12 @@ func setsPositionals(s segment, args *[]string) (*[]string, bool) {
 		return nil, false
 	}
 	unread := &[]string{unknownText, unknownText}
+	// An assignment to argv is one to the positional parameters.
+	for _, w := range t {
+		if name, _, _, _, ok := splitAssignment(w); ok && strings.EqualFold(name, "argv") {
+			return unread, true
+		}
+	}
 	switch t[0] {
 	case "set":
 		for i := 1; i < len(t); i++ {
@@ -240,9 +257,11 @@ func setsPositionals(s segment, args *[]string) (*[]string, bool) {
 
 // positionalReading is s read with the words args holds in place of each word
 // that is a positional parameter whole: `$@` and `$*` as every word, `$N` as the
-// Nth. ok is false where s holds none.
-func positionalReading(s segment, args []string) (segment, bool) {
-	d := segment{chain: s.chain, fromFixedOutput: true, valuesPlaced: true}
+// Nth. ok is false where s holds none. A word the shell splits is the words each
+// value splits into, and unread where the line names IFS (ifs), which splits it
+// where the guard does not read.
+func positionalReading(s segment, args []string, ifs bool) (d segment, ok, unread bool) {
+	d = segment{chain: s.chain, fromFixedOutput: true, valuesPlaced: true}
 	found := false
 	for i, t := range s.tokens {
 		sp := s.spelled[i]
@@ -251,6 +270,11 @@ func positionalReading(s segment, args []string) (segment, bool) {
 			continue
 		}
 		name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(sp[0], "$"), "{"), "}")
+		positional := name == "@" || name == "*" || allDigits(name) && len(name) <= 4 && strings.Trim(name, "0") != ""
+		if positional && splitsWord(s, i) && ifs {
+			return d, false, true
+		}
+		at := len(d.tokens)
 		switch {
 		case !strings.HasPrefix(sp[0], "$") || name == "":
 			d.tokens = append(d.tokens, t)
@@ -269,8 +293,15 @@ func positionalReading(s segment, args []string) (segment, bool) {
 		default:
 			d.tokens = append(d.tokens, t)
 		}
+		if positional && splitsWord(s, i) {
+			var fields []string
+			for _, w := range d.tokens[at:] {
+				fields = append(fields, strings.FieldsFunc(w, func(r rune) bool { return strings.ContainsRune(blanks, r) })...)
+			}
+			d.tokens = append(d.tokens[:at], fields...)
+		}
 	}
-	return d, found
+	return d, found, false
 }
 
 // loopEnds maps each `while` or `until` command of segs to the `done` that
@@ -311,6 +342,16 @@ func allWords(int) bool { return true }
 // condition of, nil when it is none.
 func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed) map[string][]carriedValue {
 	add := func(name string, v carriedValue) {
+		if tiedName(name) {
+			// The name sets another too: neither holds a value the reading
+			// follows.
+			for n := range vals {
+				if tiedName(n) {
+					delete(vals, n)
+				}
+			}
+			return
+		}
 		if vals == nil {
 			vals = map[string][]carriedValue{}
 		}
@@ -548,6 +589,7 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 		}
 		d := carriedCopy(s)
 		var outputAt []int
+		var splits []int
 		for _, u := range uses {
 			picked := make([]carriedValue, len(u.names))
 			output := false
@@ -568,6 +610,16 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 				}
 			}
 			placeValues(&d, u.i, s.variable[u.i], u.names, picked)
+			// A word the shell splits is the words its value splits into; one
+			// the guard cannot split as the shell does holds the line.
+			if split := splitsWord(s, u.i); split && strings.ContainsAny(d.tokens[u.i], blanks) {
+				if budget.ifsNamed || !wholeWord(s.variable[u.i]) {
+					return out, held, runsOutput, true
+				}
+				splits = append(splits, u.i)
+			} else if split && budget.ifsNamed {
+				return out, held, runsOutput, true
+			}
 			if output {
 				outputAt = append(outputAt, u.i)
 				// A program the guard did not read is not judged.
@@ -578,6 +630,10 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 					budget.programOutput = true
 				}
 			}
+		}
+		sort.Sort(sort.Reverse(sort.IntSlice(splits)))
+		for _, i := range splits {
+			splitWord(&d, i, strings.FieldsFunc(d.tokens[i], func(r rune) bool { return strings.ContainsRune(blanks, r) }))
 		}
 		if k > 0 && !budget.spend(d) {
 			return out, held, runsOutput, true
@@ -663,6 +719,76 @@ func emptyOutput(s segment, i int) bool {
 	return true
 }
 
+// redefinedNames are the commands that can give any name another meaning, or run
+// text that can: a lookup on a line holding one is not read as a program's path.
+var redefinedNames = map[string]bool{
+	"alias": true, "function": true, "eval": true, "source": true, ".": true, "enable": true,
+	"autoload": true, "functions": true, "builtin": true, "unalias": true, "unfunction": true,
+}
+
+// lookupCommands are the commands a lookup runs.
+var lookupCommands = []string{"command", "which", "type", "whence"}
+
+// definitions is what the commands of a text define: the functions they name,
+// and whether they can define a name the guard does not read (any).
+type definitions struct {
+	names map[string]bool
+	any   bool
+}
+
+// defines returns what the commands of l define, read once: each `NAME ()` or
+// `function NAME` definition, and any name where one of redefinedNames stands
+// at a command site, a definition's name is not fixed, or an assignment goes
+// into zsh's tables of functions and aliases.
+func (l *segList) defines() *definitions {
+	if l.defs == nil {
+		d := &definitions{names: map[string]bool{}}
+		for _, s := range l.segs {
+			segmentDefines(s, d)
+		}
+		l.defs = d
+	}
+	return l.defs
+}
+
+// segmentDefines adds what s defines to d.
+func segmentDefines(s segment, d *definitions) {
+	from := 0
+	for from < len(s.tokens) && quietKeywords[s.tokens[from]] {
+		from++
+	}
+	name := ""
+	switch {
+	case s.definesFunction && from < len(s.tokens):
+		name = s.tokens[from]
+		if name == "function" && from+1 < len(s.tokens) {
+			name = s.tokens[from+1]
+		}
+	case from+1 < len(s.tokens) && s.tokens[from] == "function":
+		name = s.tokens[from+1]
+	case from < len(s.tokens) && s.tokens[from] == "function":
+		d.any = true
+	}
+	if name != "" {
+		if unfixed(name) {
+			d.any = true
+		}
+		d.names[name] = true
+	}
+	for _, t := range s.tokens {
+		for _, table := range []string{"functions", "aliases", "galiases", "saliases", "dis_functions", "dis_aliases", "builtins"} {
+			if strings.HasPrefix(t, table+"[") || strings.HasPrefix(t, table+"=") || strings.HasPrefix(t, table+"+=") {
+				d.any = true
+			}
+		}
+	}
+	for _, a := range arrivalsOf(s) {
+		if t := s.tokens[a.idx]; t != "" && redefinedNames[path.Base(t)] {
+			d.any = true
+		}
+	}
+}
+
 // lookupOutput reports whether a word is wholly the output of commands that print
 // where a program is (`command -v NAME`, `which NAME`, `type -P NAME`, `whence -p
 // NAME`) or nothing (`true`, `:`), for one fixed NAME each: the word is then the
@@ -675,6 +801,28 @@ func lookupOutput(tok string, feeds []feed) bool {
 
 // lookedUpName is the program a lookupOutput word names.
 func lookedUpName(tok string, feeds []feed) (string, bool) {
+	name, ok := lookupShape(tok, feeds)
+	if !ok {
+		return "", false
+	}
+	// A line that defines the name, a lookup command, or a name it does not
+	// read can make the lookup print what is not that program's path.
+	for _, f := range feeds {
+		d := f.list.defines()
+		if d.any || d.names[name] {
+			return "", false
+		}
+		for _, c := range lookupCommands {
+			if d.names[c] {
+				return "", false
+			}
+		}
+	}
+	return name, true
+}
+
+// lookupShape is lookedUpName without the check for a line that redefines names.
+func lookupShape(tok string, feeds []feed) (string, bool) {
 	if tok != unknownText || len(feeds) == 0 {
 		return "", false
 	}
@@ -701,6 +849,37 @@ func lookedUpName(tok string, feeds []feed) (string, bool) {
 		}
 	}
 	return name, name != ""
+}
+
+// rebindsProgram reports whether s is a hash that binds a name to a file of its
+// choosing: bash's -p, zsh's NAME=PATH operand, or a word the line does not fix
+// that can be either. A command of the line named that way then runs that file.
+func rebindsProgram(s segment) bool {
+	for _, a := range arrivalsOf(s) {
+		if path.Base(s.tokens[a.idx]) != "hash" {
+			continue
+		}
+		for _, w := range s.tokens[a.idx+1:] {
+			if unfixed(w) || strings.Contains(w, "=") || len(w) > 1 && w[0] == '-' && strings.ContainsRune(w, 'p') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// reboundSignal is the fail-closed verdict on a line that binds a program's name
+// to another file, so the name a later command spells is not the program it runs.
+func reboundSignal() payloadSignal {
+	return payloadSignal{
+		id:      unknownProgramEntryID,
+		verdict: VerdictBlock,
+		family:  familySubstitution,
+		last:    true,
+		reason: "This line binds a program's name to a file of its choosing with hash, so a command that spells that name " +
+			"runs a program the guard has not checked.",
+		successor: "Run the program by its own path, without hash -p, so the guard checks the command that actually runs.",
+	}
 }
 
 // unreadProgramSignal is the fail-closed verdict on a command whose program is
@@ -853,6 +1032,90 @@ func carriedCopy(s segment) segment {
 	d.home, d.at = nil, 0
 	d.fromFixedOutput, d.valuesPlaced = true, true
 	return d
+}
+
+// splitsWord reports whether the shell splits word i of s into fields: an
+// unquoted expansion stands in it (segment.fieldSplit), and it is no assignment,
+// no word of a [[ test, and no case's word or pattern, which the shell leaves
+// whole.
+func splitsWord(s segment, i int) bool {
+	if !s.fieldSplit[i] || isAssignmentWord(s.tokens[i]) || s.casePattern {
+		return false
+	}
+	for _, t := range s.tokens {
+		if t == "[[" || t == "case" {
+			return false
+		}
+		if !quietKeywords[t] && t != "while" && t != "until" {
+			break
+		}
+	}
+	return true
+}
+
+// blanks are the bytes the shell splits a word on under the default IFS.
+const blanks = " \t\n"
+
+// splitWord puts the words fields in place of word i of d, each a word of fixed
+// text holding what word i was fed, and moves the records of the words after it.
+func splitWord(d *segment, i int, fields []string) {
+	n := len(fields)
+	if n == 1 {
+		d.tokens[i] = fields[0]
+		return
+	}
+	toks := append(append(append([]string(nil), d.tokens[:i]...), fields...), d.tokens[i+1:]...)
+	if n == 0 {
+		toks = append(append([]string(nil), d.tokens[:i]...), d.tokens[i+1:]...)
+	}
+	d.tokens = toks
+	d.variable = shiftWords(d.variable, i, n)
+	d.transformed = shiftWords(d.transformed, i, n)
+	d.spelled = shiftWords(d.spelled, i, n)
+	d.ifsSplit = shiftWords(d.ifsSplit, i, n)
+	d.fieldSplit = shiftWords(d.fieldSplit, i, n)
+	d.varLead = shiftWords(d.varLead, i, n)
+	d.leadFrom = shiftWords(d.leadFrom, i, n)
+	d.literal = shiftWords(d.literal, i, n)
+	fed := d.feeds[i]
+	d.feeds = shiftWords(d.feeds, i, n)
+	if len(fed) > 0 {
+		if d.feeds == nil {
+			d.feeds = map[int][]feed{}
+		}
+		for k := i; k < i+n; k++ {
+			d.feeds[k] = fed
+		}
+	}
+	if len(d.globbed) > 0 {
+		g := append([]bool(nil), d.globbed[:min(i, len(d.globbed))]...)
+		for range n {
+			g = append(g, d.globAt(i))
+		}
+		if i+1 < len(d.globbed) {
+			g = append(g, d.globbed[i+1:]...)
+		}
+		d.globbed = g
+	}
+	d.arrivals, d.walked, d.walkCapped = nil, false, false
+}
+
+// shiftWords is m with the record of word i dropped and those after it moved
+// by n-1, for word i split into n words.
+func shiftWords[V any](m map[int]V, i, n int) map[int]V {
+	if m == nil {
+		return nil
+	}
+	out := make(map[int]V, len(m))
+	for k, v := range m {
+		switch {
+		case k < i:
+			out[k] = v
+		case k > i:
+			out[k+n-1] = v
+		}
+	}
+	return out
 }
 
 func copyMap[V any](m map[int]V) map[int]V {

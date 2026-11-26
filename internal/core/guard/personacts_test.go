@@ -822,3 +822,45 @@ func TestAnUnlistedCommandLeavesNoProgramFixed(t *testing.T) {
 		}
 	}
 }
+
+// TestAQuietCommandSetsNoNameThroughAnother: an assignment to a name zsh ties to
+// another, or that stands for the positional parameters, sets more than the name
+// it spells; a test reading a word as a subscript or arithmetic can run what the
+// word holds; a printf with %n stores a count; a hash with -p binds a name to
+// another program. None of them is quiet, and the line's program is not fixed.
+func TestAQuietCommandSetsNoNameThroughAnother(t *testing.T) {
+	reg := Defaults()
+	for _, cmd := range []string{
+		`PSVAR=npm; psvar=abcd; "$PSVAR" update v1.2.3`,
+		`PROMPT=npm; PS1=abcd; "$PROMPT" update v1.2.3`,
+		`RPROMPT=npm; RPS1=abcd; "$RPROMPT" update v1.2.3`,
+		`path=npm; PATH=abcd; "$path" update v1.2.3`,
+		`HISTCHARS=npm; histchars=abcd; "$HISTCHARS" update v1.2.3`,
+		`PM=npm; Cdpath=x; "$PM" update v1.2.3`,
+		`PM=npm; module_path=x; "$PM" update v1.2.3`,
+		`set -- echo; argv=pkill; "$@" make`,
+		`PM=npm; test -v 'a[${ PM=abcd; }]'; "$PM" update v1.2.3`,
+		`PM=npm; test -v 'a[$(git prune)]'; "$PM" update v1.2.3`,
+		`PM=npm; [ -v 'a[$(git prune)]' ]; "$PM" update v1.2.3`,
+		`PM=npm; [[ 'a[$(git prune)]' -eq 0 ]]; "$PM" update v1.2.3`,
+		`PM=npm; test -v x; "$PM" update v1.2.3`,
+		`PM=npm; printf 'ab%n' PM; "$PM" update v1.2.3`,
+		`PM=npm; printf -- '%s%n' x PM; "$PM" update v1.2.3`,
+		`hash -p /usr/bin/pkill npm; npm make`,
+		`hash -p "$P" ls; ls`,
+	} {
+		d, err := reg.Check(cmd)
+		if err != nil || d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+	for _, cmd := range []string{
+		`PM=npm; test -f x; "$PM" update v1.2.3`,
+		`PM=npm; printf '%s\n' x; "$PM" update v1.2.3`,
+		`hash -r; ls`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+}

@@ -91,7 +91,11 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"which program runs is unchecked. The output read is a document printed\n" +
 			"as exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
 			"blanks, and the path a lookup of one fixed name prints (`command -v go`,\n" +
-			"`which go`, `type -P go`, `whence -p go`, alone or `|| true`).\n" +
+			"`which go`, `type -P go`, `whence -p go`, alone or `|| true`), on a line\n" +
+			"that defines no function of that name or of the lookup's, no alias, and\n" +
+			"runs no eval or source. A value placed unquoted where the shell splits it\n" +
+			"(`P='git prune'; $P`) is read as the words it splits into, and a line that\n" +
+			"gives IFS a value other than blanks holds every such word.\n" +
 			"A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,\n" +
 			"as the program's name, as a flag (`--$VAR`) and in a string handed to a\n" +
 			"shell, and a value the line assigns before it uses it is read in place.\n" +

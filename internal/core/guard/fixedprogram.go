@@ -64,6 +64,23 @@ var shellNames = []string{
 	"MATCH", "OLDPWD", "PWD", "READLINE_LINE", "match",
 }
 
+// tiedNames are the names zsh ties to another, so an assignment to one sets the
+// other too (psvar and PSVAR, PS1 and PROMPT, path and PATH), and argv, which is
+// the positional parameters. They are compared in lower case, so either half of a
+// pair, in any case, is one of them.
+var tiedNames = map[string]bool{
+	"psvar": true, "ps1": true, "prompt": true, "ps2": true, "prompt2": true, "ps3": true,
+	"prompt3": true, "ps4": true, "prompt4": true, "rps1": true, "rprompt": true, "rps2": true,
+	"rprompt2": true, "cdpath": true, "watch": true, "fignore": true, "path": true, "fpath": true,
+	"manpath": true, "mailpath": true, "module_path": true, "histchars": true, "argv": true,
+}
+
+// arithTests are the [[ operators that read their operands as arithmetic.
+var arithTests = map[string]bool{"-eq": true, "-ne": true, "-lt": true, "-le": true, "-gt": true, "-ge": true}
+
+// tiedName reports whether an assignment to name sets another name too.
+func tiedName(name string) bool { return tiedNames[strings.ToLower(name)] }
+
 // maySetBy reports whether the builtin base, handed the words args, may set a
 // variable no word of the line names: one a word it is handed and the line does not
 // fix can name.
@@ -126,11 +143,13 @@ func maySetBy(base string, args []string) bool {
 	return false
 }
 
-// quietPrograms are the commands that set no variable of the shell that runs
-// them, whatever words they are handed: a line whose every other command is one
-// of these, or a plain assignment of fixed text, can fix the program a variable
-// names (quietCommand). printf is one only without -v, and a test only where
-// none of its words can assign in arithmetic.
+// quietPrograms are the commands a line may hold beside the one a variable
+// names and still fix that program (quietCommand). Each can set a variable in
+// some form, and quietCommand admits only the forms outside these: printf with
+// -v, a %n in its words or a word it does not read as plain; a test with -v,
+// a word holding `[`, `$`, a backtick or an assignment, or, in [[, a variable's
+// value read as arithmetic; and an assignment to a name zsh ties to another
+// (tiedNames) or to argv.
 var quietPrograms = map[string]bool{
 	"echo": true, "printf": true, "test": true, "[": true, "[[": true,
 	"true": true, "false": true, ":": true, "cd": true,
@@ -182,8 +201,8 @@ func quietCommand(s segment) bool {
 		return len(args) >= 2 && args[1] == "in"
 	case allAssignments(toks[from:]):
 		for _, t := range toks[from:] {
-			_, eq, appends, subscript, ok := splitAssignment(t)
-			if !ok || appends || subscript || unfixed(t[eq+1:]) {
+			name, eq, appends, subscript, ok := splitAssignment(t)
+			if !ok || appends || subscript || unfixed(t[eq+1:]) || tiedName(name) {
 				return false
 			}
 		}
@@ -191,10 +210,27 @@ func quietCommand(s segment) bool {
 	case prog == "for":
 		return len(args) >= 2 && isName(args[0]) && args[1] == "in"
 	case prog == "printf":
+		for _, a := range args {
+			if strings.Contains(a, "%n") {
+				return false
+			}
+		}
 		return len(args) == 0 || !unfixed(args[0]) && (args[0] == "--" || !strings.HasPrefix(args[0], "-"))
 	case prog == "test" || prog == "[" || prog == "[[":
+		// A word a test reads as a subscript or as arithmetic runs what it
+		// holds (`-v 'a[$(…)]'`, `[[ 'a[$(…)]' -eq 0 ]]`).
+		arith := false
 		for _, a := range args {
-			if strings.Contains(a, "=") && a != "=" && a != "==" && a != "!=" && a != "=~" {
+			arith = arith || prog == "[[" && arithTests[a]
+		}
+		for i, a := range args {
+			if arith && isUnknown(a) && plainVariableWord(s, from+1+i) {
+				// [[ reads an operand of -eq and its kin as arithmetic, which
+				// runs a subscript the value holds.
+				return false
+			}
+			if a == "-v" || strings.ContainsAny(a, "[$`") && a != "[" && a != "[[" ||
+				strings.Contains(a, "=") && a != "=" && a != "==" && a != "!=" && a != "=~" {
 				return false
 			}
 		}
@@ -385,7 +421,7 @@ func variableNames(s segment, idx int) ([]string, bool) {
 // that stands directly after them and is still open at i, and no other command of
 // the line can set it.
 func (f *fixedReader) variableFixed(i int, name string) bool {
-	if containsString(shellNames, name) {
+	if containsString(shellNames, name) || tiedName(name) {
 		return false
 	}
 	n := f.name(name)

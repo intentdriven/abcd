@@ -221,3 +221,51 @@ func TestCarriedValuesCostWhatTheLineHolds(t *testing.T) {
 		t.Errorf("a line of one fixed value used 3000 times = %q via %q, %v; want it read", d.Verdict, d.EntryID, err)
 	}
 }
+
+// TestALookupALineRedefinesIsUnread: a line that defines a function or an
+// alias can give a lookup's name another meaning, so what the lookup prints is
+// not read as that program's path.
+func TestALookupALineRedefinesIsUnread(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`command() { echo pkill; }; g=$(command -v go); "$g" make`, VerdictBlock, ""},
+		{`which() { echo pkill; }; g=$(which go); "$g" make`, VerdictBlock, ""},
+		{`type() { echo pkill; }; g=$(type -P go); "$g" make`, VerdictBlock, ""},
+		{`function which { echo pkill; }; g=$(which go); "$g" make`, VerdictBlock, ""},
+		{`alias which='echo pkill'; g=$(which go); "$g" make`, VerdictBlock, ""},
+		{`which() ( echo pkill ); g=$(which go); "$g" make`, VerdictBlock, ""},
+		{`g=$(which go); "$g" build ./...`, VerdictAllow, ""},
+		{`go() { pkill make; }; g=$(command -v go); "$g" build`, VerdictBlock, ""},
+		{`f() { :; }; g=$(command -v go); "$g" build ./...`, VerdictAllow, ""},
+		{`eval true; g=$(command -v go); "$g" make`, VerdictBlock, ""},
+	})
+}
+
+// TestAnUnquotedValueIsSplitIntoWords: a value placed in a word the shell
+// splits is read as the words it splits into, so its first word is the
+// program; a line that assigns IFS splits it where the guard does not read,
+// and holds every such word. A quoted value stays one word.
+func TestAnUnquotedValueIsSplitIntoWords(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`P='git prune'; $P`, VerdictBlock, ""},
+		{`C='abcd update v1.2.3'; $C`, VerdictBlock, ""},
+		{`set -- 'git prune'; $1`, VerdictBlock, ""},
+		{`for C in 'git prune'; do $C; done`, VerdictBlock, ""},
+		{`C='rm -rf /'; $C`, VerdictBlock, ""},
+		{`C='-rf /'; rm $C`, VerdictBlock, ""},
+		{`IFS=x; P=gitxprune; $P`, VerdictBlock, ""},
+		{`P=gitxprune; IFS=x eval true; $P`, VerdictBlock, ""},
+		{`P='git prune'; "$P"`, VerdictAllow, ""},
+		{`P='git status'; $P`, VerdictAllow, ""},
+		{`P=git; $P status`, VerdictAllow, ""},
+		{`: $((IFS=1)); P=git1prune; $P`, VerdictBlock, ""},
+		{`n=IFS; read -r "$n" < f; P=gitxprune; $P`, VerdictBlock, ""},
+
+		// What the shell leaves whole, or splits on no more than blanks.
+		{`P='git prune'; [[ -n $P ]]`, VerdictAllow, ""},
+		{`P='git prune'; case $P in x) true ;; esac`, VerdictAllow, ""},
+		{`P='git prune'; Q=$P; echo "$Q"`, VerdictAllow, ""},
+		{"while IFS=x read -r a; do echo \"$a\"; done < f; P='git status'; $P", VerdictAllow, ""},
+		{"IFS=$'\\n'; P='git status'; $P", VerdictAllow, ""},
+		{`o=$IFS; IFS=$'\n'; IFS=$o; P='git status'; $P`, VerdictAllow, ""},
+	})
+}

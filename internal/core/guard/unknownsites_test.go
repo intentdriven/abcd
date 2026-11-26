@@ -120,6 +120,7 @@ var wordReaders = map[string]string{
 	"targetsAnExpansion":     "exempt: reads the raw text for an assignment target that holds an expansion (`--` a decrement or a flag), never a command word's flag",
 	"operatorAt":             "exempt: reads an assignment or step operator (`--`, `-=`) in the raw text, never a command word or a flag",
 	"namesIFS":               "exempt: reads a declaration's literal nameref flag (`-n`); a flag word holding an expansion is already read as a name the builtin assigns (nameMarked)",
+	"assignsIFS":             "exempt: hands each IFS value to blankIFS, where one no line fixes splits anywhere unless a variable that only saves $IFS holds it, and a name an expansion spells handed to a builtin that names what it sets counts as IFS",
 	"guessedEvalPayload":     "exempt: reads eval's literal `--`; vanishable drops a word that may print nothing",
 	"evalPayload":            "exempt: reads eval's literal `--`, which no substitution spells (the rule's terminator clause)",
 	"trapAction":             "exempt: reads trap's literal `-p`, `-l`, `--` and `-`; an unknown first word falls to the ACTION reading, which is judged, never skipped",
@@ -183,10 +184,12 @@ var wordReaders = map[string]string{
 	// carried.go: the values a line assigns, in place.
 	"programWords":    "commandSites: every word the walk may run as a program, but the name command -v looks up",
 	"carriedSegments": "isUnknown: a value placed as a running program that the guard did not read holds the line (unreadProgram)",
-	"lookedUpName":    "unfixed: a lookup of a name no line fixes prints no fixed program",
 	"looksUp":         "exempt: reads the literal command and its -v or -V option ahead of the first word commandSites places; any other word is read as running",
 	"setsPositionals": "unfixed: a word no line fixes among set's words gives positional parameters no fixed value, read as unknown",
 	"unreadProgram":   "isUnknown: a running program the guard did not read holds the line",
+	"lookupShape":     "unfixed: a lookup of a name no line fixes prints no fixed program",
+	"segmentDefines":  "unfixed: a function whose name no line fixes can be any name, so no lookup on the line is read as a path",
+	"rebindsProgram":  "unfixed: a word no line fixes among hash's words may bind a name, so the line is held",
 	"leadsDash":       "exempt: reads a value the line assigned, as fixed text, not a word of the line",
 
 	// supplied.go: the words xargs and a find hand the command they run.

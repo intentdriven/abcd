@@ -2620,7 +2620,11 @@ read, alone or through a variable the line set from one (`$(date)`,
 which program runs is unchecked. The output read is a document printed
 as exactly `cat <<DELIM`, a newline, the body, the delimiter line and
 blanks, and the path a lookup of one fixed name prints (`command -v go`,
-`which go`, `type -P go`, `whence -p go`, alone or `|| true`).
+`which go`, `type -P go`, `whence -p go`, alone or `|| true`), on a line
+that defines no function of that name or of the lookup's, no alias, and
+runs no eval or source. A value placed unquoted where the shell splits it
+(`P='git prune'; $P`) is read as the words it splits into, and a line that
+gives IFS a value other than blanks holds every such word.
 A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,
 as the program's name, as a flag (`--$VAR`) and in a string handed to a
 shell, and a value the line assigns before it uses it is read in place.
