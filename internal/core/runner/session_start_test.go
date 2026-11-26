@@ -640,7 +640,11 @@ func TestSessionSettingsAreInlineAndSwitchOffTheFourNamedPlugins(t *testing.T) {
 			continue
 		}
 		for i, v := range h.Verbs {
-			if c := g[0].Hooks[i]; c.Type != "command" || c.Command != shellquote.Single(sessionBin)+" "+v {
+			want := shellquote.Single(sessionBin) + " " + v
+			if h.Event == "PreToolUse" {
+				want += guardHold
+			}
+			if c := g[0].Hooks[i]; c.Type != "command" || c.Command != want {
 				t.Errorf("%s: %+v", h.Event, c)
 			}
 		}

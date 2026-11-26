@@ -1119,6 +1119,7 @@ func TestStartLeavesOutAHookVerbTheBinaryLacks(t *testing.T) {
 		for _, g := range groups {
 			for _, h := range g.Hooks {
 				_, verb, _ := strings.Cut(h.Command, "' ")
+				verb, _, _ = strings.Cut(verb, " || ")
 				if findByPath(root, strings.Fields(verb)) == nil {
 					t.Errorf("%s is wired to %q, which the binary lacks", event, verb)
 				}

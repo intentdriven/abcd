@@ -405,6 +405,12 @@ type Session struct {
 	Mode, Prompt string
 }
 
+// guardHold follows the guard's command in the session's PreToolUse hook: a guard
+// stopped by a signal (an exit above 128) holds the tool call with exit 2, as the
+// plugin's hooks/pre-tool-use.sh does, since the host runs a call whose hook
+// failed any other way. The guard's own 0, 1 and 2 pass through unchanged.
+const guardHold = ` || { s=$?; if [ $s -gt 128 ]; then echo "abcd guard: FAILED TO RUN (exit $s) — the guard was stopped before it finished, so this command is held; run 'abcd ahoy' to see guard health" >&2; exit 2; fi; exit $s; }`
+
 // Settings is the session's settings, one JSON object: abcd's hooks, the host's own
 // attribution off, the built-in plugins named off, and every server's tool denied.
 func (s Session) Settings() []byte {
@@ -412,7 +418,11 @@ func (s Session) Settings() []byte {
 	for _, h := range s.Hooks {
 		g := hookGroup{Matcher: h.Matcher}
 		for _, v := range h.Verbs {
-			g.Hooks = append(g.Hooks, hookCommand{Type: "command", Command: shellquote.Single(s.Bin) + " " + v})
+			c := shellquote.Single(s.Bin) + " " + v
+			if h.Event == "PreToolUse" {
+				c += guardHold
+			}
+			g.Hooks = append(g.Hooks, hookCommand{Type: "command", Command: c})
 		}
 		hooks[h.Event] = append(hooks[h.Event], g)
 	}
