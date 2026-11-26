@@ -37,16 +37,19 @@ func floorPageList(t *testing.T) []FloorWord {
 			continue
 		}
 		cells := strings.Split(strings.Trim(ln, "| "), "|")
-		if len(cells) != 3 {
-			t.Fatalf("a row of the list is not three cells: %q", ln)
+		if len(cells) != 4 {
+			t.Fatalf("a row of the list is not four cells: %q", ln)
 		}
-		w := FloorWord{Word: strings.TrimSpace(cells[0]), Plain: strings.TrimSpace(cells[2])}
-		if also := strings.TrimSpace(cells[1]); also != "none" {
-			for _, a := range strings.Split(also, ",") {
-				w.Also = append(w.Also, strings.TrimSpace(a))
+		list := func(cell string) []string {
+			var out []string
+			if cell = strings.TrimSpace(cell); cell != "none" {
+				for _, a := range strings.Split(cell, ",") {
+					out = append(out, strings.TrimSpace(a))
+				}
 			}
+			return out
 		}
-		out = append(out, w)
+		out = append(out, FloorWord{Word: strings.TrimSpace(cells[0]), Also: list(cells[1]), Short: list(cells[2]), Plain: strings.TrimSpace(cells[3])})
 	}
 	return out
 }
@@ -55,15 +58,20 @@ func floorPageList(t *testing.T) []FloorWord {
 // floor page's own list, word for word, in the same order, so the page and
 // the check cannot differ.
 func TestBelowFloorIsTheFloorPagesList(t *testing.T) {
-	page, code := floorPageList(t), belowFloor
+	page, code := floorPageList(t), BelowFloor()
 	if len(code) == 0 {
 		t.Fatal("the check holds no word below the floor")
 	}
 	same := slices.EqualFunc(page, code, func(a, b FloorWord) bool {
-		return a.Word == b.Word && a.Plain == b.Plain && slices.Equal(a.Also, b.Also)
+		return a.Word == b.Word && a.Plain == b.Plain && slices.Equal(a.Also, b.Also) && slices.Equal(a.Short, b.Short)
 	})
 	if !same {
 		t.Errorf("the floor page's list and the check's differ:\npage %q\ncode %q", page, code)
+	}
+	code[0].Word = "changed"
+	code[0].Also = append(code[0].Also, "changed")
+	if BelowFloor()[0].Word == "changed" || slices.Contains(BelowFloor()[0].Also, "changed") {
+		t.Error("a caller's edit to the returned words reached the next caller")
 	}
 }
 
@@ -152,7 +160,7 @@ func TestProductThinkerQuestionBelowTheFloorIsRefused(t *testing.T) {
 	tab := internalsTab()
 	fs := CheckLimits(one(tab), Default, productThinker())
 	onlyRule(t, fs, RuleRegister)
-	want := []string{"worktree", "checkout", "merge queue", "CI", "commit", "checksum"}
+	want := []string{"worktree", "checkout", "pull request", "merge queue", "CI", "commit", "checksum"}
 	if got := valuesOf(fs); !slices.Equal(got, want) {
 		t.Errorf("words named %q, want %q in reading order", got, want)
 	}
@@ -164,6 +172,14 @@ func TestProductThinkerQuestionBelowTheFloorIsRefused(t *testing.T) {
 	checksum := fs[len(fs)-1]
 	if !strings.Contains(checksum.Remedy, `"a fingerprint saying two copies are identical"`) || !strings.Contains(checksum.Remedy, "one sentence") {
 		t.Errorf("the remedy names no plain words, or not the one sentence: %q", checksum.Remedy)
+	}
+	// A word in its everyday sense, or the product's own word, is still a
+	// word the check cannot tell apart: the remedy says to introduce it once.
+	if !strings.Contains(checksum.Remedy, "a shop's checkout") || !strings.Contains(checksum.Remedy, "a bank's branch") || !strings.Contains(checksum.Remedy, "introduce it once") {
+		t.Errorf("the remedy does not name the everyday sense and the product's own word: %q", checksum.Remedy)
+	}
+	if checksum.Plain != "a fingerprint saying two copies are identical" {
+		t.Errorf("the finding carries plain words %q", checksum.Plain)
 	}
 	for name, who := range map[string]Addressee{"facilitator": facilitator(), "unnamed": unnamed()} {
 		if fs := CheckLimits(one(tab), Default, who); len(fs) != 0 {
@@ -221,15 +237,25 @@ func TestBelowFloorWordsAreWholeWords(t *testing.T) {
 		"A merge waits in the merge queue.":   {"merge", "merge queue"},
 		"It is kept (a worktree).":            {"worktree"},
 		"CI ran.":                             {"CI"},
-		"A symlink, or a symbolic link.":      {"symlink"},
+		"A symlink, or a symbolic link.":      {"symlink", "symbolic link"},
 		"Two environment variables are set.":  {"environment variables"},
 		"The record ids are kept.":            {"record ids"},
 		"It is in a nutshell.":                nil,
 		"The hookah shop.":                    nil,
 		"They emerge, and the emerged merger": nil,
-		"The committee is committed to it.":   nil,
-		"Let abcd auto-merge with TF==auto.":  nil,
-		"A pre-commit check.":                 nil,
+		"The committee is committed to it.":   {"committed"},
+		"Let abcd auto-merge with TF==auto.":  {"merge"},
+		"A pre-commit check.":                 {"commit"},
+		"The work is merged and merging.":     {"merged"},
+		"abcd is committing it.":              {"committing"},
+		"The repository holds it.":            {"repository"},
+		"Two repositories wait.":              {"repositories"},
+		"The repo holds it, and the repos.":   {"repo"},
+		"Open a PR, or a pull request.":       {"PR", "pull request"},
+		"Two PRs wait.":                       {"PRs"},
+		"The work is rebased, and a rebase.":  {"rebased"},
+		"abcd is rebasing it.":                {"rebasing"},
+		"The hook-and-loop strap.":            {"hook"},
 		"The merge_queue setting.":            nil,
 		"The branché café is open.":           nil,
 		"A decision, with precision.":         nil,
@@ -256,7 +282,13 @@ func TestAWordIntroducedInOneSentencePasses(t *testing.T) {
 		{"is", "A checksum is a fingerprint saying two copies are identical. Each checksum is kept.", true},
 		{"are", "Checksums are the fingerprints saying two copies are identical.", true},
 		{"means", "Checksum means a fingerprint saying two copies are identical.", true},
-		{"the", "The checksum is the fingerprint saying two copies are identical.", true},
+		{"the", "The checksum is the fingerprint saying two copies are identical.", false},
+		{"a plain use, then a question", "The checksum is the last step before release. Who may let abcd make the checksum?", false},
+		{"after a colon", "Note: the checksum is the last step before release. The checksum waits.", false},
+		{"a colon opening", "Note: a checksum is a fingerprint saying two copies are identical.", false},
+		{"the word again", "A checksum is a checksum of the two copies. The checksum waits.", false},
+		{"the word again, plural", "A checksum is the one of the checksums we keep. The checksum waits.", false},
+		{"no determiner", "Checksums are all kept for good. Each checksum stays.", false},
 		{"called", "A fingerprint saying two copies are identical is called a checksum. Each checksum is kept.", true},
 		{"quoted", "A \"checksum\" is a fingerprint saying two copies are identical.", true},
 		{"not the first sentence", "Two copies are kept. A checksum is a fingerprint saying they are identical.", true},
@@ -298,29 +330,88 @@ func TestAWordIntroducedInOneSentencePasses(t *testing.T) {
 	if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, []string{"commit"}) {
 		t.Errorf("words named %q, want commit alone", got)
 	}
+	// A form introduced does not introduce another form of the word: an
+	// initialism is introduced with it, or it is a use. An inflection is the
+	// same word.
+	for text, want := range map[string][]string{
+		"Continuous integration is the automatic checks that run on every change. Once CI passes, abcd adds the work.":      {"CI"},
+		"Continuous integration (CI) is the automatic checks that run on every change. Once CI passes, abcd adds the work.": nil,
+		"A symbolic link is a file that stands for another file. The symlink is kept.":                                      {"symlink"},
+		"A merge is the step that adds finished work to the project. The work is merged, and each merge waits.":             nil,
+	} {
+		tab := wellBuiltTab()
+		tab.Text = text + "\n\n" + tab.Text
+		if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, want) && len(got)+len(want) > 0 {
+			t.Errorf("%q: words named %q, want %q", text, got, want)
+		}
+	}
 	// An option's description introduces nothing: the material does.
 	tab = wellBuiltTab()
 	tab.Options[0].Description = "A checksum is a fingerprint saying two copies are identical."
 	onlyRule(t, CheckLimits(one(tab), Default, productThinker()), RuleRegister)
 }
 
-// TestRegisterRefusalLineNamesEveryWord: the hook's one line per rule and tab
-// names every value the register rule found there, not the first alone, so
-// one retry fixes them all; another rule's line keeps the count.
+// TestRegisterRefusalLineNamesEveryWord: the hook's lines name every word the
+// register rule found on a tab with the plain words for each, so one retry
+// fixes them all; the words are grouped apart from a record number, whose
+// line would otherwise hide their plain words.
 func TestRegisterRefusalLineNamesEveryWord(t *testing.T) {
 	tab := internalsTab()
 	tab.Options[0].Description = "As iss-2609202058058301 asked. It costs a second look."
+	tab.Options[1].Description = "As iss-2609202058058302 asked. It costs your time."
 	groups := GroupFindings(CheckLimits(one(tab), Default, productThinker()))
-	if len(groups) != 1 {
-		t.Fatalf("want one group, got %+v", groups)
+	if len(groups) != 2 || groups[0].Rule != RuleRegister || groups[1].Rule != RuleRegister {
+		t.Fatalf("want a record-number group and a floor group, got %+v", groups)
 	}
-	line := groups[0].String()
-	for _, w := range []string{"iss-2609202058058301", `"worktree"`, `"checkout"`, `"merge queue"`, `"CI"`, `"commit"`, `"checksum"`} {
-		if !strings.Contains(line, w) {
-			t.Errorf("the line does not name %s:\n%s", w, line)
+	handles, floor := groups[0].String(), groups[1].String()
+	if !strings.Contains(handles, "iss-2609202058058301") || !strings.HasSuffix(handles, `(and 1 more such line: "iss-2609202058058302")`) {
+		t.Errorf("the record-number line:\n%s", handles)
+	}
+	if strings.Contains(floor, "iss-") || !strings.Contains(floor, `"a second folder of the project's work"`) {
+		t.Errorf("the floor line does not open on the first word's plain words:\n%s", floor)
+	}
+	want := `(and 6 more such lines: "checkout" (say "the project's folder of work"), "pull request" (say "a request to add finished work"), ` +
+		`"merge queue" (say "the line finished work waits in before it is added"), "CI" (say "the automatic checks"), "commit" (say "a saved change"), ` +
+		`"checksum" (say "a fingerprint saying two copies are identical"))`
+	if !strings.HasSuffix(floor, want) {
+		t.Errorf("the floor line does not close on every word with its plain words:\n%s\nwant suffix %s", floor, want)
+	}
+}
+
+// TestTheReviewProbeRows is the review's probe (iss-2611252121330106, round
+// 1), each sentence the material of one Product tab: the words it must name,
+// or none. A plain use shaped like a definition introduces nothing, a
+// sentence that uses the word it names introduces nothing, and a short form
+// is introduced on its own.
+func TestTheReviewProbeRows(t *testing.T) {
+	for text, want := range map[string][]string{
+		"The repository's main line of work is protected: a pull request is merged only after it was rebased and the automatic checks passed. abcd can auto-merge it once the pre-commit checks pass.": {"repository", "pull request", "merged", "rebased", "commit"},
+		"Continuous integration is the automatic checks that run on every change. Once CI passes, abcd adds the work.":                                                                                 {"CI"},
+		"A symbolic link is a file that stands for another file. The symlink is kept.":                                                                                                                 {"symlink"},
+		"Note: the merge is the last step before release. The merge waits.":                                                                                                                            {"merge"},
+		"The work is committed, merged and the PR closed. The repo keeps it.":                                                                                                                          {"committed", "merged", "PR", "repo"},
+		"A merge is the step that adds finished work to the project. The merge waits.":                                                                                                                 nil,
+		"A merge is the step that adds finished work to the project. A second merge is the one that failed.":                                                                                           nil,
+		"Each commit is kept.\n\nA commit is a saved change to the project.":                                                                                                                           {"commit"},
+		"The merge is the last step before release. Who may let abcd do the merge?":                                                                                                                    {"merge"},
+		"The branch is a week old now. The branch waits.":                                                                                                                                              {"branch"},
+		"The commit is the one from Tuesday. Keep the commit?":                                                                                                                                         {"commit"},
+		"The hook is the one that failed. The hook runs again.":                                                                                                                                        {"hook"},
+		"The checkout is the same as before. The checkout stays.":                                                                                                                                      {"checkout"},
+		"The merge queue is the place it waits now. The merge queue is long.":                                                                                                                          {"merge queue"},
+		"Commits are all kept for good. Each commit stays.":                                                                                                                                            {"Commits"},
+		"The shell is where you typed it. The shell is open.":                                                                                                                                          {"shell"},
+		"A merge is a merge of the work. The merge waits.":                                                                                                                                             {"merge"},
+		"A commit is a commit that is kept. The commit stays.":                                                                                                                                         {"commit"},
+		"Two repositories wait, and a PR.":                                                                                                                                                             {"repositories", "PR"},
+		"A merge is the step that adds finished work; the merge waits.":                                                                                                                                nil,
+		"Let abcd auto-merge the work.":                                                                                                                                                                {"merge"},
+		"The pre-commit step runs.":                                                                                                                                                                    {"commit"},
+	} {
+		tab := wellBuiltTab()
+		tab.Text = text + "\n\n" + tab.Text
+		if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, want) && len(got)+len(want) > 0 {
+			t.Errorf("%q: words named %q, want %q", text, got, want)
 		}
-	}
-	if !strings.HasSuffix(line, `(and 6 more such lines: "worktree", "checkout", "merge queue", "CI", "commit", "checksum")`) {
-		t.Errorf("the line does not close on the rest:\n%s", line)
 	}
 }

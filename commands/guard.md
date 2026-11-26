@@ -101,11 +101,13 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
   hook lets the draft through on its loud status; abcd's draft is checked all
   the same).
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
-  `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
+  `value`, `limit`, `remedy`, for a word below the product thinker's floor the
+  `plain` words to say instead, and whether it `refuses` (the rows limit alone
   never does).
 - `by_rule` — the findings folded one entry per rule and tab, in the order the
   first of each appeared, with its first `value` and a `count`: the lines the
-  hook's refusal names.
+  hook's refusal names. The register rule's words below the floor are an entry
+  of their own, apart from its record numbers and commands.
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
@@ -245,11 +247,14 @@ that mode: a `Q1` tab naming a command, or a checkout, is refused while the mode
 names the product thinker and admitted while it names the facilitator. The words
 are the list the floor's page carries
 (`.abcd/development/brief/glossary/interview/knowledge-floor.md` under the
-plugin root), each a finding naming the plain words to use; a whole word alone
-counts, in the singular or the plural, and one inside a longer word
-(`auto-merge`) does not. A word the same tab's question text introduces in one
-sentence before its first use ("A checksum is a fingerprint saying two copies
-are identical.") passes on that tab. A tab headed in
+plugin root), each a finding naming the plain words to use; a whole word
+counts, in the singular, the plural or a form the list names (`merged`), and
+one joined to another by a hyphen (`auto-merge`) counts too, while one inside a
+longer word (`emerged`) does not. A word the same tab's question text
+introduces in one sentence before its first use ("A checksum is a fingerprint
+saying two copies are identical.") passes on that tab; a sentence that uses
+the word it names ("The merge is the last step.") introduces nothing, and a
+short form (`CI`) is introduced on its own or in the word's sentence. A tab headed in
 the older form is judged by its own role word, so in one call a `Product Q2`
 tab is held to the product thinker's register beside a `Q1` tab asked while
 the mode names the facilitator. In a repository

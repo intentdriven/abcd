@@ -227,7 +227,7 @@ func TestAskingRulesHandTheMaterialInThePersonsWords(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"hand it the material to quote, in the words of the person the question is for",
+		"hand it whom the question is for, then the material to quote, in that person's words",
 		"never in internals for the product thinker",
 	} {
 		if !strings.Contains(writer, want) {

@@ -303,12 +303,15 @@ number, a command, and a word below the product thinker's knowledge floor
 test holds equal to the table the floor's own page carries
 ([`knowledge-floor.md`](../glossary/interview/knowledge-floor.md)); each word
 found on a tab is one finding, at its first use, naming the plain words the
-list gives. A word counts whole, in any case and in the plural, and not inside
-a longer word, one joined to it by a hyphen included. One the tab's question
-text introduces in one sentence before its first use passes on that tab, the
-floor's own rule. The sentence is read by its shape: the word opens it and it
-goes on to say what the word is or means, or it ends on what the thing is
-called. No configuration lists further words or excepts any: the question
+list gives. A word counts whole, in any case, in the plural and in the other
+forms the list names, joined to another by a hyphen included, and not inside a
+longer word. One the tab's question text introduces in one sentence before its
+first use passes on that tab, the floor's own rule. The sentence is read by its
+shape: the word opens it, bare or after "a", and it goes on to say what the
+word is or means without using the word again, or it ends on what the thing is
+called; "the merge" is a merge the reader is taken to know, so it introduces
+nothing. A short form the list names (CI, a PR) is introduced on its own, or
+in the sentence introducing the word. No configuration lists further words or excepts any: the question
 limits' namespace takes its three keys alone. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview

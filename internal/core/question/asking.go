@@ -121,7 +121,7 @@ func AskingRulesFrom(l Limits, n LimitsNote) []string {
 			numberWord(l.Rows), numberWord(l.Columns),
 			boundsSentences(), n.sentence()),
 
-		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it the material to quote, in the words of the person the question is for and never in internals for the product thinker, whom the question is for, the decision, and the defensible answers. " +
+		"In abcd's own interviews, write each question through the abcd:question-drafter agent, abcd's question writer: hand it whom the question is for, then the material to quote, in that person's words and never in internals for the product thinker, then the decision and the defensible answers. " +
 			"It writes the question to these rules, runs `abcd guard question` on each draft, fixes every fault the check names, and checks again until the check is clean, then returns the question with the rows the check counted. " +
 			"Ask only the question the writer returns, and never write or edit a question yourself. " +
 			"When it refuses, fix the brief and redraft it without telling the person: The writer's refusals and retries are the agent's own work, and the next thing the person sees is the question itself; a question abandoned after a refusal is followed by `abcd mode managed`, since nothing asked will reset the mode. " +

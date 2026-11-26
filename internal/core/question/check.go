@@ -46,6 +46,9 @@ type Finding struct {
 	Value  string
 	Limit  string
 	Remedy string
+	// Plain is the plain words a finding of a word below the knowledge floor
+	// names; empty for every other finding.
+	Plain string
 }
 
 // String is the finding as one line of plain text.

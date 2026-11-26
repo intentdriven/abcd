@@ -125,6 +125,7 @@ type questionFindingJSON struct {
 	Value   string `json:"value"`
 	Limit   string `json:"limit"`
 	Remedy  string `json:"remedy"`
+	Plain   string `json:"plain,omitempty"`
 	Refuses bool   `json:"refuses"`
 }
 
@@ -402,7 +403,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 }
 
 func findingJSON(f question.Finding, refuses bool) questionFindingJSON {
-	return questionFindingJSON{Tab: f.Tab, Part: f.Part, Rule: string(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Refuses: refuses}
+	return questionFindingJSON{Tab: f.Tab, Part: f.Part, Rule: string(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Plain: f.Plain, Refuses: refuses}
 }
 
 // questionCheckExit maps the result onto the verb's exit (decision 8): 2 for

@@ -20,11 +20,16 @@ import (
 // and the tabs the check reads, not the payload, and no refusal needs a cut.
 // The register rule's further findings each name another word to replace, so
 // its line names their values too (iss-2611252121330106): they are at most one
-// per field and one per word below the floor, so the line stays bounded.
+// per field and one per word below the floor, so the line stays bounded. A
+// word below the knowledge floor is grouped apart from a record number or a
+// command, and each further word is named with its plain words, so the line
+// hands over every replacement the retry needs.
 
-// Group is one rule's findings on one tab: the first of them, whose part,
-// echoed value, limit and remedy its line names, how many there are, and for
-// the register rule the further findings' values, each once.
+// Group is one rule's findings on one tab (the register rule's words below the
+// floor a group of their own): the first of them, whose part, echoed value,
+// limit and remedy its line names, how many there are, and for the register
+// rule the further findings' values, each once, a word below the floor with
+// its plain words.
 type Group struct {
 	Tab   int
 	Rule  Rule
@@ -38,17 +43,22 @@ type Group struct {
 // register rule's further values.
 func GroupFindings(findings []Finding) []Group {
 	type key struct {
-		tab  int
-		rule Rule
+		tab   int
+		rule  Rule
+		floor bool
 	}
 	var out []Group
 	at := map[key]int{}
 	for _, f := range findings {
-		k := key{f.Tab, f.Rule}
+		k := key{f.Tab, f.Rule, f.Plain != ""}
 		if i, ok := at[k]; ok {
 			out[i].Count++
-			if g := &out[i]; f.Rule == RuleRegister && f.Value != g.First.Value && !slices.Contains(g.More, f.Value) {
-				g.More = append(g.More, f.Value)
+			v := fmt.Sprintf("%q", f.Value)
+			if f.Plain != "" {
+				v += fmt.Sprintf(" (say %q)", f.Plain)
+			}
+			if g := &out[i]; f.Rule == RuleRegister && f.Value != g.First.Value && !slices.Contains(g.More, v) {
+				g.More = append(g.More, v)
 			}
 			continue
 		}
@@ -65,11 +75,7 @@ func (g Group) String() string {
 	line := g.First.String()
 	named := ""
 	if len(g.More) > 0 {
-		quoted := make([]string, len(g.More))
-		for i, v := range g.More {
-			quoted[i] = fmt.Sprintf("%q", v)
-		}
-		named = ": " + strings.Join(quoted, ", ")
+		named = ": " + strings.Join(g.More, ", ")
 	}
 	switch more := g.Count - 1; {
 	case more == 1:
