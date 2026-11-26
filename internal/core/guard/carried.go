@@ -392,12 +392,26 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 	if s.arrayOf != "" {
 		return vals
 	}
-	all := len(s.tokens) > 0
-	for _, t := range s.tokens {
+	// A keyword that opens a branch, a loop body, a group or a negation runs
+	// nothing, so the assignments after it are the command's (`then P=pkill`,
+	// `{ P=pkill`, `! P=pkill`): a value of fixed text is carried as it is
+	// standing alone. A command's output assigned there is not carried, and
+	// the name keeps the reading it had: abcd's own hook scripts pick their
+	// binary that way, in a branch, and reading it as that output would block
+	// them.
+	from := 0
+	for from < len(s.tokens) && quietKeywords[s.tokens[from]] {
+		from++
+	}
+	all := from < len(s.tokens)
+	for _, t := range s.tokens[from:] {
 		all = all && isAssignment(t)
 	}
 	if all {
-		for i := range s.tokens {
+		for i := from; i < len(s.tokens); i++ {
+			if _, eq, _, _, ok := splitAssignment(s.tokens[i]); ok && from > 0 && word(i, eq+1).output {
+				continue
+			}
 			assign(i)
 		}
 		return vals
