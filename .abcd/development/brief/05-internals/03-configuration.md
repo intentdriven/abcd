@@ -181,11 +181,9 @@ hand-set: the binary reads them and never writes them.
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
   },
   "reservation": {
-    "fork_origin": "refuse",            // "refuse" | "<owner>/<name>": the one fork, if any, on which a
+    "fork_origin": "refuse"             // "refuse" | "<owner>/<name>": the one fork, if any, on which a
                                         //   reservation is made when GitHub names an origin push URL a
                                         //   fork (04-surfaces/37-reserve.md)
-    "max_live": 10                      // one person's ceiling on live reservations, 1 to 100, read at
-                                        //   origin's default branch; a machine's figure may only lower it
   },
   "facilitator": {
     "mode": "human"                     // "human" (default) | "auto": whether a person or abcd merges, read
