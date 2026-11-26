@@ -275,13 +275,16 @@ func drainLaneOptions(o Options, st DrainState, footprint []string, plan *captur
 // the lead passed over and why, or the reservations the person is at the cap
 // with, or the refusal that stops the move; left says which members left the
 // bundle before it opened, and why. A lead passed over names every issue the
-// bundle carried as it came to open, the lead first, and contention is true
-// when another's hold refused its start.
+// bundle carried as it came to open, the lead first; contention is true when
+// another's hold refused its start, and moved when the lead's found_at no
+// longer names the footprint its hold reserved, which the next move reserves
+// again rather than a drive passing it over.
 type bundleOpened struct {
 	start      *StartResult
 	passed     *Excluded
 	issues     []string
 	contention bool
+	moved      bool
 	capped     []string
 	err        error
 	left       string
@@ -311,7 +314,8 @@ func reservedFootprint(view *claim.Snapshot, id string, hold *DrainHold, fp []st
 // judgements are kept, so a later move forms the bundle again without asking
 // any of them again. A start refused for a reason the drain passes a single
 // lane's lead over for passes this lead over, and the move releases the
-// bundle's holds and goes on in the drain's order (Drain).
+// bundle's holds and goes on in the drain's order (Drain); a lead whose
+// found_at moved ends the move, and the next one forms the bundle again.
 func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainPlan, rule drainrule.Rule, holds *judgeHolds, view *claim.Snapshot, now time.Time) bundleOpened {
 	f := st.Forming
 	st.Forming = nil
@@ -330,7 +334,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 	}
 	leadFP, ok := footprintOf(f.Lead, f.Hold)
 	if !ok {
-		return bundleOpened{issues: all, passed: &Excluded{ID: f.Lead, Check: CheckReservation, Reason: "its found_at names no path, or another than its reservation's footprint, since the drain reserved it" +
+		return bundleOpened{issues: all, moved: true, passed: &Excluded{ID: f.Lead, Check: CheckReservation, Reason: "its found_at names no path, or another than its reservation's footprint, since the drain reserved it" +
 			"; the bundle with " + strings.Join(f.ids()[1:], ", ") + " did not open, and its reservations are released"}}
 	}
 	var left []string

@@ -230,7 +230,10 @@ rather than waiting. A bundle whose start is refused, for a reason that is not
 its reservation's, is passed over as a single lane's lead is: its holds are
 released, its lead is passed over for the rest of the move and of a drive, and
 its members go back among the eligible issues, which the move goes on to in
-the drain's order. A forming bundle may hold up to `bundle_max` of the
+the drain's order. A lead another holds counts as held work, so the drain
+waits on it as it waits on any, and the drive looks at it again once that wait
+ends. A lead whose found_at moved since it was reserved ends the move instead,
+and the next move reserves it on its new path and forms the bundle again. A forming bundle may hold up to `bundle_max` of the
 person's live reservations across several moves; lowering the cap is the
 remedy for that cost. A stop, a pace window that elapses and an origin that
 does not answer keep `forming` and its holds, as an awaited judgement is

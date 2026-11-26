@@ -793,6 +793,10 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		// A bundle's lead whose start was refused is passed over for the
 		// rest of the drive (DrainOptions.PassedLeads).
 		for _, p := range t.o.Drain.passLeads(res) {
+			if p.Contention {
+				t.say("passed over %s, a bundle's lead another holds, until the drive's wait on it ends: %s", p.ID, p.Reason)
+				continue
+			}
 			t.say("passed over %s for the rest of this drive, as a bundle's lead whose start was refused: %s", p.ID, p.Reason)
 		}
 		t.boundaryDue = true
@@ -826,6 +830,10 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 				t.sleep(ctx, d, res.Next)
 			} else if t.idle(ctx, d, res.Next) {
 				return t.ended(TerminalWaited), nil
+			} else {
+				// The wait on held work is over: a bundle's lead another held
+				// is looked at again (DrainOptions.PassedLeads).
+				t.o.Drain.retryHeldLeads()
 			}
 			continue
 		}

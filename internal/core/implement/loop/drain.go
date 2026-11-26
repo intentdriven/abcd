@@ -325,9 +325,11 @@ type DrainOptions struct {
 	// PassedLeads are the leads of bundles whose start was refused this run of
 	// a drive, each with why: every move after passes such a lead over before
 	// anything is pushed or asked over it, and forms no bundle with it, as the
-	// move that passed it did (DrainResult.passedLeads). Held in the drive's
-	// memory alone, never written.
-	PassedLeads []Excluded
+	// move that passed it did (DrainResult.passedLeads). A lead another held
+	// counts as held work, so the drain waits on it as the single path does,
+	// and the drive takes it off once that wait ends, so the move after looks
+	// again (retryHeldLeads). Held in the drive's memory alone, never written.
+	PassedLeads []DrainPassedLead
 	// driveEnds is set by a terminal drive, which sweeps on its own at its
 	// own end (terminal.go), so a move that ends the drain does not sweep
 	// for it as well (autosweep.go).
@@ -349,20 +351,27 @@ func (st DrainState) withoutPassed(d DrainOptions) DrainState {
 	return st
 }
 
+// DrainPassedLead is a bundle's lead whose start was refused, as a drive keeps
+// it passed over: the pass-over, and whether another's hold refused it.
+type DrainPassedLead struct {
+	Excluded
+	Contention bool
+}
+
 // passedLead is the pass-over the drive keeps for id as a bundle's lead, and
 // whether it keeps one (DrainOptions.PassedLeads).
-func (d DrainOptions) passedLead(id string) (Excluded, bool) {
-	i := slices.IndexFunc(d.PassedLeads, func(e Excluded) bool { return e.ID == id })
+func (d DrainOptions) passedLead(id string) (DrainPassedLead, bool) {
+	i := slices.IndexFunc(d.PassedLeads, func(e DrainPassedLead) bool { return e.ID == id })
 	if i < 0 {
-		return Excluded{}, false
+		return DrainPassedLead{}, false
 	}
 	return d.PassedLeads[i], true
 }
 
 // passLeads keeps the leads res passed over in d, for every move after, and
 // returns those it did not keep already.
-func (d *DrainOptions) passLeads(res DrainResult) []Excluded {
-	var out []Excluded
+func (d *DrainOptions) passLeads(res DrainResult) []DrainPassedLead {
+	var out []DrainPassedLead
 	for _, p := range res.passedLeads {
 		if _, ok := d.passedLead(p.ID); !ok {
 			d.PassedLeads = append(d.PassedLeads, p)
@@ -370,6 +379,13 @@ func (d *DrainOptions) passLeads(res DrainResult) []Excluded {
 		}
 	}
 	return out
+}
+
+// retryHeldLeads takes off d the leads another held, once the drive's wait on
+// held work has ended: the move after looks again and takes such a lead up if
+// it was freed, as the single path's does (drain_wait.go).
+func (d *DrainOptions) retryHeldLeads() {
+	d.PassedLeads = slices.DeleteFunc(d.PassedLeads, func(p DrainPassedLead) bool { return p.Contention })
 }
 
 // passedInProgress are the lanes of st in progress that the drive passed over.
@@ -448,8 +464,9 @@ type DrainResult struct {
 	passedOnly []DrainLane
 	// passedLeads are the leads of the bundles this move passed over when
 	// their start was refused, each with why, which a drive keeps
-	// (DrainOptions.PassedLeads).
-	passedLeads []Excluded
+	// (DrainOptions.PassedLeads); a lead whose found_at moved is not among
+	// them, since the next move reserves it again on its new path.
+	passedLeads []DrainPassedLead
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -1277,15 +1294,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}
 	var capped, held []string
-	// visited are the issues this move has walked, each walked once; released
-	// are those whose holds it released when a bundle's start was refused,
-	// which its view, fetched before, still shows held. A lead passed over,
-	// by this move or by the drive, joins no bundle.
+	// visited are the issues this move has walked, each walked once, but for
+	// one the walk stopped at for the reservation cap, walked again should a
+	// refused bundle free holds later in the move; released are those whose
+	// holds it released when a bundle's start was refused, which its view,
+	// fetched before, still shows held. A lead passed over, by this move or by
+	// the drive, joins no bundle.
 	visited := map[string]bool{}
 	var released []string
 	passedLead := func(id string) bool {
 		_, ok := d.passedLead(id)
-		return ok || slices.ContainsFunc(res.passedLeads, func(e Excluded) bool { return e.ID == id })
+		return ok || slices.ContainsFunc(res.passedLeads, func(e DrainPassedLead) bool { return e.ID == id })
 	}
 	liveMine := func(id string) []string {
 		return slices.DeleteFunc(view.LiveHeldBy(capHolder, id), func(r string) bool { return slices.Contains(released, r) })
@@ -1337,9 +1356,16 @@ walk:
 			}
 		}
 		// A bundle's lead whose start was refused earlier in the drive is
-		// passed over for the rest of it, as the move that refused it did.
+		// passed over for the rest of it, as the move that refused it did; one
+		// another held counts as held work, as the single path's does, until
+		// the drive's wait on it ends.
 		if p, ok := d.passedLead(v.ID); ok {
-			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: p.Check, Reason: "the drive passed it over for the rest of this run: " + p.Reason})
+			reason := "the drive passed it over for the rest of this run: " + p.Reason
+			if p.Contention {
+				reason = "another held it when its bundle's start was refused, and the drive looks again once its wait ends: " + p.Reason
+				held = append(held, reason)
+			}
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: p.Check, Reason: reason})
 			continue
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
@@ -1456,6 +1482,7 @@ walk:
 				if capHolder.Known() && capErr == nil {
 					if mine := liveMine(v.ID); len(mine) >= capLimit {
 						capped = mine
+						delete(visited, v.ID)
 						break
 					}
 				}
@@ -1463,6 +1490,7 @@ walk:
 				if err != nil {
 					if r, ok := AsRefusal(err); ok && r.capped != nil {
 						capped = r.capped
+						delete(visited, v.ID)
 						break
 					}
 					if r, ok := AsRefusal(err); ok && r.Contention {
@@ -1549,6 +1577,7 @@ walk:
 			if capHolder.Known() && capErr == nil {
 				if mine := liveMine(v.ID); len(mine) >= capLimit {
 					capped = mine
+					delete(visited, v.ID)
 					break
 				}
 			}
@@ -1556,6 +1585,7 @@ walk:
 			if err != nil {
 				if r, ok := AsRefusal(err); ok && r.capped != nil {
 					capped = r.capped
+					delete(visited, v.ID)
 					break
 				}
 				if r, ok := AsRefusal(err); ok && r.Contention {
@@ -1676,6 +1706,13 @@ walk:
 			res.Start = opened.start
 			res.Next = bundleNext(st.Lanes[len(st.Lanes)-1], *opened.start)
 			return finish(true)
+		case opened.passed != nil && opened.moved:
+			// A lead whose found_at moved since the drain reserved it is
+			// reserved again on its new path by the next move, which forms
+			// the bundle again; its holds are released on the move's way out.
+			res.Passed = append(res.Passed, *opened.passed)
+			res.Next = "the bundle's lane did not open: " + opened.passed.Reason + "; run `abcd drain` again, which reserves " + opened.passed.ID + " on its new path and forms the bundle again"
+			return finish(true)
 		case opened.passed != nil:
 			// A bundle whose start is refused is passed over as a single
 			// lane's lead is, and the move goes on in the drain's order: its
@@ -1684,7 +1721,7 @@ walk:
 			// members go back among the eligible issues, each reserved again
 			// before it opens or forms.
 			res.Passed = append(res.Passed, *opened.passed)
-			res.passedLeads = append(res.passedLeads, *opened.passed)
+			res.passedLeads = append(res.passedLeads, DrainPassedLead{Excluded: *opened.passed, Contention: opened.contention})
 			if opened.contention {
 				held = append(held, opened.passed.Reason)
 			}

@@ -491,7 +491,9 @@ no member is left, the cap is reached, or the next reservation would reach
 `reservation.max_live`. A bundle whose start is refused for a reason that is
 not its reservation's releases its holds, passes its lead over for the rest of
 the move and of a drive, and returns its members to the eligible issues, which
-the move goes on to. A stop, an elapsed pace window and an origin that
+the move goes on to; a lead another holds counts as held work the drain waits
+on. A lead whose found_at moved ends the move, and the next one forms the
+bundle again on its new path. A stop, an elapsed pace window and an origin that
 does not answer keep the bundle forming; a drain that ends, or a drive that
 lets go, releases every forming hold with no tombstone. A member the lane's
 receipt hands back alone is routed as a lane's hand-back of its kind, a pull

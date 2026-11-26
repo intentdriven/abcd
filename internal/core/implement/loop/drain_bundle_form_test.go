@@ -742,22 +742,32 @@ func TestABundleStartsEndToEndWithItsMember(t *testing.T) {
 	heldStill(t, bare, m1, m1Hold)
 }
 
-// refuseBundles makes the drain's bundle start refuse, as the start's budget
-// check does, every lead refuse names, recording each start asked for; any
-// other starts as the drain does.
-func refuseBundles(t *testing.T, refuse func(lead string) bool) *[]openedBundle {
+// refuseBundles makes the drain's bundle start refuse each lead refuse
+// answers a refusal for, recording each start asked for; a lead it answers
+// nil for starts as the drain does.
+func refuseBundles(t *testing.T, refuse func(lead string) *Refusal) *[]openedBundle {
 	t.Helper()
 	var got []openedBundle
 	was := startBundle
 	startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
 		got = append(got, openedBundle{lead: lead, members: members})
-		if refuse(lead) {
-			return StartResult{}, &Refusal{Stage: "check", Check: CheckBudget, Reason: "the runner's quota is under the run's estimate", Remedy: "wait for the quota to refill"}
+		if r := refuse(lead); r != nil {
+			return StartResult{}, r
 		}
 		return was(repoRoot, lead, o, members)
 	}
 	t.Cleanup(func() { startBundle = was })
 	return &got
+}
+
+// budgetRefusal is the start's budget check refusing: no reservation's.
+func budgetRefusal() *Refusal {
+	return &Refusal{Stage: "check", Check: CheckBudget, Reason: "the runner's quota is under the run's estimate", Remedy: "wait for the quota to refill"}
+}
+
+// peerRefusal is the start's peers check refusing id: another holds it.
+func peerRefusal(id string) *Refusal {
+	return &Refusal{Stage: "check", Check: CheckPeers, Contention: true, Reason: "a peer session's live claim names " + id, Remedy: "wait for the peer to let it go"}
 }
 
 // driveMove is one drain move as a drive makes it: the host's answer to the
@@ -788,7 +798,12 @@ func TestARefusedBundleGoesOnToTheNextEligibleIssue(t *testing.T) {
 	repo, bare := bundleDrainRepo(t)
 	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
 	var lead string
-	asked := refuseBundles(t, func(l string) bool { return l == lead })
+	asked := refuseBundles(t, func(l string) *Refusal {
+		if l == lead {
+			return budgetRefusal()
+		}
+		return nil
+	})
 	first := mustDrain(t, repo, Options{}, DrainOptions{})
 	var m1 string
 	lead, m1, _, _ = orderOf(t, first)
@@ -825,7 +840,7 @@ func TestARefusedBundleGoesOnToTheNextEligibleIssue(t *testing.T) {
 func TestARefusedLeadIsNotPickedAgainInTheDrive(t *testing.T) {
 	repo, _ := bundleDrainRepo(t)
 	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
-	asked := refuseBundles(t, func(string) bool { return true })
+	asked := refuseBundles(t, func(string) *Refusal { return budgetRefusal() })
 	d := DrainOptions{}
 	res := driveMove(t, repo, &d, DrainResult{}, "")
 	lead, _, _, last := orderOf(t, res)
@@ -853,5 +868,130 @@ func TestARefusedLeadIsNotPickedAgainInTheDrive(t *testing.T) {
 	}
 	if res.Start == nil || res.Lane == nil || res.Lane.Issue != last || len(res.Lane.Bundle) != 0 {
 		t.Fatalf("the drain works through its order to the last issue, which opens alone: %+v", res)
+	}
+}
+
+// TestABundleAnotherHoldsLeavesTheDriveWaiting: a bundle whose start is
+// refused because another holds its lead counts that lead as held work, as
+// the single path's start does: with nothing else eligible, the drive waits
+// on it and does not end, every move until the wait ends, and the move after
+// the wait asks the lead's start again. Watched failing before the drive kept
+// the hold beside its pass-over: the move after the refusal ended the drain as
+// empty.
+func TestABundleAnotherHoldsLeavesTheDriveWaiting(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	var lead string
+	asked := refuseBundles(t, func(l string) *Refusal {
+		if l == lead {
+			return peerRefusal(l)
+		}
+		return budgetRefusal()
+	})
+	d := DrainOptions{}
+	first := driveMove(t, repo, &d, DrainResult{}, "")
+	var m2, m3 string
+	lead, _, m2, m3 = orderOf(t, first)
+	d.Skip, d.SkipReason = []string{m2, m3}, "held back so the bundle's two issues are all that is eligible"
+	second := driveMove(t, repo, &d, first, JudgementNo)
+	d.Skip, d.SkipReason = nil, ""
+	third := driveMove(t, repo, &d, second, JudgementNo)
+	leadAsked := func() int {
+		n := 0
+		for _, b := range *asked {
+			if b.lead == lead {
+				n++
+			}
+		}
+		return n
+	}
+	if leadAsked() != 1 {
+		t.Fatalf("the bundle on the lead is asked to start once: %+v", *asked)
+	}
+	for i, res := range []DrainResult{third, driveMove(t, repo, &d, third, "")} {
+		if res.Stopped != "" || res.Waiting != DrainWaitHeld {
+			t.Fatalf("move %d after the refusal waits on the lead another holds, the drain not ended: stopped %q, waiting %q, next %s", i, res.Stopped, res.Waiting, res.Next)
+		}
+	}
+	if leadAsked() != 1 {
+		t.Fatalf("a move inside the wait pushes nothing for the lead: %+v", *asked)
+	}
+	d.retryHeldLeads()
+	again := driveMove(t, repo, &d, DrainResult{}, "")
+	if leadAsked() != 2 {
+		t.Fatalf("the move after the wait asks the lead's start again: %+v", *asked)
+	}
+	if again.Stopped != "" || again.Waiting != DrainWaitHeld {
+		t.Fatalf("a lead still held keeps the drive waiting: stopped %q, waiting %q", again.Stopped, again.Waiting)
+	}
+}
+
+// TestALeadWhoseFoundAtMovedFormsAgainOnTheNextMove: a lead whose found_at
+// names another path than its hold reserved, once its bundle is full, is not
+// opened on that hold, and a drive does not keep it passed over: the next
+// move reserves it again on its new path and forms its bundle again. Watched
+// failing before the drive told this pass-over from a refused start: the lead
+// was kept out for the rest of the run, and the next lane opened on its member.
+func TestALeadWhoseFoundAtMovedFormsAgainOnTheNextMove(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	d := DrainOptions{}
+	first := driveMove(t, repo, &d, DrainResult{}, "")
+	lead, _, _, _ := orderOf(t, first)
+	second := driveMove(t, repo, &d, first, JudgementNo)
+	// The new path is a file, as the old one was, so the lead keeps its place
+	// in the drain's order.
+	pushFromOtherCopy(t, bare, "add the moved file", func(dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "internal", "a", "moved.go"), []byte("package a\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	moveFoundAtOnOrigin(t, bare, lead, "internal/a/moved.go")
+	third := driveMove(t, repo, &d, second, JudgementNo)
+	if third.Start != nil || !slices.ContainsFunc(third.Passed, func(e Excluded) bool { return e.ID == lead && e.Check == CheckReservation }) {
+		t.Fatalf("the moved lead's bundle does not open on its hold: %+v", third.Passed)
+	}
+	next := driveMove(t, repo, &d, third, JudgementNo)
+	st := formedState(t, repo)
+	reformed := st.Forming != nil && st.Forming.Lead == lead
+	opened := next.Lane != nil && next.Lane.Issue == lead
+	if !reformed && !opened {
+		t.Fatalf("the next move forms the bundle on %s again: forming %+v, lane %+v, passed %+v; %s", lead, st.Forming, next.Lane, next.Passed, next.Next)
+	}
+	r := originReservation(t, bare, claim.RefPrefix+lead)
+	if body := gitIn(t, bare, "log", "-1", "--format=%B", r.commit); r.released || !strings.Contains(body, "internal/a/moved.go") {
+		t.Fatalf("the lead is reserved again on its new path: %+v\n%s", r, body)
+	}
+	if reformed && (st.Forming.Hold == nil || st.Forming.Hold.Commit != r.commit) {
+		t.Fatalf("the bundle forms again on the lead's new reservation: %+v, origin %s", st.Forming.Hold, r.commit)
+	}
+}
+
+// TestAnIssueTheCapStoppedAtIsTakenUpOnceARefusedBundleFreesHolds: a walk
+// stopped at the reservation cap opens the bundle forming as it stands; when
+// that bundle's start is refused, the holds it frees bring the person under
+// the cap, and the same move takes up the issue it stopped at, in the drain's
+// order. Watched failing before such an issue was walked again: the move
+// passed it and asked over the one after it.
+func TestAnIssueTheCapStoppedAtIsTakenUpOnceARefusedBundleFreesHolds(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":4},"reservation":{"max_live":2}}`)
+	var lead string
+	refuseBundles(t, func(l string) *Refusal {
+		if l == lead {
+			return budgetRefusal()
+		}
+		return nil
+	})
+	first := mustDrain(t, repo, Options{}, DrainOptions{})
+	var m2 string
+	lead, _, m2, _ = orderOf(t, first)
+	second := judge(t, repo, Options{}, first, JudgementNo, "", noReason)
+	third := judge(t, repo, Options{}, second, JudgementNo, "", noReason)
+	if !slices.ContainsFunc(third.Passed, func(e Excluded) bool { return e.ID == lead && e.Check == CheckBudget }) {
+		t.Fatalf("the bundle opened at the cap is refused and its lead passed over: %+v", third.Passed)
+	}
+	if third.Judging == nil || third.Judging.Issue != m2 {
+		t.Fatalf("the move takes up the issue the cap stopped it at: %+v, next %s", third.Judging, third.Next)
 	}
 }
