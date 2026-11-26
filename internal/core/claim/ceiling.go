@@ -122,7 +122,7 @@ func (c Ceiling) ceilingName() string {
 	case LimitMachine:
 		return fmt.Sprintf("this machine's lower ceiling (%s in %s)", MaxLiveKey, c.LimitOrigin)
 	}
-	return "the default ceiling, which the repository's " + MaxLiveKey + " does not change"
+	return "the default ceiling (no " + MaxLiveKey + " was read from the repository's file)"
 }
 
 // joinNote is a and b joined by "; ", either alone when the other is "".

@@ -109,7 +109,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 	// A release subject sits outside the cap: it neither counts toward a
 	// person's cap nor is refused by it (release.go).
 	if !isRelease(p.id) && addsOne(j) {
-		limit, note, err := maxLive(p.root, j.defaultRef, p.home)
+		limit, note, err := actMaxLive(p.root, j.defaultRef, p.home)
 		if err != nil {
 			return err
 		}

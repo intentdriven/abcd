@@ -80,6 +80,9 @@ func TestTheRepositorysCeilingHoldsOnEveryMachine(t *testing.T) {
 			!strings.Contains(err.Error(), "the repository's reservation.max_live in .abcd/config.json at origin/main") {
 			t.Errorf("%s: the fifth = %v; want the cap of the repository's 4, naming its file at the branch", name, err)
 		}
+		if who == far && capped != nil && capped.Note != "" {
+			t.Errorf("%s: the cap's note = %q; want none on the ordinary path", name, capped.Note)
+		}
 	}
 	if tip := w.remoteTip("iss-5"); tip != "" {
 		t.Fatalf("a reservation past the repository's ceiling reached origin: %s", tip)
@@ -264,6 +267,133 @@ func TestARepositoryCannotNameThePerson(t *testing.T) {
 	p.fetchMain()
 	if n, layer, _, err := limitAt(p.dir, p.home); err != nil || n != 4 || layer != LimitRepository {
 		t.Fatalf("beside fork_origin: %d (%s), %v; want the repository's 4", n, layer, err)
+	}
+}
+
+// TestAnActReadsTheCeilingWhereOriginSaysItsDefaultIs: with no
+// origin/HEAD and no origin/main here, this checkout's resolver guesses the
+// pushed develop, which sets 100; the act asks origin, which names main,
+// setting 4, and the fifth reservation is refused at 4, the note naming the
+// guess.
+func TestAnActReadsTheCeilingWhereOriginSaysItsDefaultIs(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	w.seed.Git("switch", "-q", "-c", "develop")
+	w.seed.Write(".abcd/config.json", `{"reservation": {"max_live": 100}}`)
+	w.seed.Commit("raise on develop")
+	w.seed.Git("push", "-q", "origin", "develop")
+	w.seed.Git("switch", "-q", "main")
+	p.git("fetch", "-q", "origin", "develop:refs/remotes/origin/develop")
+	p.git("update-ref", "-d", "refs/remotes/origin/HEAD")
+	p.git("update-ref", "-d", "refs/remotes/origin/main")
+	if got := originDefault(p.dir); got != "refs/remotes/origin/develop" {
+		t.Fatalf("the resolver here names %q; want it to guess origin/develop", got)
+	}
+	reserveN(t, p, 4)
+	_, err := p.reserve("iss-5", "f5.go")
+	var capped *CapError
+	if !errors.As(err, &capped) || capped.Limit != 4 || !strings.Contains(capped.Note, "tracks origin/develop") {
+		t.Fatalf("the fifth with develop guessed at 100 = %v; want the cap of origin's main, 4, naming the guess", err)
+	}
+}
+
+// TestAnUnpushedCommitNeverRaisesTheCeiling: a local origin/HEAD pointed at
+// a ref origin does not hold, on a commit setting 100 that never left this
+// machine, leaves the act's fetch unable to read it; the act reads the 4
+// origin's own main holds, and the fifth is refused.
+func TestAnUnpushedCommitNeverRaisesTheCeiling(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	p.ghostDefault(`{"reservation": {"max_live": 100}}`)
+	reserveN(t, p, 4)
+	if _, err := p.reserve("iss-5", "f5.go"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "you hold 4 live reservations") {
+		t.Fatalf("the fifth with an unpushed 100 = %v; want the cap of 4", err)
+	}
+}
+
+// TestAFetchGapLeansToTheTen: origin's main has moved to a commit setting
+// 50 this checkout cannot fetch (its tracked default names a ref origin
+// lacks, holding an unpushed 100), so the act reads no repository figure and
+// the ten applies, saying why: neither 50 nor 100 raises it.
+func TestAFetchGapLeansToTheTen(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	w.ceilingOnMain(`{"reservation": {"max_live": 50}}`)
+	p.ghostDefault(`{"reservation": {"max_live": 100}}`)
+	reserveN(t, p, MaxLive)
+	_, err := p.reserve("iss-11", "f11.go")
+	var capped *CapError
+	if !errors.As(err, &capped) || capped.Limit != MaxLive || capped.LimitLayer != LimitBundled ||
+		!strings.Contains(capped.Note, "is not in this checkout") {
+		t.Fatalf("the eleventh across a fetch gap = %v; want the ten, saying origin's tip is not here", err)
+	}
+}
+
+// TestAnOriginThatCannotBeAskedLeansToTheTen: where origin cannot say which
+// branch is its default, the act reads no repository figure, even the 4 its
+// origin/main tracks here, and the ten applies, lowered by the machine
+// alone.
+func TestAnOriginThatCannotBeAskedLeansToTheTen(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	p.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+	lim, note, err := actMaxLive(p.dir, originDefault(p.dir), p.home)
+	if err != nil || lim.N != MaxLive || lim.Layer != LimitBundled || !strings.Contains(note, "could not say which branch is its default") {
+		t.Fatalf("with origin unanswering: %+v, %q, %v; want the ten, saying origin could not be asked", lim, note, err)
+	}
+	writeConfig(t, p.home, `{"reservation": {"max_live": 3}}`)
+	if lim, _, err := actMaxLive(p.dir, originDefault(p.dir), p.home); err != nil || lim.N != 3 || lim.Layer != LimitMachine {
+		t.Fatalf("with origin unanswering and the machine at 3: %+v, %v; want this machine's 3", lim, err)
+	}
+}
+
+// TestAnUnreadableFileOnOriginRefusesAnAddingAct: .abcd/config.json on
+// origin's default branch that is not valid JSON, or is a symbolic link,
+// refuses a new reservation naming the file at the branch, never falling
+// back to ten.
+func TestAnUnreadableFileOnOriginRefusesAnAddingAct(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		lay  func(w *world)
+		want string
+	}{
+		{"invalid JSON", func(w *world) { w.ceilingOnMain(`{"reservation": `) }, ".abcd/config.json at origin/main (repo layer)"},
+		{"a symbolic link", func(w *world) {
+			if err := os.Symlink("../README.md", filepath.Join(w.seed.Root(), ".abcd", "config.json")); err != nil {
+				t.Fatal(err)
+			}
+			w.seed.Commit("link")
+			w.seed.Git("push", "-q", "origin", "main")
+		}, "not a regular file at the commit"},
+	} {
+		w := newWorld(t)
+		if err := os.MkdirAll(filepath.Join(w.seed.Root(), ".abcd"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		c.lay(w)
+		p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+		_, err := p.reserve("iss-1", "f1.go")
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), c.want) || w.remoteTip("iss-1") != "" {
+			t.Errorf("%s: a new reservation = %v; want it refused naming %q, nothing pushed", c.name, err, c.want)
+		}
+	}
+}
+
+// ghostDefault commits body as .abcd/config.json in p alone, points
+// refs/remotes/origin/ghost at it and origin/HEAD at that ref: a default
+// branch origin does not hold, on a commit that never left this machine.
+func (p *participant) ghostDefault(body string) {
+	p.w.t.Helper()
+	p.repoConfig(body)
+	p.git("add", ".abcd/config.json")
+	p.git("commit", "-q", "-m", "unpushed")
+	p.git("update-ref", "refs/remotes/origin/ghost", p.git("rev-parse", "HEAD"))
+	p.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/ghost")
+	if got := originDefault(p.dir); got != "refs/remotes/origin/ghost" {
+		p.w.t.Fatalf("the resolver here names %q; want origin/ghost", got)
 	}
 }
 

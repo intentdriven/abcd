@@ -406,12 +406,21 @@ The cap is ten unless the repository sets `reservation.max_live` in its
 decisions 3 and 8). It stays one ceiling per person, counted across all of
 their sessions, copies and accounts, the lanes whose pull requests are queued
 included, and every computer of one person applies the same number. The
-repository's figure is read at the commit origin's default branch stood at when
-the checkout last fetched it, as the object store holds it (no replace ref
-followed), and never from a working tree or another branch: a lane's agent can
-write its worktree and its own branch, never origin's default branch. A
-checkout with no default branch of origin to read reads no repository figure
-and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
+repository's figure is read from `.abcd/config.json` at origin's default
+branch, as the object store holds it (no replace ref followed), and never from
+a working tree or another branch. An act that adds a reservation asks origin
+itself which branch is its default and at which commit (`git ls-remote
+--symref`), after its fetch, and reads the figure at that commit, never at a
+name this checkout tracks: `origin/HEAD`, a remote-tracking ref and the
+conventional names the resolver falls back to are local guesses a lane's agent
+can move or a pushed branch can stand in for. Where origin cannot be asked, or
+the commit it names is not in the checkout, no repository figure is read and
+the ten applies, lowered by the machine alone and said in the note: a commit
+that never reached origin never raises the ceiling, and a network gap lowers
+it rather than refusing. The ceiling row of `abcd peers` and the drain's wait
+at the cap ask no network and read the figure as the checkout last fetched it;
+the act decides. A view in a checkout with no default branch of origin reads
+no repository figure and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
 ceiling on that machine and never raise it: a higher figure there is ignored
 and named in the note `abcd peers` and the refusal at the cap carry, and a
 `HOME` set inside a working tree that is not the account's own is not read at
@@ -427,8 +436,8 @@ same file first for every person whose git email is not a GitHub no-reply
 address, so an unknown key under `reservation`, or a file that cannot be read,
 stops every act of such a person, a username from their token included. For
 anyone else a `config.json` that cannot be read at all (writable by others,
-not valid JSON) is read past, ten applies, and the refusal at the cap says
-why. The refusal names the layer that set the cap and where it is changed:
+not valid JSON) is read past, the figure so far applies (the repository's, or
+ten where it sets none), and the refusal at the cap says why. The refusal names the layer that set the cap and where it is changed:
 the repository's file through a reviewed change, and the machine's file, which
 may only lower it; it never offers raising the machine's figure.
 

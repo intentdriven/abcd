@@ -264,8 +264,10 @@ there refuses every reservation that reaches that lookup, on a fork or not.
 The `reservation.max_live` key, one person's ceiling on live reservations, 1
 to 100 and 10 by default, runs the other way (itd-2611251809580662 decisions 3
 and 8, refining dcn-2611222342270127 for this key alone): the repository's
-`.abcd/config.json` sets it, read at the commit origin's default branch stood
-at when the checkout last fetched it, as stored, never from a working tree or
+`.abcd/config.json` sets it, read as stored at the commit origin itself names
+as its default branch's tip when an act adds a reservation (the ten where
+origin cannot be asked or that commit is not in the checkout), and as last
+fetched by a view that only shows it, never from a working tree or
 another branch, and `~/.abcd.noindex/config.json` may lower it on that machine
 and never raise it, a higher figure there ignored and named. A checkout with no
 default branch of origin reads no repository figure and says so. In the

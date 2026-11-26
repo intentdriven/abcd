@@ -72,9 +72,12 @@ func init() {
 		},
 		Entry{
 			Code:    ReserveExceededCap,
-			Summary: "you already hold as many live reservations as this machine allows; wait for a merge",
-			Explanation: "A person holds at most reservation.max_live live reservations at once (set in\n" +
-				"your own abcd configuration). The refusal lists the ones you hold.\n" +
+			Summary: "you already hold as many live reservations as your ceiling allows; wait for a merge",
+			Explanation: "A person holds at most reservation.max_live live reservations at once: ten, or\n" +
+				"the figure the repository's .abcd/config.json sets at origin's default branch,\n" +
+				"changed through a reviewed change to that file, which your machine's own\n" +
+				"config.json may lower and never raise. The refusal names which\n" +
+				"set it and lists the ones you hold.\n" +
 				"Most are work whose pull request waits to merge, and the merge ends its\n" +
 				"reservation, so wait for one to merge. Release only a reservation whose work\n" +
 				"is abandoned: releasing finished work frees its record for someone to build\n" +

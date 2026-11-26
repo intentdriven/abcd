@@ -402,3 +402,14 @@ func TestTheWarningNamesTheRepositorysCeiling(t *testing.T) {
 		t.Fatalf("warning %q; want the repository's ceiling named, not this machine's", msg)
 	}
 }
+
+// TestTheBundledWarningReadsAsOneSentence: where no file set the ceiling,
+// the warning names the default ceiling in a clause that parses and claims
+// nothing of a repository figure it did not read.
+func TestTheBundledWarningReadsAsOneSentence(t *testing.T) {
+	c := Ceiling{Holder: "h_x", Live: 8, Limit: 10, LimitLayer: LimitBundled, LimitOrigin: LimitBundled, Warn: true}
+	want := "h_x holds 8 of the 10 live reservations the default ceiling (no reservation.max_live was read from the repository's file) allows, near the cap; "
+	if msg := c.Warning(); !strings.HasPrefix(msg, want) {
+		t.Fatalf("warning %q; want it to start %q", msg, want)
+	}
+}

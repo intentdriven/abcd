@@ -1945,8 +1945,9 @@ end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at 
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, held or not, the drain reports
-and ends. When you hold your cap of live reservations (ten unless reservation.max_live
-in your machine's config.json sets another, from 1 to 100), or every
+and ends. When you hold your cap of live reservations (ten unless the repository's
+reservation.max_live in .abcd/config.json at origin's default branch sets another,
+from 1 to 100, or your machine's config.json lowers it), or every
 eligible issue left is held by another, a move neither refuses nor ends: it reserves
 and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
