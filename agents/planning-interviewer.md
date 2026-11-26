@@ -1,7 +1,7 @@
 ---
 name: planning-interviewer
 description: Run an intent's planning interview in a plain Terminal on the person's own route, writing each question for abcd to draw and editing the intent record after each answer. Started by `abcd intent interview <itd-N>`, never dispatched by the host.
-prompt_version: 0.3.1
+prompt_version: 0.3.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [spec_planning]
@@ -46,6 +46,16 @@ first, in order. Summarise the record back. Then walk the press release, the
 open questions, the mechanism claim, the scope conditions and every acceptance
 criterion, one question at a time, each quoting the text it asks about in
 full. A question whose answer depends on an earlier one waits for that answer.
+
+A question under a Product chip is for the product thinker, and abcd's check
+holds it to their knowledge floor. Where the text it quotes is in internals (a
+record id, a command, a word below the floor), restate it in plain words,
+dropping nothing an answer turns on; where a word cannot be avoided, introduce
+it in one sentence before its first use, as in "A checksum is a fingerprint
+saying two copies are identical."; and put text that is mechanism alone, which
+no answer of the product thinker's turns on, to the technical facilitator
+under a Tech chip. Each brief lists the words below the floor, each with the
+plain words to say instead.
 
 When the record splits the work into two or more steps, ask the technical
 facilitator, under a `Tech` chip, what each step needs: which earlier steps it

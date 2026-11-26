@@ -14,6 +14,18 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ## 2026-11-25 (iss-2611252121330106 — the question writer reads the knowledge floor)
 
+### planning-interviewer 0.3.2
+
+PATCH: the page says what a question under a Product chip does with material in
+internals: it restates the material in plain words, dropping nothing an answer
+turns on, introduces in one sentence a word that cannot be avoided, and puts
+text that is mechanism alone to the technical facilitator under a Tech chip. The
+same sentence is in the task each brief restates, and each brief now lists the
+words below the floor with their plain words, since a runner reads no plugin
+page. The receipt contract is unchanged. Forced by the review of the floor
+check, which found the task told a Product question nothing about internals.
+Unmeasured, in the `0.x` band.
+
 ### question-drafter 0.3.0
 
 MINOR, a schema change in the `0.x` band: the writer refuses for a fourth
