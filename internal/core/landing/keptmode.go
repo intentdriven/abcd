@@ -43,6 +43,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -82,20 +83,68 @@ const (
 
 // keptMode is the kept file's whole content. Repo is repoMark's, so a reading
 // is never shown for another repository that came to stand at the same path.
-// Root, Name and Identity are what select a person's own entry, as the
-// reading found them (personmode.go): the tip's oldest root commit, the name
-// origin's address spells, and whether git's identity was the record's
-// ("" where it was not asked).
+// Person is what selects a person's own entry, as the reading found it
+// (personmode.go), absent where no entry needed it.
 type keptMode struct {
-	Schema    int       `json:"schema_version"`
-	Repo      string    `json:"repo"`
-	Ref       string    `json:"ref"`
-	Tip       string    `json:"tip"`
-	Committed string    `json:"committed"`
-	ReadAt    time.Time `json:"read_at"`
-	Root      string    `json:"root"`
-	Name      string    `json:"name"`
-	Identity  string    `json:"identity"`
+	Schema    int        `json:"schema_version"`
+	Repo      string     `json:"repo"`
+	Ref       string     `json:"ref"`
+	Tip       string     `json:"tip"`
+	Committed string     `json:"committed"`
+	ReadAt    time.Time  `json:"read_at"`
+	Person    *keptFacts `json:"person,omitempty"`
+}
+
+// keptFacts is a reading's projectFacts and git's identity against the
+// record ("" where it was not asked), as kept.
+type keptFacts struct {
+	Roots    []string `json:"roots"`
+	Unread   string   `json:"unread"`
+	Address  string   `json:"address"`
+	EnvIdent bool     `json:"env_ident"`
+	Identity string   `json:"identity"`
+}
+
+// maxKeptUnread caps what a kept reading says of first commits not read.
+const maxKeptUnread = 1024
+
+// valid says whether kept facts are ones a reading could have kept.
+func (f *keptFacts) valid() bool {
+	if f == nil {
+		return true
+	}
+	switch f.Identity {
+	case "", gitIsRecord, gitIsOther:
+	default:
+		return false
+	}
+	for _, r := range f.Roots {
+		if !gitutil.IsFullSHA(r) {
+			return false
+		}
+	}
+	return len(f.Unread) <= maxKeptUnread && (f.Address == "" || addressOf("https://"+f.Address) == f.Address)
+}
+
+// projectKey is the key the row selects an entry by: the kept facts, and
+// git's identity as kept, asking git nothing.
+func (f *keptFacts) projectKey() projectKey {
+	if f == nil {
+		return projectKey{facts: func() (projectFacts, error) {
+			return projectFacts{unread: "the last reading did not read this project's first commits; the next prompt does"}, nil
+		}}
+	}
+	facts := projectFacts{roots: f.Roots, unread: f.Unread, address: f.Address, envIdent: f.EnvIdent}
+	return projectKey{facts: func() (projectFacts, error) { return facts, nil }, gitIs: f.Identity}
+}
+
+// keptFactsOf is what a person's reading kept, nil where no entry needed the
+// project's facts.
+func keptFactsOf(p personReading) *keptFacts {
+	if p.facts == nil {
+		return nil
+	}
+	return &keptFacts{Roots: p.facts.roots, Unread: p.facts.unread, Address: p.facts.address, EnvIdent: p.facts.envIdent, Identity: p.gitIs}
 }
 
 // keptClock is the clock a reading's time, and the row's today, are read from;
@@ -108,13 +157,7 @@ func (k keptMode) valid() bool {
 	default:
 		return false
 	}
-	switch k.Identity {
-	case "", gitIsRecord, gitIsOther:
-	default:
-		return false
-	}
-	return k.Schema == keptSchema && gitutil.IsFullSHA(k.Tip) && k.Repo != "" && k.Ref != "" && !k.ReadAt.IsZero() &&
-		(k.Root == "" || gitutil.IsFullSHA(k.Root)) && k.Name == nameFromURL("https://x/"+k.Name)
+	return k.Schema == keptSchema && gitutil.IsFullSHA(k.Tip) && k.Repo != "" && k.Ref != "" && !k.ReadAt.IsZero() && k.Person.valid()
 }
 
 // keepMode keeps what the default branch's own layer said of the mode, as the
@@ -123,10 +166,10 @@ func (k keptMode) valid() bool {
 // git that did not answer, or the time spent) keeps nothing; a file the branch
 // holds that is refused (not JSON, not a regular file, a value that is not a
 // mode) is kept as refused, so the row says the mode was not read and why.
-// key and gitIs are what selected a person's own entry, kept beside it. It
+// person is the person's reading, whose facts are kept beside it. It
 // answers nothing and fails quietly: a reading that could not be kept leaves
 // the row saying the mode is not known.
-func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValue[string], readErr error, key projectKey, gitIs string) {
+func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValue[string], readErr error, person personReading) {
 	if r.Home == "" || abcdhome.Check(r.Home) != nil || ctx.Err() != nil {
 		return
 	}
@@ -137,7 +180,7 @@ func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValu
 		branch.Home, branch.HomeRefused = "", true
 		vals, _, readErr = modeLayers(ctx, branch)
 	}
-	k := keptMode{Schema: keptSchema, Ref: ref, Tip: r.RepoAt, Committed: repoLayerMode(vals), Root: key.root, Name: key.name, Identity: gitIs}
+	k := keptMode{Schema: keptSchema, Ref: ref, Tip: r.RepoAt, Committed: repoLayerMode(vals), Person: keptFactsOf(person)}
 	var unread *layered.UnreadError
 	switch {
 	case errors.As(readErr, &unread) && unread.GitFailed(), ctx.Err() != nil:
@@ -162,7 +205,7 @@ func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValu
 		return
 	}
 	defer dir.Close()
-	if now, ok := readKeptModeIn(dir, r.Home, common); ok && now == k {
+	if now, ok := readKeptModeIn(dir, r.Home, common); ok && reflect.DeepEqual(now, k) {
 		return
 	}
 	data, err := json.Marshal(k)
@@ -232,9 +275,9 @@ func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) 
 		return unknown, unreadNote(root, err)
 	}
 	common, ok := commonGitDir(root)
-	if r.HomeRefused || !homeIsAccounts(r.Home) {
+	if r.HomeRefused {
 		if ok && noCommit(common) {
-			vals, in := inputFor(r, vals, projectKey{})
+			vals, in, _ := inputFor(r, vals, projectKey{})
 			return resolveMode(vals, in).merging(), ""
 		}
 		return statusline.Merging{State: statusline.MergingUnknown, Whose: statusline.WhoseComputerUnread}, ""
@@ -245,7 +288,7 @@ func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) 
 	k, ok := readKeptMode(r.Home, common)
 	if !ok {
 		if noCommit(common) {
-			vals, in := inputFor(r, vals, projectKey{})
+			vals, in, _ := inputFor(r, vals, projectKey{})
 			return resolveMode(vals, in).merging(), ""
 		}
 		return unknown, ""
@@ -259,7 +302,7 @@ func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) 
 	}
 	// The row asks git nothing: the entry is selected on what the reading
 	// kept.
-	vals, in := inputFor(r, vals, projectKey{root: k.Root, name: k.Name, gitIs: k.Identity})
+	vals, in, _ := inputFor(r, vals, k.Person.projectKey())
 	m := resolveMode(vals, in).merging()
 	if ref, tip, ok := defaultIn(common); !ok || ref != k.Ref || tip != k.Tip {
 		m.Read = readTime(k.ReadAt.Local(), keptClock().Local())

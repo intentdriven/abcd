@@ -210,6 +210,8 @@ func (f Facilitator) Says() string {
 		s = "the project enforces auto"
 	case f.Layer == layered.Repo.String():
 		s = "the project prevents auto"
+	case f.Layer == foreignHomeLayer:
+		return "left to each contributor, and HOME is not your account's own, so no setting of yours is read here"
 	case f.Layer == personLayer && f.Withheld:
 		return "left to each contributor, and your own setting is not used here, so human"
 	case f.Layer == personLayer:
@@ -263,7 +265,10 @@ func readModeContext(ctx context.Context, r layered.Roots, gate bool) (Facilitat
 	if err != nil {
 		return Facilitator{}, err
 	}
-	vals, in := inputFor(r, vals, keyFor(ctx, r, gate))
+	vals, in, err := inputFor(r, vals, keyFor(ctx, r, gate))
+	if err != nil {
+		return Facilitator{}, err
+	}
 	return resolveMode(vals, in), nil
 }
 
@@ -330,6 +335,8 @@ func resolveMode(vals []layerValue[string], in modeInput) Facilitator {
 		return Facilitator{Key: KeyFacilitatorMode, Mode: in.person.mode, Layer: personLayer, Origin: in.person.origin, Withheld: in.person.withheld}
 	case other != nil:
 		return Facilitator{Key: KeyFacilitatorMode, Mode: other.v, Layer: other.layer, Origin: other.origin}
+	case in.foreign:
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: foreignHomeLayer, Origin: in.homeOff}
 	case in.homeOff != "":
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: in.homeOff, HomeRefused: true}
 	}
@@ -599,12 +606,15 @@ func AutoForSessions(ctx context.Context, root string) (Facilitator, error) {
 		return Facilitator{}, err
 	}
 	vals, _, err := modeLayers(ctx, r)
-	key := keyFor(ctx, r, false)
 	var in modeInput
 	if err == nil {
-		vals, in = inputFor(r, vals, key)
+		// A context that ended while the project's facts were asked is no
+		// reading, and nothing is kept for it.
+		if vals, in, err = inputFor(r, vals, keyFor(ctx, r, false)); err != nil {
+			return Facilitator{}, err
+		}
 	}
-	keepMode(ctx, r, ref, vals, err, key, in.person.gitIs)
+	keepMode(ctx, r, ref, vals, err, in.person)
 	if err != nil {
 		return Facilitator{}, err
 	}
@@ -652,6 +662,8 @@ func (f Facilitator) merging() statusline.Merging {
 	switch {
 	case f.HomeRefused:
 		m.Whose = statusline.WhoseComputerUnread
+	case f.Layer == foreignHomeLayer:
+		m.Whose = statusline.WhoseNotYourHome
 	case f.Layer == personLayer:
 		m.Whose = statusline.WhosePerson
 	case f.Layer == layered.Repo.String():

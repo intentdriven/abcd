@@ -3,8 +3,12 @@ package landing
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,7 +28,10 @@ import (
 const (
 	personName  = "Ada Person"
 	personEmail = "ada@example.invalid"
-	personForge = "owner/repo"
+	// personForge is the repository's whole address as an entry names it:
+	// the host, lower-cased, and the full path, as origin's address spells
+	// them, with .git dropped.
+	personForge = "forge.invalid/Owner/Repo"
 )
 
 // personRepo is mergingRepo with an origin address naming personForge, git's
@@ -33,6 +40,15 @@ const (
 func personRepo(t *testing.T, project string) (*gittest.Repo, string, string) {
 	t.Helper()
 	repo, root := mergingRepo(t, project)
+	// Nothing in the test's own environment chooses git's identity, its
+	// grafts or its shallow boundary: each case that wants one sets it.
+	for _, kv := range os.Environ() {
+		k, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(k, "GIT_AUTHOR_") || strings.HasPrefix(k, "GIT_COMMITTER_") || k == "GIT_GRAFT_FILE" || k == "GIT_SHALLOW_FILE" {
+			t.Setenv(k, "")
+			os.Unsetenv(k)
+		}
+	}
 	repo.Git("remote", "add", "origin", "https://forge.invalid/Owner/Repo.git")
 	repo.Git("config", "user.name", personName)
 	repo.Git("config", "user.email", personEmail)
@@ -187,11 +203,19 @@ func TestAnEntryIsSelectedByTheIdentityRecordAlone(t *testing.T) {
 		}, ModeAuto, "machine", "", false},
 		{"no file", func(*testing.T, *gittest.Repo, string) {}, ModeAuto, "machine", "", false},
 		{"a fork's auto is none", func(t *testing.T, _ *gittest.Repo, sha string) {
-			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: "someone/repo", Mode: ModeAuto})
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: "forge.invalid/someone/Repo", Mode: ModeAuto})
 		}, ModeAuto, "machine", "", false},
 		{"a fork shares human", func(t *testing.T, _ *gittest.Repo, sha string) {
-			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: "someone/repo", Mode: ModeHuman})
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: "forge.invalid/someone/Repo", Mode: ModeHuman})
 		}, ModeHuman, "person", "", false},
+		{"the committer differs alone", func(t *testing.T, repo *gittest.Repo, sha string) {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Git("config", "committer.email", "other@example.invalid")
+		}, ModeHuman, "person", "commit here as", true},
+		{"the name differs alone", func(t *testing.T, repo *gittest.Repo, sha string) {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Git("config", "user.name", "Someone Else")
+		}, ModeHuman, "person", "Someone Else", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo, root, sha := personRepo(t, "")
@@ -267,23 +291,41 @@ func TestARefusedPersonsFileReadsHumanOrIsSaidBesideTheProjects(t *testing.T) {
 func TestUnderAnotherHomeAPersonHasNoSetting(t *testing.T) {
 	for _, c := range []struct {
 		project, mode, layer string
+		row                  statusline.Merging
 	}{
-		{"", ModeHuman, "machine"},
-		{autoConfig, ModeAuto, "repo"},
+		{"", ModeHuman, foreignHomeLayer, statusline.Merging{State: statusline.MergingHuman, Whose: statusline.WhoseNotYourHome}},
+		{autoConfig, ModeAuto, "repo", statusline.Merging{State: statusline.MergingAuto, Whose: statusline.WhoseProject}},
 	} {
-		_, root, sha := personRepo(t, c.project)
+		repo, root, sha := personRepo(t, c.project)
 		writeMachineConfig(t, autoConfig)
 		writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
 		other := t.TempDir()
 		prev := AccountHome
 		AccountHome = func() (string, error) { return other, nil }
 		f := readShown(t, root)
+		gate, gateErr := readFacilitatorAt(layered.Roots{Home: os.Getenv("HOME")}, root, repo.Git("rev-parse", "HEAD"), "main")
+		kept(t, root)
+		row, _ := KeptMerging(context.Background(), root)
 		AccountHome = prev
 		if f.Mode != c.mode || f.Layer != c.layer {
 			t.Errorf("project %q under another HOME: reading = %+v; want %s from the %s layer", c.project, f, c.mode, c.layer)
 		}
-		if c.project == "" && (!f.HomeRefused || !strings.Contains(f.Origin, "HOME")) {
-			t.Errorf("reading = %+v; want it to say HOME is not this account's", f)
+		if gateErr != nil || gate.Mode != c.mode || gate.Layer != c.layer {
+			t.Errorf("project %q under another HOME: the gate reads %+v, %v; want %s from the %s layer", c.project, gate, gateErr, c.mode, c.layer)
+		}
+		if row != c.row {
+			t.Errorf("project %q under another HOME: the row reads %+v, want %+v", c.project, row, c.row)
+		}
+		if c.project != "" {
+			continue
+		}
+		// Not read on purpose, said in its own words: never as a file that
+		// could not be read.
+		if f.HomeRefused || !strings.Contains(f.Origin, "HOME") {
+			t.Errorf("reading = %+v; want it to say HOME is not this account's, and not that a file was refused", f)
+		}
+		if says := f.Says(); !strings.Contains(says, "HOME is not your account's own") || strings.Contains(says, "could not") {
+			t.Errorf("Says() = %q; want it to say HOME is not your account's own", says)
 		}
 	}
 }
@@ -338,5 +380,235 @@ func TestTheRowSaysYoursHere(t *testing.T) {
 	}
 	if m, _ := KeptMerging(context.Background(), root); m.State != statusline.MergingHuman || m.Whose != statusline.WhosePerson {
 		t.Errorf("with git acting as another the row reads %+v; want human, yours, here", m)
+	}
+}
+
+// mergeDatedRoot merges a new parentless commit dated at epoch into the
+// current branch and returns it, so the branch holds one more first commit.
+func mergeDatedRoot(t *testing.T, repo *gittest.Repo, epoch int64) string {
+	t.Helper()
+	date := "@" + strconv.FormatInt(epoch, 10) + " +0000"
+	git := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", repo.Root()}, args...)...)
+		cmd.Env = append(repo.Env(), "GIT_AUTHOR_NAME=Fixture", "GIT_AUTHOR_EMAIL=fixture@example.invalid",
+			"GIT_COMMITTER_NAME=Fixture", "GIT_COMMITTER_EMAIL=fixture@example.invalid",
+			"GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
+		}
+		return strings.TrimSpace(string(out))
+	}
+	tree := git("hash-object", "-w", "-t", "tree", os.DevNull)
+	other := git("commit-tree", tree, "-m", "an unrelated first commit")
+	head := git("rev-parse", "HEAD")
+	merge := git("commit-tree", head+"^{tree}", "-p", head, "-p", other, "-m", "merge an unrelated history")
+	git("update-ref", "refs/heads/main", merge)
+	return other
+}
+
+// TestTheProjectsFirstCommitsMustBeEstablished: where the person's file holds
+// entries, the project's first commits are every parentless commit reachable
+// from the default branch's tip. Where they cannot be established, the mode
+// is human from the person layer, saying why, and never the computer's file.
+// A human entry matches any of them; an auto entry only the one first commit
+// of a project that has exactly one.
+func TestTheProjectsFirstCommitsMustBeEstablished(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		setup    func(t *testing.T, repo *gittest.Repo, root, sha string) string
+		mode     string
+		layer    string
+		withheld bool
+		says     string
+	}{
+		{"a clone of depth one", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			dst := filepath.Join(t.TempDir(), "clone")
+			repo.Git("clone", "-q", "--depth", "1", "file://"+root, dst)
+			repo.Git("-C", dst, "remote", "set-url", "origin", "https://forge.invalid/Owner/Repo.git")
+			repo.Git("-C", dst, "config", "user.name", personName)
+			repo.Git("-C", dst, "config", "user.email", personEmail)
+			return dst
+		}, ModeHuman, "person", true, "shallow"},
+		{"a grafted boundary", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			if err := os.WriteFile(filepath.Join(root, ".git", "info", "grafts"), []byte(repo.Git("rev-parse", "HEAD")+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, ModeHuman, "person", true, "graft"},
+		{"a graft file the environment names", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			p := filepath.Join(t.TempDir(), "grafts")
+			if err := os.WriteFile(p, []byte(repo.Git("rev-parse", "HEAD")+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_GRAFT_FILE", p)
+			return root
+		}, ModeHuman, "person", true, "GIT_GRAFT_FILE"},
+		{"a shallow file the environment names", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			p := filepath.Join(t.TempDir(), "shallow")
+			if err := os.WriteFile(p, []byte(repo.Git("rev-parse", "HEAD")+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_SHALLOW_FILE", p)
+			return root
+		}, ModeHuman, "person", true, "GIT_SHALLOW_FILE"},
+		{"an auto entry for an unrelated first commit dated 1971", func(t *testing.T, repo *gittest.Repo, root, _ string) string {
+			old := mergeDatedRoot(t, repo, 31536000)
+			writeEntries(t, entry{Email: personEmail, Root: old, Forge: personForge, Mode: ModeAuto})
+			return root
+		}, ModeHuman, "bundled", false, ""},
+		{"an auto entry for the project's own first commit, beside an unrelated one", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			mergeDatedRoot(t, repo, 31536000)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			return root
+		}, ModeHuman, "bundled", false, ""},
+		{"a human entry for the project's own first commit, beside an unrelated one dated 1971", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeMachineConfig(t, autoConfig)
+			mergeDatedRoot(t, repo, 31536000)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeHuman})
+			return root
+		}, ModeHuman, "person", false, ""},
+		{"a human entry for an unrelated first commit dated 1971", func(t *testing.T, repo *gittest.Repo, root, _ string) string {
+			old := mergeDatedRoot(t, repo, 31536000)
+			writeEntries(t, entry{Email: personEmail, Root: old, Forge: personForge, Mode: ModeHuman})
+			return root
+		}, ModeHuman, "person", false, ""},
+		{"the walk past its cap", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			mergeDatedRoot(t, repo, 31536000)
+			prev := maxRootBytes
+			maxRootBytes = 50
+			t.Cleanup(func() { maxRootBytes = prev })
+			return root
+		}, ModeHuman, "person", true, "first commit"},
+		{"git failing in the walk", func(t *testing.T, _ *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			swapListRoots(t, func(context.Context, string, string) (string, error) { return "", errors.New("exit status 128") })
+			return root
+		}, ModeHuman, "person", true, "exit status 128"},
+		{"git naming no first commit", func(t *testing.T, _ *gittest.Repo, root, sha string) string {
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			swapListRoots(t, func(context.Context, string, string) (string, error) { return "", nil })
+			return root
+		}, ModeHuman, "person", true, "first commit"},
+		{"no entries: the walk is not asked", func(t *testing.T, _ *gittest.Repo, root, _ string) string {
+			swapListRoots(t, func(context.Context, string, string) (string, error) { return "", errors.New("asked") })
+			return root
+		}, ModeHuman, "bundled", false, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo, root, sha := personRepo(t, "")
+			read := c.setup(t, repo, root, sha)
+			f := readShown(t, read)
+			if f.Mode != c.mode || f.Layer != c.layer || f.Withheld != c.withheld {
+				t.Fatalf("reading = %+v; want %s from the %s layer, withheld %t", f, c.mode, c.layer, c.withheld)
+			}
+			if c.says != "" && !strings.Contains(f.Origin, c.says) {
+				t.Errorf("origin = %q, want it to name %q", f.Origin, c.says)
+			}
+		})
+	}
+}
+
+// swapListRoots substitutes the root walk for one test.
+func swapListRoots(t *testing.T, fn func(ctx context.Context, repo, tip string) (string, error)) {
+	t.Helper()
+	prev := listRoots
+	listRoots = fn
+	t.Cleanup(func() { listRoots = prev })
+}
+
+// TestADeadlineInTheRootWalkIsAnError: a walk the deadline ends is not a
+// reading. Every reader returns the deadline's error, so the prompt line sends
+// nothing, the board says the mode was not read, and the gate does not arm.
+func TestADeadlineInTheRootWalkIsAnError(t *testing.T) {
+	repo, root, sha := personRepo(t, "")
+	writeMachineConfig(t, autoConfig)
+	writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+	swapListRoots(t, func(context.Context, string, string) (string, error) {
+		return "", fmt.Errorf("git rev-list: %w", context.DeadlineExceeded)
+	})
+	if f, err := AutoForSessions(context.Background(), root); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("AutoForSessions = %+v, %v; want the deadline's error", f, err)
+	}
+	if f, err := readDefaultFacilitatorContext(context.Background(), root); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("the board's reading = %+v, %v; want the deadline's error", f, err)
+	}
+	roots := layered.Roots{Home: os.Getenv("HOME")}
+	tip := repo.Git("rev-parse", "HEAD")
+	if f, err := readFacilitatorAt(roots, root, tip, "main"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("the gate reads %+v, %v; want the deadline's error", f, err)
+	}
+	if AutoAt(roots, root, tip, "main") {
+		t.Error("the gate armed on a walk the deadline ended")
+	}
+}
+
+// TestARepositorysNameIsItsWholeAddress: an auto entry matches only the
+// repository's whole address, the host lower-cased and the full path, read
+// alike from git's https, ssh and scp spellings with .git and a trailing
+// slash dropped.
+func TestARepositorysNameIsItsWholeAddress(t *testing.T) {
+	for _, c := range []struct {
+		name, origin, forge, layer string
+	}{
+		{"https", "https://forge.invalid/Owner/Repo.git", personForge, "person"},
+		{"scp form, host in capitals", "git@FORGE.invalid:Owner/Repo.git", personForge, "person"},
+		{"ssh url", "ssh://git@forge.invalid/Owner/Repo", personForge, "person"},
+		{"a trailing slash", "https://forge.invalid/Owner/Repo/", personForge, "person"},
+		{"the same owner and name on another host", "https://other.invalid/Owner/Repo.git", personForge, "machine"},
+		{"an entry naming no host, on another host", "https://other.invalid/owner/repo.git", "owner/repo", "machine"},
+		{"a deeper path ending in the owner and name", "https://forge.invalid/group/Owner/Repo.git", personForge, "machine"},
+		{"an entry naming no host, on a deeper path", "https://forge.invalid/group/owner/repo.git", "owner/repo", "machine"},
+		{"the path in another case", "https://forge.invalid/owner/repo.git", personForge, "machine"},
+		{"no host", "file:///srv/Owner/Repo.git", "Owner/Repo", "machine"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo, root, sha := personRepo(t, "")
+			writeMachineConfig(t, autoConfig)
+			repo.Git("remote", "set-url", "origin", c.origin)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: c.forge, Mode: ModeAuto})
+			if f := readShown(t, root); f.Mode != ModeAuto || f.Layer != c.layer {
+				t.Fatalf("origin %s, entry %s: reading = %+v; want auto from the %s layer", c.origin, c.forge, f, c.layer)
+			}
+		})
+	}
+}
+
+// TestAnAutoEntryWaitsWhileTheEnvironmentSetsGitsIdentity: while any
+// GIT_AUTHOR_* or GIT_COMMITTER_* variable is set, an auto entry is not used,
+// live or on the row; a human entry still is.
+func TestAnAutoEntryWaitsWhileTheEnvironmentSetsGitsIdentity(t *testing.T) {
+	_, root, sha := personRepo(t, "")
+	writeMachineConfig(t, autoConfig)
+	writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+	t.Setenv("GIT_AUTHOR_NAME", personName)
+	if f := readShown(t, root); f.Mode != ModeHuman || f.Layer != "person" || !f.Withheld || !strings.Contains(f.Origin, "environment") {
+		t.Fatalf("reading = %+v; want human from the person layer, saying the environment sets git's identity", f)
+	}
+	kept(t, root)
+	if m, _ := KeptMerging(context.Background(), root); m.State != statusline.MergingHuman || m.Whose != statusline.WhosePerson {
+		t.Errorf("the row reads %+v; want human, yours, here", m)
+	}
+
+	writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeHuman})
+	os.Unsetenv("GIT_AUTHOR_NAME")
+	t.Setenv("GIT_COMMITTER_EMAIL", personEmail)
+	if f := readShown(t, root); f.Mode != ModeHuman || f.Layer != "person" || f.Withheld {
+		t.Fatalf("reading = %+v; want the person's own human", f)
 	}
 }

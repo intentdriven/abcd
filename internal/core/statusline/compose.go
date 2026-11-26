@@ -177,6 +177,10 @@ const (
 	// WhosePerson is a person's own entry for this project, where the project
 	// leaves the mode to each contributor (itd-2611252049031692).
 	WhosePerson MergingWhose = "person"
+	// WhoseNotYourHome is a HOME that is not this account's own, where no
+	// setting of the person's is read on purpose and the project leaves the
+	// mode to each.
+	WhoseNotYourHome MergingWhose = "not-your-home"
 )
 
 // MergingMode reads facilitator.mode for the repository at root as the status
