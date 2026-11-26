@@ -14,6 +14,9 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/core/runstop"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 )
 
 // reservationOf reads the issue's reservation from the checkout as last
@@ -449,4 +452,277 @@ func TestAPushThatFailsAtTakeUpBacksOff(t *testing.T) {
 	if len(back.HandBacks) != 0 || waits < 2 {
 		t.Fatalf("the failure is waited out: %d waits, %+v\n%s", waits, back.HandBacks, strings.Join(w.lines, "\n"))
 	}
+}
+
+// An interrupt leaves every lane marked or reserved (spc-2611141617199772 step 2,
+// itd-2611141610197753 criterion 10), against the terminal world and the stand-in process
+// table of terminal_claim_test.go.
+
+// stopLater is a drive typed in the first terminal after the drive before it has gone.
+const stopLater = 7050
+
+// stopLaterStart stands in the table a later start reads: the first terminal, with this
+// drive in it, and every earlier drive gone.
+func stopLaterStart(t *testing.T) {
+	t.Helper()
+	standIn(t, sessionname.Table{ReadAt: claimRead, Procs: []machineload.Proc{
+		{PID: claimLogin, PPID: 1, Name: "login", Age: time.Hour},
+		{PID: claimShell, PPID: claimLogin, Name: "-zsh", Age: 59 * time.Minute},
+		{PID: stopLater, PPID: claimShell, Name: "abcd", Age: time.Minute},
+	}}, claimShell, stopLater)
+}
+
+// stopKilled is a world whose first drive, started from the first terminal, was killed
+// between two stages with its first lane in flight: the lane is in progress, no mark
+// stands on its run and its reservation is live from this copy. It returns the run and
+// the home the next drive reads session markers and a stop from.
+func stopKilled(t *testing.T) (*terminalWorld, State, string) {
+	t.Helper()
+	w := newTerminalWorld(t)
+	w.realWorktree()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	killed := false
+	for i := range w.stages {
+		if w.stages[i].Name == StageValidate {
+			w.stages[i].Run = func(Context, *Lane) (Outcome, error) {
+				if !killed {
+					killed = true
+					cancel()
+				}
+				return Outcome{Note: "validate done"}, nil
+			}
+		}
+	}
+	claimProcs(t, claimShell, claimFirst, claimLogin, claimShell, claimFirst)
+	res, err := RunTerminal(ctx, w.repo.Root(), w.options(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalKilled || res.Run == "" {
+		t.Fatalf("premise: the first drive is killed with a lane left: %+v\n%s", res, w.said())
+	}
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop != nil {
+		t.Fatalf("premise: a kill leaves no mark: %+v", c.Stop)
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive || r.Copy != claim.CopyThis {
+		t.Fatalf("premise: a kill leaves the reservation live: %+v", r)
+	}
+	run, err := ReadState(w.repo.Root(), res.Run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, _ := stopWorld(t, false)
+	return w, run, home
+}
+
+// stopAtFirstWait runs the next start from the first terminal with a signal at its first
+// wait, which is where a drive that cannot claim its lane's run waits.
+func stopAtFirstWait(t *testing.T, w *terminalWorld, home string) TerminalResult {
+	t.Helper()
+	w.onSleep = func(time.Duration) {
+		select {
+		case <-w.stop:
+		default:
+			close(w.stop)
+		}
+	}
+	defer func() { w.onSleep = nil }()
+	res := claimStart(t, w, home)
+	if res.Ended != TerminalStopped {
+		t.Fatalf("the signal ends the start: %+v\n%s", res, w.said())
+	}
+	return res
+}
+
+// stopUnclaimable is a world whose lane's run the next drive cannot claim: its recorded
+// driver, alive in a second terminal, took it over after the first drive was killed, and
+// its file states version (an earlier abcd's, or this one's).
+func stopUnclaimable(t *testing.T, version int) (*terminalWorld, State, string) {
+	t.Helper()
+	w, run, home := stopKilled(t)
+	claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
+	claimDriverIs(t, w.repo.Root(), run.RunID, claimOtherLogin)
+	if version != SchemaVersion {
+		stateAtVersion(t, w.repo.Root(), run.RunID, version)
+	}
+	return w, run, home
+}
+
+// TestAnInterruptAppliesTheStopToAnEarlierVersionsRunItsTerminalDrove: the run's file
+// states an earlier version and its recorded driver is the terminal the drive is typed in,
+// so the drive's claim takes it and the drive is its driver; a signal then applies the
+// stop: the run is marked and halted, what its lane left is saved, and its reservation
+// goes with the stop.
+func TestAnInterruptAppliesTheStopToAnEarlierVersionsRunItsTerminalDrove(t *testing.T) {
+	w, run, home := stopKilled(t)
+	claimNextStart(t)
+	claimDriverIs(t, w.repo.Root(), run.RunID, claimLogin)
+	stateAtVersion(t, w.repo.Root(), run.RunID, schemaVersionPrevious)
+	claimHoldAtLand(w, func() { close(w.stop) })
+	res := claimStart(t, w, home)
+	if res.Ended != TerminalStopped {
+		t.Fatalf("the signal ends the start: %+v\n%s", res, w.said())
+	}
+	c := controlOf(t, w.repo.Root(), run.RunID)
+	if c.Stop == nil || c.Stop.FromFile || c.Stop.HaltedAt == nil || c.Driver == nil || c.Driver.PID == claimLogin {
+		t.Fatalf("the stop is not applied as the run's driver: %+v %+v\n%s", c.Stop, c.Driver, w.said())
+	}
+	if !strings.Contains(w.said(), run.RunID+": halted, and what its lanes left is saved") || strings.Contains(w.said(), "could not be applied") {
+		t.Fatalf("the drive does not say the lane's work is saved:\n%s", w.said())
+	}
+	if r := reservationOf(t, w.repo.Root(), run.Key, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("the stop did not let the reservation go: %+v", r)
+	}
+}
+
+// TestAnInterruptKeepsTheHoldOfARunItCouldNotClaim is the lab's interrupt fixture at an
+// earlier version (F-16): the drive holds the lane of a run it could not claim, so the
+// stop cannot be saved on it. The drive writes no mark and releases nothing: it says when
+// the reservation lapses, and the next start, the other terminal gone, reads the run as
+// reserved and lands it without reserving it again.
+func TestAnInterruptKeepsTheHoldOfARunItCouldNotClaim(t *testing.T) {
+	w, run, home := stopUnclaimable(t, schemaVersionPrevious)
+	root := w.repo.Root()
+	res := stopAtFirstWait(t, w, home)
+	if c := controlOf(t, root, run.RunID); c.Stop != nil {
+		t.Fatalf("a mark was written on a run the drive could not claim: %+v", c.Stop)
+	}
+	r := reservationOf(t, root, run.Key, w.clock.t)
+	if r.State != claim.StateLive || r.Copy != claim.CopyThis {
+		t.Fatalf("the reservation was let go: %+v\n%s", r, w.said())
+	}
+	after, err := ReadState(root, run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if letGoByDrive(after) || !after.holdsAny() {
+		t.Fatalf("the run reads as let go: %+v", after.Record)
+	}
+	at := stamp(r.EffectiveExpiry)
+	if !strings.Contains(w.said(), run.Key+": its reservation is kept") || !strings.Contains(w.said(), "lapses at "+at) {
+		t.Fatalf("the drive does not say the reservation is kept and when it lapses (%s):\n%s", at, w.said())
+	}
+	if res.Run != run.RunID || res.Lapses == nil || !res.Lapses.Equal(r.EffectiveExpiry) {
+		t.Fatalf("the end does not name when the lane's reservation lapses: %+v", res)
+	}
+
+	claimNextStart(t)
+	next := claimStart(t, w, home)
+	if next.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 3 {
+		t.Fatalf("the next start lands the three lanes: %+v %v\n%s", next, lanesDone(t, w.repo), w.said())
+	}
+	if slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "took up") && strings.Contains(l, run.RunID) }) {
+		t.Fatalf("the next start reserved again a run it should read as reserved:\n%s", w.said())
+	}
+}
+
+// TestAnInterruptKeepsEveryMembersHold: a run with members whose stop cannot be saved keeps
+// the hold of its lead and of every member, each named with when it lapses.
+func TestAnInterruptKeepsEveryMembersHold(t *testing.T) {
+	repo, bare, runID, c := bundleDrainLane(t)
+	claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
+	claimDriverIs(t, repo.Root(), runID, claimOtherLogin)
+	stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+	var lines []string
+	tm := newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: c.now}, Say: func(s string) { lines = append(lines, s) }})
+	tm.haltOnSignal()
+	tm.letGo()
+	said := strings.Join(lines, "\n")
+	for _, id := range bundleIssues {
+		if tip := tipOf(t, bare, id); tip.released {
+			t.Fatalf("%s was let go:\n%s", id, said)
+		}
+		if !strings.Contains(said, id+": its reservation is kept") {
+			t.Fatalf("%s is not named as kept:\n%s", id, said)
+		}
+	}
+	if st, err := ReadState(repo.Root(), runID); err != nil || len(linesAt(st, StageDriveReleased)) != 0 {
+		t.Fatalf("the run records a let-go: %v %+v", err, st.Record)
+	}
+}
+
+// TestAnInterruptAtThisVersionIsUnchanged: the same run at this version may be saved by
+// any session, so the signal's stop is applied: the run is marked and halted, and its
+// reservation goes with the stop.
+func TestAnInterruptAtThisVersionIsUnchanged(t *testing.T) {
+	w, run, home := stopUnclaimable(t, SchemaVersion)
+	stopAtFirstWait(t, w, home)
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Stop == nil || c.Stop.FromFile || c.Stop.HaltedAt == nil {
+		t.Fatalf("the signal did not halt the run: %+v\n%s", c.Stop, w.said())
+	}
+	if r := reservationOf(t, w.repo.Root(), run.Key, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("the halt did not let the reservation go: %+v", r)
+	}
+	if strings.Contains(w.said(), "could not be applied") || strings.Contains(w.said(), "is kept") {
+		t.Fatalf("the drive says a stop was not applied:\n%s", w.said())
+	}
+}
+
+// TestALaterStartTakesUpARunNoDrainListsThatADrivesEndLetGo: the start steps a run no drain
+// lists, and the drive's end lets it go, at its bound with no mark or on a signal with one.
+// A later start, the drive before it gone, takes the run up again and drives it to its end;
+// a person's stop that stands leaves it.
+func TestALaterStartTakesUpARunNoDrainListsThatADrivesEndLetGo(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		end   func(*terminalWorld, *time.Time) func(*TerminalOptions)
+		ended string
+		took  string
+	}{
+		{"bound", func(w *terminalWorld, until *time.Time) func(*TerminalOptions) {
+			claimHoldAtLand(w, func() { w.clock.t = until.Add(time.Minute) })
+			return func(o *TerminalOptions) {
+				*until = w.clock.t.Add(time.Hour)
+				o.Until = *until
+			}
+		}, TerminalUntil, "took up"},
+		{"signal", func(w *terminalWorld, _ *time.Time) func(*TerminalOptions) {
+			claimHoldAtLand(w, func() { close(w.stop) })
+			return nil
+		}, TerminalStopped, "took over"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, run, home := claimReplaced(t)
+			var until time.Time
+			res, err := claimStartWith(t, w, home, tc.end(w, &until))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Ended != tc.ended {
+				t.Fatalf("premise: the start ends at its %s: %+v\n%s", tc.name, res, w.said())
+			}
+			if r := reservationOf(t, w.repo.Root(), run.Key, w.clock.t); r.State != claim.StateReleased {
+				t.Fatalf("premise: the drive's end let the run go: %+v", r)
+			}
+			stopLaterStart(t)
+			claimStart(t, w, home)
+			if !slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, tc.took) && strings.Contains(l, run.RunID) }) {
+				t.Fatalf("the later start does not take the run up:\n%s", w.said())
+			}
+			if after, err := ReadState(w.repo.Root(), run.RunID); err != nil || !after.Complete() {
+				t.Fatalf("the run the later start took up is not driven to its end: %v\n%s", err, w.said())
+			}
+		})
+	}
+	t.Run("a person's stop", func(t *testing.T) {
+		w, run, home := claimReplaced(t)
+		var until time.Time
+		claimHoldAtLand(w, func() { w.clock.t = until.Add(time.Minute) })
+		if _, err := claimStartWith(t, w, home, func(o *TerminalOptions) {
+			until = w.clock.t.Add(time.Hour)
+			o.Until = until
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runstop.Set(home, w.clock.t); err != nil {
+			t.Fatal(err)
+		}
+		stopLaterStart(t)
+		res := claimStart(t, w, home)
+		i := slices.IndexFunc(res.PassedOver, func(p Excluded) bool { return p.ID == run.Key })
+		if i < 0 || !strings.Contains(res.PassedOver[i].Reason, "lifts the stop") || strings.Contains(w.said(), "took up") {
+			t.Fatalf("the later start does not leave the run to the person's stop: %+v\n%s", res.PassedOver, w.said())
+		}
+	})
 }
