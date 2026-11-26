@@ -27,10 +27,27 @@ import (
 const ConversationWindow = 15 * time.Minute
 
 // maxCronPrompts bounds the wake prompts a session's state keeps. A session
-// whose stop lists more wakes than this is marked (CronPromptsOverflow), and
+// whose stop lists more wakes than this is marked (CronPromptsUnmatched), and
 // no prompt opens its window until it lists no more, so a wake the bound let
 // go is never read as the person typing.
 const maxCronPrompts = 32
+
+// unmatchableWakes reports whether a stop's wakes cannot all be told from the
+// person typing by their prompts' text: more of them than the state keeps, or
+// one whose prompt is a slash command, which reaches the prompt hook expanded
+// rather than as the stop lists it (dcn-2611262236204687). A plain-text wake's
+// prompt arrives as it was set.
+func unmatchableWakes(crons []SessionCron) bool {
+	if distinctPrompts(crons) > maxCronPrompts {
+		return true
+	}
+	for _, c := range crons {
+		if strings.HasPrefix(strings.TrimSpace(c.Prompt), "/") {
+			return true
+		}
+	}
+	return false
+}
 
 // hostPromptPrefixes open the prompts the host submits on its own: a
 // background task's report, another session's message, a usage-limit
@@ -62,20 +79,21 @@ func (s SessionState) Conversing(rec *Record, now time.Time) bool {
 }
 
 // KeepWakes is st as a stop check leaves it for the prompt hook: the wakes the
-// stop's payload lists remembered (and the mark of a payload listing more
-// than the state keeps set or cleared), and a stamp later than now dropped.
+// stop's payload lists remembered (and the mark of wakes that cannot all be
+// matched set or cleared, unmatchableWakes), and a stamp later than now
+// dropped.
 // changed reports whether that differs from st, so a check with nothing new
 // writes nothing. Every stop the check reads keeps them, the person present or
 // away, so a wake set before the mode was is known at its first prompt.
 func KeepWakes(st SessionState, crons []SessionCron, now time.Time) (next SessionState, changed bool) {
 	next = st
 	next.CronPrompts = rememberCrons(st.CronPrompts, crons)
-	next.CronPromptsOverflow = distinctPrompts(crons) > maxCronPrompts
+	next.CronPromptsUnmatched = unmatchableWakes(crons)
 	if next.PersonPromptAt.After(now) {
 		next.PersonPromptAt = time.Time{}
 	}
 	changed = !slices.Equal(next.CronPrompts, st.CronPrompts) ||
-		next.CronPromptsOverflow != st.CronPromptsOverflow ||
+		next.CronPromptsUnmatched != st.CronPromptsUnmatched ||
 		!next.PersonPromptAt.Equal(st.PersonPromptAt)
 	if changed {
 		next.SchemaVersion = SchemaVersion
@@ -125,11 +143,11 @@ func rememberCrons(known []string, crons []SessionCron) []string {
 
 // personPrompt reports whether a submitted prompt is the person's: not empty,
 // not one of the host's own envelopes, and not a wake the stop checks have
-// seen. In a session whose last stop listed more wakes than the state keeps,
-// no prompt is.
+// seen. In a session whose last stop listed wakes that cannot all be matched
+// (unmatchableWakes), no prompt is.
 func personPrompt(st SessionState, prompt string) bool {
 	p := strings.TrimSpace(prompt)
-	if p == "" || st.CronPromptsOverflow || knownCronPrompt(st, p) {
+	if p == "" || st.CronPromptsUnmatched || knownCronPrompt(st, p) {
 		return false
 	}
 	for _, pre := range hostPromptPrefixes {

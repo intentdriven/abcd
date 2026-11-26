@@ -75,9 +75,10 @@ type SessionState struct {
 	// maxCronPrompts, so the prompt hook can tell a wake firing from the
 	// person typing.
 	CronPrompts []string `json:"cron_prompts,omitempty"`
-	// CronPromptsOverflow marks a session whose last stop listed more wakes
-	// than CronPrompts keeps: no prompt opens its window while it holds.
-	CronPromptsOverflow bool `json:"cron_prompts_overflow,omitempty"`
+	// CronPromptsUnmatched marks a session whose last stop listed wakes
+	// that cannot all be told from the person typing (more than CronPrompts
+	// keeps, or a slash command): no prompt opens its window while it holds.
+	CronPromptsUnmatched bool `json:"cron_prompts_unmatched,omitempty"`
 }
 
 // sessionStatePath is the session's state file below the working copy at

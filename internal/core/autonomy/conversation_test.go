@@ -149,6 +149,34 @@ func TestJudgeRemembersCronPrompts(t *testing.T) {
 	}
 }
 
+// TestSlashWakeOpensNoWindow: a wake whose prompt is a slash command reaches
+// the prompt hook expanded, not as the stop listed it, so its firing cannot be
+// told from the person typing: while the session holds one, no prompt reads
+// as the person's (dcn-2611262236204687).
+func TestSlashWakeOpensNoWindow(t *testing.T) {
+	now := at(t, "2026-11-26 06:00")
+	away := awayRec(now, false)
+	slash := StopInput{SessionCrons: []SessionCron{
+		{ID: "a", Schedule: "*/10 * * * *", Recurring: true, Prompt: "plain look"},
+		{ID: "b", Schedule: "*/10 * * * *", Recurring: true, Prompt: "  /abcd:status --json"},
+	}}
+	for _, rec := range []*Record{away, nil} {
+		v := judgeAt(t, rec, Owed{}, slash, SessionState{}, now)
+		if personPrompt(v.State, "status?") {
+			t.Errorf("record %v: a session holding a slash-command wake took a prompt for the person's", rec != nil)
+		}
+		if personPrompt(v.State, "<command-message>abcd:status</command-message>\n<command-name>/abcd:status</command-name>") {
+			t.Errorf("record %v: the slash-command wake's expanded prompt reads as the person's", rec != nil)
+		}
+	}
+	// Once the session holds no such wake, prompts read as before.
+	v := judgeAt(t, away, Owed{}, slash, SessionState{}, now)
+	v = judgeAt(t, away, Owed{}, StopInput{SessionCrons: slash.SessionCrons[:1]}, v.State, now)
+	if !personPrompt(v.State, "status?") {
+		t.Error("a session that no longer holds a slash-command wake still opens no window")
+	}
+}
+
 // TestNotePrompt: only a prompt the person typed opens the window.
 func TestNotePrompt(t *testing.T) {
 	ctx := context.Background()
@@ -211,7 +239,7 @@ func TestNotePrompt(t *testing.T) {
 		t.Errorf("a stamp later than now was kept: %v", st.PersonPromptAt)
 	}
 	// Past the wakes' bound no prompt opens the window.
-	if err := SaveSession(copyRoot, id, SessionState{CronPromptsOverflow: true}); err != nil {
+	if err := SaveSession(copyRoot, id, SessionState{CronPromptsUnmatched: true}); err != nil {
 		t.Fatal(err)
 	}
 	if opened, err := NotePrompt(ctx, copyRoot, id, "status?", now); err != nil || opened {
