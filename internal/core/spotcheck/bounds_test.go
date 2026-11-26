@@ -200,3 +200,85 @@ func TestAPassingReadFailureOfTheBlockIsNoDefaults(t *testing.T) {
 		t.Fatalf("the observation over a block git cannot read said %q", note)
 	}
 }
+
+// TestABlockOverTheSizeBoundCountsByTheDefaults: a spotcheck block whose
+// file at the window's start is larger than a configuration file may be is a
+// file read and refused: the window is counted by the bundled defaults, says
+// so, and is drawn.
+func TestABlockOverTheSizeBoundCountsByTheDefaults(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.r.Write(".abcd/config.json", `{"spotcheck":{"window_days":3},"pad":"`+strings.Repeat("x", 1<<20)+`"}`+"\n")
+	c.r.Git("add", "-A")
+	start := c.landAt(1, w0.Add(-time.Hour))
+	c.openWindow(w0)
+	cfg, why, err := windowConfig(context.Background(), c.r.Root(), start)
+	if err != nil || why == "" || cfg.WindowDays != DefaultWindowDays || cfg.PerGroup != DefaultPerGroup {
+		t.Fatalf("windowConfig over a block past the size bound = %+v, %q, %v; want the defaults with a reason", cfg, why, err)
+	}
+	c.land(2)
+	c.closeWindow()
+	if note := c.observe(q1000.Add(time.Hour)); !strings.Contains(note, "drew cycle") || !strings.Contains(note, "bundled defaults") {
+		t.Fatalf("the draw over a block past the size bound said %q", note)
+	}
+}
+
+// TestARecordThatDoesNotReadTakesNoPlaceInAWindow: files under record names
+// whose content is not the record their name gives take none of a window's
+// places: the window is filled from the records that read, and the draw's
+// note counts the files that did not.
+func TestARecordThatDoesNotReadTakesNoPlaceInAWindow(t *testing.T) {
+	saved := maxListedKeys
+	maxListedKeys = 2
+	t.Cleanup(func() { maxListedKeys = saved })
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	unread := map[string]string{}
+	for _, issue := range []string{"iss-60", "iss-61", "iss-62"} {
+		f, err := handBack(issue, w0.Add(time.Minute)).typed().file()
+		if err != nil {
+			t.Fatal(err)
+		}
+		unread[f.path()] = "{}\n"
+	}
+	c.plant(unread)
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70", "iss-71")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, "3 record file(s)") {
+		t.Fatalf("the draw over records that do not read said %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want the records that read, %v", got, want)
+	}
+}
+
+// TestACycleWhoseRecordGroupIsNotListedIsSetAside: a cycle from another
+// writer that keeps a record group by its hash, though it verifies in every
+// other way, is set aside and its window drawn afresh.
+func TestACycleWhoseRecordGroupIsNotListedIsSetAside(t *testing.T) {
+	saved := maxListedKeys
+	maxListedKeys = 1
+	t.Cleanup(func() { maxListedKeys = saved })
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	from := c.openWindow(w0)
+	line := c.landAt(3, w0.Add(time.Hour))
+	c.closeWindow()
+	forged := handMade(from, line, ClosedByDays)
+	for i, g := range forged.Groups {
+		if g.Group == GroupDrainHandBacks {
+			forged.Groups[i] = GroupDraw{Group: g.Group, Population: Population{Count: 2, First: "a", Last: "b", SHA256: strings.Repeat("0", 64)},
+				Drawn: []string{"a", "b"}}
+		}
+	}
+	c.plant(map[string]string{CyclesDir + "/" + forged.ID + ".json": cycleJSON(t, forged, sevenDays(3))})
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle "+cycleID(q1000, line)) || !strings.Contains(note, forged.ID+" on origin does not verify") {
+		t.Fatalf("the observation over a cycle with an unlisted record group said %q", note)
+	}
+}

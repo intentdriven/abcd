@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -96,6 +98,18 @@ func windowConfig(ctx context.Context, root, commit string) (c Config, why strin
 		}
 		return Config{}, "", notHeldError{commit[:12]}
 	}
+	// A file over the size a configuration file may hold is a file read and
+	// refused, the same for every reader, so its size is read from the
+	// listing first: the capped read of its content would otherwise fail
+	// as git does.
+	size, err := blockSize(ctx, root, commit)
+	if err != nil {
+		return Config{}, "", fmt.Errorf("the spotcheck block at the window's start was not read (%s), so the window cannot be counted yet", redact(err))
+	}
+	if size > layered.MaxFileBytes {
+		return Config{WindowDays: DefaultWindowDays, PerGroup: DefaultPerGroup},
+			fmt.Sprintf("%s at %s is larger than %d bytes", layered.Config.RepoRel, commit[:12], layered.MaxFileBytes), nil
+	}
 	r, _ := layered.RootsFor(root)
 	c, err = readConfig(ctx, layered.Roots{Repo: r.Repo, RepoAt: commit, RepoAtName: commit[:12], RepoAtAsStored: true, HomeRefused: true})
 	var ue *layered.UnreadError
@@ -106,6 +120,26 @@ func windowConfig(ctx context.Context, root, commit string) (c Config, why strin
 		return Config{}, "", fmt.Errorf("the spotcheck block at the window's start was not read (%s), so the window cannot be counted yet", redact(err))
 	}
 	return Config{WindowDays: DefaultWindowDays, PerGroup: DefaultPerGroup}, redact(err), nil
+}
+
+// blockSize is the size of .abcd/config.json at commit as git lists it, -1
+// when the commit holds no blob there (no file, or one the layered reader
+// refuses by its kind). err is a git that did not answer.
+func blockSize(ctx context.Context, root, commit string) (int, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", 4096, "ls-tree", "-l", "-z", commit, "--", layered.Config.RepoRel)
+	if err != nil {
+		return 0, err
+	}
+	meta, _, _ := strings.Cut(strings.TrimSuffix(string(out), "\x00"), "\t")
+	f := strings.Fields(meta)
+	if len(f) != 4 || f[1] != "blob" {
+		return -1, nil
+	}
+	n, err := strconv.Atoi(f[3])
+	if err != nil || n < 0 {
+		return 0, errors.New("git listed the block's file with a size that does not read")
+	}
+	return n, nil
 }
 
 // notHeldError is a window's start this checkout does not hold, by its
