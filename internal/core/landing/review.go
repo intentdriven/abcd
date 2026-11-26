@@ -253,7 +253,8 @@ var verdictStatement = regexp.MustCompile("^(?:\\([^)]*\\)[ \\t]*)?(?:[:=|\\x{20
 var verdictQualifier = regexp.MustCompile(`(?i)^(?:final|overall|my|our|the|last|review|reviewer'?s?|reviewers'?|security|ruthless|code|actual|formal)\b`)
 
 // verdictLines is the index of every line opening a verdict, in the shapes a reviewer
-// writes one. A line that begins with the word does, whatever follows it. With words
+// writes one. A line that begins with the word does, whatever follows it, unless the
+// word is part of a file reference that states no verdict (fileReference). With words
 // before it (`Final`, `My`, `The overall`), a heading does, and so does a line whose
 // emphasis wraps the word (emphasisWrapsWord), and any other line does when it goes on
 // to state one (verdictStatement) or ends there after a qualifier: the word in a
@@ -274,10 +275,15 @@ func verdictLines(lines []string) []int {
 
 // fileReference is what follows the word Verdict when the word is part of a file's
 // name or a place in one, as a reviewer cites the record under review: a line
-// number (`verdict:52`) or the rest of a file name (`verdict.md:14`,
-// `verdict_head_test.go`). A separator before a line number stands apart from it
-// (`Verdict: 52`), and a file name goes on with a letter or a digit.
+// number directly after a colon (`verdict:52`), or a dot or underscore and the rest
+// of a file name (`verdict.md:14`, `verdict_head_test.go`). `Verdict: 52`, with a
+// space after the colon, is no reference.
 var fileReference = regexp.MustCompile(`^(?::[0-9]|[._][\pL\pN])`)
+
+// statesVerdictWord reports whether a verdict word stands anywhere in text, apart from
+// the letters around it, so a file reference that goes on to state one
+// (`verdict:1 BLOCK`, `Verdict.BLOCK`) still opens a verdict.
+var statesVerdictWord = regexp.MustCompile(`(?:^|[^\pL])(?:SHIP|APPROVE|BLOCK|FIX[ _-]FIRST|NEEDS[ _-]INPUT)(?:$|[^\pL])`)
 
 func opensVerdict(line, next string) bool {
 	m := verdictInLine.FindStringSubmatch(numberedItem.ReplaceAllString(line, "$1"))
@@ -285,7 +291,7 @@ func opensVerdict(line, next string) bool {
 		return false
 	}
 	lead, qualifiers, rest := m[1], m[2], m[3]
-	if fileReference.MatchString(rest) {
+	if fileReference.MatchString(rest) && !statesVerdictWord.MatchString(rest) {
 		return false
 	}
 	if qualifiers == "" {
