@@ -13,7 +13,8 @@ import (
 // inside a git working tree is not read as the machine's layer, so
 // reservation.github_username there names no holder, and one stderr line says
 // why; nor is the holder id read or kept there (iss-2610290809526033), so the
-// query exits 2 saying so and writes nothing under that home.
+// query exits 2 saying so, under reserve/unknown-holder, and writes nothing
+// under that home.
 func TestReserveSaysWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 	w := newReserveWorld(t)
 	pat := w.clone(t, "pat", "pat@example.com")
@@ -21,8 +22,9 @@ func TestReserveSaysWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 	plantHome(t)
 	code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
 	lines := strings.Split(strings.TrimSuffix(stderr, "\n"), "\n")
-	if code != 2 || stdout != "" || len(lines) != 2 || !strings.HasPrefix(lines[0], "abcd reserve: HOME lies inside the git working tree") ||
-		!strings.Contains(lines[1], "holder-id is neither read nor written there") || strings.Contains(stderr, "someone-else") {
+	if code != 2 || stdout != "" || len(lines) != 3 || !strings.HasPrefix(lines[0], "abcd reserve: HOME lies inside the git working tree") ||
+		!strings.Contains(lines[1], "holder-id is neither read nor written there") || !strings.Contains(lines[2], "reserve/unknown-holder") ||
+		strings.Contains(stderr, "someone-else") {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want the home's line and the holder id refused", code, stdout, stderr)
 	}
 	home, _ := os.UserHomeDir()

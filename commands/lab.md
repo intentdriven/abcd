@@ -137,11 +137,15 @@ the run may make), `cost` (the expected cost by source at the most copies,
 reckoned only from each cell's declared `cost_per_copy`; a metered source with a
 cell that declared none says `not estimated; bounded by your cap`), `spend_cap`
 and where it came from, `load_cap` and `cores`, `time` (a bound when every cell
-declares `minutes_per_copy`, otherwise known after the pilot), `judges`, and the
-`digest` naming exactly this plan, with `approve_with`, the command that starts
-it. Building it makes no network call and fetches no price. Show the person the
+declares `minutes_per_copy`, otherwise known after the pilot), `judges` (each
+with its `note`), `hidden_tests` (each code task's `folder`, its test `command`
+word by word, and the `consent` line the person agrees to), and the `digest`
+naming exactly this plan, with `approve_with`, the command that starts it.
+Building it makes no network call and fetches no price. Show the person the
 whole plan in plain words: the copies, what it may spend against the cap, the
-load, the time and the judges.
+load, the time and the judges, and each code task's hidden-tests folder and
+command with its consent line, word for word. The digest covers them, so never
+pass `--approve` for a plan whose hidden tests the person has not seen.
 
 **Only after the person has seen that plan and said yes to it**, record the run
 with the digest it carried:
@@ -242,6 +246,64 @@ The packet and key pass the secret screen before they are written, and a
 refusal draws nothing. It is what the person's judging session shows; hand the session's verdict file
 back with `--verdicts <file>` (and `--host <login>` when the host judged too,
 whose rankings are reported apart).
+
+**Judge a check task** in two phases, once every copy of it handed to you is
+back:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task>
+```
+
+It joins the copies' findings by their exact keys and shows the judging's
+`stage`, its `copies` (a copy the compliance check set apart is in none),
+`leftovers` (the findings no exact key joins) and the declaration's `matcher`
+and `proposer` cells. With no matcher declared, the leftovers stay rows of their
+own and the `packet` is drawn at once. With one, the verb first draws the
+`matcher_request` about the leftovers alone (`awaiting_matcher`): hand it, and
+nothing else, to a fresh sub-agent for a host matcher cell, save its one JSON
+answer, `{"schema_version": 1, "same": [["<id>", "<id>"]]}`, and record it:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --matcher <file>
+```
+
+The answer is refused whole, with nothing recorded, when it names a finding it
+was not shown; once taken, its pairs are joined, a `sample` of pairs is drawn
+for the person to label, in an order that says nothing of which pairs the
+matcher joined, and the `packet` is drawn. A matcher or proposer cell marked
+`awaiting_runner` waits for a launcher this build does not have: the judging
+stops at `awaiting_matcher` or `awaiting_proposer` with `waiting` saying so.
+Never answer for it yourself, and tell the person it waits. Where `waiting` says
+the draw of the packet was interrupted, run the verb with no flag: it draws the
+packet from what the draw recorded. The packet shows each distinct finding under a `code`,
+shuffled, with no model, cell, run or path named and no verdict proposed. Show
+it to the person and record their verdict on every code, locked, with
+`--verdicts <file>`: `{"schema_version": 1, "packet": "<packet_digest>",
+"locked": true, "verdicts": [{"code": "<code>", "valid": true}]}`. The verdicts
+lock once. Then build the second phase:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --table [--proposals <file>] [--labels <file>]
+```
+
+`--proposals` is the proposer cell's verdicts on the same packet, from a fresh
+sub-agent shown the packet alone: `{"schema_version": 1, "packet":
+"<packet_digest>", "proposed": [{"code": "<code>", "valid": true, "reason":
+"<one line>"}]}`. It is required when the declaration names a host proposer and
+refused when it names none, and its reasons pass the secret screen before the
+table is written. `--labels` is the person's labels on the sample,
+`{"schema_version": 1, "labels": [{"a": "<id>", "b": "<id>", "same": true}]}`.
+The table gives each finding's row, each model's `scores` (precision, unique
+valid findings, recall) and the `overlap`; `matcher` gives its agreement, or
+`not_estimable` saying why: no matcher declared, none asked, or fewer than ten
+pairs labelled. Asked again with no flag, the verb shows the judging as it
+stands. Refused, exit 2, with no record written: a task with a copy handed to you
+and not back, a matcher, verdict, proposal or label file that does not
+validate, a second matcher answer, verdict file or table, a table before the
+verdicts are locked, an answer for a runner cell, and a matcher or proposer
+the run's record does not pin. A run that cannot be read is refused as it is,
+whatever the task. Nothing of a check is
+filed or written where the release gates read.
 
 **Read a recorded run's report**, which writes nothing:
 

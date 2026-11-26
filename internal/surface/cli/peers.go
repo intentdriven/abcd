@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -267,7 +268,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			}
 			root, err := gitutil.CheckoutRoot(cwd, peersStore)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd peers: " + err.Error() + " (nothing read)"}
+				return refused(2, refusal.PeersOutsideCheckout, "abcd peers: "+err.Error()+" (nothing read)")
 			}
 			rep, err := peers.Read(root)
 			if err != nil {
@@ -284,7 +285,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if failed != "" {
 				// The last view is rendered; the failure is named and exits 1.
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd peers: "+failed)
-				return &exitError{Code: 1}
+				return exitWith(1, refusal.None, "")
 			}
 			return nil
 		},
@@ -439,8 +440,11 @@ func (e *peerHeldError) Unwrap() error { return e.err }
 // peerHeldRefusal is consulted on a verb's not-found path, and only there, so a
 // healthy lookup pays nothing: when this checkout does not hold id and a live
 // peer does, it returns the refusal naming each holder's branch, path and
-// folder; otherwise it returns err unchanged. The prefix is the verb's own.
-func peerHeldRefusal(cwd, prefix, id string, err error) error {
+// folder; otherwise it returns err unchanged. The prefix is the verb's own, and
+// so is ref, the code a refusal it rewrites carries (the code err carried
+// when ref is refusal.None); a core error it rewrites becomes a
+// peerHeldError, which the verb's own mapping codes.
+func peerHeldRefusal(cwd, prefix, id string, ref refusal.Code, err error) error {
 	root, rerr := gitutil.CheckoutRoot(cwd, peersStore)
 	if rerr != nil {
 		return err
@@ -477,7 +481,10 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 		prefix, id, strings.Join(holders, "; "))
 	var ee *exitError
 	if errors.As(err, &ee) {
-		return &exitError{Code: ee.Code, Msg: msg}
+		if ref == refusal.None {
+			ref = ee.ref
+		}
+		return exitWith(ee.Code, ref, msg)
 	}
 	return &peerHeldError{msg: msg, err: err}
 }

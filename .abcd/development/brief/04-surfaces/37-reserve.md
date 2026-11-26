@@ -266,7 +266,8 @@ dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
 `trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
 stopped after its fix rounds), `stuck` and `closed`; the drain writes the last two for a lane stuck
 refusing at one stage (spc-2610161044461448 step 5) and for one whose pull
-request was closed unmerged (step 8), and every reader reads them. Neither carries free
+request was closed unmerged (step 8), on each issue it still holds for a lane
+that carries members, and every reader reads them. Neither carries free
 text: the writer refuses any other kind, and a reader reads a tip whose
 hand-back is not one known kind with one full object name, on a release, as
 unreadable. When origin's default branch holds the record in no file, or in
@@ -443,7 +444,11 @@ reservation asks nothing, and neither does an asked-for renewal nor a
 release. A reservation a drain makes (`Drain`) that renews this copy's own
 lapsed reservation is the drain's hold afresh from that push, the hold a lane
 then opens on, so it asks as a fresh reservation does; a drain's renewal of a
-live one asks nothing. Every URL git pushes origin to is asked about, each push URL git
+live one asks nothing. A drain forming a bundle holds the lead's reservation
+and each member's this way across its moves, renewing each at half its lease,
+and the lane opens on all of them; a drain that ends, or a drive that lets
+go, before the lane opens releases each plainly, with no tombstone
+([`35-drain.md`](35-drain.md), spc-2611201455051897 step 4). Every URL git pushes origin to is asked about, each push URL git
 resolves for origin rather than only the first, in each form git takes for github.com: the three it writes, and with
 them userinfo, a port, `ssh.github.com` over ssh, ssh or scp with no user, and
 a host in any case. When any one of them is a repository the forge names a

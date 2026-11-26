@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -133,6 +134,25 @@ func (p *Procedure) WriteState(rel string, data []byte) error {
 		return fmt.Errorf("cannot write %s: %v", p.l.display(full), redact(err, p.l.store.home))
 	}
 	return nil
+}
+
+// WithStateLock runs fn holding an exclusive lock on the lock file at rel, a
+// procedure record path, so two commands acting on one set of records cannot
+// interleave their reads and writes. The lock file is created empty and is
+// never a record; a lock another holder keeps past timeout is
+// fsutil.ErrLockContention, and a timeout of 0 asks once.
+func (p *Procedure) WithStateLock(rel string, timeout time.Duration, fn func() error) error {
+	full, err := stateRel(rel)
+	if err != nil {
+		return err
+	}
+	if err := p.admit(); err != nil {
+		return err
+	}
+	if err := p.l.root.MkdirAll(path.Dir(full), storeDirPerm); err != nil {
+		return fmt.Errorf("cannot create %s: %v", p.l.display(path.Dir(full)), redact(err, p.l.store.home))
+	}
+	return fsutil.WithFileLockIn(p.l.root, full, timeout, fn)
 }
 
 // StateFile is one procedure record of a set WriteStates writes.

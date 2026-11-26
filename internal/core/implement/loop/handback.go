@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,7 +34,7 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 	lane.Stage = StageHandedBack
 	lane.Awaits = nil
 	if note == "" {
-		note = handBackSummary(st.Intent, hb)
+		note = handBackSummary(keyOf(*st), hb)
 	}
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(StageHandedBack), Note: note})
 	if st.Pick != nil && hb.Kind == "" && hb.Verdict != VerdictCellFailed {
@@ -269,7 +270,8 @@ func spotcheckHandBack(st DrainState, r DrainRoute, holder string) spotcheck.Han
 }
 
 // routedLane is the drain lane a lane's hand-back r came from: the lane
-// on its issue opened latest at or before the hand-back, since an issue
+// on its issue, as its lead or one of its members (spc-2611201455051897
+// step 4), opened latest at or before the hand-back, since an issue
 // handed back and changed since may be taken up again. ok is false for a
 // hand-back no lane made (the judgement's, the rule's, a reservation's).
 func routedLane(st DrainState, r DrainRoute) (DrainLane, bool) {
@@ -279,7 +281,7 @@ func routedLane(st DrainState, r DrainRoute) (DrainLane, bool) {
 	var found DrainLane
 	ok := false
 	for _, l := range st.Lanes {
-		if l.Issue != r.Issue || (r.At != nil && l.OpenedAt.After(*r.At)) {
+		if (l.Issue != r.Issue && !slices.Contains(l.Bundle, r.Issue)) || (r.At != nil && l.OpenedAt.After(*r.At)) {
 			continue
 		}
 		if !ok || l.OpenedAt.After(found.OpenedAt) {

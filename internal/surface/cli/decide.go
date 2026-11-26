@@ -20,12 +20,14 @@ package cli
 // and 1 when the folder could not be read.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/intentdriven/abcd/internal/core/decide"
 	"github.com/intentdriven/abcd/internal/core/decisions"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -57,14 +59,14 @@ func newDecideCommand(asJSON *bool) *cobra.Command {
 		Args: func(_ *cobra.Command, args []string) error {
 			switch {
 			case adr && len(args) != 1:
-				return &exitError{Code: 2, Msg: `decide --adr: one quoted title is required — abcd decide --adr "<title>"`}
+				return exitWith(2, argCountCode(len(args), 1), `decide --adr: one quoted title is required — abcd decide --adr "<title>"`)
 			case len(args) > 1:
-				return &exitError{Code: 2, Msg: `decide: one quoted operand at most — abcd decide "<text>" records a decision, abcd decide lists them`}
+				return refused(2, refusal.UsageExtraArgument, `decide: one quoted operand at most — abcd decide "<text>" records a decision, abcd decide lists them`)
 			case !adr && loneBareToken(args):
 				// One bare word reads as a mistyped sub-verb (`abcd decide list`),
 				// and a decision is a sentence, so it is refused rather than
 				// recorded, as capture and intent refuse one.
-				return &exitError{Code: 2, Msg: `decide: a single word is not a decision — record one as a sentence with abcd decide "<text>"; bare abcd decide lists them, abcd decide --adr "<title>" mints an ADR (nothing recorded)`}
+				return refused(2, refusal.UsageUnknownCommand, `decide: a single word is not a decision — record one as a sentence with abcd decide "<text>"; bare abcd decide lists them, abcd decide --adr "<title>" mints an ADR (nothing recorded)`)
 			}
 			return nil
 		},
@@ -94,7 +96,7 @@ func mintADR(cmd *cobra.Command, asJSON bool, title string) error {
 	}
 	d, err := decide.Create(repoRoot, title)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "decide: " + scrubPaths(err)}
+		return refused(2, refusal.DecideInvalidText, "decide: "+scrubPaths(err))
 	}
 	return render(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
 		fmt.Fprint(w, renderDecision(d))
@@ -113,7 +115,7 @@ func recordDecision(cmd *cobra.Command, asJSON bool, text string) error {
 	}
 	d, err := decisions.Record(repoRoot, text)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "decide: " + scrubPaths(err)}
+		return exitWith(2, decideRefusalCode(err), "decide: "+scrubPaths(err))
 	}
 	return render(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
 		fmt.Fprint(w, renderRecorded(d))
@@ -130,7 +132,7 @@ func listDecisions(cmd *cobra.Command, asJSON bool) error {
 	}
 	l, err := decisions.ReadListing(repoRoot)
 	if err != nil {
-		return &exitError{Code: 1, Msg: "decide: " + scrubPaths(err)}
+		return exitWith(1, refusal.None, "decide: "+scrubPaths(err))
 	}
 	for _, s := range l.Skipped {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd decide: skipped %s: %s\n", termsafe.Sanitize(s.Path), termsafe.Sanitize(s.Reason))
@@ -180,7 +182,7 @@ func decideStoreRoot(cmd *cobra.Command, storeRel, noun string) (string, error) 
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the "+noun)
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd decide: " + err.Error() + " (nothing written)"}
+		return "", refused(2, refusal.DecideOutsideCheckout, "abcd decide: "+err.Error()+" (nothing written)")
 	}
 	for _, note := range strayStoreNotes(cwd, root, storeRel, noun) {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd decide: %s\n", termsafe.Sanitize(note))
@@ -199,4 +201,14 @@ func renderDecision(d decide.Decision) string {
 	out += fmt.Sprintf("  record: %s\n", d.Path)
 	out += "  status: proposed — write the four sections, then set `accepted` when the decision is in force\n"
 	return out
+}
+
+// decideRefusalCode is the code of a decision record the core refused: a
+// repository with no shared working tier, or a text with nothing to name the
+// record by.
+func decideRefusalCode(err error) refusal.Code {
+	if errors.Is(err, decisions.ErrNoSharedTier) {
+		return refusal.DecideMissingSharedTier
+	}
+	return refusal.DecideInvalidText
 }

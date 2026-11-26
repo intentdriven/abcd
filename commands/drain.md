@@ -482,9 +482,28 @@ root or with no `found_at` path takes no members, and its lane opens alone.
 
 Under a cap above 1, the dry run prints, under each eligible issue that would
 lead, the members its next lane would take, and says that the judgements, the
-reservations and `reservation.max_live` may make a bundle smaller. The drain
-does not yet open a lane with members: it opens one issue's lane at a time,
-whatever the cap.
+reservations and `reservation.max_live` may make a bundle smaller.
+
+Under a cap above 1, a move whose judgement answers no on an issue that may
+lead does not open its lane at once. That move and the ones after it take each
+member in turn as the drain takes an issue: passing over one that is held,
+skipped, lapsed or already run, reserving it and asking its judgement. A no
+adds it to the bundle, and a yes hands it back alone. Every hold is kept and
+renewed across the moves. The lane opens with the lead and its members once
+no member is left, the cap is reached, or the next reservation would reach
+`reservation.max_live`. A bundle whose start is refused for a reason that is
+not its reservation's releases its holds, passes its lead over for the rest of
+the move and of a drive, and returns its members to the eligible issues, which
+the move goes on to; a lead another holds counts as held work the drain waits
+on. A lead whose found_at moved ends the move, and the next one forms the
+bundle again on its new path. A stop, an elapsed pace window and an origin that
+does not answer keep the bundle forming; a drain that ends, or a drive that
+lets go, releases every forming hold with no tombstone. A member the lane's
+receipt hands back alone is routed as a lane's hand-back of its kind, a pull
+request closed unmerged hands back every issue the lane still holds as
+`closed`, and a merged one finishes every member. `abcd build <member-id>` in
+the copy that holds the bundle resumes the bundle's run and names its lead.
+With the default of 1, every lane takes one issue.
 
 ## Loosened floors
 
@@ -1090,7 +1109,11 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
 `handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
 take-over, or `taken-over`, the same lane once that happened and its run is the
-person's to drive, and `pr`); `lane` is the one in progress; `start` is
+person's to drive, `pr`, and `bundle`, the members a lane took beside its
+issue, its lead, absent for a lane of one issue, which the text form names on
+the lane's line); `forming` is the bundle the drain is forming (`lead` and the
+`members` judged so far), absent when none forms, which the text form names on
+a `forming:` line; `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,

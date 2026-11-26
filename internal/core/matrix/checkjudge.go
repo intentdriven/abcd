@@ -73,10 +73,12 @@ type CheckPacket struct {
 	Items         []CheckItem `json:"items"`
 }
 
-// CheckKeyRow is one code's row.
+// CheckKeyRow is one code's row. Shown is the member whose finding the
+// packet shows under the code, so the key alone redraws the packet it names.
 type CheckKeyRow struct {
-	Code string   `json:"code"`
-	Row  CheckRow `json:"row"`
+	Code  string   `json:"code"`
+	Row   CheckRow `json:"row"`
+	Shown int      `json:"shown,omitempty"`
 }
 
 // CheckKey is what the packet's codes stand for, kept on the host's machine:
@@ -142,14 +144,11 @@ func drawCheckPacket(run, task string, copies []CheckCopy, rows []CheckRow, seed
 				return CheckPacket{}, CheckKey{}, err
 			}
 		}
-		shown, _ := member(r.Members[rng.IntN(len(r.Members))])
+		at := rng.IntN(len(r.Members))
+		shown, _ := member(r.Members[at])
 		code := drawFindingCode(rng, taken)
-		it := CheckItem{Code: code, Doc: shown.Doc, Class: shown.Class, Evidence: shown.Evidence}
-		for _, e := range shown.Ends {
-			it.Ends = append(it.Ends, CheckItemEnd{Document: path.Base(e.Path), Lines: e.Lines, Quote: e.Quote})
-		}
-		p.Items = append(p.Items, it)
-		k.Rows = append(k.Rows, CheckKeyRow{Code: code, Row: r})
+		p.Items = append(p.Items, checkItemOf(code, shown))
+		k.Rows = append(k.Rows, CheckKeyRow{Code: code, Row: r, Shown: at})
 	}
 	d, err := p.digest()
 	if err != nil {
@@ -157,6 +156,40 @@ func drawCheckPacket(run, task string, copies []CheckCopy, rows []CheckRow, seed
 	}
 	k.Packet = d
 	return p, k, nil
+}
+
+// checkItemOf is the packet's item for a finding shown under code.
+func checkItemOf(code string, shown CheckFinding) CheckItem {
+	it := CheckItem{Code: code, Doc: shown.Doc, Class: shown.Class, Evidence: shown.Evidence}
+	for _, e := range shown.Ends {
+		it.Ends = append(it.Ends, CheckItemEnd{Document: path.Base(e.Path), Lines: e.Lines, Quote: e.Quote})
+	}
+	return it
+}
+
+// packetOfKey is the packet key k names, drawn again from the copies' findings
+// k's rows and their shown members name, refused unless it is that packet.
+func packetOfKey(k CheckKey, copies []CheckCopy) (CheckPacket, error) {
+	byKey := map[TrialKey]CheckCopy{}
+	for _, c := range copies {
+		byKey[c.Key] = c
+	}
+	p := CheckPacket{SchemaVersion: CheckJudgingSchema, Items: []CheckItem{}}
+	for _, r := range k.Rows {
+		if r.Shown < 0 || r.Shown >= len(r.Row.Members) {
+			return CheckPacket{}, errors.New("the check's key names a finding its row does not hold")
+		}
+		m := r.Row.Members[r.Shown]
+		c, ok := byKey[m.Copy]
+		if !ok || !c.Answered || m.Finding < 0 || m.Finding >= len(c.Findings) {
+			return CheckPacket{}, fmt.Errorf("the check's key names %s's finding %d, which the copies do not hold", m.Copy, m.Finding)
+		}
+		p.Items = append(p.Items, checkItemOf(r.Code, c.Findings[m.Finding]))
+	}
+	if err := checkKeyed(p, k); err != nil {
+		return CheckPacket{}, err
+	}
+	return p, nil
 }
 
 func drawFindingCode(rng *rand.Rand, taken map[string]bool) string {
@@ -549,9 +582,10 @@ func foundSeeded(c CheckCopy, s FindingEnd) bool {
 func checkRel(run, task, name string) string { return run + "/check/" + task + "/" + name }
 
 // writeCheckJudging writes a check's packet and key into its run's directory,
-// together and once, beside a run record and the record of every copy the key
-// names, all already written there.
-func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey) error {
+// together and once, with any other record of the draw in also, beside a run
+// record and the record of every copy the key names, all already written
+// there.
+func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey, also ...lab.StateFile) error {
 	if err := checkKeyed(p, k); err != nil {
 		return err
 	}
@@ -576,10 +610,12 @@ func writeCheckJudging(repoRoot, labID string, p CheckPacket, k CheckKey) error 
 	if err != nil {
 		return err
 	}
-	return proc.WriteStates(
-		lab.StateFile{Rel: checkRel(k.Run, k.Task, "packet.json"), Data: pd},
+	// The packet is written last, so a packet written means its key is too;
+	// a draw killed before it leaves a key the verb alone writes it from.
+	return proc.WriteStates(append(also,
 		lab.StateFile{Rel: checkRel(k.Run, k.Task, "key.json"), Data: kd},
-	)
+		lab.StateFile{Rel: checkRel(k.Run, k.Task, "packet.json"), Data: pd},
+	)...)
 }
 
 // readCheckJudging reads a check's packet and key back, held to each other and
@@ -673,6 +709,23 @@ func recordCheckTable(repoRoot, labID, run, task string, in checkTableInputs) (C
 	if in.Proposals != nil {
 		if proposed, err = parseCheckProposals(p, k, in.Proposals); err != nil {
 			return CheckTable{}, err
+		}
+		// A reason is a model's text, so it passes the secret screen every
+		// copy's findings pass before any of it reaches the table. Each reason
+		// is one line, screened as the line of the packet's item it is on, so
+		// a refusal names the proposal it is in.
+		lines := make([]string, len(p.Items))
+		for i, it := range p.Items {
+			lines[i] = proposed[it.Code].Reason
+		}
+		reasons := []byte(strings.Join(lines, "\n"))
+		err := screen(repoRoot, []screened{{lab.StateFile{Rel: checkRel(run, task, "table.json"), Data: reasons}, reasons}})
+		var sr *screenRefusal
+		switch {
+		case errors.As(err, &sr) && sr.line >= 1 && sr.line <= len(p.Items):
+			return CheckTable{}, fmt.Errorf("the proposals are refused, and nothing of them is recorded: the reason proposed on %s carries a %s, which the secret screen refuses", p.Items[sr.line-1].Code, sr.kind)
+		case err != nil:
+			return CheckTable{}, fmt.Errorf("the proposals are refused, and nothing of them is recorded: %w", err)
 		}
 	}
 	copies := make([]CheckCopy, 0, len(k.Copies))

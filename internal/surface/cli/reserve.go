@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -401,17 +402,17 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 					}
 				}
 				if len(with) > 0 {
-					return &exitError{Code: 2, Msg: "abcd reserve: --holder takes no " + strings.Join(with, ", ") + "; nothing was reserved"}
+					return refused(2, refusal.UsageFlagConflict, "abcd reserve: --holder takes no "+strings.Join(with, ", ")+"; nothing was reserved")
 				}
 				return nil
 			}
 			switch len(args) {
 			case 0:
-				return &exitError{Code: 2, Msg: "abcd reserve: name the issue or intent to reserve (abcd reserve <record-id> --footprint <path>), or the release being cut (abcd reserve rel-vX.Y.Z); `abcd peers` lists the reservations; nothing was pushed"}
+				return refused(2, refusal.UsageMissingArgument, "abcd reserve: name the issue or intent to reserve (abcd reserve <record-id> --footprint <path>), or the release being cut (abcd reserve rel-vX.Y.Z); `abcd peers` lists the reservations; nothing was pushed")
 			case 1:
 				return nil
 			}
-			return &exitError{Code: 2, Msg: "abcd reserve: takes one record id, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
+			return refused(2, refusal.UsageExtraArgument, "abcd reserve: takes one record id, not "+fmt.Sprint(len(args))+"; nothing was pushed")
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sweep.on {
@@ -439,15 +440,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 					}
 				}
 				if len(with) > 0 {
-					return &exitError{Code: 2, Msg: "abcd reserve: " + lone.flag + " takes no " + strings.Join(with, ", ") + "; nothing was pushed"}
+					return refused(2, refusal.UsageFlagConflict, "abcd reserve: "+lone.flag+" takes no "+strings.Join(with, ", ")+"; nothing was pushed")
 				}
 			}
 			if renew && strings.HasPrefix(args[0], "rel-") {
-				return &exitError{Code: 2, Msg: "abcd reserve: --renew renews an issue or an intent; a release being cut is renewed by reserving it again (abcd reserve " +
-					termsafe.Sanitize(args[0]) + "); nothing was pushed"}
+				return refused(2, refusal.ReserveInvalidRequest, "abcd reserve: --renew renews an issue or an intent; a release being cut is renewed by reserving it again (abcd reserve "+
+					termsafe.Sanitize(args[0])+"); nothing was pushed")
 			}
 			if cmd.Flags().Changed("admit") && admit <= 0 {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd reserve: --admit takes a pull request number, not %d; nothing was pushed", admit)}
+				return refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd reserve: --admit takes a pull request number, not %d; nothing was pushed", admit))
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -455,7 +456,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			}
 			root, err := gitutil.CheckoutRoot(cwd, reserveStore)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
+				return refused(2, refusal.ReserveOutsideCheckout, "abcd reserve: "+err.Error()+"; nothing was pushed")
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			req := claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
@@ -525,17 +526,17 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, reserveStore)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
+		return refused(2, refusal.ReserveOutsideCheckout, "abcd reserve: "+err.Error()+"; nothing was reserved")
 	}
 	noteMachineHome(errw, "abcd reserve")
 	o := claim.Options{ForgeUser: reserveForgeUser}
 	h, err := claim.ResolveHolder(root, o)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		return refused(2, refusal.ReserveUnknownHolder, "abcd reserve: "+termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	self, err := claim.OwnSelf(h.Login, o)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+		return refused(2, refusal.ReserveUnknownHolder, "abcd reserve: "+termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	from, where := claim.HolderIDFile, "kept in "+claim.HolderIDFile
 	if self.FromEnv {
@@ -560,13 +561,23 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 // directory redacted.
 func reserveRefusal(err error) error {
 	msg := "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	var capErr *claim.CapError
+	var notHeld *claim.NotHeld
+	var fetch *claim.FetchError
+	var push *claim.PushError
 	switch {
 	case errors.Is(err, claim.ErrBackOff):
-		return &exitError{Code: 3, Msg: msg}
+		return refused(3, refusal.ReserveAlreadyHeld, msg)
+	case errors.As(err, &capErr):
+		return refused(2, refusal.ReserveExceededCap, msg)
+	case errors.As(err, &notHeld):
+		return refused(2, refusal.ReserveNotHeld, msg)
+	case errors.As(err, &fetch), errors.As(err, &push):
+		return refused(2, refusal.ReserveUnreachableOrigin, msg)
 	case errors.Is(err, claim.ErrRefused):
-		return &exitError{Code: 2, Msg: msg}
+		return refused(2, refusal.ReserveInvalidRequest, msg)
 	}
-	return &exitError{Code: 2, Msg: msg + "; no reservation was made"}
+	return refused(2, refusal.ReserveInvalidRequest, msg+"; no reservation was made")
 }
 
 // reserveView is a result as a surface shows it: times in RFC 3339 UTC, every

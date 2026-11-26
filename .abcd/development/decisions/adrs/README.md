@@ -252,5 +252,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2611211251039198](2611211251039198-abcdev-app-narrows-to-the-documentation.md) | abcdev.app narrows to the documentation without forwarding the record's old addresses | accepted | 2026-11-21 |
 | [adr-2611241456284353](2611241456284353-the-check-of-the-merged-result-runs.md) | The check of the merged result runs every declared check for every change, and no earlier result stands in for it | accepted | 2026-11-24 |
 | [adr-2611241456294452](2611241456294452-an-independent-checker-is-optional-its.md) | An independent checker is optional: its verdict is reported, never required and never waited for | accepted | 2026-11-24 |
+| [adr-2611251746361324](2611251746361324-one-drive-may-run-many-drains-bounded-by.md) | One drive may run many drains, bounded by its end time and an optional cap, and never extends its own bound | proposed | 2026-11-25 |
+| [adr-2611251746369732](2611251746369732-a-machine-is-published-on-the-shared.md) | A machine is published on the shared remote only as a chosen label, a state word, times and counts | proposed | 2026-11-25 |
 | [adr-2611251808065076](2611251808065076-abcd-asks-for-its-newest-release-on-a.md) | abcd asks for its newest release on a standing yes | accepted | 2026-11-25 |
 <!-- /index -->

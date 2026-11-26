@@ -58,8 +58,9 @@ const NoNext = "none"
 // from the caller's arguments.
 const CommandSlot = "{command}"
 
-// The registered codes. Each constant is an entry of the table below; a test
-// fails on a constant the table does not hold.
+// The registered codes of the table below. Each constant is an entry of the
+// table, or of a family file's register call; a test fails on a constant the
+// registry does not hold.
 const (
 	// The command framework's usage refusals, raised by every command.
 	UsageUnknownCommand      Code = "usage/unknown-command"
@@ -130,7 +131,8 @@ const explainCommand = "abcd explain " + CommandSlot
 // captureNew is the next command of a refusal of a new issue.
 const captureNew = `abcd capture "<text>" --remedy "<fix>"`
 
-// entries is the registry, in the order explain and the ledger read it.
+// entries is the registry, in the order explain reads it: this table, then
+// each family file's entries (register). The ledger sorts it by code.
 var entries = []Entry{
 	{
 		Code:    UsageUnknownCommand,
@@ -358,6 +360,17 @@ var entries = []Entry{
 		RaisedBy: []string{"abcd start"},
 	},
 }
+
+// register adds one family's entries to the registry. The table above holds
+// the usage, capture and explain codes; every other verb family keeps its
+// constants and its entries in a file of its own, codes_<family>.go, whose
+// init calls register, so two changes that each add a family's codes touch
+// no common line. Go sets every package-level variable before it runs any
+// init, and runs a package's init functions in the order of their files'
+// names, so the registry order is the table, then each family file in name
+// order, each file's entries in the order it lists them (held by
+// TestEntriesLoadInFileOrder).
+func register(es ...Entry) { entries = append(entries, es...) }
 
 // Entries returns every registered entry, in registry order. The slice and
 // its entries are copies.

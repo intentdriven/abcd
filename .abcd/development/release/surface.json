@@ -3318,7 +3318,7 @@
     {
       "path": "abcd lab matrix judge",
       "hidden": false,
-      "sentence": "Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.",
+      "sentence": "Draw a writing or check task's judging packet, or record its verdicts: Writes the packet once; refuses a verdict file that does not validate.",
       "flags": [
         {
           "name": "bad",
@@ -3345,6 +3345,34 @@
           "name": "judges",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "labels",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "matcher",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "proposals",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "table",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

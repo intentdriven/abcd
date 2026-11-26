@@ -212,7 +212,7 @@ func stageBundleMembers(repoRoot string, corpus Corpus, ids []string, name strin
 	for _, id := range ids {
 		it, ok := corpus.Lookup(id)
 		if !ok {
-			return nil, fmt.Errorf("intent: %s not found in any bucket", id)
+			return nil, unknownIntent("intent: %s not found in any bucket", id)
 		}
 		if it.Bucket != BucketDrafts {
 			return nil, fmt.Errorf("intent: %s is in %s, not drafts; a bundle is planned from drafts, and a planned record joins one through `abcd intent reclassify --kind bundle-member` (nothing moved)", it.ID, it.Bucket)

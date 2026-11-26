@@ -352,7 +352,7 @@ var sentences = map[string]string{
 		"Writes only with --receipt; refuses a runner cell's copy.",
 	"abcd lab matrix review": "Draw a code task's blinded reviewer requests, or record the reviewers' answers: " +
 		"Writes the requests once; refuses an answer that does not validate.",
-	"abcd lab matrix judge": "Draw a writing task's judging packet, or record a judging session's verdicts: " +
+	"abcd lab matrix judge": "Draw a writing or check task's judging packet, or record its verdicts: " +
 		"Writes the packet once; refuses a verdict file that does not validate.",
 	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
 		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
