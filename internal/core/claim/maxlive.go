@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -47,8 +48,10 @@ import (
 //       asks no network and reads it at origin's default branch as this
 //       checkout last fetched it. The act that adds the reservation decides.
 //       The drain's wait at the cap (MaxLiveFor) asks no network either: it
-//       reads at the branch origin last named to an act here, so a branch
-//       this checkout merely tracks does not hold it at a wait.
+//       reads at the branch origin last named to an act here, and where no
+//       act here has saved one it reads none and leaves the count to the
+//       act, so a branch this checkout merely tracks does not hold it at a
+//       wait.
 //     A checkout that names no default branch of origin reads no repository
 //     figure in a view, and the note says so.
 //  3. reservation.max_live in ~/.abcd.noindex/config.json, the machine layer
@@ -206,32 +209,22 @@ func orNone(s string) string {
 }
 
 // originHead asks origin which branch is its default and at which commit
-// (git ls-remote --symref, as landing.ReadFetchedFacilitator does): the
-// branch, a valid ref name under refs/heads/, and the tip, a full object name.
-// Where origin answers but names no such branch with a commit (none of its
-// own, a detached HEAD, a HEAD outside refs/heads/), none says what it named
-// instead and branch and tip are "". Only an origin that cannot be asked is a
-// *FetchError.
+// (git ls-remote --symref, as landing.ReadFetchedFacilitator does, read from
+// the lines naming HEAD alone: originHeadLines): the branch, a valid ref name
+// under refs/heads/, and the tip, a full object name. Where origin answers but
+// names no such branch with a commit (none of its own, a detached HEAD, a HEAD
+// outside refs/heads/), none says what it named instead and branch and tip are
+// "". Only an origin that cannot be asked is a *FetchError.
 func originHead(root string) (branch, tip, none string, err error) {
-	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
-	trace(args...)
-	out, err := gitutil.Net(root, args...)
+	target, symref, tip, err := originHeadLines(root)
 	if err != nil {
 		r := redacted(err)
 		return "", "", "", &FetchError{Reason: r.text, cause: r.notRun, what: "which branch is its default, for " + MaxLiveKey + ",", outcome: gapOutcome}
 	}
-	symref := false
-	for _, line := range strings.Split(out, "\n") {
-		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
-			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
-				symref = true
-				branch, _ = strings.CutPrefix(target, "refs/heads/")
-				if branch == target {
-					branch = ""
-				}
-			}
-		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
-			tip = sha
+	if symref {
+		branch, _ = strings.CutPrefix(target, "refs/heads/")
+		if branch == target {
+			branch = ""
 		}
 	}
 	switch {
@@ -387,18 +380,19 @@ func checkMaxLive(n int) error {
 // process's own) in the checkout at root, for a caller that counts from a view
 // it already holds (the drain's wait). It asks no network: it reads the
 // repository's figure at the remote-tracking ref of the branch origin last
-// named as its default when an act here asked it (keepOriginDefault), else at
-// the default branch this checkout tracks, so a branch this checkout merely
-// tracks does not hold such a caller at a wait once an act has asked origin.
-// Whatever would refuse the act (the ref naming no commit here, an unusable
-// figure, a machine file that cannot be read) is refused here, and such a
-// caller leaves the count to the act, which decides.
+// named as its default when an act here asked it (keepOriginDefault). Where
+// no act here has saved that name (errNoKeptDefault), it reads no figure,
+// never one at the default branch this checkout tracks, which a pushed branch
+// under a conventional name can stand in for. Whatever would refuse the act
+// (the ref naming no commit here, an unusable figure, a machine file that
+// cannot be read) is refused here too. On any error such a caller leaves the
+// count to the act, which asks origin and decides.
 func MaxLiveFor(root string, o Options) (int, error) {
-	ref := originDefault(root)
-	if b := keptOriginDefault(root); b != "" {
-		ref = "refs/remotes/" + Remote + "/" + b
+	b := keptOriginDefault(root)
+	if b == "" {
+		return 0, errNoKeptDefault
 	}
-	lim, _, err := repoMaxLive(root, ref)
+	lim, _, err := repoMaxLive(root, "refs/remotes/"+Remote+"/"+b)
 	if err != nil {
 		return 0, err
 	}
@@ -406,13 +400,17 @@ func MaxLiveFor(root string, o Options) (int, error) {
 	return lim.N, err
 }
 
+// errNoKeptDefault is MaxLiveFor's answer in a checkout where no act has
+// saved the branch origin names as its default.
+var errNoKeptDefault = errors.New("no act in this checkout has saved which branch " + Remote + " names as its default, so no figure is read and the act that adds a reservation counts")
+
 // originDefaultRel keeps the branch origin last named as its default when an
 // act asked it, for MaxLiveFor.
 const originDefaultRel = stateRelDir + "/origin-default"
 
 // keepOriginDefault records branch, origin's answer, for MaxLiveFor; a
 // checkout without its local tier, or a write that fails, keeps nothing, and
-// MaxLiveFor then reads the tracked default.
+// MaxLiveFor then reads no figure.
 func keepOriginDefault(root, branch string) {
 	if tierPresent(root) != nil {
 		return

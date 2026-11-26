@@ -112,3 +112,41 @@ func TestALookAlikeBranchNeverHoldsADrainAtTheCap(t *testing.T) {
 		t.Fatalf("holding one beside a look-alike branch setting 1, the drain waited at the cap: %q, next %s", st.Waiting, res.Next)
 	}
 }
+
+// TestWithNoSavedDefaultALookAlikeBranchNeverHoldsADrain: in a checkout
+// where no reservation act has saved the branch origin names as its default,
+// a branch pushed to origin under a conventional name, setting
+// reservation.max_live 1, which the resolver here guesses for origin's
+// default, never holds a drain whose person holds one at a wait: the drain's
+// count reads no figure there and leaves the count to the reservation act,
+// which asks origin.
+func TestWithNoSavedDefaultALookAlikeBranchNeverHoldsADrain(t *testing.T) {
+	f := drainLandFixture(t)
+	first := f.firstMove(t)
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	f.parkIssueLaneOnce(t)
+	ceilingOnBranch(t, f.repo, "develop", `{"reservation": {"max_live": 1}}`)
+	f.repo.Git("update-ref", "-d", "refs/remotes/origin/HEAD")
+	f.repo.Git("update-ref", "-d", "refs/remotes/origin/main")
+	if got := gitutil.TrackedDefaultBranch(f.repo.Root(), claim.Remote); got != "refs/remotes/origin/develop" {
+		t.Fatalf("the resolver here names %q; want it to guess origin/develop", got)
+	}
+	saved := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "reservation", "origin-default")
+	if err := os.Remove(saved); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatalf("a drain beside a look-alike branch with no saved default: %v", err)
+	}
+	st, _, err := readDrain(f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Waiting == DrainWaitCap || strings.Contains(res.Next, "live reservations") {
+		t.Fatalf("holding one beside a look-alike branch setting 1, with no saved default, the drain waited at the cap: %q, next %s", st.Waiting, res.Next)
+	}
+}
