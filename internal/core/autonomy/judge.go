@@ -101,6 +101,12 @@ type Verdict struct {
 //  6. none owed, a qualifying wake: allow (waiting);
 //  7. none owed, no qualifying wake: block, taking the next ready item first.
 //
+// Inside the session's conversation window (SessionState.Conversing) the
+// rows are not read: the stop is allowed with the present line when nothing is
+// owed or the session holds a qualifying wake, and otherwise blocked as row 5,
+// naming the window, so a session the person spoke to is still read again once
+// the window ends (dcn-2611262057069959).
+//
 // stop_hook_active decides no row; it alone drives the count of consecutive
 // blocks (false sets it to one, true adds one), and the block whose count
 // passes the cap is recorded as a stop possibly forced by the cap.
@@ -126,17 +132,27 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	}
 	if st.Conversing(rec, now) {
 		// The person typed a prompt in this session within the window, under
-		// the record holding now (iss-2611260602137306): the stop is the
-		// present one, and the state is kept as it was but for the wakes, so
-		// the away counts resume where they stood once the window ends.
+		// the record holding now (iss-2611260602137306): the session may wait
+		// for them, so the stop is the present one, but while work is owed
+		// only holding a wake, since nothing else would have the checks read
+		// it again once the window ends (dcn-2611262057069959). The state is
+		// kept as it was but for the wakes, so the away counts resume where
+		// they stood once the window ends.
 		next := kept
 		next.SchemaVersion = SchemaVersion
 		owed, _ = settleHandBacks(rec, owed, false)
 		v := Verdict{Save: true, State: next}
-		if !owed.Empty() {
-			v.SystemMessage = presentLine(owed)
+		if owed.Empty() {
+			return v
 		}
-		return v
+		deadline := wakeDeadline(owed, now)
+		if _, _, wake := qualifyingWake(in.SessionCrons, now, deadline, in.Location); wake {
+			v.SystemMessage = presentLine(owed)
+			return v
+		}
+		v.Row, v.Reason = 5, owedReason(rec, owed,
+			fmt.Sprintf("The person typed a prompt in this session, so you may stop to wait for their reply, but only holding a scheduled look: schedule one before %s (a cron that fires by then, the host's lateness included), so the away checks read this session again once the window ends; or carry on with the owed work.", clock(deadline, in.Location)))
+		return holdStop(v, next, in, owed)
 	}
 	owed, handBacks := settleHandBacks(rec, owed, away)
 	if !away {

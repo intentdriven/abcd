@@ -9,11 +9,18 @@ import (
 
 // conversation.go — the person talking while away (iss-2611260602137306). The
 // away record holds for every session, but a prompt the person types in one
-// session opens a window in which that session reads as present: its stops are
-// allowed with the present line and its questions go to the person. Every
-// other session stays away, and the window closes on its own, and with it the
-// record it opened under, so autonomous work resumes without the person ending
-// the mode and setting it again.
+// session opens a window in which that session reads as present: its
+// questions go to the person, and its stops are allowed with the present line
+// when nothing is owed or the session holds a wake that has the checks read it
+// again (dcn-2611262057069959). Every other session stays away. The window
+// closes on its own, and with it the record it opened under, so autonomous
+// work resumes without the person ending the mode and setting it again: at the
+// session's first stop past the window, which a wake held at the window's last
+// stop makes sure of while work is owed.
+//
+// Anything running as the same account can write the session's state or run
+// the prompt hook by hand, so the window holds against other accounts and
+// stale state, not against this account's own agent; nothing enforces more.
 
 // ConversationWindow is how long after the person's last prompt a session reads
 // as present while the away record holds.
@@ -164,5 +171,5 @@ func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now tim
 // window: the person is here in this session, for now.
 func ConversationLine() string {
 	return "abcd: the person typed this prompt, so for " + shortDuration(ConversationWindow) +
-		" after it this session reads them as present although the away record holds: answer them, and put a question to them on the host's question tool rather than routing it. Every other session stays away, and once the window ends the away checks hold here again, so carry on with owed work after answering."
+		" after it this session reads them as present although the away record holds: answer them, and put a question to them on the host's question tool rather than routing it. Every other session stays away. While work is owed, a turn's end here is allowed only holding a scheduled wake (a cron that fires within the away check's deadline), so the away checks read this session again once the window ends: carry on with owed work after answering."
 }

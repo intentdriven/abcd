@@ -49,7 +49,11 @@ func TestPromptOpensConversationWindow(t *testing.T) {
 		t.Fatalf("the person's prompt did not open the window:\n%s", ctx)
 	}
 	pinStopClock(t, time.Now().UTC().Add(time.Minute), time.UTC)
-	out, so, _ := runStop(t, stopHookPayload(t, "talk", root, true, "Here is the status.", "*/10 * * * *"))
+	out, so, _ := runStop(t, stopHookPayload(t, "talk", root, false, "Here is the status."))
+	if out.Decision != "block" || !strings.Contains(out.Reason, "typed a prompt in this session") {
+		t.Errorf("a stop inside the window with no wake: %s; want it held, naming the window", so)
+	}
+	out, so, _ = runStop(t, stopHookPayload(t, "talk", root, true, "Here is the status.", "*/10 * * * *"))
 	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
 		t.Errorf("a stop inside the window with a wake: %s; want it allowed, naming the owed item", so)
 	}

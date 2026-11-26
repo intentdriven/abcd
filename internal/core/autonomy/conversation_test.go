@@ -31,6 +31,7 @@ func TestConversationWindowStop(t *testing.T) {
 	}{
 		{"no prompt", time.Time{}, nil, true, false},
 		{"prompt five minutes ago, a wake held", now.Add(-5 * time.Minute), wake, false, false},
+		{"prompt five minutes ago, no wake", now.Add(-5 * time.Minute), nil, true, true},
 		{"prompt at the window's edge, a wake held", now.Add(-ConversationWindow), wake, false, false},
 		{"prompt past the window", now.Add(-ConversationWindow - time.Minute), nil, true, false},
 		{"prompt stamped in the future", now.Add(time.Hour), nil, true, false},

@@ -141,6 +141,17 @@ this one: it is named once, as that session's. The owed work is read within
 naming what was not read, recorded in the away record while the person is
 away.
 
+A prompt the person typed in the session while away (abcd mode, the person
+talking while away) has its stops read as present ones for 15 minutes after
+it, under the record it was typed under: allowed when nothing is owed or the
+session holds a qualifying wake, and otherwise blocked, naming the window, so
+the session is read again once the window ends. Every stop, present or away,
+keeps the session's wakes' prompts in its state, so the prompt hook can tell a
+wake firing from the person typing. The prompt hook and this one read and
+write that state as any process of this account can, so the window holds
+against other accounts and stale state, not against this account's own agent;
+nothing enforces more.
+
 The same work is compared with the working copy's checklist: a branch or
 reservation of the session's own that no item's owner_refs names, or one
 that moved after the checklist was last written, is the checklist behind.
