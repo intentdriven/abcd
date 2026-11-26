@@ -911,6 +911,11 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	if anon < 0 || choose < 0 || finish < 0 || anon > choose || choose > finish {
 		t.Errorf("main does not read the relay list, then choose the relay, before finishing a sign-in:\n%s", main)
 	}
+	// A listed relay is held to the repository's app before a sign-in
+	// finishes through it (spc-2610230609005313 step 4).
+	if check := strings.Index(main, "await checkRelayApp();"); check < choose || check > finish {
+		t.Errorf("main does not check the chosen relay against the repository's app before finishing a sign-in:\n%s", main)
+	}
 	// Sign-in starts only through a cleared relay, before /config is asked.
 	start := functionBody(t, js, "startSignIn")
 	gate, cfg := strings.Index(start, `if (!relayClearedFor("signin")) return;`), strings.Index(start, "relayConfig()")
@@ -937,6 +942,9 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	ask, give := strings.Index(present, "readRelayList(heldToken)"), strings.Index(present, "githubToken = heldToken;")
 	if ask < 0 || give < 0 || ask > give || !strings.Contains(present, "forgetRelay(relay)") {
 		t.Errorf("presentHeldToken does not ask GitHub first and forget a refused relay:\n%s", present)
+	}
+	if check := strings.Index(present, "await checkRelayApp();"); check < ask || check > give {
+		t.Errorf("presentHeldToken gives the token before the relay the list now names is held to the repository's app:\n%s", present)
 	}
 	for _, m := range regexp.MustCompile(`githubToken = ([^;]+);`).FindAllStringSubmatch(js, -1) {
 		if m[1] != `""` && m[1] != "heldToken" {
@@ -965,6 +973,70 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	// A token reaches only the relay it was signed in through.
 	if b := functionBody(t, js, "relayTokenCleared"); !strings.Contains(b, "session.relay === tokenRelay") {
 		t.Errorf("relayTokenCleared does not hold the token to the relay it was signed in through:\n%s", b)
+	}
+}
+
+// A relay the repository's list names is held to the repository's app: the
+// page reads .abcd/relay/github-app.json beside the list, fail-closed, refuses
+// one carrying a client_secret as the relay refuses it, and uses a listed
+// relay only once its /config names that client id and the web flow, before
+// any sign-in, code, token or session reaches it. The refusal says so in
+// plain words and shows no address (spc-2610230609005313 step 4). The node
+// tests in signin_bind_test.go drive it; this is the backstop where node is
+// not installed.
+func TestAListedRelayIsHeldToTheRepositorysAppByItsText(t *testing.T) {
+	js := pageScript(t)
+	if !strings.Contains(js, `const APP_FILE = ".abcd/relay/github-app.json";`) {
+		t.Fatal("session.js does not name the repository's app file")
+	}
+	const words = `notOurs: "This project's live session is not answering as the project's own, so the page will not use it. Ask your technical facilitator."`
+	if !strings.Contains(js, words) {
+		t.Error("the page has no plain words for a relay that is not answering as the project's own")
+	}
+	if strings.Contains(words, "http") || strings.Contains(words, "{") {
+		t.Error("the words for a relay not answering as the project's own show an address")
+	}
+	read := functionBody(t, js, "readRelayList")
+	list, app := strings.Index(read, `if (res.status !== 200) return { state: "unavailable", relays: [] };`), strings.Index(read, "await readAppFile(headers, stop.signal)")
+	if list < 0 || app < 0 || list > app || !strings.Contains(read, `return app ? { state: "listed", relays, app } : { state: "unavailable", relays: [] };`) {
+		t.Errorf("readRelayList does not read the app file beside a list it read, fail-closed:\n%s", read)
+	}
+	appFile := functionBody(t, js, "readAppFile")
+	for _, want := range []string{
+		`GITHUB_API + repoPath() + "/contents/" + APP_FILE`,
+		`if (res.status === 404) return { required: false, clientID: "" };`,
+		`if (res.status !== 200) return null;`,
+	} {
+		if !strings.Contains(appFile, want) {
+			t.Errorf("readAppFile does not carry %s:\n%s", want, appFile)
+		}
+	}
+	if !strings.Contains(functionBody(t, js, "appIn"), `Object.prototype.hasOwnProperty.call(app, "client_secret")`) {
+		t.Error("appIn takes an app file that carries a client_secret")
+	}
+	answer := functionBody(t, js, "relayAnswersAs")
+	for _, want := range []string{`cfg.client_id === clientID`, `cfg.flow === "web"`, `cfg.app_type === "github-app"`, `redirect: "error"`} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("relayAnswersAs does not carry %s:\n%s", want, answer)
+		}
+	}
+	if b := functionBody(t, js, "relayStanding"); !strings.Contains(b, `return anchor.relays.includes(relay) ? appStanding(relay) : "refused";`) {
+		t.Errorf("relayStanding clears a listed relay without the app check:\n%s", b)
+	}
+	if !strings.Contains(functionBody(t, js, "standingRefusal"), `if (standing === "foreign") return WORDS.notOurs;`) {
+		t.Error("standingRefusal has no words for a relay not answering as the project's own")
+	}
+	fin := functionBody(t, js, "finishSignIn")
+	check, gate := strings.Index(fin, "await checkRelayApp();"), strings.Index(fin, "if (!relayCleared())")
+	if check < 0 || gate < 0 || check > gate {
+		t.Errorf("finishSignIn judges the relay before checking it against the repository's app:\n%s", fin)
+	}
+	start := functionBody(t, js, "startSignIn")
+	if !strings.Contains(start, "if (appRequired() && cfg.clientID !== anchor.app.clientID)") {
+		t.Errorf("startSignIn signs in with a client id other than the repository's app's:\n%s", start)
+	}
+	if !strings.Contains(functionBody(t, js, "renderStart"), `standing === "foreign"`) {
+		t.Error("the start screen does not say a relay is not answering as the project's own")
 	}
 }
 

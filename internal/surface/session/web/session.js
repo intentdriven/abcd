@@ -19,9 +19,12 @@
 // logged, and it reaches a relay only once the repository's committed relay
 // list names that relay, the relay serves this page itself, or, where the
 // list cannot be read, the person has confirmed it; and only to the relay
-// GitHub returned the person to after signing in. GitHub's sign-in code goes
-// only to that relay, through the callback the team's app lists, and never
-// to a relay the invite link or this tab's storage names. The relay's
+// GitHub returned the person to after signing in. A relay the list names is
+// used only once its /config names the client id the repository records in
+// .abcd/relay/github-app.json beside the list, and GitHub's web flow.
+// GitHub's sign-in code goes only to that relay, through the callback the
+// team's app lists, and never to a relay the invite link or this tab's
+// storage names. The relay's
 // rejoin token, which brings this participant
 // back to the session after a dropped connection or a reload, is not a GitHub
 // token: it is kept in memory and in this tab's session storage.
@@ -42,6 +45,7 @@ const WORDS = Object.freeze({
   notSetUp: "Live sessions are not set up for this project yet. Ask your technical facilitator to set them up.",
   privateNoLink: "This page could not find a live session for this project. If your team runs one, ask the host for the invite link. If not, ask your technical facilitator to set live sessions up.",
   notOurLink: "This invite link does not lead to this project's own live session, so the page will not open it. Ask the host for a new link.",
+  notOurs: "This project's live session is not answering as the project's own, so the page will not use it. Ask your technical facilitator.",
   cannotCheck: "The page could not reach GitHub to check this project's settings. Try again in a moment.",
   tryAgain: "Try again",
   pageFor: "This page is for",
@@ -335,6 +339,12 @@ const LEGACY_TRUSTED = "abcd.session.trusted-relays";
 const CALLBACK_PATH = "/auth/callback";
 // The repository's committed list of its relays: {"relays": [origin, …]}.
 const RELAYS_FILE = ".abcd/relay/relays.json";
+// The repository's committed record of its GitHub App, beside the list:
+// {"client_id": "…"}, public, and never a secret.
+const APP_FILE = ".abcd/relay/github-app.json";
+// How long a relay's /config may take to answer the app check: a free host
+// that slept takes about a minute to start again.
+const RELAY_WAKE = 90 * 1000;
 // A relay's rejoin token: 128 random bits, base64url without padding.
 const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;
 // A participant's awareness colour: the editor writes it into a style
@@ -1291,6 +1301,9 @@ async function startSignIn() {
     renderAll();
     return;
   }
+  // A listed relay signs in with the repository's own app alone, whatever
+  // it answers since the app check.
+  if (appRequired() && cfg.clientID !== anchor.app.clientID) { toast(WORDS.notOurs); renderAll(); return; }
   if (cfg.flow === "device" && anchor.state === "self") { startDeviceSignIn(); return; }
   // GitHub returns the person to the relay's own callback, which the team's
   // app lists; the relay sends them back to this page, naming itself. The
@@ -1340,7 +1353,8 @@ async function finishSignIn() {
   session.name = typeof pending.name === "string" ? pending.name : "";
   if (session.code) updateFragment();
   // GitHub's code goes to the relay's exchange only while the relay is still
-  // cleared for this repository.
+  // cleared for this repository, and a listed one answers as its app.
+  await checkRelayApp();
   if (!relayCleared()) { toast(standingRefusal(relayStanding(session.relay))); renderAll(); return true; }
   setStatus(WORDS.signingIn, false);
   try {
@@ -1469,9 +1483,12 @@ async function presentHeldToken(checked) {
     // other than its absence refuses the relay until it can be checked.
     if (seen.state === "listed" || seen.state === "unavailable") anchor = seen;
   }
+  // A relay the list names answers as the repository's app before the token
+  // is given.
+  await checkRelayApp();
   if (!heldToken || relay !== session.relay) { heldToken = ""; return; }
   const standing = relayStanding(relay);
-  if (standing === "refused" || standing === "unavailable") {
+  if (standing === "refused" || standing === "unavailable" || standing === "foreign") {
     if (standing === "refused") forgetRelay(relay);
     heldToken = "";
     toast(standingRefusal(standing));
@@ -1515,7 +1532,10 @@ function connectSignedIn() {
 // will show (404: none, or a private repository); or "unavailable" when GitHub
 // did not answer that (a 403, a 429, a 5xx, a network error): then the list
 // could not be checked, and nothing reaches the relay, confirmed or not,
-// until it can be.
+// until it can be. A "listed" anchor also carries app, what the repository's
+// app file says: { required: false } where GitHub has no such file, or
+// { required: true, clientID }, the client id "" for a file that names none
+// the page can use or carries a client_secret, which refuses every relay.
 let anchor = { state: "checking", relays: [] };
 
 // selfServed says the relay serves this page itself, a local session: its
@@ -1538,12 +1558,45 @@ async function readRelayList(token) {
     });
     if (res.status === 404) return { state: "unknown", relays: [] };
     if (res.status !== 200) return { state: "unavailable", relays: [] };
-    return { state: "listed", relays: relaysIn(await res.json()) };
+    const relays = relaysIn(await res.json());
+    // The app file beside the list, read the same way; one GitHub would not
+    // show leaves the list unchecked.
+    const app = await readAppFile(headers, stop.signal);
+    return app ? { state: "listed", relays, app } : { state: "unavailable", relays: [] };
   } catch {
     return { state: "unavailable", relays: [] };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// readAppFile reads the repository's app file from its default branch: what
+// the anchor's app says, or null where GitHub did not answer with the file or
+// its absence.
+async function readAppFile(headers, signal) {
+  try {
+    const res = await fetch(GITHUB_API + repoPath() + "/contents/" + APP_FILE, {
+      headers, signal, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+    });
+    if (res.status === 404) return { required: false, clientID: "" };
+    if (res.status !== 200) return null;
+    return { required: true, clientID: appIn(await res.json()) };
+  } catch {
+    return null;
+  }
+}
+
+// appIn reads the client id a contents answer for the app file names, or ""
+// for a file that does not parse, names none the relay would pass on, or
+// carries a client_secret: the relay refuses such a file, and the page
+// refuses every listed relay for it.
+function appIn(body) {
+  try {
+    if (!body || body.type !== "file" || body.encoding !== "base64" || typeof body.content !== "string" || body.content.length > 65536) return "";
+    const app = JSON.parse(decodeBlob(body.content));
+    if (!app || typeof app !== "object" || Array.isArray(app) || Object.prototype.hasOwnProperty.call(app, "client_secret")) return "";
+    return typeof app.client_id === "string" && /^[A-Za-z0-9._-]{1,100}$/.test(app.client_id) ? app.client_id : "";
+  } catch { return ""; }
 }
 
 // relaysIn reads the relays a contents answer names: each exactly an origin,
@@ -1587,8 +1640,73 @@ function relayStanding(relay) {
   if (anchor.state === "self") return relay === location.origin ? "self" : "refused";
   if (anchor.state === "checking") return "checking";
   if (anchor.state === "unavailable") return "unavailable";
-  if (anchor.state === "listed") return anchor.relays.includes(relay) ? "listed" : "refused";
+  if (anchor.state === "listed") return anchor.relays.includes(relay) ? appStanding(relay) : "refused";
   return confirmedRelays().includes(relay) ? "confirmed" : "unconfirmed";
+}
+
+// The app check (spc-2610230609005313 step 4). The list says which addresses
+// are the project's relays; it says nothing of who answers at one. Where the
+// repository records its GitHub App beside the list, a listed relay must name
+// that app's client id and offer GitHub's web flow at /config, or the page
+// signs nobody in through it, gives it no token and opens no session on it.
+// relayApp is the last answer: the relay and the client id it was held to,
+// and "ours", "foreign", or "unanswered" (asked again on the next look).
+let relayApp = { relay: "", clientID: "", state: "" };
+let appCheck = null;
+
+// appRequired says the anchor holds listed relays to the repository's app.
+function appRequired() {
+  return anchor.state === "listed" && !!anchor.app && anchor.app.required === true;
+}
+
+// appStanding is a listed relay's standing under the app check: "listed",
+// "foreign" (it answered as another app, or the file names none), or
+// "checking" until it has answered.
+function appStanding(relay) {
+  if (!appRequired()) return "listed";
+  if (!anchor.app.clientID) return "foreign";
+  if (relayApp.relay !== relay || relayApp.clientID !== anchor.app.clientID) return "checking";
+  if (relayApp.state === "ours") return "listed";
+  return relayApp.state === "foreign" ? "foreign" : "checking";
+}
+
+// relayAnswersAs asks the relay's /config whether it answers as the app
+// clientID names, through GitHub's web flow: "ours", "foreign", or
+// "unanswered" when it did not answer. It follows no redirect.
+async function relayAnswersAs(relay, clientID) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), RELAY_WAKE);
+  let res;
+  try {
+    res = await fetch(relay + "/config", {
+      method: "GET", signal: stop.signal, redirect: "error", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+    });
+  } catch {
+    clearTimeout(timer);
+    return "unanswered";
+  }
+  try {
+    if (!res.ok) return "unanswered";
+    const cfg = await res.json();
+    return cfg && cfg.app_type === "github-app" && cfg.client_id === clientID && cfg.sign_in === true && cfg.flow === "web" ? "ours" : "foreign";
+  } catch {
+    return "foreign";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// checkRelayApp holds the page's relay to the repository's app, once per
+// relay and client id; a check under way is waited on, not repeated.
+async function checkRelayApp() {
+  const relay = session.relay;
+  if (!relay || !appRequired() || !anchor.relays.includes(relay) || !anchor.app.clientID) return;
+  const want = anchor.app.clientID;
+  if (relayApp.relay === relay && relayApp.clientID === want && (relayApp.state === "ours" || relayApp.state === "foreign")) return;
+  if (appCheck && appCheck.relay === relay && appCheck.clientID === want) { await appCheck.done; return; }
+  const done = relayAnswersAs(relay, want).then((state) => { relayApp = { relay, clientID: want, state }; });
+  appCheck = { relay, clientID: want, done };
+  try { await done; } finally { if (appCheck && appCheck.done === done) appCheck = null; }
 }
 function relayCleared() {
   const standing = relayStanding(session.relay);
@@ -1604,6 +1722,7 @@ function relayTokenCleared() {
 // is not cleared gets nothing.
 function standingRefusal(standing) {
   if (standing === "checking") return WORDS.checking;
+  if (standing === "foreign") return WORDS.notOurs;
   if (standing === "unavailable") return WORDS.cannotCheck;
   if (standing === "refused") return WORDS.notOurLink;
   return WORDS.notSetUp;
@@ -1619,6 +1738,7 @@ async function recheckRelayList() {
     const seen = await readRelayList("");
     if (anchor.state === "unavailable") anchor = seen;
     if (!session.relay) session.relay = chooseRelay(linkRelay);
+    await checkRelayApp();
   } finally {
     rechecking = false;
     renderAll();
@@ -1637,6 +1757,7 @@ function relayClearedFor(action) {
     heldToken = "";
     toast(standingRefusal(standing));
     if (standing === "unavailable") recheckRelayList();
+    if (standing === "checking" && appRequired()) checkRelayApp().then(renderAll);
   }
   renderAll();
   return false;
@@ -3607,7 +3728,7 @@ function renderStart() {
   let notice = "";
   if (!session.relay) {
     notice = { checking: WORDS.checking, unavailable: WORDS.cannotCheck, unknown: WORDS.privateNoLink }[anchor.state] || WORDS.notSetUp;
-  } else if (standing === "refused" || standing === "unavailable" || standing === "checking") {
+  } else if (standing === "refused" || standing === "unavailable" || standing === "checking" || standing === "foreign") {
     notice = standingRefusal(standing);
   }
   ui.notice.textContent = notice;
@@ -3873,6 +3994,9 @@ async function main() {
   // and if not, which relays does the repository name?
   anchor = selfServed() ? { state: "self", relays: [] } : await readRelayList("");
   session.relay = chooseRelay(linkRelay);
+  renderAll();
+  // A listed relay answers as the repository's app before anything reaches it.
+  await checkRelayApp();
   renderAll();
   refreshSignIn();
   if (!(await finishSignIn())) {
