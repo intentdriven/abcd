@@ -153,6 +153,9 @@ func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 			continue // the guard's own fall-back is the test below
 		}
 		for _, died := range []string{"1", "2", "137"} {
+			if e.event == "SubagentStart" && died == "1" {
+				continue // that verb's own answer, the test below
+			}
 			t.Run(e.event+"/exit-"+died, func(t *testing.T) {
 				root, _ := dogfoodRig(t, "BUILD", died)
 				stdout, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
@@ -189,19 +192,60 @@ func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 	}
 }
 
-// TestGuardFallsBackWhenTheDogfoodBuildFailsToRun: a dogfood guard that dies
-// (any exit but the guard's own 0, 1 and 2) never leaves the command
-// unguarded: the shim says so on stderr and the installed release judges the
-// same command. A dogfood verdict (exit 2, block) stands as given.
+// TestSubagentStartTakesTheBuildsOwnFailureAsItsAnswer: the start hook fails
+// at exit 1 on purpose, within its own bound and with the failure counted, so
+// the installed release does not run the same start again: two bounds do not
+// fit the manifest's timeout, and one start would be counted twice.
+func TestSubagentStartTakesTheBuildsOwnFailureAsItsAnswer(t *testing.T) {
+	root, _ := dogfoodRig(t, "BUILD", "1")
+	stdout, stderr, code := hookRunHome(t, "SubagentStart", root, "", t.TempDir(), dogfoodListHome(t))
+	calls := callLog(t, filepath.Join(root, "calls.log"))
+	if code != 1 || stdout != "" || stderr != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want the build's exit 1, nothing on stdout and nothing of the shim's own", code, stdout, stderr)
+	}
+	if !strings.Contains(calls, "dogfood hook subagent-start") || releaseRan(calls, "hook subagent-start") {
+		t.Errorf("the start did not run on the build alone; calls %q", calls)
+	}
+}
+
+// TestGuardHoldsWhenTheReleaseIsKilledBehindTheDogfoodBuild: where the
+// dogfood build answers 1 and the installed release judges the command in its
+// place, a release killed by a signal holds the command, as at every other
+// rung; and a dogfood build itself killed by a signal holds it there, before
+// any release runs.
+func TestGuardHoldsWhenTheReleaseIsKilledBehindTheDogfoodBuild(t *testing.T) {
+	for _, died := range []string{"1", "139"} {
+		t.Run("exit-"+died, func(t *testing.T) {
+			root, build := dogfoodRig(t, "BUILD", died)
+			release := "#!/bin/sh\nif [ \"$1 $2\" = 'hook dogfood-binary' ]; then printf '%s\\n' '" + build + "'; exit 0; fi\ncat >/dev/null\nkill -KILL $$\n"
+			if err := os.WriteFile(filepath.Join(root, "abcd"), []byte(release), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			calls := filepath.Join(root, "calls.log")
+			_, stderr, code := hookRunHome(t, "PreToolUse", root, "", t.TempDir(), dogfoodListHome(t))
+			if code != 2 || !strings.Contains(stderr, "FAILED TO RUN") {
+				t.Errorf("exit %d, stderr %q; want the command held (exit 2) and said out loud", code, stderr)
+			}
+			if died == "139" && strings.Contains(stderr, "installed release") {
+				t.Errorf("a killed dogfood build fell back to the installed release; stderr %q, calls %q", stderr, callLog(t, calls))
+			}
+		})
+	}
+}
+
+// TestGuardFallsBackWhenTheDogfoodBuildFailsToRun: a dogfood guard that fails
+// to run (any exit but the guard's own 0, 1 and 2, and a signal's, which
+// holds) never leaves the command unguarded: the shim says so on stderr and
+// the installed release judges the same command. A dogfood verdict (exit 2, block) stands as given.
 func TestGuardFallsBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
 	t.Run("crash", func(t *testing.T) {
-		root, _ := dogfoodRig(t, "BUILD", "139")
+		root, _ := dogfoodRig(t, "BUILD", "126")
 		_, stderr, code := hookRunHome(t, "PreToolUse", root, "", t.TempDir(), dogfoodListHome(t))
 		calls := callLog(t, filepath.Join(root, "calls.log"))
 		if !strings.Contains(calls, "dogfood guard hook") || !releaseRan(calls, "guard hook") {
 			t.Fatalf("the installed release did not judge the command after the dogfood guard died; calls %q", calls)
 		}
-		if code != 0 || !strings.Contains(stderr, "dogfood build FAILED TO RUN (exit 139)") || !strings.Contains(stderr, "installed release") {
+		if code != 0 || !strings.Contains(stderr, "dogfood build FAILED TO RUN (exit 126)") || !strings.Contains(stderr, "installed release") {
 			t.Fatalf("exit %d, stderr %q; want the installed release's verdict and a line saying the dogfood guard failed", code, stderr)
 		}
 	})

@@ -1203,16 +1203,8 @@ func (p ConsistencyIngestPlan) Apply() (ConsistencyIngestResult, error) {
 		return ConsistencyIngestResult{}, afterFiling(err)
 	}
 	// Create-only: the shelf is append-only, so a report is never overwritten.
-	fh, err := os.OpenFile(filepath.Join(req.RepoRoot, filepath.FromSlash(reportRel)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := createRepoFile(req.RepoRoot, reportRel, report); err != nil {
 		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: creating report %s: %w", reportRel, err))
-	}
-	if _, err := fh.WriteString(report); err != nil {
-		fh.Close()
-		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
-	}
-	if err := fh.Close(); err != nil {
-		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
 	}
 	if findings != "" {
 		// The summary and its findings file are one report: a summary whose
@@ -1259,18 +1251,23 @@ func checkConsistencySummarySize(rv consistencyReview, date string, free proseFi
 // writeNewRepoFile writes a new repository file, never one that exists: the
 // reviews shelf is append-only.
 func writeNewRepoFile(repoRoot, rel, text string) error {
-	fh, err := os.OpenFile(filepath.Join(repoRoot, filepath.FromSlash(rel)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
+	if err := createRepoFile(repoRoot, rel, text); err != nil {
 		return fmt.Errorf("intent: creating %s: %w", rel, err)
 	}
-	if _, err := fh.WriteString(text); err != nil {
-		fh.Close()
-		return fmt.Errorf("intent: writing %s: %w", rel, err)
-	}
-	if err := fh.Close(); err != nil {
-		return fmt.Errorf("intent: writing %s: %w", rel, err)
-	}
 	return nil
+}
+
+// createRepoFile creates rel under repoRoot holding text, refusing a name that
+// exists, through fsutil.CreateExclusiveIn: the file appears only whole, so a
+// crash mid-write cannot leave a short report on the append-only shelf that
+// every retry is then refused by.
+func createRepoFile(repoRoot, rel, text string) error {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return fsutil.CreateExclusiveIn(root, rel, []byte(text), 0o644)
 }
 
 // mergeConsistencyReviews joins the validated payloads of one ingest into the

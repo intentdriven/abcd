@@ -163,7 +163,7 @@ func hookOutcome(t *testing.T, stdout, stderr string, code int, root string, st 
 
 // findingOf is a finding of the verb's JSON as the check made it.
 func findingOf(f questionFindingJSON) question.Finding {
-	return question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
+	return question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Plain: f.Plain}
 }
 
 // TestGuardQuestionAndHookDecideAlike: for every draft of the corpus in every

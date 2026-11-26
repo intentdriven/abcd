@@ -173,8 +173,8 @@ this session's environment reads as off a profile. A host that reports no such
 setting reads as off, and every doubt falls towards the line. Pass the line on to
 the person, as it asks. The mode is set and the exit code is the same either way:
 this warns and never refuses. This reads one setting and proves no wall, and the setting's value changes nothing
-the session holds. No abcd command starts
-a session on a profile yet. A profile is a separate login and settings on one
+the session holds. `abcd start`,
+typed by the person in a plain terminal, starts a session on a profile. A profile is a separate login and settings on one
 operating-system account, and a stage's shell reads what the account can.
 `abcd drain --drive` is the unattended start: it runs agents of its own on a separate
 login, with named tools, checked at its start.

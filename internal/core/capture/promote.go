@@ -240,8 +240,8 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		// single source of the observation).
 		slug := asString(fm["slug"])
 		title := issueTitleLine(body, slug)
-		seed := "Graduated from `" + req.ID + "`: " + title +
-			". Read that issue record for the source observation."
+		seed := "Graduated from `" + req.ID + "`: " + endSentence(title) +
+			" Read that issue record for the source observation."
 		it, err := intent.CreateDraft(repoRoot, intent.DraftOptions{
 			Slug:         slug,
 			Title:        title,
@@ -453,6 +453,16 @@ func codeSpan(s string) string {
 		return fence + " " + s + " " + fence
 	}
 	return fence + s + fence
+}
+
+// endSentence closes title with a full stop unless it already ends its own
+// sentence, so the seed that follows it never reads "filed.. Read".
+func endSentence(title string) string {
+	if strings.HasSuffix(title, ".") || strings.HasSuffix(title, "!") ||
+		strings.HasSuffix(title, "?") || strings.HasSuffix(title, "…") {
+		return title
+	}
+	return title + "."
 }
 
 // beforePromoteStampHook, when non-nil, fires on the issue route between the

@@ -208,7 +208,8 @@ hold other tools, and abcd has no way to see them. A host's report of a session'
 tools would show the tools and still not bound its shell; what the account cannot
 reach is a later step (itd-2610161621364075). A profile is a separate login and
 settings on one operating-system account, and a stage's shell reads what the account
-can. No abcd command starts a session on a profile yet. The drain's drive
+can. `abcd start` ([`43-start.md`](43-start.md)), typed by the person in a plain
+terminal, starts a session on a profile. The drain's drive
 ([`35-drain.md`](35-drain.md)) is the unattended start: it runs agents of its own on a
 separate login, with named tools, checked at its start.
 

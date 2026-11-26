@@ -358,7 +358,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		}
 		f := DrainFinished{Issue: run.carriedLead(), RunID: run.RunID, PR: lane.PR, Bundle: run.members()}
 		// A stop can reach the run while the forge is read and the default branch fetched.
-		if note := stopMarkNote(repoRoot, run.RunID); note != "" {
+		if note := stopMarkNoteTo(repoRoot, run.RunID, o.driverIsSelf); note != "" {
 			p := read[run.RunID]
 			p.State, p.Note = ParkedStopHolds, fsutil.RedactHome(note)
 			reads = append(reads, p)

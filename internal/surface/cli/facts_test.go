@@ -22,6 +22,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/reading"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	coresession "github.com/intentdriven/abcd/internal/core/session"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/core/source"
@@ -168,6 +169,8 @@ func closedSets() map[[2]string][]string {
 		{"abcd library add", "permission"}:          source.Permissions,
 		{"abcd library declassify", "permission"}:   source.Permissions,
 		{"abcd library ledger", "influence"}:        source.Influences,
+
+		{"abcd start", "permission-mode"}: runner.SessionPermissionModes(),
 
 		{"abcd", "view"}:   boardViews,
 		{"abcd", "format"}: boardForms,

@@ -37,7 +37,8 @@ it any other way. `abcd drain --drive` is the person's own form of the verb, typ
 in a plain terminal with no host session; it refuses inside an agent's own session.
 
 It runs on a subscription alone, on one separate login: a directory under
-`~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
+`~/.abcd.noindex/profiles/` that `abcd start` makes (`/abcd:start`), or the person by
+hand, and that the person logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
 `settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
 harness's own attribution, off, and nothing else. A harness update during the run
@@ -99,7 +100,9 @@ issue, and their preflights queue at the one load gate. One that moves to a new 
 ends the other, as the drive's release section says.
 
 A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
-profile. No abcd command starts one, and a drive that starts later on that directory
+profile. `abcd start`, the person's to type (`/abcd:start`), starts one; its settings are
+handed over at the start, so the directory's files are not written. A drive that starts
+later on that directory
 rewrites its `settings.json` and stops at anything a session left there that a launch
 would load.
 
@@ -969,9 +972,11 @@ what it did in `next`:
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
-  live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
-  before any reservation or judgement, or when every eligible issue left is
+  live reservations (ten unless the repository's `reservation.max_live` in
+  `.abcd/config.json` at origin's default branch sets another, from 1 to 100,
+  or their computer's `~/.abcd.noindex/config.json` lowers it, read at the
+  branch origin last named as its default to a reservation made here),
+  counted in the move's view before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
   `held`), and names what it waits on: at the cap, the reservations and the

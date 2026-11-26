@@ -87,6 +87,15 @@ const (
 	ExplainUnknownPath       Code = "explain/unknown-path"
 	ExplainUnrecognizedInput Code = "explain/unrecognized-input"
 	ExplainUnknownCode       Code = "explain/unknown-code"
+
+	// start's own refusals.
+	StartOutsideATerminal  Code = "start/outside-a-terminal"
+	StartProfileUnusable   Code = "start/profile-unusable"
+	StartRepositoryUnready Code = "start/repository-unready"
+	StartHostNotRunnable   Code = "start/host-not-runnable"
+	StartNotLoggedIn       Code = "start/not-logged-in"
+	StartNoVerdict         Code = "start/no-verdict"
+	StartWallNotHeld       Code = "start/wall-not-held"
 )
 
 // Entry is one registered code.
@@ -284,6 +293,71 @@ var entries = []Entry{
 			"release is unknown to an older binary.",
 		Next:     NoNext,
 		RaisedBy: []string{"abcd explain"},
+	},
+	{
+		Code:    StartOutsideATerminal,
+		Summary: "a host session's marker is set, or a stream is not a terminal",
+		Explanation: "A host session's marker is set in the environment, or standard input, output or\n" +
+			"error is not a terminal. Those two are all that is read: they catch a start made by\n" +
+			"mistake and prove nothing about who typed it. A person types `abcd start` in a plain\n" +
+			"terminal. Nothing was started.",
+		Next:     NoNext,
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartProfileUnusable,
+		Summary: "the profile is not one a session can start on",
+		Explanation: "The account holds several profiles and none was named, holds none by the name\n" +
+			"given, or the directory is one abcd does not trust or that holds something a launch\n" +
+			"would load. The refusal says which. Nothing was started.",
+		Next:     NoNext,
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartRepositoryUnready,
+		Summary: "this is not a managed checkout with a conventions file to hand over",
+		Explanation: "A session starts in a git checkout abcd manages, with AGENTS.md at its root: a\n" +
+			"regular file, not a link, with no NUL byte, at most 100 KiB. The refusal says which\n" +
+			"does not hold. Nothing was started.",
+		Next:     "abcd ahoy",
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartHostNotRunnable,
+		Summary: "the host, or the copy of abcd its hooks run, cannot be run",
+		Explanation: "The host is not on PATH or lies where abcd never runs one, abcd could not name or\n" +
+			"keep a copy of its own binary, or the machine's runner configuration could not be\n" +
+			"read. The refusal says which. Nothing was started.",
+		Next:     NoNext,
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartNotLoggedIn,
+		Summary: "the profile is not logged in, and the login is the person's",
+		Explanation: "The refusal prints the host's own login command for the profile, which the person\n" +
+			"runs once in their own shell and which opens no session. abcd never performs the\n" +
+			"login and never reads, stores or forwards its token. Nothing was started.",
+		Next:     NoNext,
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartNoVerdict,
+		Summary: "the host gave no answer a start can stand on",
+		Explanation: "The host did not answer about the login, or the short launch met a limit, did not\n" +
+			"finish, was interrupted, or could not be written to the launch ledger. It says\n" +
+			"nothing about the profile. Nothing waits and nothing was tried again.",
+		Next:     "abcd start",
+		RaisedBy: []string{"abcd start"},
+	},
+	{
+		Code:    StartWallNotHeld,
+		Summary: "the short launch, or this checkout's guard, did not show that the wall holds",
+		Explanation: "The launch held a tool, a server, a plugin or a key the list does not name, loaded\n" +
+			"something from its working tree, reported no list to read, or did not show the guard\n" +
+			"refusing a command it is meant to refuse; or the guard in this checkout is off or\n" +
+			"does not refuse that command. The refusal names which. No session was opened.",
+		Next:     NoNext,
+		RaisedBy: []string{"abcd start"},
 	},
 }
 
