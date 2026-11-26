@@ -30,6 +30,7 @@ const ShapeUnguardedVariablePath = "unguarded-variable-path"
 var argShapes = map[string]bool{
 	ShapeUnguardedVariablePath: true,
 	ShapeForgeRefPath:          true,
+	ShapeReleaseTag:            true,
 }
 
 // guardedValues is the texts of the variables' own values, as spellParameter

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -18,16 +19,25 @@ func TestBoardPresenceLineIsTheRendersPlainForm(t *testing.T) {
 	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
 		t.Fatal(err)
 	}
-	want, err := statusline.Compose(root, statusline.Payload{}, statusline.Defaults())
+	want, err := statusline.ComposeContext(context.Background(), root, statusline.Payload{}, statusline.Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	text := string(runCLI(t, "--view", "facilitator"))
-	line := ""
+	// The row names the facilitator's mode and whose it is in both values
+	// (itd-2611252117557299), so off a terminal, at 80 columns, the labelled
+	// line wraps as every board row does: its continuation lines, indented
+	// past the label, are part of it.
+	line, in := "", false
 	for _, l := range strings.Split(text, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(l), "presence:") {
-			line = l
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(l), "presence:"):
+			line, in = l, true
+		case in && strings.HasPrefix(l, "    "):
+			line += " " + strings.TrimSpace(l)
+		default:
+			in = false
 		}
 	}
 	if line == "" {

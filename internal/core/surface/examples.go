@@ -267,6 +267,8 @@ var examples = map[string]string{
 	"abcd spec":       "abcd spec",
 	"abcd spec close": "abcd spec close spc-2609010000000001",
 
+	"abcd start": "abcd start",
+
 	"abcd status": "abcd status",
 
 	"abcd statusline": "abcd statusline < payload.json",

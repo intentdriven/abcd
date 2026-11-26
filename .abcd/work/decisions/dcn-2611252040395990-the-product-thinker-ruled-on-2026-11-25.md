@@ -1,0 +1,6 @@
+---
+id: dcn-2611252040395990
+slug: the-product-thinker-ruled-on-2026-11-25
+date: 2026-11-25
+---
+2026-11-25 — The product thinker ruled on 2026-11-25 that the technical facilitator's mode (facilitator.mode) is a personal setting, held for each repository: a person sets it for their own git identity and may vary it from repository to repository, and the status line must say which it is. They called it critical, to be built soon and without delay. Today the mode is read from the repository's committed file, for everyone who works there, so this reverses in part adr-2610150603484802 (the declaration's home), whose other clauses are not touched: a person is the facilitator until told otherwise, and human from any layer wins. Whether a repository must also permit auto is put to them. It is also what dcn-2611252038565989 waits on, since installing unasked follows the person's own mode. To reverse: keep the committed declaration.

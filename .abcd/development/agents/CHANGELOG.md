@@ -12,6 +12,34 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-11-25 (iss-2611252121330106 — the question writer reads the knowledge floor)
+
+### planning-interviewer 0.3.2
+
+PATCH: the page says what a question under a Product chip does with material in
+internals: it restates the material in plain words, dropping nothing an answer
+turns on, introduces in one sentence a word that cannot be avoided, and puts
+text that is mechanism alone to the technical facilitator under a Tech chip. The
+same sentence is in the task each brief restates, and each brief now lists the
+words below the floor with their plain words, since a runner reads no plugin
+page. The receipt contract is unchanged. Forced by the review of the floor
+check, which found the task told a Product question nothing about internals.
+Unmeasured, in the `0.x` band.
+
+### question-drafter 0.3.0
+
+MINOR, a schema change in the `0.x` band: the writer refuses for a fourth
+cause, material for the product thinker in words below their knowledge floor
+that the material does not introduce, and returns a new `plain_words` object
+naming each word and the plain words it would use. It reads the floor's page
+before it writes for the product thinker, and it uses the rows limit the check
+reports, never one the brief names. The generated asking rules now say that
+the caller hands the material in the person's words, and that the question
+check refuses a word below the product thinker's floor the question does not
+introduce. Forced by the interview of 2026-11-25, where a question written
+from a brief in internals passed the check and the person could not answer it.
+Unmeasured, in the `0.x` band.
+
 ## 2026-11-22 (iss-2609022226104492 — the comparative item shape asks for the criterion's name)
 
 ### cold-reading-comparative 0.1.5

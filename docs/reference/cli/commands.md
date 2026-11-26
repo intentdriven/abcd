@@ -652,8 +652,9 @@ run from a session whose setting reads as off a profile prints one line on stder
 after the move, naming what abcd cannot check and addressed to the person; it never refuses and the exit
 code does not change. In the managed mode nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,
@@ -1975,8 +1976,9 @@ session whose setting reads as off a profile prints one line on stderr opening W
 naming what abcd cannot check and addressed to the person; it never refuses and the exit code does not
 change. In the managed mode and on --dry-run nothing prints. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
@@ -2408,7 +2410,7 @@ abcd explain ideate record --input verdict-json
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
+Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -2621,6 +2623,20 @@ operand it is one operand; in command position (`$(echo git) push`) it is
 any program its known text allows, so an unknown name with any operand
 reads as `pkill` too; a block that fires only on such a name is reported
 as program-name-unknown, and the way past is to spell the program's name.
+A command whose program is a substitution's output the guard does not
+read, alone or through a variable the line set from one (`$(date)`,
+`P=$(cat f); $P make`), is refused under program-name-unknown, since
+which program runs is unchecked. The output read is a document printed
+as exactly `cat <<DELIM`, a newline, the body, the delimiter line and
+blanks, and the path a lookup of one fixed name prints (`command -v go`,
+`which go`, `type -P go`, `whence -p go`, alone or `|| true`), on a line
+that defines no function of that name or of the lookup's, no alias, and
+runs no eval or source. A value placed unquoted where the shell splits it
+(`P='git prune'; $P`) is read as the words it splits into, and a line that
+gives IFS a value other than blanks holds every such word.
+A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,
+as the program's name, as a flag (`--$VAR`) and in a string handed to a
+shell, and a value the line assigns before it uses it is read in place.
 Text beside one in the same word is also read as bash
 leaves it when the output is empty. One nested more than eight
 double-quoted substitutions deep, holding a case command, or more than
@@ -2645,15 +2661,22 @@ no backslash in it is read the same way. On a line where another command
 names IFS an unquoted one is blocked (ifs-split-unread), because the
 guard splits on the default IFS only. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
+A call of a function the line defines is read with its words in one
+shape only, a body of one command reading them as `"$@"`, `$@`,
+`"$1"`, `$1` or `${1}`; any other call, with words, of a function
+that reads them is blocked (function-form-unread), and so is a line
+that names one of zsh's `functions[`, `aliases[` … tables anywhere on
+the line, runs `functions -c` or `-M`, defines several names with one
+`()`, or runs a command through the `-` modifier.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.
 An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
-all: a word that is wholly a `$(…)` standing where a flag would be (read as
-an operand, the way a commit message or a branch is spelled), a delete
-target printed whole by one (`rm -rf $(echo /)`, read by its known text
+all: a word that is wholly a `$(…)` or a variable standing where a flag
+would be (read as an operand, the way a commit message or a branch is
+spelled), a delete target printed whole by one (`rm -rf $(echo /)`, read by its known text
 the way `rm -rf $(find …)` names its targets every day), one launched
 through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
@@ -2661,24 +2684,18 @@ wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 only the warn, not the entry that names it),
 one whose API path an entry names by its ROOT segment but the host serves
 under a prefix (a GitHub Enterprise Server install mounts the same endpoints
-under `/api/v3/`; the api.github.com URL form IS read), a parameter
-expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it
-stands — as the program's name, as a flag (`--$VAR`), or inside an
-interpreter payload (an execute-a-string payload IS read — `sh -c`,
-`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),
-because the guard sees the variable, not what the shell expands it to,
+under `/api/v3/`; the api.github.com URL form IS read), what a variable
+the line did not assign carries in from an earlier command (a pid list, a
+stream path, shell text run through `eval`, or `pkill` or `killall` as the
+program's whole name, `$P make`),
 an IFS the shell already holds when the line starts or gains during the
 line through a name the guard does not read (every line is read from the
 default IFS),
-a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
+a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`;
+an execute-a-string payload IS read, `sh -c` and `env -S`, and one the guard
+cannot read is warned or, for `env -S`, blocked) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
-a lone substitution standing as the whole command (`$(cat msg.txt)`,
-`$(date)`), which can be any program but matches no entry with no
-operand after it, and so a document printed that way through any shape
-but exactly `cat <<DELIM`, a newline, the body, the delimiter line and
-blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command
-beside it, a backslash-newline in it, a `${…}` around it),
 or a dangerous form no entry describes. Coverage is what the registry
 names.
 
@@ -2702,7 +2719,7 @@ abcd guard check --command 'git push --force origin main'
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
+Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.
 
 **Usage:** `abcd guard hook`
 
@@ -2743,9 +2760,25 @@ so a linked worktree, a checkout one session or none works in, a path in no
 checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
 which git ignores) are written silently. A file call naming no path, a
 relative path with no absolute session directory, or a count that cannot
-be made, lets the write run and warns loudly. A call through
-any other tool never reaches the guard: a command a tool from another
-extension runs is neither checked nor warned about. That is the guard's
+be made, lets the write run and warns loudly.
+
+A sub-agent's write is held until the sub-agent has read the conventions
+file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd
+manages whose rules are on. A write is a call of one of the file-writing
+tools, or a shell line naming git commit, merge, rebase, cherry-pick,
+revert, am, pull or push, in a conditional, a loop or a function body
+too; a git command run through a wrapper (time, env, sudo, sh -c, a
+script, an alias) is not seen. The host's payload names the sub-agent, and the
+sub-agent's own transcript is read once: a call in it that names the file
+and writes nothing is a reading, and one that names the brief of a build's
+lane stands for it. Without one the write is refused with the host's deny,
+whose reason names the file, where abcd looked for it and the read to make.
+The session's own calls, abcd's cold-reading agents and a drive's stage are
+never held, and what cannot be judged is not held: with no reading, its stop
+says so.
+
+A call through any other tool never reaches the guard: a command a tool from
+another extension runs is neither checked nor warned about. That is the guard's
 standing scope, not a degradation, and the guard: line of abcd ahoy does
 not report it.
 
@@ -2777,7 +2810,9 @@ tab over the limit, the verb that checks the next draft and the agent that
 drafts a question to fit. The hook never
 rewrites a question. A number header names no person, so the agent sets
 `abcd mode` to the person before asking, and the product thinker's register
-rule follows that mode. In a checkout abcd manages, an admitted question is
+rule (no record number, no command, and no word below their knowledge floor
+that the question does not introduce) follows that mode. In a checkout abcd
+manages, an admitted question is
 never refused on the mode: an older-form header sets `abcd mode` from its
 role (Product to product-thinker, Tech and Setup to facilitator), a number
 header leaves the mode as set, and the question is marked open in the local
@@ -3311,8 +3346,9 @@ whose setting reads as off a profile prints one line on stderr opening WARNING:,
 mode and on a resume, naming what abcd cannot check and addressed to the person; it never refuses and
 the exit code does not change. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 **Flags:**
@@ -6259,8 +6295,9 @@ Setting it from a session whose setting reads as off a profile prints one line o
 WARNING:, after the set, naming what abcd cannot check and addressed to the person. The mode is set and
 the exit code is the same either way: it warns and never refuses. abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host
 reporting no such setting included. This reads one setting and proves no wall, and the setting's value
-changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a
-separate login and settings on one operating-system account, and a stage's shell reads what the account can.
+changes nothing the session holds. abcd start, typed by the person in a plain
+terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system
+account, and a stage's shell reads what the account can.
 abcd drain --drive is the unattended start: it runs agents of its own on a separate login, with named tools, checked at its start.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
@@ -7444,6 +7481,48 @@ In the repository whose brief describes the binary, a close that ships an intent
 abcd spec close spc-2609010000000001
 ```
 
+### `abcd start`
+
+Start a session on abcd alone, making its separate login where none exists: Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.
+
+**Usage:** `abcd start [prompt] [flags]`
+
+Start a session on abcd alone: the few tools the work needs, abcd's hooks and the
+repository's conventions file, and nothing else of your set-up. You type it, in a
+plain terminal, in a checkout abcd manages. A run has one of two outcomes.
+
+On an account with no profile it makes one directory under
+~/.abcd.noindex/profiles/, writes abcd's settings there and nothing of yours,
+prints the host's own login command, and starts nothing. The login is yours, in
+your own shell: abcd never performs it, and never reads, stores or forwards it.
+
+On a profile that is logged in it runs one short launch with the session's
+arguments on that profile, refuses naming anything the launch reports that the
+printed list does not name, and otherwise opens the session in place of abcd. The
+short launch spends a little of the subscription and is written to the launch
+ledger. It is one launch, not the open session: what the host adds after the start
+abcd cannot see.
+
+A profile is a separate login and settings on this one account, not a sandbox: a
+command the session runs can still read whatever the account can.
+
+With a prompt the session opens with it; with none it opens waiting for you. With
+several profiles, name one with --profile. `abcd session` is another thing: the
+live brief sessions.
+
+**Flags:**
+
+```
+      --permission-mode string   the permission mode the session starts in, manual | acceptEdits | plan | auto | dontAsk | bypassPermissions; without it, the host's default
+      --profile string           the profile to start on; on an account with none, the name the one made is given
+```
+
+**Example:**
+
+```
+abcd start
+```
+
 ### `abcd status`
 
 List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.
@@ -7542,9 +7621,14 @@ row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
 the technical facilitator` or `waiting on the product thinker`, from the state
 `abcd mode` stores, its colour ending at the badge — then the session's
 name when the harness supplies one, the repository name, the branch,
-`autonomous merging` while the repository's facilitator.mode is auto (read
-as the merge gate reads it: the default branch's committed
-`.abcd/config.json` and the machine layer), the model, the context
+`facilitator:` naming the repository's facilitator.mode, human or auto, and
+whose setting decides it (`facilitator: auto (project)`, `facilitator: human
+(computer)`, `facilitator: human (not set)`), as last read: the default
+branch's committed `.abcd/config.json` as the prompt hook last read it and
+kept it, with `, read 14:02` once that branch has moved, and the machine
+layer as it is now; `facilitator: not read` with no reading kept. The merge
+gate does not rely on it, and it is not the state `abcd mode` keeps. Then the
+model, the context
 percentage, the five-hour and seven-day usage percentages, and the record's
 counts of intents not yet shipped and open issues. Each element after the
 session name is switchable in

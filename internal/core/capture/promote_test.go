@@ -33,6 +33,30 @@ func promoteFixture(t *testing.T, text string) (repo, ir, issID string) {
 	return repo, ir, res.ID
 }
 
+// TestPromoteSeedEndsTheTitleOnce: a title that already ends its sentence gets
+// no second full stop in the seeded draft, and one that does not gets one.
+func TestPromoteSeedEndsTheTitleOnce(t *testing.T) {
+	for text, want := range map[string]string{
+		"the thing was filed.":        ": the thing was filed. Read that issue record",
+		"was the thing filed?":        ": was the thing filed? Read that issue record",
+		"the thing was filed":         ": the thing was filed. Read that issue record",
+		"the thing trailed off\u2026": ": the thing trailed off\u2026 Read that issue record",
+	} {
+		repo, ir, issID := promoteFixture(t, text)
+		res, err := Promote(PromoteRequest{Grounds: testGrounds, RepoRoot: repo, IssuesRoot: ir, ID: issID})
+		if err != nil {
+			t.Fatalf("Promote(%q): %v", text, err)
+		}
+		data, err := os.ReadFile(filepath.Join(repo, res.IntentPath))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(data), want) {
+			t.Errorf("seed for %q lacks %q:\n%s", text, want, data)
+		}
+	}
+}
+
 // draftCount counts intent files under drafts/.
 func draftCount(t *testing.T, repo string) int {
 	t.Helper()
