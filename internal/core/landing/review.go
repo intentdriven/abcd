@@ -272,12 +272,22 @@ func verdictLines(lines []string) []int {
 	return at
 }
 
+// fileReference is what follows the word Verdict when the word is part of a file's
+// name or a place in one, as a reviewer cites the record under review: a line
+// number (`verdict:52`) or the rest of a file name (`verdict.md:14`,
+// `verdict_head_test.go`). A separator before a line number stands apart from it
+// (`Verdict: 52`), and a file name goes on with a letter or a digit.
+var fileReference = regexp.MustCompile(`^(?::[0-9]|[._][\pL\pN])`)
+
 func opensVerdict(line, next string) bool {
 	m := verdictInLine.FindStringSubmatch(numberedItem.ReplaceAllString(line, "$1"))
 	if m == nil {
 		return false
 	}
 	lead, qualifiers, rest := m[1], m[2], m[3]
+	if fileReference.MatchString(rest) {
+		return false
+	}
 	if qualifiers == "" {
 		return true
 	}

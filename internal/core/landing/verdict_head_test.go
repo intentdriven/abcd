@@ -237,6 +237,11 @@ func TestAFindingThatMentionsAVerdictOpensNone(t *testing.T) {
 		"_Failure scenario:_ a verdict naming no head is refused.",
 		"**The verdict reader drops a line.**",
 		"*The verdict reader drops a line.*",
+		"- **verdict:52 and :111-116 at this head** — informational: the figures stay in history.",
+		"- verdict:188 no longer states the blocker as judged.",
+		"verdict.md:14 names the draft intent as the source.",
+		"- **verdict_head_test.go:20** — the reader drops a line.",
+		"- `verdict.go` reads the heading.",
 	} {
 		text := "Reviewed head: " + sha[:9] + "\n\n### Analysis\n\n" + line + "\n\n### Verdict\n\nSHIP " + sha + "\n"
 		if word, err := ReadVerdict(text, sha); err != nil || word != "SHIP" {
