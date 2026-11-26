@@ -15,13 +15,115 @@ import (
 // fixedValue is a value that names a program the shell neither splits nor expands.
 var fixedValue = regexp.MustCompile(`^[A-Za-z0-9_./@+-]+$`)
 
-// assignsOperands are the builtins of bash and zsh that set a variable an operand
-// names.
-var assignsOperands = []string{
-	"declare", "export", "float", "getln", "getopts", "integer", "let", "local",
-	"mapfile", "print", "printf", "private", "read", "readarray", "readonly", "set",
-	"strftime", "sysread", "typeset", "unset", "vared", "wait", "zformat",
-	"zparseopts", "zstyle",
+// How a builtin of bash or zsh names the variables it sets: every operand
+// (setsOperands), the name before an operand's `=` (setsDeclared), the value of
+// one of its options alone (setsOptioned), its second operand (setsSecond), or
+// any word it is handed, for one that runs text as commands too (setsAny).
+const (
+	setsOperands = iota
+	setsDeclared
+	setsOptioned
+	setsSecond
+	setsAny
+)
+
+// setter is how one builtin names what it sets: how, the options whose value is
+// a name, or text it runs (names), and the options whose value is neither
+// (values).
+type setter struct {
+	how           int
+	names, values []string
+}
+
+// setters are the builtins that set a variable a word they are handed names.
+var setters = map[string]setter{
+	"declare": {how: setsDeclared}, "export": {how: setsDeclared}, "float": {how: setsDeclared},
+	"integer": {how: setsDeclared}, "local": {how: setsDeclared}, "private": {how: setsDeclared},
+	"readonly": {how: setsDeclared}, "typeset": {how: setsDeclared},
+	"printf": {how: setsOptioned, names: []string{"-v"}}, "print": {how: setsOptioned, names: []string{"-v"}},
+	"wait": {how: setsOptioned, names: []string{"-p"}}, "set": {how: setsOptioned, names: []string{"-A", "+A"}},
+	"read":      {how: setsOperands, names: []string{"-a", "-A"}, values: []string{"-d", "-i", "-k", "-n", "-N", "-p", "-t", "-u"}},
+	"mapfile":   {how: setsOperands, names: []string{"-C"}, values: []string{"-c", "-d", "-n", "-O", "-s", "-u"}},
+	"readarray": {how: setsOperands, names: []string{"-C"}, values: []string{"-c", "-d", "-n", "-O", "-s", "-u"}},
+	"getln":     {how: setsOperands}, "let": {how: setsOperands}, "unset": {how: setsOperands}, "vared": {how: setsOperands},
+	"getopts": {how: setsSecond},
+	"emulate": {how: setsAny}, "strftime": {how: setsAny}, "sysread": {how: setsAny}, "trap": {how: setsAny},
+	"zformat": {how: setsAny}, "zparseopts": {how: setsAny}, "zstyle": {how: setsAny},
+}
+
+// implicitNames are the variables builtins set with no word naming them.
+var implicitNames = map[string][]string{
+	"read": {"REPLY"}, "select": {"REPLY"}, "sysread": {"REPLY"},
+	"getopts": {"OPTARG", "OPTIND"}, "mapfile": {"MAPFILE"}, "readarray": {"MAPFILE"},
+}
+
+// shellNames are the variables the shell itself gives values as the line runs,
+// so the line never fixes them.
+var shellNames = []string{
+	"_", "BASH_COMMAND", "BASH_REMATCH", "BASH_SOURCE", "COPROC", "DIRSTACK", "FUNCNAME",
+	"MATCH", "OLDPWD", "PWD", "READLINE_LINE", "match",
+}
+
+// maySetBy reports whether the builtin base, handed the words args, may set a
+// variable no word of the line names: one a word it is handed and the line does not
+// fix can name.
+func maySetBy(base string, args []string) bool {
+	st, ok := setters[base]
+	if !ok {
+		return false
+	}
+	operand := 0
+	for i := 0; i < len(args); i++ {
+		t := args[i]
+		switch {
+		case st.how == setsAny:
+			if unfixed(t) {
+				return true
+			}
+			continue
+		case containsString(st.names, t):
+			if i+1 < len(args) && unfixed(args[i+1]) {
+				return true
+			}
+			i++
+			continue
+		case containsString(st.values, t):
+			i++
+			continue
+		case st.how == setsOptioned:
+			// Options stand before the first word that is not one; one the line
+			// does not fix may be a name's option with the word after it.
+			if unfixed(t) {
+				if i+1 < len(args) {
+					return true
+				}
+				continue
+			}
+			if !strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "+") {
+				return false
+			}
+			continue
+		case !unfixed(t) && strings.HasPrefix(t, "-"):
+			continue
+		}
+		operand++
+		switch st.how {
+		case setsDeclared:
+			name, _, _ := strings.Cut(t, "=")
+			if unfixed(name) {
+				return true
+			}
+		case setsSecond:
+			if operand == 2 && unfixed(t) {
+				return true
+			}
+		default:
+			if unfixed(t) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fixedReader answers, for the commands of one line, whether the line fixes the
@@ -150,6 +252,9 @@ func variableNames(s segment, idx int) ([]string, bool) {
 // that stands directly after them and is still open at i, and no other command of
 // the line can set it.
 func (f *fixedReader) variableFixed(i int, name string) bool {
+	if containsString(shellNames, name) {
+		return false
+	}
 	n := f.name(name)
 	if n.broken || !n.set || n.inLoop && (i <= f.loop || i >= f.loopEnd) {
 		return false
@@ -237,10 +342,12 @@ func nameByte(c byte) bool {
 }
 
 // segmentMaySet reports whether a command may give the variable name a value: one
-// that spells the name, runs text as commands of this shell, hands a builtin that
-// sets variables a word the line does not fix, or runs a program the line does not
-// fix by another variable. use says the command is the one that uses the variable,
-// whose own program word is not one of these. read counts the words it reads.
+// that spells the name, runs text as commands of this shell, is a builtin that sets
+// the name with no word naming it, hands a builtin that sets variables a word the
+// line does not fix where that word can name one (maySetBy), or runs a program the
+// line does not fix by another variable. use says the command is the one that uses
+// the variable, whose own program word is not one of these. read counts the words
+// it reads.
 func segmentMaySet(s segment, use bool, name string, read *int) bool {
 	for _, tok := range s.tokens {
 		*read += len(tok) + 1
@@ -248,11 +355,17 @@ func segmentMaySet(s segment, use bool, name string, read *int) bool {
 			return true
 		}
 	}
+	if len(s.tokens) > 0 && containsString(implicitNames[s.tokens[0]], name) {
+		return true
+	}
 	for _, a := range commandSites(s) {
 		if use {
 			break
 		}
 		base := path.Base(s.tokens[a.idx])
+		if containsString(implicitNames[base], name) {
+			return true
+		}
 		if unfixed(base) {
 			names, ok := variableNames(s, a.idx)
 			for _, n := range names {
@@ -263,15 +376,10 @@ func segmentMaySet(s segment, use bool, name string, read *int) bool {
 			}
 			break
 		}
-		if base == "eval" || base == "." || base == "source" || s.globAt(a.idx) {
+		// A test's `[` and `[[` are no pattern: nothing closes them.
+		glob := s.globAt(a.idx) && base != "[" && base != "[["
+		if base == "eval" || base == "." || base == "source" || glob || maySetBy(base, s.tokens[a.idx+1:]) {
 			return true
-		}
-		if containsString(assignsOperands, base) {
-			for _, tok := range s.tokens[a.idx+1:] {
-				if unfixed(tok) {
-					return true
-				}
-			}
 		}
 	}
 	return false

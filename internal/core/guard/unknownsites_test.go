@@ -177,6 +177,7 @@ var wordReaders = map[string]string{
 	// fixedprogram.go: the program a variable the line sets names.
 	"program":       "commandSites, isUnknown and unfixed: a word nothing on the line fixes is no fixed program",
 	"segmentMaySet": "commandSites and unfixed: a word no line fixes may set the variable",
+	"maySetBy":      "exempt: reads the words a builtin is handed, and a word no line fixes (unfixed) counts as naming the variable",
 
 	// supplied.go: the words xargs and a find hand the command they run.
 	"suppliedReadings": "commandSites, commandNamed and anyProgram for xargs and find: a name nothing fixes is read as neither, and a supplied word is unknownText",
