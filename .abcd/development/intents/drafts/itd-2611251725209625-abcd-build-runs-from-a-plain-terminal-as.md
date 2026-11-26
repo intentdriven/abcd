@@ -48,6 +48,8 @@ production_mode: hand-written
 
 Hand-run four-piece table, 2026-11-25. One capability, this intent; no new trust rule, since adr-2610222222326104 names the case. Typed links: `refines` itd-2609201916151817, whose opt-in process driver this makes the walled drive; `builds_on` itd-2610222215485265 and itd-2611251725203320. Flagged for the product thinker: This may duplicate in part that intent's process-driver criterion. Verdict: FILE-AS-IS.
 
+_Ideate verdict, 2026-11-26, recorded here as a pointer and not a decision (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`): this idea was judged reframed as spc-2609202134338445 step 12 worded honestly. It holds for one READY intent only and never plans, writes acceptance criteria or picks the next intent; it steps through the drain drive's own engine, walls and profile login, not a second driver; and it ends "delivered, or a named hand-back". It is not "as abcd drain already does": an intent adds merge-ordered lanes, the fidelity audit and the spec close, and the drive's stop semantics must be extended to intent runs. Planning this draft carries the reframing, not the press release's wording. Nothing in this draft changes here._
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
