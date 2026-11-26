@@ -630,6 +630,8 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  forwards the login
   session-bin/                   the copies of abcd an open session's hooks run,
                                  each under its content's digest
+  session-conventions/           the copies of the conventions text an open session
+                                 reads, each under its content's digest, owner-only
   dogfood/<root-sha>/            builds of the reviewed default branch for the
                                  checkouts dogfood-roots lists, one per commit, with
                                  the record of the last check (iss-2610070547057816)

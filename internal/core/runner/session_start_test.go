@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -109,8 +110,7 @@ func testSession(t *testing.T) Session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Session{Profile: p, Bin: sessionBin, Hooks: SessionHooks(), ConventionsName: "AGENTS.md",
-		Conventions: []byte("# Conventions\n\nCheck word: plainword.\n")}
+	return Session{Profile: p, Bin: sessionBin, Hooks: SessionHooks(), Conventions: "/opt/abcd dev/session-conventions/conventions.md"}
 }
 
 // after is the argument following name, "" when name is absent or last.
@@ -275,6 +275,71 @@ func TestADriveAcceptsTheProfileMakeProfileMade(t *testing.T) {
 
 // TestKeepSessionBinaryIsAddressedByContent: the copy lies under its own digest, is
 // reused while it holds, and is written again where it does not.
+// TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent: the text is kept whole, under
+// its digest, in a file and a folder only this account can read, and kept once.
+func TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent(t *testing.T) {
+	home := t.TempDir()
+	raw := []byte("# Conventions\n\nCheck word: plainword.\n")
+	kept, err := KeepSessionConventions(home, "AGENTS.md", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "This repository's conventions, its AGENTS.md file whole:\n\n" + string(raw)
+	sum := sha256.Sum256([]byte(text))
+	if want := abcdhome.Path(home, "session-conventions", hex.EncodeToString(sum[:]), "conventions.md"); kept != want {
+		t.Fatalf("the copy is %q, want %q", kept, want)
+	}
+	fi, err := os.Lstat(kept)
+	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the copy is %v %v", fi, err)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Geteuid() {
+		t.Fatalf("the copy is not this account's: %v", fi.Sys())
+	}
+	for dir := filepath.Dir(kept); dir != home; dir = filepath.Dir(dir) {
+		if d, _ := os.Lstat(dir); d == nil || d.Mode().Perm() != 0o700 {
+			t.Fatalf("%s is %v", dir, d)
+		}
+	}
+	if got, _ := os.ReadFile(kept); string(got) != text {
+		t.Fatalf("the copy holds %q", got)
+	}
+	again, err := KeepSessionConventions(home, "AGENTS.md", raw)
+	if next, _ := os.Lstat(kept); err != nil || again != kept || !os.SameFile(fi, next) {
+		t.Fatalf("a second keep rewrote it: %q %v", again, err)
+	}
+}
+
+// TestKeepSessionConventionsRefusesALinkAtItsPath: a link where the copy goes is refused,
+// and what it points at is left as it was.
+func TestKeepSessionConventionsRefusesALinkAtItsPath(t *testing.T) {
+	home := t.TempDir()
+	raw := []byte("# Conventions\n")
+	sum := sha256.Sum256([]byte("This repository's conventions, its AGENTS.md file whole:\n\n" + string(raw)))
+	dir := abcdhome.Path(home, "session-conventions", hex.EncodeToString(sum[:]))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{abcdhome.Path(home), abcdhome.Path(home, "session-conventions")} {
+		if err := os.Chmod(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.WriteFile(target, []byte("left alone\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "conventions.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := KeepSessionConventions(home, "AGENTS.md", raw); err == nil || !strings.Contains(err.Error(), "not a file of its own") {
+		t.Fatalf("got %v", err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "left alone\n" {
+		t.Fatalf("the link's target was changed: %q", got)
+	}
+}
+
 func TestKeepSessionBinaryIsAddressedByContent(t *testing.T) {
 	home := t.TempDir()
 	self := filepath.Join(t.TempDir(), "abcd")
@@ -369,15 +434,10 @@ func TestSessionArgsAreTheSettledOnes(t *testing.T) {
 		"--tools=Bash,Read,Edit,Write,Agent,TaskStop,AskUserQuestion,Monitor,ScheduleWakeup,CronCreate,CronList,CronDelete",
 		"--disallowedTools=Read(/" + s.Profile.Dir + "/**)",
 	}
+	want = append(want, "--append-system-prompt-file", s.Conventions)
 	got := s.Args()
-	if len(got) != len(want)+1 || !slices.Equal(got[:min(len(want), len(got))], want) {
+	if !slices.Equal(got, want) {
 		t.Fatalf("got\n%q\nwant\n%q", got, want)
-	}
-	conventions := got[len(got)-1]
-	head, body, ok := strings.Cut(conventions, "\n\n")
-	if !ok || !strings.HasPrefix(head, "--append-system-prompt=") || !strings.Contains(head, "AGENTS.md") ||
-		strings.Contains(head, "\n") || body != string(s.Conventions) {
-		t.Fatalf("one line naming the file, a blank line, and the file whole: %q", conventions)
 	}
 	s.Mode, s.Prompt = "plan", "--print is what I typed"
 	if tail := s.Args()[len(got):]; !slices.Equal(tail, []string{"--permission-mode=plan", "--", "--print is what I typed"}) {
@@ -536,6 +596,9 @@ func TestJudgeSessionProof(t *testing.T) {
 		{"an abcd page", with(func(m map[string]any) { m["slash_commands"] = []string{"abcd:start"} }), WallPlugins, "abcd:start"},
 		{"an abcd agent", with(func(m map[string]any) { m["agents"] = []string{"Plan", "abcd:scribe"} }), WallPlugins, "abcd:scribe"},
 		{"an abcd skill", with(func(m map[string]any) { m["skills"] = []string{"abcd:abcd"} }), WallPlugins, "abcd:abcd"},
+		{"a null agent list", with(func(m map[string]any) { m["agents"] = nil }), WallWorkingTree, "did not report its agents"},
+		{"a null skill list", with(func(m map[string]any) { m["skills"] = nil }), WallWorkingTree, "did not report its skills"},
+		{"a null command list", with(func(m map[string]any) { m["slash_commands"] = nil }), WallWorkingTree, "did not report its commands"},
 		{"no agent list in the report", with(func(m map[string]any) { delete(m, "agents") }), WallWorkingTree, "did not report its agents"},
 		{"no skill list in the report", with(func(m map[string]any) { delete(m, "skills") }), WallWorkingTree, "did not report its skills"},
 		{"no command list in the report", with(func(m map[string]any) { delete(m, "slash_commands") }), WallWorkingTree, "did not report its commands"},

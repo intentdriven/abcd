@@ -33,8 +33,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// startConventionsBound is the most a conventions file may hold to be handed over whole:
-// one launch argument is capped at 131072 bytes on Linux, and the file is never cut.
+// startConventionsBound is the most a conventions file may hold to be handed over whole,
+// since the file is never cut.
 const startConventionsBound = 100 << 10
 
 // startLine opens every line and every refusal of this verb.
@@ -226,13 +226,16 @@ func runStart(cmd *cobra.Command, r startRequest) error {
 	if err != nil {
 		return refused(2, refusal.StartHostNotRunnable, startText("the copy of abcd the session's hooks run could not be kept: %s", err.Error()))
 	}
+	convKept, err := runner.KeepSessionConventions(home, loop.ConventionsFile, conventions)
+	if err != nil {
+		return refused(2, refusal.StartHostNotRunnable, startText("the copy of %s the session reads could not be kept: %s", loop.ConventionsFile, err.Error()))
+	}
 	hooks, left := startHooks(cmd.Root())
-	s := runner.Session{Profile: p, Bin: kept, Hooks: hooks, ConventionsName: loop.ConventionsFile, Conventions: conventions,
-		Mode: r.mode, Prompt: r.prompt}
+	s := runner.Session{Profile: p, Bin: kept, Hooks: hooks, Conventions: convKept, Mode: r.mode, Prompt: r.prompt}
 	env, cleared := s.Env(os.Environ())
 	say("tools: %s; no others; no server and no server's tool; no browser tool; no plugin but the host's own", strings.Join(runner.SessionTools(), ", "))
 	say("hooks: abcd %s, a copy kept at %s, so an update, a rebuild or a removed worktree changes nothing this session runs", core.Version, kept)
-	say("conventions: %s, %d bytes, handed over whole as a launch argument, as it stands at this moment", loop.ConventionsFile, len(conventions))
+	say("conventions: %s, %d bytes, handed over whole as a copy only this account can read, kept at %s, as it stands at this moment", loop.ConventionsFile, len(conventions), convKept)
 	if r.mode == "" {
 		say("permission mode: the host's default (name one with --permission-mode)")
 	} else {

@@ -74,9 +74,12 @@ The host is handed a fixed list of tools, and no settings source, server, browse
 or plugin but its own. Its settings are one launch argument: abcd's hooks, the host's
 attribution off, the built-in plugins abcd knows of off, and a rule denying every
 server's tool without naming one. The conventions file, `AGENTS.md` at the checkout's
-root, goes whole as a launch argument, as it stands at that moment. It stays in the
-session's command line for the session's life, so any account on this machine that can
-list its processes can read it; a host started without abcd reads the file from disk. The environment is
+root, goes whole as it stands at that moment, as a private file the session reads: a copy
+in `~/.abcd.noindex/session-conventions/<digest>/conventions.md`, made in folders only
+this account can enter and readable by it alone (`0600`), written beside its name and
+renamed into place, a link or another account's file there refused. The arguments name
+its path and carry none of its text. Host 2.1.332 reads `--append-system-prompt-file
+<path>` in an interactive session as in print mode (tested by hand on 2026-11-25). The environment is
 the person's own, home included, less what the host signs in or bills through, every
 other variable of the host's and a walled stage's; the names left out are printed and
 no value is. A permission mode is passed only when the person names one. No repository
@@ -91,7 +94,8 @@ its content's digest, so an update, a rebuild or a removed worktree changes noth
 open session runs. In a checkout listed in `dogfood-roots` the hooks are that build, not
 the reviewed branch's. Nothing reclaims a copy, since a live session cannot be told from
 an ended one; one may be cleared when no session started from it is open and no
-profile's `settings.json` names it.
+profile's `settings.json` names it. Nothing reclaims a copy of the conventions text
+either; one may be cleared when no session started from it is open.
 
 ## What the short launch reads
 

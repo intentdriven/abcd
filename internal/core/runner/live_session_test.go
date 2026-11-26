@@ -103,7 +103,11 @@ func TestTheShortLaunchHoldsOnALoggedInProfile(t *testing.T) {
 		}
 		hooks = append(hooks, h)
 	}
-	s := runner.Session{Profile: p, Bin: kept, Hooks: hooks, ConventionsName: loop.ConventionsFile, Conventions: conventions}
+	convKept, err := runner.KeepSessionConventions(home, loop.ConventionsFile, conventions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := runner.Session{Profile: p, Bin: kept, Hooks: hooks, Conventions: convKept}
 	proof, err := runner.ProveSession(ctx, s, harness, root, cfg.Ledger())
 	if err != nil {
 		t.Fatalf("the short launch does not hold: %v", err)

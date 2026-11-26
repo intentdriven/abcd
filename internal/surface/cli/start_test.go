@@ -735,20 +735,6 @@ func TestStartNamesTheProfileItRefuses(t *testing.T) {
 	}
 }
 
-// TestStartPagesSayTheConventionsShowInTheCommandLine: the conventions file goes over as a
-// launch argument, so both pages say who can read it there.
-func TestStartPagesSayTheConventionsShowInTheCommandLine(t *testing.T) {
-	for _, rel := range []string{"commands/start.md", ".abcd/development/brief/04-surfaces/43-start.md"} {
-		raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if text := strings.Join(strings.Fields(string(raw)), " "); !strings.Contains(text, "any account on this machine that can list its processes can read it") {
-			t.Errorf("%s does not say who can read the conventions text in the command line", rel)
-		}
-	}
-}
-
 // TestStartTakesItsHomeFromTheMachineLayer: a home inside a working tree that is not the
 // account's own is no home, and the note says so.
 func TestStartTakesItsHomeFromTheMachineLayer(t *testing.T) {
@@ -863,7 +849,8 @@ func TestStartWithProfileStartsOnTheOneNamed(t *testing.T) {
 	}
 }
 
-// TestStartHandsTheConventionsFileOverWhole: byte for byte inside the one argument.
+// TestStartHandsTheConventionsFileOverWhole: byte for byte in a copy only this account can
+// read, named in the arguments of the launch and of the session, which hold none of its text.
 func TestStartHandsTheConventionsFileOverWhole(t *testing.T) {
 	w := newStartWorld(t)
 	body := startConventionsText + "  a line with trailing spaces   \n\ttabs, \"quotes\" and $(nothing)\n\n\n"
@@ -872,17 +859,29 @@ func TestStartHandsTheConventionsFileOverWhole(t *testing.T) {
 	w.write(t, "sub/"+loop.ConventionsFile, "another file\n")
 	t.Chdir(filepath.Join(w.repo, "sub"))
 	call := w.opens(t)
-	var held []string
-	for _, a := range call.argv {
-		if strings.HasPrefix(a, "--append-system-prompt=") {
-			held = append(held, a)
+	launched, err := os.ReadFile(filepath.Join(w.log, "argv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, argv := range map[string][]string{"the session": call.argv, "the short launch": strings.Split(string(launched), "\x00")} {
+		if joined := strings.Join(argv, "\x00"); strings.Contains(joined, "plainword") || strings.Contains(joined, "trailing spaces") {
+			t.Errorf("the arguments of %s hold the conventions text: %q", what, argv)
 		}
 	}
-	if len(held) != 1 || !strings.HasSuffix(held[0], "\n\n"+body) || strings.Contains(held[0], "another file") {
-		t.Fatalf("the conventions are in one argument, whole: %q", held)
+	kept := argAfter(call.argv, "--append-system-prompt-file")
+	if kept == "" || argAfter(strings.Split(string(launched), "\x00"), "--append-system-prompt-file") != kept {
+		t.Fatalf("the launch and the session name one copy: %q", call.argv)
 	}
-	if !strings.Contains(w.out.String(), fmt.Sprintf("abcd start: conventions: AGENTS.md, %d bytes, handed over whole as a launch argument, as it stands at this moment\n", len(body))) {
-		t.Errorf("the line says how much:\n%s", w.out.String())
+	text, err := os.ReadFile(kept)
+	if err != nil || !strings.HasSuffix(string(text), "\n\n"+body) || strings.Contains(string(text), "another file") {
+		t.Fatalf("the copy holds the file whole: %q %v", text, err)
+	}
+	if fi, err := os.Lstat(kept); err != nil || fi.Mode().Perm() != 0o600 || !strings.HasPrefix(kept, abcdhome.Path(w.home, "session-conventions")+string(filepath.Separator)) {
+		t.Errorf("the copy is %q, %v %v", kept, fi, err)
+	}
+	if !strings.Contains(w.out.String(), fmt.Sprintf("abcd start: conventions: AGENTS.md, %d bytes, handed over whole as a copy only this account can read, kept at %s, as it stands at this moment\n", len(body),
+		abcdhome.Display(strings.TrimPrefix(kept, abcdhome.Path(w.home)+string(filepath.Separator))))) {
+		t.Errorf("the line says how much and where:\n%s", w.out.String())
 	}
 }
 

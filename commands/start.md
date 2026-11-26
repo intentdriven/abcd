@@ -92,10 +92,9 @@ start abcd cannot see.
 - **abcd's hooks**, handed over as a launch argument: every event the plugin's manifest
   wires. An event whose hook this binary lacks is left out, and said.
 - **The conventions file**, `AGENTS.md` at the checkout's root, whole, as it stands at
-  that moment. A later edit does not reach an open session. It goes over in the
-  session's command line, and stays there for the session's life, so any account on
-  this machine that can list its processes can read it; a host started without abcd
-  reads the file from disk instead.
+  that moment, handed over as a private file the session reads: a copy only this
+  account can read, kept in `~/.abcd.noindex/session-conventions/` under its content's
+  digest. A later edit does not reach an open session.
 - **The person's home and shell environment**, less what the host signs in or bills
   through, every other variable of the host's and a walled stage's. The names left out
   are printed, never a value.
@@ -112,7 +111,9 @@ removed worktree changes nothing an open session runs. In a checkout listed in
 `dogfood-roots` the session's hooks are the build that typed `abcd start`, not the
 reviewed branch's. abcd reclaims no copy. One may be cleared when no session started
 from it is open and no profile's `settings.json` names it: a session started by hand on
-such a profile would otherwise run with every hook missing.
+such a profile would otherwise run with every hook missing. The same holds for the copies
+of the conventions text: abcd reclaims none, and one may be cleared when no session started
+from it is open.
 
 After its last line abcd has nothing more to say: the host takes its place in the
 terminal. `/abcd:session` is another thing, the live brief sessions.

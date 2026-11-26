@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -34,6 +35,10 @@ const DefaultProfileName = "drive"
 // sessionBinLeaf is the folder below abcd's home that holds the copies of abcd a session's
 // hooks name, each under its own content's digest.
 const sessionBinLeaf = "session-bin"
+
+// sessionConventionsLeaf is the folder below abcd's home that holds the copies of the
+// conventions text a session reads, each under its content's digest.
+const sessionConventionsLeaf = "session-conventions"
 
 // sessionTools is every tool a session is started with, the host's names for them.
 var sessionTools = []string{"Bash", "Read", "Edit", "Write", "Agent", "TaskStop", "AskUserQuestion", "Monitor",
@@ -232,6 +237,54 @@ func KeepSessionBinary(home, self string) (kept string, _ error) {
 	return kept, nil
 }
 
+// KeepSessionConventions keeps the text a session is handed as its conventions, raw being
+// the whole of the file called name, below home in a file only this account can read,
+// under its content's digest, and returns the file's path: what the short launch and the
+// session read, so their arguments carry its path and none of its text. A later edit of
+// the file reaches no session started from the copy. A copy that already holds that text
+// is reused and not rewritten; one in the way that is a link, or not this account's, is
+// refused. abcd clears none, since a live session cannot be told from an ended one: a copy
+// may be cleared only when no session started from it can still be open.
+func KeepSessionConventions(home, name string, raw []byte) (kept string, _ error) {
+	if !filepath.IsAbs(home) {
+		return "", errors.New("the copy is kept in the person's home directory, and no absolute one is known")
+	}
+	text := []byte("This repository's conventions, its " + name + " file whole:\n\n" + string(raw))
+	sum := sha256.Sum256(text)
+	digest := hex.EncodeToString(sum[:])
+	root, err := fsutil.EnsureHomeDeclarationScope(home, abcdhome.Rel(sessionConventionsLeaf, digest), 0o700)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	const file = "conventions.md"
+	kept = abcdhome.Path(home, sessionConventionsLeaf, digest, file)
+	switch fi, err := root.Lstat(file); {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return "", fmt.Errorf("the copy's place could not be read: %w", err)
+	case !fi.Mode().IsRegular():
+		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, digest, file) + " is not a file of its own; move it out by hand")
+	case !ownedHere(fi):
+		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, digest, file) + " belongs to another account")
+	case fi.Mode().Perm() == 0o600 && fileSum(kept) == sum:
+		return kept, nil
+	}
+	if err := fsutil.WriteFileAtomicInRoot(root, file, text, 0o600); err != nil {
+		return "", fmt.Errorf("the copy could not be written: %w", err)
+	}
+	if fileSum(kept) != sum {
+		return "", errors.New("the copy does not read back as the text kept")
+	}
+	return kept, nil
+}
+
+// ownedHere reports whether fi is this account's own.
+func ownedHere(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int(st.Uid) == os.Geteuid()
+}
+
 // GuardProofCommand is the command the guard is meant to refuse, harmless where it runs.
 func GuardProofCommand() string { return guardProofCommand }
 
@@ -273,9 +326,8 @@ type Session struct {
 	// Bin is the kept copy of abcd the hooks name, and Hooks the events it answers.
 	Bin   string
 	Hooks []SessionHook
-	// ConventionsName names the conventions file, and Conventions is the whole of it.
-	ConventionsName string
-	Conventions     []byte
+	// Conventions is the kept copy of the conventions text (KeepSessionConventions).
+	Conventions string
 	// Mode is the permission mode the person named and Prompt their first prompt, each ""
 	// for none.
 	Mode, Prompt string
@@ -317,7 +369,7 @@ func (s Session) Args() []string {
 		"--no-chrome",
 		"--tools=" + strings.Join(sessionTools, ","),
 		"--disallowedTools=" + walledDirRule(s.Profile.Dir),
-		"--append-system-prompt=This repository's conventions, its " + s.ConventionsName + " file whole:\n\n" + string(s.Conventions),
+		"--append-system-prompt-file", s.Conventions,
 	}
 	if s.Mode != "" {
 		a = append(a, "--permission-mode="+s.Mode)
