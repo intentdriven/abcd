@@ -256,8 +256,8 @@ func TestTheTextRedactorReScansWhatItRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := "once " + augmenttest.Value + " and twice " + augmenttest.Value
-	if out, err := r.Redact(in); !errors.Is(err, ErrScannerUnavailable) {
-		t.Fatalf("Redact left %q with %v; want the text refused, a span surviving", out, err)
+	if out, err := r.Redact(in); !errors.Is(err, ErrRedactionResidual) || errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("Redact left %q with %v; want this text refused for its residual, the scanner still good", out, err)
 	}
 }
 

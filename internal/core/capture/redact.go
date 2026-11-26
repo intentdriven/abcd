@@ -236,13 +236,8 @@ func (r *TextRedactor) Redact(text string) (string, error) {
 	}
 	// Redact is the first stage; what survives it (a native span the
 	// rewrite missed, an augmented value at an occurrence the augmenter did
-	// not report) is not cleared, so the text is refused, as the memory
-	// store refuses it.
-	out, _ := scanner.Redact(text, findings)
-	resid := scanner.BlockingResidual(r.sc.ScanTextNative(out, "issue"))
-	resid = append(resid, scanner.UnsealedAugmented(out, findings)...)
-	if len(resid) > 0 {
-		return "", fmt.Errorf("%w: redaction left %d span(s) unresolved", ErrScannerUnavailable, len(resid))
-	}
-	return out, nil
+	// not report) is not cleared, so this text is refused with
+	// ErrRedactionResidual, its own refusal: the scanner ran whole and is
+	// still good for the next text.
+	return redactVerified(r.sc, text, findings)
 }
