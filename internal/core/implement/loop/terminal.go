@@ -2587,7 +2587,9 @@ func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error
 // progress, left on its branch, a judgement's hold no lane opened on, and
 // every hold of a bundle the drain is forming, which it clears. Each goes
 // plainly, publishing no hand-back. A lane parked at its pull request keeps
-// its own.
+// its own, and so does a lane a killed move opened and never recorded,
+// which the let-go records; the drain state is written before any of the
+// drain's own holds is released.
 //
 // A release is a push, which a drive makes only under what it holds
 // (heldBeforeGit), so it compares first, before it takes the drain's lock,
@@ -2645,19 +2647,40 @@ func (t *terminal) letGo() {
 		if !live || (st.Judging == nil && st.Forming == nil) {
 			return nil
 		}
-		if j := st.Judging; j != nil && j.Hold != nil {
-			clause, _ := releaseReservationAt(t.repoRoot, j.Issue, j.Hold.Commit, "", now)
-			t.say("%s: %s", j.Issue, clause)
+		// A hold a run of this checkout was opened on is the run's, though a
+		// move killed before it recorded the lane left it here as the
+		// drain's (openedUnrecorded): the lane is recorded and its holds are
+		// kept. The state is written before any release is pushed, so a
+		// let-go that dies part way records no hold it was letting go.
+		opened, carried, err := openedUnrecorded(t.repoRoot, st)
+		if err != nil {
+			return err
+		}
+		var free []formingEntry
+		if j := st.Judging; j != nil && j.Hold != nil && !carried[j.Issue] {
+			free = append(free, formingEntry{issue: j.Issue, hold: j.Hold})
 		}
 		// A bundle forming lets its lead and every member go, each plainly
 		// and over the hold the drain took on it, as a judgement's hold is.
 		for _, h := range formingHolds(st.Forming) {
+			if !carried[h.issue] {
+				free = append(free, h)
+			}
+		}
+		st.Lanes = append(st.Lanes, opened...)
+		st.Judging, st.Forming = nil, nil
+		st.UpdatedAt = now
+		if err := writeDrain(t.repoRoot, st); err != nil {
+			return err
+		}
+		for _, l := range opened {
+			t.say("%s", openedLine(l))
+		}
+		for _, h := range free {
 			clause, _ := releaseReservationAt(t.repoRoot, h.issue, h.hold.Commit, "", now)
 			t.say("%s: %s", h.issue, clause)
 		}
-		st.Judging, st.Forming = nil, nil
-		st.UpdatedAt = now
-		return writeDrain(t.repoRoot, st)
+		return nil
 	})
 	if err != nil {
 		t.say("what this run holds was not released, and lapses with its lease "+unlessRenewedEither+": %s", err.Error())
