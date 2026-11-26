@@ -102,6 +102,7 @@
     },
     {
       "path": "abcd lab matrix launch",
+      "sentence": "Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.",
       "usage": "abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]",
       "flags": [],
       "inputs": [],

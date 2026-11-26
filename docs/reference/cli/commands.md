@@ -4967,6 +4967,8 @@ abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good
 
 ##### `abcd lab matrix launch`
 
+Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.
+
 **Usage:** `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]`
 
 abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]
