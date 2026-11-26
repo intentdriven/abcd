@@ -89,12 +89,11 @@ var statuslineGitContext = func(parent context.Context, gitBudget time.Duration)
 	return context.WithTimeout(parent, gitBudget)
 }
 
-// The row's merging element reads facilitator.mode through the merge gate's
-// own resolver, which core/statusline cannot import (landing reaches ahoy, and
-// ahoy reads statusline: the import would close a cycle). It is handed over
-// here, once, for both compositions of the row this binary makes: the status
-// verb's and the bare board's (board.go).
-func init() { statusline.MergingMode = landing.AutonomousMerging }
+// The row's merging element reads the kept facilitator.mode, through landing,
+// which core/statusline cannot import (landing reaches ahoy, and ahoy reads
+// statusline: the import would close a cycle). The bare board composes the same
+// row with the live reading instead (board.go).
+func init() { statusline.MergingMode = landing.KeptMerging }
 
 // previousCommandWaitDelay is how long the verb waits, after killing the
 // previous command's group, for the command to exit. The verb's own streams
@@ -144,9 +143,14 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			"the technical facilitator` or `waiting on the product thinker`, from the state\n" +
 			"`abcd mode` stores, its colour ending at the badge — then the session's\n" +
 			"name when the harness supplies one, the repository name, the branch,\n" +
-			"`autonomous merging` while the repository's facilitator.mode is auto (read\n" +
-			"as the merge gate reads it: the default branch's committed\n" +
-			"`.abcd/config.json` and the machine layer), the model, the context\n" +
+			"`facilitator:` naming the repository's facilitator.mode, human or auto, and\n" +
+			"whose setting decides it (`facilitator: auto (project)`, `facilitator: human\n" +
+			"(computer)`, `facilitator: human (not set)`), as last read: the default\n" +
+			"branch's committed `.abcd/config.json` as the prompt hook last read it and\n" +
+			"kept it, with `, read 14:02` once that branch has moved, and the machine\n" +
+			"layer as it is now; `facilitator: not read` with no reading kept. The merge\n" +
+			"gate does not rely on it, and it is not the state `abcd mode` keeps. Then the\n" +
+			"model, the context\n" +
 			"percentage, the five-hour and seven-day usage percentages, and the record's\n" +
 			"counts of intents not yet shipped and open issues. Each element after the\n" +
 			"session name is switchable in\n" +

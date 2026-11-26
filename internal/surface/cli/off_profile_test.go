@@ -60,7 +60,7 @@ func wantOffProfile(t *testing.T, prefix, stdout, stderr string) {
 		"READS AS OFF A PROFILE", "Pass this line on to the person.",
 		"cannot check what the session holds", "reads that one setting and proves no wall",
 		"the setting's value changes nothing the session holds",
-		"No abcd command starts a session on a profile yet",
+		"abcd start, typed by the person in a plain terminal, starts a session on a profile",
 		offProfilePointer,
 		"nothing was refused",
 	} {
@@ -462,7 +462,7 @@ func TestTheWarningsTextsPrintNoStepAndNoExpectedValue(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"reads one setting and proves no wall", "No abcd command starts a session on a profile yet", offProfilePointer} {
+	for _, want := range []string{"reads one setting and proves no wall", "abcd start, typed by the person in a plain terminal, starts a session on a profile", offProfilePointer} {
 		if !strings.Contains(texts["help"], want) {
 			t.Errorf("the help misses %q", want)
 		}
@@ -556,5 +556,28 @@ func TestAStagesOwnVerbsStayQuiet(t *testing.T) {
 	t.Setenv(abcdhome.StageHomeEnv, "/a/home/this/process/is/not/under")
 	if _, _, errOut := implementCLI(t, "implement", "join", "--session", "beta", "--role", "first", "--json"); len(offProfileLines(errOut)) != 1 {
 		t.Fatalf("a process whose home is not the stage's warns: %q", errOut)
+	}
+}
+
+// TestNoLineSaysAbcdHasNoCommandThatStartsASession: the warning, its help and every page
+// that speaks of a session on a profile name the command there is, however a line wraps.
+func TestNoLineSaysAbcdHasNoCommandThatStartsASession(t *testing.T) {
+	texts := map[string]string{"line": offProfileLine("abcd mode autonomous", "is not set"), "help": offProfileHelp}
+	for _, rel := range []string{"commands/drain.md", "commands/mode.md", "docs/reference/cli/commands.md",
+		".abcd/development/brief/04-surfaces/26-mode.md"} {
+		raw, err := os.ReadFile(filepath.Join(testRepoRoot(), filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		texts[rel] = string(raw)
+	}
+	for name, text := range texts {
+		folded := strings.Join(strings.Fields(text), " ")
+		if strings.Contains(folded, "No abcd command starts") {
+			t.Errorf("%s says abcd has no command that starts a session", name)
+		}
+		if !strings.Contains(folded, "abcd start") {
+			t.Errorf("%s does not name the command", name)
+		}
 	}
 }

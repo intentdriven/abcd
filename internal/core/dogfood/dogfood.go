@@ -62,8 +62,9 @@
 // and a build that is missing, running, failed, or not runnable each leave
 // Resolve naming no binary, the hook runs the installed release, and a note
 // says why on stderr. The PreToolUse shim adds the run-time half: a dogfood
-// guard that answers exit 1, which is a warn or "NOT CHECKED", or that dies,
-// hands the same command to the installed release, whose deny stands.
+// guard that answers exit 1, which is a warn or "NOT CHECKED", or that fails
+// to run, hands the same command to the installed release, whose deny stands;
+// one killed by a signal holds the command, exit 2.
 //
 // What this does not defend is the account itself. The declaration and the
 // store are protected by being this uid's alone, so anything running as this

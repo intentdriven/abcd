@@ -617,8 +617,9 @@ read there takes, so a name that fails is refused before the question and before
 reserved. A stage's files are made through each level of abcd's home the same way. The question
 names the profile. The settings, the login, the live check, each launch and each limit's
 probe are that directory's, so a limit pauses that drive until that profile's limit ends
-and nothing moves it to another. Choosing by itself among several, a registry, a creating
-command and key profiles are itd-2611040344170206, which stays a draft.
+and nothing moves it to another. Choosing by itself among several, a registry
+and key profiles are itd-2611040344170206, which stays a draft; `abcd start` makes the
+first profile on an account that holds none ([`43-start.md`](43-start.md)).
 
 A run records the profile a drive started it on (`State.Profile`, schema version 22), and
 the record and the listing of unfinished runs name it. A drive on another profile does not take

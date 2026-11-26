@@ -180,7 +180,6 @@ func TestGuardShimFailsOpenLoud(t *testing.T) {
 		{"binary absent", ""},
 		{"binary not executable as a program", "exit 127"},
 		{"binary crashes", "exit 3"},
-		{"binary killed", "kill -TERM $$"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -190,6 +189,32 @@ func TestGuardShimFailsOpenLoud(t *testing.T) {
 			}
 			if !strings.Contains(stderr, "UNGUARDED") {
 				t.Errorf("a broken guard must be unmissable; stderr = %q", stderr)
+			}
+		})
+	}
+}
+
+// TestGuardShimHoldsWhenTheGuardIsKilled: a guard killed by a signal (an exit
+// above 128, what a resource limit or the host's timeout leaves) was running
+// and did not finish its judgement, so the command is held, the host's
+// blocking status, with the failure said out loud; through the plugin root and
+// through the PATH rung alike.
+func TestGuardShimHoldsWhenTheGuardIsKilled(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	for _, script := range []string{"kill -TERM $$", "kill -KILL $$", "exit 137"} {
+		t.Run(script, func(t *testing.T) {
+			stderr, code := runShim(t, command, fakePluginRoot(t, "cat >/dev/null; "+script), "")
+			if code != 2 || !strings.Contains(stderr, "FAILED TO RUN") {
+				t.Errorf("a killed guard must hold the command (exit 2) and say so; exit %d, stderr %q", code, stderr)
+			}
+			pathDir, home := t.TempDir(), t.TempDir()
+			stub := filepath.Join(pathDir, "abcd")
+			if err := os.WriteFile(stub, []byte("#!/bin/sh\ncat >/dev/null; "+script+"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeHookPathEntry(t, home, stub)
+			if stderr, code := runShimHome(t, command, t.TempDir(), pathDir, home); code != 2 || !strings.Contains(stderr, "FAILED TO RUN") {
+				t.Errorf("a killed PATH guard must hold the command (exit 2) and say so; exit %d, stderr %q", code, stderr)
 			}
 		})
 	}

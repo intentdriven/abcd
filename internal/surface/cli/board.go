@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -93,10 +94,11 @@ type boardFacilitator struct {
 
 // readBoardFacilitator reads facilitator.mode for a managed checkout, nil
 // elsewhere, through the merge gate's own resolver
-// (landing.ReadDefaultFacilitator): the default branch's committed
+// (landing.ShownFacilitator): the default branch's committed
 // .abcd/config.json beside the machine layer, never the checkout's working
-// tree, so the board says what the gate does. A repository with no default
-// branch yet is drawn as unreadable, with the reason. The machine layer's
+// tree, so the board says what the gate does; a repository with no commit
+// asks the machine layer alone. One whose default branch cannot be told is
+// drawn as not read, with the reason. The machine layer's
 // notes are not printed here: a refused home's is the note layered.RootsFor
 // writes for cwd, which the oracle member (boardOracle) already prints on
 // every board run. A refusal is masked with the home redacted, since it can
@@ -106,7 +108,7 @@ func readBoardFacilitator(cwd string) *boardFacilitator {
 	if err != nil || !ahoy.Managed(root) {
 		return nil
 	}
-	f, err := landing.ReadDefaultFacilitator(cwd)
+	f, err := landing.ShownFacilitator(cwd)
 	if err != nil {
 		return &boardFacilitator{Key: landing.KeyFacilitatorMode, Error: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
@@ -145,7 +147,7 @@ func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 		fmt.Fprintln(stderr, noteLine(n))
 	}
 	set.Disabled = false
-	res, err := statusline.Compose(root, statusline.Payload{}, set)
+	res, err := statusline.Compose(context.Background(), root, statusline.Payload{}, set, landing.LiveMerging)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the presence line is omitted — %s\n", termsafe.Sanitize(err.Error()))
 		return nil

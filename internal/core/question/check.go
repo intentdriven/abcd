@@ -27,7 +27,7 @@ const (
 	RuleDecideLater       Rule = "decide-later"         // 6: exactly one LaterLabels option, last
 	RuleNoBold            Rule = "no-bold"              // 7: no ** or __ outside previews
 	RuleNeverRecommended  Rule = "never-recommended"    // 8: no (Recommended), no star mark
-	RuleRegister          Rule = "register"             // 9: the product thinker sees no handle or command
+	RuleRegister          Rule = "register"             // 9: the product thinker sees no handle, command or word below their floor
 	RuleNowAndChangeLater Rule = "now-and-change-later" // 10: a Now: and a Change later: line, each with a value
 	RuleThingFirst        Rule = "thing-first"          // 11: material first, the question last
 	RuleEmDashListItem    Rule = "em-dash-in-list-item" // 12: no em dash in a list item
@@ -46,6 +46,9 @@ type Finding struct {
 	Value  string
 	Limit  string
 	Remedy string
+	// Plain is the plain words a finding of a word below the knowledge floor
+	// names; empty for every other finding.
+	Plain string
 }
 
 // String is the finding as one line of plain text.
@@ -301,6 +304,7 @@ func (c checker) tab(n int, t Tab) []Finding {
 					"Say it in product terms: name the outcome or the choice, never a record number or a command.")
 			}
 		}
+		out = append(out, floorFindings(n, t)...)
 	}
 
 	// 10. Now and change later, 11. the thing first, 12. no em dash in a

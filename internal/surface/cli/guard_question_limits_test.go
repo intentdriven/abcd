@@ -724,9 +724,22 @@ func TestVerbTextAndDenyShareTheirLines(t *testing.T) {
 	if err := os.WriteFile(tallPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A draft with words below the floor and a record number: the floor's
+	// words are a line of their own, each with its plain words.
+	floor := hostQuestion{Header: "Q1", Question: "A lane works in its own worktree of the checkout, and abcd puts the pull request in the merge queue once CI has passed on the commit.\n\nNow: not applicable\nChange later: not applicable\n\nWho may let abcd do that?",
+		Options: []hostOption{{Label: "Anyone", Description: "As iss-2609202058058301 asked. It costs a second look."}, {Label: "Only me", Description: "You alone may. It costs your time."}, {Label: "Decide later", Description: "Nothing changes now. The question comes back at the next interview."}}}
+	raw, err = json.Marshal(map[string]any{"questions": []hostQuestion{floor}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	floorPath := filepath.Join(t.TempDir(), "floor.json")
+	if err := os.WriteFile(floorPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, c := range map[string]struct{ path, payload string }{
-		"the 21-fault case":     {corpusPath(t, "four-tabs-21-faults"), corpusAskPayload(t, root, "four-tabs-21-faults")},
-		"a tall, refused draft": {tallPath, askPayload(t, root, tall)},
+		"the 21-fault case":                  {corpusPath(t, "four-tabs-21-faults"), corpusAskPayload(t, root, "four-tabs-21-faults")},
+		"a tall, refused draft":              {tallPath, askPayload(t, root, tall)},
+		"floor words beside a record number": {floorPath, askPayload(t, root, floor)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			text, _, _ := runGuard("", "guard", "question", c.path)
@@ -735,6 +748,21 @@ func TestVerbTextAndDenyShareTheirLines(t *testing.T) {
 			got, want := groupLines(text), groupLines(reason)
 			if len(want) == 0 || !slices.Equal(got, want) {
 				t.Errorf("the verb's group lines\n%s\nare not the deny's\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+			}
+			if c.path == floorPath && !strings.Contains(text, `"pull request" (say "a request to add finished work")`) {
+				t.Errorf("the verb's text does not name the floor's words with their plain words:\n%s", text)
+			}
+			if c.path == floorPath {
+				res, _, _ := runQuestionVerbOnDraft(t, floor)
+				var marks []bool
+				for _, g := range res.ByRule {
+					if g.Tab == 1 && g.Rule == "register" {
+						marks = append(marks, g.Floor)
+					}
+				}
+				if !slices.Equal(marks, []bool{false, true}) {
+					t.Errorf("by_rule's register entries for tab 1 are marked %v, want the record number's unmarked and the floor's marked: %+v", marks, res.ByRule)
+				}
 			}
 			for _, w := range questionPointerWords {
 				if !strings.Contains(text, w) {

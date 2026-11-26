@@ -360,6 +360,22 @@ func (e *UnreadError) Unwrap() error { return e.Err }
 
 func unread(origin string, err error) error { return &UnreadError{Origin: origin, Err: err} }
 
+// GitFailed says the layer was not read because git did not answer (a git
+// that failed or was killed while listing or reading the file at the commit),
+// which says nothing of what the file holds; false is a file that was read and
+// refused, or could not be read for a reason of its own.
+func (e *UnreadError) GitFailed() bool {
+	var g *gitFailure
+	return errors.As(e.Err, &g)
+}
+
+// gitFailure marks a git that did not answer for GitFailed. Its text is the
+// cause's, so Load's message is unchanged.
+type gitFailure struct{ err error }
+
+func (g *gitFailure) Error() string { return g.err.Error() }
+func (g *gitFailure) Unwrap() error { return g.err }
+
 // Present reports whether the layer's file exists (repo, machine) or any flag
 // was set (flag).
 func (s *Stack) Present(l Layer) bool {
@@ -401,7 +417,7 @@ func readRepoAt(ctx context.Context, git func(ctx context.Context, root string, 
 	}
 	entry, err := git(ctx, repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
 	if err != nil {
-		return nil, fmt.Errorf("it could not be listed at the commit: %w", err)
+		return nil, fmt.Errorf("it could not be listed at the commit: %w", &gitFailure{err})
 	}
 	line := strings.TrimSuffix(string(entry), "\x00")
 	if line == "" {
@@ -417,7 +433,7 @@ func readRepoAt(ctx context.Context, git func(ctx context.Context, root string, 
 	}
 	raw, err := git(ctx, repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
 	if err != nil {
-		return nil, fmt.Errorf("it could not be read at the commit: %w", err)
+		return nil, fmt.Errorf("it could not be read at the commit: %w", &gitFailure{err})
 	}
 	return raw, nil
 }
