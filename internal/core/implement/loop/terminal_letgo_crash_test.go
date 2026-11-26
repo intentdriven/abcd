@@ -248,3 +248,105 @@ func TestAMovesFinishWritesItsStateBeforeItReleasesAHold(t *testing.T) {
 		}
 	}
 }
+
+// TestALetGoWritesItsStateBeforeItReleasesAHold: a drive's let-go of a
+// bundle forming writes the drain state with forming cleared before it
+// pushes the first release, so a let-go killed in a push leaves no state
+// recording a hold it was letting go. Watched failing with letGo's write
+// moved back after its releases: every push found forming still on disk.
+func TestALetGoWritesItsStateBeforeItReleasesAHold(t *testing.T) {
+	repo, bare, c, taken := formingDrain(t)
+	was := claimReserve
+	t.Cleanup(func() { claimReserve = was })
+	var onDisk []*DrainForming
+	claimReserve = func(dir string, req claim.Request, o claim.Options) (claim.Result, error) {
+		if req.Release {
+			st, _, err := readDrain(dir)
+			if err != nil {
+				t.Errorf("reading the drain state at the release: %v", err)
+			}
+			onDisk = append(onDisk, st.Forming)
+		}
+		return was(dir, req, o)
+	}
+	newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: c.now}}).letGo()
+	claimReserve = was
+	for _, id := range bundleIssues {
+		releasedOver(t, bare, id, taken[id])
+	}
+	if len(onDisk) != len(bundleIssues) {
+		t.Fatalf("the let-go pushes one release per forming hold: %d", len(onDisk))
+	}
+	for _, f := range onDisk {
+		if f != nil {
+			t.Fatalf("at a release the drain state on disk still forms %+v; want it cleared first", f)
+		}
+	}
+}
+
+// TestALetGoKeepsTheCarriedHoldAndReleasesTheFreeOne: the state a killed
+// bundle open leaves also forms a member no run carries (one the bundle
+// dropped before its lane opened); the let-go keeps the lead's and the
+// members' holds the run carries and releases that member's plainly, over
+// the commit the drain took. Watched failing with the carried check taken
+// out (the lead was released) and with every forming hold kept once one is
+// carried (the free member stayed held).
+func TestALetGoKeepsTheCarriedHoldAndReleasesTheFreeOne(t *testing.T) {
+	repo, bare, runID, lead, members, taken := killedBundle(t)
+	var free string
+	for _, id := range formIssues {
+		if id != lead && !slices.Contains(members, id) {
+			free = id
+		}
+	}
+	file := "internal/a/f" + string(rune('0'+slices.Index(formIssues, free))) + ".go"
+	res, err := claim.Reserve(repo.Root(), claim.Request{Record: free, Footprint: []string{file}, Drain: true}, claim.Options{})
+	if err != nil {
+		t.Fatalf("reserving %s: %v", free, err)
+	}
+	st := formedState(t, repo)
+	st.Forming.Members = append(st.Forming.Members, DrainFormingMember{Issue: free,
+		Hold: &DrainHold{Commit: res.Commit, ClaimedAt: res.ClaimedAt, ExpiresAt: res.ExpiresAt}})
+	if err := writeDrain(repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	newTerminal(repo.Root(), TerminalOptions{Say: sayInto(&said)}).letGo()
+	for _, id := range append([]string{lead}, members...) {
+		heldStill(t, bare, id, taken[id])
+	}
+	plainlyReleasedOver(t, bare, free, res.Commit)
+	if !slices.ContainsFunc(said, func(s string) bool { return strings.HasPrefix(s, free+": released the reservation on "+free) }) {
+		t.Fatalf("the let-go says it released %s:\n%s", free, strings.Join(said, "\n"))
+	}
+	recordedLane(t, repo, runID, lead, members)
+}
+
+// TestALetGoThatCannotReadARunReleasesNoneOfTheDrainsHolds: a run file the
+// checkout holds cannot be read, so the let-go cannot tell whether a run
+// carries the drain's holds: it releases none of them, says so, and leaves
+// the bundle forming. Watched failing with the runs' read error passed over:
+// every forming hold was released.
+func TestALetGoThatCannotReadARunReleasesNoneOfTheDrainsHolds(t *testing.T) {
+	repo, bare, c, taken := formingDrain(t)
+	const broken = "run-2611260000000001"
+	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(broken)))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{not a state"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: c.now}, Say: sayInto(&said)}).letGo()
+	for _, id := range bundleIssues {
+		heldStill(t, bare, id, taken[id])
+	}
+	all := strings.Join(said, "\n")
+	if !strings.Contains(all, "what this run holds was not released") || strings.Contains(all, "released the reservation") {
+		t.Fatalf("the let-go says nothing was released, and releases nothing:\n%s", all)
+	}
+	if st, _, err := readDrain(repo.Root()); err != nil || st.Forming == nil {
+		t.Fatalf("a let-go that releases nothing keeps forming: %+v %v", st.Forming, err)
+	}
+}

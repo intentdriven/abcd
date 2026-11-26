@@ -707,7 +707,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Next = joinNext(res.Next, stopNote)
 		}
 		// A drain that ends awaits nothing, and every judgement hold the move
-		// leaves unused is released before the state is written.
+		// leaves unused is released once the state is written, below.
 		if st.Stopped != "" && st.Judging != nil {
 			st.Judging, write = nil, true
 		}
