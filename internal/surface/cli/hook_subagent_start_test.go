@@ -521,8 +521,10 @@ func TestSubagentStartAddsNothingOutsideAManagedRepository(t *testing.T) {
 			t.Errorf("%q: exit %d stdout %q stderr %q; want silence", cwd, code, so, se)
 		}
 	}
-	if files := homeFiles(t, home); len(files) != 0 {
-		t.Errorf("the hook left %v under the home", files)
+	// gittest.Env writes Go's telemetry mode file into the home it pins
+	// (.config/go on Linux): that is the fixture's, never the hook's.
+	if !onlyGittestHome(t, home) {
+		t.Errorf("the hook left %v under the home", homeFiles(t, home))
 	}
 }
 
