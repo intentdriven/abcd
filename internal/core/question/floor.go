@@ -29,12 +29,16 @@ var belowFloor = []FloorWord{
 	{Word: "version control", Plain: "the kept history of every change"},
 	{Word: "checkout", Plain: "the project's folder of work"},
 	{Word: "branch", Plain: "a separate line of work"},
-	{Word: "merge", Also: []string{"merged", "merging"}, Plain: "adding finished work to the project"},
-	{Word: "commit", Also: []string{"committed", "committing"}, Plain: "a saved change"},
+	{Word: "merge", Also: []string{"merged", "merging", "unmerged"}, Plain: "adding finished work to the project"},
+	{Word: "commit", Also: []string{"committed", "committing", "uncommitted"}, Plain: "a saved change"},
 	{Word: "worktree", Plain: "a second folder of the project's work"},
 	{Word: "repository", Also: []string{"repo"}, Plain: "the project's files and their history"},
 	{Word: "pull request", Short: []string{"PR"}, Plain: "a request to add finished work"},
 	{Word: "rebase", Also: []string{"rebased", "rebasing"}, Plain: "moving work onto the newest version"},
+	{Word: "git", Plain: "the program that keeps the project's history"},
+	{Word: "push", Also: []string{"pushed", "pushing"}, Plain: "sending saved changes to the shared copy"},
+	{Word: "origin", Plain: "the shared copy of the project"},
+	{Word: "diff", Plain: "the lines a change alters"},
 	{Word: "shell", Plain: "the window where commands are typed"},
 	{Word: "file ownership", Plain: "which account a file belongs to"},
 	{Word: "permission bit", Plain: "who may open or change a file"},
@@ -153,14 +157,16 @@ func wordRune(r rune) bool {
 // is a fingerprint saying two copies are identical"), read by its shape: the
 // word, with no article or an indefinite one, opens a sentence, which goes on
 // to say what it is or means without using the word again; or a sentence
-// saying what a thing is ends on what it is called. "The merge is the last
+// saying what a thing is ends on what it is called. A short form may be named
+// beside the word ("a pull request (PR)", "a pull request, or PR,") or at the
+// end of what it is ("..., a PR for short"). "The merge is the last
 // step" uses a merge the reader is assumed to know, so it introduces nothing,
 // and neither does a sentence after a colon, which goes on with the one before.
 var (
 	introOpensRe = regexp.MustCompile(`(?i)(?:^|[.?!]["')\]]*\s+|\n[ \t]*\n\s*|\n[ \t]*(?:[-*+]|[0-9]+\.)[ \t]+)(?:an?\s+)?["'\x{201c}\x{2018}]?$`)
-	introSaysRe  = regexp.MustCompile(`(?i)^["'\x{201d}\x{2019}]?(?:\s*\([^()]*\))?\s+(?:is|are|means?)\s+((?:an?|the|one|what|where|when|who|how)\b[^.?!;]*?)(?:[.!;]|\n[ \t]*\n|$)`)
+	introSaysRe  = regexp.MustCompile(`(?i)^["'\x{201d}\x{2019}]?(?:\s*\([^()]*\)|,\s*or\s+[^,.?!;]{1,40},)?\s+(?:is|are|means?)\s+((?:an?|the|one|what|where|when|who|how)\b[^.?!;]*?)(?:[.!;]|\n[ \t]*\n|$)`)
 	introNamesRe = regexp.MustCompile(`(?i)([^.?!]*)\s(?:is|are)\s+(?:called|known\s+as)\s+(?:(?:an?|the)\s+)?["'\x{201c}\x{2018}]?$`)
-	introEndsRe  = regexp.MustCompile(`^["'\x{201d}\x{2019}]?(?:\s*\([^()]*\))?\s*[.!]`)
+	introEndsRe  = regexp.MustCompile(`^["'\x{201d}\x{2019}]?(?:\s*\([^()]*\)|,\s*or\s+[^,.?!;]{1,40})?\s*[.!]`)
 )
 
 // introWords is the fewest words that say what a word is: fewer ("is the
@@ -182,9 +188,11 @@ func introducedAt(s string, u floorUse) (int, bool) {
 	if len(after) > introWindow {
 		after = after[:introWindow] + "?" // cut, so never an end
 	}
+	// What the word is said to be uses none of the word's own forms; a short
+	// form named in it ("CI for short") is the naming, not a use.
 	says := func(complement string) bool {
 		return len(strings.Fields(complement)) >= introWords &&
-			!slices.ContainsFunc(floorUses(complement), func(v floorUse) bool { return v.word == u.word })
+			!slices.ContainsFunc(floorUses(complement), func(v floorUse) bool { return v.word == u.word && v.group == u.group })
 	}
 	if introOpensRe.MatchString(before) {
 		if m := introSaysRe.FindStringSubmatchIndex(after); m != nil && says(after[m[2]:m[3]]) {
@@ -200,26 +208,27 @@ func introducedAt(s string, u floorUse) (int, bool) {
 }
 
 // introduced is, for each word and form group, whether the tab's question text
-// introduces it: its first use there is the sentence introducing it, or, for a
-// short form, it is used in the sentence introducing the word ("Continuous
-// integration (CI) is the automatic checks."). An initialism the sentence does
-// not name is not introduced with the word.
+// introduces it: its first use there is the sentence introducing it, or it is
+// named in the sentence introducing another form of the same word
+// ("Continuous integration (CI) is the automatic checks.", "CI (continuous
+// integration) is ..."). An initialism the sentence does not name is not
+// introduced with the word.
 func introduced(text string) map[[2]int]bool {
 	out := map[[2]int]bool{}
-	sentence := map[int][2]int{} // the word's introducing sentence, by word
+	sentences := map[int][][2]int{} // the word's introducing sentences, by word
 	for _, u := range floorUses(text) {
 		k := [2]int{u.word, u.group}
 		if _, met := out[k]; met {
 			continue
 		}
-		if sp, ok := sentence[u.word]; ok && u.group > 0 && u.start >= sp[0] && u.start < sp[1] {
+		if slices.ContainsFunc(sentences[u.word], func(sp [2]int) bool { return u.start >= sp[0] && u.start < sp[1] }) {
 			out[k] = true
 			continue
 		}
 		end, ok := introducedAt(text, u)
 		out[k] = ok
-		if ok && u.group == 0 {
-			sentence[u.word] = [2]int{u.start, end}
+		if ok {
+			sentences[u.word] = append(sentences[u.word], [2]int{u.start, end})
 		}
 	}
 	return out

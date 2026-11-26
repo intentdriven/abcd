@@ -443,7 +443,9 @@ so a tab `unnamed` under it was checked with no mode set while one without it
 is checked where no mode is read; each tab's `addressee` and, where an
 admitted chip would re-set the mode, `addressee_changes`; every finding with whether it `refuses`;
 `by_rule`, the findings folded one entry per rule and tab with the first
-echoed value and a count, the groups the deny names one line each; `rows`
+echoed value and a count, the groups the deny names one line each (the
+register rule can take two on one tab, its words below the knowledge floor
+apart from its record numbers and commands and marked `floor`); `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
 the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
 three figures the draft was judged at (`rows`, `label_words`,

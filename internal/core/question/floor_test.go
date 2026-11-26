@@ -224,9 +224,9 @@ func TestBelowFloorWordsAreFoundInEveryField(t *testing.T) {
 }
 
 // TestBelowFloorWordsAreWholeWords: a word is found in either case, in the
-// plural and in a possessive, never inside a longer word, a hyphenated one
-// included, and a phrase is its own word, so a merge queue is not also a
-// merge.
+// plural, in a possessive and in the other forms the list names, joined to
+// another word by a hyphen included, never inside a longer word, and a phrase
+// is its own word, so a merge queue is not also a merge.
 func TestBelowFloorWordsAreWholeWords(t *testing.T) {
 	for text, want := range map[string][]string{
 		"Two branches wait.":                  {"branches"},
@@ -255,6 +255,16 @@ func TestBelowFloorWordsAreWholeWords(t *testing.T) {
 		"Two PRs wait.":                       {"PRs"},
 		"The work is rebased, and a rebase.":  {"rebased"},
 		"abcd is rebasing it.":                {"rebasing"},
+		"The change is uncommitted.":          {"uncommitted"},
+		"Three unmerged changes wait.":        {"unmerged"},
+		"The Git history is kept.":            {"Git"},
+		"GitHub runs the checks.":             nil,
+		"abcd pushes it, and pushed it.":      {"pushes"},
+		"abcd is pushing it.":                 {"pushing"},
+		"The work is force-pushed.":           {"pushed"},
+		"abcd sends it to origin.":            {"origin"},
+		"The diffs are shown.":                {"diffs"},
+		"They are different.":                 nil,
 		"The hook-and-loop strap.":            {"hook"},
 		"The merge_queue setting.":            nil,
 		"The branché café is open.":           nil,
@@ -342,6 +352,36 @@ func TestAWordIntroducedInOneSentencePasses(t *testing.T) {
 		tab := wellBuiltTab()
 		tab.Text = text + "\n\n" + tab.Text
 		if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, want) && len(got)+len(want) > 0 {
+			t.Errorf("%q: words named %q, want %q", text, got, want)
+		}
+	}
+	// A short form named in the sentence introducing the word, in any of the
+	// shapes the floor's pages state, is introduced with it; a long form
+	// named in the sentence introducing its short form is introduced too.
+	for _, text := range []string{
+		"Continuous integration, or CI, is the automatic checks that run on every change. Once CI passes, abcd adds the work.",
+		"Continuous integration is the automatic checks that run on every change, CI for short. Once CI passes, abcd adds the work.",
+		"A pull request is a request to add finished work, a PR for short. The PR waits.",
+		"A pull request, or PR, is a request to add finished work. The PR waits.",
+		"A request to add finished work is called a pull request (PR). The PR waits.",
+		"A request to add finished work is called a pull request, or PR. The PR waits.",
+		"CI (continuous integration) is the automatic checks that run on every change. Continuous integration must pass.",
+		"A symbolic link (a symlink) is a file that stands for another file. The symlink is kept.",
+	} {
+		tab := wellBuiltTab()
+		tab.Text = text + "\n\n" + tab.Text
+		if fs := CheckLimits(one(tab), Default, productThinker()); len(fs) != 0 {
+			t.Errorf("%q: want it introduced, got:\n%s", text, render(fs))
+		}
+	}
+	for text, want := range map[string][]string{
+		"CI is the automatic checks that run on every change. Continuous integration must pass.": {"Continuous integration"},
+		"A merge is the step where work is merged into the project. The merge waits.":            {"merge"},
+		"CI is the CI checks that run on every change. CI must pass.":                            {"CI"},
+	} {
+		tab := wellBuiltTab()
+		tab.Text = text + "\n\n" + tab.Text
+		if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, want) {
 			t.Errorf("%q: words named %q, want %q", text, got, want)
 		}
 	}

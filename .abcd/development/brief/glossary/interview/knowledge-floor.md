@@ -22,9 +22,10 @@ and this page states the floor in full.
 The [product thinker](../core/product-thinker.md) knows the product, its users, what done looks
 like, and the ordinary vocabulary of using software: a file, a folder, a name, a version, an
 account, a link, a permission someone grants. They are not assumed to know version control (a
-checkout, a branch, a merge, a commit, a worktree, a repository, a pull request, a rebase), a
-shell, file ownership and permission bits, continuous integration or a merge queue, a hook, an
-environment variable, a checksum, a symbolic link, or the record ids.
+checkout, a branch, a merge, a commit, a worktree, a repository, a pull request, a rebase, git,
+a push, the origin, a diff), a shell, file ownership and permission bits, continuous integration
+or a merge queue, a hook, an environment variable, a checksum, a symbolic link, or the record
+ids.
 
 The [technical facilitator](../core/technical-facilitator.md) knows all of that as well, so
 explaining it to them is padding, and leaving the ids out of their answer withholds the handle
@@ -53,12 +54,16 @@ equal: a word is added to or taken from both, and from the paragraph, in one cha
 | version control | none | none | the kept history of every change |
 | checkout | none | none | the project's folder of work |
 | branch | none | none | a separate line of work |
-| merge | merged, merging | none | adding finished work to the project |
-| commit | committed, committing | none | a saved change |
+| merge | merged, merging, unmerged | none | adding finished work to the project |
+| commit | committed, committing, uncommitted | none | a saved change |
 | worktree | none | none | a second folder of the project's work |
 | repository | repo | none | the project's files and their history |
 | pull request | none | PR | a request to add finished work |
 | rebase | rebased, rebasing | none | moving work onto the newest version |
+| git | none | none | the program that keeps the project's history |
+| push | pushed, pushing | none | sending saved changes to the shared copy |
+| origin | none | none | the shared copy of the project |
+| diff | none | none | the lines a change alters |
 | shell | none | none | the window where commands are typed |
 | file ownership | none | none | which account a file belongs to |
 | permission bit | none | none | who may open or change a file |

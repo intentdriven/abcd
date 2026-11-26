@@ -106,8 +106,9 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
   never does).
 - `by_rule` — the findings folded one entry per rule and tab, in the order the
   first of each appeared, with its first `value` and a `count`: the lines the
-  hook's refusal names. The register rule's words below the floor are an entry
-  of their own, apart from its record numbers and commands.
+  hook's refusal names. The register rule can take two entries on one tab:
+  its record numbers and commands, and its words below the floor, the entry
+  marked `floor`.
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.

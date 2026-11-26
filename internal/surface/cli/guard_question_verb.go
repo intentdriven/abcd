@@ -61,7 +61,9 @@ type questionCheckResult struct {
 	// ByRule is the findings folded one entry per rule and tab, in the order
 	// the first of each appeared, with its first echoed value and a count:
 	// the groups the hook's deny and the text render name one line each
-	// (question.GroupFindings, spc-2610301917245442 step 2).
+	// (question.GroupFindings, spc-2610301917245442 step 2). The register
+	// rule can take two entries on one tab: its record numbers and commands,
+	// and its words below the knowledge floor, the entry marked floor.
 	ByRule    []questionGroupJSON `json:"by_rule"`
 	Rows      []questionRowsJSON  `json:"rows"`
 	RowsLimit int                 `json:"rows_limit"`
@@ -129,12 +131,15 @@ type questionFindingJSON struct {
 	Refuses bool   `json:"refuses"`
 }
 
-// questionGroupJSON is one rule's findings on one tab.
+// questionGroupJSON is one rule's findings on one tab; Floor marks the
+// register rule's words below the knowledge floor, an entry apart from its
+// record numbers and commands.
 type questionGroupJSON struct {
 	Tab   int    `json:"tab"`
 	Rule  string `json:"rule"`
 	Value string `json:"value"`
 	Count int    `json:"count"`
+	Floor bool   `json:"floor,omitempty"`
 }
 
 type questionRowsJSON struct {
@@ -391,7 +396,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		res.Findings = append(res.Findings, findingJSON(f, question.RefusingFinding(f)))
 	}
 	for _, g := range question.GroupFindings(append(slices.Clone(structural), v.Findings...)) {
-		res.ByRule = append(res.ByRule, questionGroupJSON{Tab: g.Tab, Rule: string(g.Rule), Value: g.First.Value, Count: g.Count})
+		res.ByRule = append(res.ByRule, questionGroupJSON{Tab: g.Tab, Rule: string(g.Rule), Value: g.First.Value, Count: g.Count, Floor: g.First.Plain != ""})
 	}
 	for i, r := range v.Rows {
 		res.Rows = append(res.Rows, questionRowsJSON{Tab: i + 1, RowSplit: r})
@@ -555,7 +560,7 @@ func writeQuestionCheck(w io.Writer, res questionCheckResult) {
 	// would refuse with, byte for byte (spc-2610301917245442, step 2).
 	var refusing, rest []question.Finding
 	for _, f := range res.Findings {
-		qf := question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
+		qf := question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Plain: f.Plain}
 		if f.Refuses {
 			refusing = append(refusing, qf)
 		} else {
