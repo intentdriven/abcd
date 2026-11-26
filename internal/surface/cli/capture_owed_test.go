@@ -73,9 +73,10 @@ type owedEntryJSON struct {
 	Checkout string `json:"checkout"`
 	Text     string `json:"text"`
 	Settled  *struct {
-		Act    string `json:"act"`
-		Record string `json:"record"`
-		Reason string `json:"reason"`
+		Act            string `json:"act"`
+		Record         string `json:"record"`
+		Reason         string `json:"reason"`
+		ReasonWithheld bool   `json:"reason_withheld"`
 	} `json:"settled"`
 }
 
@@ -250,6 +251,28 @@ func TestCaptureOwedSettlesByTheKindTable(t *testing.T) {
 // TestCaptureOwedSettledTakesItsRecordAsAWord: --settled given bare beside
 // handles takes the one word that is not a handle as its record, the way the
 // block writes it (settled <record>).
+// TestCaptureOwedKeepsAReasonOnlyFromTheEntrysCheckout: an entry put from
+// another checkout of the repository is settled from this one with its act
+// kept and its reason withheld, and the line says where a reason is kept.
+func TestCaptureOwedKeepsAReasonOnlyFromTheEntrysCheckout(t *testing.T) {
+	root := findingsRepo(t)
+	got, bad, err := owedStore(t, root).Put(context.Background(), findings.Entry{
+		Kind: findings.KindUntested, Checkout: filepath.Join(t.TempDir(), "elsewhere"), Session: "s-plant", Text: "put from another checkout", At: time.Now(),
+	})
+	if err != nil || len(bad) != 0 || len(got) != 1 {
+		t.Fatalf("plant: %v %v %v", got, bad, err)
+	}
+	out := string(runCLI(t, "capture", "owed", got[0].Handle(), "--refuted", "ran it here"))
+	if !strings.Contains(out, "settled "+got[0].Handle()) || !strings.Contains(out, "settled from the checkout it was put from") {
+		t.Fatalf("a settle from another checkout said:\n%s", out)
+	}
+	for _, e := range owedList(t, "--settled").Settled {
+		if e.Handle == got[0].Handle() && (e.Settled == nil || e.Settled.Act != "refuted" || e.Settled.Reason != "" || !e.Settled.ReasonWithheld) {
+			t.Fatalf("settled from another checkout as %+v; want the act kept and the reason withheld", e.Settled)
+		}
+	}
+}
+
 func TestCaptureOwedSettledTakesItsRecordAsAWord(t *testing.T) {
 	root := findingsRepo(t)
 	issue := captureIssueForProbe(t, "the reader breaks on an empty input file", "minor")

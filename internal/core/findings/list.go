@@ -328,8 +328,9 @@ type Settlement struct {
 	Act    Act    `json:"act"`
 	Record string `json:"record,omitempty"`
 	Reason string `json:"reason,omitempty"`
-	// ReasonWithheld is true where no full scan could clear the reason, or
-	// it would take the file past its bound.
+	// ReasonWithheld is true where no full scan could clear the reason, the
+	// settle was typed in a checkout other than the entry's, or the reason
+	// would take the file past its bound.
 	ReasonWithheld bool      `json:"reason_withheld,omitempty"`
 	At             time.Time `json:"at"`
 }
@@ -1046,6 +1047,11 @@ type SettleRequest struct {
 	// Reason is the reason, test or run a not-a-finding, refuted or own act
 	// gives, redacted against each entry's own checkout.
 	Reason string
+	// Checkout is the checkout the caller stands in. A reason is kept only
+	// for an entry put from it: one put from another checkout keeps the act
+	// and withholds the reason, so a settle reads no checkout's scanner
+	// configuration but the caller's own.
+	Checkout string
 	// Person is true where the caller is a person at a terminal, the one
 	// caller that may settle a private entry.
 	Person bool
@@ -1078,8 +1084,9 @@ func (s Store) Settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 
 // SettleByReceipt settles check entries by a preflight receipt naming the
 // offered head: the landing's act, never a command's.
-func (s Store) SettleByReceipt(ctx context.Context, handles []string, receipt string, at time.Time) ([]Entry, error) {
-	return s.settle(ctx, SettleRequest{Handles: handles, Act: ActReceipt, Reason: receipt, At: at})
+// checkout is the checkout the receipt was minted in, as SettleRequest's.
+func (s Store) SettleByReceipt(ctx context.Context, checkout string, handles []string, receipt string, at time.Time) ([]Entry, error) {
+	return s.settle(ctx, SettleRequest{Checkout: checkout, Handles: handles, Act: ActReceipt, Reason: receipt, At: at})
 }
 
 func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
@@ -1145,6 +1152,12 @@ func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 			if l.e.CheckoutAltered || len(l.e.Checkout) >= maxPathBytes {
 				// A checkout changed at put, or at its bound, names another
 				// root: the redactor would read the wrong patterns.
+				reasons[key] = cleaned{withheld: true}
+				continue
+			}
+			if req.Checkout == "" || l.e.Checkout != req.Checkout {
+				// The redactor reads its checkout's scanner configuration;
+				// the caller stands in this one alone.
 				reasons[key] = cleaned{withheld: true}
 				continue
 			}

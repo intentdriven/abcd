@@ -416,7 +416,7 @@ func runOwedSettle(ctx context.Context, cmd *cobra.Command, asJSON bool, root st
 	if !ok {
 		return refused(2, refusal.CaptureInvalidInput, "abcd capture owed: the repository has no commit yet, so its list holds nothing to settle (nothing written)")
 	}
-	req := findings.SettleRequest{Handles: handles, Act: act, Reason: reason, Person: owedAtTerminal(cmd), At: time.Now().UTC()}
+	req := findings.SettleRequest{Checkout: root, Handles: handles, Act: act, Reason: reason, Person: owedAtTerminal(cmd), At: time.Now().UTC()}
 	var answers *recordingAnswerer
 	if act == findings.ActCaptured || act == findings.ActSettled {
 		if !recordid.CitedIDRe.MatchString(record) {
@@ -456,7 +456,7 @@ func owedSettlementText(st *findings.Settlement) string {
 	case st.Record != "":
 		out += " " + st.Record
 	case st.ReasonWithheld:
-		out += ": its reason was withheld because no full scan could clear it"
+		out += ": its reason was withheld; one is kept only when settled from the checkout it was put from and a full scan there clears it"
 	case st.Reason != "":
 		out += ": " + owedLine(st.Reason)
 	}

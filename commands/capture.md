@@ -348,7 +348,10 @@ default branch, a wontfix for `--captured`) is refused naming its state, and an
 issue no ledger holds carries `capture/unknown-issue`. `--refuted "<test>"`
 names the test that refuted it, `--own "<run>"` the run on the base that shows
 a failing check is the change's own, and `--not-a-finding "<reason>"` one line
-of reason; each is kept with the settled entry. An act the table does not mark
+of reason; each is kept with the settled entry when the settle is typed in the
+checkout the entry was put from. From any other checkout the act is kept and
+the reason withheld, so a settle never reads another checkout's scanner
+configuration. An act the table does not mark
 is refused (`capture/invalid-input`) and the entry stays open. Two acts at once
 are `usage/flag-conflict`. The verb writes only under abcd's home, so a main
 checkout two sessions share is not refused.

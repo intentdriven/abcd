@@ -361,7 +361,8 @@ the default branch deciding (an open issue holds a capture, and so does one
 this checkout holds open or resolved that the default branch lacks; an open
 issue, a wontfix, an ADR or a decision holds a settlement); a refutation, a run
 on the base and a "not a finding" keep the test, the run or the reason they are
-given; and an entry can be moved to the private list. A private entry's text is
+given, when settled from the checkout the entry was put from (from any other,
+the act is kept and the reason withheld); and an entry can be moved to the private list. A private entry's text is
 shown only to the person: where standard input and output are a terminal, no
 agent host's session marker is set and no stage runs; everywhere else, and
 always in the JSON form, the count alone, settled private entries included,

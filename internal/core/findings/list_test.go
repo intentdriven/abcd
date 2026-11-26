@@ -143,7 +143,7 @@ func TestASettledEntryStaysSettledAndAReceiptSettledCheckDoesNot(t *testing.T) {
 	s, home := newTestStore(t)
 	cheapRedactor(t)
 	e := mustPut(t, s, entry(KindLine, "s1", "left for later"))
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: "prose", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: "prose", At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	again := mustPut(t, s, entry(KindLine, "s1", "left for later"))
@@ -155,7 +155,7 @@ func TestASettledEntryStaysSettledAndAReceiptSettledCheckDoesNot(t *testing.T) {
 	}
 
 	c := mustPut(t, s, entry(KindCheck, "s1", "TestX still fails"))
-	if _, err := s.SettleByReceipt(bg, []string{c.Handle()}, "receipt at cafe", t0); err != nil {
+	if _, err := s.SettleByReceipt(bg, "/checkout", []string{c.Handle()}, "receipt at cafe", t0); err != nil {
 		t.Fatalf("Settle by receipt: %v", err)
 	}
 	if v := mustRead(t, s); len(v.Open) != 0 {
@@ -183,7 +183,7 @@ func TestACrashInsideASettleLeavesTheSettledOneWinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "go test ./x passes on the base", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "go test ./x passes on the base", At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	// What a crash between the settled write and the open removal leaves.
@@ -193,7 +193,7 @@ func TestACrashInsideASettleLeavesTheSettledOneWinning(t *testing.T) {
 	if v := mustRead(t, s); len(v.Open) != 0 {
 		t.Fatalf("with both files standing the open one won: %+v", v.Open)
 	}
-	_, err = s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "again", At: t0})
+	_, err = s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "again", At: t0})
 	if !errors.Is(err, ErrNoEntry) {
 		t.Fatalf("settling a handle settled/ already holds = %v; want ErrNoEntry, as the list reads it", err)
 	}
@@ -211,7 +211,7 @@ func TestACrashInsideAMoveToPrivateLeavesThePrivateOneWinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActPrivate, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActPrivate, At: t0}); err != nil {
 		t.Fatalf("Settle --private: %v", err)
 	}
 	if err := os.WriteFile(open, raw, 0o600); err != nil {
@@ -220,7 +220,7 @@ func TestACrashInsideAMoveToPrivateLeavesThePrivateOneWinning(t *testing.T) {
 	if v := mustRead(t, s); len(v.Open) != 0 || len(v.Private) != 1 {
 		t.Fatalf("with both files standing: open %+v, private %+v; want the private one alone", v.Open, v.Private)
 	}
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
 		t.Fatalf("settling the private one with its open twin standing: %v", err)
 	}
 	if _, err := os.Lstat(open); !os.IsNotExist(err) {
@@ -433,7 +433,7 @@ func TestALaterSchemaAndAnUnknownKindAreANewerAbcds(t *testing.T) {
 		t.Fatalf("a later schema and an unknown kind read as open %+v, newer %v; want both a newer abcd's", v.Open, v.Newer)
 	}
 	for _, h := range []string{"f-aaaaaaaa", "f-bbbbbbbb"} {
-		if _, err := s.Settle(bg, SettleRequest{Handles: []string{h}, Act: ActCaptured, Record: "iss-1", Records: holding{}, At: t0}); !errors.Is(err, ErrNewer) {
+		if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{h}, Act: ActCaptured, Record: "iss-1", Records: holding{}, At: t0}); !errors.Is(err, ErrNewer) {
 			t.Errorf("settling a newer abcd's %s = %v; want ErrNewer", h, err)
 		}
 	}
@@ -516,7 +516,7 @@ func TestTheKindTableIsWhatClearsAnEntry(t *testing.T) {
 					s, home := newTestStore(t)
 					cheapRedactor(t)
 					e := mustPut(t, s, entry(kind, "s1", "a finding"))
-					req := SettleRequest{Handles: []string{e.Handle()}, Act: act, Person: person, Records: holding{}, At: t0}
+					req := SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: act, Person: person, Records: holding{}, At: t0}
 					switch act {
 					case ActCaptured, ActSettled:
 						req.Record = "iss-1"
@@ -600,7 +600,7 @@ func TestASettleWritesNothingWhenAnyPartOfItIsRefused(t *testing.T) {
 			}
 		})
 	}
-	_, err := s.Settle(bg, SettleRequest{Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
+	_, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
 	if !strings.Contains(fmt.Sprint(err), "resolved") || !strings.Contains(fmt.Sprint(err), "the default branch") {
 		t.Fatalf("a record that does not hold was refused as %v; want the state found named", err)
 	}
@@ -610,7 +610,7 @@ func TestAnAmbiguousHandleIsRefused(t *testing.T) {
 	s, _ := newTestStore(t)
 	plant(t, s, "open", "abcdef01"+strings.Repeat("1", 56), `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
 	plant(t, s, "open", "abcdef01"+strings.Repeat("2", 56), `{"schema_version":1,"kind":"untested","text":"y","at":"2026-11-25T12:00:00Z"}`)
-	_, err := s.Settle(bg, SettleRequest{Handles: []string{"f-abcdef01"}, Act: ActRefuted, Reason: "ran it", At: t0})
+	_, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{"f-abcdef01"}, Act: ActRefuted, Reason: "ran it", At: t0})
 	if !errors.Is(err, ErrAmbiguous) {
 		t.Fatalf("an ambiguous handle = %v; want ErrAmbiguous", err)
 	}
@@ -637,7 +637,7 @@ func TestTheOpenViewPutsThisCheckoutFirstAndTheSettledViewKeepsTheLastFifty(t *t
 
 	for i := 0; i < 55; i++ {
 		e := mustPut(t, s, entry(KindLine, "s2", fmt.Sprintf("line %d", i)))
-		if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: fmt.Sprintf("why %d", i), At: t0.Add(time.Duration(i) * time.Second)}); err != nil {
+		if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: fmt.Sprintf("why %d", i), At: t0.Add(time.Duration(i) * time.Second)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -687,7 +687,7 @@ func TestWhatTheStoreWritesFitsItsBound(t *testing.T) {
 	cheapRedactor(t)
 	e := mustPut(t, s, entry(KindLine, "s1", strings.Repeat("<", maxTextBytes)))
 	reason := strings.Repeat("&", maxTextBytes)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: reason, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActNotAFinding, Reason: reason, At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	got, bad, err := s.SettledView(50)
@@ -762,7 +762,7 @@ func TestASettleReasonIsRedactedWithItsEntrysPatterns(t *testing.T) {
 	e := entry(KindUntested, "s1", "a finding")
 	e.Checkout = repo
 	got := mustPut(t, s, e)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it with HOUSE-123456", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: repo, Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it with HOUSE-123456", At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	last, _, err := s.SettledView(50)
@@ -786,7 +786,7 @@ func TestAPutRacingASettleLeavesItSettled(t *testing.T) {
 	var settleErr error
 	go func() {
 		defer wg.Done()
-		_, settleErr = s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
+		_, settleErr = s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
 	}()
 	wg.Wait()
 	if settleErr != nil {
@@ -836,7 +836,7 @@ func TestPrivateTextReachesOnlyItsOneAccessor(t *testing.T) {
 	cheapRedactor(t)
 	const plantText = "PLANTED-PRIVATE-TEXT"
 	e := mustPut(t, s, entry(KindUntested, "s1", plantText))
-	moved, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActPrivate, At: t0})
+	moved, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActPrivate, At: t0})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -858,7 +858,7 @@ func TestPrivateTextReachesOnlyItsOneAccessor(t *testing.T) {
 	if got, _, err := s.PrivateText(e.Handle(), true); err != nil || got != plantText {
 		t.Fatalf("PrivateText = %q, %v; want the text", got, err)
 	}
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	last, _, err := s.SettledView(50)
@@ -871,7 +871,7 @@ func TestOnlyTheReceiptEntryPointSettlesByReceipt(t *testing.T) {
 	s, _ := newTestStore(t)
 	cheapRedactor(t)
 	c := mustPut(t, s, entry(KindCheck, "s1", "TestX still fails"))
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{c.Handle()}, Act: ActReceipt, Reason: "receipt", At: t0}); !errors.Is(err, ErrNotCleared) {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{c.Handle()}, Act: ActReceipt, Reason: "receipt", At: t0}); !errors.Is(err, ErrNotCleared) {
 		t.Fatalf("Settle with ActReceipt = %v; want ErrNotCleared", err)
 	}
 	if v := mustRead(t, s); len(v.Open) != 1 {
@@ -883,7 +883,7 @@ func TestARefusalQuotesTheRecordAndNamesNoHomePath(t *testing.T) {
 	s, home := newTestStore(t)
 	cheapRedactor(t)
 	a := mustPut(t, s, entry(KindUntested, "s1", "one"))
-	_, err := s.Settle(bg, SettleRequest{Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
+	_, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{a.Handle()}, Act: ActCaptured, Record: "iss-1", Records: refusing{}, At: t0})
 	if !strings.Contains(fmt.Sprint(err), `"iss-1"`) {
 		t.Fatalf("the refusal names the record as %v; want it quoted", err)
 	}
@@ -1071,7 +1071,7 @@ func TestAnEntryPastItsFileIsWithheldOrRefusedWhole(t *testing.T) {
 	}
 
 	// A settle whose reason takes the file past its bound withholds the reason.
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: strings.Repeat(`"`, maxTextBytes) + strings.Repeat(`\`, maxTextBytes), At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{got.Handle()}, Act: ActRefuted, Reason: strings.Repeat(`"`, maxTextBytes) + strings.Repeat(`\`, maxTextBytes), At: t0}); err != nil {
 		t.Fatalf("Settle: %v", err)
 	}
 	last, _, err := s.SettledView(5)
@@ -1088,7 +1088,7 @@ func TestAReasonNoScanClearsIsWithheld(t *testing.T) {
 	e := mustPut(t, s, entry(KindUntested, "s1", "one"))
 	prev := newRedactor
 	newRedactor = func(context.Context, string) (textRedactor, error) { return nil, capture.ErrScannerUnavailable }
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	newRedactor = prev
@@ -1152,11 +1152,11 @@ func TestWhatAnEntryNamesIsMadeSafeAndWhole(t *testing.T) {
 	for i := 0; i < maxPrivate-1; i++ {
 		plant(t, s, "private", fmt.Sprintf("%064x", i), `{"schema_version":1,"kind":"private","text":"x","at":"2026-11-25T12:00:00Z"}`)
 	}
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle(), got.Handle()}, Act: ActPrivate, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{got.Handle(), got.Handle()}, Act: ActPrivate, At: t0}); err != nil {
 		t.Fatalf("a handle given twice moved to a private list at %d: %v; want it counted once", maxPrivate-1, err)
 	}
 	r := mustPut(t, s, entry(KindUntested, "s1", "two"))
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{r.Handle()}, Act: ActSettled, Record: "iss-1\x1b[2J", Records: holding{}, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{r.Handle()}, Act: ActSettled, Record: "iss-1\x1b[2J", Records: holding{}, At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	last, _, _ := s.SettledView(5)
@@ -1181,7 +1181,7 @@ func TestAReopenRacingASettleLosesNeither(t *testing.T) {
 	c.Place, c.Head = "/wt", "cafe"
 	for i := 0; i < 40; i++ {
 		e := mustPut(t, s, c)
-		if _, err := s.SettleByReceipt(bg, []string{e.Handle()}, "receipt", t0); err != nil {
+		if _, err := s.SettleByReceipt(bg, "/checkout", []string{e.Handle()}, "receipt", t0); err != nil {
 			t.Fatal(err)
 		}
 		var wg sync.WaitGroup
@@ -1190,7 +1190,7 @@ func TestAReopenRacingASettleLosesNeither(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
-				if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActOwn, Reason: "mine", At: t0}); err == nil {
+				if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActOwn, Reason: "mine", At: t0}); err == nil {
 					return
 				}
 			}
@@ -1289,7 +1289,7 @@ func TestASettleAsksAndScansBeforeItLocks(t *testing.T) {
 	cheapRedactor(t)
 	e := mustPut(t, s, entry(KindUntested, "s1", "one"))
 	var askedFree bool
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &askedFree}, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &askedFree}, At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	if !askedFree {
@@ -1302,7 +1302,7 @@ func TestASettleAsksAndScansBeforeItLocks(t *testing.T) {
 	newRedactor = func(context.Context, string) (textRedactor, error) {
 		return lookingRedactor{t: t, home: home, free: &scannedFree}, nil
 	}
-	_, err := s.Settle(bg, SettleRequest{Handles: []string{r.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
+	_, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{r.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
 	newRedactor = prev
 	if err != nil || !scannedFree {
 		t.Errorf("the reason was scanned with the lock held (free %v, %v)", scannedFree, err)
@@ -1312,11 +1312,11 @@ func TestASettleAsksAndScansBeforeItLocks(t *testing.T) {
 	q := mustPut(t, s, entry(KindUntested, "s1", "three"))
 	var free bool
 	other := func() {
-		if _, err := s.Settle(bg, SettleRequest{Handles: []string{q.Handle()}, Act: ActRefuted, Reason: "first", At: t0}); err != nil {
+		if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{q.Handle()}, Act: ActRefuted, Reason: "first", At: t0}); err != nil {
 			t.Errorf("the other settle: %v", err)
 		}
 	}
-	_, err = s.Settle(bg, SettleRequest{Handles: []string{q.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &free, do: other}, At: t0})
+	_, err = s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{q.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &free, do: other}, At: t0})
 	if !errors.Is(err, ErrNoEntry) {
 		t.Fatalf("a settle whose entry was settled while it asked = %v; want ErrNoEntry", err)
 	}
@@ -1364,7 +1364,7 @@ func TestAReasonForACutCheckoutIsWithheld(t *testing.T) {
 	e := entry(KindUntested, "s1", "one")
 	e.Checkout = "/" + strings.Repeat("c", maxPathBytes+40)
 	got := mustPut(t, s, e)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: got.Checkout, Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	last, _, _ := s.SettledView(5)
@@ -1450,12 +1450,12 @@ func TestAnEntryLeavesRoomToBeSettled(t *testing.T) {
 	}
 	e.Checkout, e.Place = strings.Repeat(`\`, maxPathBytes), strings.Repeat(`\`, maxPathBytes)
 	got := mustPut(t, s, e)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActNotAFinding, Reason: "said in passing", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{got.Handle()}, Act: ActNotAFinding, Reason: "said in passing", At: t0}); err != nil {
 		t.Fatalf("an entry put near its bound could not be settled: %v", err)
 	}
 	e2 := e
 	e2.Text = strings.Repeat("b", 400)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{mustPut(t, s, e2).Handle()}, Act: ActSettled, Record: strings.Repeat(`"`, maxIDBytes), Records: holding{}, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{mustPut(t, s, e2).Handle()}, Act: ActSettled, Record: strings.Repeat(`"`, maxIDBytes), Records: holding{}, At: t0}); err != nil {
 		t.Fatalf("settling one by the largest record: %v", err)
 	}
 }
@@ -1465,7 +1465,7 @@ func TestWhatARefusalAndAnEntryCarryIsSafe(t *testing.T) {
 	s, _ := newTestStore(t)
 	cheapRedactor(t)
 	e := mustPut(t, s, entry(KindUntested, "s1", "one"))
-	_, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: stated{"resolved\x1b[2J"}, At: t0})
+	_, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: stated{"resolved\x1b[2J"}, At: t0})
 	if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
 		t.Fatalf("a refusal carries the record's state as %v; want it sanitised", err)
 	}
@@ -1607,7 +1607,7 @@ func TestAReasonForAnAlteredCheckoutIsWithheld(t *testing.T) {
 		e := entry(KindUntested, "s1", "one "+name)
 		e.Checkout = checkout
 		got := mustPut(t, s, e)
-		if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+		if _, err := s.Settle(bg, SettleRequest{Checkout: got.Checkout, Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
 			t.Fatal(err)
 		}
 		last, _, err := s.SettledView(50)
@@ -1638,7 +1638,7 @@ func TestAWithheldReadingFindsItsClearedTwin(t *testing.T) {
 	read := entry(KindUntested, "s1", "a finding read")
 	read.Agent, read.Position = "a1", "transcript:9"
 	c := mustPut(t, s, read)
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{c.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{c.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	undo := degraded(t)
@@ -1664,7 +1664,7 @@ func TestAWithheldRePutKeepsAReceiptsClearedText(t *testing.T) {
 	gate := entry(KindCheck, "s1", "TestX fails at the receipt")
 	gate.Place, gate.Head = "/wt", "cafe"
 	e := mustPut(t, s, gate)
-	if _, err := s.SettleByReceipt(bg, []string{e.Handle()}, "receipt", t0); err != nil {
+	if _, err := s.SettleByReceipt(bg, "/checkout", []string{e.Handle()}, "receipt", t0); err != nil {
 		t.Fatal(err)
 	}
 	undo := degraded(t)
@@ -1701,7 +1701,7 @@ func TestTheLockedVerdictStands(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { betweenPasses = prev })
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{e.Handle()}, Act: ActRefuted, Reason: "ran it", Person: true, At: t0}); err != nil {
 		t.Fatalf("a settle whose look saw a move half made = %v; want the locked look's verdict", err)
 	}
 }
@@ -1772,7 +1772,7 @@ func TestAReasonMissedForItsCheckoutIsWithheld(t *testing.T) {
 		return rePut{s: s, e: moved, done: &done}, nil
 	}
 	t.Cleanup(func() { newRedactor = prev })
-	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActOwn, Reason: "mine", At: t0}); err != nil {
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/a", Handles: []string{e.Handle()}, Act: ActOwn, Reason: "mine", At: t0}); err != nil {
 		t.Fatal(err)
 	}
 	last, _, _ := s.SettledView(5)
@@ -1811,5 +1811,46 @@ func TestASettledTemporaryFileIsSwept(t *testing.T) {
 	mustPut(t, s, entry(KindUntested, "s1", "two"))
 	if _, err := os.Lstat(stray); !os.IsNotExist(err) {
 		t.Fatalf("a put left a temporary file in settled/ (%v)", err)
+	}
+}
+
+// TestAReasonIsKeptOnlyFromTheEntrysOwnCheckout: a settle typed in one
+// checkout reads the scanner configuration of no other. An entry put from
+// another checkout, or a settle that names none, keeps its act and withholds
+// the reason without building a redactor for the entry's checkout.
+func TestAReasonIsKeptOnlyFromTheEntrysOwnCheckout(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	there := entry(KindUntested, "s1", "put from there")
+	there.Checkout = "/there"
+	far := mustPut(t, s, there)
+	near := mustPut(t, s, entry(KindUntested, "s1", "put from here"))
+	unnamed := mustPut(t, s, entry(KindUntested, "s2", "settled from nowhere"))
+
+	var built []string
+	prev := newRedactor
+	newRedactor = func(_ context.Context, root string) (textRedactor, error) {
+		built = append(built, root)
+		return passThrough{}, nil
+	}
+	t.Cleanup(func() { newRedactor = prev })
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{far.Handle(), near.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{unnamed.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if len(built) != 1 || built[0] != "/checkout" {
+		t.Fatalf("the settles built redactors for %q; want only the caller's own checkout", built)
+	}
+	last, _, err := s.SettledView(5)
+	if err != nil || len(last) != 3 {
+		t.Fatalf("SettledView = %+v, %v", last, err)
+	}
+	for _, l := range last {
+		kept := l.Name == near.Name
+		if l.Settled == nil || l.Settled.Act == "" || (kept != (l.Settled.Reason == "ran it")) || kept == l.Settled.ReasonWithheld {
+			t.Errorf("%s (from %s) settled as %+v; want the reason kept only for the entry put from the caller's checkout", l.Handle(), l.Checkout, l.Settled)
+		}
 	}
 }
