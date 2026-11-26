@@ -16,11 +16,14 @@ package loop
 // renews is the drain's from that push on.
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // judgeHolds are the drain's judgement holds one move knows: the one the
@@ -70,19 +73,29 @@ func (h *judgeHolds) add(issue string, hold *DrainHold, fresh bool) {
 // (released.pending), "" when kind is "".
 func (h *judgeHolds) releaseOne(k *judgeHold, kind string) (clause, pending string) {
 	k.done = true
-	if !k.fresh && h.view != nil {
-		if r, ok := h.view.Lookup(k.issue); !ok || r.Commit != k.hold.Commit {
-			if ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-				clause = "left the reservation on " + k.issue + " as it stands: it was renewed or reserved again since the drain took it"
-			}
-			if kind != "" {
-				pending = "the reservation the drain took to judge " + k.issue + " is no longer its tip on " + claim.Remote + movedTo(r, ok)
-			}
-			return clause, pending
+	if r, ok, moved := h.movedOn(*k); moved {
+		if ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+			clause = "left the reservation on " + k.issue + " as it stands: it was renewed or reserved again since the drain took it"
 		}
+		if kind != "" {
+			pending = "the reservation the drain took to judge " + k.issue + " is no longer its tip on " + claim.Remote + movedTo(r, ok)
+		}
+		return clause, pending
 	}
 	out := releaseAt(h.repoRoot, k.issue, k.hold.Commit, kind, "", h.now)
 	return out.clause, out.pending
+}
+
+// movedOn reports whether the move's view shows k's tip moved off its hold,
+// so releasing it pushes nothing, with the view's reservation of k's issue
+// and whether the view holds one. A hold the move took itself, or one judged
+// with no view, has not moved on: its release goes to origin.
+func (h *judgeHolds) movedOn(k judgeHold) (r claim.Reservation, ok, moved bool) {
+	if k.fresh || h.view == nil {
+		return claim.Reservation{}, false, false
+	}
+	r, ok = h.view.Lookup(k.issue)
+	return r, ok, !ok || r.Commit != k.hold.Commit
 }
 
 // movedTo says what the view shows at a tip the drain's hold moved off: a
@@ -182,6 +195,16 @@ func (h *judgeHolds) moved(issue, from string, to DrainHold) {
 // awaited or forming records it: the start failed, so no lane holds it, and
 // the move's error leaves them on disk.
 func (h *judgeHolds) settle(awaited *DrainJudging, forming *DrainForming) []string {
+	out, _ := h.settleAfter(awaited, forming, nil)
+	return out
+}
+
+// settleAfter is settle with before run once, ahead of the first release it
+// pushes to origin: a move's finish writes the drain state there
+// (iss-2611260523161723), so no push sits between a lane's run write and the
+// drain state's. An error from before stops it with nothing more released,
+// the clauses so far returned with it.
+func (h *judgeHolds) settleAfter(awaited *DrainJudging, forming *DrainForming, before func() error) ([]string, error) {
 	var out []string
 	for i := range h.held {
 		k := &h.held[i]
@@ -194,13 +217,79 @@ func (h *judgeHolds) settle(awaited *DrainJudging, forming *DrainForming) []stri
 		if !k.starting && forming.holds(k.issue, k.hold.Commit) {
 			continue
 		}
+		if _, _, moved := h.movedOn(*k); before != nil && !moved {
+			if err := before(); err != nil {
+				return out, err
+			}
+			before = nil
+		}
 		c, _ := h.releaseOne(k, "")
 		if c == "" {
 			continue
 		}
 		out = append(out, "nothing waits any longer on the reservation the drain took to judge "+k.issue+": "+c)
 	}
-	return out
+	return out, nil
+}
+
+// openedUnrecorded is each lane a drain move opened on the drain's own holds
+// and did not live to record (iss-2611260523161723): the lane a no opens
+// starts on the drain's hold with no second push (heldReservation), so a move
+// killed between the run's write and the drain state's leaves st recording,
+// as the drain's, the judgement's hold or a forming bundle's that the new run
+// now carries. Such a run is one of this checkout's that no lane of st names
+// and no drive let go, holding one of those issues on the hold's own claim:
+// its reserved_at for the issue is the hold's claimed_at. Each comes back as
+// the lane the move would have recorded, in progress, and carried names each
+// issue whose hold one of them carries. A run that cannot be read fails it,
+// so a let-go that cannot tell releases nothing.
+func openedUnrecorded(repoRoot string, st DrainState) (lanes []DrainLane, carried map[string]bool, err error) {
+	var holds []formingEntry
+	if j := st.Judging; j != nil && j.Hold != nil {
+		holds = append(holds, formingEntry{issue: j.Issue, hold: j.Hold})
+	}
+	holds = append(holds, formingHolds(st.Forming)...)
+	if len(holds) == 0 {
+		return nil, nil, nil
+	}
+	runs, err := Runs(repoRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	carried = map[string]bool{}
+	for _, run := range runs {
+		if letGoByDrive(run) || slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == run.RunID }) {
+			continue
+		}
+		held, opened := run.reservedIssues(), false
+		for _, h := range holds {
+			at := run.reservedAt(h.issue)
+			if at == nil || !at.Equal(h.hold.ClaimedAt) || !slices.ContainsFunc(held, func(id string) bool { return recordid.SameID(id, h.issue) }) {
+				continue
+			}
+			carried[h.issue], opened = true, true
+		}
+		if !opened {
+			continue
+		}
+		l := DrainLane{Issue: run.Key, RunID: run.RunID, OpenedAt: run.CreatedAt, Outcome: DrainLaneInProgress}
+		for _, m := range run.Bundle {
+			l.Bundle = append(l.Bundle, m.Issue)
+		}
+		lanes = append(lanes, l)
+	}
+	return lanes, carried, nil
+}
+
+// openedLine is what a let-go says of a lane it recorded for the move that
+// opened it and did not live to (openedUnrecorded).
+func openedLine(l DrainLane) string {
+	with := ""
+	if len(l.Bundle) > 0 {
+		with = " with its member(s) " + strings.Join(l.Bundle, ", ")
+	}
+	return fmt.Sprintf("%s: run %s opened its lane%s on the reservation the drain took, before the drain could record it, so the drain records the lane now and the run keeps what it holds: nothing of it is released, and each lapses with its lease %s",
+		l.Issue, l.RunID, with, UnlessRunRenewed)
 }
 
 // CheckLapsed is the pass-over of an issue whose judgement request lapsed
