@@ -208,6 +208,26 @@ func TestSubagentStartTakesTheBuildsOwnFailureAsItsAnswer(t *testing.T) {
 	}
 }
 
+// TestGuardHoldsWhenTheReleaseIsKilledBehindTheDogfoodBuild: where the
+// dogfood build answers 1 or dies and the installed release judges the
+// command in its place, a release killed by a signal holds the command, as
+// at every other rung.
+func TestGuardHoldsWhenTheReleaseIsKilledBehindTheDogfoodBuild(t *testing.T) {
+	for _, died := range []string{"1", "139"} {
+		t.Run("exit-"+died, func(t *testing.T) {
+			root, build := dogfoodRig(t, "BUILD", died)
+			release := "#!/bin/sh\nif [ \"$1 $2\" = 'hook dogfood-binary' ]; then printf '%s\\n' '" + build + "'; exit 0; fi\ncat >/dev/null\nkill -KILL $$\n"
+			if err := os.WriteFile(filepath.Join(root, "abcd"), []byte(release), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			_, stderr, code := hookRunHome(t, "PreToolUse", root, "", t.TempDir(), dogfoodListHome(t))
+			if code != 2 || !strings.Contains(stderr, "FAILED TO RUN") {
+				t.Errorf("exit %d, stderr %q; want the killed release's command held (exit 2) and said out loud", code, stderr)
+			}
+		})
+	}
+}
+
 // TestGuardFallsBackWhenTheDogfoodBuildFailsToRun: a dogfood guard that dies
 // (any exit but the guard's own 0, 1 and 2) never leaves the command
 // unguarded: the shim says so on stderr and the installed release judges the
