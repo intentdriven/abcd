@@ -66,6 +66,12 @@ func bundledBundleMax() PaceValue {
 // namespace, so a misspelt key is refused naming the file it sits in rather
 // than letting the default apply unannounced, and a value outside 1 to 10 in
 // any layer is refused naming its origin, never replaced by another layer.
+//
+// The person's ceiling, reservation.max_live, runs the other way: the
+// repository sets it at origin's default branch and a machine may only lower
+// it (claim's maxlive.go, itd-2611251809580662 decision 3). That decision
+// refines dcn-2611222342270127 for the ceiling alone; this cap keeps the
+// record's rule.
 func resolveBundleMax(roots layered.Roots) (PaceValue, string, error) {
 	s, err := layered.Load(layered.Config, roots)
 	if err != nil {

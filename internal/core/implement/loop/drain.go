@@ -1301,14 +1301,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// under a holder it owns, as the reservation act reads them
 	// (iss-2611190011141331).
 	var capHolder claim.Self
-	// The cap is the person's own (reservation.max_live); a setting that
-	// cannot be used leaves the count to the reservation act, which refuses
-	// naming the file.
+	// The cap is the person's, as the repository sets it at origin's default
+	// branch and this machine may lower it (reservation.max_live,
+	// claim.MaxLiveFor), read with no network act at the branch origin last
+	// named to a reservation act here, so a branch this checkout merely
+	// tracks does not hold the drain at a wait; a setting that cannot be
+	// read leaves the count to the reservation act, which decides.
 	capLimit, capErr := claim.MaxLive, error(nil)
 	if view != nil {
 		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
 		if reserving {
-			capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
+			capLimit, capErr = claim.MaxLiveFor(repoRoot, claimOptions(now))
 		}
 	}
 	var capped, held []string
