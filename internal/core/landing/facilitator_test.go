@@ -332,21 +332,23 @@ func TestAutoArmsOnlyAReviewedHead(t *testing.T) {
 
 // The mode is read at the default branch's tip, never the lane's checkout
 // (dcn-2610230058333177): a lane that commits auto over a default branch at
-// human, or deletes the default branch's human, arms nothing.
+// human, or deletes the default branch's human, arms nothing. Since the gate
+// refuses any change to the committed mode line (adr-2611262044127943), that
+// refusal is the one it gives, before the mode is weighed.
 func TestTheLaneDoesNotDecideItsOwnMode(t *testing.T) {
 	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": humanConfig})
 	f.repo.Write(".abcd/config.json", autoConfig)
 	f.repo.Commit("the lane says auto")
 	f.forge.reviews = "[]"
 	f.reviewed(t)
-	wantLeft(t, f, landGate(t, f), "facilitator.mode is human")
+	wantLeft(t, f, landGate(t, f), "it changes the facilitator.mode line")
 
 	g := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": humanConfig})
 	g.repo.Remove(".abcd/config.json")
 	g.repo.Commit("the lane deletes the default branch's human")
 	g.forge.reviews = "[]"
 	g.reviewed(t)
-	wantLeft(t, g, landGate(t, g), "facilitator.mode is human")
+	wantLeft(t, g, landGate(t, g), "it changes the facilitator.mode line")
 }
 
 // The project's committed value stands above the computer's file
