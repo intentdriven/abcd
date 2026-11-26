@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -117,6 +118,110 @@ func TestWakeSetWhilePresentOpensNoWindow(t *testing.T) {
 	if ctx := promptAt(t, "unread", root, "unread look"); strings.Contains(ctx, conversationMark) {
 		t.Errorf("a wake seen at a stop allowed unread opened the window:\n%s", ctx)
 	}
+	stopOwedReader = prev
+
+	// So does a stop allowed because the away record could not be read.
+	st := awayStore(t, root)
+	if err := os.WriteFile(st.RecordPath(), []byte("{garbage"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payload = strings.Replace(stopHookPayload(t, "norec", root, false, "Done.", "*/10 * * * *"), `"prompt":"look"`, `"prompt":"record look"`, 1)
+	if out, so, se := runStop(t, payload); out.Decision != "" || !strings.Contains(se, "not away") {
+		t.Fatalf("a stop under an unreadable record: %s %s; want it allowed, naming the record", so, se)
+	}
+	if err := os.Remove(st.RecordPath()); err != nil {
+		t.Fatal(err)
+	}
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
+	if ctx := promptAt(t, "norec", root, "record look"); strings.Contains(ctx, conversationMark) {
+		t.Errorf("a wake seen at a stop allowed under an unreadable record opened the window:\n%s", ctx)
+	}
+}
+
+// sessionStateFile is the session's state file in the copy at root.
+func sessionStateFile(root, session string) string {
+	return filepath.Join(root, filepath.FromSlash(autonomy.SessionsDir), session+".json")
+}
+
+// TestPresentStopLeavesAnUnreadableStateAsItIs: a present stop listing a wake
+// the session's state does not hold, whose state cannot be read, writes
+// nothing over it, and names it.
+func TestPresentStopLeavesAnUnreadableStateAsItIs(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+	path := sessionStateFile(root, "broken")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	garbage := []byte("{not a state")
+	if err := os.WriteFile(path, garbage, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pinStopClock(t, time.Now().UTC(), time.UTC)
+	out, so, se := runStop(t, stopHookPayload(t, "broken", root, false, "Done.", "*/10 * * * *"))
+	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
+		t.Errorf("a present stop over an unreadable state: %s; want it allowed with the present line", so)
+	}
+	if !strings.Contains(se, "state could not be read") {
+		t.Errorf("stderr %q does not name the unreadable state", se)
+	}
+	if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, garbage) {
+		t.Errorf("the unreadable state was written over: %q (%v)", got, err)
+	}
+}
+
+// TestAllowedStopEmitsWhenTheStateCannotBeSaved: a present stop whose wakes'
+// save fails is still shown with its line, the failure named, as it was
+// before the stop saved anything.
+func TestAllowedStopEmitsWhenTheStateCannotBeSaved(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+	dir := filepath.Join(root, filepath.FromSlash(autonomy.SessionsDir))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	pinStopClock(t, time.Now().UTC(), time.UTC)
+	out, so, se := runStop(t, stopHookPayload(t, "nosave", root, false, "Done.", "*/10 * * * *"))
+	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
+		t.Errorf("a present stop whose state could not be saved: stdout %s stderr %s; want the present line", so, se)
+	}
+	if !strings.Contains(se, "could not be saved") {
+		t.Errorf("stderr %q does not name the failed save", se)
+	}
+}
+
+// TestQuestionVerbReadsTheSessionsStartCopy: run from a worktree other than
+// the session's start copy, the verb reads the window where the prompt hook
+// wrote it.
+func TestQuestionVerbReadsTheSessionsStartCopy(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
+	t.Setenv(hostSessionIDEnv, "s1")
+	if _, err := awayStore(t, root).NoteSessionCopy("s1", root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if ctx := promptAt(t, "s1", root, "let's go through the open questions"); !strings.Contains(ctx, conversationMark) {
+		t.Fatalf("the person's prompt did not open the window:\n%s", ctx)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	gitAt(t, root, "worktree", "add", "-q", "-b", "feat/wt", wt)
+	wt = realPath(t, wt)
+	if err := os.MkdirAll(filepath.Join(wt, ".abcd", ".work.local"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(wt)
+	if res, _, _ := runQuestionVerb(t, "clean-product-chip"); res.Hook == question.OutcomeRefuseAway {
+		t.Errorf("from another worktree the verb did not read the session's window in its start copy")
+	}
 }
 
 // TestConversationWindowEndsWithItsRecord: a prompt the person typed under one
@@ -183,31 +288,5 @@ func TestQuestionAdmittedInsideConversationWindow(t *testing.T) {
 		if res, _, _ := runQuestionVerb(t, "clean-product-chip"); res.Hook != question.OutcomeRefuseAway {
 			t.Errorf("the verb for session %q outside its window: %q; want refuse-away", id, res.Hook)
 		}
-	}
-}
-
-// TestAllowedStopEmitsWhenTheStateCannotBeSaved: a present stop whose wakes'
-// save fails is still shown with its line, the failure named, as it was
-// before the stop saved anything.
-func TestAllowedStopEmitsWhenTheStateCannotBeSaved(t *testing.T) {
-	ownHookBudgets(t, 10*time.Second)
-	root := awayCheckout(t)
-	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
-	fakeOwed(t, &owed)
-	dir := filepath.Join(root, filepath.FromSlash(autonomy.SessionsDir))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	pinStopClock(t, time.Now().UTC(), time.UTC)
-	out, so, se := runStop(t, stopHookPayload(t, "nosave", root, false, "Done.", "*/10 * * * *"))
-	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
-		t.Errorf("a present stop whose state could not be saved: stdout %s stderr %s; want the present line", so, se)
-	}
-	if !strings.Contains(se, "could not be saved") {
-		t.Errorf("stderr %q does not name the failed save", se)
 	}
 }
