@@ -358,8 +358,8 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		{"repo auto, product view", repoAuto, Product, Text, "facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
 		{"repo auto, markdown", repoAuto, Product, Markdown, "- facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
 		{"machine human, product view", machine, Product, Text, "facilitator: human (this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves"},
-		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  facilitator: human (this computer's file could not be read: the home directory was refused): merges once the technical facilitator approves the head"},
-		{"refused home, product view", refusedHome, Product, Text, "facilitator: human (this computer's file could not be read: the home directory was refused): merges once the technical facilitator approves"},
+		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves the head"},
+		{"refused home, product view", refusedHome, Product, Text, "facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 200, Rung: Mono})

@@ -46,8 +46,8 @@ repeat. `--json` carries it as `facilitator` (`key`, `mode`, `layer`, `origin`,
 and `home_refused` when a refused home decided it). A `human` from any layer
 wins, so a `human` in `~/.abcd.noindex/config.json` reads as `human`
 whatever the repository says, and a refused home reads as `human`
-(`facilitator: human (this computer's file could not be read: the home
-directory was refused): merges once the technical facilitator approves`). A
+(`facilitator: human (abcd could not read your own settings file safely):
+merges once the technical facilitator approves`). A
 repository with no commit has no default branch that could say anything, so the
 line reads the computer's file alone. When the mode cannot be read, or the
 repository has commits and no default branch to read it at, the line says

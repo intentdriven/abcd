@@ -107,7 +107,9 @@ func (k keptMode) valid() bool {
 // keepMode keeps what the default branch's own layer said of the mode, as the
 // prompt hook just read it: vals and readErr are that read's, at the tip r
 // names of ref. A read that failed in a way that says nothing of the branch (a
-// git that did not answer, a file that could not be read) keeps nothing. It
+// git that did not answer, or the time spent) keeps nothing; a file the branch
+// holds that is refused (not JSON, not a regular file, a value that is not a
+// mode) is kept as refused, so the row says the mode was not read and why. It
 // answers nothing and fails quietly: a reading that could not be kept leaves
 // the row saying the mode is not known.
 func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValue[string], readErr error) {
@@ -124,7 +126,7 @@ func keepMode(ctx context.Context, r layered.Roots, ref string, vals []layerValu
 	k := keptMode{Schema: keptSchema, Ref: ref, Tip: r.RepoAt, Committed: repoLayerMode(vals)}
 	var unread *layered.UnreadError
 	switch {
-	case errors.As(readErr, &unread) || ctx.Err() != nil:
+	case errors.As(readErr, &unread) && unread.GitFailed(), ctx.Err() != nil:
 		return
 	case readErr != nil:
 		k.Committed = keptRefused

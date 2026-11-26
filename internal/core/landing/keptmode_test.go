@@ -5,8 +5,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -412,17 +414,21 @@ func TestTheKeptFileIsOwnerOnlyAndWrittenOnce(t *testing.T) {
 
 // TestARefusedModeIsSaidAndNotKnown: a default branch whose configuration is
 // refused keeps that it was, and the row says so on stderr, masked, and shows
-// neither mode; a computer's own file that is refused is said too.
+// neither mode; a computer's own file that is refused is said too. A file that
+// is not JSON is refused, not taken for a git that did not answer, so the row
+// does not show an older mode over it.
 func TestARefusedModeIsSaidAndNotKnown(t *testing.T) {
 	const atMain = ".abcd/config.json at main"
 	machineFile := abcdhome.Display("config.json")
 	refused := `{"facilitator": {"mode": "sometimes"}}`
 	for name, c := range map[string]struct{ committed, machine, names string }{
-		"a value that is not a mode":                   {committed: refused, names: atMain},
-		"a hostile key":                                {committed: `{"facilitator": {"mode": "auto", "mo\u001b[31mde": "auto"}}`, names: atMain},
-		"refused on the computer":                      {committed: autoConfig, machine: refused, names: machineFile},
+		"a value that is not a mode": {committed: refused, names: atMain},
+		"not JSON":                   {committed: "{", names: atMain},
+		"trailing content":           {committed: autoConfig + "{}", names: atMain},
+		"a hostile key":              {committed: `{"facilitator": {"mode": "auto", "mo\u001b[31mde": "auto"}}`, names: atMain},
+		"refused on the computer":    {committed: autoConfig, machine: refused, names: machineFile},
 		"refused on the computer, no repository value": {machine: refused, names: machineFile},
-		"refused in both":                              {committed: refused, machine: refused, names: "facilitator.mode"},
+		"refused in both": {committed: refused, machine: refused, names: "facilitator.mode"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, root := mergingRepo(t, c.committed)
@@ -525,6 +531,10 @@ func TestTheKeptModeDecidesNothing(t *testing.T) {
 	if m, _, err := CommittedMode(context.Background(), root, tip); err != nil || m != ModeHuman {
 		t.Errorf("the landings reader reads %q, %v; want human", m, err)
 	}
+	repo.Git("remote", "add", Remote, root)
+	if f, err := ReadFetchedFacilitator(root); err != nil || f.Mode != ModeHuman {
+		t.Errorf("the shell guard reads %+v, %v; want human", f, err)
+	}
 	if auto, err := AutoForSessions(context.Background(), root); err != nil || auto {
 		t.Errorf("the prompt line reads auto = %t, %v; want human", auto, err)
 	}
@@ -532,20 +542,28 @@ func TestTheKeptModeDecidesNothing(t *testing.T) {
 }
 
 // TestOnlyTheRowReadsTheKeptMode is the structural half: the kept file's
-// reader is called from keptmode.go alone, and KeptMerging once, from the
-// front door's status line file, where it is handed to the row. So neither the
-// merge gate, abcd land, the build loop nor the guard can reach it.
+// reader and its path are named in keptmode.go alone, and KeptMerging once,
+// from the front door's status line file, where it is handed to the row; the
+// row's reader hook (statusline.MergingMode) and the composition that calls it
+// (statusline.ComposeContext) are named only where they are declared and in
+// that same file. So neither the merge gate, abcd land, the build loop nor the
+// guard can reach it, directly or through the row.
 func TestOnlyTheRowReadsTheKeptMode(t *testing.T) {
 	mod, err := fsutil.ModuleRoot(".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]string{
-		"readKeptMode":   "internal/core/landing/keptmode.go",
-		"readKeptModeIn": "internal/core/landing/keptmode.go",
-		"keptRel":        "internal/core/landing/keptmode.go",
-		"KeptMerging":    "internal/surface/cli/statusline.go",
-	}
+	const (
+		kept     = "internal/core/landing/keptmode.go"
+		row      = "internal/surface/cli/statusline.go"
+		compose  = "internal/core/statusline/compose.go"
+		pathWord = "facilitator-mode"
+	)
+	// Unexported names are judged inside landing alone, where they are this
+	// file's: another package may declare a name of its own that is spelled
+	// the same.
+	unexported := map[string][]string{"readKeptMode": {kept}, "readKeptModeIn": {kept}, "keptRel": {kept}}
+	exported := map[string][]string{"KeptMerging": {row}, "MergingMode": {compose, row}, "ComposeContext": {compose, row}}
 	seen := map[string]int{}
 	for _, top := range []string{"internal", "cmd"} {
 		err := filepath.WalkDir(filepath.Join(mod, top), func(path string, d os.DirEntry, err error) error {
@@ -561,10 +579,7 @@ func TestOnlyTheRowReadsTheKeptMode(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			text := string(raw)
-			if !strings.Contains(text, "KeptMerging") && !strings.HasPrefix(rel, "internal/core/landing/") {
-				return nil
-			}
+			inLanding := strings.HasPrefix(rel, "internal/core/landing/")
 			f, err := parser.ParseFile(token.NewFileSet(), path, raw, parser.SkipObjectResolution)
 			if err != nil {
 				return err
@@ -578,14 +593,24 @@ func TestOnlyTheRowReadsTheKeptMode(t *testing.T) {
 					for _, id := range n.Names {
 						decl[id] = true
 					}
+				case *ast.BasicLit:
+					if n.Kind == token.STRING && strings.Contains(n.Value, pathWord) {
+						seen[pathWord]++
+						if rel != kept {
+							t.Errorf("%s names the kept file's path %s; only %s may", rel, n.Value, kept)
+						}
+					}
 				case *ast.Ident:
-					want, ok := allowed[n.Name]
-					if !ok || decl[n] || (n.Name != "KeptMerging" && !strings.HasPrefix(rel, "internal/core/landing/")) {
+					want, ok := exported[n.Name]
+					if !ok && inLanding {
+						want, ok = unexported[n.Name]
+					}
+					if !ok || decl[n] {
 						return true
 					}
 					seen[n.Name]++
-					if rel != want {
-						t.Errorf("%s uses %s; only %s may: the kept mode is for the row to show, and nothing that decides a merge reads it", rel, n.Name, want)
+					if !slices.Contains(want, rel) {
+						t.Errorf("%s uses %s; only %v may: the kept mode is for the row to show, and nothing that decides a merge reads it", rel, n.Name, want)
 					}
 				}
 				return true
@@ -596,10 +621,13 @@ func TestOnlyTheRowReadsTheKeptMode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for name := range allowed {
+	for _, name := range append(slices.Collect(maps.Keys(unexported)), slices.Collect(maps.Keys(exported))...) {
 		if seen[name] == 0 {
 			t.Errorf("no use of %s was found: the scan is not looking at the kept mode", name)
 		}
+	}
+	if seen[pathWord] == 0 {
+		t.Errorf("no %q path was found: the scan is not looking at the kept file", pathWord)
 	}
 	if seen["KeptMerging"] != 1 {
 		t.Errorf("KeptMerging is used %d times, want once", seen["KeptMerging"])

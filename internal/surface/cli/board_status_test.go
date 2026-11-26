@@ -362,7 +362,7 @@ func TestBoardNamesARefusedHomeThatDecidedWhoMerges(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (this computer's file could not be read: the home directory was refused): merges once the technical facilitator approves the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves the head") {
 		t.Fatalf("a refused home is not named as what decided who merges:\n%s", text)
 	}
 	var got struct {

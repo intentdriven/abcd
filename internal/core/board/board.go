@@ -188,7 +188,7 @@ func mergesText(m *Merges, v View) string {
 	whose := "the project's, set in " + m.Origin
 	switch {
 	case m.HomeRefused:
-		whose = "this computer's file could not be read: the home directory was refused"
+		whose = "abcd could not read your own settings file safely"
 	case m.Layer == "bundled":
 		whose = "not set, the bundled default"
 	case m.Layer == "machine":
