@@ -2850,7 +2850,7 @@ it is judged. A line the draft does not carry is never invented: the
 check names it.
 
 The verb reads the stores the hook reads (the away record, the
-conversation window of the session CLAUDE_CODE_SESSION_ID names, read in
+conversation window of the session the host's environment names, read in
 that session's start copy, and the mode where the status line's badge
 shows) and calls the one decision the hook
 calls, so it reports every finding, the rows each tab takes at 80 columns

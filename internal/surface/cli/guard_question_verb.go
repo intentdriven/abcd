@@ -185,7 +185,7 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"it is judged. A line the draft does not carry is never invented: the\n" +
 			"check names it.\n\n" +
 			"The verb reads the stores the hook reads (the away record, the\n" +
-			"conversation window of the session CLAUDE_CODE_SESSION_ID names, read in\n" +
+			"conversation window of the session the host's environment names, read in\n" +
 			"that session's start copy, and the mode where the status line's badge\n" +
 			"shows) and calls the one decision the hook\n" +
 			"calls, so it reports every finding, the rows each tab takes at 80 columns\n" +
