@@ -263,3 +263,24 @@ func TestCreateExclusiveInWithoutHardLinks(t *testing.T) {
 	}
 	onlyEntries(t, dir, "rec.md")
 }
+
+// TestCreateExclusiveInAFailedWriteNamesTheCallersPath: a write, flush or close
+// that fails names rel, the caller's path, never the temp name the content was
+// staged under, as the doc comment promises for every refusal.
+func TestCreateExclusiveInAFailedWriteNamesTheCallersPath(t *testing.T) {
+	root, dir := exclusiveRoot(t)
+	swapExclusiveWrite(t, func(f *os.File, data []byte) error {
+		f.Close()
+		_, err := f.Write(data)
+		return err
+	})
+	err := CreateExclusiveIn(root, "rec.md", []byte("whole"), 0o644)
+	var pe *fs.PathError
+	if !errors.As(err, &pe) || pe.Path != "rec.md" || strings.Contains(err.Error(), ".abcd-tmp-") {
+		t.Errorf("a failed write = %v, want a *fs.PathError naming %q and not the temp name", err, "rec.md")
+	}
+	if !errors.Is(err, os.ErrClosed) {
+		t.Errorf("a failed write = %v, want its cause kept", err)
+	}
+	onlyEntries(t, dir)
+}

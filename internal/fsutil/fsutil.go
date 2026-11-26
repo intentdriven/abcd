@@ -805,14 +805,18 @@ func ProbeRealDirAll(base, rel string) (ok bool, err error) {
 // Both names are resolved through root (os.Root.Link is linkat with no
 // follow flag), so neither can be steered out of it.
 //
-// On a filesystem with no hard links (FAT and exFAT among them), the link's
-// refusal is taken as that and the name is claimed with an O_EXCL create of an
-// empty file, over which the complete temp file is then renamed. The exclusive
-// contract is the same; a crash in the instant between the two leaves an empty
-// file rather than none, a window two syscalls wide rather than the whole write.
+// When the link is refused as unsupported or not permitted (a filesystem with
+// no hard links, such as FAT or exFAT, or one that has them but refuses this
+// link, as Linux does under protected_hardlinks on a uid-squashing mount), the
+// name is claimed with an O_EXCL create of an empty file, over which the
+// complete temp file is then renamed. Either route is exclusive and leaves the
+// file whole; the fallback's one gap is a crash in the instant between the claim
+// and the rename, which leaves an empty file rather than none, a window two
+// syscalls wide rather than the whole write.
 //
-// rel is slash-separated and relative to root, and its directory must exist. A
-// refusal names rel, never the temp name: an existing rel is a *fs.PathError
+// rel is slash-separated and relative to root, and its directory must exist.
+// Every error that carries a path names rel, never the temp name, a failed
+// write, flush or close as much as a refusal: an existing rel is a *fs.PathError
 // satisfying errors.Is(err, fs.ErrExist) and os.IsExist, so a caller can map it
 // to its own typed refusal. perm is the new file's mode under the umask. Every
 // failure removes the temp name, and the success path removes it too, leaving
@@ -827,7 +831,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 	abandon := func(err error) error {
 		tmp.Close()
 		_ = root.Remove(tmpRel)
-		return err
+		return namedFor(rel, err)
 	}
 	if err := exclusiveWrite(tmp, data); err != nil {
 		return abandon(err)
@@ -837,7 +841,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = root.Remove(tmpRel)
-		return err
+		return namedFor(rel, err)
 	}
 	err = linkIn(root, tmpRel, rel)
 	switch {
@@ -864,16 +868,19 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 	return nil
 }
 
-// noHardLinks reports whether a link's refusal says the filesystem has no hard
-// links: ENOTSUP or EOPNOTSUPP (macOS, and Linux for some filesystems), or EPERM,
-// which Linux returns for a filesystem that cannot link and which a file this
-// process just created can raise for no other reason.
+// noHardLinks reports whether a link's refusal sends CreateExclusiveIn to its
+// claim-then-rename route: ENOTSUP or EOPNOTSUPP (a filesystem with no hard
+// links, on macOS and on Linux), or EPERM, which Linux returns both for a
+// filesystem that cannot link and for one that can but refuses this link (under
+// protected_hardlinks, when a uid-squashing mount makes the new file read as
+// another account's). Taking the fallback for a filesystem that could link costs
+// nothing in correctness: the result is exclusive and whole either way.
 func noHardLinks(err error) bool {
 	return errors.Is(err, errors.ErrUnsupported) || errors.Is(err, syscall.EPERM)
 }
 
-// claimThenRename is CreateExclusiveIn's route on a filesystem with no hard
-// links: claim rel with an O_EXCL create, so a name that exists is refused as
+// claimThenRename is CreateExclusiveIn's route when the link is refused as
+// unsupported or not permitted: claim rel with an O_EXCL create, so a name that exists is refused as
 // before, then rename the complete temp file over the empty claim. It removes
 // the temp name, and the claim when the rename fails.
 func claimThenRename(root *os.Root, tmpRel, rel string, perm os.FileMode) error {
