@@ -179,6 +179,10 @@ var wordReaders = map[string]string{
 	"segmentMaySet": "commandSites and unfixed: a word no line fixes may set the variable",
 	"maySetBy":      "exempt: reads the words a builtin is handed, and a word no line fixes (unfixed) counts as naming the variable",
 
+	// carried.go: the values a line assigns, in place.
+	"programWords": "commandSites: every word the walk may run as a program, but the name command -v looks up",
+	"leadsDash":    "exempt: reads a value the line assigned, as fixed text, not a word of the line",
+
 	// supplied.go: the words xargs and a find hand the command they run.
 	"suppliedReadings": "commandSites, commandNamed and anyProgram for xargs and find: a name nothing fixes is read as neither, and a supplied word is unknownText",
 

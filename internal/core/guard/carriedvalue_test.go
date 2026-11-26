@@ -1,6 +1,9 @@
 package guard
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestALineCarriesTheValueItAssigns — iss-2609281134544802, ruling AT (product
 // thinker, 2026-10-11): a value carried in a variable is read where the same
@@ -81,16 +84,64 @@ func TestEveryCombinationOfAWordsValuesIsRead(t *testing.T) {
 		{`A=x; A=y; B=1; B=2; "$A$B" make`, VerdictAllow, ""},
 		{`A=go; B=x; B=y; "$A" build "$B"`, VerdictAllow, ""},
 	})
-	// Three names of eight values each: the combinations past the bound stand for
-	// output the guard did not read, run here as a string.
-	var line string
-	for _, n := range []string{"A", "B", "C"} {
-		for _, v := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
-			line += n + "=" + v + "; "
+	// Three names of eight values each: the combinations past the bound are not
+	// read, so a string run from them is uninspectable, and a command whose
+	// program they spell, or a word of which they spell a flag, is held as unread.
+	lines := func(a, b, c string) string {
+		var line string
+		for i, last := range []string{a, b, c} {
+			for _, v := range []string{"a", "b", "c", "d", "e", "f", "g", last} {
+				line += string(rune('A'+i)) + "=" + v + "; "
+			}
 		}
+		return line
 	}
+	line, dashed, emptyFirst := lines("h", "h", "h"), lines("-h", "h", "h"), lines("", "", "-h")
+	unread := commandTooLongEntryID
 	runVerdictCases(t, []verdictCase{
 		{line + `eval "$A$B$C"`, VerdictBlock, syntheticEntryID},
-		{line + `"$A$B$C" make`, VerdictAllow, ""},
+		{line + `"$A$B$C" make`, VerdictBlock, unread},
+		{dashed + `git push "$A$B$C" origin main`, VerdictBlock, ""},
+		{emptyFirst + `git push "$A$B$C" origin main`, VerdictBlock, unread},
+		{line + `git push "$A$B$C" origin main`, VerdictAllow, ""},
+		// A name given more values than the guard reads is held the same way.
+		{`P=p1; P=p2; P=p3; P=p4; P=p5; P=p6; P=p7; P=p8; P=pkill; $P make`, VerdictBlock, unread},
+		{`F=-a; F=-b; F=-c; F=-d; F=-e; F=-g; F=-h; F=-i; F=-j; git push "$F" origin main`, VerdictBlock, unread},
+		// A name given that many values and used inside other text, as data, is not.
+		{`M=a; M=b; M=c; M=d; M=e; M=f; M=g; M=h; M=i; echo "made $M"`, VerdictAllow, ""},
 	})
+}
+
+// TestCarriedValuesCostWhatTheLineHolds: the readings with values in place are
+// bounded across the line, in number and in bytes, so a line of commands each
+// spelled with many combinations of values costs what its words do; past the
+// bound, the line is held as unread.
+func TestCarriedValuesCostWhatTheLineHolds(t *testing.T) {
+	vals := func(name string, width int) string {
+		var b strings.Builder
+		for i := 0; i < 8; i++ {
+			b.WriteString(name + "=" + strings.Repeat(string(rune('a'+i)), width) + "; ")
+		}
+		return b.String()
+	}
+	for _, c := range []struct {
+		name, head, unit string
+	}{
+		{"two names of eight values, a bare word", vals("A", 1) + vals("B", 1), "$A$B;"},
+		{"two names of eight values, an update", vals("A", 1) + vals("B", 1), `"$A$B" update v1; `},
+		{"two names of eight long values", vals("A", 120) + vals("B", 120), `"$A$B" update v1; `},
+		{"three names of eight values, eval", vals("A", 1) + vals("B", 1) + vals("C", 1), `eval "$A$B$C"; `},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			assertWorkGrowth(t, func(n int) string { return c.head + strings.Repeat(c.unit, n) }, 400, c.name)
+		})
+	}
+	d, err := Defaults().Check(vals("A", 1) + vals("B", 1) + strings.Repeat("$A$B;", 3000))
+	if err != nil || d.Verdict != VerdictBlock || d.EntryID != commandTooLongEntryID {
+		t.Errorf("a line past the bound on readings = %q via %q, %v; want it held as unread", d.Verdict, d.EntryID, err)
+	}
+	d, err = Defaults().Check("PM=npm; " + strings.Repeat(`"$PM" update v1; `, 3000))
+	if err != nil || d.Verdict == VerdictBlock {
+		t.Errorf("a line of one fixed value used 3000 times = %q via %q, %v; want it read", d.Verdict, d.EntryID, err)
+	}
 }

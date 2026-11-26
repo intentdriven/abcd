@@ -125,6 +125,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		capIFSSplits(segs)
 	}
 	queue := []work{{segs: segs, depth: depth}}
+	budget := &carriedBudget{}
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
@@ -132,7 +133,8 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		// (carried.go): each such command is read once more with the value
 		// in its words, as another reading of it, and a command whose words
 		// hold a value's output passes that output on (segment.carries).
-		carried, carriedSigs := carriedReadings(item.segs)
+		budget.grant(item.segs)
+		carried, carriedSigs := carriedReadings(item.segs, budget)
 		signals = append(signals, carriedSigs...)
 		// The records go to the copy of each command in out, and to its
 		// copy in the tokenize call that emitted it, which a run another

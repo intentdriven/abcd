@@ -47,6 +47,10 @@ type carriedValue struct {
 	spell  string
 	feeds  []feed
 	output bool
+	// folded records a value standing for values past a bound, which the guard
+	// does not read (maxCarriedValues, maxCarriedReadings), and dash that one of
+	// them can open with a dash, so stand as a flag (leadsDash).
+	folded, dash bool
 }
 
 // maxCarriedValues bounds the values one name is read with. A name assigned
@@ -61,6 +65,50 @@ const maxCarriedValues = 8
 // output the guard did not read, fed by every command any of them held.
 const maxCarriedReadings = 64
 
+// The readings with values in place past each command's first are bounded
+// across one line, the scripts it runs included, in number and in the bytes of
+// their words: carriedBaseReadings and carriedBaseBytes, and for each byte of
+// the text read, one reading per carriedBytesPerReading bytes and
+// carriedBytesPerByte bytes, so their cost is linear in the text. Past either,
+// and where a value past maxCarriedValues or a combination past
+// maxCarriedReadings stands as a command's program or as a whole word that can
+// be a flag, the line is held as unread (carriedUnreadSignal).
+const (
+	carriedBaseReadings    = 1024
+	carriedBaseBytes       = 64 << 10
+	carriedBytesPerReading = 8
+	carriedBytesPerByte    = 16
+)
+
+// carriedBudget is what one line may spend on readings with values in place,
+// and has spent.
+type carriedBudget struct {
+	text, readings, bytes int
+	unread                bool
+}
+
+// grant adds the words of segs to the text the line has read.
+func (b *carriedBudget) grant(segs []segment) {
+	for _, s := range segs {
+		for _, t := range s.tokens {
+			b.text += len(t) + 1
+		}
+	}
+}
+
+// spend counts the reading d against the budget, and reports whether it fits.
+func (b *carriedBudget) spend(d segment) bool {
+	n := 0
+	for _, t := range d.tokens {
+		n += len(t)
+	}
+	b.readings++
+	b.bytes += n
+	tally(len(d.tokens))
+	return b.readings <= carriedBaseReadings+b.text/carriedBytesPerReading &&
+		b.bytes <= carriedBaseBytes+b.text*carriedBytesPerByte
+}
+
 // declarers assign each NAME=VALUE operand as a plain assignment does.
 var declarers = map[string]bool{"export": true, "declare": true, "typeset": true, "local": true, "readonly": true}
 
@@ -74,7 +122,7 @@ var readValueFlags = map[string]bool{"-a": true, "-d": true, "-i": true, "-n": t
 // each command whose words hold a value records the commands that value's
 // output came from (segment.carries) in place, where the runs that name it
 // read it.
-func carriedReadings(segs []segment) (map[int][]segment, []payloadSignal) {
+func carriedReadings(segs []segment, budget *carriedBudget) (map[int][]segment, []payloadSignal) {
 	fileCarries(segs)
 	var vals map[string][]carriedValue
 	var out map[int][]segment
@@ -82,8 +130,12 @@ func carriedReadings(segs []segment) (map[int][]segment, []payloadSignal) {
 	ends := loopEnds(segs)
 	for k, s := range segs {
 		readings := []segment{s}
-		if len(vals) > 0 && len(s.variable) > 0 {
-			ds, held, runsOutput := carriedSegments(s, vals)
+		if len(vals) > 0 && len(s.variable) > 0 && !budget.unread {
+			ds, held, runsOutput, unread := carriedSegments(s, vals, budget)
+			if unread && !budget.unread {
+				budget.unread = true
+				signals = append(signals, carriedUnreadSignal())
+			}
 			// The output a value holds is what this command's words hold,
 			// so a command it prints into reads it too: `echo "$p" | xargs
 			// kill` hands kill what pgrep printed.
@@ -263,7 +315,7 @@ func addValue(vs []carriedValue, v carriedValue) []carriedValue {
 	}
 	last := vs[len(vs)-1]
 	out := append([]carriedValue(nil), vs[:len(vs)-1]...)
-	merged := carriedValue{tok: unknownText, output: true,
+	merged := carriedValue{tok: unknownText, output: true, folded: true, dash: leadsDash(last) || leadsDash(v),
 		feeds: mergeRuns(append(append([]feed(nil), last.feeds...), v.feeds...))}
 	return append(out, merged)
 }
@@ -272,10 +324,12 @@ func addValue(vs []carriedValue, v carriedValue) []carriedValue {
 // not read, fed by every command any of them held.
 func foldedValue(vs []carriedValue) carriedValue {
 	var feeds []feed
+	dash := false
 	for _, v := range vs {
+		dash = dash || leadsDash(v)
 		feeds = append(feeds, v.feeds...)
 	}
-	return carriedValue{tok: unknownText, output: true, feeds: mergeRuns(feeds)}
+	return carriedValue{tok: unknownText, output: true, folded: true, dash: dash, feeds: mergeRuns(feeds)}
 }
 
 // carriedUse is one word of a segment whose every variable the text assigned:
@@ -290,7 +344,7 @@ type carriedUse struct {
 // combination of the values its names hold, the commands whose output those
 // values hold, and whether a value holding output the guard did not read
 // reaches a string s runs.
-func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []feed, bool) {
+func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedBudget) (out []segment, held []feed, runsOutput, unread bool) {
 	idx := make([]int, 0, len(s.variable))
 	for i := range s.variable {
 		idx = append(idx, i)
@@ -325,11 +379,12 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 			uses = append(uses, carriedUse{i: i, names: names})
 		}
 	}
-	runsOutput := len(opaque) > 0 && outputRunAsString(s, opaque)
-	if len(uses) == 0 {
-		return nil, nil, runsOutput
+	if len(opaque) > 0 {
+		runsOutput = outputRunAsString(s, opaque)
 	}
-	var held []feed
+	if len(uses) == 0 {
+		return nil, nil, runsOutput, false
+	}
 	for _, u := range uses {
 		for _, nm := range u.names {
 			for _, v := range vals[nm] {
@@ -356,7 +411,7 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 	folded := combos > maxCarriedReadings
 	combos = min(combos, maxCarriedReadings)
 	pick := make(map[string]carriedValue, len(names))
-	var out []segment
+	var wordAt map[int]bool
 	for k := 0; k < combos; k++ {
 		r := k
 		for _, nm := range names {
@@ -373,21 +428,129 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 		for _, u := range uses {
 			picked := make([]carriedValue, len(u.names))
 			output := false
+			folded := false
 			for j, nm := range u.names {
 				picked[j] = pick[nm]
 				output = output || picked[j].output
+				folded = folded || picked[j].folded
+			}
+			// A value the guard did not read, standing as the program or as a
+			// whole word that can be a flag, is not judged.
+			if folded {
+				if wordAt == nil {
+					wordAt = programWords(s)
+				}
+				if wordAt[u.i] || wholeWord(s.variable[u.i]) && wordLeadsDash(u.names, vals) {
+					return out, held, runsOutput, true
+				}
 			}
 			placeValues(&d, u.i, s.variable[u.i], u.names, picked)
 			if output {
 				outputAt = append(outputAt, u.i)
 			}
 		}
+		if k > 0 && !budget.spend(d) {
+			return out, held, runsOutput, true
+		}
 		out = append(out, d)
 		if len(outputAt) > 0 && !runsOutput {
 			runsOutput = outputRunAsString(s, outputAt)
 		}
 	}
-	return out, held, runsOutput
+	return out, held, runsOutput, false
+}
+
+// programWords is the words of s that stand as a command's program, other than
+// the name `command -v` or `-V` looks up, which runs nothing.
+func programWords(s segment) map[int]bool {
+	out := map[int]bool{}
+	for _, a := range commandSites(s) {
+		i := a.idx
+		if i >= 2 && s.tokens[i-2] == "command" && strings.HasPrefix(s.tokens[i-1], "-") && strings.ContainsAny(s.tokens[i-1], "vV") {
+			continue
+		}
+		out[i] = true
+	}
+	return out
+}
+
+// wholeWord reports whether a word's template is nothing but variables.
+func wholeWord(tmpl string) bool {
+	return tmpl != "" && strings.Trim(tmpl, varText) == ""
+}
+
+// leadsDash reports whether a value can open with a dash: it does, or it stands
+// for values one of which does. Output the guard did not read is read as any
+// word, as a variable the line does not set is.
+func leadsDash(v carriedValue) bool {
+	return v.dash || strings.HasPrefix(v.tok, "-")
+}
+
+// wordLeadsDash reports whether a word spelled with the names in order can open
+// with a dash: a value of the first can, or the first can be empty and the rest
+// can.
+func wordLeadsDash(names []string, vals map[string][]carriedValue) bool {
+	for _, nm := range names {
+		empty := false
+		for _, v := range vals[nm] {
+			if leadsDash(v) {
+				return true
+			}
+			empty = empty || v.tok == ""
+		}
+		if !empty {
+			return false
+		}
+	}
+	return false
+}
+
+// spellsAssigned reports whether a spelling of a word names a variable vals
+// holds a value of.
+func spellsAssigned(spells []string, vals map[string][]carriedValue) bool {
+	for _, spell := range spells {
+		if spellNamesAssigned(spell, vals) {
+			return true
+		}
+	}
+	return false
+}
+
+func spellNamesAssigned(spell string, vals map[string][]carriedValue) bool {
+	for i := 0; i < len(spell); i++ {
+		if spell[i] != '$' {
+			continue
+		}
+		j := i + 1
+		if j < len(spell) && spell[j] == '{' {
+			j++
+		}
+		k := j
+		for k < len(spell) && nameByte(spell[k]) {
+			k++
+		}
+		if k > j && len(vals[spell[j:k]]) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// carriedUnreadSignal is the fail-closed verdict on a line whose values the guard
+// did not put in place: more readings or bytes than it reads for one line, or a
+// value past a bound standing where it decides what runs.
+func carriedUnreadSignal() payloadSignal {
+	return payloadSignal{
+		id:      commandTooLongEntryID,
+		verdict: VerdictBlock,
+		family:  familyCommandLength,
+		reason: "This line gives its variables more values, or more combinations of them, than the guard puts in place (" +
+			itoa(maxCarriedValues) + " values a name, " + itoa(maxCarriedReadings) + " readings a command, " +
+			"and for a line a reading for every " + itoa(carriedBytesPerReading) + " bytes it holds), " +
+			"so a command that uses them has not been checked.",
+		successor: "Split the line, or give each variable the one value the command needs, " +
+			"so the guard checks the command that actually runs.",
+	}
 }
 
 // siteNames pairs a word's variable template with its spelling and returns
@@ -428,37 +591,6 @@ func siteNames(tmpl, spell string) (names []string, ok bool) {
 		}
 	}
 	return names, j == len(spell)
-}
-
-// spellsAssigned reports whether a spelling of a word names a variable vals
-// holds a value of.
-func spellsAssigned(spells []string, vals map[string][]carriedValue) bool {
-	for _, spell := range spells {
-		if spellNamesAssigned(spell, vals) {
-			return true
-		}
-	}
-	return false
-}
-
-func spellNamesAssigned(spell string, vals map[string][]carriedValue) bool {
-	for i := 0; i < len(spell); i++ {
-		if spell[i] != '$' {
-			continue
-		}
-		j := i + 1
-		if j < len(spell) && spell[j] == '{' {
-			j++
-		}
-		k := j
-		for k < len(spell) && nameByte(spell[k]) {
-			k++
-		}
-		if k > j && len(vals[spell[j:k]]) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // carriedCopy is s as a reading of its own: its per-word records copied so a
