@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-97, itd-2610150602547271]
 related_rfcs: []
-related_adrs: [adr-2609151528057260]
+related_adrs: [adr-2609151528057260, adr-2611262044127943]
 ---
 
 # ADR-2610150603484802: A fresh install's facilitator is a person until the repository says auto
@@ -42,6 +42,15 @@ The three roles, the facilitator being a mode, and every gate declaring its
 behaviour in both modes all stand.
 
 Ruled by the product thinker, 2026-10-15.
+
+Reversed in part by
+[adr-2611262044127943](2611262044127943-the-project-s-committed-facilitator-mode.md),
+ruled by the product owner on 2026-11-26: `human` from any layer no longer
+wins over `auto`, since the repository's committed value is above a person's
+own, and the declaration is no longer `.abcd/config.json` alone, since the
+person's global setting in `~/.abcd.noindex/config.json` decides where the
+repository commits none. That a person is the facilitator until told otherwise
+stands.
 
 ## Alternatives Considered
 
