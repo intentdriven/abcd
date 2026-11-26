@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -103,9 +104,9 @@ func newEmbargoQueueCommand(asJSON *bool) *cobra.Command {
 			}
 			switch _, away, err := autonomy.AwayAt(root, autonomy.Options{}); {
 			case err != nil:
-				return &exitError{Code: 2, Msg: verb + ": the away record cannot be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); nothing queued"}
+				return refused(2, refusal.EmbargoNotAway, verb+": the away record cannot be read ("+termsafe.Sanitize(fsutil.RedactHome(err.Error()))+"); nothing queued")
 			case !away:
-				return &exitError{Code: 2, Msg: verb + ": the person is not away (`abcd mode autonomous` says they are), so there is no return to queue a step for; nothing queued: tell them instead"}
+				return refused(2, refusal.EmbargoNotAway, verb+": the person is not away (`abcd mode autonomous` says they are), so there is no return to queue a step for; nothing queued: tell them instead")
 			}
 			res, err := embargo.Status(embargo.StatusRequest{Home: home, RepoRoot: root})
 			if err != nil {
@@ -117,9 +118,9 @@ func newEmbargoQueueCommand(asJSON *bool) *cobra.Command {
 				queued, _, err := autonomy.QueueStepOnce(root, embargoPublishStep(r), autonomy.Options{})
 				switch {
 				case errors.Is(err, autonomy.ErrNotAway):
-					return &exitError{Code: 2, Msg: verb + ": the person came back before the publish step for " + r.IssueID + " was queued" + queuedSoFar(out.Queued)}
+					return refused(2, refusal.EmbargoNotAway, verb+": the person came back before the publish step for "+r.IssueID+" was queued"+queuedSoFar(out.Queued))
 				case err != nil:
-					return &exitError{Code: 1, Msg: verb + ": the publish step for " + r.IssueID + " could not be queued (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + ")" + queuedSoFar(out.Queued)}
+					return exitWith(1, refusal.None, verb+": the publish step for "+r.IssueID+" could not be queued ("+termsafe.Sanitize(fsutil.RedactHome(err.Error()))+")"+queuedSoFar(out.Queued))
 				case queued:
 					out.Queued = append(out.Queued, r.IssueID)
 				default:
@@ -232,11 +233,11 @@ func embargoPlace(verb string) (root, home string, err error) {
 	}
 	root, err = gitutil.CheckoutRoot(cwd, embargoStore)
 	if err != nil {
-		return "", "", &exitError{Code: 2, Msg: verb + ": " + err.Error() + " (nothing written)"}
+		return "", "", refused(2, refusal.EmbargoOutsideCheckout, verb+": "+err.Error()+" (nothing written)")
 	}
 	home, err = os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", "", &exitError{Code: 2, Msg: verb + ": the home directory cannot be named, so there is no abcd home to keep the embargo store in (nothing written)"}
+		return "", "", refused(2, refusal.EmbargoUnknownHome, verb+": the home directory cannot be named, so there is no abcd home to keep the embargo store in (nothing written)")
 	}
 	return root, home, nil
 }
@@ -248,12 +249,19 @@ func embargoFailure(verb string, err error) error {
 	msg := fsutil.RedactHome(strings.TrimPrefix(err.Error(), "embargo: "))
 	var r *embargo.RefusalError
 	if errors.As(err, &r) {
-		return &exitError{Code: 2, Msg: verb + ": " + msg}
+		// The code the core put on the refusal where its cure is a step of
+		// its own (no store yet, nothing to check), and otherwise
+		// embargo/invalid-request, whose message names the remedy.
+		ref := refusal.CodeOf(err)
+		if ref == refusal.None {
+			ref = refusal.EmbargoInvalidRequest
+		}
+		return exitWith(2, ref, verb+": "+msg)
 	}
 	var cf *embargo.CloseFailedError
 	var pf *embargo.PublishFailedError
 	if errors.As(err, &cf) || errors.As(err, &pf) {
-		return &exitError{Code: 1, Msg: verb + ": " + msg}
+		return exitWith(1, refusal.None, verb+": "+msg)
 	}
 	return fmt.Errorf("%s: %s", verb, msg)
 }
@@ -483,7 +491,10 @@ func newEmbargoCheckCommand(asJSON *bool) *cobra.Command {
 				return rerr
 			}
 			if !res.Clean() {
-				return &exitError{Code: 2}
+				// A finding refuses the text, and the findings are already
+				// rendered: the refusal carries its code and no message, so
+				// Run adds the code's line alone and repeats nothing found.
+				return refused(2, refusal.EmbargoEmbargoedText, "")
 			}
 			return nil
 		},

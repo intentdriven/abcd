@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -199,7 +200,7 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return PlanResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return PlanResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if it.Bucket != BucketPlanned && it.Bucket != BucketDrafts {
 		return PlanResult{}, fmt.Errorf("intent: %s is in %s, not drafts; only a draft can be planned", intentID, it.Bucket)
@@ -700,7 +701,7 @@ func Link(repoRoot, intentID, specID string) (LinkResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return LinkResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return LinkResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if it.Bucket != BucketPlanned {
 		return LinkResult{}, fmt.Errorf("intent: %s is in %s, not planned; only a planned intent can be linked", intentID, it.Bucket)
@@ -785,7 +786,7 @@ func AddRelatedIssue(repoRoot, intentID, source string) (Intent, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return Intent{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return Intent{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
@@ -879,7 +880,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	}
 	sp, ok := store.Lookup(specID)
 	if !ok {
-		return ReconcileResult{}, fmt.Errorf("intent: spec %s not found", specID)
+		return ReconcileResult{}, refusal.Wrap(refusal.SpecUnknownSpec, fmt.Errorf("intent: spec %s not found", specID))
 	}
 	// A bundle's shared spec ships every member together (itd-34).
 	if sp.Bundle != "" && len(sp.Intents) > 0 {
@@ -1365,7 +1366,7 @@ func resolveShipImpactFrom(it Intent, content, supplied string) (string, error) 
 
 	switch {
 	case recorded == "" && supplied == "":
-		return "", fmt.Errorf("intent: %s has no impact and none was supplied; shipped/ requires one of %s (it decides the derived version, and there is no default) — re-run with --impact, or record the judgement in %s first", it.ID, shipImpactValues, it.Path)
+		return "", refusal.Wrap(refusal.SpecMissingImpact, fmt.Errorf("intent: %s has no impact and none was supplied; shipped/ requires one of %s (it decides the derived version, and there is no default) — re-run with --impact, or record the judgement in %s first", it.ID, shipImpactValues, it.Path))
 	case supplied == "":
 		if err := validShipImpact(recorded); err != nil {
 			return "", fmt.Errorf("intent: %s records %w; refusing to ship a record its own record-lint would refuse", it.ID, err)

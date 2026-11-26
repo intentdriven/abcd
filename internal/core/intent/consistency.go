@@ -471,7 +471,7 @@ func assembleConsistency(repoRoot, scope string) (consistencyCorpus, error) {
 	if scope != ConsistencyScopeCorpus {
 		it, ok := corpus.Lookup(scope)
 		if !ok {
-			return consistencyCorpus{}, fmt.Errorf("intent: %s not found in any bucket", scope)
+			return consistencyCorpus{}, unknownIntent("intent: %s not found in any bucket", scope)
 		}
 		if it.Bucket == BucketSuperseded {
 			return consistencyCorpus{}, fmt.Errorf("intent: %s is superseded; a retired record is not part of the corpus the pass reads", scope)

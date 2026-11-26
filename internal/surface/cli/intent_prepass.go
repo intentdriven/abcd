@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -32,7 +33,7 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 			}
 			id := args[0]
 			if dryRun && !cmd.Flags().Changed("findings-json") {
-				return &exitError{Code: 2, Msg: "abcd intent prepass: --dry-run checks a --findings-json input; the bare form writes nothing already (nothing written)"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent prepass: --dry-run checks a --findings-json input; the bare form writes nothing already (nothing written)")
 			}
 			if !cmd.Flags().Changed("findings-json") {
 				in, err := intent.AssemblePrepass(repoRoot, id)
@@ -52,7 +53,10 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 			}
 			raw, err := intent.ReadPrepassFindings(findingsJSON)
 			if err != nil {
-				return prepassRefusal(err, "")
+				// A findings file that cannot be read is a refusal of the
+				// findings, worded as the read's own refusal.
+				msg := "abcd intent prepass: " + strings.TrimPrefix(fsutil.RedactHome(err.Error()), "intent prepass: ")
+				return refused(2, refusal.IntentInvalidFindings, msg+" (nothing written)")
 			}
 			if dryRun {
 				plan, err := intent.PlanPrepassBrief(repoRoot, id, raw)
@@ -91,7 +95,17 @@ func newIntentPrepassCommand(asJSON *bool) *cobra.Command {
 func prepassRefusal(err error, id string) error {
 	msg := "abcd intent prepass: " + strings.TrimPrefix(fsutil.RedactHome(err.Error()), "intent prepass: ")
 	if id != "" {
-		return &exitError{Code: 2, Msg: fmt.Sprintf("%s (nothing written; the findings are held to the rules `abcd intent prepass %s --json` prints)", msg, termsafe.CleanProseLine(id, 40))}
+		return exitWith(2, findingsRefusalCode(err), fmt.Sprintf("%s (nothing written; the findings are held to the rules `abcd intent prepass %s --json` prints)", msg, termsafe.CleanProseLine(id, 40)))
 	}
-	return &exitError{Code: 2, Msg: msg + " (nothing written)"}
+	return exitWith(2, intentRefusalCode(err), msg+" (nothing written)")
+}
+
+// findingsRefusalCode is the code of a refusal of pre-pass findings: an
+// intent id no bucket holds keeps its own code, and every other refusal is
+// of the findings.
+func findingsRefusalCode(err error) refusal.Code {
+	if c := intentRefusalCode(err); c != refusal.IntentInvalidRequest {
+		return c
+	}
+	return refusal.IntentInvalidFindings
 }

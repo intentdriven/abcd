@@ -6,6 +6,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -28,7 +29,7 @@ import (
 func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFlag) error {
 	// The cap is refused before the history walk, the costliest step here.
 	if err := intent.CheckOwedCap(max); err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent audit --owed: " + err.Error()}
+		return refused(2, refusal.UsageInvalidFlagValue, "abcd intent audit --owed: "+err.Error())
 	}
 	repoRoot, err := intentStoreRoot(cmd)
 	if err != nil {
@@ -57,7 +58,7 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 	step, err := intent.NextOwedAudit(repoRoot, max, shippedOn,
 		intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd intent audit --owed: " + err.Error()}
+		return exitWith(2, intentRefusalCode(err), "abcd intent audit --owed: "+err.Error())
 	}
 	// An emit error can carry an absolute path, and the host is told to report
 	// it (commands/intent.md), so it leaves here with the home redacted, in the
@@ -78,8 +79,8 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 		if d != nil {
 			ing, err := intent.IngestVerdictBytes(repoRoot, d.payload)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent audit --owed: the answer from " + termsafe.Sanitize(d.receipt.ConnectionUsed) +
-					": " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+				return refused(2, refusal.IntentInvalidVerdict, "abcd intent audit --owed: the answer from "+termsafe.Sanitize(d.receipt.ConnectionUsed)+
+					": "+termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 			}
 			ran = d
 			view.Next = withDispatchReceipt(ing, d)

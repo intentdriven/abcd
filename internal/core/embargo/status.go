@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -161,7 +162,10 @@ func statusReleaseTags(s Store, st State) (*releaseTags, error) {
 	}
 	rt.vouch = func() error {
 		if st.Repo == "" {
-			return refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
+			// Wrapped as its siblings in close.go and plan.go are; the status
+			// reports it as a waiting advisory's reason, never as a refusal.
+			return refusal.Wrap(refusal.EmbargoMissingStore,
+				refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again"))
 		}
 		repo, err := originRepoOf(s.Checkout)
 		if err != nil {

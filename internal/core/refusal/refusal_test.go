@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -458,5 +459,80 @@ func TestTheRenamedCodesAreTheRegisteredOnes(t *testing.T) {
 		if _, ok := Lookup(old); ok {
 			t.Errorf("%s is still registered; it was renamed %s", old, renamed)
 		}
+	}
+}
+
+// TestEntriesLoadInFileOrder: the registry is the table in refusal.go, then
+// each family file's register call, files in name order and each file's
+// entries in the order it lists them. So explain lists the codes in an order
+// a reader of the source can predict, and a family file added in one change
+// cannot reorder another's.
+func TestEntriesLoadInFileOrder(t *testing.T) {
+	consts := constantCodes(t)
+	files, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var table, families []Code
+	fset := token.NewFileSet()
+	for _, e := range files {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok || !isIdent(lit.Type, "Entry") && lit.Type != nil {
+				return true
+			}
+			for _, el := range lit.Elts {
+				kv, ok := el.(*ast.KeyValueExpr)
+				if !ok || !isIdent(kv.Key, "Code") {
+					continue
+				}
+				id, ok := kv.Value.(*ast.Ident)
+				if !ok {
+					t.Fatalf("%s: an entry's code is not a code constant", fset.Position(kv.Pos()))
+				}
+				code, known := consts[id.Name]
+				if !known {
+					t.Fatalf("%s: %s is not a code constant", fset.Position(kv.Pos()), id.Name)
+				}
+				if name == "refusal.go" {
+					table = append(table, code)
+				} else {
+					families = append(families, code)
+				}
+			}
+			return true
+		})
+	}
+	want := append(table, families...)
+	var got []Code
+	for _, e := range Entries() {
+		got = append(got, e.Code)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("the registry order is\n%q\nwant the table, then each family file in name order:\n%q", got, want)
+	}
+}
+
+// TestRegisterAppendsAFamilyAfterTheTable: a family's entries follow every
+// entry registered before them, in the order the family lists them.
+func TestRegisterAppendsAFamilyAfterTheTable(t *testing.T) {
+	saved := entries
+	t.Cleanup(func() { entries = saved })
+	entries = slices.Clone(saved)
+	register(Entry{Code: "demo/first"}, Entry{Code: "demo/second"})
+	all := Entries()
+	if len(all) != len(saved)+2 || all[len(all)-2].Code != "demo/first" || all[len(all)-1].Code != "demo/second" {
+		t.Fatalf("register did not append the family in order: last two are %v", all[len(all)-2:])
+	}
+	if all[0].Code != saved[0].Code {
+		t.Fatalf("register moved the table's first entry: %s", all[0].Code)
 	}
 }

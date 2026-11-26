@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -106,7 +108,7 @@ func newBanlistListCommand(asJSON *bool) *cobra.Command {
 				return usageError("abcd banlist list", err)
 			}
 			if private && public {
-				return &exitError{Code: 2, Msg: "abcd banlist list: --private and --public are alternatives; omit both to render every layer"}
+				return refused(2, refusal.UsageFlagConflict, "abcd banlist list: --private and --public are alternatives; omit both to render every layer")
 			}
 			switch {
 			case private:
@@ -166,7 +168,9 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 			if pattern == stdinPattern {
 				pattern, err = readPatternFromStdin(cmd)
 				if err != nil {
-					return usageError("abcd banlist add", err)
+					// The pattern's fault, never the store's: the store was
+					// not opened.
+					return refused(2, refusal.BanlistInvalidEntry, "abcd banlist add: "+scrubPaths(err))
 				}
 			}
 			if layer == layerPrivate {
@@ -264,13 +268,13 @@ func addLayerFlags(cmd *cobra.Command, private, public *bool) {
 func chooseLayer(verb string, private, public bool) (layer, error) {
 	switch {
 	case private && public:
-		return 0, &exitError{Code: 2, Msg: verb + ": --private and --public are alternatives; name exactly one layer"}
+		return 0, refused(2, refusal.UsageFlagConflict, verb+": --private and --public are alternatives; name exactly one layer")
 	case private:
 		return layerPrivate, nil
 	case public:
 		return layerPublic, nil
 	default:
-		return 0, &exitError{Code: 2, Msg: verb + ": name the layer — --private (per-machine, untracked) or --public (committed, CI-enforced)"}
+		return 0, refused(2, refusal.UsageMissingRequiredFlag, verb+": name the layer — --private (per-machine, untracked) or --public (committed, CI-enforced)")
 	}
 }
 
@@ -281,7 +285,25 @@ func usageError(verb string, err error) error {
 	// scrubPaths, not err.Error(): a refusal from the core can carry an *os.PathError
 	// whose text is an absolute path under the developer's home, and every sibling
 	// verb routes its error text through the same scrub.
-	return &exitError{Code: 2, Msg: verb + ": " + scrubPaths(err)}
+	return exitWith(2, banlistRefusalCode(err), verb+": "+scrubPaths(err))
+}
+
+// banlistRefusalCode is the code of a refusal the banlist core decided, read
+// from the sentinel it carries; an error with none is the store's.
+func banlistRefusalCode(err error) refusal.Code {
+	switch {
+	case errors.Is(err, banlist.ErrInvalidKey), errors.Is(err, banlist.ErrInvalidPattern), errors.Is(err, banlist.ErrInvalidSeverity):
+		return refusal.BanlistInvalidEntry
+	case errors.Is(err, banlist.ErrDuplicateKey):
+		return refusal.BanlistDuplicateKey
+	case errors.Is(err, banlist.ErrUnknownKey):
+		return refusal.BanlistUnknownKey
+	case errors.Is(err, banlist.ErrNotManaged):
+		return refusal.BanlistUnmanagedEntry
+	case errors.Is(err, banlist.ErrLegacyStore):
+		return refusal.BanlistLegacyStore
+	}
+	return refusal.BanlistInvalidStore
 }
 
 func plural(n int) string {
@@ -615,7 +637,7 @@ func applyBanlistFlagErrors(root *cobra.Command) {
 // never reach a terminal, a scrollback, or a log. The remedy is named instead.
 func banlistFlagError(cmd *cobra.Command, err error) error {
 	_ = err // deliberately discarded: it quotes the token that must not be echoed
-	return &exitError{Code: 2, Msg: cmd.CommandPath() + ": an argument was read as a flag (its text is withheld — " +
-		"it may be a pattern). A pattern beginning with `-` cannot be an argument: pipe it instead, " +
-		"`printf %s 'PATTERN' | abcd banlist add --private KEY -`, which also keeps it out of argv and shell history"}
+	return refused(2, refusal.UsageUnknownFlag, cmd.CommandPath()+": an argument was read as a flag (its text is withheld — "+
+		"it may be a pattern). A pattern beginning with `-` cannot be an argument: pipe it instead, "+
+		"`printf %s 'PATTERN' | abcd banlist add --private KEY -`, which also keeps it out of argv and shell history")
 }
