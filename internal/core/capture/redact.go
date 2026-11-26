@@ -169,9 +169,10 @@ type TextRedactor struct{ sc *scanner.Scanner }
 
 // NewTextRedactor builds the redactor for repoRoot's patterns. Where
 // redactLedgerText writes the text and says the scan was weakened, this
-// refuses with ErrScannerUnavailable both a scanner that cannot be made and
-// one that runs degraded (Scanner.Unavailable, a broken pii.json among the
-// causes), because its caller can withhold the text and lose nothing else.
+// refuses with ErrScannerUnavailable a scanner that cannot be made, one that
+// runs degraded (Scanner.Unavailable, a broken pii.json among the causes) and
+// one whose configured augmenter is not installed (AugmenterGap), because
+// its caller can withhold the text and lose nothing else.
 func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error) {
 	sc, err := newContextScanner(ctx, repoRoot)
 	if err != nil {
@@ -180,13 +181,23 @@ func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error
 	if unavailable, reason := sc.Unavailable(); unavailable {
 		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
 	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, gap)
+	}
 	return &TextRedactor{sc: sc}, nil
 }
 
-// Redact is text with every span the scanner finds rewritten.
-func (r *TextRedactor) Redact(text string) string {
-	if findings := r.sc.ScanText(text, "issue"); len(findings) > 0 {
+// Redact is text with every span the scanner finds rewritten, or
+// ErrScannerUnavailable where the scan degraded during this text (an
+// augmenter's run failing degrades the scanner from that call on, so
+// Unavailable is asked after the scan as well as at construction).
+func (r *TextRedactor) Redact(text string) (string, error) {
+	findings := r.sc.ScanText(text, "issue")
+	if unavailable, reason := r.sc.Unavailable(); unavailable {
+		return "", fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
+	}
+	if len(findings) > 0 {
 		text, _ = scanner.Redact(text, findings)
 	}
-	return text
+	return text, nil
 }

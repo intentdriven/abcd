@@ -39,18 +39,18 @@ No hook script and no `hooks/hooks.json` entry changes in any step.
 
 | Bound | Value | Past it |
 | --- | --- | --- |
-| One file | 4 KiB | never written (every other field is cut first, and the text is written without HTML escaping); one found is refused as unreadable, named |
+| One file | 4 KiB | every field is cut first and the file is written without HTML escaping; an entry still past it has its text (or a settlement its reason) withheld and is kept, and one past it even so is refused whole; one found is refused as unreadable, named |
 | Entry text, and a settlement's reason | 600 bytes | cut |
 | Any other field | 128 bytes, a path 512 | cut |
 | A closing text read | 256 KiB | its last part is read, and one entry says so |
 | Entries from one closing text | 32 | one more entry holds the count of the rest |
 | Open entries for a root | 1,000 | nothing more is put; the stop and the board say the list is full |
 | Private entries for a root | 100 | nothing more is put there |
-| Files read for one hook | 1,000 | the list is unreadable to that hook; `capture owed` names a budget of its own, so it can still list the handles past it |
+| Files read for one hook | 2,200 (every open and private entry the bounds allow, and as many again for twins and stray files, which count) | the list is unreadable to that hook; `capture owed` names a budget of its own, so it can still list the handles past it |
 
 Each file carries `schema_version: 1`. A later version, and a kind this build does not know, is counted and shown by its handle as "a newer abcd's"; no command here settles it, it holds no stop, and it refuses a landing.
 
-**What an entry holds, and its name.** The session, the agent and its type, the checkout's root, the run and lane, the kind, the text, the time. The name is a hash: for an entry a reading made, of the kind, the normalised text (redacted, before its cut), the place and the session; for one a gate made, of the kind, the place and the head. So a finding said again in one session is the same file, another session's saying of it is its own, and a gate's failure at a new head is a new one. One a person or an agent settled stays settled when it is put again. An entry whose text was withheld is named at random, never by any function of its text, so it is not merged with a repeat: each saying of it is its own entry. It is shown as `f-` and eight characters; an ambiguous handle is refused.
+**What an entry holds, and its name.** The session, the agent and its type, the checkout's root, the run and lane, the kind, the text, the time. The name is a hash: for an entry a reading made, of the kind, the normalised text (redacted, before its cut), the place and the session; for one a gate made, of the kind, the place and the head. So a finding said again in one session is the same file, another session's saying of it is its own, and a gate's failure at a new head is a new one. One a person or an agent settled stays settled when it is put again. An entry whose text was withheld is never named by any function of its text: a gate's entry keeps its kind, place and head name; one a reading of a closing text made is named by where it came from (the session, the agent, the reading's position in the transcript, the kind), so a re-read under the same degraded scan is the same entry, and the step-2 reader passes that position; any other is named at random, and a repeat of it is its own entry. A withheld entry holds the stop like any other, and the stop's line says its text was withheld because the full scan could not run and names the repository's scanner configuration (`.abcd/config/pii.json`, and `.abcd/config/gitleaks.json` where it configures the augmenter) as what to fix. A scan counts as not run whole when the scanner cannot be made, runs degraded, degrades during the text (a configured augmenter's run failing), or lacks the augmenter the repository configured, and when the caller's deadline has passed. It is shown as `f-` and eight characters; an ambiguous handle is refused.
 
 The place is the checkout the payload's directory is in. It is a lane's when a run's state names that checkout as the lane's worktree. It is never read from what a transcript says. Any other entry is unplaced.
 

@@ -9,15 +9,17 @@
 // Every level is made and opened through fsutil's declaration scope, which
 // judges each directory's owner and mode, and every file is read through
 // ReadHomeDeclarationDenyingIn denying 0o077. A file is written whole by
-// rename with no lock: two writers of one finding write one name. Nothing is
-// removed by age, by a new session or by the worktree going.
+// rename. A put and a settle each judge and write under the root's one lock
+// file, so two writers cannot pass a bound together or lose an entry between
+// them; a read takes no lock. Nothing is removed by age, by a new session or
+// by the worktree going.
 //
 // Where a settle or a move to private/ was cut short, the entry stands both
 // where it went and where it was; where it went wins, for every reader, and
 // the stale twin is removed when a settle meets it.
 //
-// A private entry's text is read only through PrivateText: every other
-// return of this package carries it blank.
+// A private entry's text is read only through PrivateText, and only for the
+// person: every other return of this package carries it blank.
 package findings
 
 import (
@@ -49,24 +51,30 @@ import (
 const schemaVersion = 1
 
 // The bounds the store holds. The two a reading of a closing text holds (its
-// bytes and its entries) are the reader's.
+// bytes and its entries) are the reader's. None is exported: a caller meets
+// each as the refusal that names it (ErrFull, ErrTooManyFiles, ErrTooLarge).
 const (
 	// maxFileBytes is one entry file: a larger one is never written, and one
 	// found is unreadable, named.
 	maxFileBytes = 4 << 10
-	// MaxTextBytes is an entry's text and a settlement's reason, cut on a rune.
-	MaxTextBytes = 600
-	// MaxOpen is the open entries of one root; past it nothing more is put.
-	MaxOpen = 1000
-	// MaxPrivate is the private entries of one root; past it nothing more is
+	// maxTextBytes is an entry's text and a settlement's reason, cut on a rune.
+	maxTextBytes = 600
+	// maxOpen is the open entries of one root; past it nothing more is put.
+	maxOpen = 1000
+	// maxPrivate is the private entries of one root; past it nothing more is
 	// put there.
-	MaxPrivate = 100
+	maxPrivate = 100
 	// maxIDBytes and maxPathBytes cut every other string an entry carries.
 	maxIDBytes   = 128
 	maxPathBytes = 512
-	// maxFilesRead is the files a hook's read takes; past it the list is
-	// unreadable to that hook. A command names its own (ReadWithin).
-	maxFilesRead = 1000
+	// maxFilesRead is the files a hook's read takes: every open and private
+	// entry the bounds allow, and as many again for the twins a cut-short move
+	// leaves and the temporary files of a write cut short. Past it the list is
+	// unreadable to that hook; a command names its own (ReadWithin).
+	maxFilesRead = 2 * (maxOpen + maxPrivate)
+	// lockWait is how long a put or a settle waits for the root's lock.
+	lockWait = 10 * time.Second
+	lockName = ".lock"
 )
 
 // Kind is what made an entry, and decides what clears it (clears).
@@ -125,7 +133,7 @@ func clearedBy(kind Kind, act Act) bool {
 var (
 	ErrFull         = errors.New("findings: the list is full")
 	ErrTooManyFiles = errors.New("findings: more files than the read's budget; the list is unreadable")
-	ErrTooLarge     = fmt.Errorf("findings: the entry would pass %d bytes; nothing written", maxFileBytes)
+	ErrTooLarge     = fmt.Errorf("findings: the entry would pass %d bytes with its text withheld; nothing written", maxFileBytes)
 	ErrNewer        = errors.New("findings: the entry is a newer abcd's")
 	ErrUnknownKind  = errors.New("findings: a kind this build does not know")
 	ErrNotCleared   = errors.New("findings: that act does not clear the entry")
@@ -134,12 +142,15 @@ var (
 	ErrUnreadable   = errors.New("findings: the entry cannot be read")
 )
 
-// textRedactor is what the store asks to redact a text.
-type textRedactor interface{ Redact(string) string }
+// textRedactor is what the store asks to redact a text. An error is a scan
+// that did not run whole, before or during this text.
+type textRedactor interface {
+	Redact(string) (string, error)
+}
 
 // newRedactor builds capture's ledger redactor for one checkout; the seam a
-// test replaces. An error, a scanner that cannot be made or one that runs
-// degraded, withholds the text.
+// test replaces. An error, a scanner that cannot be made, runs degraded or
+// lacks its configured augmenter, withholds the text.
 var newRedactor = func(ctx context.Context, root string) (textRedactor, error) {
 	return capture.NewTextRedactor(ctx, root)
 }
@@ -155,8 +166,14 @@ func newRedactors(ctx context.Context) *redactors {
 }
 
 // clean is text as stored, uncut, or withheld true when no full scan can
-// clear it: capture's redactor for the checkout, termsafe, the home redacted.
+// clear it: capture's redactor for the checkout as given, termsafe, the home
+// redacted. A redactor that cannot be built, or whose scan degrades, is
+// dropped for the rest of the call, and so is every text once the caller's
+// deadline has passed (the augmenter's own run is not bound by it).
 func (r *redactors) clean(checkout, text string) (string, bool) {
+	if r.ctx.Err() != nil {
+		return "", true
+	}
 	red, ok := r.made[checkout]
 	if !ok {
 		made, err := newRedactor(r.ctx, checkout)
@@ -169,7 +186,12 @@ func (r *redactors) clean(checkout, text string) (string, bool) {
 	if red == nil {
 		return "", true
 	}
-	return fsutil.RedactHome(termsafe.SanitizeBlock(red.Redact(text))), false
+	out, err := red.Redact(text)
+	if err != nil || r.ctx.Err() != nil {
+		r.made[checkout] = nil
+		return "", true
+	}
+	return fsutil.RedactHome(termsafe.SanitizeBlock(out)), false
 }
 
 // cut bounds s at n bytes on a rune.
@@ -179,6 +201,9 @@ func cut(s string, n int) string {
 	}
 	return strings.ToValidUTF8(s[:n], "")
 }
+
+// id is an identifier as stored: one line, hidden runes masked, cut.
+func id(s string) string { return cut(termsafe.Sanitize(s), maxIDBytes) }
 
 // Entry is one finding. Name is the file's, never stored in it.
 type Entry struct {
@@ -196,13 +221,39 @@ type Entry struct {
 	// Head names a gate's entry: set, the entry is named by kind, place and
 	// head, so a failure at a new head is a new entry.
 	Head string `json:"head,omitempty"`
-	Text string `json:"text,omitempty"`
-	// Withheld is true where no full scan could clear the text, so none was
-	// kept.
-	Withheld bool        `json:"text_withheld,omitempty"`
+	// Position is where in the transcript a reading took the text from; a
+	// withheld reading's entry is named by it.
+	Position string `json:"position,omitempty"`
+	Text     string `json:"text,omitempty"`
+	// Withheld is why no text was kept, or "".
+	Withheld Withholding `json:"text_withheld,omitempty"`
 	At       time.Time   `json:"at"`
 	Settled  *Settlement `json:"settled,omitempty"`
 	Name     string      `json:"-"`
+}
+
+// Withholding is why an entry's text was not kept, or "".
+type Withholding string
+
+// The two reasons a text is withheld.
+const (
+	// WithheldScan is a text no full scan could clear.
+	WithheldScan Withholding = "scan"
+	// WithheldSize is a cleared text that would take its file past the bound.
+	WithheldSize Withholding = "size"
+)
+
+// WithheldLine is the sentence a stop or a list says in place of e's
+// withheld text, or "" for a text kept. A withheld entry holds like any
+// other.
+func (e Entry) WithheldLine() string {
+	switch e.Withheld {
+	case WithheldScan:
+		return "its text was withheld because the full scan could not run; fix the repository's scanner configuration (.abcd/config/pii.json, and .abcd/config/gitleaks.json where it configures the augmenter)"
+	case WithheldSize:
+		return "its text was withheld because the entry would pass its file's bound"
+	}
+	return ""
 }
 
 // Handle is the entry's name as it is shown: f- and eight characters.
@@ -229,7 +280,8 @@ type Settlement struct {
 	Act    Act    `json:"act"`
 	Record string `json:"record,omitempty"`
 	Reason string `json:"reason,omitempty"`
-	// ReasonWithheld is true where no full scan could clear the reason.
+	// ReasonWithheld is true where no full scan could clear the reason, or
+	// it would take the file past its bound.
 	ReasonWithheld bool      `json:"reason_withheld,omitempty"`
 	At             time.Time `json:"at"`
 }
@@ -267,6 +319,23 @@ func (s Store) open(sub string) (*os.Root, error) {
 		return nil, nil
 	}
 	return r, err
+}
+
+// locked runs fn holding the root's lock, with the three directories made.
+func (s Store) locked(fn func(d dirs) error) error {
+	top, err := fsutil.EnsureHomeDeclarationScope(s.home, abcdhome.Rel("findings", s.root), abcdhome.DirMode)
+	if err != nil {
+		return err
+	}
+	defer top.Close()
+	return fsutil.WithFileLockIn(top, lockName, lockWait, func() error {
+		d, err := s.dirs(true)
+		if err != nil {
+			return err
+		}
+		defer d.close()
+		return fn(d)
+	})
 }
 
 // dirs is the three directories, each opened (or made, with ensure) once.
@@ -319,40 +388,47 @@ func (d dirs) went(sub, name string) string {
 	return ""
 }
 
-// live is the names in sub no other directory answers for, at most limit
-// read (-1 for every one).
-func (d dirs) live(sub string, limit int) ([]string, error) {
+// live is the names in sub no other directory answers for.
+func (d dirs) live(sub string) (map[string]bool, error) {
+	out := map[string]bool{}
 	if d[sub] == nil {
-		return nil, nil
+		return out, nil
 	}
-	names, err := listNames(d[sub], limit)
+	names, _, err := listNames(d[sub], -1)
 	if err != nil {
 		return nil, err
 	}
-	out := names[:0]
 	for _, n := range names {
 		if d.went(sub, n) == "" {
-			out = append(out, n)
+			out[n] = true
 		}
 	}
 	return out, nil
 }
 
-// nameOf is the entry's name: a hash of the kind, the place and the head for a
-// gate's entry, and of the kind, the redacted text before its cut, the place
-// and the session for a reading's. A withheld entry is named by randomName
-// instead.
-func nameOf(e Entry, text string) string {
-	parts := []string{"reading", string(e.Kind), normalise(text), e.Place, e.Session}
-	if e.Head != "" {
+// nameOf is the entry's name. A gate's entry is named by its kind, place and
+// head, withheld or not. A reading's is named by its kind, its redacted text
+// before the cut, its place and its session; withheld, by where it came from
+// (kind, session, agent and its position in the transcript), never its text,
+// so a re-read under the same degraded scan is the same entry. A withheld
+// entry with no position is named at random, and a repeat is its own entry.
+func nameOf(e Entry, text string, withheld bool) (string, error) {
+	var parts []string
+	switch {
+	case e.Head != "":
 		parts = []string{"gate", string(e.Kind), e.Place, e.Head}
+	case withheld && e.Position != "":
+		parts = []string{"withheld", string(e.Kind), e.Session, e.Agent, e.Position}
+	case withheld:
+		return randomName()
+	default:
+		parts = []string{"reading", string(e.Kind), normalise(text), e.Place, e.Session}
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }
 
-// randomName names an entry whose text was withheld: no function of the text,
-// so a repeat is its own entry and never merged.
+// randomName names a withheld entry with no position to name it by.
 func randomName() (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -370,128 +446,161 @@ func subOf(k Kind) string {
 	return dirOpen
 }
 
-// Put puts each entry on the list and returns them as stored, building one
-// redactor for each checkout the call meets. It stops at the first refusal,
-// returning the entries put before it.
-func (s Store) Put(ctx context.Context, es ...Entry) ([]Entry, error) {
-	rs := newRedactors(ctx)
-	var out []Entry
-	for _, e := range es {
-		got, err := s.put(rs, e)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, shown(got))
-	}
-	return out, nil
+// prepared is one entry made ready to write: its bytes encoded.
+type prepared struct {
+	e    Entry
+	body []byte
 }
 
-// put puts one entry. An entry already settled stays settled and is returned
-// so, unless a receipt settled it; one the private list holds is returned
-// from there; one already listed is written again whole, under its name.
-func (s Store) put(rs *redactors, e Entry) (Entry, error) {
+// prepare bounds, redacts, names and encodes e. A cleared text that takes the
+// file past its bound is withheld and the entry kept; one past it even so is
+// ErrTooLarge.
+func prepare(rs *redactors, e Entry) (prepared, error) {
 	if _, ok := clears[e.Kind]; !ok {
-		return Entry{}, fmt.Errorf("%w: %q", ErrUnknownKind, e.Kind)
+		return prepared{}, fmt.Errorf("%w: %q", ErrUnknownKind, e.Kind)
 	}
 	e.SchemaVersion = schemaVersion
 	e.Settled = nil
-	for _, f := range []*string{&e.Session, &e.Agent, &e.AgentType, &e.Run, &e.Lane, &e.Head} {
-		*f = cut(*f, maxIDBytes)
+	e.Withheld = ""
+	for _, f := range []*string{&e.Session, &e.Agent, &e.AgentType, &e.Run, &e.Lane, &e.Head, &e.Position} {
+		*f = id(*f)
 	}
-	e.Checkout, e.Place = cut(e.Checkout, maxPathBytes), cut(e.Place, maxPathBytes)
+	// The redactor is built for the checkout as given; only what is stored
+	// is cut.
 	text, withheld := rs.clean(e.Checkout, e.Text)
-	e.Withheld = withheld
+	e.Checkout, e.Place = cut(e.Checkout, maxPathBytes), cut(e.Place, maxPathBytes)
+	name, err := nameOf(e, text, withheld)
+	if err != nil {
+		return prepared{}, err
+	}
+	e.Name = name
+	e.Text = cut(text, maxTextBytes)
 	if withheld {
-		name, err := randomName()
-		if err != nil {
-			return Entry{}, err
-		}
-		e.Name = name
-	} else {
-		e.Name = nameOf(e, text)
+		e.Withheld = WithheldScan
 	}
-	e.Text = cut(text, MaxTextBytes)
-
-	d, err := s.dirs(true)
+	body, err := encode(e)
+	if errors.Is(err, ErrTooLarge) && e.Text != "" {
+		e.Text, e.Withheld = "", WithheldSize
+		body, err = encode(e)
+	}
 	if err != nil {
-		return Entry{}, err
+		return prepared{}, err
 	}
-	defer d.close()
-	prior, err := readOne(s, d[dirSettled], dirSettled, e.Name)
-	switch {
-	case err == nil && prior.Settled != nil && prior.Settled.Act != ActReceipt:
-		return prior, nil
-	case err != nil && !errors.Is(err, fs.ErrNotExist):
-		return Entry{}, err
-	}
-	receiptSettled := err == nil
-	if e.Kind != KindPrivate && !receiptSettled {
-		if held, err := readOne(s, d[dirPrivate], dirPrivate, e.Name); err == nil {
-			return held, nil
-		}
-	}
-	sub, limit := subOf(e.Kind), MaxOpen
-	if sub == dirPrivate {
-		limit = MaxPrivate
-	}
-	names, err := d.live(sub, -1)
-	if err != nil {
-		return Entry{}, err
-	}
-	if len(names) >= limit && !contains(names, e.Name) {
-		return Entry{}, fmt.Errorf("%w: %d %s entries for this repository", ErrFull, len(names), sub)
-	}
-	if err := write(d[sub], e); err != nil {
-		return Entry{}, err
-	}
-	if receiptSettled {
-		// Written open first, so a crash here leaves the settled one winning
-		// and the put to be made again, never neither.
-		if err := d[dirSettled].Remove(e.Name + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return Entry{}, err
-		}
-	}
-	return e, nil
+	return prepared{e: e, body: body}, nil
 }
 
-// write writes e whole, refusing a file past maxFileBytes. JSON's HTML
-// escaping is off: it turns one byte of text into six.
-func write(dir *os.Root, e Entry) error {
+// encode is e as its file holds it, or ErrTooLarge past maxFileBytes. JSON's
+// HTML escaping is off: it turns one byte of text into six.
+func encode(e Entry) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(e); err != nil {
-		return err
+		return nil, err
 	}
 	if buf.Len() > maxFileBytes {
-		return fmt.Errorf("%w: %s", ErrTooLarge, e.Handle())
+		return nil, fmt.Errorf("%w: %s", ErrTooLarge, e.Handle())
 	}
-	return fsutil.WriteFileAtomicInRoot(dir, e.Name+".json", buf.Bytes(), abcdhome.FileMode)
+	return buf.Bytes(), nil
 }
 
-func contains(names []string, name string) bool {
-	for _, n := range names {
-		if n == name {
-			return true
+func writeBody(dir *os.Root, name string, body []byte) error {
+	return fsutil.WriteFileAtomicInRoot(dir, name+".json", body, abcdhome.FileMode)
+}
+
+// Put puts every entry on the list or none, and returns them as stored,
+// building one redactor for each checkout the call meets. Every entry is
+// made and encoded before any is written, and the bounds are judged and the
+// files written under the root's lock. An entry already settled stays settled
+// and is returned so, unless a receipt settled it; one the private list holds
+// is returned from there; one already listed is written again whole.
+func (s Store) Put(ctx context.Context, es ...Entry) ([]Entry, error) {
+	rs := newRedactors(ctx)
+	ps := make([]prepared, 0, len(es))
+	for _, e := range es {
+		p, err := prepare(rs, e)
+		if err != nil {
+			return nil, err
 		}
+		ps = append(ps, p)
 	}
-	return false
+	out := make([]Entry, len(ps))
+	err := s.locked(func(d dirs) error {
+		live := map[string]map[string]bool{}
+		for _, sub := range []string{dirOpen, dirPrivate} {
+			l, err := d.live(sub)
+			if err != nil {
+				return err
+			}
+			live[sub] = l
+		}
+		var writes []prepared
+		var reopen []string
+		for i, p := range ps {
+			prior, err := readOne(s, d[dirSettled], dirSettled, p.e.Name)
+			switch {
+			case err == nil && prior.Settled != nil && prior.Settled.Act != ActReceipt:
+				out[i] = shown(prior)
+				continue
+			case err != nil && !errors.Is(err, fs.ErrNotExist):
+				return err
+			}
+			receiptSettled := err == nil
+			if p.e.Kind != KindPrivate && !receiptSettled {
+				if held, err := readOne(s, d[dirPrivate], dirPrivate, p.e.Name); err == nil {
+					out[i] = shown(held)
+					continue
+				}
+			}
+			sub := subOf(p.e.Kind)
+			live[sub][p.e.Name] = true
+			writes = append(writes, p)
+			if receiptSettled {
+				reopen = append(reopen, p.e.Name)
+			}
+			out[i] = shown(p.e)
+		}
+		if n := len(live[dirOpen]); n > maxOpen {
+			return fmt.Errorf("%w: the open list would hold %d entries, past its bound of %d", ErrFull, n, maxOpen)
+		}
+		if n := len(live[dirPrivate]); n > maxPrivate {
+			return fmt.Errorf("%w: the private list would hold %d entries, past its bound of %d", ErrFull, n, maxPrivate)
+		}
+		for _, p := range writes {
+			if err := writeBody(d[subOf(p.e.Kind)], p.e.Name, p.body); err != nil {
+				return err
+			}
+		}
+		// Written open first, so a crash here leaves the settled one winning
+		// and the put to be made again, never neither.
+		for _, name := range reopen {
+			if err := d[dirSettled].Remove(name + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 var entryFileRe = regexp.MustCompile(`^([0-9a-f]{64})\.json$`)
 
-// listNames is the entry names in dir, at most limit of them read (-1 for
-// every one).
-func listNames(dir *os.Root, limit int) ([]string, error) {
+// listNames is the entry names in dir and how many directory entries were
+// read for them, at most limit (-1 for every one). A stray file counts
+// against the limit as an entry does.
+func listNames(dir *os.Root, limit int) ([]string, int, error) {
 	f, err := dir.Open(".")
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 	ents, err := f.ReadDir(limit)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
+		return nil, 0, err
 	}
 	var out []string
 	for _, d := range ents {
@@ -499,7 +608,7 @@ func listNames(dir *os.Root, limit int) ([]string, error) {
 			out = append(out, m[1])
 		}
 	}
-	return out, nil
+	return out, len(ents), nil
 }
 
 // readOne reads one entry of sub through dir (nil: absent). An absent file
@@ -546,7 +655,7 @@ type View struct {
 	Private    []Entry      `json:"private"`
 	Newer      []string     `json:"newer"`
 	Unreadable []Unreadable `json:"unreadable"`
-	// Full is true once the open entries reach MaxOpen.
+	// Full is true once the open entries reach their bound.
 	Full bool `json:"full"`
 }
 
@@ -569,10 +678,10 @@ func (v View) Ordered(checkout string) []Entry {
 // Read is the list as a hook reads it, within maxFilesRead files.
 func (s Store) Read() (View, error) { return s.ReadWithin(maxFilesRead) }
 
-// ReadWithin is the open and private entries, reading at most files files
-// across the two (past it, ErrTooManyFiles). An absent store is an empty
-// view, and nothing is made. A directory refused is the error; a file
-// refused is named in Unreadable.
+// ReadWithin is the open and private entries, reading at most files directory
+// entries across the two, strays included (past it, ErrTooManyFiles). An
+// absent store is an empty view, and nothing is made. A directory refused is
+// the error; a file refused is named in Unreadable.
 func (s Store) ReadWithin(files int) (View, error) {
 	var v View
 	d, err := s.dirs(false)
@@ -585,14 +694,14 @@ func (s Store) ReadWithin(files int) (View, error) {
 		if d[sub] == nil {
 			continue
 		}
-		names, err := listNames(d[sub], budget+1)
-		if err == nil && len(names) > budget {
+		names, seen, err := listNames(d[sub], budget+1)
+		if err == nil && seen > budget {
 			err = fmt.Errorf("%w (%d)", ErrTooManyFiles, files)
 		}
 		if err != nil {
 			return View{}, err
 		}
-		budget -= len(names)
+		budget -= seen
 		live := 0
 		for _, name := range names {
 			if d.went(sub, name) != "" {
@@ -609,10 +718,10 @@ func (s Store) ReadWithin(files int) (View, error) {
 			case sub == dirPrivate:
 				v.Private = append(v.Private, shown(e))
 			default:
-				v.Open = append(v.Open, e)
+				v.Open = append(v.Open, shown(e))
 			}
 		}
-		if sub == dirOpen && live >= MaxOpen {
+		if sub == dirOpen && live >= maxOpen {
 			v.Full = true
 		}
 	}
@@ -627,7 +736,7 @@ func (s Store) SettledView(n int) ([]Entry, []Unreadable, error) {
 		return nil, nil, err
 	}
 	defer dir.Close()
-	names, err := listNames(dir, -1)
+	names, _, err := listNames(dir, -1)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -703,9 +812,10 @@ type located struct {
 }
 
 // Settle settles every handle or none: each handle, the act and its record are
-// judged first, and a refusal writes nothing. Each settled entry is written to
-// settled/ and then removed from where it was. ActReceipt is refused here:
-// SettleByReceipt is its one entry point.
+// judged first, and every file is encoded before any is written, all under the
+// root's lock; a refusal writes nothing. A handle given twice is one entry.
+// Each settled entry is written to settled/ and then removed from where it
+// was. ActReceipt is refused here: SettleByReceipt is its one entry point.
 func (s Store) Settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 	if req.Act == ActReceipt {
 		return nil, fmt.Errorf("%w: a receipt settles through SettleByReceipt alone", ErrNotCleared)
@@ -736,58 +846,83 @@ func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 	default:
 		return nil, fmt.Errorf("%w: %q is not an act", ErrNotCleared, req.Act)
 	}
-	d, err := s.dirs(true)
+	var out []Entry
+	err := s.locked(func(d dirs) error {
+		var found []located
+		seen := map[string]bool{}
+		for _, h := range req.Handles {
+			l, err := s.locate(d, h, true)
+			if err != nil {
+				return err
+			}
+			if !clearedBy(l.e.Kind, req.Act) || l.e.Kind == KindPrivate && !req.Person {
+				return fmt.Errorf("%w: %s is %s, which --%s does not clear", ErrNotCleared, h, l.e.Kind, req.Act)
+			}
+			if !seen[l.e.Name] {
+				seen[l.e.Name] = true
+				found = append(found, l)
+			}
+		}
+		if req.Act == ActCaptured || req.Act == ActSettled {
+			ans, err := req.Records.Answer(req.Act, req.Record)
+			if err != nil {
+				return err
+			}
+			if !ans.Holds {
+				return fmt.Errorf("%w: %q is %s on %s, which does not answer --%s", ErrNotCleared, termsafe.Sanitize(req.Record), ans.State, orNowhere(ans.Where), req.Act)
+			}
+		}
+		if req.Act == ActPrivate {
+			live, err := d.live(dirPrivate)
+			if err != nil {
+				return err
+			}
+			for _, l := range found {
+				live[l.e.Name] = true
+			}
+			if len(live) > maxPrivate {
+				return fmt.Errorf("%w: the private list would hold %d entries, past its bound of %d", ErrFull, len(live), maxPrivate)
+			}
+		}
+		rs := newRedactors(ctx)
+		type move struct {
+			e        Entry
+			from, to string
+			body     []byte
+		}
+		var moves []move
+		for _, l := range found {
+			e := l.e
+			to := dirSettled
+			if req.Act == ActPrivate {
+				e.Kind, to = KindPrivate, dirPrivate
+			} else {
+				reason, withheld := rs.clean(e.Checkout, req.Reason)
+				e.Settled = &Settlement{Act: req.Act, Record: id(req.Record), Reason: cut(reason, maxTextBytes), ReasonWithheld: withheld, At: req.At}
+			}
+			body, err := encode(e)
+			if errors.Is(err, ErrTooLarge) && e.Settled != nil && e.Settled.Reason != "" {
+				e.Settled.Reason, e.Settled.ReasonWithheld = "", true
+				body, err = encode(e)
+			}
+			if err != nil {
+				return err
+			}
+			moves = append(moves, move{e: e, from: l.sub, to: to, body: body})
+		}
+		for _, m := range moves {
+			if err := writeBody(d[m.to], m.e.Name, m.body); err != nil {
+				return err
+			}
+			if err := d[m.from].Remove(m.e.Name + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			out = append(out, shown(m.e))
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	defer d.close()
-	var found []located
-	for _, h := range req.Handles {
-		l, err := s.locate(d, h, true)
-		if err != nil {
-			return nil, err
-		}
-		if !clearedBy(l.e.Kind, req.Act) || l.e.Kind == KindPrivate && !req.Person {
-			return nil, fmt.Errorf("%w: %s is %s, which --%s does not clear", ErrNotCleared, h, l.e.Kind, req.Act)
-		}
-		found = append(found, l)
-	}
-	if req.Act == ActCaptured || req.Act == ActSettled {
-		ans, err := req.Records.Answer(req.Act, req.Record)
-		if err != nil {
-			return nil, err
-		}
-		if !ans.Holds {
-			return nil, fmt.Errorf("%w: %q is %s on %s, which does not answer --%s", ErrNotCleared, req.Record, ans.State, orNowhere(ans.Where), req.Act)
-		}
-	}
-	if req.Act == ActPrivate {
-		names, err := d.live(dirPrivate, -1)
-		if err != nil {
-			return nil, err
-		}
-		if len(names)+len(found) > MaxPrivate {
-			return nil, fmt.Errorf("%w: %d private entries for this repository", ErrFull, len(names))
-		}
-	}
-	rs := newRedactors(ctx)
-	var out []Entry
-	for _, l := range found {
-		e := l.e
-		to := dirSettled
-		if req.Act == ActPrivate {
-			e.Kind, to = KindPrivate, dirPrivate
-		} else {
-			reason, withheld := rs.clean(e.Checkout, req.Reason)
-			e.Settled = &Settlement{Act: req.Act, Record: cut(req.Record, maxIDBytes), Reason: cut(reason, MaxTextBytes), ReasonWithheld: withheld, At: req.At}
-		}
-		if err := write(d[to], e); err != nil {
-			return out, err
-		}
-		if err := d[l.sub].Remove(e.Name + ".json"); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return out, err
-		}
-		out = append(out, shown(e))
 	}
 	return out, nil
 }
@@ -799,31 +934,35 @@ func orNowhere(where string) string {
 	return where
 }
 
-// PrivateText is the text of the private entry handle names: the one place
-// this package hands a private text back.
-func (s Store) PrivateText(handle string) (string, error) {
+// PrivateText is the text of the private entry handle names, and whether it
+// was withheld: the one place this package hands a private text back, and to
+// the person alone.
+func (s Store) PrivateText(handle string, person bool) (text string, withheld bool, err error) {
+	if !person {
+		return "", false, fmt.Errorf("%w: a private entry's text is the person's alone", ErrNotCleared)
+	}
 	d, err := s.dirs(false)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer d.close()
 	l, err := s.locate(d, handle, false)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if l.e.Kind != KindPrivate {
-		return "", fmt.Errorf("%w: %s is not on the private list", ErrNoEntry, handle)
+		return "", false, fmt.Errorf("%w: %s is not on the private list", ErrNoEntry, handle)
 	}
-	return l.e.Text, nil
+	return l.e.Text, l.e.Withheld != "", nil
 }
 
 // locate finds the one open or private entry handle names. A name a cut-short
-// move left behind is passed by, as Read passes it, and with prune its stale
-// twin is removed.
+// move left behind is passed by, as Read passes it, and with prune (under the
+// lock) its stale twin is removed.
 func (s Store) locate(d dirs, handle string, prune bool) (located, error) {
 	m := handleRe.FindStringSubmatch(handle)
 	if m == nil {
-		return located{}, fmt.Errorf("%w: %q is not a handle (f- and eight characters)", ErrNoEntry, handle)
+		return located{}, fmt.Errorf("%w: %q is not a handle (f- and eight characters)", ErrNoEntry, termsafe.Sanitize(handle))
 	}
 	var hits []located
 	var newer bool
@@ -831,7 +970,7 @@ func (s Store) locate(d dirs, handle string, prune bool) (located, error) {
 		if d[sub] == nil {
 			continue
 		}
-		names, err := listNames(d[sub], -1)
+		names, _, err := listNames(d[sub], -1)
 		if err != nil {
 			return located{}, err
 		}
