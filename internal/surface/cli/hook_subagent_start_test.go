@@ -171,6 +171,19 @@ func TestSubagentStartNamesTheConventionsFileAndTheCommands(t *testing.T) {
 			t.Errorf("%q: the commands are not left out whole:\n%s", odd, msg)
 		}
 	}
+	// An executable that cannot be found, or is not named by an absolute
+	// path, is named nowhere either.
+	for i, swap := range []func() (string, error){
+		func() (string, error) { return "", errors.New("no executable") },
+		func() (string, error) { return "bin/abcd", nil },
+	} {
+		swapExecutable(t, swap)
+		msg := startMessage(t, startHookPayload(t, "s1", repo.Root(), fmt.Sprintf("e%d", i), "t"))
+		if strings.Contains(msg, " rules --prompt") || strings.Contains(msg, " rules <DOMAIN>") || strings.Contains(msg, "bin/abcd") || !strings.Contains(msg, "cannot be printed") {
+			t.Errorf("case %d: the commands are not left out whole:\n%s", i, msg)
+		}
+	}
+	swapExecutable(t, func() (string, error) { return exe, nil })
 	odd := gittest.NewRepo(t).Root()
 	named := filepath.Join(filepath.Dir(odd), "odd;name")
 	if err := os.Rename(odd, named); err != nil {
