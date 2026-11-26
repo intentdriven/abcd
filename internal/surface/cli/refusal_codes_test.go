@@ -338,7 +338,14 @@ func codedRefusal(t *testing.T, args ...string) (int, errorEnvelope, string) {
 	t.Helper()
 	var stdout, stderr strings.Builder
 	code := Run(append(slices.Clone(args), "--json"), &stdout, &stderr)
-	dec := json.NewDecoder(strings.NewReader(stdout.String()))
+	// A verb that speaks in lines before it refuses writes them ahead of the envelope.
+	doc := stdout.String()
+	if !strings.HasPrefix(doc, "{") {
+		if i := strings.Index(doc, "\n{"); i >= 0 {
+			doc = doc[i+1:]
+		}
+	}
+	dec := json.NewDecoder(strings.NewReader(doc))
 	var env errorEnvelope
 	for dec.More() {
 		var doc errorEnvelope

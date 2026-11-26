@@ -476,6 +476,7 @@ func TestTheFunctionsThatResolveLayersArePinned(t *testing.T) {
 		"runConnectGuide: layered.RootsFor: notes printed",
 		"runDrain: layered.RootsFor: notes printed",
 		"runDrive: layered.RootsFor: notes discarded",
+		"runStart: layered.RootsFor: notes printed",
 		"runWrittenInterview: drawnTerminal: notes discarded",
 		"runWrittenInterview: layered.RootsFor: notes printed",
 		"startDrive: layered.RootsFor: notes printed",

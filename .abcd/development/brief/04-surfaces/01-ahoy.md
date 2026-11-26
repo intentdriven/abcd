@@ -624,9 +624,15 @@ earlier version wrote wider is narrowed when abcd next writes it
   scheduled-runs/<root-sha>/     the scheduled-verdict store a status read reports
   stop.json                      the run stop, where the person chose no shared
                                  folder for it
-  profiles/                      the drive's separate logins, each directory made
-                                 and logged in by the person; abcd never reads,
-                                 stores or forwards the login
+  profiles/                      the separate logins a drive and a session run on:
+                                 abcd start makes the first directory, and the
+                                 person logs in; abcd never reads, stores or
+                                 forwards the login
+  session-bin/                   the copies of abcd an open session's hooks run,
+                                 each under its content's digest
+  session-conventions/           the copies of the conventions text an open session
+                                 reads, owner-only, named so no other account can
+                                 tell their content
   dogfood/<root-sha>/            builds of the reviewed default branch for the
                                  checkouts dogfood-roots lists, one per commit, with
                                  the record of the last check (iss-2610070547057816)
