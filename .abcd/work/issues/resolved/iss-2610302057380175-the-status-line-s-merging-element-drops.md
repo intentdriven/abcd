@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/landing/config.go"
 remedy: "Cache the default branch's facilitator.mode once per fetch, keyed on the fetched tip, so a status line render reads the cached answer and asks git nothing extra; the page says the row shows the mode as of the last fetch, the same reading the board already makes"
+related_intents: [itd-2611252117557299]
 resolution: "The prompt hook keeps the default branch's facilitator.mode reading per repository under ~/.abcd.noindex/facilitator-mode/, with the ref, the tip and the time; the status line's row reads that kept reading beside the computer's file and asks git nothing for the mode, and nothing that decides a merge reads it"
 impact: fix
 ---
