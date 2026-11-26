@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,8 @@ import (
 // hook_conversation_test.go — iss-2611260602137306: a prompt the person types
 // while away has that session read them as present for a while, at the stop
 // and at a question, and a wake's prompt or the host's own opens nothing.
+// Each test owns the hooks' budgets (ownHookBudgets), so a loaded machine
+// cannot spend the prompt hook's second before the window is read.
 
 // promptAt runs the prompt hook for session on prompt and returns the context
 // it hands the agent.
@@ -27,23 +31,27 @@ func promptAt(t *testing.T, session, root, prompt string) string {
 const conversationMark = "this session reads them as present"
 
 // TestPromptOpensConversationWindow: the person's prompt opens the window, so
-// the next stop with work owed is allowed with the present line; a wake's
-// prompt and a background task's report open none, so those sessions' stops
-// stay blocked.
+// the next stop with work owed is allowed with the present line while the
+// session holds a wake, and held, naming the window, while it holds none; a
+// wake's prompt and a background task's report open none, so those sessions'
+// stops stay blocked.
 func TestPromptOpensConversationWindow(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
 	root := awayCheckout(t)
-	setAway(t)
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
 	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
 	fakeOwed(t, &owed)
 
-	// The person: the window opens, and the stop after it is the present one.
+	// The person: the window opens. A stop with work owed and no wake is
+	// held, since nothing would read this session again; with a wake it is
+	// the present one.
 	if ctx := promptAt(t, "talk", root, "status?"); !strings.Contains(ctx, conversationMark) {
 		t.Fatalf("the person's prompt did not open the window:\n%s", ctx)
 	}
 	pinStopClock(t, time.Now().UTC().Add(time.Minute), time.UTC)
-	out, so, _ := runStop(t, stopHookPayload(t, "talk", root, false, "Here is the status."))
+	out, so, _ := runStop(t, stopHookPayload(t, "talk", root, true, "Here is the status.", "*/10 * * * *"))
 	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
-		t.Errorf("a stop inside the window: %s; want it allowed, naming the owed item", so)
+		t.Errorf("a stop inside the window with a wake: %s; want it allowed, naming the owed item", so)
 	}
 	// Past the window the checks hold again.
 	pinStopClock(t, time.Now().UTC().Add(autonomy.ConversationWindow+2*time.Minute), time.UTC)
@@ -71,13 +79,76 @@ func TestPromptOpensConversationWindow(t *testing.T) {
 	}
 }
 
+// TestWakeSetWhilePresentOpensNoWindow: a wake the session held at a stop
+// while the person was present, or at a stop the check allowed without
+// judging it, is known once the mode is set, so its prompt opens nothing.
+func TestWakeSetWhilePresentOpensNoWindow(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+
+	pinStopClock(t, time.Now().UTC(), time.UTC)
+	if out, so, _ := runStop(t, stopHookPayload(t, "early", root, false, "Done.", "*/10 * * * *")); out.Decision != "" {
+		t.Fatalf("a present stop: %s; want it allowed", so)
+	}
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
+	if ctx := promptAt(t, "early", root, "look"); strings.Contains(ctx, conversationMark) {
+		t.Errorf("a wake seen only while present opened the window:\n%s", ctx)
+	}
+
+	// A stop allowed because the owed work could not be read keeps the
+	// wakes too.
+	prev := stopOwedReader
+	stopOwedReader = func(context.Context, autonomy.ReadOptions) (autonomy.Owed, error) {
+		return autonomy.Owed{}, errors.New("unreadable")
+	}
+	t.Cleanup(func() { stopOwedReader = prev })
+	payload := strings.Replace(stopHookPayload(t, "unread", root, false, "Done.", "*/10 * * * *"), `"prompt":"look"`, `"prompt":"unread look"`, 1)
+	if out, so, _ := runStop(t, payload); out.Decision != "" {
+		t.Fatalf("a stop whose owed work could not be read: %s; want it allowed", so)
+	}
+	if ctx := promptAt(t, "unread", root, "unread look"); strings.Contains(ctx, conversationMark) {
+		t.Errorf("a wake seen at a stop allowed unread opened the window:\n%s", ctx)
+	}
+}
+
+// TestConversationWindowEndsWithItsRecord: a prompt the person typed under one
+// away record opens nothing under the next, however soon it is set.
+func TestConversationWindowEndsWithItsRecord(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
+	if ctx := promptAt(t, "back", root, "I'm back"); !strings.Contains(ctx, conversationMark) {
+		t.Fatalf("the person's prompt did not open the window:\n%s", ctx)
+	}
+	if _, stderr, err := runSplit(t, "", "mode", "back"); err != nil {
+		t.Fatalf("mode back: %v\n%s", err, stderr)
+	}
+	// The next record, set straight after: its start, kept to the second,
+	// is no earlier than the prompt's second.
+	setAwayHere(t)
+	pinStopClock(t, time.Now().UTC().Add(time.Minute), time.UTC)
+	out, so, _ := runStop(t, stopHookPayload(t, "back", root, false, "Done.", "*/10 * * * *"))
+	if out.Decision != "block" || strings.Contains(out.Reason, "typed a prompt in this session") {
+		t.Errorf("the first stop under a new record: %s; want the away block", so)
+	}
+	if reason := hookDenyOf(t, strings.Replace(chipCall(t, root, "Product Q1"), `"session_id":"s1"`, `"session_id":"back"`, 1)); !strings.Contains(reason, "the person is away") {
+		t.Errorf("a question under the new record: %q; want the away refusal", reason)
+	}
+}
+
 // TestQuestionAdmittedInsideConversationWindow: while away a question is
 // refused, but inside the window of the session asking it, it is checked as
 // if the person were present, by the hook and by the verb the question
-// drafter runs.
+// drafter runs, which reads the session the host's environment names.
 func TestQuestionAdmittedInsideConversationWindow(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
 	root := awayCheckout(t)
-	setAwayHere(t)
+	setAwayAt(t, root, time.Now().Add(-time.Minute), false)
+	t.Setenv(hostSessionIDEnv, "s1")
 	if reason := hookDenyOf(t, chipCall(t, root, "Product Q1")); !strings.Contains(reason, "the person is away") {
 		t.Fatalf("before the person spoke: %q; want the away refusal", reason)
 	}
@@ -95,9 +166,16 @@ func TestQuestionAdmittedInsideConversationWindow(t *testing.T) {
 	if res, _, _ := runQuestionVerb(t, "clean-product-chip"); res.Hook == question.OutcomeRefuseAway {
 		t.Errorf("inside the window the verb still says refuse-away")
 	}
-	// Another session of the checkout, not in its window, is still away.
+	// Another session of the checkout, not in its window, is still away, at
+	// the hook and at the verb, as is a verb run with no session named.
 	other := strings.Replace(chipCall(t, root, "Product Q1"), `"session_id":"s1"`, `"session_id":"s2"`, 1)
 	if reason := hookDenyOf(t, other); !strings.Contains(reason, "the person is away") {
 		t.Errorf("another session's question: %q; want the away refusal", reason)
+	}
+	for _, id := range []string{"s2", ""} {
+		t.Setenv(hostSessionIDEnv, id)
+		if res, _, _ := runQuestionVerb(t, "clean-product-chip"); res.Hook != question.OutcomeRefuseAway {
+			t.Errorf("the verb for session %q outside its window: %q; want refuse-away", id, res.Hook)
+		}
 	}
 }

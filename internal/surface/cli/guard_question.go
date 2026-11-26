@@ -198,46 +198,43 @@ func questionState(cmd *cobra.Command, cwd, sessionID string) questionReads {
 // away and nothing is said; a record or lock the store refuses reads as not
 // away, and is returned for the one line the gate writes. A session the
 // person is talking to reads as present inside its conversation window
-// (iss-2611260602137306): the hook names its session, and the verb, run with
-// none, reads any session of the checkout in its window.
+// (iss-2611260602137306): the hook names its session from the payload, and the
+// verb from the host's environment (hostSessionIDEnv); with none named, no
+// window is read.
 func awayAtQuestion(cwd, sessionID string) (away bool, unread error) {
 	root, err := mode.Root(cwd)
 	if err != nil {
 		return false, nil
 	}
-	_, holds, err := autonomy.AwayAt(root, autonomy.Options{})
+	rec, holds, err := autonomy.AwayAt(root, autonomy.Options{})
 	if err != nil {
 		if errors.Is(err, autonomy.ErrUnsafe) {
 			return false, err
 		}
 		return false, nil
 	}
-	if holds && conversingAt(root, cwd, sessionID) {
+	if holds && conversingAt(rec, cwd, sessionID) {
 		return false, nil
 	}
 	return holds, nil
 }
 
 // conversingAt reports whether the person is talking to the session the
-// question comes from: the named session's window, or, with no session
-// named, any session's of the checkout at root. A state that cannot be
-// read reads as no window, so the question stays routed as away.
-func conversingAt(root, cwd, sessionID string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), questionConversationBudget)
-	defer cancel()
-	now := time.Now()
-	if sessionID == "" {
-		return autonomy.AnyConversing(ctx, root, now)
-	}
+// question comes from: that session's window under rec, read from its start
+// copy as the prompt hook wrote it. No session named, or a state that cannot
+// be read, reads as no window, so the question stays routed as away.
+func conversingAt(rec *autonomy.Record, cwd, sessionID string) bool {
 	if !autonomy.ValidSessionID(sessionID) {
 		return false
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), questionConversationBudget)
+	defer cancel()
 	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
 	if err != nil {
 		return false
 	}
 	st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
-	return err == nil && st.Conversing(now)
+	return err == nil && st.Conversing(rec, time.Now())
 }
 
 // questionConversationBudget bounds the window's read at a question.

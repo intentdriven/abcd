@@ -2,8 +2,6 @@ package autonomy
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -13,14 +11,18 @@ import (
 // away record holds for every session, but a prompt the person types in one
 // session opens a window in which that session reads as present: its stops are
 // allowed with the present line and its questions go to the person. Every
-// other session stays away, and the window closes on its own, so autonomous
-// work resumes without the person ending the mode and setting it again.
+// other session stays away, and the window closes on its own, and with it the
+// record it opened under, so autonomous work resumes without the person ending
+// the mode and setting it again.
 
 // ConversationWindow is how long after the person's last prompt a session reads
 // as present while the away record holds.
 const ConversationWindow = 15 * time.Minute
 
-// maxCronPrompts bounds the wake prompts a session's state keeps.
+// maxCronPrompts bounds the wake prompts a session's state keeps. A session
+// whose stop lists more wakes than this is marked (CronPromptsOverflow), and
+// no prompt opens its window until it lists no more, so a wake the bound let
+// go is never read as the person typing.
 const maxCronPrompts = 32
 
 // hostPromptPrefixes open the prompts the host submits on its own: a
@@ -37,13 +39,52 @@ var hostPromptPrefixes = []string{
 }
 
 // Conversing reports whether the person typed a prompt in this session within
-// ConversationWindow of now. A stamp later than now (the clock stepped back, or
-// a state written by hand) opens nothing.
-func (s SessionState) Conversing(now time.Time) bool {
-	if s.PersonPromptAt.IsZero() || s.PersonPromptAt.After(now) {
+// ConversationWindow of now, under the away record rec holding now: no record
+// holding is no window, and a stamp from before rec began opens nothing under
+// it, so a prompt typed under one record opens nothing under the next. The
+// record keeps its start to the second, so a stamp within that second is taken
+// as before it: a prompt typed in a record's first second opens nothing, and
+// one typed under the record before it in that second never does. A stamp
+// later than now (the clock stepped back) opens nothing, and the next write of
+// the state drops it (KeepWakes, NotePrompt).
+func (s SessionState) Conversing(rec *Record, now time.Time) bool {
+	if !rec.Holds(now) || s.PersonPromptAt.IsZero() || s.PersonPromptAt.After(now) || s.PersonPromptAt.Before(rec.Start.Add(time.Second)) {
 		return false
 	}
 	return now.Sub(s.PersonPromptAt) <= ConversationWindow
+}
+
+// KeepWakes is st as a stop check leaves it for the prompt hook: the wakes the
+// stop's payload lists remembered (and the mark of a payload listing more
+// than the state keeps set or cleared), and a stamp later than now dropped.
+// changed reports whether that differs from st, so a check with nothing new
+// writes nothing. Every stop the check reads keeps them, the person present or
+// away, so a wake set before the mode was is known at its first prompt.
+func KeepWakes(st SessionState, crons []SessionCron, now time.Time) (next SessionState, changed bool) {
+	next = st
+	next.CronPrompts = rememberCrons(st.CronPrompts, crons)
+	next.CronPromptsOverflow = distinctPrompts(crons) > maxCronPrompts
+	if next.PersonPromptAt.After(now) {
+		next.PersonPromptAt = time.Time{}
+	}
+	changed = !slices.Equal(next.CronPrompts, st.CronPrompts) ||
+		next.CronPromptsOverflow != st.CronPromptsOverflow ||
+		!next.PersonPromptAt.Equal(st.PersonPromptAt)
+	if changed {
+		next.SchemaVersion = SchemaVersion
+	}
+	return next, changed
+}
+
+// distinctPrompts counts the different non-empty prompts crons lists.
+func distinctPrompts(crons []SessionCron) int {
+	seen := map[string]bool{}
+	for _, c := range crons {
+		if strings.TrimSpace(c.Prompt) != "" {
+			seen[promptHash(c.Prompt)] = true
+		}
+	}
+	return len(seen)
 }
 
 // promptHash is a prompt's hash as the state keeps it, surrounding space aside.
@@ -76,10 +117,12 @@ func rememberCrons(known []string, crons []SessionCron) []string {
 }
 
 // personPrompt reports whether a submitted prompt is the person's: not empty,
-// not one of the host's own envelopes, and not a wake the stop checks have seen.
+// not one of the host's own envelopes, and not a wake the stop checks have
+// seen. In a session whose last stop listed more wakes than the state keeps,
+// no prompt is.
 func personPrompt(st SessionState, prompt string) bool {
 	p := strings.TrimSpace(prompt)
-	if p == "" || knownCronPrompt(st, p) {
+	if p == "" || st.CronPromptsOverflow || knownCronPrompt(st, p) {
 		return false
 	}
 	for _, pre := range hostPromptPrefixes {
@@ -92,15 +135,22 @@ func personPrompt(st SessionState, prompt string) bool {
 
 // NotePrompt stamps the session's state with now when prompt is the person's,
 // opening the conversation window, and reports whether it did. The prompt hook
-// calls it only while the away record holds. A wake's prompt the stop checks
-// have not yet seen reads as the person's: the cost is one window in which the
-// session is not held, never a stop held against the person.
+// calls it only while the away record holds. The wakes are those every stop
+// check of the session has kept (KeepWakes), present or away. A prompt that
+// opens nothing drops a stamp later than now, so a clock stepped back cannot
+// open a window later.
 func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now time.Time) (bool, error) {
 	st, err := LoadSession(ctx, copyRoot, sessionID)
 	if err != nil {
 		return false, err
 	}
 	if !personPrompt(st, prompt) {
+		if st.PersonPromptAt.After(now) {
+			st.PersonPromptAt = time.Time{}
+			if err := SaveSession(copyRoot, sessionID, st); err != nil {
+				return false, err
+			}
+		}
 		return false, nil
 	}
 	st.PersonPromptAt = now
@@ -108,30 +158,6 @@ func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now tim
 		return false, err
 	}
 	return true, nil
-}
-
-// AnyConversing reports whether any session of the copy at copyRoot is in its
-// conversation window: what a check run with no session id (`abcd guard
-// question`, run by the question drafter) reads, since the session it serves
-// is one of them. A state that cannot be read counts for nothing.
-func AnyConversing(ctx context.Context, copyRoot string, now time.Time) bool {
-	entries, err := os.ReadDir(filepath.Join(copyRoot, filepath.FromSlash(SessionsDir)))
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		id, ok := strings.CutSuffix(e.Name(), ".json")
-		if !ok || !e.Type().IsRegular() || !ValidSessionID(id) {
-			continue
-		}
-		if ctx.Err() != nil {
-			return false
-		}
-		if st, err := LoadSession(ctx, copyRoot, id); err == nil && st.Conversing(now) {
-			return true
-		}
-	}
-	return false
 }
 
 // ConversationLine is the agent's line on a prompt that opened or renewed the

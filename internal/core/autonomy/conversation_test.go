@@ -10,31 +10,60 @@ import (
 // conversation_test.go — iss-2611260602137306: a prompt the person types while
 // away opens a window in which that session reads as present.
 
-// TestConversationWindowAllowsStop: inside the window a stop with work owed is
-// allowed with the present line, and the checks hold again once it ends.
-func TestConversationWindowAllowsStop(t *testing.T) {
+// TestConversationWindowStop: inside the window a stop with work owed is
+// allowed with the present line while the session holds a wake that will
+// have the checks read it again, and held, naming the window, when it holds
+// none; the checks hold as before once the window ends, and a stamp from
+// before the away record began, or one later than now, opens nothing.
+func TestConversationWindowStop(t *testing.T) {
 	now := at(t, "2026-11-26 06:00")
 	rec := awayRec(now, false)
 	owed := owedOf(behindPR)
 	seen := SessionState{Fingerprint: owed.Fingerprint(), WakeFingerprint: owed.CappedFingerprint(), Wakes: 2}
+	wake := crons("*/10 * * * *")
 
 	for _, c := range []struct {
 		name   string
 		prompt time.Time
+		crons  []SessionCron
 		block  bool
+		window bool // the block is the window's, not an away row's
 	}{
-		{"no prompt", time.Time{}, true},
-		{"prompt five minutes ago", now.Add(-5 * time.Minute), false},
-		{"prompt at the window's edge", now.Add(-ConversationWindow), false},
-		{"prompt past the window", now.Add(-ConversationWindow - time.Minute), true},
-		{"prompt stamped in the future", now.Add(time.Hour), true},
+		{"no prompt", time.Time{}, nil, true, false},
+		{"prompt five minutes ago, a wake held", now.Add(-5 * time.Minute), wake, false, false},
+		{"prompt at the window's edge, a wake held", now.Add(-ConversationWindow), wake, false, false},
+		{"prompt past the window", now.Add(-ConversationWindow - time.Minute), nil, true, false},
+		{"prompt stamped in the future", now.Add(time.Hour), nil, true, false},
+		{"prompt before the away record began", rec.Start.Add(-time.Minute), wake, true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			st := seen
 			st.PersonPromptAt = c.prompt
-			v := judgeAt(t, rec, owed, StopInput{StopHookActive: true}, st, now)
+			if c.name == "prompt before the away record began" {
+				// A prompt one minute before the record's start, still
+				// inside the window's span of now.
+				now := rec.Start.Add(5 * time.Minute)
+				v := judgeAt(t, rec, owed, StopInput{StopHookActive: true, SessionCrons: c.crons}, st, now)
+				if v.Row == 0 && !v.Block {
+					t.Fatalf("a stamp from before the record opened the window: %+v", v)
+				}
+				return
+			}
+			v := judgeAt(t, rec, owed, StopInput{StopHookActive: true, SessionCrons: c.crons}, st, now)
 			if v.Block != c.block {
 				t.Fatalf("Block = %v, want %v (row %d, reason %q)", v.Block, c.block, v.Row, v.Reason)
+			}
+			if c.prompt.After(now) && !v.State.PersonPromptAt.IsZero() {
+				t.Errorf("a stamp later than now was kept: %v", v.State.PersonPromptAt)
+			}
+			if c.window {
+				if !strings.Contains(v.Reason, "typed a prompt in this session") || !strings.Contains(v.Reason, "feat/behind") {
+					t.Errorf("reason %q does not name the window and the owed item", v.Reason)
+				}
+				if !v.State.PersonPromptAt.Equal(c.prompt) {
+					t.Errorf("the window's stamp was not kept: %v", v.State.PersonPromptAt)
+				}
+				return
 			}
 			if c.block {
 				return
@@ -53,31 +82,69 @@ func TestConversationWindowAllowsStop(t *testing.T) {
 			}
 		})
 	}
+	// With nothing owed the stop inside the window needs no wake.
+	st := SessionState{PersonPromptAt: now.Add(-time.Minute)}
+	if v := judgeAt(t, rec, Owed{}, StopInput{}, st, now); v.Block {
+		t.Errorf("nothing owed inside the window: blocked (%q)", v.Reason)
+	}
 }
 
-// TestJudgeRemembersCronPrompts: every stop the record holds for keeps the
-// prompts of the session's wakes, inside the window and out, so the prompt hook
-// can tell a wake's prompt from the person's.
+// TestJudgeRemembersCronPrompts: every stop the check reads keeps the prompts
+// of the session's wakes, the person present or away, inside the window and
+// out, and a reading cut short too, so the prompt hook can tell a wake's
+// prompt from the person's whenever the mode is set.
 func TestJudgeRemembersCronPrompts(t *testing.T) {
 	now := at(t, "2026-11-26 06:00")
-	rec := awayRec(now, false)
+	away := awayRec(now, false)
 	in := StopInput{SessionCrons: []SessionCron{{ID: "a", Schedule: "*/10 * * * *", Recurring: true, Prompt: "  Build, regular look\n"}}}
-	for _, st := range []SessionState{{}, {PersonPromptAt: now.Add(-time.Minute)}} {
-		v := judgeAt(t, rec, owedOf(behindPR), in, st, now)
+	short := Owed{Items: []OwedItem{behindPR}, Incomplete: true}
+	for _, c := range []struct {
+		name string
+		rec  *Record
+		owed Owed
+		st   SessionState
+	}{
+		{"away", away, owedOf(behindPR), SessionState{}},
+		{"away, inside the window", away, owedOf(behindPR), SessionState{PersonPromptAt: now.Add(-time.Minute)}},
+		{"present, work owed", nil, owedOf(behindPR), SessionState{}},
+		{"present, nothing owed", nil, Owed{}, SessionState{}},
+		{"away, the reading cut short", away, short, SessionState{}},
+		{"present, the reading cut short", nil, short, SessionState{}},
+	} {
+		v := judgeAt(t, c.rec, c.owed, in, c.st, now)
 		if !v.Save || !knownCronPrompt(v.State, "Build, regular look") {
-			t.Errorf("state %+v: the wake's prompt was not kept (Save %v, %v)", st, v.Save, v.State.CronPrompts)
+			t.Errorf("%s: the wake's prompt was not kept (Save %v, %v)", c.name, v.Save, v.State.CronPrompts)
 		}
 	}
+	// A present stop whose wakes are already known writes nothing.
+	known := SessionState{SchemaVersion: SchemaVersion, CronPrompts: []string{promptHash("Build, regular look")}}
+	if v := judgeAt(t, nil, Owed{}, in, known, now); v.Save {
+		t.Errorf("a present stop with nothing new saved the state: %+v", v.State)
+	}
+
 	var many []SessionCron
 	for i := 0; i < maxCronPrompts+5; i++ {
 		many = append(many, SessionCron{ID: "x", Schedule: "0 * * * *", Prompt: strings.Repeat("p", i+1)})
 	}
-	v := judgeAt(t, rec, Owed{}, StopInput{SessionCrons: many}, SessionState{}, now)
+	v := judgeAt(t, away, Owed{}, StopInput{SessionCrons: many}, SessionState{}, now)
 	if n := len(v.State.CronPrompts); n != maxCronPrompts {
 		t.Errorf("kept %d wake prompts, want the bound %d", n, maxCronPrompts)
 	}
 	if !knownCronPrompt(v.State, many[len(many)-1].Prompt) {
 		t.Error("the newest wake prompt was dropped for an older one")
+	}
+	// The wake the bound let go opens no window: past the bound no prompt
+	// is taken for the person's.
+	if personPrompt(v.State, many[0].Prompt) {
+		t.Error("a wake past the bound reads as the person's prompt")
+	}
+	if personPrompt(v.State, "status?") {
+		t.Error("a session listing more wakes than the state keeps took a prompt for the person's")
+	}
+	// Once the session lists no more than the bound, prompts read as before.
+	v = judgeAt(t, away, Owed{}, StopInput{SessionCrons: many[:3]}, v.State, now)
+	if !personPrompt(v.State, "status?") {
+		t.Error("a session back within the bound still opens no window")
 	}
 }
 
@@ -85,6 +152,7 @@ func TestJudgeRemembersCronPrompts(t *testing.T) {
 func TestNotePrompt(t *testing.T) {
 	ctx := context.Background()
 	now := at(t, "2026-11-26 06:00")
+	rec := awayRec(now, false)
 	copyRoot := t.TempDir()
 	const id = "sess-1"
 	base := SessionState{CronPrompts: []string{promptHash("Build, regular look")}}
@@ -116,35 +184,62 @@ func TestNotePrompt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if st.Conversing(now) != c.opens {
-				t.Errorf("Conversing = %v after the prompt, want %v", st.Conversing(now), c.opens)
+			if st.Conversing(rec, now) != c.opens {
+				t.Errorf("Conversing = %v after the prompt, want %v", st.Conversing(rec, now), c.opens)
 			}
 			if len(st.CronPrompts) != 1 {
 				t.Errorf("the known wakes were not kept: %v", st.CronPrompts)
 			}
 		})
 	}
+	// A stamp later than now is dropped by a prompt that opens nothing, so
+	// it cannot open a window once the clock reaches it.
+	future := base
+	future.PersonPromptAt = now.Add(time.Hour)
+	if err := SaveSession(copyRoot, id, future); err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := NotePrompt(ctx, copyRoot, id, "Build, regular look", now); err != nil || opened {
+		t.Fatalf("a wake's prompt: opened %v, err %v", opened, err)
+	}
+	st, err := LoadSession(ctx, copyRoot, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.PersonPromptAt.IsZero() {
+		t.Errorf("a stamp later than now was kept: %v", st.PersonPromptAt)
+	}
+	// Past the wakes' bound no prompt opens the window.
+	if err := SaveSession(copyRoot, id, SessionState{CronPromptsOverflow: true}); err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := NotePrompt(ctx, copyRoot, id, "status?", now); err != nil || opened {
+		t.Errorf("past the wakes' bound: opened %v, err %v; want nothing opened", opened, err)
+	}
 }
 
-// TestAnyConversing: the question check run with no session (`abcd guard
-// question`) reads present while any session of the copy is in its window.
-func TestAnyConversing(t *testing.T) {
-	ctx := context.Background()
+// TestConversingNeedsTheHoldingRecord: the window is read only under the away
+// record holding now, and only from a stamp made under it.
+func TestConversingNeedsTheHoldingRecord(t *testing.T) {
 	now := at(t, "2026-11-26 06:00")
-	copyRoot := t.TempDir()
-	if AnyConversing(ctx, copyRoot, now) {
-		t.Fatal("a copy with no sessions reads as conversing")
+	rec := awayRec(now, false)
+	st := SessionState{PersonPromptAt: now.Add(-time.Minute + 300*time.Millisecond)}
+	if !st.Conversing(rec, now) {
+		t.Fatal("a stamp a minute old under the holding record reads as no window")
 	}
-	if err := SaveSession(copyRoot, "old", SessionState{PersonPromptAt: now.Add(-time.Hour)}); err != nil {
-		t.Fatal(err)
+	if st.Conversing(nil, now) {
+		t.Error("with no record holding, the stamp reads as a window")
 	}
-	if AnyConversing(ctx, copyRoot, now) {
-		t.Fatal("a prompt an hour old reads as conversing")
+	later := *rec
+	later.Start = now.Add(-30 * time.Second)
+	if st.Conversing(&later, now) {
+		t.Error("a stamp from before the record began reads as a window under it")
 	}
-	if err := SaveSession(copyRoot, "new", SessionState{PersonPromptAt: now.Add(-time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
-	if !AnyConversing(ctx, copyRoot, now) {
-		t.Fatal("a session in its window does not read as conversing")
+	// The record keeps its start to the second: a stamp within that second
+	// may come from the record before it, and opens nothing.
+	same := *rec
+	same.Start = st.PersonPromptAt.Truncate(time.Second)
+	if st.Conversing(&same, now) {
+		t.Error("a stamp within the record's first second reads as a window under it")
 	}
 }

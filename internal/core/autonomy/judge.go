@@ -106,24 +106,31 @@ type Verdict struct {
 // passes the cap is recorded as a stop possibly forced by the cap.
 func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time) Verdict {
 	away := rec.Holds(now)
+	// Every check that reads the payload keeps the session's wakes, present or
+	// away, cut short or not, so the prompt hook knows a wake set before the
+	// mode was (iss-2611260602137306).
+	kept, keptChanged := KeepWakes(st, in.SessionCrons, now)
 	if owed.Incomplete {
 		// The check ran out of its time budget: it fails open, allowing the
 		// stop with a line naming what was not read, and, while away,
-		// recording the stop. The session's state is left as it was.
+		// recording the stop. The session's state is left as it was but for
+		// the wakes.
 		v := Verdict{SystemMessage: incompleteLine(owed)}
 		if away {
 			v.Stop = &Stop{Kind: StopCheckIncomplete, Detail: incompleteDetail(owed)}
 		}
+		if keptChanged {
+			v.Save, v.State = true, kept
+		}
 		return v
 	}
-	if away && st.Conversing(now) {
-		// The person typed a prompt in this session within the window
-		// (iss-2611260602137306): the stop is the present one, and the state
-		// is kept as it was but for the wakes' prompts, so the away counts
-		// resume where they stood once the window ends.
-		next := st
+	if st.Conversing(rec, now) {
+		// The person typed a prompt in this session within the window, under
+		// the record holding now (iss-2611260602137306): the stop is the
+		// present one, and the state is kept as it was but for the wakes, so
+		// the away counts resume where they stood once the window ends.
+		next := kept
 		next.SchemaVersion = SchemaVersion
-		next.CronPrompts = rememberCrons(st.CronPrompts, in.SessionCrons)
 		owed, _ = settleHandBacks(rec, owed, false)
 		v := Verdict{Save: true, State: next}
 		if !owed.Empty() {
@@ -133,15 +140,18 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	}
 	owed, handBacks := settleHandBacks(rec, owed, away)
 	if !away {
-		if owed.Empty() {
-			return Verdict{}
+		v := Verdict{}
+		if !owed.Empty() {
+			v.SystemMessage = presentLine(owed)
 		}
-		return Verdict{SystemMessage: presentLine(owed)}
+		if keptChanged {
+			v.Save, v.State = true, kept
+		}
+		return v
 	}
 
-	next := st
+	next := kept
 	next.SchemaVersion = SchemaVersion
-	next.CronPrompts = rememberCrons(st.CronPrompts, in.SessionCrons)
 	if cfp := owed.CappedFingerprint(); cfp != next.WakeFingerprint {
 		next.Wakes, next.WakeFingerprint, next.WaitingSince = 0, cfp, time.Time{}
 	}
@@ -211,6 +221,14 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 		v.State = next
 		return v
 	}
+	return holdStop(v, next, in, owed)
+}
+
+// holdStop is the verdict v blocking the stop, with next the session's state:
+// the session is working, the count of consecutive blocks moves as
+// stop_hook_active says, and the block passing the host's cap is recorded as
+// a stop possibly forced by it.
+func holdStop(v Verdict, next SessionState, in StopInput, owed Owed) Verdict {
 	v.Block = true
 	next.State, next.NextLook = StateWorking, time.Time{}
 	if in.StopHookActive {

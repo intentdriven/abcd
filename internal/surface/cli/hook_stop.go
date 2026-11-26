@@ -195,6 +195,7 @@ nothing.`,
 			now, loc := stopClock()
 			rec, away, err := st.Away(now)
 			if err != nil {
+				stopKeepWakes(copyRoot, p, now)
 				return stopAllow(cmd, "%s; read as not away", fsutil.RedactHome(err.Error()))
 			}
 			if away && !autonomy.ValidSessionID(p.SessionID) {
@@ -203,6 +204,7 @@ nothing.`,
 			home, _ := os.UserHomeDir()
 			owed, err := stopOwedReader(ctx, autonomy.ReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }, SessionID: p.SessionID})
 			if err != nil {
+				stopKeepWakes(copyRoot, p, now)
 				return stopAllow(cmd, "owed work could not be read (%s)", fsutil.RedactHome(err.Error()))
 			}
 			in := autonomy.StopInput{
@@ -210,22 +212,34 @@ nothing.`,
 				SessionCrons: p.SessionCrons, BackgroundTasks: p.BackgroundTasks, Cap: stopBlockCap(cmd.ErrOrStderr()),
 				Location: loc,
 			}
+			// The state is read after the owed read's budget, as
+			// stopReadBudget counts it, under a short bound of its own. It is
+			// read while present too, so the stop keeps the session's wakes
+			// for the prompt hook (iss-2611260602137306); a present state that
+			// cannot be read is named by the checklist's read below and left
+			// as it is.
 			var prev autonomy.SessionState
-			if away {
-				// The state is read after the owed read's budget, as
-				// stopReadBudget counts it, under a short bound of its own.
+			stateRead := false
+			if autonomy.ValidSessionID(p.SessionID) {
 				sctx, scancel := context.WithTimeout(context.Background(), stopStateBudget)
 				prev, err = autonomy.LoadSession(sctx, copyRoot, p.SessionID)
 				scancel()
-				if err != nil {
+				if err != nil && away {
 					return stopAllow(cmd, "the session's state could not be read (%s)", fsutil.RedactHome(err.Error()))
+				}
+				stateRead = err == nil
+				if !stateRead {
+					prev = autonomy.SessionState{}
 				}
 			}
 			v := autonomy.Judge(rec, owed, in, prev, now)
+			if !stateRead {
+				v.Save = false
+			}
 			// A session the person is talking to reads as present for the
 			// checklist too, inside the conversation window
 			// (iss-2611260602137306).
-			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, v, away && !prev.Conversing(now))
+			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, stateRead, v, away && !prev.Conversing(rec, now))
 			if v.Save {
 				if err := autonomy.SaveSession(copyRoot, p.SessionID, v.State); err != nil {
 					return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
@@ -246,6 +260,26 @@ nothing.`,
 	}
 }
 
+// stopKeepWakes keeps the payload's wakes in the session's state on a stop
+// allowed before the check could judge it, so a wake set then is still known
+// to the prompt hook (autonomy.KeepWakes). A state that cannot be read or
+// written is left as it is, unnamed: the stop is allowed already, and its
+// reason named.
+func stopKeepWakes(copyRoot string, p stopPayload, now time.Time) {
+	if !autonomy.ValidSessionID(p.SessionID) || len(p.SessionCrons) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stopStateBudget)
+	defer cancel()
+	st, err := autonomy.LoadSession(ctx, copyRoot, p.SessionID)
+	if err != nil {
+		return
+	}
+	if next, changed := autonomy.KeepWakes(st, p.SessionCrons, now); changed {
+		_ = autonomy.SaveSession(copyRoot, p.SessionID, next)
+	}
+}
+
 // stopChecklistBehind folds the checklist's behind check into the verdict
 // (spc-2610230805429429 step 4): the owned work the reading found is compared
 // with the working copy's checklist, read only when the session owns any.
@@ -257,7 +291,7 @@ nothing.`,
 // hook's one deadline (ctx): a deadline spent before or during it leaves the
 // verdict as it was, so a checklist git did not answer for in time is never
 // read as one that lists nothing.
-func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sessionID string, owed autonomy.Owed, in autonomy.StopInput, prev autonomy.SessionState, v autonomy.Verdict, away bool) autonomy.Verdict {
+func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sessionID string, owed autonomy.Owed, in autonomy.StopInput, prev autonomy.SessionState, prevRead bool, v autonomy.Verdict, away bool) autonomy.Verdict {
 	if !autonomy.ValidSessionID(sessionID) || owed.Incomplete {
 		return v
 	}
@@ -272,12 +306,14 @@ func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sess
 		return v
 	}
 	if !away {
-		// Inside the conversation window the verdict already holds the state
-		// to save (Judge kept the wakes' prompts), and the note is folded
-		// into it, so one write keeps both.
-		if v.Save {
+		// A verdict that already holds the state to save (Judge kept the
+		// wakes' prompts) has the note folded into it, so one write keeps
+		// both; a state the hook could not read is read once more here, and
+		// named when it still cannot be.
+		switch {
+		case v.Save:
 			prev = v.State
-		} else {
+		case !prevRead:
 			st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
 			if err != nil {
 				diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
