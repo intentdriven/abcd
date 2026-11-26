@@ -73,6 +73,40 @@ func TestADrainAtTheCapWaitsAndNamesThePullRequests(t *testing.T) {
 	}
 }
 
+// TestADrainWaitsAtTheRepositorysCeiling (itd-2611251809580662): with the
+// repository's file on origin's default branch setting reservation.max_live
+// 4, a drain whose person holds four, its parked lane among them, waits at
+// the cap of four, while the working tree's own file saying 50 changes
+// nothing.
+func TestADrainWaitsAtTheRepositorysCeiling(t *testing.T) {
+	f := drainLandFixture(t)
+	first := f.firstMove(t)
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, secondIssue
+	f.parkIssueLaneOnce(t)
+	for i := 1; i <= 3; i++ {
+		id := fmt.Sprintf("iss-26093000000002%02d", i)
+		if _, err := claim.Reserve(f.repo.Root(), claim.Request{Record: id, Footprint: []string{fmt.Sprintf("other/f%d.go", i)}}, claim.Options{}); err != nil {
+			t.Fatalf("Pat's reservation %d: %v", i, err)
+		}
+	}
+	ceilingOnOrigin(t, f.repo, `{"reservation": {"max_live": 4}}`)
+	f.repo.Write(".abcd/config.json", `{"reservation": {"max_live": 50}}`)
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatalf("a drain at the repository's cap does not refuse: %v", err)
+	}
+	st, _, err := readDrain(f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Start != nil || res.WaitingUntil == nil || st.Waiting != DrainWaitCap || !strings.Contains(res.Next, "4 live reservations") {
+		t.Fatalf("holding four under the repository's 4, the drain waits at the cap: %q, next %s", st.Waiting, res.Next)
+	}
+}
+
 // TestADrainWithOnlyHeldWorkLeftWaitsAndKeepsItsJudgements: once Pat's lane
 // is handed back and the one eligible issue left is Quinn's, Pat's drain does
 // not stop: it waits, says when it looks again and keeps every judgement;

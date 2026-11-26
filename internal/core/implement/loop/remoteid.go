@@ -85,6 +85,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -1037,11 +1038,15 @@ func includePath(env *gitEnv, repoRoot, salt string, r scopedSetting, b readBoun
 // network down it is not made and the start waits on the shared network
 // probe (g), and one that loses the network is reported to that outage
 // (netFailure, g.take) and is a contention refusal, which the drive waits
-// on as it waits on a lane's. One that cannot be asked otherwise, or a tip
-// this repository does not hold yet, refuses the start. A hooks directory
-// outside the checkout, or no origin, has nothing to be compared with, and
-// passes. It reads and refuses only: nothing is written, and a person's own
-// git runs the hooks as before.
+// on as it waits on a lane's. One that cannot be asked otherwise refuses the
+// start. A tip this repository does not hold yet is fetched once, as a drain
+// move fetches origin's default branch (fetchUnheldTip), under the hold id
+// the start has just read (heldBeforeGitIn); the fetch is waited on or
+// refused as the ask is, and a tip still not held after it refuses the start
+// (iss-2611251741261124). A hooks directory outside the checkout, or no
+// origin, has nothing to be compared with, and passes. Beside that one
+// fetch, which moves only origin's remote-tracking ref, it reads and refuses
+// only, and a person's own git runs the hooks as before.
 func proveCheckoutHooks(repoRoot string, id *remoteIdentity, g *outageGate) error {
 	var rels []string
 	for _, d := range id.hooksDirs {
@@ -1071,7 +1076,7 @@ func proveCheckoutHooks(repoRoot string, id *remoteIdentity, g *outageGate) erro
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), originAskTimeout)
 	defer cancel()
-	_, tip, err := remoteHeadTip(ctx, nil, repoRoot, Remote)
+	branch, tip, err := remoteHeadTip(ctx, nil, repoRoot, Remote)
 	if err != nil {
 		if ctx.Err() != nil {
 			err = fmt.Errorf("%s did not answer within %s: operation timed out", Remote, originAskTimeout)
@@ -1093,10 +1098,35 @@ func proveCheckoutHooks(repoRoot string, id *remoteIdentity, g *outageGate) erro
 			"the drive cannot start: it could not ask "+Remote+" for its default branch's tip, so the checkout's hooks in "+shown+" cannot be compared with it: "+why,
 			"settle what git reports when it asks "+Remote+" for its default branch (git ls-remote --symref "+Remote+" HEAD), then start the drive again; nothing was made")
 	}
-	if _, err := gitutil.RunCappedAsStored(repoRoot, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
-		return refuse(StageDrain, "", "",
-			fmt.Sprintf("the drive cannot start: %s reports its tip at %s, which this repository does not hold yet, so the checkout's hooks in %s cannot be compared with it", Remote, tip[:12], shown),
-			"fetch "+Remote+" (`git fetch "+Remote+"`), then start the drive again; nothing was made")
+	if !tipHeld(repoRoot, tip) {
+		fetched := "git fetch " + Remote + " " + branch
+		if err := heldBeforeGitIn(repoRoot, id, repoRoot, []string{"fetch", Remote, branch}); err != nil {
+			return err
+		}
+		held, err := fetchUnheldTip(repoRoot, branch, tip)
+		if err != nil {
+			if r, ok := heldStopOf(err); ok {
+				return r
+			}
+			why := gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))
+			if r := netFailure(StageDrain, "", fetched, err); r != nil {
+				r.Reason = "the drive cannot start yet: it lost the network fetching " + Remote + "'s " + branch + ", whose tip " + tip[:12] + " this repository does not hold yet and against which the checkout's hooks in " + shown + " are compared: " + why
+				r.Remedy = "keep to offline work; the drive waits as it waits on a lane's ask of " + Remote + ", within its own bounds, and asks again; nothing was made"
+				r.outage.lane = startOutageLane
+				if g != nil {
+					g.take(r)
+				}
+				return r
+			}
+			return refuse(StageDrain, "", "",
+				fmt.Sprintf("the drive cannot start: %s reports its tip at %s, which this repository does not hold yet, and git could not fetch %s from it, so the checkout's hooks in %s cannot be compared with it: %s", Remote, tip[:12], branch, shown, why),
+				"settle what git reports when it fetches (`git fetch "+Remote+"`), then start the drive again; nothing was made")
+		}
+		if !held {
+			return refuse(StageDrain, "", "",
+				fmt.Sprintf("the drive cannot start: %s reports its tip at %s, which this repository does not hold yet even once it fetched %s's %s, so the checkout's hooks in %s cannot be compared with it", Remote, tip[:12], Remote, branch, shown),
+				"fetch "+Remote+" (`git fetch "+Remote+"`) and see that its "+branch+" is the tip it reports (`git ls-remote --symref "+Remote+" HEAD`), then start the drive again; nothing was made")
+		}
 	}
 	for _, rel := range rels {
 		shown := nameChanges(repoRoot, []string{rel})[0]
@@ -1116,6 +1146,35 @@ func proveCheckoutHooks(repoRoot string, id *remoteIdentity, g *outageGate) erro
 		}
 	}
 	return nil
+}
+
+// tipHeld reports whether this repository holds tip as a commit, read as
+// stored.
+func tipHeld(repoRoot, tip string) bool {
+	_, err := gitutil.RunCappedAsStored(repoRoot, 4096, "cat-file", "-e", tip+"^{commit}")
+	return err == nil
+}
+
+// fetchUnheldTip is the one fetch a drive's start and a lane's worktree stage
+// make when origin reports its default branch's tip at a commit this
+// repository does not hold yet (iss-2611251741261124): origin's branch, as a
+// drain move fetches it, into its remote-tracking ref (landing.FetchDefault),
+// with the repository's hooks pinned off as the ask of origin runs them
+// (gitutil.NetContext, which compares what a drive holds first wherever a
+// drive has set that check), since a start has yet to prove the checkout's
+// hooks. It reports whether tip is held once fetched; an error is the fetch
+// git refused, or the drive's comparison that did not let it run.
+func fetchUnheldTip(repoRoot, branch, tip string) (bool, error) {
+	fetch := func(dir string, args ...string) (string, error) {
+		return gitutil.NetContext(context.Background(), dir, args...)
+	}
+	if _, err := landing.FetchDefault(fetch, repoRoot, branch); err != nil {
+		if fe := (*landing.FetchError)(nil); errors.As(err, &fe) {
+			return false, fe.Err
+		}
+		return false, err
+	}
+	return tipHeld(repoRoot, tip), nil
 }
 
 // startOutageLane is the name a drive's start reports a lost network to the

@@ -81,7 +81,7 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return ReadyResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return ReadyResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	store, err := spec.Load(repoRoot)
 	if err != nil {

@@ -21,8 +21,9 @@ const offProfilePointer = "abcd drain --drive is the unattended start: it runs a
 // and no more: the definition of a profile is runner.SessionOnProfile's.
 const offProfileHelp = "abcd reads one setting in the session's environment, and every doubt reads as off a profile, a host\n" +
 	"reporting no such setting included. This reads one setting and proves no wall, and the setting's value\n" +
-	"changes nothing the session holds. No abcd command starts a session on a profile yet. A profile is a\n" +
-	"separate login and settings on one operating-system account, and a stage's shell reads what the account can.\n" +
+	"changes nothing the session holds. abcd start, typed by the person in a plain\n" +
+	"terminal, starts a session on a profile. A profile is a separate login and settings on one operating-system\n" +
+	"account, and a stage's shell reads what the account can.\n" +
 	offProfilePointer
 
 // warnOffProfile warns a session whose setting reads as off a profile
@@ -50,8 +51,8 @@ func warnOffProfile(cmd *cobra.Command, prefix string) bool {
 // offProfileLine is the warning, worded as the setting's reading because a
 // reading is all abcd has. It opens in capitals to stand out among a verb's other
 // lines, and asks to be passed on (dcn-2611050931229356). It carries no local path,
-// no variable and no location for the setting, and it prints no step, since no abcd
-// command starts a session on a profile yet; it does say where an unattended start
+// no variable and no location for the setting, and it prints no step; it does name the
+// command a person types to start a session on a profile, and where an unattended start
 // on a separate login is. It holds for a first join in the
 // managed mode too, which is why it says what the verb can start, not that it
 // started.
@@ -60,7 +61,7 @@ func offProfileLine(prefix, why string) string {
 		"and this verb starts or coordinates work that can run unattended. Pass this line on to the person. " +
 		"abcd reads that one setting and proves no wall: it cannot check what the session holds, so the person's connected " +
 		"services and personal memory may be in its reach, and the setting's value changes nothing the session holds. " +
-		"No abcd command starts a session on a profile yet. " + offProfilePointer + " This is a warning: nothing was refused."
+		"abcd start, typed by the person in a plain terminal, starts a session on a profile. " + offProfilePointer + " This is a warning: nothing was refused."
 }
 
 // warnOffProfileWhileAway is warnOffProfile for a build or a drain, which start

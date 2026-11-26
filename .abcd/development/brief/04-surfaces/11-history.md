@@ -220,7 +220,9 @@ so once, as the hook once captured nothing for it. The subagent-stop entrypoint 
 sub-agent finishes, writing that agent's own transcript with the lineage that
 says which session and which agent produced it — and its exit code matters in a
 way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
-every failure path in the entrypoint is a diagnostic and an exit 0. The session-start entrypoint
+every failure path in the entrypoint is a diagnostic and an exit 0. Before it
+stages, it judges the transcript it has read and keeps at most one line for the
+sub-agent ("A stopping sub-agent's line" below). The session-start entrypoint
 drains staging into the store through the same fail-closed capture path, where
 there is a real time budget; it takes main-thread transcripts before sub-agent
 ones and bounds the pass by bytes as well as count, so a truncated pass stores
@@ -373,6 +375,36 @@ sees the loss. A working directory with no `.git` entry, whose repository no
 store has seen, is not retried and has no store to mark. A session transcript
 the session-end entrypoint could not write into the pending directory is
 counted in a marker in that directory, and the next session start reports it.
+
+### A stopping sub-agent's line
+
+The `subagent-start` entrypoint tells a sub-agent where the conventions file is
+and which commands print the rules, and keeps a fact that it did
+([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md#what-a-starting-sub-agent-is-told);
+spc-2611251757228271). The subagent-stop entrypoint reads that fact and judges
+the transcript it holds (`history.JudgeSubagent`), over the calls the sub-agent
+made and no other line of it: a file the host loaded by itself, a brief that
+names it, and a copy of a call kept for the host's own use are no reading. The
+conventions file is read when a call that is not a write names it, and a build
+lane's own brief, which carries it, stands for it; the rules command is run when
+a shell call runs `abcd` or `abcd.sh` with `rules`. A sub-agent that skipped
+either leaves one line: its type, its id, and which. One whose transcript was
+not handed over, could not be read or is over the size abcd reads leaves a line
+saying it could not be judged, and why. With no reading, the line also says what
+the guard did: that the sub-agent's writes were held, that they could not be
+judged and so were not held, or both
+([`17-guard.md`](17-guard.md#the-hold-on-a-sub-agents-writes)). A sub-agent only
+the guard told is judged on the file alone, since it was never given the
+commands. One never told leaves nothing, with one exception: where the guard
+could not learn whether the conventions apply, the line is where that is said.
+A stop of one already judged leaves nothing either.
+
+The lines are kept in `subagent-readings.json`, beside the marker of missed
+stages: a count of every line, the count already reported, and the newest fifty.
+The start entrypoint's own failures are counted there too. The next session start
+in the repository says once how many lines were kept since it last said so, and
+the staged listing prints them, newest first. The reading refuses nothing, and
+the entrypoint exits 0 and stages the same with it or without it.
 
 Staging is also **the outcome record the store never had.** Before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and

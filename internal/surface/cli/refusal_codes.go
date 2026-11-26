@@ -38,13 +38,28 @@ func refusalCodeOf(err error, msg string, exit int) refusal.Code {
 	if errors.As(err, &ee) && ee.ref != refusal.None {
 		return ee.ref
 	}
-	if c := refusal.CodeOf(err); c != refusal.None {
+	// A code a core put on its error names a refusal, and an exit 1 is a
+	// fault: a core error a verb returns as it stands (the intent core's
+	// unknown id, reached by capture promote only in a race) carries none.
+	if c := refusal.CodeOf(err); c != refusal.None && exit != 1 {
 		return c
 	}
 	if exit == 2 || exit == 3 || strings.Contains(msg, hookPlaneSkewNote) {
 		return usageCode(err, msg)
 	}
 	return refusal.None
+}
+
+// silentRefusalCode is the code a silent exit (no message) carries: the code
+// a constructor gave it, and otherwise refusal.None. An uncoded silent exit
+// is the migration's, as a silent exit has always been, and renders nothing;
+// a code the registry lacks still reaches the test binary's check.
+func silentRefusalCode(err error) refusal.Code {
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.ref == refusal.Uncoded {
+		return refusal.None
+	}
+	return ee.ref
 }
 
 // refusalCommandPath is the refused call's command path, which fills a next

@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | question [<file>|-] [--ask] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
@@ -17,7 +17,8 @@ the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
 check performs **zero writes**. The hook writes the record of a branch the
 session creates (below), and refuses nothing for it; when it admits abcd's own
 question where the badge shows, it also writes the waiting-on mode and the
-marker saying a question is open (below).
+marker saying a question is open (below), and when it judges a sub-agent's write
+it keeps what it found (below).
 
 ## `check` — decide one command
 
@@ -53,7 +54,28 @@ either; a quote inside a here-document **body** is document text and is not one.
 Grammar a shell does run gets a verdict instead: a trailing backslash is read as
 bash reads it, and a here-document whose delimiter line never comes is a
 **block** (`heredoc-unterminated`), because the rest of the input may be commands
-the guard did not check.
+the guard did not check. A function is read in two forms, `name() { … }` and
+`function name { … }` with one plain name; the `function` keyword in any other
+form (several names, an option, a quoted name or brace) is a **block**
+(`function-form-unread`): write it in one of those forms, then run it. A call
+of a function the line defines is read with the call's words in one shape
+only: the function is one command on its own line (`f() { git "$@"; }`), its
+program a fixed word that runs no other command (no shell, `eval`, `source`,
+`env`, `nohup`, `time` or other wrapper), its arguments read only as `"$@"`,
+`$@`, `"$1"`…`"$9"`, `$1`…`$9` or `${1}`…`${9}`, its name no wrapper or keyword,
+and the call stands where a command starts on the line itself. The line is then
+judged again with the call replaced by the command its words make. Any other
+call, with words, of a function that reads its arguments is a **block**
+(`function-form-unread`): a body of more than one command, a loop, an
+assignment or a declaration, an argument read in any other form, a call after
+a wrapper or inside a substitution, a line that defines an alias, or a line
+whose readings run past a few thousand words. So is a line that changes what a
+name runs where the guard does not see it: one that names one of zsh's
+`functions[`, `aliases[`, `galiases[`, `saliases[` or `dis_functions[` tables
+anywhere on the line, inside an expansion or a quote too, one running
+`functions -c` or `functions -M`, one defining several names with one `()`
+(`f x() { … }`), or one running a command through zsh's `-` modifier. A
+function in a script the line runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
@@ -101,11 +123,14 @@ Then read the JSON (`_type` `abcd/question-check/v1`):
   hook lets the draft through on its loud status; abcd's draft is checked all
   the same).
 - `findings` — every finding at once, each with its `tab`, `part`, `rule`,
-  `value`, `limit`, `remedy` and whether it `refuses` (the rows limit alone
+  `value`, `limit`, `remedy`, for a word below the product thinker's floor the
+  `plain` words to say instead, and whether it `refuses` (the rows limit alone
   never does).
 - `by_rule` — the findings folded one entry per rule and tab, in the order the
   first of each appeared, with its first `value` and a `count`: the lines the
-  hook's refusal names.
+  hook's refusal names. The register rule can take two entries on one tab:
+  its record numbers and commands, and its words below the floor, the entry
+  marked `floor`.
 - `rows` — each tab's rows at 80 columns, as `header_and_frame`,
   `question_text`, `options` and `total`, against `rows_limit`. Report these
   figures; never count rows by hand.
@@ -221,7 +246,7 @@ deny, whose reason is one head line, "Blocked by the abcd guard (question tool):
 of this question break abcd's asking rules; fix each and ask again.", then one
 line per rule and tab naming the tab, the first part that broke the rule, its
 value, the limit and the remedy, and how many more such lines the rule drew on
-that tab, so one retry fixes them all. Every rule on every tab is named, and
+that tab (each further value named too, for the register rule), so one retry fixes them all. Every rule on every tab is named, and
 the head line counts every part. A refusal stays a few lines however large the
 question, because the check reads at most four tabs and four options, and a
 rule broken a thousand times on one tab, an em dash on each of a thousand list
@@ -239,9 +264,22 @@ that the question would have been shown. The hook refuses and never rewrites the
 
 A number header names no person, so the agent sets `/abcd:mode` to the person
 the question is for, `product-thinker` or `facilitator`, before asking it, and
-the product thinker's register rule (no record number and no command) follows
-that mode: a `Q1` tab naming a command is refused while the mode names the
-product thinker and admitted while it names the facilitator. A tab headed in
+the product thinker's register rule (no record number, no command, and no word
+below their knowledge floor that the question does not introduce) follows
+that mode: a `Q1` tab naming a command, or a checkout, is refused while the mode
+names the product thinker and admitted while it names the facilitator. The words
+are the list the floor's page carries
+(`.abcd/development/brief/glossary/interview/knowledge-floor.md` under the
+plugin root), each a finding naming the plain words to use; a whole word
+counts, in the singular, the plural or a form the list names (`merged`), and
+one joined to another by a hyphen (`auto-merge`) counts too, while one inside a
+longer word (`emerged`) does not. A word the same tab's question text
+introduces in one sentence before its first use ("A checksum is a fingerprint
+saying two copies are identical.") passes on that tab; a sentence that uses
+the word it names ("The merge is the last step.") introduces nothing, and a
+short form (`CI`) is introduced on its own or in the word's sentence, never by
+its long form ("A PR is a pull request."). A sentence opening on a term the
+word starts ("A push notification is ...") introduces that term alone. A tab headed in
 the older form is judged by its own role word, so in one call a `Product Q2`
 tab is held to the product thinker's register beside a `Q1` tab asked while
 the mode names the facilitator. In a repository
@@ -331,7 +369,26 @@ linked worktree, a checkout one session or none works in, a path in no checkout,
 and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
 ignores) are written silently. A file call naming no path, a relative path with
 no absolute session directory, or a count that cannot be made, lets the write
-run and warns loudly. A call through any other
+run and warns loudly.
+
+A **sub-agent's write is held** until that sub-agent has read the conventions
+file at its checkout root, `AGENTS.md` or else `CLAUDE.md`, in a repository abcd
+manages whose rules are on. A write is a call of one of those file-writing tools,
+or a shell line naming `git commit`, `merge`, `rebase`, `cherry-pick`, `revert`,
+`am`, `pull` or `push`, in a conditional, a loop or a function body too; a git
+command run through a wrapper (`time`, `env`, `sudo`, `sh -c`, a script, an alias)
+is not seen. The refusal names the file, where abcd looked for it and
+the way out: one call of its own that names the file and writes nothing (the
+host's reading tool, `cat AGENTS.md`, or a search for it), and then the same
+write again. A read in the same shell line as the held command is not counted,
+and one sent in the same turn may not be. Never work around a hold by writing
+through another tool: read the file. A call that names a build lane's own brief
+stands for the reading. The session's own calls, abcd's cold-reading agents and
+a drive's stage are never held, and a write that cannot be judged is not held:
+where its transcript shows no reading, the sub-agent's stop keeps a line saying
+so, and `history staged` lists it.
+
+A call through any other
 tool never reaches the guard: a command a tool from another extension runs is
 neither checked nor warned about. That is the guard's standing scope, not a
 degradation, and the `guard:` line of `abcd ahoy` does not report it.
@@ -775,6 +832,21 @@ other program names as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-f
 removals of the stop's files are refused as `implement-stop-store-write`, since removing a stop is lifting it
 (`commands/implement.md`).
 
+**Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
+`abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
+build, a `go run` of a file or an unnamed package after the line enters a directory named for abcd, or that
+names one with `-C` or in the file's path) as
+`abcd-update-tag-any-program`. A word the line does not fix counts as a tag, as the verb too, so
+`abcd "$V" README.md` is refused; so do the words `xargs` and `find -exec` supply (`xargs abcd update`), there
+and as the words of the two acts above. A
+program named by a variable alone (`"$PM" update "$PKG"`) can be abcd and is refused as
+`program-name-unknown`: spell the program, or open the line with its value (`PM=npm; "$PM" update "$PKG"`)
+or a loop over fixed words, and each value is read as the program it names. A program another name is fixed for (`"$DIR/deploy.sh" update v1.2.3`) is left
+alone. Behind a launcher the guard does not step through (`gtimeout`, `watch`, `mise exec`, `fd -x`, an
+unquoted `parallel`) the update only warns (`unrecognised-launcher`) where the line spells it through the
+binary with a tag or `{}`, and is not reached through a wrapper script or where neither stands. `abcd update`
+with no tag, its flags and `abcd update news` are not refused (`commands/update.md`).
+
 The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
 file per line, and read only when this account owns it and no one else can
 write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.
@@ -918,7 +990,8 @@ push --force` block, and so does an unknown name followed by a shell's `-c`
 string, a wrapper's options or an alias, because the name can be the shell, the
 wrapper or git. Where the only entries that fire are ones the unknown name can
 be, the block is reported as `program-name-unknown`, with the entries the line
-reads as among its matches, and its way past is to spell the program's name. A
+reads as among its matches, and its way past is to spell the program's name where
+the command runs. A
 program name nothing fixes can be `pkill` or `killall`, so an unknown name
 followed by any operand (`"$(which python3)" script.py`, `$(date) x`) blocks —
 an accepted over-block, answered the same way. So is a here-document whose
@@ -1534,16 +1607,22 @@ because reading every such command as one would turn allexport on after
 ordinary commands, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
-dangerous form no entry describes. Nor does an allow see what a lone substitution
-prints when it stands as the whole command (`$(cat msg.txt)`, `$(date)`): the
-name can be any program, but with no operand after it no entry matches, so it
-allows, because an allow means no entry matched. What a substitution prints is
-read only for the exact shape `cat <<DELIM`, a newline, the body, the delimiter
-line and blanks; `/bin/cat`, `command cat`, `cat -`, a redirection after the
-delimiter word, a backslash-newline before the `<<`, a command after the
-document, a backslash-newline after a backtick's document, and an output inside
-a `${…}` all leave it unknown, so each of those alone as the command allows,
-though bash runs what it prints (handed to `sh -c` as its string, each warns).
+dangerous form no entry describes. A command whose program is a substitution's
+output the guard does not read, alone (`$(cat msg.txt)`, `$(date)`) or through a
+variable the line set from one (`P=$(cat f); $P make`), is refused under
+`program-name-unknown`, because which program runs is unchecked. What a
+substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
+the body, the delimiter line and blanks, and for the path a lookup of one fixed
+name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
+with `|| true`), read as that program on a line that defines no function of that
+name or of the lookup's, no alias, and runs no eval or source. A value placed
+unquoted where the shell splits it (`P='git prune'; $P`) is read as the words it
+splits into, and a line that gives IFS a value other than blanks holds every such
+word. `/bin/cat`, `command cat`, `cat -`, a
+redirection after the delimiter word, a backslash-newline before the `<<`, a
+command after the document, a backslash-newline after a backtick's document, and
+an output inside a `${…}` all leave it unknown, so each of those as the program
+is refused (handed to `sh -c` as its string, each warns).
 Coverage is what the registry names. Say exactly this if a user asks about
 coverage — never that the guard cleared the command.
 

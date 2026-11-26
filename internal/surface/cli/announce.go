@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -82,11 +83,11 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 		Args: func(_ *cobra.Command, args []string) error {
 			switch {
 			case len(args) < 2:
-				return &exitError{Code: 2, Msg: "abcd announce: name a kind and an item (abcd announce <kind> <item>), the kind one of " +
-					strings.Join(claim.AnnouncementKinds, ", ") + "; nothing was pushed"}
+				return refused(2, refusal.UsageMissingArgument, "abcd announce: name a kind and an item (abcd announce <kind> <item>), the kind one of "+
+					strings.Join(claim.AnnouncementKinds, ", ")+"; nothing was pushed")
 			case len(args) > 2:
-				return &exitError{Code: 2, Msg: "abcd announce: takes a kind and an item, and no free text; a question points at the item, " +
-					"and the conversation happens there; nothing was pushed"}
+				return refused(2, refusal.UsageExtraArgument, "abcd announce: takes a kind and an item, and no free text; a question points at the item, "+
+					"and the conversation happens there; nothing was pushed")
 			}
 			return nil
 		},
@@ -97,7 +98,7 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 			}
 			root, err := gitutil.CheckoutRoot(cwd, announceStore)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd announce: " + err.Error() + "; nothing was pushed"}
+				return refused(2, refusal.AnnounceOutsideCheckout, "abcd announce: "+err.Error()+"; nothing was pushed")
 			}
 			res, err := announceAct(root, claim.AnnounceRequest{Kind: args[0], Item: args[1], For: life},
 				claim.Options{Embargo: announceEmbargoCheck, ForgeUser: reserveForgeUser})
@@ -121,8 +122,16 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 // reached origin, so the branch is looked at before announcing again.
 func announceRefusal(err error) error {
 	msg := "abcd announce: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-	if errors.Is(err, claim.ErrRefused) {
-		return &exitError{Code: 2, Msg: msg}
+	var notPublic *claim.NotPublicError
+	var notSent *claim.NotSentError
+	var fetch *claim.FetchError
+	switch {
+	case errors.As(err, &notPublic):
+		return refused(2, refusal.AnnounceNotPublic, msg)
+	case errors.As(err, &notSent), errors.As(err, &fetch):
+		return refused(2, refusal.AnnounceUnreachableOrigin, msg)
+	case errors.Is(err, claim.ErrRefused):
+		return refused(2, refusal.AnnounceInvalidRequest, msg)
 	}
 	var ae *claim.AnnounceError
 	if errors.As(err, &ae) && ae.Pushes > 0 {
@@ -131,10 +140,10 @@ func announceRefusal(err error) error {
 		if ae.Pushes == 1 {
 			pushes = "1 earlier push"
 		}
-		return &exitError{Code: 2, Msg: fmt.Sprintf("%s; not sent as far as git reported, but origin refused %s to %s "+
-			"and a refused push may still have reached it: fetch origin and look at %s before announcing again", msg, pushes, branch, branch)}
+		return refused(2, refusal.AnnounceUnreachableOrigin, fmt.Sprintf("%s; not sent as far as git reported, but origin refused %s to %s "+
+			"and a refused push may still have reached it: fetch origin and look at %s before announcing again", msg, pushes, branch, branch))
 	}
-	return &exitError{Code: 2, Msg: msg + "; not sent, and nothing was pushed"}
+	return refused(2, refusal.AnnounceUnreachableOrigin, msg+"; not sent, and nothing was pushed")
 }
 
 // announceEmbargoCheck is the embargo check an announcement is held to (C5),

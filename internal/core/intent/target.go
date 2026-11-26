@@ -58,7 +58,7 @@ func Target(repoRoot, intentID, version string) (TargetResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return TargetResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return TargetResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if err := refuseTargetBucket(it); err != nil {
 		return TargetResult{}, err

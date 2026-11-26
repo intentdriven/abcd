@@ -1151,37 +1151,57 @@ func originDefault(root string) string {
 // remoteDefault asks origin which branch is its default, for a clone that
 // names none (no origin/HEAD, and no conventional branch name fetched), and
 // returns that branch's remote-tracking ref, refs/remotes/origin/<branch>. It
-// asks with `git ls-remote --symref origin HEAD`, which reads the remote's
-// advertisement and writes nothing here: origin/HEAD stays as the repository
-// has it, unset. An answer that names no branch, or a branch whose name is
-// not a valid ref, is an error, never a guess. A branch literally named HEAD
-// names no branch: its remote-tracking ref would be origin/HEAD itself.
+// asks with `git ls-remote --symref origin HEAD` (originHeadLines), which reads
+// the remote's advertisement and writes nothing here: origin/HEAD stays as the
+// repository has it, unset. An answer that names no branch, or a branch whose
+// name is not a valid ref, is an error, never a guess. A branch literally
+// named HEAD names no branch: its remote-tracking ref would be origin/HEAD
+// itself.
 func remoteDefault(root string) (string, error) {
-	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
-	trace(args...)
-	out, err := gitutil.Net(root, args...)
+	target, symref, _, err := originHeadLines(root)
 	if err != nil {
 		return "", redacted(err).err()
 	}
-	for _, line := range strings.Split(out, "\n") {
-		rest, ok := strings.CutPrefix(line, "ref: ")
-		if !ok {
-			continue
-		}
-		target, name, ok := strings.Cut(rest, "\t")
-		if !ok || name != "HEAD" {
-			continue
-		}
-		branch, ok := strings.CutPrefix(target, "refs/heads/")
-		if !ok || branch == "" || branch == "HEAD" {
-			return "", errors.New("origin's HEAD does not name a branch")
-		}
-		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
-			return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
-		}
-		return "refs/remotes/" + Remote + "/" + branch, nil
+	if !symref {
+		return "", errors.New("origin did not name a default branch")
 	}
-	return "", errors.New("origin did not name a default branch")
+	branch, ok := strings.CutPrefix(target, "refs/heads/")
+	if !ok || branch == "" || branch == "HEAD" {
+		return "", errors.New("origin's HEAD does not name a branch")
+	}
+	if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
+		return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
+	}
+	return "refs/remotes/" + Remote + "/" + branch, nil
+}
+
+// headLineMax bounds one line of origin's listing of HEAD as it is read: far
+// past any ref name a forge accepts, so a line naming HEAD is never cut.
+const headLineMax = 64 << 10
+
+// originHeadLines asks origin what its HEAD is, with `git ls-remote --symref
+// origin HEAD`: target is the ref its symbolic-ref line names (symref false
+// when there is no such line, a detached HEAD), and tip the object name on
+// its own line ("" when there is none). The listing also names every ref
+// whose last component is HEAD (refs/heads/x/HEAD), however many origin
+// holds, so it is read one line at a time (gitutil.NetEach), each line
+// bounded, and only the two lines whose ref is exactly HEAD are kept.
+func originHeadLines(root string) (target string, symref bool, tip string, err error) {
+	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
+	trace(args...)
+	err = gitutil.NetEach(root, headLineMax, func(line string) {
+		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
+			if t, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				target, symref = t, true
+			}
+		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
+			tip = sha
+		}
+	}, args...)
+	if err != nil {
+		return "", false, "", err
+	}
+	return target, symref, tip, nil
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the

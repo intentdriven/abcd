@@ -234,7 +234,9 @@ compatibility letters read as plain ones, every dash as a hyphen, invisible
 format characters (Unicode category Cf, such as a zero-width space or a soft
 hyphen) are dropped, and a token broken at a hyphen across a line end reads
 whole. Exit 0 is clean (or no store exists on this machine), exit 2 is a
-finding. `intake_stale` says a store has never had an intake, or the oldest
+finding. On a finding, `--json` writes the refusal envelope after the result
+as a second JSON document, which a host tells apart by its leading
+`"abcd": "error"`. `intake_stale` says a store has never had an intake, or the oldest
 intake among the stores is more than a day old: run intake first.
 
 Limits the user must hear: the check cannot recognise a paraphrase or a count

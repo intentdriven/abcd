@@ -266,7 +266,8 @@ dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
 `trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
 stopped after its fix rounds), `stuck` and `closed`; the drain writes the last two for a lane stuck
 refusing at one stage (spc-2610161044461448 step 5) and for one whose pull
-request was closed unmerged (step 8), and every reader reads them. Neither carries free
+request was closed unmerged (step 8), on each issue it still holds for a lane
+that carries members, and every reader reads them. Neither carries free
 text: the writer refuses any other kind, and a reader reads a tip whose
 hand-back is not one known kind with one full object name, on a release, as
 unreadable. When origin's default branch holds the record in no file, or in
@@ -399,34 +400,67 @@ branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
 
-The cap is ten unless the person's own machine sets `reservation.max_live` in
-`~/.abcd.noindex/config.json`, a whole number from 1 to 100
-(`internal/core/claim/maxlive.go`, iss-2610170717515674). It stays one ceiling
-per person, counted across all of their sessions and copies, so a person who
-runs many sessions on one account raises it rather than releasing and
-re-taking holds to make room. It is read from the machine layer alone: a
-repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
-raise anyone's ceiling, nor can a `HOME` set inside a working tree that is not
-the account's own. A value outside the range, or a key under `reservation`
-that nothing reads, refuses an act that adds a reservation (reviving a lapsed
-one among them) naming the file, never falling back to ten; no other act reads
-the setting, so a bad value never stops a release or the renewal of a live
-reservation. The holder's reader (`reservation.github_username`) reads the
+The cap is ten unless the repository sets `reservation.max_live` in its
+`.abcd/config.json`, a whole number from 1 to 100
+(`internal/core/claim/maxlive.go`, iss-2610170717515674; itd-2611251809580662
+decisions 3 and 8). It stays one ceiling per person, counted across all of
+their sessions, copies and accounts, the lanes whose pull requests are queued
+included, and every computer of one person applies the same number. The
+repository's figure is read from `.abcd/config.json` at origin's default
+branch, as the object store holds it (no replace ref followed), and never from
+a working tree or another branch. An act that adds a reservation asks origin
+itself which branch is its default and at which commit (`git ls-remote
+--symref`), after its fetch, and reads the figure at that commit, never at a
+name this checkout tracks: `origin/HEAD`, a remote-tracking ref and the
+conventional names the resolver falls back to are local guesses a lane's agent
+can move or a pushed branch can stand in for. Where the act's fetch did not
+bring that commit it fetches the branch origin named; where origin cannot be
+asked, or the commit still is not in the checkout (the branch moved while it
+was read), the act is refused as an unreachable origin is, to be run again: no
+figure is read and none is assumed, since the ten could be more than the
+repository allows, and a commit that never reached origin never sets the
+ceiling. An origin that answers but names no branch with a commit as its
+default (it holds none, or its HEAD is detached) has no file for the figure:
+the ten applies, lowered by the machine alone, and the note says so. The
+drain's wait at the cap asks no network: it reads the figure at the branch
+origin last named to a reservation act in that checkout, and where that
+cannot be read it leaves the count to the act. The
+ceiling row of `abcd peers` asks no network and reads the figure as the
+checkout last fetched it; the act decides. A view in a checkout with no default branch of origin reads
+no repository figure and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
+ceiling on that machine and never raise it: a higher figure there is ignored
+and named in the note `abcd peers` and the refusal at the cap carry, and a
+`HOME` set inside a working tree that is not the account's own is not read at
+all. In the repository's file the `reservation` namespace takes `max_live` and
+the fork check's `fork_origin`; `reservation.github_username` names a person
+and is refused there, naming the file and the commit. A value outside the
+range in either file, or a key under `reservation` that nothing reads, refuses
+an act that adds a reservation (reviving a lapsed one among them) naming the
+file, the repository's at its branch, never falling back to ten; no other act
+reads the setting, so a bad value never stops a release or the renewal of a
+live reservation. The holder's reader (`reservation.github_username`) reads the
 same file first for every person whose git email is not a GitHub no-reply
 address, so an unknown key under `reservation`, or a file that cannot be read,
 stops every act of such a person, a username from their token included. For
-anyone else a `config.json` that cannot be read at all (writable by others,
-not valid JSON) is read past, ten applies, and the refusal at the cap says
-why; at the ceiling of 100 the refusal no longer offers raising it.
+anyone else a `config.json` that is there but cannot be read as theirs (not a
+regular file, writable by others, not valid JSON) refuses an act that adds a
+reservation, naming the file, since reading past it could leave the figure
+above what the machine set; `abcd peers` shows the figure so far and says so.
+A file that is not there, a home that cannot be searched, and a `HOME` that is
+not the account's own read as no file. The refusal names the layer that set the cap and where it is changed:
+the repository's file through a reviewed change, and the machine's file, which
+may only lower it; it never offers raising the machine's figure.
 
 The count is by whose holds are the person's (their holder id, the ids they
-declare, and their login on older holds), while each machine reads its own
-ceiling, so another account whose id is declared here is counted against the
-same total under a ceiling no session here can read (iss-2610231004140527). Two
+declare, and their login on older holds), against the repository's ceiling,
+which another machine of theirs may lower for itself by a figure no session
+here can read (iss-2610231004140527). Two
 places say so. The refusal at the cap groups the held records by the copy each
 was made from: this copy, each other worktree of the repository on this machine
 by its directory's name, and elsewhere. And `abcd peers` counts the reader's own
-live reservations the same way against this machine's ceiling, warning from four
+live reservations the same way against the ceiling, with the layer that set it
+beside the number (`your holds: <holder> 7 of 10 (repository) (this copy 2,
+...)`), warning from four
 fifths of it that the total is shared with every session and account whose holds
 are the reader's. A sibling worktree is told apart by the copy key kept in its
 local tier, read without minting one and only for the reader's own holds; the
@@ -443,7 +477,11 @@ reservation asks nothing, and neither does an asked-for renewal nor a
 release. A reservation a drain makes (`Drain`) that renews this copy's own
 lapsed reservation is the drain's hold afresh from that push, the hold a lane
 then opens on, so it asks as a fresh reservation does; a drain's renewal of a
-live one asks nothing. Every URL git pushes origin to is asked about, each push URL git
+live one asks nothing. A drain forming a bundle holds the lead's reservation
+and each member's this way across its moves, renewing each at half its lease,
+and the lane opens on all of them; a drain that ends, or a drive that lets
+go, before the lane opens releases each plainly, with no tombstone
+([`35-drain.md`](35-drain.md), spc-2611201455051897 step 4). Every URL git pushes origin to is asked about, each push URL git
 resolves for origin rather than only the first, in each form git takes for github.com: the three it writes, and with
 them userinfo, a port, `ssh.github.com` over ssh, ssh or scp with no user, and
 a host in any case. When any one of them is a repository the forge names a

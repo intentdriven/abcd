@@ -210,7 +210,8 @@ const validHooksJSON = `{
   "hooks": {
     "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router"}]}],
     "SessionStart":     [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
-    "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}]
+    "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
+    "SubagentStart":    [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook subagent-start"}]}]
   }
 }`
 
@@ -245,6 +246,43 @@ func hermeticRepo(t *testing.T) string {
 	}
 	t.Chdir(repo)
 	return repo
+}
+
+// TestAhoyNamesTheUnwiredSubagentStartHook: a plugin whose manifest is from
+// before a sub-agent's start was wired is named on the bare verb's envelope.
+func TestAhoyNamesTheUnwiredSubagentStartHook(t *testing.T) {
+	hermeticRepo(t)
+	runCLI(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
+	named := func() (steps []string) {
+		t.Helper()
+		var det struct {
+			Gaps []struct {
+				ID      string `json:"id"`
+				FixHint string `json:"fix_hint"`
+			} `json:"gaps"`
+		}
+		if err := json.Unmarshal(runCLI(t, "ahoy", "--json"), &det); err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range det.Gaps {
+			if g.ID == "hooks.subagent_start_unwired" {
+				steps = append(steps, g.FixHint)
+			}
+		}
+		return steps
+	}
+	if got := named(); len(got) != 0 {
+		t.Errorf("a wired manifest is named: %q", got)
+	}
+	manifest := filepath.Join(os.Getenv("ABCD_PLUGIN_ROOT"), "hooks", "hooks.json")
+	if err := os.WriteFile(manifest, []byte(strings.ReplaceAll(validHooksJSON, "SubagentStart", "SubagentStop")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := named(); len(got) != 1 || got[0] != "Update the plugin." {
+		t.Errorf("an unwired manifest is named %q; want the one step", got)
+	}
 }
 
 // TestAhoyInstallWiredAndIdempotent proves `abcd ahoy install` reaches the core

@@ -2961,3 +2961,127 @@ Verdict at filing: SPLIT, one intent, one principle and one issue, with three ex
 Grade: the routing survived two reviewers; the design did not. Both said fix first. The record review found the typed link to adr-56 overstated, a criterion that contradicted the payload draft's refusal, and a ruling left uncited. The design review found three blockers: the declaration was a hand-written claim dressed as a derived one, a result with nothing to disclose fell back to a bare clear, and a criterion about the verdict collided with exit statuses a ruling had already fixed. All were settled in the draft before any question went to the product thinker: what a run looked at is derived from the command's own lists, only the known-not-looked-at list is written by hand and it may not be empty, and a gap changes what a result says and records, never its exit status. The product thinker then read the draft in eleven plain lines, let each stand and signed it off the same day, and added one thing to the routing: the two neighbouring drafts are planned after this intent, the host's payload draft (itd-2609180517121254) second and the choice of depth (itd-173) third.
 
 After the sign-off: a plan review and then final reviews before landing reported, and each said fix first on the design while leaving the routing as it stood. What changed in the neighbouring records is more than "kept as they are" above suggests: itd-173 gained the product thinker's answer that each kind of check has a level of its own, with its place in the order; the host's payload draft gained its place in the order and a note that the part of a result saying how hard a model looked is defined once, in the new intent; and itd-173, itd-176 and the payload draft each gained a `builds_on` edge to it. None was superseded or given a new scope.
+
+## 2026-11-25: abcd alone, in three parts (product thinker chose the parts; the rows not confirmed by a person)
+
+The proposal: before a six-day unattended run, abcd should work with every other part of the host switched off. The writing session split it into three parts and one issue, the product thinker chose the three parts from one sentence each, and the table was hand-run at filing for each part.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| every sub-agent is told at its start to read the conventions file and how to fetch its rules, and one that did not is reported | capability | itd-2611251725190796 |
+| a skipped reading is reported, never refused | stance | none at filing: the draft took it from dcn-2611041550129278, which ruled another case; held for the product thinker |
+| the hook's wiring, the output cap, the install report | plumbing | the spec; the brief's configuration and ahoy chapters |
+| one command makes the separate login's directory and starts a session on it, holding abcd and a named list of tools | capability | itd-2611251725203320 |
+| what a walled agent may hold; only a person starts one; a repository never starts one or widens its tools | trust rule | adr-2610222222326104 as amended on 2026-11-04, and dcn-2611031722512037; no new ADR proposed |
+| the directory, the flags, the settings | plumbing | the spec; the brief's runner chapter |
+| a build from the plain terminal on the same login | capability | itd-2611251725209625, kept a draft |
+| the build adopts the drive's four conditions | trust rule | already adr-2610222222326104 (its Consequences) |
+| the away mode is hard to find and to set | defect | iss-2611251657223031 |
+| two parts before the run, the third in it | ruling | dcn-2611251726008978 |
+
+Verdict at filing: SPLIT at the proposal (three intents, one issue, one decision record), FILE-AS-IS for each intent. Typed links at filing: itd-2611251725203320 refines itd-2611040344170206; none on the other two. No reversal was flagged.
+
+Grade: The three-way split stood, and it is the only part a person chose: the product thinker gave no wording for a criterion, the criteria were listed to them in plain words, and they said to start building, so the rows are a prediction with no label until they review them. The record review found the Link step missing on two drafts and wrong on the third: The sub-agent draft named none of itd-3, itd-2611041636196213, itd-2610030814013772 and iss-2609300536239512; the build draft did not name the planned itd-2609201916151817, whose process driver it refines; and the session draft carried a hand-typed issue link the ledger did not return, on an issue already promoted to the draft it refines. Missed part: the stance in row two, routed as "no stance" while the draft invoked one. Over-claim: the trust rule's home, since the ADR names a no-host drive and a session start is not one; flagged, not reclassified. One advisory flag added: The finding that the conventions file reached no session narrows a scope condition of itd-2610030814013772. The design review found three criteria of the sub-agent draft that a hook cannot meet (it is shown no task) and three of the session draft that contradicted the wall it stands on. Every link and both reviews' findings were applied before planning.
+
+## 2026-11-25: a confirmed finding is always captured, and abcd holds a session to it (product thinker ruled the rule and the reversal; the other rows not confirmed by a person)
+
+The proposal: a finding met while working is tested and captured before the work moves on, and abcd holds a session to it at its stop and at a landing. The table was hand-run at filing, and a second reader reviewed the draft the same day.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a list of findings abcd keeps, a block a sub-agent ends with, a hold at a stop and a refusal at a landing | capability | itd-2611251831138387 |
+| a confirmed finding is always captured | stance | the two disciplines: refines itd-2610141956319695, reverses in part itd-2610271130017437 |
+| the list, the block, the hooks | plumbing | the spec |
+| none named | trust rule | none |
+
+Verdict at filing: FILE-AS-IS. Typed links at filing: refines itd-2610141956319695; reverses in part itd-2610271130017437, flagged and then confirmed by the product thinker (dcn-2611251833399124), with the line between a finding and building ruled the same day (dcn-2611251839563777).
+
+Grade: The verdict stood, and the reversal row is the one with a label: a person confirmed it. Missed part: the row "no trust rule". The draft held a stop while the person was present, against the ruling in force that a stop is refused only while they are away (itd-2610170638184486); the review caught it, the ruling is kept, and a decision says the other course is the product thinker's to take. They took it the same evening: the stop is held whether the person is present or away (dcn-2611252038554826), which reverses that ruling in part. Over-claim: two records had handed this intent the discipline's rungs at the capture verb and at the automatic filers, for which it had no criterion; they are routed back to iss-2610271115000748, whose remedy is amended. Missed link: `builds_on` itd-2611251725190796, whose hook at a sub-agent's start carries the block. Missed at filing and not a routing matter: the impact, stamped additive where a landing accepted before is now refused. The review also found a criterion that would have listed a test written to fail first, a private store that does not exist for a finding a session meets, and three states missing from the block; each is rewritten. The criteria were not listed to the product thinker (dcn-2611251921171761), so every row but the reversal is a prediction with no label until they review it.
+
+## 2026-11-25: a capture says its kind (product thinker ruled it an intent; the rows not confirmed by a person)
+
+The proposal: a capture says whether it files an issue, an intent or a ruling, and one assessed as an intent is promoted in the act of filing. Filed as iss-2611251832355077, ruled an intent, and hand-run when the draft was written.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a capture is assessed by kind as it is filed, and a release lists what was assessed as an intent and not promoted | capability | itd-2611251834405352 |
+| routing by kind | stance | at filing: the decomposition discipline (itd-84). Wrong home; see the grade |
+| none named | trust rule | none |
+| the flags, the record's fields, the page, the printed commands, the release list | plumbing | the spec; the brief's capture and launch chapters |
+
+Verdict at filing: FILE-AS-IS. Typed links at filing: refines itd-84 and itd-4. No reversal was flagged.
+
+Grade: The verdict stood; the stance's home and the reversal flag were both wrong. The four-piece table routes a proposal to four homes and not to these kinds; the kinds are the ones a drain's hand-back routes by, so the home is itd-82. Missed links: itd-119, whose promotion the filing now reaches, and itd-82. Missed flags, now raised for the product thinker and not classified: a capture assessed as an intent is promoted with no person confirming the routing, which sets aside itd-84's first criterion and its "no blocking gate or auto-filing"; and a refusal at the capture departs from "never refuse, never drop" (itd-2609212137116617). Missed part: the three kinds left no place for a half-formed observation, which is what the ledger is for; a fourth kind was added. Missed at filing and not a routing matter: the impact (a flag required on an existing command read as a break at the review; the product thinker ruled the intent additive the same evening, dcn-2611252038551109), and what a copy of abcd at the last release does with a record that carries a field it does not know.
+
+## 2026-11-25: every copy of abcd on a computer is known and compared (product thinker ruled it an intent; the split confirmed)
+
+The proposal: every copy of abcd on a computer is known, compared and kept current. Filed as iss-2611251742484774, judged as an idea and reframed (dcn-2611251807556458), ruled an intent, and hand-run when the draft was written.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| every copy listed, compared from disk, and named with the step that mends it | capability | itd-2611251834407931 |
+| abcd asks for its newest release on a standing yes and tells the person alone | capability | a second intent, its text kept in the first's Decomposition, not filed |
+| what a check may do and who gives the yes | trust rule | adr-2611251808065076, accepted; brief invariant 7 |
+| applying a release unasked | trust rule | none: not ruled on, a person's ruling first, in neither intent |
+| the list, the reading of a manifest, the line at a start, the receipt | plumbing | the spec; the brief's ahoy and update chapters |
+
+Verdict at filing: SPLIT. Typed links at filing: the first refines itd-111 and itd-130; the second flagged as reversing in part itd-130, on the ground of the accepted ADR.
+
+Grade: The split stood on review and has no label: it was put to the product thinker on 2026-11-25 and is not confirmed, so the second is held unfiled, which is the rule. The hand-run got the consequence of that wrong. It said the change that ships the first would resolve the issue both halves came from, with the second "filed before this one ships", which bound nobody and would have closed the issue with half of it in no record. Corrected: the first ships alone, the issue stays open, and the draft sets out how its link is moved off the first, which the issue-drift gate accepts (tested on a copy). Missed part: one clause of the reframing, "abcd brings the copies it owns to one release", was routed nowhere while the draft said the verdict was carried as it stands; it is now a deferred question with a capture owed. Missed in the Link step: the note the version line already prints for a superseded root, beneath which the list sits, and the line of itd-130 that puts a nudge at a session's start out, against which the first needed one sentence (it reads the disk and looks for no release, so nothing is reversed).
+
+Confirmed routing, 2026-11-25: the product thinker confirmed the split (dcn-2611252038550260). The edits marked: the second row's home is itd-2611252040542374, filed that day with its text taken out of the first's Decomposition, a `builds_on` edge to the first, and `related_issues` iss-2611251742484774, which came off the first; the fourth row, applying a release unasked, is ruled on (dcn-2611252038565989), is in neither intent, and is held by iss-2611252038564722 until the ADR is refined.
+
+Grade at confirmation: The initial verdict survived: SPLIT was proposed and SPLIT was adopted, with the first three rows and the fifth unchanged, so the split is the part of this entry with a label. The criteria of the second were not listed to the product thinker, and its one advisory flag (it reverses in part itd-130) was not confirmed by name. Missed part, found on writing the second out: the release mark in the bootstrap refuses a release older than the newest the account holds, and the criterion that gives a root the release its own manifest names had not said which of the two rules wins. Missed home: the clause of the reframing that neither intent carries sat as a deferred question on the first, where a shipped first would have left it behind; it is moved to the second, whose issue waits on its capture. Link to be confirmed: the filing's match wrote `refines` iss-2610290709017008 on the second.
+
+## 2026-11-25: an ideate run says what each leg needs before it starts (product thinker ruled it an intent; the rows not confirmed by a person)
+
+The proposal: before its first leg, an ideate run says what each leg needs and whether this session holds it, and offers the parts that can run. Filed as iss-2611251828573245, ruled an intent, and hand-run when the draft was written.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a check before the first leg, and a table of what each leg needs | capability | itd-2611251834408574 |
+| what a session on abcd alone may hold | trust rule | untouched: adr-2610222222326104 and itd-2611040344170206 |
+| ideate is optional and never a gate | stance | already itd-104's |
+| the table, the check, the generated block | plumbing | the spec; the brief's ideate chapter |
+
+Verdict at filing: FILE-AS-IS. Typed links at filing: refines itd-104. No reversal was flagged.
+
+Grade: The verdict and every row stood on review; of the four it was the closest. Missed in the Link step: two open issues on the same verb. iss-2611211024539425 asks for another read-only step before the third leg, and the two would have been shaped twice; iss-2611251921169070 was found by the review's own test, that the recorder takes a verdict whose web sources nobody opened. That test also showed a sentence of the draft stating landed behaviour wrongly (it said the recorder would have nothing it could accept). Not a routing error, and a reminder that a claim about what has landed is tested before it is written.
+
+## 2026-11-25: the facilitator's mode is each person's own setting (product thinker ruled the setting; the split made by the session while they are away, the rows not confirmed by a person)
+
+The proposal: the technical facilitator's mode becomes a person's own setting, held for each repository for their git identity, and the status line says which it is. Ruled by the product thinker (dcn-2611252040395990), drafted as itd-2611252049031692, hand-run when the draft was written, and reviewed by another model the same day.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a person sets their own facilitator's mode, and always sees it | capability | itd-2611252049031692, in two steps, the row first |
+| whose the mode is, and what may hold it to human | trust rule | a new ADR, described and not minted, reversing in part adr-2610150603484802; a brief invariant with it |
+| a default must not hand merging over | stance | none new: the security principle |
+| the file, the resolver, the kept reading, the command | plumbing | the spec; the brief's chapters |
+
+Verdict at filing: SPLIT, the trust rule to its ADR and one intent for the capability. Typed links at filing: builds_on itd-2610150602547271; refines itd-97 and itd-2611031342000215; the reversal of adr-2610150603484802 flagged.
+
+Grade: The verdict's word stood and its split was drawn in the wrong place. One capability row held three. A person seeing the mode needs no ruling and is useful to someone who never sets anything, so it is an intent of its own, itd-2611252117557299, built first; a person setting it stays in itd-2611252049031692; and ending the reading of a committed `auto` for a person who has typed nothing is a third, breaking, later, named in the second's Decomposition and not filed. The draft's own two steps, "each a change that lands by itself", said the first of these, and its one impact, breaking, hid the third: the sign missed was one impact over parts that differ in it. Re-run after the split (dcn-2611252114265462): SPLIT, two intents filed, one unfiled, the trust rule to its ADR, the stance and the plumbing unchanged; both filed intents are additive. Missed home: which of a person's settings an install follows was a row of the reader table and a criterion, and is the installing intent's (iss-2611252038564722), under adr-2611251808065076, which the draft did not name. Missed in the Link step: itd-2610241015120503, a draft that already holds two of its three questions (the review found it and gave an id that names no record; corrected); itd-2610240918547728 and adr-2610241022541063, whose identity record selects the entry the draft had taken from git; itd-2610301850454860 and itd-2610301750162657, whose listing it changes. Missed reversals, flagged now and confirmed by nobody: the ruling of 2026-10-29 that a maintainer's pull request goes through in `auto`; the decision of that day to show the mode only under `auto`; the rulings of 2026-11-03 on the `auto-merge` badge; the board's `merges:` label (dcn-2610230004263711); and a scope condition of itd-2610150602547271 that this falsifies. Over-flag: itd-2611031342000215 as `refines`, which is a reversal in part and is flagged as one. Link confirmed: the filing's match wrote `refines` iss-2610262036211949 on the new intent, and it is kept.
+
+After the ruling, 2026-11-25 (dcn-2611252132144530): the product thinker ruled how the mode is decided between a project and a person, and the table was run again on the second intent. Their ruling leaves the split into two intents standing (the decision record says so, as the session's reading), and nothing else in this entry has a label: the rows were not put to them. The trust rule's content changed under it: a project enforces auto, prevents it, or leaves it to each, above what a person set, so the reversal of adr-2610150603484802 ("human from any layer wins") is ruled and no longer only flagged, and the ADR that records it is still to be minted. The third capability, the cut that ends a fallback, is withdrawn: it existed only under the session's own reading, so that row was an artefact of an unruled question and should have waited for the answer. A new third capability is named and not filed: in auto, abcd does the rest of the facilitator's work (the owed audits, the failed verdicts, and what a run hands back). It came from the ruling's own words, that auto is everything the facilitator does, against a reading of the code that finds merging done and the other two parts done in part; the check on a technical question stays with the second intent. Missed part, found on writing it out: who may change the project's value is a trust rule of its own, routed to the same ADR, with a person's act on the forge and a check beside it, and it meets the rulings of 2026-10-29 that keep no code-owners file. Missed in the Link step: iss-2611241109321287, which holds the first of the missing parts with its remedy; itd-2610300955026531 and itd-2610300955031405, on an agent with an account of its own; and adr-2611011332427073 (proposed), which the first run called an agreement and which the ruling departs from. The impact was additive for a few hours and is breaking again, for one pairing the ruling changes. Verdict unchanged: SPLIT, two filed, one unfiled, the trust rule to its ADR.
+## 2026-11-25: a drive keeps working the ledger across machines (planner within an autonomous run, routing confirmed by the product thinker's request to plan it)
+
+The proposal: drains started with `abcd drain --drive` on several machines and accounts keep working one repository's ledger for as long as the person wants, with nobody watching. A planning note routed it that morning with four product questions open; the product thinker answered all four in a planning interview the same day, and this is the table as their answers left it.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a drive runs to an end time, begins each next drain itself and waits on an empty ledger | capability | itd-2611251809580662 |
+| each drain holds a set number of lanes in work, one by default | capability | itd-2611251809580662 |
+| one person's reservation ceiling is the repository's number | capability | itd-2611251809580662; the ruling recorded on iss-2610231127555243 as dcn-2611251747513582 |
+| each drive publishes its state line under a chosen label, and one view shows everything that is one person's | capability | itd-2611251809580662 |
+| the start says what ends a drive and prints the command that carries on; nothing starts one again by itself | capability | itd-2611251809580662, and the same answer in the draft itd-2611041656024409 |
+| one yes covers many drains, bounded by an end time; a drive never extends its own bound and no repository file can | trust rule | adr-2611251746361324, refining adr-2610222222326104, with a line in the brief's drain chapter |
+| what may be published about a machine on the shared remote | trust rule | adr-2611251746369732, with a line in the brief's status chapter |
+| a stuck hand-back that is the machine's bars that machine only | capability | iss-2611251810162964; it uses the count of hand-backs in a row the state-line intent's ninth criterion states |
+| a machine's fault is not the ledger's verdict | stance | held; one case is not a principle |
+| the start fetches before it refuses | plumbing | iss-2611251741261124, resolved |
+| the state field, the archive, the published form, the keys and the flag | plumbing | the spec, carried into the brief by its steps |
+
+Verdict at filing: SPLIT, one intent, two ADRs, one decision on an open issue, two issues, one answer into an existing draft. Typed links: builds on itd-2611141610197753; refines itd-2610222215485265, itd-2610161016394967, itd-2610161016401115 and adr-2610222222326104. It also refines dcn-2611222342270127: the repository now sets the ceiling by the product thinker's ruling, a machine may lower it and never raise it, and the clause of that record's grounds that kept `reservation.max_live` the machine's alone is replaced while its ruling on the bundle cap stands.
+
+Grade: the morning's routing did not survive the person's answers unchanged, and the differences are what the pre-pass should learn from. Three of its eleven rows were marked HOLD on a product question, and all three changed shape when answered: the bound lost its daily number, the ceiling question was answered with a limit nobody had routed (a drain's own lanes in work) and then with a second answer that kept the ceiling and moved it, and the restart was ruled out instead of made an opt-in. One row the morning table filed inside the intent (the machine-fault hand-back) was split out at planning, because it depends on a figure another intent has not fixed. One row the morning table said to split out if it grew a surface (the published view) was kept in, with the reason recorded. The routing of the trust rules to two ADRs survived. The reviewer of the records left the routing as it stood and corrected two things before filing: the draft had flagged as a reversal awaiting confirmation the move of the ceiling into the repository, which the product thinker had ruled, so the link became `refines` to dcn-2611222342270127; and it had left out the declined fast-forward that the ruling on itd-2611141610201875 sends to the view, which two criteria now carry.

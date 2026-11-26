@@ -1,0 +1,23 @@
+{
+  "questions": [
+    {
+      "header": "Q1",
+      "multiSelect": false,
+      "question": "A lane works in its own worktree of the checkout, and abcd puts the pull request in the merge queue once CI has passed on the commit and the checksum matches.\n\nNow: not applicable\nChange later: not applicable\n\nWho may let abcd do that?",
+      "options": [
+        {
+          "label": "Anyone",
+          "description": "Every person here may. It costs a second look."
+        },
+        {
+          "label": "Only me",
+          "description": "You alone may. It costs your time."
+        },
+        {
+          "label": "Decide later",
+          "description": "Nothing changes now. The question comes back at the next interview."
+        }
+      ]
+    }
+  ]
+}

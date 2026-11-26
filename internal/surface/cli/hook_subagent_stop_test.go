@@ -9,7 +9,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/core/rules"
 )
 
 // subagentPayload is the SubagentStop JSON the harness writes to the verb's
@@ -247,6 +249,19 @@ func TestHookSubagentStopAlwaysExitsZero(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "not-there.jsonl")
 	fifo := filepath.Join(dir, "fifo.jsonl")
+	// The paths that keep a line: a sub-agent told, with and without a
+	// transcript, and one whose line cannot be kept, its lane's marker being a
+	// directory.
+	big := filepath.Join(dir, "agent-big.jsonl")
+	if err := os.WriteFile(big, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(big, maxTranscriptBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	for _, agent := range []string{"told", "told-none", "told-big", "told-odd"} {
+		tellSubagent(t, "s", agent, "AGENTS.md", rules.SubagentToldByStart)
+	}
 
 	for _, tc := range []struct {
 		name  string
@@ -259,6 +274,11 @@ func TestHookSubagentStopAlwaysExitsZero(t *testing.T) {
 		{"unreadable transcript", subagentPayload(t, "s", repo, "a", missing, "t")},
 		{"unresolvable repo and unknown session", subagentPayload(t, "s-unknown", dir, "a", fifo, "t")},
 		{"empty transcript", subagentPayload(t, "s", repo, "a", writeAgentTranscript(t, dir, "empty", ""), "t")},
+		{"told", subagentPayload(t, "s", repo, "told", writeAgentTranscript(t, dir, "told", shellCallLine(t, "ls")), "t")},
+		{"told, no transcript", subagentPayload(t, "s", repo, "told-none", "", "t")},
+		{"told, a transcript over the cap", subagentPayload(t, "s", repo, "told-big", big, "t")},
+		{"told, a transcript of no known shape", subagentPayload(t, "s", repo, "told-odd",
+			writeAgentTranscript(t, dir, "odd", `{"type":"assistant","message":[1,{"content":{}}]}`+"\n"+`"type":"assistant"`+"\n"), "t")},
 	} {
 		_, stderr, failed := runHookAllowingFailure(tc.stdin, "hook", "subagent-stop")
 		if failed {
@@ -382,5 +402,22 @@ func TestSubagentStopThenSessionStartStoresTheRecord(t *testing.T) {
 	}
 	if len(staged) != 0 {
 		t.Errorf("the staged copy survived a successful drain: %+v", staged)
+	}
+}
+
+// TestHookSubagentStopExitsZeroWhenItsLineCannotBeKept: the marker's place is
+// taken by a directory, and the transcript is staged all the same.
+func TestHookSubagentStopExitsZeroWhenItsLineCannotBeKept(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	tellSubagent(t, "s", "a", "AGENTS.md", rules.SubagentToldByStart)
+	if err := os.MkdirAll(filepath.Join(abcdhome.Path(os.Getenv("HOME"), "transcripts"), rootSHA, "subagent-readings.json", "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	se := stopSubagent(t, repo, "s", "a", shellCallLine(t, "ls"))
+	if !strings.Contains(se, "could not be kept") {
+		t.Errorf("stderr does not say the line could not be kept: %q", se)
+	}
+	if staged, err := history.ListStaged(repo, rootSHA); err != nil || len(staged) != 1 {
+		t.Errorf("%d staged transcript(s) (%v), want 1", len(staged), err)
 	}
 }
