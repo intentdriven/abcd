@@ -296,8 +296,10 @@ before arming. It reads `facilitator.mode` from the default branch's committed
 `.abcd/config.json` (as just fetched) and `~/.abcd.noindex/config.json`, never
 from the branch being landed, so a branch cannot choose its own gate. The
 value is `human` (a person facilitates; every fresh install's default) or
-`auto` (abcd does), and `human` from either file wins. A value that is neither
-is refused with exit 2, naming the file, and nothing is armed.
+`auto` (abcd does). The repository's committed value decides; only where it
+commits none does your own global setting, and with neither it is `human`. A
+value that is neither is refused with exit 2, naming the file, and nothing is
+armed.
 
 The pull request's author is read from the forge, with their permission on
 the repository. Write, Maintain and Admin are write access; Read and Triage,
@@ -307,6 +309,12 @@ someone with write access, approves the head commit itself (an earlier commit's 
 for nothing) and is not the author's own, or when the technical facilitator
 recorded it with `--approve` (below). Then:
 
+- **A pull request that changes the committed mode line** (its diff, from
+  its merge base with the default branch to its head, sets, alters or removes
+  `facilitator.mode` in `.abcd/config.json`, or leaves it unreadable) is
+  armed in no mode, whatever approvals and receipts it has: the note says you
+  merge it on the forge's page. One whose diff cannot be read for it is not
+  armed either.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.
@@ -323,6 +331,12 @@ recorded it with `--approve` (below). Then:
   then the note names the commit that has no recorded review pair. A delta
   review's receipt names the head only while its delta stands, and when it does
   not the note says why and that the head needs a full pair.
+- **Your own global `auto`** (the repository commits no mode) arms only a pull
+  request the forge account abcd runs as opened. Anyone else's is judged as
+  `human` judges it: it waits for an approval of its head, or for its author to
+  land it, and the note says whose it is. Where the forge cannot say which
+  account abcd runs as, nothing is armed without an approval. Where the
+  repository commits `auto`, a colleague's pull request is armed as above.
 
 abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the

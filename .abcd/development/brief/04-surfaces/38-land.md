@@ -299,9 +299,11 @@ Its inputs:
   the default branch's committed file at the tip just fetched, beside
   `~/.abcd.noindex/config.json`, never from the branch being landed, so a
   branch that commits `auto`, or deletes the default branch's `human`, does
-  not decide its own gate (dcn-2610230058333177). `human` from either file
-  wins. A value that is neither is refused, naming the file, its text masked
-  for the terminal, and nothing is armed.
+  not decide its own gate (dcn-2610230058333177). The repository's committed
+  value decides; only where it commits none does the person's own global
+  setting, and with neither it is `human` (adr-2611262044127943). A value that
+  is neither is refused, naming the file, its text masked for the terminal,
+  and nothing is armed.
 - **Who the author is.** One seam reads the pull request author's
   permission on the repository from the forge (`role_name`): Write, Maintain
   and Admin are write access; Read and Triage, a 404 or no role make a
@@ -416,21 +418,33 @@ Its inputs:
 
 The decision, in order:
 
-1. An unverified author: nothing is armed, whatever the approvals, and the
+1. A pull request whose diff, read from its merge base with the default
+   branch's tip to its head, changes the committed `facilitator.mode` line of
+   `.abcd/config.json` (sets, alters or removes it, or leaves it unreadable):
+   nothing is armed in any mode, whatever the approvals and receipts, and the
+   note says the person merges it on the forge's page. A diff that cannot be
+   read for it arms nothing either (adr-2611262044127943).
+2. An unverified author: nothing is armed, whatever the approvals, and the
    note says the role is unverified.
-2. A contributor's pull request, in either mode: nothing is armed until an
+3. A contributor's pull request, in either mode: nothing is armed until an
    approval of its head counts, and the note says an approval by someone with
    write access is needed. Once one counts, the mode decides as for an author
    with write access.
-3. `human`: the pull request of an author with write access is armed only
+4. `human`: the pull request of an author with write access is armed only
    once an approval of its head counts; until then the note says it waits for
    the technical facilitator's approval. The product thinker never approves a merge: their
    part is to try the outcome and judge it.
-4. `auto`: the pull request of an author with write access is armed with no
+5. `auto`: the pull request of an author with write access is armed with no
    one asked, but only when a review receipt names its head, a delta's only
    while its delta stands; otherwise the note names the commit with no recorded
    review pair, or says why the delta does not stand. Automated merging is never unreviewed
    merging: the reviews are automated, not skipped.
+6. Where `auto` is the person's own global setting, not the repository's: only a
+   pull request the forge account abcd runs as opened (`query{viewer{login}}`,
+   compared without regard to case) is judged as in 5. Anyone else's, or one
+   where the forge cannot say which account that is, is judged as in 4: it
+   waits for an approval of its head, or for its author to land it, and the
+   note says whose it is ("only your own", the product thinker, 2026-11-26).
 
 `human` holds against an agent merging by mistake, not against one set on
 getting round it, and the verb says so wherever it describes the mode. The
@@ -444,8 +458,8 @@ person's.
 abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
 requests are opened by people with write access, so each is armed once a
 review receipt names its head, the build loop's own from a pair that read it, and a contributor's still waits for an approval
-by someone with write access. A machine that sets `human` in `~/.abcd.noindex/config.json` holds every one
-of them for the technical facilitator's approval.
+by someone with write access. A person's own `human` in `~/.abcd.noindex/config.json`
+does not hold them: the committed value decides over it.
 
 An armed pull request goes by the ruleset mirror's method: into the merge
 queue where one gates the default branch, and otherwise as the forge's

@@ -171,7 +171,8 @@ default branch's committed `.abcd/config.json` and the machine layer declare
 it, never the checkout's working tree. The board reads the default branch at
 the tip this checkout last fetched and asks the network nothing, where the gate
 fetches it first, so after the mode changes on origin the two can disagree
-until the next fetch. A `human` from any layer wins, and a refused home reads as `human`.
+until the next fetch. The committed value decides, the person's own global
+setting only where it commits none, and a refused home reads as `human`.
 Under `human` the line says the gate merges once the technical facilitator
 approves the head; under `auto`, that it merges autonomously once a review pair
 has passed the head. The product view draws a line of its own above the
