@@ -278,7 +278,10 @@ spotcheck_shape() {
       path="${line#*$'\t'}"
       read -r mode type sha size <<<"$meta"
       [ "$mode $type" = "100644 blob" ] || return 1
-      [[ "$sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ && "$size" =~ ^[0-9]{1,9}$ ]] || return 1
+      case "$sha" in '' | *[!0-9a-f]*) return 1 ;; esac
+      [ "${#sha}" -eq 40 ] || [ "${#sha}" -eq 64 ] || return 1
+      case "$size" in '' | *[!0-9]*) return 1 ;; esac
+      [ "${#size}" -le 9 ] || return 1
       [[ "$path" =~ $spotcheck_path_re ]] || return 1
       case "/$path/" in
       */./* | */../*) return 1 ;;
