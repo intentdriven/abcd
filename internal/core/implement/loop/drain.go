@@ -707,7 +707,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Next = joinNext(res.Next, stopNote)
 		}
 		// A drain that ends awaits nothing, and every judgement hold the move
-		// leaves unused is released before the state is written.
+		// leaves unused is released once the state is written, below.
 		if st.Stopped != "" && st.Judging != nil {
 			st.Judging, write = nil, true
 		}
@@ -737,7 +737,27 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if bundleIgnored != "" {
 			res.Next = joinNext(res.Next, bundleIgnored)
 		}
-		if clauses := holds.settle(st.Judging, st.Forming); len(clauses) > 0 {
+		// The state is written before any hold is released over the network
+		// (iss-2611260523161723): no push sits between a new lane's run
+		// write and the drain state's, and a move killed in a release's push
+		// leaves the state as the move ends it.
+		written := false
+		save := func() error {
+			if written {
+				return nil
+			}
+			st.UpdatedAt = now
+			if err := writeDrain(repoRoot, st); err != nil {
+				return err
+			}
+			persisted, persistedForming, written = st.Judging, st.Forming.clone(), true
+			return nil
+		}
+		clauses, settleErr := holds.settleAfter(st.Judging, st.Forming, save)
+		if settleErr != nil {
+			return DrainResult{}, settleErr
+		}
+		if len(clauses) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, clauses...)...)
 			write = true
 		}
@@ -759,11 +779,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Next = joinNext(append([]string{res.Next}, diags...)...)
 		}
 		if write {
-			st.UpdatedAt = now
-			if err := writeDrain(repoRoot, st); err != nil {
+			if err := save(); err != nil {
 				return DrainResult{}, err
 			}
-			persisted, persistedForming = st.Judging, st.Forming.clone()
 		}
 		// The spot-check's record of what the drain decided alone: written
 		// from the state as the move leaves it, never failing the move
@@ -1283,14 +1301,18 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// under a holder it owns, as the reservation act reads them
 	// (iss-2611190011141331).
 	var capHolder claim.Self
-	// The cap is the person's own (reservation.max_live); a setting that
-	// cannot be used leaves the count to the reservation act, which refuses
-	// naming the file.
+	// The cap is the person's, as the repository sets it at origin's default
+	// branch and this machine may lower it (reservation.max_live,
+	// claim.MaxLiveFor), read with no network act at the branch origin last
+	// named to a reservation act here, so a branch this checkout merely
+	// tracks does not hold the drain at a wait; where no act here has saved
+	// that name, or the setting cannot be read, no figure is read and the
+	// count is left to the reservation act, which asks origin and decides.
 	capLimit, capErr := claim.MaxLive, error(nil)
 	if view != nil {
 		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
 		if reserving {
-			capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
+			capLimit, capErr = claim.MaxLiveFor(repoRoot, claimOptions(now))
 		}
 	}
 	var capped, held []string
@@ -1335,7 +1357,7 @@ walk:
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
 			if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
-				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+				if why := waitsUntakenTo(repoRoot, runs[i], o.driverIsSelf); why != "" {
 					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				}
 			}
@@ -1385,7 +1407,7 @@ walk:
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
-			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+			if why := waitsUntakenTo(repoRoot, runs[i], o.driverIsSelf); why != "" {
 				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				continue
 			}
