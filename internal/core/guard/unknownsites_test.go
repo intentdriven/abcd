@@ -82,6 +82,8 @@ var wordReaders = map[string]string{
 	"deleteTargets":     "reads only cd/pushd/popd and GIT_ words; a git site comes from sitesNamed",
 	"deletesIn":         "isUnknown on the -C value and the subcommand, and mayDelete refuses an unknown word",
 	"pushDeletes":       "isUnknown on every word before it is read",
+	"prunesOrMirrors":   "isUnknown on the subcommand word; it only marks the line for pushDeletes, which reads every word through isUnknown",
+	"pushRemovalOption": "exempt: reads a word pushDeletes has already found fixed, or one prunesOrMirrors only marks the line by; it approves no word",
 	"branchDeletes":     "isUnknown on every word before it is read",
 	"branchOperand":     "reads a word pushDeletes or branchDeletes has already found fixed",
 	"worktreeRemoves":   "isUnknown on every word before it is read",

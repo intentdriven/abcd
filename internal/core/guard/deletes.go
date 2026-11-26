@@ -131,7 +131,7 @@ func (r Registry) deleteSignal(v verdicts) (payloadSignal, bool) {
 		return payloadSignal{}, false
 	}
 	line, script := matchedDelete(v)
-	if !line && !script {
+	if !line && !script && !prunesOrMirrors(v.segs) {
 		return payloadSignal{}, false
 	}
 	if script {
@@ -349,6 +349,52 @@ func deletesIn(args []string, dir string) ([]DeleteTarget, bool, string) {
 	return nil, false, ""
 }
 
+// prunesOrMirrors reports whether a git command of segs may be a push with
+// --prune or --mirror, which deletes the remote's branches this copy lacks
+// though no delete entry fires on it: a word after git that is push, or one
+// the line does not fix, followed by a spelling of either option. It only
+// marks the line for the reading (pushDeletes), which refuses such a push.
+func prunesOrMirrors(segs []segment) bool {
+	for _, s := range segs {
+		for _, site := range sitesNamed(s, "git") {
+			args := s.tokens[site.idx+1:]
+			for k, w := range args {
+				if w != "push" && !isUnknown(w) {
+					continue
+				}
+				for _, a := range args[k+1:] {
+					if o := pushRemovalOption(a); o == "--prune" || o == "--mirror" {
+						return true
+					}
+				}
+				break
+			}
+		}
+	}
+	return false
+}
+
+// pushRemovalOption is --prune, --mirror or the negation of either that a
+// spells, or "". An ambiguous prefix of --prune or --mirror (`--pr`) reads as
+// it, the fail-closed side, as `--d` reads as --delete.
+func pushRemovalOption(a string) string {
+	if !strings.HasPrefix(a, "--") {
+		return ""
+	}
+	name, _, _ := strings.Cut(a, "=")
+	switch o := longOption("push", a); o {
+	case "--prune", "--mirror", "--no-prune", "--no-mirror":
+		return o
+	case "":
+		for _, o := range []string{"--prune", "--mirror"} {
+			if len(name) > 2 && strings.HasPrefix(o, name) {
+				return o
+			}
+		}
+	}
+	return ""
+}
+
 // mayDelete reports whether args could still reach one of the deleting
 // subcommands, for an option or subcommand the reading cannot place.
 func mayDelete(args []string) bool {
@@ -384,9 +430,12 @@ func longOption(sub, arg string) string {
 var pushValueOptions = map[string]bool{"--repo": true, "--receive-pack": true, "--exec": true, "--push-option": true}
 
 // pushDeletes reads `git push`'s arguments: the remote, then the refspecs, each
-// deleted under --delete and each written `:<branch>` deleted without it.
+// deleted under --delete and each written `:<branch>` deleted without it. A
+// push with --prune or --mirror also deletes each branch of the remote's that
+// this copy lacks, which only the remote can list, so it is refused rather
+// than read as deleting only what it names.
 func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
-	del, dry := false, false
+	del, dry, prune, mirror := false, false, false, false
 	var ops []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -401,10 +450,19 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 			name, _, hasValue := strings.Cut(a, "=")
 			o := longOption("push", a)
 			if o == "" {
-				// An ambiguous prefix of --delete reads as it (`--d`), the
-				// fail-closed side; any other unknown spelling is refused.
+				// An ambiguous prefix of --delete reads as it (`--d`), and one
+				// of --prune or --mirror as that (`--pr`), the fail-closed
+				// side; any other unknown spelling is refused.
 				if len(name) > 2 && strings.HasPrefix("--delete", name) {
 					del = true
+					continue
+				}
+				switch pushRemovalOption(a) {
+				case "--prune":
+					prune = true
+					continue
+				case "--mirror":
+					mirror = true
 					continue
 				}
 				return nil, "git push's option " + a + " is one this reading does not know"
@@ -416,6 +474,16 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 				del = false
 			case o == "--dry-run":
 				dry = true
+			case o == "--no-dry-run":
+				dry = false
+			case o == "--prune":
+				prune = true
+			case o == "--no-prune":
+				prune = false
+			case o == "--mirror":
+				mirror = true
+			case o == "--no-mirror":
+				mirror = false
 			case pushValueOptions[o] && !hasValue:
 				i++
 			}
@@ -440,14 +508,20 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 			ops = append(ops, a)
 		}
 	}
+	if dry {
+		// A dry run deletes nothing.
+		return nil, ""
+	}
+	switch {
+	case mirror:
+		return nil, "the push mirrors (--mirror), so it deletes every branch of the remote's that this copy lacks, and the line names none of them"
+	case prune:
+		return nil, "the push prunes (--prune), so it deletes every branch of the remote's its refspecs match that this copy lacks, and the line names none of them"
+	}
 	if len(ops) == 0 {
 		if del {
 			return nil, "the push names no remote to delete on"
 		}
-		return nil, ""
-	}
-	if dry {
-		// A dry run deletes nothing.
 		return nil, ""
 	}
 	remote, refspecs := ops[0], ops[1:]
