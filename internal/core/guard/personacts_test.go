@@ -354,3 +354,76 @@ func TestARemovalThatCouldReachTheStopIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// TestSettingTheFacilitatorIsThePersonsAct: setting the facilitator's mode,
+// for this project or with --everywhere for the computer, is the person's
+// act under any program name, and a shell write, move or removal of the
+// person's own entries or the computer's settings file is refused
+// (itd-2611252049031692 step 3). Showing the mode, `abcd mode facilitator`,
+// naming the command in passing, reading either file, and the project's own
+// .abcd/config.json are not.
+func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, c := range []struct{ cmd, entry string }{
+		{`abcd facilitator auto`, "abcd-facilitator-auto"},
+		{`abcd facilitator human`, "abcd-facilitator-human"},
+		{`abcd facilitator auto --everywhere`, "abcd-facilitator-auto"},
+		{`abcd --json facilitator human --everywhere`, "abcd-facilitator-human"},
+		{`go run ./cmd/abcd facilitator auto`, "abcd-facilitator-auto"},
+		{`scripts/abcd.sh facilitator auto`, facilitatorAutoAnyEntryID},
+		{`bin/abcd-darwin-arm64 facilitator human --everywhere`, facilitatorHumanAnyEntryID},
+		{`bash -- scripts/abcd.sh facilitator auto`, facilitatorAutoAnyEntryID},
+		{`echo '{}' > ` + homeDir + `/facilitator.json`, facilitatorStoreEntryID},
+		{`rm ` + homeDir + `/facilitator.json`, facilitatorStoreEntryID},
+		{`mv /tmp/x ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`cp x.json ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`tee ` + homeDir + `/config.json < x.json`, facilitatorStoreEntryID},
+		{`sed -i '' s/human/auto/ ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`cd ` + homeDir + ` && rm facilitator.json`, facilitatorStoreEntryID},
+		{`rm ` + homeDir + `/c*.json`, facilitatorStoreEntryID},
+		{`rm ` + homeDir + `/facilitator.*`, facilitatorStoreEntryID},
+		{`echo x > ` + upperHomeDir + `/Facilitator.json`, facilitatorStoreEntryID},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{
+		`abcd facilitator`,
+		`abcd facilitator --json`,
+		`scripts/abcd.sh facilitator`,
+		`abcd mode facilitator`,
+		`scripts/abcd.sh mode facilitator`,
+		`abcd capture "an agent ran abcd facilitator auto"`,
+		`grep facilitator ` + homeDir + `/config.json`,
+		`cat ` + homeDir + `/facilitator.json`,
+		`echo '{}' > .abcd/config.json`,
+		`printf x >> ` + homeDir + `/trusted-roots`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
+	}
+}
+
+// TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite: a file tool is held
+// to the same two files a shell line is, by any spelling the volume resolves.
+func TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
+	for p, want := range map[string]bool{
+		abcdhome.Path("/home/x", "facilitator.json"):                       true,
+		abcdhome.Path("/home/x", "config.json"):                            true,
+		abcdhome.Path("/home/x", "CONFIG.JSON"):                            true,
+		"/home/x/" + strings.ToUpper(abcdhome.Rel()) + "/Facilitator.json": true,
+		"/home/x/" + abcdhome.Rel("sub") + "/../config.json":               true,
+		"/home/x/project/.abcd/config.json":                                false,
+		abcdhome.Path("/home/x", "rules.json"):                             false,
+		abcdhome.Path("/home/x", "worktrees/a/config.json"):                false,
+	} {
+		if got := FacilitatorStorePath(p); got != want {
+			t.Errorf("FacilitatorStorePath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

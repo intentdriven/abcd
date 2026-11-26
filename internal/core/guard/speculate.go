@@ -115,6 +115,7 @@ var reservedEntryIDs = []string{
 	gitDirEntryID, groupBrokenEntryID, nulByteEntryID, arithmeticEntryID, deleteEntryID, allowStoreEntryID, stopStoreEntryID, implementStopAnyEntryID, sharedFolderAnyEntryID,
 	mergeAutoEntryID, mergeNowEntryID, mergeEnqueueEntryID, mergeRESTEntryID, mergeUnreadEntryID, approveAnyEntryID, approveForgeEntryID,
 	guardAllowAnyEntryID, ledgerFlipAnyEntryID, ledgerFlipRetiredAnyEntryID,
+	facilitatorAutoAnyEntryID, facilitatorHumanAnyEntryID, facilitatorStoreEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at

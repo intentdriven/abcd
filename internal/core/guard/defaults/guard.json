@@ -1368,6 +1368,47 @@
         ]
       }
     },
+    "abcd-facilitator-auto": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "facilitator",
+        "subcommand2": "auto"
+      },
+      "why": "Setting the facilitator's mode to auto is the person's own act: under auto the merge gate lands a head no person approved, so an auto an agent sets hands it an approval no person gave.",
+      "successor": "Leave this one to the person: tell them which mode you believe this project should run under and why, and let them run `abcd facilitator auto` or `abcd facilitator human` from their own terminal.",
+      "fixtures": {
+        "known_bad": [
+          "abcd facilitator auto",
+          "abcd facilitator auto --everywhere"
+        ],
+        "known_good": [
+          "abcd facilitator",
+          "abcd mode facilitator",
+          "abcd capture \"an agent ran abcd facilitator auto\""
+        ]
+      }
+    },
+    "abcd-facilitator-human": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "facilitator",
+        "subcommand2": "human"
+      },
+      "why": "Setting the facilitator's mode is the person's own act: the setting decides whose approval a merge waits on, so a mode an agent sets is one no person chose.",
+      "successor": "Leave this one to the person: tell them which mode you believe this project should run under and why, and let them run `abcd facilitator auto` or `abcd facilitator human` from their own terminal.",
+      "fixtures": {
+        "known_bad": [
+          "abcd facilitator human",
+          "abcd facilitator human --everywhere"
+        ],
+        "known_good": [
+          "abcd facilitator --json",
+          "abcd mode facilitator"
+        ]
+      }
+    },
     "abcd-guard-allow": {
       "tier": "blocker",
       "pattern": {

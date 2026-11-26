@@ -92,6 +92,18 @@ var personActs = []personAct{
 		why:       "Choosing the shared folder is the person's own act: it decides where this account reads a stop from, so a choice an agent makes can put every run out of reach of the person's stop.",
 		successor: "Leave this one to the person: tell them what the folder is for and let them run `abcd ahoy shared-folder <folder>` themselves, in each account.",
 	},
+	{
+		id: facilitatorAutoAnyEntryID, entry: "abcd-facilitator-auto", family: "facilitator",
+		verbs: []string{"facilitator", "auto"}, adjacent: true,
+		why:       facilitatorAutoWhy,
+		successor: facilitatorSuccessor,
+	},
+	{
+		id: facilitatorHumanAnyEntryID, entry: "abcd-facilitator-human", family: "facilitator",
+		verbs: []string{"facilitator", "human"}, adjacent: true,
+		why:       facilitatorHumanWhy,
+		successor: facilitatorSuccessor,
+	},
 }
 
 // actOf reports whether segment s runs act a under a program other than one

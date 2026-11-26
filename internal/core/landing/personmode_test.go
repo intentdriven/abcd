@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/statusline"
@@ -793,5 +794,17 @@ func TestAnAutoEntryWaitsWhileTheEnvironmentLocatesGitsSettings(t *testing.T) {
 				t.Fatalf("reading = %+v; want human from the person layer, naming %s", f, name)
 			}
 		})
+	}
+}
+
+// TestTheGuardRefusesWritesOfTheFilesTheResolverReads: the guard names the
+// person's entries and the computer's file itself, since it cannot import this
+// package, so the two are held together here.
+func TestTheGuardRefusesWritesOfTheFilesTheResolverReads(t *testing.T) {
+	home := t.TempDir()
+	for _, p := range []string{abcdhome.Path(home, personLeaf), abcdhome.Path(home, layered.Config.MachineRel)} {
+		if !guard.FacilitatorStorePath(p) {
+			t.Errorf("guard.FacilitatorStorePath(%q) = false; the resolver reads that file", p)
+		}
 	}
 }
