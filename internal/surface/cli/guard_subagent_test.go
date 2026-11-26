@@ -167,6 +167,7 @@ func TestGuardHoldsTheGitCommandsThatRecordOrSendWork(t *testing.T) {
 		`for b in a b; do git push origin "$b"; done`,
 		"function f { git commit -m x; }; f",
 		"FOO+=1 git commit -m x",
+		`g() { git "$@"; }; g commit -m x`,
 	} {
 		if reason := mustHold(t, command, f.shell("a1", command)); !strings.Contains(reason, "AGENTS.md") {
 			t.Errorf("%s: %s", command, reason)

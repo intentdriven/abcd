@@ -1342,6 +1342,19 @@ var functionShellWords = map[string]bool{
 // aliases: a word that assigns into one changes what a name runs.
 var zshNameTables = []string{"functions", "aliases", "galiases", "saliases", "dis_functions"}
 
+// namesTableText reports whether text names one of zsh's tables of functions
+// or aliases with a subscript anywhere, inside an expansion or a quote too
+// (`${functions[ls]::=…}` assigns while it expands). A text that only reads
+// one is held with it: no word of the line tells the two apart.
+func namesTableText(text string) bool {
+	for _, table := range zshNameTables {
+		if strings.Contains(text, table+"[") {
+			return true
+		}
+	}
+	return false
+}
+
 // namesRedefined reports whether s changes which command a name runs where
 // the guard does not see it: a word assigning into one of zsh's tables of
 // functions or aliases (`functions[NAME]=…`, `aliases[NAME]=…`, the table

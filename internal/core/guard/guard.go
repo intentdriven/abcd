@@ -786,10 +786,14 @@ func (r Registry) judgeCalls(command string, rc *readCtx, run *scriptRun, readCa
 	// than it follows is refused, like a substitution the tokenizer stopped
 	// reading.
 	walkSegments(segs)
-	for _, s := range segs {
-		if s.functionUnread || s.functionQuoted || s.namesUnread || namesRedefined(s) {
-			signals = append(signals, functionFormSignal())
-			break
+	if namesTableText(command) {
+		signals = append(signals, functionFormSignal())
+	} else {
+		for _, s := range segs {
+			if s.functionUnread || s.functionQuoted || s.namesUnread || namesRedefined(s) {
+				signals = append(signals, functionFormSignal())
+				break
+			}
 		}
 	}
 	for _, s := range segs {

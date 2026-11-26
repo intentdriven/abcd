@@ -563,16 +563,17 @@ commit.
 
 **What is a call.** The guard reads a call of a function the line defines in one
 shape: the function is one command of a fixed program that runs no other
-command, its arguments read only as `"$@"`, `$@`, `"$1"`…`"$9"`, `$1`…`$9` or
-`${1}`…`${9}`, and the call stands where a command starts on the line itself;
+command, its arguments read only as `"$@"`, `$@`, `"$1"`…`"$9"`, `$1`…`$9`,
+`"${1}"`…`"${9}"` or `${1}`…`${9}`, and the call stands where a command starts on the line itself;
 the line is then judged again with the call replaced by the command its words
 make (`functionCallReadings`). Every other call, with words, of a function that
 reads its arguments is blocked as `function-form-unread`, so
-`greet() { echo "hello $1"; echo bye; }; greet world` is held. A line naming
-zsh's `functions[` or `aliases[` tables (or `galiases[`, `saliases[`,
-`dis_functions[`), running `functions -c` or `-M`, defining several names with
-one `()`, or running a command through zsh's `-` modifier is held the same way,
-since each changes what a name runs where the guard does not see it.
+`greet() { echo "hello $1"; echo bye; }; greet world` is held. A line that
+names one of zsh's `functions[`, `aliases[`, `galiases[`, `saliases[` or
+`dis_functions[` tables anywhere on the line, inside an expansion or a quote
+too, runs `functions -c` or `-M`, defines several names with one `()`, or runs a
+command through zsh's `-` modifier is held the same way, since each can change
+what a name runs where the guard does not see it.
 
 **What is a reading.** The sub-agent's own transcript is read once at the held
 call, from where the host keeps it beside the session's

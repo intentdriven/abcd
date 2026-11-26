@@ -70,11 +70,12 @@ call, with words, of a function that reads its arguments is a **block**
 assignment or a declaration, an argument read in any other form, a call after
 a wrapper or inside a substitution, a line that defines an alias, or a line
 whose readings run past a few thousand words. So is a line that changes what a
-name runs where the guard does not see it: one naming zsh's `functions[`,
-`aliases[`, `galiases[`, `saliases[` or `dis_functions[`, running `functions -c`
-or `functions -M`, defining several names with one `()` (`f x() { … }`), or
-running a command through zsh's `-` modifier. A function in a script the line
-runs is read as the script stands.
+name runs where the guard does not see it: one that names one of zsh's
+`functions[`, `aliases[`, `galiases[`, `saliases[` or `dis_functions[` tables
+anywhere on the line, inside an expansion or a quote too, one running
+`functions -c` or `functions -M`, one defining several names with one `()`
+(`f x() { … }`), or one running a command through zsh's `-` modifier. A
+function in a script the line runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a

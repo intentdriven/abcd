@@ -2639,11 +2639,12 @@ names IFS an unquoted one is blocked (ifs-split-unread), because the
 guard splits on the default IFS only. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
 A call of a function the line defines is read with its words in one
-shape only, a body of one command reading them as `"$@"` or `"$1"`;
-any other call, with words, of a function that reads them is blocked
-(function-form-unread), and so is a line that renames what a name runs
-through zsh's `functions[` or `aliases[` tables, `functions -c` or `-M`,
-a `()` definition of several names, or the `-` modifier.
+shape only, a body of one command reading them as `"$@"`, `$@`,
+`"$1"`, `$1` or `${1}`; any other call, with words, of a function
+that reads them is blocked (function-form-unread), and so is a line
+that names one of zsh's `functions[`, `aliases[` … tables anywhere on
+the line, runs `functions -c` or `-M`, defines several names with one
+`()`, or runs a command through the `-` modifier.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.

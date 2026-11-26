@@ -21,8 +21,14 @@ const functionAct = "function"
 // one, in the order written. It refuses nothing and decides nothing. A line the
 // tokenizer cannot split is read as no act, as is a command run through a
 // wrapper, a shell string or a script, which is not seen here. A function in a
-// form the guard does not read is functionAct.
+// form the guard does not read is functionAct. A call of a function the line
+// defines is read as each line its words rebuild (functionCallReadings), whose
+// acts are added; a call that cannot be read so is functionAct.
 func RecordActs(command string) []string {
+	return recordActsOf(command, true)
+}
+
+func recordActsOf(command string, readCalls bool) []string {
 	segs, err := tokenize(command)
 	if err != nil {
 		return nil
@@ -35,6 +41,15 @@ func RecordActs(command string) []string {
 		}
 		if act := recordActIn(s.tokens); act != "" {
 			out = append(out, act)
+		}
+	}
+	if readCalls {
+		lines, hold := functionCallReadings(command, segs)
+		if hold {
+			out = append(out, functionAct)
+		}
+		for _, l := range lines {
+			out = append(out, recordActsOf(l, false)...)
 		}
 	}
 	return out

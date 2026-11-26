@@ -110,11 +110,12 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"guard splits on the default IFS only. Two `sh -c` or `eval` layers are\n" +
 			"followed; a payload nested deeper is blocked.\n" +
 			"A call of a function the line defines is read with its words in one\n" +
-			"shape only, a body of one command reading them as `\"$@\"` or `\"$1\"`;\n" +
-			"any other call, with words, of a function that reads them is blocked\n" +
-			"(function-form-unread), and so is a line that renames what a name runs\n" +
-			"through zsh's `functions[` or `aliases[` tables, `functions -c` or `-M`,\n" +
-			"a `()` definition of several names, or the `-` modifier.\n" +
+			"shape only, a body of one command reading them as `\"$@\"`, `$@`,\n" +
+			"`\"$1\"`, `$1` or `${1}`; any other call, with words, of a function\n" +
+			"that reads them is blocked (function-form-unread), and so is a line\n" +
+			"that names one of zsh's `functions[`, `aliases[` … tables anywhere on\n" +
+			"the line, runs `functions -c` or `-M`, defines several names with one\n" +
+			"`()`, or runs a command through the `-` modifier.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
 			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
