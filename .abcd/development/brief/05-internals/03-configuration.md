@@ -848,9 +848,11 @@ may run to in this repository: a whole number from 16 to 200, 40 by default
 ### The spot-check keys
 
 The `spotcheck` block sets the spot-check's window and its sample
-(`internal/core/spotcheck/config.go`, itd-2610301750162657), read through the
-layered resolver, the repository layer last and winning, at origin's default
-branch as stored: a value only in the working tree sizes no draw.
+(`internal/core/spotcheck/config.go`, itd-2610301750162657). A window is
+governed by the repository layer alone, as the default branch stores it at the
+commit the window starts at: a value only in the working tree, a change landed
+inside the window, or a machine's own layer sizes no draw, so every reader of a
+cycle checks it by the same values.
 
 ```jsonc
 {

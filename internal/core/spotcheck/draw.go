@@ -14,11 +14,11 @@ import (
 	"strings"
 )
 
-// drawKeys is the size keys of a group drawn by randomness for cycle id:
-// each key, sorted and once, is given HMAC-SHA256(randomness, id NUL group
-// NUL key), and the keys of the size smallest values are answered in that
-// order (DrawRule).
-func drawKeys(randomness []byte, id, group string, keys []string, size int) []string {
+// drawKeys is the size keys of a group drawn by randomness for the window
+// seed names (drawSeed): each key, sorted and once, is given
+// HMAC-SHA256(randomness, seed NUL group NUL key), and the keys of the size
+// smallest values are answered in that order (DrawRule).
+func drawKeys(randomness []byte, seed, group string, keys []string, size int) []string {
 	sorted := slices.Clone(keys)
 	slices.Sort(sorted)
 	sorted = slices.Compact(sorted)
@@ -29,7 +29,7 @@ func drawKeys(randomness []byte, id, group string, keys []string, size int) []st
 	all := make([]scored, 0, len(sorted))
 	for _, k := range sorted {
 		m := hmac.New(sha256.New, randomness)
-		m.Write([]byte(id + "\x00" + group + "\x00" + k))
+		m.Write([]byte(seed + "\x00" + group + "\x00" + k))
 		all = append(all, scored{mac: m.Sum(nil), key: k})
 	}
 	slices.SortFunc(all, func(a, b scored) int {

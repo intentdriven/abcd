@@ -10,8 +10,12 @@ package spotcheck
 // moves forward, so a copy that no longer holds the mark's commit, opening or
 // cycle was deleted or rewritten: the store refuses it in one line, draws
 // nothing, carries nothing and opens no first window over it. Nothing in the
-// checkout can move the mark, and a mark that cannot be read refuses as
-// loudly as a rewritten branch.
+// store's branch can move the mark, and a mark that cannot be read refuses as
+// loudly as a rewritten branch. Its folder is named by origin's URL as the
+// checkout's configuration spells it, so a remote renamed to another spelling
+// starts a mark of its own, trusting what it first reads: the mark guards
+// against the branch being rewritten, the forge's ruleset against the
+// rewriting itself.
 
 import (
 	"context"
@@ -113,7 +117,7 @@ func writeMark(ctx context.Context, root string, m mark) error {
 	if err != nil {
 		return err
 	}
-	dir, err := fsutil.EnsureHomeScope(home, folder, abcdhome.DirMode)
+	dir, err := fsutil.EnsureHomeDeclarationScope(home, folder, abcdhome.DirMode)
 	if err != nil {
 		return err
 	}

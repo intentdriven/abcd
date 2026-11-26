@@ -72,14 +72,14 @@ func (c *drawCase) plant(files map[string]string) string {
 	return commit
 }
 
-// cycleJSON is a cycle record with the window bounds a cycle carries.
-func cycleJSON(t *testing.T, c Cycle, days int) string {
+// cycleJSON is a cycle record with the window bounds it names.
+func cycleJSON(t *testing.T, c Cycle, window map[string]int) string {
 	t.Helper()
 	var m map[string]any
 	if err := json.Unmarshal([]byte(encodeOrFail(t, c)), &m); err != nil {
 		t.Fatal(err)
 	}
-	m["window"] = map[string]int{"days": days, "changes": 0}
+	m["window"] = window
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +126,10 @@ func (c *drawCase) openWindow(at time.Time) string {
 
 func hexKey(i int) string { return fmt.Sprintf("%040x", i) }
 
+// sevenDays is the window a cycle names under the bundled configuration,
+// spanning n commits.
+func sevenDays(n int) map[string]int { return map[string]int{"days": 7, "changes": 0, "commits": n} }
+
 // TestAForgedCycleIsSetAsideAndRedrawn: a cycle on origin for the window now
 // closing whose signature does not verify, whose round is not the one the
 // window's close fixes, or whose drawn list is not the one its randomness
@@ -149,14 +153,15 @@ func TestAForgedCycleIsSetAsideAndRedrawn(t *testing.T) {
 			c.serveRounds(&latest)
 			from := c.openWindow(w0)
 			to := c.landAt(3, w0.Add(time.Hour))
-			keys := []string{hexKey(1), hexKey(2), hexKey(3)}
+			keys := strings.Fields(c.r.Git("rev-list", from+".."+to))
+			slices.Sort(keys)
 			for _, k := range keys {
 				c.rows = append(c.rows, row(k, ClassDrain))
 			}
 			c.closeWindow()
 			id := cycleID(q1000, to)
 			randomness, _ := hex.DecodeString(vectorRandomness)
-			drawn := drawKeys(randomness, id, GroupDrainLanded, keys, 10)
+			drawn := drawKeys(randomness, drawSeed(Cycle{FromCommit: from, ToTime: q1000}), GroupDrainLanded, keys, 10)
 			forged := Cycle{SchemaVersion: SchemaVersion, ID: id, FromCommit: from, ToCommit: to, FromTime: w0, ToTime: q1000,
 				ClosedBy: ClosedByDays, Site: SiteLane, Draw: DrawRule,
 				Beacon: Beacon{URL: "https://api.drand.sh/" + ChainHash + "/public/1000", ChainHash: ChainHash, Round: 1000,
@@ -167,7 +172,7 @@ func TestAForgedCycleIsSetAsideAndRedrawn(t *testing.T) {
 					{Group: GroupDrainHandBacks, Population: Population{}, Drawn: []string{}},
 					{Group: GroupFacilitatorDecisions, Population: Population{}, Drawn: []string{}}}}
 			edit(&forged)
-			c.plant(map[string]string{CyclesDir + "/" + id + ".json": cycleJSON(t, forged, 7)})
+			c.plant(map[string]string{CyclesDir + "/" + id + ".json": cycleJSON(t, forged, sevenDays(3))})
 			note := c.observe(q1000.Add(time.Hour))
 			if !strings.Contains(note, "drew cycle "+id) || !strings.Contains(note, id+" on origin does not verify") {
 				t.Fatalf("the observation over a forged cycle said %q", note)
@@ -194,7 +199,7 @@ func TestAFutureDatedCycleDoesNotStopTheNextDraw(t *testing.T) {
 		ClosedBy: ClosedByDays, Site: SiteLane, Draw: DrawRule,
 		Beacon: Beacon{ChainHash: ChainHash, Round: 1000, Signature: vectorSignature, Randomness: vectorRandomness},
 		Sample: Sample{PerGroup: 10, Size: 10, Why: SizeFull, Counted: []string{}}}
-	c.plant(map[string]string{CyclesDir + "/" + id + ".json": cycleJSON(t, forged, 7)})
+	c.plant(map[string]string{CyclesDir + "/" + id + ".json": cycleJSON(t, forged, sevenDays(0))})
 	c.closeWindow()
 	note := c.observe(q1000.Add(time.Hour))
 	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, id+" on origin does not verify") {
@@ -309,4 +314,79 @@ func TestALateRecordIsDrawnInTheNextWindow(t *testing.T) {
 		}
 	}
 	t.Fatalf("the late hand-back is in no population of the next cycle: %+v", cy.Groups)
+}
+
+// emptyGroups are the four groups of a cycle that drew from no one.
+func emptyGroups() []GroupDraw {
+	var gs []GroupDraw
+	for _, g := range groupOrder {
+		gs = append(gs, GroupDraw{Group: g, Population: Population{Keys: []string{}}, Drawn: []string{}})
+	}
+	return gs
+}
+
+// handMade is a cycle of round 1000 for the window that opened at from, at
+// w0, closing at q1000 by and ending at to, drawing from no one.
+func handMade(from, to, by string) Cycle {
+	return Cycle{SchemaVersion: SchemaVersion, ID: cycleID(q1000, to), FromCommit: from, ToCommit: to, FromTime: w0, ToTime: q1000,
+		ClosedBy: by, Site: SiteLane, Draw: DrawRule,
+		Beacon: Beacon{URL: "https://api.drand.sh/" + ChainHash + "/public/1000", ChainHash: ChainHash, Round: 1000,
+			Signature: vectorSignature, Randomness: vectorRandomness, FetchedAt: q1000},
+		Sample: Sample{PerGroup: 10, Size: 10, Why: SizeFull, Counted: []string{}}, Groups: emptyGroups()}
+}
+
+// TestACycleEndingOffTheDefaultBranchIsSetAside: a cycle that chains from
+// the window and carries a real round, but ends at a commit the default
+// branch does not hold, is no window boundary: observations go on, and the
+// window is drawn.
+func TestACycleEndingOffTheDefaultBranchIsSetAside(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	from := c.openWindow(w0)
+	forged := handMade(from, hexKey(77), ClosedByChanges)
+	c.plant(map[string]string{CyclesDir + "/" + forged.ID + ".json": cycleJSON(t, forged, map[string]int{"days": 7, "changes": 10, "commits": 0})})
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle "+cycleID(q1000, from)) || !strings.Contains(note, forged.ID+" on origin does not verify") {
+		t.Fatalf("the observation over a cycle ending off the default branch said %q", note)
+	}
+	if note := c.observe(q1000.Add(2 * time.Hour)); note != "" {
+		t.Fatalf("the next observation said %q", note)
+	}
+}
+
+// TestACycleWhoseCloseIsNotTheBranchsIsRedrawn: a cycle whose window values
+// disagree with the close the default branch gives (here it ends two commits
+// early) is set aside, and the window is drawn at its true close.
+func TestACycleWhoseCloseIsNotTheBranchsIsRedrawn(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	from := c.openWindow(w0)
+	line := c.landAt(3, w0.Add(time.Hour))
+	first := strings.Fields(c.r.Git("rev-list", "--reverse", from+".."+line))[0]
+	c.closeWindow()
+	forged := handMade(from, first, ClosedByDays)
+	c.plant(map[string]string{CyclesDir + "/" + forged.ID + ".json": cycleJSON(t, forged, sevenDays(1))})
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle "+cycleID(q1000, line)) || !strings.Contains(note, forged.ID+" on origin does not verify") {
+		t.Fatalf("the observation over a cycle with another close said %q", note)
+	}
+}
+
+// TestTheDrawIsKeyedByTheWindowNotTheID: two cycles of one window whose ids
+// differ only in their digits draw the same list, so the id's digits are no
+// free choice.
+func TestTheDrawIsKeyedByTheWindowNotTheID(t *testing.T) {
+	randomness, _ := hex.DecodeString(vectorRandomness)
+	keys := keysN(50)
+	a := Cycle{ID: cycleID(q1000, sha('b')), FromCommit: sha('a'), ToTime: q1000}
+	b := a
+	b.ID = cycleID(q1000, sha('c'))
+	for _, g := range groupOrder {
+		if x, y := drawKeys(randomness, drawSeed(a), g, keys, 10), drawKeys(randomness, drawSeed(b), g, keys, 10); !slices.Equal(x, y) {
+			t.Fatalf("ids %s and %s draw %v and %v from one window", a.ID, b.ID, x, y)
+		}
+	}
 }

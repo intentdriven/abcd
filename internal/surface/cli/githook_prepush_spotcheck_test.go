@@ -137,6 +137,14 @@ func TestPrePushGatesAStorePushOfTooManyFiles(t *testing.T) {
 	if err == nil || !strings.Contains(out, "no passing preflight") {
 		t.Fatalf("a push of 1,001 files passed without a receipt (err %v)\n%s", err, out)
 	}
+	// A commit that adds them, followed by one that takes them away again,
+	// is judged commit by commit, not by the push's two ends.
+	many := c.storeCommitOf(first, 1001)
+	back := c.commitTree(c.git("rev-parse", first+"^{tree}"), many, "spotcheck: records")
+	out, err = c.push("origin", back+":"+spotcheckRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("1,001 files added and removed again in one push passed without a receipt (err %v)\n%s", err, out)
+	}
 	if got := c.remoteRef(spotcheckRef); got != first {
 		t.Errorf("the remote holds %q, want %s", got, first)
 	}

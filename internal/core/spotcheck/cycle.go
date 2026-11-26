@@ -49,7 +49,14 @@ const (
 
 // DrawRule says how a cycle's draw is recomputed from its record, so anyone
 // can repeat it.
-const DrawRule = "each key of a group, sorted, is given HMAC-SHA256 keyed by the beacon's randomness over cycle-id NUL group NUL key; the size smallest are drawn"
+const DrawRule = "each key of a group, sorted, is given HMAC-SHA256 keyed by the beacon's randomness over from-commit NUL to-time NUL group NUL key, to-time as YYYYMMDDTHHMMSSZ; the size smallest are drawn"
+
+// drawSeed is the part of a draw's message its window fixes: the commit the
+// window starts at and the moment it closed, both settled before its round
+// exists and both recomputed by every reader, never the cycle's id.
+func drawSeed(c Cycle) string {
+	return c.FromCommit + "\x00" + c.ToTime.UTC().Format(stamp)
+}
 
 // maxListedKeys is the most keys a population lists whole: above it, the
 // cycle keeps the first and last key and the SHA-256 of the sorted keys, one
@@ -87,11 +94,13 @@ type Cycle struct {
 	Holder        string      `json:"holder,omitempty"`
 }
 
-// CycleWindow is the window's bounds as the drawing checkout's configuration
-// gave them: WindowDays, and WindowChanges, 0 when unset.
+// CycleWindow is the window's bounds as the default branch configured them
+// at the window's start (windowConfig): WindowDays, and WindowChanges, 0
+// when unset; and Commits, the first-parent commits the window spans.
 type CycleWindow struct {
 	Days    int `json:"days"`
 	Changes int `json:"changes"`
+	Commits int `json:"commits"`
 }
 
 // Sample is the size a cycle drew at and why.
@@ -174,6 +183,9 @@ type windowState struct {
 	cycles []Cycle
 	// unverified names each cycle file that is not among them, and why.
 	unverified []string
+	// markErr is why the high-water mark could not be kept, nil when it was
+	// or needed no change.
+	markErr error
 }
 
 // clockSkew is how far past the reader's clock a cycle's close may lie and
@@ -189,7 +201,7 @@ const clockSkew = 5 * time.Minute
 // that holds files the store does not write under the draw's names, or an
 // opening that does not read, is an error: a window is never guessed. A copy
 // that reads is kept as the new mark.
-func readWindow(ctx context.Context, root string, now time.Time) (windowState, error) {
+func readWindow(ctx context.Context, root string, now time.Time, tip string) (windowState, error) {
 	tracking, err := storeRef(ctx, root, TrackingRef)
 	if err != nil {
 		return windowState{}, err
@@ -235,7 +247,7 @@ func readWindow(ctx context.Context, root string, now time.Time) (windowState, e
 		case !st.open:
 			err = errors.New("no window opened before it")
 		default:
-			err = verifyCycle(c, id, st.from, st.fromTime, now)
+			err = verifyCycle(ctx, root, tip, c, id, st.from, st.fromTime, now)
 		}
 		if err != nil {
 			st.unverified = append(st.unverified, "cycle "+id+" on origin does not verify ("+err.Error()+"), so it was set aside")
@@ -248,10 +260,9 @@ func readWindow(ctx context.Context, root string, now time.Time) (windowState, e
 		return windowState{}, rewritten("the cycle " + m.Cycle)
 	}
 	if st.open && (!marked || m.Commit != tracking) {
-		// The mark is kept as a best effort: one this machine cannot write
-		// leaves the last one standing, which still refuses a branch
-		// rewritten past it.
-		_ = writeMark(ctx, root, st.mark(tracking))
+		// A mark this machine cannot write leaves the last one standing,
+		// which still refuses a branch rewritten past it; the note says so.
+		st.markErr = writeMark(ctx, root, st.mark(tracking))
 	}
 	return st, nil
 }
@@ -267,37 +278,46 @@ func (st windowState) mark(commit string) mark {
 }
 
 // verifyCycle checks a cycle read back from origin's copy as the cycle of
-// the window that began at from (fromTime): named by its file and by its own
-// close, starting where that window began, closing by a bound it names
-// within the bounds' limits and no later than now allows, drawn from the
-// round its close fixes, whose signature verifies under the pinned key, and
-// whose every drawn list is the one that round's randomness gives over its
-// population at its size. A population kept by its hash alone is checked by
-// its count. What it cannot check, a population or a size a holder of push
-// rights chose and recorded consistently, is the residual adr-2611251806496719
-// names.
-func verifyCycle(c Cycle, id, from string, fromTime, now time.Time) error {
+// the window that began at from (fromTime), against origin's default branch
+// up to tip, as stored. Its window is recomputed, never read from the cycle:
+// the spotcheck block as the branch stores it at from (windowConfig) must be
+// the cycle's own window and per-group values, and windowClose over the
+// branch's first-parent line must give the cycle's bound, end commit and
+// close, so its end is on that line and its close and round are the line's.
+// Its id must be its close's, its close no later than now allows, its
+// signature that of the round its close fixes under the pinned key, its
+// sample size one the size rule gives, every landing it lists a commit of
+// the window, and each drawn list the one that round's randomness gives over
+// its population, keyed by the window alone (drawSeed). A population kept by
+// its hash alone is checked by its count. What it cannot check, which records
+// a holder of push rights listed and why a size was halved, is the residual
+// adr-2611251806496719 names.
+func verifyCycle(ctx context.Context, root, tip string, c Cycle, id, from string, fromTime, now time.Time) error {
 	switch {
 	case c.ID != id || !gitutil.IsFullSHA(c.FromCommit) || !gitutil.IsFullSHA(c.ToCommit) || cycleID(c.ToTime, c.ToCommit) != id:
 		return errors.New("its id is not the one its close gives")
 	case c.FromCommit != from || !c.FromTime.Equal(fromTime):
 		return errors.New("it does not start where its window began")
-	case c.ToTime.Before(c.FromTime):
-		return errors.New("it closes before it opens")
 	case c.ToTime.After(now.Add(clockSkew)):
 		return errors.New("it closes after now")
 	}
-	switch c.ClosedBy {
-	case ClosedByDays:
-		if c.Window.Days < 1 || c.Window.Days > maxWindowDays || !c.ToTime.Equal(c.FromTime.Add(time.Duration(c.Window.Days)*24*time.Hour)) {
-			return errors.New("its close is not its window's days")
-		}
-	case ClosedByChanges:
-		if c.Window.Changes < minWindowChanges || c.Window.Changes > maxWindowChanges {
-			return errors.New("its window's changes are out of their bounds")
-		}
-	default:
-		return errors.New("it names no bound it closed by")
+	cfg, err := windowConfig(root, from)
+	if err != nil {
+		return errors.New("its window's configuration does not read")
+	}
+	if c.Window.Days != cfg.WindowDays || c.Window.Changes != cfg.WindowChanges || c.Sample.PerGroup != cfg.PerGroup {
+		return errors.New("its window is not the one the default branch configures")
+	}
+	cl, err := windowClose(ctx, root, cfg, from, fromTime, tip)
+	if err != nil || cl.by == "" {
+		return errors.New("the default branch gives its window no close")
+	}
+	if c.ClosedBy != cl.by || c.ToCommit != cl.commit || !c.ToTime.Equal(cl.at) || c.Window.Commits != len(cl.commits) {
+		return errors.New("its close is not the one the default branch gives")
+	}
+	inWindow := map[string]bool{}
+	for _, k := range cl.commits {
+		inWindow[k] = true
 	}
 	if err := verifyBeacon(c.Beacon); err != nil {
 		return err
@@ -306,8 +326,7 @@ func verifyCycle(c Cycle, id, from string, fromTime, now time.Time) error {
 		return fmt.Errorf("its round %d is not round %d, which its close fixes", c.Beacon.Round, want)
 	}
 	s := c.Sample
-	if s.PerGroup < 1 || s.PerGroup > maxPerGroup ||
-		!(s.Size == s.PerGroup && s.Why == SizeFull || s.Size == max((s.PerGroup+1)/2, 1) && s.Why == SizeHalved) {
+	if !(s.Size == s.PerGroup && s.Why == SizeFull || s.Size == max((s.PerGroup+1)/2, 1) && s.Why == SizeHalved) {
 		return errors.New("its sample size is not one the size rule gives")
 	}
 	randomness, _ := hex.DecodeString(c.Beacon.Randomness)
@@ -319,9 +338,12 @@ func verifyCycle(c Cycle, id, from string, fromTime, now time.Time) error {
 		switch {
 		case g.Group != groupOrder[i]:
 			return errors.New("its groups are not the four in their order")
+		case (g.Group == GroupDrainLanded || g.Group == GroupAutomaticMerges) &&
+			slices.ContainsFunc(p.Keys, func(k string) bool { return !inWindow[k] }):
+			return fmt.Errorf("its %s population names a commit outside its window", g.Group)
 		case p.Count <= maxListedKeys && (len(p.Keys) != p.Count || !slices.IsSorted(p.Keys) || len(slices.Compact(slices.Clone(p.Keys))) != p.Count):
 			return fmt.Errorf("its %s population does not list its keys", g.Group)
-		case p.Count <= maxListedKeys && !slices.Equal(g.Drawn, drawKeys(randomness, c.ID, g.Group, p.Keys, s.Size)):
+		case p.Count <= maxListedKeys && !slices.Equal(g.Drawn, drawKeys(randomness, drawSeed(c), g.Group, p.Keys, s.Size)):
 			return fmt.Errorf("its %s draw is not the one its round gives", g.Group)
 		case p.Count > maxListedKeys && (len(p.Keys) != 0 || len(g.Drawn) != min(s.Size, p.Count)):
 			return fmt.Errorf("its %s draw is not of its size", g.Group)

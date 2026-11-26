@@ -18,12 +18,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // DrawTimeout bounds one observation that draws: the fetch, the beacon, the
@@ -67,20 +68,15 @@ func AfterLanding(parent context.Context, o Observed) string {
 	if err != nil {
 		return "spot-check: " + err.Error() + "; nothing was drawn"
 	}
-	// The spotcheck block is read at origin's default branch, as stored, and
-	// the machine's own layer, never from the working tree, so an uncommitted
-	// value never sizes a draw.
-	roots, _ := layered.RootsFor(o.Root)
-	roots.RepoAt, roots.RepoAtName, roots.RepoAtAsStored = tip, "origin/"+o.Default, true
-	cfg, err := readConfig(roots)
-	if err != nil {
-		return "spot-check: the spotcheck configuration cannot be read (" + redact(err) + "); nothing was drawn"
-	}
-	st, err := readWindow(ctx, o.Root, o.Now)
+	st, err := readWindow(ctx, o.Root, o.Now, tip)
 	if err != nil {
 		return "spot-check: " + err.Error() + "; nothing was drawn"
 	}
 	if st.open {
+		cfg, err := windowConfig(o.Root, st.from)
+		if err != nil {
+			return "spot-check: the spotcheck configuration cannot be read (" + redact(err) + "); nothing was drawn"
+		}
 		cl, err := windowClose(ctx, o.Root, cfg, st.from, st.fromTime, tip)
 		if err != nil {
 			return "spot-check: " + err.Error() + "; nothing was drawn"
@@ -91,15 +87,18 @@ func AfterLanding(parent context.Context, o Observed) string {
 				return "spot-check: " + err.Error()
 			}
 			if len(pending) == 0 {
+				if st.markErr != nil {
+					return "spot-check: " + strings.TrimPrefix(markNote(st.markErr), "; ")
+				}
 				return ""
 			}
-			return carry(ctx, o.Root)
+			return carry(ctx, o.Root) + markNote(st.markErr)
 		}
 		if note := notYet(cl, o.Now); note != "" {
 			return note
 		}
 	}
-	return draw(ctx, o, cfg, tip)
+	return draw(ctx, o, tip)
 }
 
 // notYet is the note for a window that has closed before the round its
@@ -146,14 +145,14 @@ func carry(ctx context.Context, root string) string {
 // branch's line and the chain's clock, so a second try, or another
 // checkout's, draws the same items; nothing about the moment it runs
 // chooses them.
-func draw(ctx context.Context, o Observed, cfg Config, tip string) string {
+func draw(ctx context.Context, o Observed, tip string) string {
 	var beacon *Beacon
 	var last error
 	for attempt := 1; attempt <= 2; attempt++ {
 		if _, err := fetchTracking(ctx, o.Root); err != nil {
 			return "spot-check: " + redact(err) + "; nothing was drawn"
 		}
-		st, err := readWindow(ctx, o.Root, o.Now)
+		st, err := readWindow(ctx, o.Root, o.Now, tip)
 		if err != nil {
 			return "spot-check: " + err.Error() + "; nothing was drawn"
 		}
@@ -175,8 +174,12 @@ func draw(ctx context.Context, o Observed, cfg Config, tip string) string {
 				last = err
 				continue
 			}
-			_ = writeMark(ctx, o.Root, mark{Commit: commit, Opened: tip, OpenedAt: o.Now})
-			return "spot-check: the first window opened at " + tip[:12] + "; nothing is drawn until it passes" + setAside(st)
+			note := markNote(writeMark(ctx, o.Root, mark{Commit: commit, Opened: tip, OpenedAt: o.Now}))
+			return "spot-check: the first window opened at " + tip[:12] + "; nothing is drawn until it passes" + setAside(st) + note
+		}
+		cfg, err := windowConfig(o.Root, st.from)
+		if err != nil {
+			return "spot-check: the spotcheck configuration cannot be read (" + redact(err) + "); nothing was drawn"
 		}
 		cl, err := windowClose(ctx, o.Root, cfg, st.from, st.fromTime, tip)
 		if err != nil {
@@ -220,14 +223,23 @@ func draw(ctx context.Context, o Observed, cfg Config, tip string) string {
 			continue
 		}
 		st.cycles = append(st.cycles, c)
-		_ = writeMark(ctx, o.Root, st.mark(commit))
+		note := markNote(writeMark(ctx, o.Root, st.mark(commit)))
 		drawn := 0
 		for _, g := range c.Groups {
 			drawn += len(g.Drawn)
 		}
-		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + setAside(st)
+		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + setAside(st) + note
 	}
 	return "spot-check: the push to " + Branch + " was refused twice (" + redact(last) + "); nothing was drawn, and the next landing tries again"
+}
+
+// markNote is the note's tail for a high-water mark that could not be kept,
+// "" when it was.
+func markNote(err error) string {
+	if err == nil {
+		return ""
+	}
+	return "; the high-water mark could not be kept (" + redact(err) + "), so this machine would not notice the branch rewritten past it"
 }
 
 // maxSetAside bounds the cycles a note names as set aside.
@@ -262,6 +274,11 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, st windowState, cl c
 		var err error
 		if rows, err = reader(ctx, o.Root, st.from, cl.commit); err != nil {
 			return Cycle{}, nil, fmt.Errorf("the window's landings cannot be read: %s", redact(err))
+		}
+	}
+	for _, r := range rows {
+		if !slices.Contains(cl.commits, r.Commit) {
+			return Cycle{}, nil, fmt.Errorf("the landings reader named %s, which is not a commit of the window", termsafe.Sanitize(r.Commit))
 		}
 	}
 	rec, _, err := read(ctx, o.Root, TrackingRef)
@@ -313,7 +330,7 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, st windowState, cl c
 		return Cycle{}, nil, errors.New("the beacon's randomness does not read")
 	}
 	c := Cycle{SchemaVersion: SchemaVersion, ID: cycleID(cl.at, cl.commit), FromCommit: st.from, ToCommit: cl.commit,
-		FromTime: st.fromTime, ToTime: cl.at, ClosedBy: cl.by, Window: CycleWindow{Days: cfg.WindowDays, Changes: cfg.WindowChanges},
+		FromTime: st.fromTime, ToTime: cl.at, ClosedBy: cl.by, Window: CycleWindow{Days: cfg.WindowDays, Changes: cfg.WindowChanges, Commits: len(cl.commits)},
 		Site: o.Site, Beacon: b, Draw: DrawRule,
 		Sample: Sample{PerGroup: cfg.PerGroup, Size: size, Why: why, Counted: counted}, Holder: Holder()}
 	var items []file
@@ -325,7 +342,7 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, st windowState, cl c
 		for i, cd := range cands {
 			keys[i], byKey[cd.key] = cd.key, cd
 		}
-		drawn := drawKeys(randomness, c.ID, g, keys, size)
+		drawn := drawKeys(randomness, drawSeed(c), g, keys, size)
 		c.Groups = append(c.Groups, GroupDraw{Group: g, Population: population(keys), Drawn: drawn})
 		for _, k := range drawn {
 			n++

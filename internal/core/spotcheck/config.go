@@ -2,7 +2,8 @@ package spotcheck
 
 // config.go is the spot-check's configuration (spc-2610301925429250
 // approach 3): the spotcheck block of .abcd/config.json, read through the
-// layered resolver, the repository layer last and winning.
+// layered resolver. A draw and every reader of its cycle read it at the
+// commit the window starts at, the repository layer alone (windowConfig).
 
 import (
 	"fmt"
@@ -70,4 +71,13 @@ func between(lo, hi int, what string) func(int) error {
 		}
 		return nil
 	}
+}
+
+// windowConfig is the spotcheck block that governs the window starting at
+// commit: the repository layer alone, as the default branch stores it at
+// that commit, so every reader of a cycle counts its window by the same
+// values, none a later landing or one machine's own layer chose.
+func windowConfig(root, commit string) (Config, error) {
+	r, _ := layered.RootsFor(root)
+	return readConfig(layered.Roots{Repo: r.Repo, RepoAt: commit, RepoAtName: commit[:12], RepoAtAsStored: true, HomeRefused: true})
 }

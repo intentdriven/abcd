@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -172,11 +171,12 @@ func TestADrawAtAPassedWindow(t *testing.T) {
 	c := newDrawCase(t)
 	c.observe(w0)
 	from := c.r.Git("rev-parse", "origin/main")
-	to := c.land(3)
+	to := c.land(16)
+	line := strings.Fields(c.r.Git("rev-list", "--reverse", from+".."+to))
 	for i := range 14 {
-		c.rows = append(c.rows, row(fmt.Sprintf("%040x", i+1), ClassDrain))
+		c.rows = append(c.rows, row(line[i], ClassDrain))
 	}
-	c.rows = append(c.rows, row(fmt.Sprintf("%040x", 100), ClassAutomatic), row(fmt.Sprintf("%040x", 101), "person-approved"))
+	c.rows = append(c.rows, row(line[14], ClassAutomatic), row(line[15], "person-approved"))
 	h := handBack("iss-2", w0.Add(24*time.Hour))
 	h.Reason = "the secret reason the drain wrote"
 	d := gateDecision(4, sha('f'), true, w0.Add(25*time.Hour))
@@ -202,7 +202,7 @@ func TestADrawAtAPassedWindow(t *testing.T) {
 	randomness, _ := hex.DecodeString(cy.Beacon.Randomness)
 	items := 0
 	for _, g := range cy.Groups {
-		if again := drawKeys(randomness, cy.ID, g.Group, g.Population.Keys, cy.Sample.Size); !slices.Equal(again, g.Drawn) {
+		if again := drawKeys(randomness, drawSeed(cy), g.Group, g.Population.Keys, cy.Sample.Size); !slices.Equal(again, g.Drawn) {
 			t.Errorf("group %s does not recompute from the cycle record: %v vs %v", g.Group, again, g.Drawn)
 		}
 		items += len(g.Drawn)
@@ -246,8 +246,7 @@ func TestBeaconUnreachableWritesNothing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := newDrawCase(t)
 			c.observe(w0)
-			c.land(1)
-			c.rows = []LandingRow{row(sha('a'), ClassDrain)}
+			c.rows = []LandingRow{row(c.land(1), ClassDrain)}
 			write(t, c.r.Root(), hb(handBack("iss-2", w0.Add(time.Hour))))
 			c.closeWindow()
 			tip := c.originTip()
