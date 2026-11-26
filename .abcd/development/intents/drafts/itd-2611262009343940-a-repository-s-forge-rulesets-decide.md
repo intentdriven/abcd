@@ -21,7 +21,7 @@ production_mode: hand-written
 
 Decomposition, for the person to confirm: the capability is this intent; the trust rule (an agent never loosens a rule that binds it; a tighten-only change is proved, never judged) is an ADR and a brief invariant; the stance refines the evaluator-outside-the-loop principle; the remote-apply plumbing is the brief's. Verdict: SPLIT, the ADR to be minted when this is planned.
 
-This partly reverses adr-44 decision 1, which says abcd writes remote state, rulesets among it, only through a dedicated verb the person invokes and confirms. Here an agent would invoke that verb in an autonomous run with no confirmation from the person, for a change the proof shows only tightens; a change that loosens, or one the proof cannot settle, stays the person's act as adr-44 has it. No such verb exists yet: today the person applies every ruleset by hand and refreshes the mirror (.abcd/work/rulesets/README.md). Typed link: `reverses` adr-44, in part, flagged for the person to confirm and never classified on its own. The nearest intent is the draft itd-92, whose read-only drift check reads the live rules a proof would start from; nothing here depends on it shipping first, so it carries no edge.
+This partly reverses adr-44 decision 1, which says abcd writes remote state, rulesets among it, only through a dedicated verb the person invokes and confirms. Here an agent would invoke that verb in an autonomous run with no confirmation from the person, for a change the proof shows only tightens; a change that loosens, or one the proof cannot settle, stays the person's act as adr-44 has it. That verb is `abcd ahoy remote apply`: it applies abcd's own three named rulesets (`abcd: default branch`, `abcd: code-owner review`, `abcd: release tags`) behind four gates, the last a confirmation from the caller naming the specific settings, and an update to one of them only adds and never loosens (commands/ahoy.md). A ruleset of any other name, such as one a repository's own work asks for, has no verb: the person applies it by hand and refreshes the mirror (.abcd/work/rulesets/README.md). This intent would let an agent pass the confirmation gate for a tightening change to either kind. Typed link: `reverses` adr-44, in part, flagged for the person to confirm and never classified on its own. The nearest intent is the draft itd-92, whose read-only drift check reads the live rules a proof would start from; nothing here depends on it shipping first, so it carries no edge.
 
 ## Why This Matters
 
@@ -41,7 +41,9 @@ This partly reverses adr-44 decision 1, which says abcd writes remote state, rul
 
 ## Open Questions
 
-_None recorded yet._
+- The proof that a change only tightens binds the verb, not the token: an agent holding a token that can write rulesets can still loosen one outside the verb. Is a verb-side proof enough, or must the token itself be narrowed?
+- A change that only tightens can still lock the person out of their own merges (a required check that never reports, a review rule no one can meet). Does the proof also have to show the person can still land a change?
+- Removing a confirmation step from a remote write may deserve a higher severity than minor; the routing review decides.
 
 ## Audit Notes
 
