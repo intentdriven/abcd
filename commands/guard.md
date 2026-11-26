@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | question [<file>|-] [--ask] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
@@ -17,7 +17,8 @@ the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
 check performs **zero writes**. The hook writes the record of a branch the
 session creates (below), and refuses nothing for it; when it admits abcd's own
 question where the badge shows, it also writes the waiting-on mode and the
-marker saying a question is open (below).
+marker saying a question is open (below), and when it judges a sub-agent's write
+it keeps what it found (below).
 
 ## `check` — decide one command
 
@@ -53,7 +54,28 @@ either; a quote inside a here-document **body** is document text and is not one.
 Grammar a shell does run gets a verdict instead: a trailing backslash is read as
 bash reads it, and a here-document whose delimiter line never comes is a
 **block** (`heredoc-unterminated`), because the rest of the input may be commands
-the guard did not check.
+the guard did not check. A function is read in two forms, `name() { … }` and
+`function name { … }` with one plain name; the `function` keyword in any other
+form (several names, an option, a quoted name or brace) is a **block**
+(`function-form-unread`): write it in one of those forms, then run it. A call
+of a function the line defines is read with the call's words in one shape
+only: the function is one command on its own line (`f() { git "$@"; }`), its
+program a fixed word that runs no other command (no shell, `eval`, `source`,
+`env`, `nohup`, `time` or other wrapper), its arguments read only as `"$@"`,
+`$@`, `"$1"`…`"$9"`, `$1`…`$9` or `${1}`…`${9}`, its name no wrapper or keyword,
+and the call stands where a command starts on the line itself. The line is then
+judged again with the call replaced by the command its words make. Any other
+call, with words, of a function that reads its arguments is a **block**
+(`function-form-unread`): a body of more than one command, a loop, an
+assignment or a declaration, an argument read in any other form, a call after
+a wrapper or inside a substitution, a line that defines an alias, or a line
+whose readings run past a few thousand words. So is a line that changes what a
+name runs where the guard does not see it: one that names one of zsh's
+`functions[`, `aliases[`, `galiases[`, `saliases[` or `dis_functions[` tables
+anywhere on the line, inside an expansion or a quote too, one running
+`functions -c` or `functions -M`, one defining several names with one `()`
+(`f x() { … }`), or one running a command through zsh's `-` modifier. A
+function in a script the line runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
@@ -347,7 +369,26 @@ linked worktree, a checkout one session or none works in, a path in no checkout,
 and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
 ignores) are written silently. A file call naming no path, a relative path with
 no absolute session directory, or a count that cannot be made, lets the write
-run and warns loudly. A call through any other
+run and warns loudly.
+
+A **sub-agent's write is held** until that sub-agent has read the conventions
+file at its checkout root, `AGENTS.md` or else `CLAUDE.md`, in a repository abcd
+manages whose rules are on. A write is a call of one of those file-writing tools,
+or a shell line naming `git commit`, `merge`, `rebase`, `cherry-pick`, `revert`,
+`am`, `pull` or `push`, in a conditional, a loop or a function body too; a git
+command run through a wrapper (`time`, `env`, `sudo`, `sh -c`, a script, an alias)
+is not seen. The refusal names the file, where abcd looked for it and
+the way out: one call of its own that names the file and writes nothing (the
+host's reading tool, `cat AGENTS.md`, or a search for it), and then the same
+write again. A read in the same shell line as the held command is not counted,
+and one sent in the same turn may not be. Never work around a hold by writing
+through another tool: read the file. A call that names a build lane's own brief
+stands for the reading. The session's own calls, abcd's cold-reading agents and
+a drive's stage are never held, and a write that cannot be judged is not held:
+where its transcript shows no reading, the sub-agent's stop keeps a line saying
+so, and `history staged` lists it.
+
+A call through any other
 tool never reaches the guard: a command a tool from another extension runs is
 neither checked nor warned about. That is the guard's standing scope, not a
 degradation, and the `guard:` line of `abcd ahoy` does not report it.

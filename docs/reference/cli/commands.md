@@ -2409,7 +2409,7 @@ abcd explain ideate record --input verdict-json
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
+Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -2660,6 +2660,13 @@ no backslash in it is read the same way. On a line where another command
 names IFS an unquoted one is blocked (ifs-split-unread), because the
 guard splits on the default IFS only. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
+A call of a function the line defines is read with its words in one
+shape only, a body of one command reading them as `"$@"`, `$@`,
+`"$1"`, `$1` or `${1}`; any other call, with words, of a function
+that reads them is blocked (function-form-unread), and so is a line
+that names one of zsh's `functions[`, `aliases[` … tables anywhere on
+the line, runs `functions -c` or `-M`, defines several names with one
+`()`, or runs a command through the `-` modifier.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.
@@ -2711,7 +2718,7 @@ abcd guard check --command 'git push --force origin main'
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
+Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.
 
 **Usage:** `abcd guard hook`
 
@@ -2752,9 +2759,25 @@ so a linked worktree, a checkout one session or none works in, a path in no
 checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
 which git ignores) are written silently. A file call naming no path, a
 relative path with no absolute session directory, or a count that cannot
-be made, lets the write run and warns loudly. A call through
-any other tool never reaches the guard: a command a tool from another
-extension runs is neither checked nor warned about. That is the guard's
+be made, lets the write run and warns loudly.
+
+A sub-agent's write is held until the sub-agent has read the conventions
+file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd
+manages whose rules are on. A write is a call of one of the file-writing
+tools, or a shell line naming git commit, merge, rebase, cherry-pick,
+revert, am, pull or push, in a conditional, a loop or a function body
+too; a git command run through a wrapper (time, env, sudo, sh -c, a
+script, an alias) is not seen. The host's payload names the sub-agent, and the
+sub-agent's own transcript is read once: a call in it that names the file
+and writes nothing is a reading, and one that names the brief of a build's
+lane stands for it. Without one the write is refused with the host's deny,
+whose reason names the file, where abcd looked for it and the read to make.
+The session's own calls, abcd's cold-reading agents and a drive's stage are
+never held, and what cannot be judged is not held: with no reading, its stop
+says so.
+
+A call through any other tool never reaches the guard: a command a tool from
+another extension runs is neither checked nor warned about. That is the guard's
 standing scope, not a degradation, and the guard: line of abcd ahoy does
 not report it.
 

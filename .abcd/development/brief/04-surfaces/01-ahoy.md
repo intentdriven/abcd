@@ -652,7 +652,11 @@ earlier version wrote wider is narrowed when abcd next writes it
   sessions/                      names.json, the machine's session-name register,
                                  with names.json.lock beside it (itd-2610111707085098)
   rules-state/                   the rules loader's per-session ledgers of the
-                                 domains already injected
+                                 domains already injected, and what is known of
+                                 each sub-agent: that it was told, that it read
+                                 the conventions, that its writes were held or
+                                 could not be judged, and that its stop's line
+                                 is kept (spc-2611251757228271)
   fill/                          the status line's context-fill files, one per
                                  session, from which the prompt router reads how
                                  full the session is
@@ -944,9 +948,13 @@ patch application, a revert, a cherry-pick, or a commit that skips hooks. See
 Install verifies that the hook manifest is present in the plugin install and
 carries the prompt-router entries it expects. Neither install nor uninstall ever
 mutates it: the manifest is plugin-static. A missing or malformed manifest
-surfaces as a non-resolvable diagnostic.
+surfaces as a non-resolvable diagnostic. A sound manifest in which no
+`SubagentStart` entry reaches the subagent-start entrypoint, the one an
+installed release from before that hook carries, is a gap of its own,
+`hooks.subagent_start_unwired`: plugin-owned, machine-scoped, not required and
+not resolvable, with the step `Update the plugin.` (spc-2611251757228271).
 
-The shipped manifest wires ten event types, and every event command is a
+The shipped manifest wires eleven event types, and every event command is a
 resolving shim rather than a plain binary call. Six of them self-provision.
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and
 `PreCompact` each attempt
@@ -957,8 +965,9 @@ window. `UserPromptSubmit`, the hook that runs on every message, declares a
 cancels it; `PreToolUse`, `PostToolUse`, `PermissionRequest` and `PreCompact`
 declare none and take the host's ten-minute default, so a slow first download finishes there. `SessionStart`
 declares 240 seconds, the script's worst case with room to spare,
-`SessionEnd`, `SubagentStop` and `StopFailure` declare none, and `Stop` declares
-30 seconds, room for the away mode's stop check to make its one forge listing
+`SessionEnd`, `SubagentStop` and `StopFailure` declare none, `SubagentStart`
+declares 10 seconds, above the bound of 5 seconds its hook holds itself to, and
+`Stop` declares 30 seconds, room for the away mode's stop check to make its one forge listing
 under its own ten-second deadline and its git reads. Every event that runs the script,
 `SessionStart` included, names a `statusMessage` the host shows as its spinner
 text while the hook runs, so the wait is never a silent stall: the salvage
@@ -979,6 +988,10 @@ capture (iss-2608210934566223). Each resolves the plugin root, then `PATH`, then
 says in one line that the transcript was not captured. `SubagentStop` never
 returns a non-zero code of its own beyond that refusal, because exit 2 is the
 host's BLOCKING status on that event and would stop the sub-agent finishing.
+`SubagentStart` downloads nothing either, since a sub-agent's start does not
+wait on a fetch: it resolves the plugin root, then `PATH`, then says in one line,
+with exit 1, that the sub-agent was not told where the conventions and the rules
+are.
 `Stop` and `StopFailure`, which carry the away mode's stop check
 (spc-2610180914469489), download nothing either: both fire at a turn's end, where
 a fetch would hold the session, and each resolves the plugin root, then `PATH`,

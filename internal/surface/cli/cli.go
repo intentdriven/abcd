@@ -203,6 +203,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
+		{"hook", "subagent-start"},
 		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
 		{"hook", "dogfood-binary"},
@@ -2431,6 +2432,9 @@ outside the dedup ledger.`,
 						"abcd: the transcript store could not be opened (%s); this session will not be captured.",
 						termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
 				}
+				// The lines sub-agents' stops kept since the last notice, each
+				// counted once (spc-2611251757228271).
+				notices = append(notices, subagentLineNotices(captureRoot(cwd), det.RootSHA)...)
 				// The drain finishes the entries it begins, and starts no part
 				// and no entry once sessionStartTranscriptBound has passed
 				// since the binary started in this hook, under the host's
@@ -2617,6 +2621,10 @@ outside the dedup ledger.`,
 	// Its body lives in hook_subagent.go, with the attribution ladder and the
 	// store resolution it needs.
 	hookCmd.AddCommand(newSubagentStopCommand())
+
+	// subagent-start — SubagentStart: tell a starting sub-agent where the
+	// conventions and the rules are.
+	hookCmd.AddCommand(newSubagentStartCommand())
 
 	// permission-request — PermissionRequest on the shell tool: refuse the
 	// host's approval prompt while a build or drain runs with nobody at the

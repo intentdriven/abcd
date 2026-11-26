@@ -41,10 +41,36 @@ import (
 // Raised to 30 when the RS003 ledger read's cases landed
 // (scripts/check-issue-resolution-cases.sh, iss-2610181757540736): four more
 // here-document openers, each read alone as heredoc-unterminated, the same way
-// the file's others already are.
-// Raised to 35 when a command whose program is a substitution's output the
-// guard does not read came to be refused: five lines of prose and make that
-// spell one when read as shell, `$(call pinned_gofmt,check)` and its write
+// the file's others already are. Raised to 34 when a call of a function the
+// line defines came to be read with the call's words in its arguments' place
+// (functionCallReadings): three of the scripts read whole as one command
+// (.githooks/commit-msg, .githooks/pre-push, scripts/preflight-receipt.sh)
+// call a function that reads an argument through an operator no word stands
+// for (`${1%/}`, `${1##*/}`, `${1:0:1}`), and are held as function-form-unread,
+// and scripts/check-wip-source-cases.sh read whole runs `bash "$SCRIPT"` with a
+// case's words, which blocks as that command does. Raised to 39 when such a
+// call came to be read in the simple case only, every other call with words of
+// a function that reads its arguments held: five more scripts read whole
+// (scripts/check-reviews.sh, scripts/check-reviews-cases.sh,
+// scripts/check-attribution.sh, scripts/check-attribution-cases.sh,
+// scripts/preflight-scans.sh) call a function whose body calls another
+// function the script defines, or a program a variable names, and are held as
+// function-form-unread. Raised to 42 when a call came to be read only where
+// the function is one command on its own line, every other call with words of
+// a function that reads its arguments held: three more scripts read whole
+// (scripts/abcd.sh, scripts/pr-keep-current.sh, scripts/records-only.sh) call
+// a function of more than one command with words, and are held as
+// function-form-unread; scripts/check-wip-source-cases.sh is now held the
+// same way rather than blocked as the command its case runs. Raised to 49
+// when a line that changes what a name runs where the guard does not see it
+// came to be held (namesRedefined, segment.namesUnread): seven prose lines
+// of the corpus read, as zsh reads them, as a `()` definition of several
+// names (`… and refuse() already …`, `… substr() past …`) or a command run
+// through zsh's `-` modifier (a backticked `- Generated with …` or `-`, a
+// `<file|->`, and a glob qualifier's code `-` in `version (a per-repo …)`).
+// Raised to 54 when, with those, a command whose program is a substitution's
+// output the guard does not read came to be refused: five lines of prose and
+// make that spell one when read as shell, `$(call pinned_gofmt,check)` and its write
 // twin, two "```text" fence lines and a sentence holding `(`_*`, …)`.
 //
 // Warns raised to 33 when the away mode's stop check landed
@@ -57,10 +83,12 @@ import (
 // (scripts/abcd.sh, iss-2610241240133009): it runs the binary it has just
 // built with exec "$bin" "$@", which warns as program-name-unknown twice, its
 // command line and the file whole, as the other exec "$BIN" "$@" launchers
-// already do.
+// already do. Raised to 39 when the SubagentStart hook's shim landed
+// (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
+// same two warns.
 const (
-	maxSweepBlocks = 35
-	maxSweepWarns  = 37
+	maxSweepBlocks = 54
+	maxSweepWarns  = 39
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {

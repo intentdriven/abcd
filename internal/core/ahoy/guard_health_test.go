@@ -17,7 +17,8 @@ const hooksJSONWithGuard = `{
     "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router"}]}],
     "SessionStart":     [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
     "PreCompact":       [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook prompt-router-reset"}]}],
-    "PreToolUse":       [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" guard hook"}]}]
+    "PreToolUse":       [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" guard hook"}]}],
+    "SubagentStart":    [{"hooks": [{"type": "command", "command": "\"$CLAUDE_PLUGIN_ROOT/abcd\" hook subagent-start"}]}]
   }
 }`
 

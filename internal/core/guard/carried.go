@@ -759,7 +759,7 @@ func segmentDefines(s segment, d *definitions) {
 	}
 	name := ""
 	switch {
-	case s.definesFunction && from < len(s.tokens):
+	case s.definedByParens && from < len(s.tokens):
 		name = s.tokens[from]
 		if name == "function" && from+1 < len(s.tokens) {
 			name = s.tokens[from+1]
@@ -1028,7 +1028,7 @@ func carriedCopy(s segment) segment {
 	d.fieldSplit = copyMap(s.fieldSplit)
 	d.varLead = copyMap(s.varLead)
 	d.leadFrom = copyMap(s.leadFrom)
-	d.arrivals, d.walked, d.walkCapped = nil, false, false
+	d.arrivals, d.walked, d.walkCapped, d.functionUnread = nil, false, false, false
 	d.home, d.at = nil, 0
 	d.fromFixedOutput, d.valuesPlaced = true, true
 	return d
@@ -1039,7 +1039,7 @@ func carriedCopy(s segment) segment {
 // no word of a [[ test, and no case's word or pattern, which the shell leaves
 // whole.
 func splitsWord(s segment, i int) bool {
-	if !s.fieldSplit[i] || isAssignmentWord(s.tokens[i]) || s.casePattern {
+	if !s.fieldSplit[i] || isAssignment(s.tokens[i]) || s.casePattern {
 		return false
 	}
 	for _, t := range s.tokens {

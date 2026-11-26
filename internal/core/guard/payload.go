@@ -2635,7 +2635,7 @@ func assignsIFS(segs []segment) bool {
 		for first < len(s.tokens) && (quietKeywords[s.tokens[first]] || s.tokens[first] == "while" || s.tokens[first] == "until") {
 			first++
 		}
-		for first < len(s.tokens) && isAssignmentWord(s.tokens[first]) {
+		for first < len(s.tokens) && isAssignment(s.tokens[first]) {
 			first++
 		}
 		reader := first < len(s.tokens) && ifsReaders[s.tokens[first]]

@@ -164,8 +164,8 @@ var sentences = map[string]string{
 	"abcd explain": "Print how to call one command, an input's shape, or what a refusal code means: " +
 		"Writes nothing; refuses a command path or a code the binary does not have.",
 
-	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+	"abcd guard": "Judge a shell command against the hazard registry: " +
+		"Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard question": "Check a draft question as the hook will judge it: " +
@@ -174,8 +174,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
 		"Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
-	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
-		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+	"abcd guard hook": "Judge a host's pre-tool-use call: " +
+		"Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.",
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
