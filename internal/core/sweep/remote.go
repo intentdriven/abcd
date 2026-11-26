@@ -568,7 +568,7 @@ func (rj *remoteJudge) reservationsHoldingEvery() []Evidence {
 func (rj *remoteJudge) originHead() (branch, tip string, err error) {
 	ctx, cancel := context.WithTimeout(rj.ctx, remoteNetTimeout)
 	defer cancel()
-	return gitutil.RemoteHeadTip(ctx, gitutil.NetContext, rj.root, claim.Remote)
+	return gitutil.RemoteHeadTip(ctx, nil, rj.root, claim.Remote)
 }
 
 // addressHold is why origin's addresses hold every delete, "" when they do

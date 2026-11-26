@@ -25,9 +25,6 @@ func SetAccountPasswdForTest(t *testing.T, path string) {
 	t.Cleanup(func() { accountSource = prev })
 }
 
-// RemoteHeadFrom is RemoteHeadBranch's reading of an ls-remote answer.
-var RemoteHeadFrom = remoteHeadFrom
-
 // NetEnvFor is netEnv with the test-binary question answered by underTest.
 var NetEnvFor = netEnvFor
 
