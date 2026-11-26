@@ -1322,6 +1322,22 @@ func skipFunction(tokens []string, pos int) int {
 	return skipWord(tokens, pos)
 }
 
+// functionBodies is every index the `function` keyword's body may begin at,
+// from pos (the token just after `function`). zsh takes every word before the
+// segment's `{` as a NAME, a reserved word among them (`function if g { …; }`),
+// and bash takes one NAME and a body that may itself hold a `{` (`function f
+// if cmd {; then …`), so both readings are walked: where skipFunction stops,
+// and just past the first `{`.
+func functionBodies(tokens []string, pos int) []int {
+	bodies := []int{skipFunction(tokens, pos)}
+	for i := pos; i < len(tokens); i++ {
+		if tokens[i] == "{" {
+			return append(bodies, i+1)
+		}
+	}
+	return bodies
+}
+
 // skipWord advances past the one word at pos: zsh's `repeat COUNT command`, a
 // keyword and one word of its own before the command it runs. Like `coproc`,
 // it is a keyword of one shell only; elsewhere it names a program that is not

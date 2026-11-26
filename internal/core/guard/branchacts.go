@@ -69,7 +69,16 @@ func branchActsIn(toks []string) []BranchAct {
 			return nil
 		}
 	}
-	toks = commandWords(toks)
+	var out []BranchAct
+	for _, words := range commandWords(toks) {
+		out = append(out, branchActsOf(words)...)
+	}
+	return out
+}
+
+// branchActsOf is the branch acts of one reading of a command, its tokens
+// from the program on.
+func branchActsOf(toks []string) []BranchAct {
 	if len(toks) == 0 || path.Base(toks[0]) != "git" {
 		return nil
 	}
@@ -104,22 +113,35 @@ func branchActsIn(toks []string) []BranchAct {
 // (isAssignment), the shell's reserved words (`if`, `then`, `do`, `{`, `!`),
 // `coproc` with its NAME, `function` with its NAMEs, and `repeat COUNT`. It steps no
 // wrapper: a command run through `time`, `env`, `sudo` or `sh -c` is not read.
-func commandWords(toks []string) []string {
-	for i := 0; i < len(toks); {
-		switch t := toks[i]; {
-		case isAssignment(t) || reserved[t]:
-			i++
-		case t == "coproc":
-			i = skipCoproc(toks, i+1)
-		case t == "function":
-			i = skipFunction(toks, i+1)
-		case t == "repeat":
-			i = skipWord(toks, i+1)
-		default:
-			return toks[i:]
+// A `function` keyword's body is read at each index it may begin at
+// (functionBodies), so there is one reading for each, each start read once.
+func commandWords(toks []string) [][]string {
+	var out [][]string
+	seen := map[int]bool{}
+	var walk func(i int)
+	walk = func(i int) {
+		for i < len(toks) && !seen[i] {
+			seen[i] = true
+			switch t := toks[i]; {
+			case isAssignment(t) || reserved[t]:
+				i++
+			case t == "coproc":
+				i = skipCoproc(toks, i+1)
+			case t == "function":
+				for _, body := range functionBodies(toks, i+1) {
+					walk(body)
+				}
+				return
+			case t == "repeat":
+				i = skipWord(toks, i+1)
+			default:
+				out = append(out, toks[i:])
+				return
+			}
 		}
 	}
-	return nil
+	walk(0)
+	return out
 }
 
 // flagValue reads a value-taking option at args[i] spelled one of names:

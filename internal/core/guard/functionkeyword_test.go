@@ -23,6 +23,15 @@ func TestFunctionKeywordBodyIsJudged(t *testing.T) {
 		{"function f g { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"function -T f { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"function f g h if true; then " + hazardLine + "; fi; f", VerdictBlock, "git-push-force"},
+		// A name zsh takes may be spelled as a reserved word.
+		{"function if g { " + hazardLine + "; }; g", VerdictBlock, "git-push-force"},
+		{"function f if g { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
+		{"function ! f { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
+		{"function f do g { " + hazardLine + "; }; g", VerdictBlock, "git-push-force"},
+		{"function f while g { " + hazardLine + "; }; g", VerdictBlock, "git-push-force"},
+		// bash reads the same words as one name and an `if` body.
+		{"function f if " + hazardLine + " {; then true; fi; f", VerdictBlock, "git-push-force"},
+		{"function f g () { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"function f if true; then " + hazardLine + "; fi; f", VerdictBlock, "git-push-force"},
 		{"f() { " + hazardLine + "; }; f", VerdictBlock, "git-push-force"},
 		{"bash -c 'function f { " + hazardLine + "; }; f'", VerdictBlock, "git-push-force"},

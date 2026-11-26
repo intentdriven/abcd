@@ -1574,9 +1574,11 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				continue
 			}
 			// `function NAME…` and zsh's `repeat COUNT` each take words of
-			// their own before the command they run (skipFunction, skipWord).
+			// their own before the command they run (functionBodies, skipWord).
 			if tok == "function" {
-				push(state{pos: skipFunction(tokens, st.pos+1), noglob: st.noglob})
+				for _, body := range functionBodies(tokens, st.pos+1) {
+					push(state{pos: body, noglob: st.noglob})
+				}
 				continue
 			}
 			if tok == "repeat" {

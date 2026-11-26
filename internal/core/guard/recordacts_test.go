@@ -45,6 +45,8 @@ func TestRecordActsReadsTheGitCommandsThatRecordOrSend(t *testing.T) {
 		{"function f g { git commit -m x; }; f", []string{"commit"}},
 		{"function -T f { git push; }", []string{"push"}},
 		{"function f g h if true; then git pull; fi", []string{"pull"}},
+		{"function if g { git commit -m x; }; g", []string{"commit"}},
+		{"function f g () { git push; }", []string{"push"}},
 		{"FOO+=1 git commit -m x", []string{"commit"}},
 		{"a[1]=x git commit -m x", []string{"commit"}},
 		{"coproc git push", []string{"push"}},
