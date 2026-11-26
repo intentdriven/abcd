@@ -70,8 +70,8 @@ command alone, or waits a turn.
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`, `LEAVING`, `ANSWERING`. Each carries recall keywords and its rules, bundled
-in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`, `LEAVING`, `ANSWERING`. Each carries recall keywords and rules, bundled in the
+binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
 trust rule for load experiments: one owned process group killed together through
@@ -106,11 +106,6 @@ the host's own scratchpad keeps only the turn's throwaway files, since a reboot
 or a new session loses it. Its second rule sends an agent to abcd's commands
 before it writes a helper script, and has it capture the gap when none does the
 job.
-`ANSWERING` recalls on a question about the project itself (where something
-stands, whether it is possible, planned or already built, who is working on
-what) and has the answer read from the record in that turn, never from memory:
-each claim cites the record id or page it rests on, and a claim the record does
-not settle is said to be unsettled.
 
 ### Reset triggers
 
