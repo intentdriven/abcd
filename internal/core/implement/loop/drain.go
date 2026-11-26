@@ -1305,8 +1305,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// branch and this machine may lower it (reservation.max_live,
 	// claim.MaxLiveFor), read with no network act at the branch origin last
 	// named to a reservation act here, so a branch this checkout merely
-	// tracks does not hold the drain at a wait; a setting that cannot be
-	// read leaves the count to the reservation act, which decides.
+	// tracks does not hold the drain at a wait; where no act here has saved
+	// that name, or the setting cannot be read, no figure is read and the
+	// count is left to the reservation act, which asks origin and decides.
 	capLimit, capErr := claim.MaxLive, error(nil)
 	if view != nil {
 		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
