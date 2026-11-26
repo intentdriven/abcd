@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +27,7 @@ func findingsRepo(t *testing.T) string {
 	t.Helper()
 	root := managedCheckout(t)
 	gitCommitAt(t, root, "root")
-	for _, k := range driveSessionMarkers {
+	for _, k := range owedSessionMarkers {
 		t.Setenv(k, "")
 	}
 	t.Setenv(runner.StageWritesEnv, "")
@@ -300,6 +302,8 @@ func TestCaptureOwedRefusesWhatItCannotRead(t *testing.T) {
 		{"x y", []string{"--untested"}, "usage/missing-argument"},
 		{"  \n", []string{"--untested", "-"}, "usage/missing-argument"},
 		{"", []string{h, "--settled"}, "usage/missing-argument"},
+		{"the piped finding", []string{h, "--private", "-"}, "usage/extra-argument"},
+		{"the piped finding", []string{h, "-", "--refuted", "a test"}, "usage/extra-argument"},
 		{"", []string{"f-zzzz", "--refuted", "a test"}, "capture/invalid-input"},
 		{"", []string{"f-00000000", "--refuted", "a test"}, "capture/invalid-input"},
 	} {
@@ -351,12 +355,14 @@ func TestCaptureOwedRunsInASharedMainCheckout(t *testing.T) {
 // a terminal, no session marker is set and no stage runs; everywhere else,
 // and always in --json, the count alone. Only the person settles it.
 func TestCaptureOwedShowsAPrivateTextOnlyToThePerson(t *testing.T) {
-	findingsRepo(t)
-	const planted = "the token check compares by prefix-7f3a only"
+	root := findingsRepo(t)
+	const planted, session = "the token check compares by prefix-7f3a only", "s-private-7f3a"
+	t.Setenv(hostSessionIDEnv, session)
 	put := owedPut(t, "--private", planted)
-	if put.Kind != "private" || put.Text != "" {
-		t.Fatalf("the put echoed the private entry's text or kind: %+v", put)
+	if put.Kind != "private" || put.Text != "" || put.Session != "" || put.Checkout != "" {
+		t.Fatalf("the put echoed the private entry's text, kind or placing: %+v", put)
 	}
+	t.Setenv(hostSessionIDEnv, "")
 	terminal := func(on bool) {
 		was := connectIsTerminal
 		t.Cleanup(func() { connectIsTerminal = was })
@@ -374,9 +380,11 @@ func TestCaptureOwedShowsAPrivateTextOnlyToThePerson(t *testing.T) {
 	}
 	absent("a pipe")
 	terminal(true)
-	t.Setenv("CLAUDECODE", "1")
-	absent("a session marker")
-	t.Setenv("CLAUDECODE", "")
+	for _, k := range []string{"CLAUDECODE", "AI_AGENT", "OPENCODE", "GEMINI_CLI", "CODEX_SANDBOX", "CURSOR_AGENT"} {
+		t.Setenv(k, "1")
+		absent("the session marker " + k)
+		t.Setenv(k, "")
+	}
 	t.Setenv(runner.StageWritesEnv, "/stage")
 	absent("a stage")
 	if code, ref, _ := owedRefusal(t, "", "capture", "owed", put.Handle, "--refuted", "an agent's test"); code != 2 || ref != "capture/invalid-input" {
@@ -389,9 +397,132 @@ func TestCaptureOwedShowsAPrivateTextOnlyToThePerson(t *testing.T) {
 	if text := string(runCLI(t, "capture", "owed")); !strings.Contains(text, planted) || !strings.Contains(text, put.Handle) {
 		t.Errorf("the person's terminal does not show the private text:\n%s", text)
 	}
-	runCLI(t, "capture", "owed", put.Handle, "--refuted", "the person ran the check")
+	const reason = "the person ran the check on host-7f3a"
+	runCLI(t, "capture", "owed", put.Handle, "--refuted", reason)
 	if got := owedList(t); got.PrivateCount != 0 {
 		t.Errorf("the person's settle left the private entry: %+v", got)
+	}
+	// Settled, a private entry is the person's still: anywhere but their
+	// terminal, and always in --json, it is counted and nothing of it shown.
+	if text := string(runCLI(t, "capture", "owed", "--settled")); !strings.Contains(text, reason) {
+		t.Errorf("the person's terminal does not show the settled private entry:\n%s", text)
+	}
+	terminal(false)
+	text := string(runCLI(t, "capture", "owed", "--settled"))
+	raw := string(runCLI(t, "capture", "owed", "--settled", "--json"))
+	for _, leak := range []string{reason, put.Handle, session, root} {
+		if strings.Contains(text, leak) || strings.Contains(raw, leak) {
+			t.Errorf("the settled list off the person's terminal carries %q:\n%s\n%s", leak, text, raw)
+		}
+	}
+	var got struct {
+		PrivateCount int `json:"private_count"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil || got.PrivateCount != 1 || !strings.Contains(text, "1 private") {
+		t.Errorf("the settled list does not count the private entry: %v %+v\n%s", err, got, text)
+	}
+}
+
+// TestCaptureOwedStartsItsClockAfterTheText: the call's deadline bounds git,
+// the scan and the lock, never the wait for standard input, so a person slow
+// to type a finding loses nothing.
+func TestCaptureOwedStartsItsClockAfterTheText(t *testing.T) {
+	findingsRepo(t)
+	in := &doneReader{r: strings.NewReader("a finding typed slowly at a terminal")}
+	var readFirst *bool
+	was := owedWithTimeout
+	t.Cleanup(func() { owedWithTimeout = was })
+	owedWithTimeout = func(parent context.Context) (context.Context, context.CancelFunc) {
+		done := in.done
+		readFirst = &done
+		return was(parent)
+	}
+	cmd := NewRootCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(in)
+	cmd.SetArgs([]string{"capture", "owed", "--untested", "-"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("put: %v\n%s", err, out.String())
+	}
+	if readFirst == nil || !*readFirst {
+		t.Errorf("the call's clock started before standard input was read")
+	}
+}
+
+// doneReader says once its reader has given all it holds.
+type doneReader struct {
+	r    io.Reader
+	done bool
+}
+
+func (d *doneReader) Read(p []byte) (int, error) {
+	n, err := d.r.Read(p)
+	if err == io.EOF {
+		d.done = true
+	}
+	return n, err
+}
+
+// TestCaptureOwedInACheckoutWithNoCommit: with no commit there is no key, so
+// the list is empty, and a put and a settle are refused (exit 2,
+// capture/invalid-input) with nothing made under the home.
+func TestCaptureOwedInACheckoutWithNoCommit(t *testing.T) {
+	managedCheckout(t)
+	for _, k := range owedSessionMarkers {
+		t.Setenv(k, "")
+	}
+	if got := owedList(t); got.OpenCount != 0 || got.PrivateCount != 0 {
+		t.Errorf("a checkout with no commit lists %+v", got)
+	}
+	for _, tc := range []struct {
+		stdin string
+		args  []string
+	}{
+		{"a finding met before the first commit", []string{"--untested", "-"}},
+		{"", []string{"f-00000000", "--refuted", "a test"}},
+	} {
+		code, ref, msg := owedRefusal(t, tc.stdin, append([]string{"capture", "owed"}, tc.args...)...)
+		if code != 2 || ref != "capture/invalid-input" || !strings.Contains(msg, "no commit") {
+			t.Errorf("%v: exit %d %s %q, want 2 capture/invalid-input naming the missing commit", tc.args, code, ref, msg)
+		}
+	}
+	home, _ := abcdhome.MachineHome()
+	if _, err := os.Lstat(abcdhome.Path(home, "findings")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused call made the findings store: %v", err)
+	}
+}
+
+// unsafeFindingsStore leaves root's findings store with a level another
+// account could write, which every read refuses, and returns the home.
+func unsafeFindingsStore(t *testing.T, root string) string {
+	t.Helper()
+	plantEntry(t, root, findings.KindUntested, "a finding on a list nobody may read")
+	home, err := abcdhome.MachineHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := abcdhome.Path(home, "findings")
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	return home
+}
+
+// TestCaptureOwedNamesAStoreItCannotOpen: a store the verb cannot open
+// safely is a fault (exit 1) naming the store with the home written as ~.
+func TestCaptureOwedNamesAStoreItCannotOpen(t *testing.T) {
+	root := findingsRepo(t)
+	home := unsafeFindingsStore(t, root)
+	out, err := runCLIErr(t, "capture", "owed")
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 1 {
+		t.Fatalf("an unsafe store: want exit 1, got %v\n%s", err, out)
+	}
+	if !strings.Contains(ee.Msg, "findings") || !strings.Contains(ee.Msg, "~") || strings.Contains(ee.Msg, home) {
+		t.Errorf("the fault does not name the store with the home as ~: %q", ee.Msg)
 	}
 }
 
@@ -443,6 +574,7 @@ func TestCaptureFixedFilesOneResolvedRecord(t *testing.T) {
 		t.Errorf("the record does not name what fixed it:\n%s", body)
 	}
 	for _, args := range [][]string{
+		{"capture", "the gate read the base once more", "--fixed", ""},
 		{"capture", "the gate read the base once more", "--fixed", "the gate reads the head"},
 		{"capture", "the gate read the base once more", "--impact", "fix"},
 	} {

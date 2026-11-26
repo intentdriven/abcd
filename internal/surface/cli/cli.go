@@ -6044,6 +6044,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
 						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy))
 			}
+			// --fixed given names what fixed the finding; given empty it names
+			// nothing, and is refused rather than read as no --fixed at all.
+			if cmd.Flags().Changed("fixed") && strings.TrimSpace(fixed) == "" {
+				return refused(2, refusal.CaptureInvalidInput,
+					"abcd capture: --fixed names what fixed the finding, and it is empty (nothing captured)")
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before

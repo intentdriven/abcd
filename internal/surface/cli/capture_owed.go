@@ -53,6 +53,19 @@ const (
 // wait for the store's lock.
 var owedTimeout = 60 * time.Second
 
+// owedWithTimeout starts the call's clock; a test replaces it to see when.
+var owedWithTimeout = func(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, owedTimeout)
+}
+
+// owedSessionMarkers are the variables whose presence says an agent's
+// session runs the command, whoever's terminal it holds: the harness's own
+// markers, and those other agent hosts set for the commands they run. The
+// test filters a cooperating agent's mistakes; it is not a wall against an
+// agent of the same account, which can read the store's files itself.
+var owedSessionMarkers = append(append([]string(nil), driveSessionMarkers...),
+	"AI_AGENT", "OPENCODE", "GEMINI_CLI", "CODEX_SANDBOX", "CURSOR_AGENT")
+
 // owedEntry is one entry as the command shows it. A private entry's text is
 // blank everywhere but the person's terminal, and never in --json.
 type owedEntry struct {
@@ -71,6 +84,16 @@ type owedEntry struct {
 }
 
 func owedEntryOf(e findings.Entry) owedEntry {
+	if e.Kind == findings.KindPrivate {
+		// A private entry is the person's: anywhere it is shown it names
+		// itself and its kind alone, never where it was met or why it was
+		// settled.
+		out := owedEntry{Handle: e.Handle(), Kind: e.Kind, At: e.At}
+		if e.Settled != nil {
+			out.Settled = &findings.Settlement{Act: e.Settled.Act, At: e.Settled.At}
+		}
+		return out
+	}
 	out := owedEntry{
 		Handle: e.Handle(), Kind: e.Kind, Checkout: fsutil.DisplayPath(e.Checkout),
 		Session: e.Session, Agent: e.Agent, AgentType: e.AgentType, Run: e.Run, Lane: e.Lane,
@@ -104,8 +127,9 @@ type owedListOutput struct {
 
 // owedSettledOutput is --settled in --json.
 type owedSettledOutput struct {
-	Settled    []owedEntry           `json:"settled"`
-	Unreadable []findings.Unreadable `json:"unreadable"`
+	Settled      []owedEntry           `json:"settled"`
+	PrivateCount int                   `json:"private_count"`
+	Unreadable   []findings.Unreadable `json:"unreadable"`
 }
 
 // owedPutOutput is a put in --json.
@@ -128,7 +152,7 @@ func owedAtTerminal(cmd *cobra.Command) bool {
 	if !connectIsTerminal(cmd.InOrStdin()) || !connectIsTerminal(cmd.OutOrStdout()) {
 		return false
 	}
-	for _, k := range driveSessionMarkers {
+	for _, k := range owedSessionMarkers {
 		if os.Getenv(k) != "" {
 			return false
 		}
@@ -192,16 +216,13 @@ func newCaptureOwedCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ctx, cancel := context.WithTimeout(owedContext(cmd), owedTimeout)
-			defer cancel()
-
 			adding := map[string]findings.Kind{}
 			for flag, on := range map[string]bool{"untested": untested, "doubt": doubt, "handed-up": handedUp} {
 				if on {
 					adding[flag] = findings.Kind(flag)
 				}
 			}
-			handles, rest := owedHandles(args)
+			handles, rest, dash := owedHandles(args)
 			// --private settles beside handles and puts beside "-".
 			if private && len(handles) == 0 {
 				adding["private"] = findings.KindPrivate
@@ -235,11 +256,23 @@ func newCaptureOwedCommand(asJSON *bool) *cobra.Command {
 					return refused(2, refusal.UsageMissingArgument, fmt.Sprintf(
 						"abcd capture owed: --%s reads its one line from standard input; give - as the one argument (nothing written)", named[0]))
 				}
-				return runOwedPut(ctx, cmd, *asJSON, root, adding[named[0]])
+				// The text is read before the clock starts: the clock bounds
+				// git, the scan and the lock, never a person typing.
+				text, err := owedReadText(cmd)
+				if err != nil {
+					return err
+				}
+				ctx, cancel := owedWithTimeout(owedContext(cmd))
+				defer cancel()
+				return runOwedPut(ctx, cmd, *asJSON, root, adding[named[0]], text)
 			case len(acts) == 1:
 				if len(handles) == 0 {
 					return refused(2, refusal.UsageMissingArgument, fmt.Sprintf(
 						"abcd capture owed: --%s settles the entries its handles name; give at least one handle (f- and eight characters) (nothing written)", named[0]))
+				}
+				if dash {
+					return refused(2, refusal.UsageExtraArgument, fmt.Sprintf(
+						"abcd capture owed: --%s settles handles and reads no standard input; - is taken only by an adding flag, in a call of its own (nothing written)", named[0]))
 				}
 				record := captured
 				if acts["settled"] {
@@ -257,6 +290,8 @@ func newCaptureOwedCommand(asJSON *bool) *cobra.Command {
 						"abcd capture owed: %q is not a handle (f- and eight characters) (nothing written)", termsafe.Sanitize(rest[0])))
 				}
 				reason := map[string]string{"refuted": refuted, "own": own, "not-a-finding": notAFinding}[named[0]]
+				ctx, cancel := owedWithTimeout(owedContext(cmd))
+				defer cancel()
 				return runOwedSettle(ctx, cmd, *asJSON, root, handles, findings.Act(named[0]), record, reason)
 			case listingSettled:
 				if len(args) > 0 {
@@ -291,16 +326,20 @@ func owedContext(cmd *cobra.Command) context.Context {
 	return context.Background()
 }
 
-// owedHandles parts the positionals into handles and the rest.
-func owedHandles(args []string) (handles, rest []string) {
+// owedHandles parts the positionals into handles, the rest, and whether a
+// - asked for standard input.
+func owedHandles(args []string) (handles, rest []string, dash bool) {
 	for _, a := range args {
-		if strings.HasPrefix(a, "f-") {
+		switch {
+		case strings.HasPrefix(a, "f-"):
 			handles = append(handles, a)
-		} else if a != "-" {
+		case a == "-":
+			dash = true
+		default:
 			rest = append(rest, a)
 		}
 	}
-	return handles, rest
+	return handles, rest, dash
 }
 
 func owedKeys[V any](m map[string]V) []string {
@@ -311,19 +350,24 @@ func owedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// runOwedPut puts one entry of kind from standard input.
-func runOwedPut(ctx context.Context, cmd *cobra.Command, asJSON bool, root string, kind findings.Kind) error {
+// owedReadText is the one line an adding flag reads from standard input.
+func owedReadText(cmd *cobra.Command) (string, error) {
 	raw, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), owedTextBytes+1))
 	if err != nil {
-		return exitWith(1, refusal.None, "abcd capture owed: reading standard input: "+termsafe.Sanitize(err.Error()))
+		return "", exitWith(1, refusal.None, "abcd capture owed: reading standard input: "+termsafe.Sanitize(err.Error()))
 	}
 	if len(raw) > owedTextBytes {
-		return refused(2, refusal.CaptureInvalidInput, fmt.Sprintf("abcd capture owed: the text is past %d KiB; give the finding in one line (nothing written)", owedTextBytes>>10))
+		return "", refused(2, refusal.CaptureInvalidInput, fmt.Sprintf("abcd capture owed: the text is past %d KiB; give the finding in one line (nothing written)", owedTextBytes>>10))
 	}
 	text := strings.TrimSpace(string(raw))
 	if text == "" {
-		return refused(2, refusal.UsageMissingArgument, "abcd capture owed: standard input held no text; give the finding in one line (nothing written)")
+		return "", refused(2, refusal.UsageMissingArgument, "abcd capture owed: standard input held no text; give the finding in one line (nothing written)")
 	}
+	return text, nil
+}
+
+// runOwedPut puts one entry of kind holding text.
+func runOwedPut(ctx context.Context, cmd *cobra.Command, asJSON bool, root string, kind findings.Kind, text string) error {
 	s, ok, err := owedStoreFor(ctx, root)
 	if err != nil {
 		return owedStoreRefusal(err)
@@ -344,7 +388,7 @@ func runOwedPut(ctx context.Context, cmd *cobra.Command, asJSON bool, root strin
 		for _, e := range put {
 			switch {
 			case e.Settled != nil:
-				fmt.Fprintf(w, "%s (%s) is already settled (%s); it stays settled\n", e.Handle(), e.Kind, e.Settled.Act)
+				fmt.Fprintf(w, "%s (%s) is already settled (%s); it stays settled\n", e.Handle(), e.Kind, termsafe.Sanitize(string(e.Settled.Act)))
 			case e.Kind == findings.KindPrivate:
 				fmt.Fprintf(w, "put %s on the private list; its text is shown only in the person's terminal\n", e.Handle())
 			default:
@@ -510,15 +554,36 @@ func runOwedListSettled(cmd *cobra.Command, asJSON bool, root string) error {
 		if got, bad, err = s.SettledView(owedSettledShown); err != nil {
 			return owedStoreRefusal(err)
 		}
-		out.Settled, out.Unreadable = owedEntries(got), append(out.Unreadable, bad...)
+		out.Unreadable = append(out.Unreadable, bad...)
 	}
+	// A settled private entry is counted, and shown only at the person's
+	// terminal, as an open one is.
+	person := !asJSON && owedAtTerminal(cmd)
+	var shown, private []findings.Entry
+	for _, e := range got {
+		if e.Kind == findings.KindPrivate {
+			private = append(private, e)
+			continue
+		}
+		shown = append(shown, e)
+	}
+	out.Settled, out.PrivateCount = owedEntries(shown), len(private)
 	return render(cmd.OutOrStdout(), asJSON, out, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd capture owed --settled — the last %d settled\n", len(got))
 		if len(got) == 0 {
 			fmt.Fprintln(w, "nothing settled")
 		}
-		for _, e := range got {
+		for _, e := range shown {
 			fmt.Fprintf(w, "  %s  %-9s  %s\n", e.Handle(), e.Kind, owedSettlementText(e.Settled))
+		}
+		switch {
+		case len(private) > 0 && person:
+			fmt.Fprintln(w, "private (shown here only, at the person's terminal):")
+			for _, e := range private {
+				fmt.Fprintf(w, "  %s  %s\n", e.Handle(), owedSettlementText(e.Settled))
+			}
+		case len(private) > 0:
+			fmt.Fprintf(w, "  %d private: shown only at the person's terminal, with no session marker and no stage\n", len(private))
 		}
 		for _, u := range out.Unreadable {
 			fmt.Fprintf(w, "  unreadable %s — %s\n", u.Handle, termsafe.Sanitize(fsutil.RedactHome(u.Reason)))

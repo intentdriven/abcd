@@ -363,8 +363,14 @@ issue, a wontfix, an ADR or a decision holds a settlement); a refutation, a run
 on the base and a "not a finding" keep the test, the run or the reason they are
 given; and an entry can be moved to the private list. A private entry's text is
 shown only to the person: where standard input and output are a terminal, no
-session marker is set and no stage runs; everywhere else, and always in the
-JSON form, the count alone, and only the person settles one. The verb writes
+agent host's session marker is set and no stage runs; everywhere else, and
+always in the JSON form, the count alone, settled private entries included,
+whose handle and reason are not shown either; and only such a caller settles
+one. That test keeps a cooperating agent from printing or clearing a private
+finding by mistake. It is not a wall: an agent of the same account can read the
+list's files, or open a terminal of its own, as the guard's own limit is stated
+(adr-42). A text is read before the call's clock starts, so the clock bounds
+git, the scan and the lock and never a person typing. The verb writes
 only under abcd's home, so it never refuses a main checkout two sessions share.
 The readings that put an entry on the list without the verb, the hold at a
 session's stop, and the landing's refusal are the spec's later steps.

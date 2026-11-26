@@ -356,11 +356,19 @@ checkout two sessions share is not refused.
 **Private findings.** A finding unsafe to publish goes on the private list with
 `--private -` (its text on standard input), or is moved there with
 `<handle>... --private`. Its text is printed only where standard input and
-standard output are a terminal, no session marker is set and no stage runs;
-everywhere else, and always in `--json`, the count alone (`private_count`).
-Only the person, at such a terminal, settles a private entry. Never echo a
-private text into the conversation, a record or a commit. A vulnerability still
-goes to a private advisory on the forge; the private list does not replace it.
+standard output are a terminal, no agent host's session marker is set and no
+stage runs; everywhere else, and always in `--json`, the count alone
+(`private_count`). That holds for a settled private entry too: `--settled`
+counts it and shows nothing of it, not even its handle or the reason it was
+settled by. Only a caller who passes that test settles a private entry. The
+test keeps a cooperating agent from printing or clearing a private finding by
+mistake; it is not a wall against an agent of the same account, which can read
+the list's files or open a terminal of its own. Never echo a private text into
+the conversation, a record or a commit. A vulnerability still goes to a private
+advisory on the forge; the private list does not replace it.
+
+A clearing flag reads no standard input, so a `-` beside handles is refused
+(`usage/extra-argument`): put a finding and settle one in two calls.
 
 The board's facilitator view gives the list's count and this command, and
 `abcd --json` carries it as `findings`.

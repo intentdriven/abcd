@@ -347,3 +347,19 @@ func mustGetwd(t *testing.T) string {
 	}
 	return wd
 }
+
+// TestBoardSaysWhenTheFindingsListCannotBeRead: a list the board cannot read
+// draws no row, and one line on stderr says why.
+func TestBoardSaysWhenTheFindingsListCannotBeRead(t *testing.T) {
+	root := findingsRepo(t)
+	statusRecord(t, root)
+	setBoardWidth(t, wideBoard)
+	home := unsafeFindingsStore(t, root)
+	text := string(runCLI(t, "--view", "facilitator"))
+	if strings.Contains(text, "findings:") {
+		t.Errorf("an unreadable list gives a board row:\n%s", text)
+	}
+	if !strings.Contains(text, "the findings list is not counted") || strings.Contains(text, home) {
+		t.Errorf("the board does not say, with the home as ~, why the list is not counted:\n%s", text)
+	}
+}
