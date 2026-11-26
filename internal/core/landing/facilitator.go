@@ -146,12 +146,22 @@ func loginText(login string) string {
 	return "an account the forge names in a form land does not show"
 }
 
+// modeLineTimeout bounds the gate's reads of a pull request's mode line: the
+// merge base and the file at it and at the head, all local reads.
+const modeLineTimeout = 15 * time.Second
+
+// maxMergeBaseBytes bounds git's answer naming a merge base: one object name
+// and its newline.
+const maxMergeBaseBytes = 128
+
 // modeLineChange says why the pull request whose head is head changes the
 // committed facilitator.mode line, read at its merge base with the default
 // branch's tip and at head (committedModeLine), "" when the line is the same
 // at both; unread says the diff could not be read for it, which arms nothing
 // either. The line is the person's own act to change: abcd never arms such a
-// merge in any mode, and the person merges it on the forge's page.
+// merge in any mode, and the person merges it on the forge's page. Its git
+// questions share one deadline, modeLineTimeout, since a hook reaches the gate
+// (a re-arm); a git that does not answer in time is a diff not read.
 func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
 	cannot := func(what string) (string, bool) {
@@ -160,11 +170,13 @@ func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	if !gitutil.IsFullSHA(tip) || !gitutil.IsFullSHA(head) {
 		return cannot("the head or " + tipName + " is not a full object name")
 	}
-	base, err := gitutil.Run(root, "merge-base", tip, head)
+	ctx, cancel := context.WithTimeout(context.Background(), modeLineTimeout)
+	defer cancel()
+	out, err := gitutil.RunLimitedContext(ctx, root, maxMergeBaseBytes, "merge-base", tip, head)
+	base := strings.TrimSpace(out)
 	if err != nil || !gitutil.IsFullSHA(base) {
 		return cannot("no merge base of " + short(head) + " and " + tipName + " can be read")
 	}
-	ctx := context.Background()
 	was, _, err := committedModeLine(ctx, root, base)
 	if err != nil {
 		return cannot("at the merge base " + short(base) + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())))
