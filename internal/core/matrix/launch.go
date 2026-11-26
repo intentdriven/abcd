@@ -338,12 +338,59 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 // account, so 0711 would not do: it keeps the owner's read.
 const listingDenied fs.FileMode = 0o300
 
+// runFolders is run's folder in the hand-off store and in the clone store,
+// which a launch closes to listing while its copies run.
+func runFolders(home, rootSHA, run string) []string {
+	return []string{filepath.Join(handoffStore(home, rootSHA), run), filepath.Join(cloneStore(home, rootSHA), run)}
+}
+
+// reopenListing gives each of dirs that exists, a real directory, and holds
+// no read for its owner the mode 0700 back: a launch killed outright (SIGKILL,
+// a power loss) runs no deferred restore, and leaves the run's folders closed
+// to listing (denyListing). Its caller holds the run's launch lock, which
+// proves no launch of the run is at work.
+func reopenListing(dirs ...string) error {
+	var errs []error
+	for _, d := range dirs {
+		fi, err := os.Lstat(d)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		case err != nil:
+			errs = append(errs, err)
+		case fi.IsDir() && fi.Mode().Perm()&0o400 == 0:
+			if err := os.Chmod(d, 0o700); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// reopenIdle is reopenListing of run's folders, for a reader that holds no
+// lock of its own: it takes the run's launch lock for that moment alone, and
+// where a launch holds it leaves the folders as they are, closed for that
+// launch's copies; what the reader cannot list it then reads as such
+// (globWalker.read), never as a folder that holds nothing.
+func reopenIdle(home, rootSHA, run string) error {
+	lock := launchLockPath(handoffStore(home, rootSHA), run)
+	if !fsutil.IsRealDir(filepath.Dir(lock)) {
+		return nil
+	}
+	err := fsutil.WithFileLock(lock, 0, func() error { return reopenListing(runFolders(home, rootSHA, run)...) })
+	if errors.Is(err, fsutil.ErrLockContention) {
+		return nil
+	}
+	return err
+}
+
 // denyListing sets each of dirs that exists, a real directory, to
 // listingDenied, and returns what gives each the mode it held, or 0700 where
-// it held no read for its owner (a launch killed outright left it closed).
-// Nothing lists these folders while they are closed: review, judging and the
-// report read the copies from the run's records, and own_copy_only's walk of a
-// pattern reads what a copy's own shell could, matching nothing in them.
+// it held no read for its owner. Nothing lists these folders while they are
+// closed: review, judging and the report read the copies from the run's
+// records, and own_copy_only's walk of a pattern reads them as a launched
+// copy's own shell did, matching nothing in them, and as unexamined for any
+// other copy (complianceInputs.RanClosed).
 func denyListing(dirs ...string) (func() error, error) {
 	type held struct {
 		dir  string
@@ -417,12 +464,19 @@ func runFolder(store, run string) error {
 	return nil
 }
 
-// launchLocked is launch once it holds its run's lock. While its copies run,
-// the run's folders in the hand-off store and the clone store, which hold
-// every copy's folder, are closed to listing (denyListing), and their modes
-// are given back however the launch ends: a copy finds no sibling's folder
-// by listing, and names one only by its alias, which own_copy_only reads.
+// launchLocked is launch once it holds its run's lock. It first gives back
+// the modes a launch killed outright left closed (reopenListing), before it
+// reads anything, whether or not it then finds a copy to launch. While its
+// copies run, the run's folders in the hand-off store and the clone store,
+// which hold every copy's folder, are closed to listing (denyListing), and
+// their modes are given back however the launch ends short of a kill: a copy
+// that keeps their modes finds no sibling's folder by listing, and names one
+// only by its alias, which own_copy_only reads.
 func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, only *TrialKey, cells func(RunRecord, Declaration) func(CellPin) (cellDispatch, error)) (res LaunchResult, retErr error) {
+	folders := runFolders(l.home, rootSHA, run)
+	if err := reopenListing(folders...); err != nil {
+		return LaunchResult{}, fmt.Errorf("the run's folders, left closed to listing by a launch that was killed, could not be opened again: %w", err)
+	}
 	picks, rec, d, trials, handed, err := l.pick(run, only)
 	if err != nil {
 		return LaunchResult{}, err
@@ -447,7 +501,7 @@ func (l *copyLauncher) launchLocked(ctx context.Context, run, rootSHA string, on
 		}
 		checked[p.pin.Cell] = true
 	}
-	restore, err := denyListing(filepath.Join(handoffStore(l.home, rootSHA), run), filepath.Join(cloneStore(l.home, rootSHA), run))
+	restore, err := denyListing(folders...)
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("the run's folders could not be closed to listing while its copies run: %w", err)
 	}
@@ -947,7 +1001,7 @@ func (l *copyLauncher) finish(rec RunRecord, p launchPick, t TrialRecord, back l
 	if t.Status != StatusNotStarted {
 		c, err := checkCompliance(complianceInputs{RepoRoot: l.repoRoot, Store: store, Run: rec.RunID, Key: key, Alias: p.alias,
 			Frozen: rec.FrozenCommit, Source: p.pin.Source, Transcript: back.transcript, State: labStore(l.home, rec.RootSHA),
-			Handoff: handoffStore(l.home, rec.RootSHA)})
+			Handoff: handoffStore(l.home, rec.RootSHA), RanClosed: true})
 		if err != nil {
 			return t, false, err
 		}

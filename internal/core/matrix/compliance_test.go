@@ -954,12 +954,12 @@ func TestOwnCopyOnlyReadsWhatOnlyAReadOutsideCouldMatch(t *testing.T) {
 // it. A brace that does not expand ({name}) and a [ that does not close are
 // literal; a quoted part joins its word as literal text and a backslash
 // escapes one character, while the glob characters left unquoted stay active;
-// a substitution ($name, $(...)) is judged by what comes before it, never
-// kept. A pattern that matches outside the copy is unexamined while some
-// folder of the clone is deep enough for the climb to stay inside it, and
-// broken where none is or where it names another copy's folder as written. A
-// chmod or chflags of a climb, which would open what a launch closes, is
-// broken; a bare climb is kept.
+// a substitution ($name, $(...)) is judged by what comes before it. A pattern
+// that matches outside the copy is unexamined while some folder of the clone
+// is deep enough for the climb to stay inside it, and broken where none is or
+// where it names another copy's folder as written. A chmod or chflags of the
+// folder above, which would open what a launch closes, is unexamined where
+// it may have run in a folder of the clone; a bare climb is kept.
 func TestOwnCopyOnlyReadsAClimbAsTheShellDoes(t *testing.T) {
 	sib := keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1})
 	t.Run("a clone with folders", func(t *testing.T) {
@@ -978,7 +978,7 @@ func TestOwnCopyOnlyReadsAClimbAsTheShellDoes(t *testing.T) {
 			"a quoted * is a literal *":             {bash("cd " + c.clone + ` && cat ../\"*\"/README.md`), StateKept},
 			"another copy's alias, quoted":          {bash("cd " + own + ` && cat ../\"` + sib + `\"/document.md`), StateBroken},
 			"another copy's alias in a pattern":     {bash("cd " + own + " && cat ../" + sib + "/*.md"), StateBroken},
-			"chmod of a climb":                      {bash("cd " + own + " && chmod u+r .. && ls .."), StateBroken},
+			"chmod of a climb":                      {bash("cd " + own + " && chmod u+r .. && ls .."), StateUnexamined},
 			"a bare climb, read whole":              {bash("cd " + own + " && grep -r . .."), StateKept},
 		} {
 			c.in.Transcript = tc.transcript
@@ -987,14 +987,15 @@ func TestOwnCopyOnlyReadsAClimbAsTheShellDoes(t *testing.T) {
 			}
 		}
 		// With the run's folders closed to listing, as a launch closes them
-		// while its copies run, the joined glob matches nothing outside.
+		// while its copies run, the joined glob of a copy it ran matches
+		// nothing outside.
 		for _, dir := range []string{filepath.Dir(own), filepath.Dir(c.clone)} {
 			if err := os.Chmod(dir, 0o300); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { os.Chmod(dir, 0o700) })
 		}
-		c.in.Transcript = bash("cd " + own + ` && cat ../\"copy_\"*/document.md`)
+		c.in.Transcript, c.in.RanClosed = bash("cd "+own+` && cat ../\"copy_\"*/document.md`), true
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateKept {
 			t.Errorf("a glob that cannot list the run's folders: own_copy_only %s (%s); want kept", got.State, got.Detail)
 		}
@@ -1014,6 +1015,127 @@ func TestOwnCopyOnlyReadsAClimbAsTheShellDoes(t *testing.T) {
 			c.in.Transcript = bash("cd " + own + " && " + cmd)
 			if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateBroken {
 				t.Errorf("%s (%s): own_copy_only %s (%s); want broken", name, cmd, got.State, got.Detail)
+			}
+		}
+	})
+}
+
+// TestOwnCopyOnlyReadsAFolderItCannotListAsUnexamined: a folder of the run the
+// check cannot list is not one that holds nothing. A copy its launch ran
+// found the run's folders closed, as the check finds them, so a pattern that
+// met them read nothing there; any other copy may have run while they were
+// open (a host's copy, handed back while a launch holds them closed), so what
+// its pattern matched there cannot be told. A climb with no pattern is looked
+// up by name, which a closed folder allows.
+func TestOwnCopyOnlyReadsAFolderItCannotListAsUnexamined(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the superuser lists a folder whatever its mode")
+	}
+	c := newComplianceCase(t)
+	own, bash := globHandoff(t, &c, t.TempDir())
+	for _, dir := range []string{filepath.Dir(own), filepath.Dir(c.clone)} {
+		if err := os.Chmod(dir, listingDenied); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	}
+	widget := filepath.Join(c.clone, "widget")
+	for name, tc := range map[string]struct {
+		cmd      string
+		launched bool
+		want     ComplianceState
+	}{
+		"a glob from the brief folder":             {"cd " + own + ` && cat ../\"copy_\"*/document.md`, false, StateUnexamined},
+		"a glob from the clone's root":             {"cd " + c.clone + " && cat ../*/README.md", false, StateUnexamined},
+		"a glob two folders up":                    {"cd " + widget + " && cat ../../*/widget/widget.go", false, StateUnexamined},
+		"a climb looked up by its name":            {"cd " + widget + " && cat ../README.md", false, StateKept},
+		"a glob that names no folder up":           {"cd " + widget + " && rm -f ../build/*.o", false, StateKept},
+		"a launched copy's glob, from its brief":   {"cd " + own + ` && cat ../\"copy_\"*/document.md`, true, StateKept},
+		"a launched copy's glob, from its clone":   {"cd " + c.clone + " && cat ../*/README.md", true, StateKept},
+		"a launched copy's glob, naming a sibling": {"cd " + own + " && cat ../" + keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}) + "/*.md", true, StateBroken},
+	} {
+		c.in.Transcript, c.in.RanClosed = bash(tc.cmd), tc.launched
+		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
+			t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
+		}
+	}
+}
+
+// TestOwnCopyOnlyReadsABacktickAndASubstitutionAsTheShellDoes: a backtick
+// opens a command substitution or closes one, as the count since the line's
+// start says, so one that closes a substitution opened before the path (a
+// Markdown code span) ends it, while one opened inside a climb is part of its
+// pattern. A substitution is judged by its literal prefix: kept where that
+// prefix matches nothing outside the copy, as an exact pattern is, and never
+// kept where it does.
+func TestOwnCopyOnlyReadsABacktickAndASubstitutionAsTheShellDoes(t *testing.T) {
+	c := newComplianceCase(t, func(r *gittest.Repo) { r.Write("docs/guide.md", "a guide\n") })
+	own, bash := globHandoff(t, &c, t.TempDir())
+	widget := filepath.Join(c.clone, "widget")
+	result := func(text string) []byte {
+		return append(bash("cd "+widget+" && cat notes.md"), []byte(`{"type":"tool_result","content":"`+text+`"}`+"\n")...)
+	}
+	for name, tc := range map[string]struct {
+		transcript []byte
+		want       ComplianceState
+	}{
+		"a path in a code span":             {result("See `../docs/guide.md` for the steps."), StateKept},
+		"two code spans on one line":        {result("Read `../docs/guide.md`, then `../README.md`."), StateKept},
+		"a variable in a code span":         {result("It loads `../locales/${lang}.json` at start."), StateKept},
+		"a Makefile's substitution":         {result("\tcp ../build/$(OBJ) ."), StateKept},
+		"a variable after a folder":         {bash("cd " + widget + " && cp ../build/$f ."), StateKept},
+		"a backtick in a climb":             {bash("cd " + own + " && cat ../`echo copy_`*/document.md"), StateUnexamined},
+		"a variable's prefix that matches":  {bash("cd " + own + " && p=copy_; cat ../$p*/document.md"), StateUnexamined},
+		"a substitution's prefix that does": {bash("cd " + own + " && cat ../$(echo copy_)*/document.md"), StateUnexamined},
+	} {
+		c.in.Transcript = tc.transcript
+		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
+			t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
+		}
+	}
+}
+
+// TestOwnCopyOnlyJudgesAModeChangeByWhatItsClimbReaches: a chmod or chflags
+// of a climb is judged by what the climb reaches, as any climb is, never
+// broken for being on the line: one that reaches nothing outside the copy
+// changed a file of its own clone; one that reaches a folder outside it is
+// broken where no folder of the clone is deep enough for the climb to stay
+// inside it, and unexamined where one is, since it may have run there.
+func TestOwnCopyOnlyJudgesAModeChangeByWhatItsClimbReaches(t *testing.T) {
+	t.Run("a clone with folders", func(t *testing.T) {
+		c := newComplianceCase(t)
+		own, bash := globHandoff(t, &c, t.TempDir())
+		widget := filepath.Join(c.clone, "widget")
+		for name, tc := range map[string]struct {
+			transcript []byte
+			want       ComplianceState
+		}{
+			"chmod of a file of its clone":       {bash("cd " + widget + " && chmod +x ../README.md"), StateKept},
+			"chmod -R of a folder none holds":    {bash("cd " + widget + " && chmod -R u+w ../build"), StateKept},
+			"chflags of a file of its clone":     {bash("cd " + widget + " && chflags nouchg ../README.md"), StateKept},
+			"a Dockerfile's chmod":               {append(bash("cd "+widget+" && cat Dockerfile"), []byte(`{"type":"tool_result","content":"RUN chmod +x ../entrypoint.sh"}`+"\n")...), StateKept},
+			"chmod of the folder above":          {bash("cd " + own + " && chmod u+r .. && ls .."), StateUnexamined},
+			"chmod of a pattern that matches up": {bash("cd " + own + " && chmod u+r ../*"), StateUnexamined},
+		} {
+			c.in.Transcript = tc.transcript
+			if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
+				t.Errorf("%s: own_copy_only %s (%s); want %s", name, got.State, got.Detail, tc.want)
+			}
+		}
+	})
+	t.Run("a clone with no folder", func(t *testing.T) {
+		c := newComplianceCase(t)
+		own, bash := globHandoff(t, &c, t.TempDir())
+		if err := os.RemoveAll(filepath.Join(c.clone, "widget")); err != nil {
+			t.Fatal(err)
+		}
+		for name, cmd := range map[string]string{
+			"chmod of the folder above": "chmod u+r .. && ls ..",
+			"chflags of a sibling":      "chflags -R nouchg ../" + keyAlias(TrialKey{Task: "widget", Cell: "dear", Repeat: 1}),
+		} {
+			c.in.Transcript = bash("cd " + own + " && " + cmd)
+			if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != StateBroken {
+				t.Errorf("%s: own_copy_only %s (%s); want broken", name, got.State, got.Detail)
 			}
 		}
 	})

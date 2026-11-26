@@ -611,6 +611,12 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		}
 		t.Status, t.Reason = StatusPassed, "the copy was made; its findings are judged in the run's two-phase comparison, never by its trial"
 	}
+	// A launch killed outright left the run's folders closed to listing; they
+	// are opened again where no launch holds the run, before the check lists
+	// them, and while one does the check reads them as unlistable.
+	if err := reopenIdle(home, rec.RootSHA, run); err != nil {
+		return TrialRecord{}, fmt.Errorf("the run's folders, left closed to listing by a launch that was killed, could not be opened again: %w", err)
+	}
 	store := cloneStore(home, rec.RootSHA)
 	c, err := checkCompliance(complianceInputs{RepoRoot: repoRoot, Store: store, Run: run, Key: key, Alias: alias,
 		Frozen: rec.FrozenCommit, Source: pin.Source, Transcript: back.Transcript, State: labStore(home, rec.RootSHA),

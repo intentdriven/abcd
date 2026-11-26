@@ -103,21 +103,31 @@ a third store, outside the clone, the clone store and the lab's state, one
 folder per copy under its alias, and a copy whose transcript names another
 copy's folder there read outside its copy, by its absolute path or by a climb
 from the copy's own folder. A climb is read as the shell reads it, quoted
-parts and escaped characters literal. A path pattern, as the shell expands it,
+parts and escaped characters literal, and a backtick that closes a code span
+ends the path it follows. A path pattern, as the shell expands it,
 that matches outside the copy is a read outside where no folder of the clone is
 deep enough for its climb to stay inside it, or where it names another copy's
 folder as written; otherwise it leaves the copy unexamined, since the scan
 cannot tell the folder the pattern ran in, so an honest copy that listed a
 parent folder of its clone is set apart from the rates, never counted as
-blinded, with one that read its sibling. A substitution or an extended pattern
-is judged by its literal prefix and never kept, and a chmod or chflags of a
-climb is a read outside. No transcript scan sees every read, and a bare climb
-that recurses (grep -r . ..) is kept by it: while a launch's copies run, the
-run's folders in the hand-off store and the clone store are closed to listing,
-their owner keeping only the right to pass through and make entries, and their
-modes are given back however the launch ends, so a copy cannot find its
-siblings' folders by listing, and one that names a sibling's folder as written
-reads broken.
+blinded, with one that read its sibling. A folder the check cannot list is not
+one that holds nothing: a pattern that meets one leaves the copy unexamined,
+short of the run's own folders for a copy its launch ran while it held them
+closed. A substitution or an extended pattern is judged by its literal prefix,
+kept where that matches nothing outside the copy and never kept where it does,
+and a chmod or chflags of a climb is judged by what the climb reaches, as any
+climb is, a climb that reaches outside the copy leaving it unexamined where
+the copy may have run in a folder of its clone. No transcript scan sees every
+read, and a bare climb that recurses (grep -r . ..) is kept by it: while a
+launch's copies run, the run's folders in the hand-off store and the clone
+store are closed to listing, their owner keeping only the right to pass
+through and make entries, so a copy that keeps their modes cannot find its
+siblings' folders by listing, though the same account can change them, and
+one that names a sibling's folder as written reads broken. Their modes are
+given back however the launch ends; a launch killed outright gives none back,
+and the next launch of the run, or a hand-back that finds no launch at work,
+gives them back before it reads anything. A host's copy runs whenever the host
+makes it, with the run's folders open unless a launch is at work.
 A pattern is matched when the copy is judged, so a sibling check copy's deleted
 clone is not seen; answers in the hand-off store are. A copy is launched once, and a run by one launch at
 a time, which holds the run's lock; a second is refused while it runs. Each

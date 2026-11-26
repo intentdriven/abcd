@@ -280,6 +280,7 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		"deleted clone",              // a pattern matched at judging time
 		"cannot tell the folder",     // an unclear pattern is unexamined
 		"closes the run's folders",   // listing denial, not the scan, holds
+		"whenever the host makes it", // a host copy runs with them open
 		"smallest difference",        // an unsized comparison
 		"model and harness together", // the harness confound
 		"could not examine",          // the unexamined copy

@@ -949,3 +949,84 @@ func TestALaunchClosesTheRunsFoldersToListingWhileItsCopiesRun(t *testing.T) {
 		})
 	}
 }
+
+// TestALaunchKilledOutrightLeavesNoFolderClosed: a launch killed outright
+// (SIGKILL, a power loss) runs no deferred restore and leaves the run's
+// folders closed to listing. The next launch of the run, holding its lock,
+// gives them their mode back before it reads anything, though it finds no
+// copy to launch, and so does a hand-back that finds the lock free; a
+// hand-back while a launch holds the lock leaves them closed, and reads a
+// pattern that meets a folder it cannot list as unexamined, never as one that
+// matched nothing.
+func TestALaunchKilledOutrightLeavesNoFolderClosed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the superuser lists a folder whatever its mode")
+	}
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	clone := awaitRunner(t, r, home, m, rec, key, KindCode)
+	host := TrialKey{Task: "feature-a", Cell: "host-big", Repeat: 1}
+	hostClone := handOffWithClone(t, r, home, m, rec, host, KindCode)
+	host2 := TrialKey{Task: "feature-a", Cell: "host-big", Repeat: 2}
+	hostClone2 := handOffWithClone(t, r, home, m, rec, host2, KindCode)
+	f := &fakeCell{answer: madeReceipt, transcript: inClone(clone)}
+	if _, err := launchOne(t, testLauncher(r, home, m, f.dispatch), rec, key); err != nil {
+		t.Fatal(err)
+	}
+	dirs := []string{filepath.Join(handoffStore(home, rec.RootSHA), rec.RunID), filepath.Join(cloneStore(home, rec.RootSHA), rec.RunID)}
+	closeAll := func() {
+		t.Helper()
+		for _, dir := range dirs {
+			if err := os.Chmod(dir, listingDenied); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Cleanup(func() {
+		for _, dir := range dirs {
+			os.Chmod(dir, 0o700)
+		}
+	})
+	modes := func(what string, want fs.FileMode) {
+		t.Helper()
+		for _, dir := range dirs {
+			fi, err := os.Stat(dir)
+			if err != nil || fi.Mode().Perm() != want {
+				t.Fatalf("%s: %s holds %v (%v); want %v", what, filepath.Base(filepath.Dir(dir)), fi.Mode().Perm(), err, want)
+			}
+		}
+	}
+	closeAll()
+	got, err := testLauncher(r, home, m, f.dispatch).launch(context.Background(), rec.RunID, nil, nil)
+	if err != nil || len(got.Copies) != 0 {
+		t.Fatalf("a launch with no copy to launch = %+v, %v", got, err)
+	}
+	modes("after a launch that found no copy to launch", 0o700)
+
+	closeAll()
+	back := func(k TrialKey, c string) TrialRecord {
+		t.Helper()
+		tr, err := CollectCopy(r.Root(), home, m.ID, rec.RunID, k, CopyBack{Receipt: hostReceipt(t, map[string]any{"score": map[string]int{"passed": 1, "total": 1}}),
+			Transcript: []byte(`{"type":"tool_use","name":"bash","input":{"command":"cd ` + c + ` && cat ../*/README.md"}}` + "\n")})
+		if err != nil {
+			t.Fatalf("CollectCopy %s = %v", k, err)
+		}
+		return tr
+	}
+	var held TrialRecord
+	if err := fsutil.WithFileLock(launchLockPath(handoffStore(home, rec.RootSHA), rec.RunID), 0, func() error {
+		held = back(host, hostClone)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	modes("after a hand-back while a launch holds the lock", listingDenied)
+	if held.Compliance == nil {
+		t.Fatalf("the hand-back carries no compliance check: %+v", held)
+	}
+	if got := ruleOf(t, *held.Compliance, RuleOwnCopyOnly); got.State != StateUnexamined {
+		t.Fatalf("a host copy's glob over a folder the check cannot list: own_copy_only %s (%s); want unexamined", got.State, got.Detail)
+	}
+	back(host2, hostClone2)
+	modes("after a hand-back that found the lock free", 0o700)
+}

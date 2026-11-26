@@ -1080,7 +1080,8 @@ func (b *reportBuilder) runLimits() {
 		b.limit("whether a copy read only its own clone rests on a heuristic scan of its transcript, not a barrier: a read the transcript does not record is not seen")
 		b.limit("a path pattern in a copy's transcript is matched when the copy is judged, so a sibling check copy's deleted clone is not seen; answers in the hand-off store are")
 		b.limit("the scan cannot tell the folder a path pattern ran in, so a pattern that matches outside the copy while a folder of its clone is deep enough for its climb to stay inside leaves the copy unexamined, set apart from the rates, never counted as blinded, with an honest copy that listed a parent folder of its own clone")
-		b.limit("no transcript scan sees every read, and a bare climb that recurses (grep -r . ..) is kept by it: what keeps a launched copy from finding its siblings' folders is that its launch closes the run's folders to listing while its copies run, and a copy that names a sibling's folder as written reads broken")
+		b.limit("no transcript scan sees every read, and a bare climb that recurses (grep -r . ..) is kept by it: while a launch's copies run it closes the run's folders to listing, which denies a listing to a copy that keeps their modes and not to one that changes them, as the same account can, and a copy that names a sibling's folder as written reads broken")
+		b.limit("a host's copy runs whenever the host makes it, with the run's folders open to listing unless a launch is at work, so the closing that holds for a launched copy does not hold for it")
 	}
 	b.limit("a model run is re-runnable, not reproducible: a re-run starts from this record and reports where it drifted")
 }
