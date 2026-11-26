@@ -75,10 +75,13 @@ or plugin but its own. Its settings are one launch argument: abcd's hooks, the h
 attribution off, the built-in plugins abcd knows of off, and a rule denying every
 server's tool without naming one. The conventions file, `AGENTS.md` at the checkout's
 root, goes whole as it stands at that moment, as a private file the session reads: a copy
-in `~/.abcd.noindex/session-conventions/<digest>/conventions.md`, made in folders only
+in `~/.abcd.noindex/session-conventions/<name>/conventions.md`, made in folders only
 this account can enter and readable by it alone (`0600`), written beside its name and
-renamed into place, a link or another account's file there refused. The arguments name
-its path and carry none of its text. Host 2.1.332 reads `--append-system-prompt-file
+renamed into place, a link or another account's file there refused. The folder is named
+so that no other account can tell its content. The copy opens with a line saying that
+everything after it is the repository's file whole and none of it abcd's, and it is read
+again just before the session opens: a copy that changed after the launch read it is
+`start/wall-not-held`. The arguments name its path and carry none of its text. Host 2.1.332 reads `--append-system-prompt-file
 <path>` in an interactive session as in print mode (tested by hand on 2026-11-25). The environment is
 the person's own, home included, less what the host signs in or bills through, every
 other variable of the host's and a walled stage's; the names left out are printed and

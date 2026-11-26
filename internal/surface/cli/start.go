@@ -269,9 +269,12 @@ func runStart(cmd *cobra.Command, r startRequest) error {
 	case ctx.Err() != nil:
 		return refused(2, refusal.StartNoVerdict, startText("the start was interrupted"))
 	}
-	// Read again: the launch took its time, and the open session reads it as it then stands.
+	// Read again: the launch took its time, and the open session reads them as they then stand.
 	if why := startGuard(cmd, cwd); why != "" {
 		return refused(2, refusal.StartWallNotHeld, startText("%s", why))
+	}
+	if !runner.SessionConventionsHold(convKept, loop.ConventionsFile, conventions) {
+		return refused(2, refusal.StartWallNotHeld, startText("the copy of %s the session reads changed after the launch read it", loop.ConventionsFile))
 	}
 	say("%s", startReported(proof))
 	say("that was read from one launch with the session's arguments (in print mode, with abcd's own prompt and without a permission mode of yours), " +

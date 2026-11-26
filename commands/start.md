@@ -59,7 +59,8 @@ opening nothing, when:
   other is moved out by hand;
 - this is not a checkout abcd manages, or its `AGENTS.md` is absent, a link, not a
   regular file, holds a NUL byte or is over 100 KiB, since it is handed over whole;
-- the host cannot be run, or a copy of abcd cannot be kept;
+- the host cannot be run, a copy of abcd cannot be kept, or the copy of `AGENTS.md`
+  the session reads could not be kept;
 - the profile is not logged in, which prints the login command again;
 - the short launch came to no verdict: a limit, a launch that did not finish, an
   interrupt, or a launch ledger that could not record it. Nothing waits and nothing
@@ -68,7 +69,8 @@ opening nothing, when:
   list does not name, or reported no list;
 - the guard of this checkout is switched off in `.abcd/guard.json`, or that file leaves
   the guard not refusing the command it is meant to refuse. That is read before the
-  launch, and again before the session opens.
+  launch, and again before the session opens;
+- the copy of `AGENTS.md` the session reads changed after the launch read it.
 
 ## The short launch
 
@@ -93,8 +95,8 @@ start abcd cannot see.
   wires. An event whose hook this binary lacks is left out, and said.
 - **The conventions file**, `AGENTS.md` at the checkout's root, whole, as it stands at
   that moment, handed over as a private file the session reads: a copy only this
-  account can read, kept in `~/.abcd.noindex/session-conventions/` under its content's
-  digest. A later edit does not reach an open session.
+  account can read, kept in `~/.abcd.noindex/session-conventions/` and named so that no
+  other account can tell its content. A later edit does not reach an open session.
 - **The person's home and shell environment**, less what the host signs in or bills
   through, every other variable of the host's and a walled stage's. The names left out
   are printed, never a value.

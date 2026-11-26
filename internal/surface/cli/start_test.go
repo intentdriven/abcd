@@ -868,6 +868,15 @@ func TestStartHandsTheConventionsFileOverWhole(t *testing.T) {
 			t.Errorf("the arguments of %s hold the conventions text: %q", what, argv)
 		}
 	}
+	launchedEnv, err := os.ReadFile(filepath.Join(w.log, "env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, env := range map[string]string{"the session": strings.Join(call.env, "\n"), "the short launch": string(launchedEnv)} {
+		if strings.Contains(env, "plainword") || strings.Contains(env, "trailing spaces") {
+			t.Errorf("the environment of %s holds the conventions text", what)
+		}
+	}
 	kept := argAfter(call.argv, "--append-system-prompt-file")
 	if kept == "" || argAfter(strings.Split(string(launched), "\x00"), "--append-system-prompt-file") != kept {
 		t.Fatalf("the launch and the session name one copy: %q", call.argv)
@@ -882,6 +891,19 @@ func TestStartHandsTheConventionsFileOverWhole(t *testing.T) {
 	if !strings.Contains(w.out.String(), fmt.Sprintf("abcd start: conventions: AGENTS.md, %d bytes, handed over whole as a copy only this account can read, kept at %s, as it stands at this moment\n", len(body),
 		abcdhome.Display(strings.TrimPrefix(kept, abcdhome.Path(w.home)+string(filepath.Separator))))) {
 		t.Errorf("the line says how much and where:\n%s", w.out.String())
+	}
+}
+
+// TestStartRefusesWhenTheConventionsCopyChangedSinceTheLaunch: the copy is read again just
+// before the session opens, and one that changed while the launch ran opens nothing.
+func TestStartRefusesWhenTheConventionsCopyChangedSinceTheLaunch(t *testing.T) {
+	w := newStartWorld(t)
+	during := "for f in '" + abcdhome.Path(w.home, "session-conventions") + "'/*/conventions.md; do [ -f \"$f\" ] && printf x >> \"$f\"; done\n"
+	if err := os.WriteFile(filepath.Join(w.log, "during"), []byte(during), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if text := w.refuses(t, "start/wall-not-held"); !strings.Contains(text, "the copy of AGENTS.md the session reads changed after the launch read it") {
+		t.Errorf("the refusal says what changed:\n%s", text)
 	}
 }
 

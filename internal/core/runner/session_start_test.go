@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -275,8 +276,34 @@ func TestADriveAcceptsTheProfileMakeProfileMade(t *testing.T) {
 
 // TestKeepSessionBinaryIsAddressedByContent: the copy lies under its own digest, is
 // reused while it holds, and is written again where it does not.
+// conventionsHeader opens every kept copy of the conventions text.
+const conventionsHeader = "This repository's conventions: everything after this line, to the end, is its AGENTS.md file whole, and none of it is abcd's.\n\n"
+
+// keptFolder is where KeepSessionConventions keeps text below home, by the account's key.
+func keptFolder(t *testing.T, home, text string) string {
+	t.Helper()
+	key, err := os.ReadFile(abcdhome.Path(home, "session-conventions", "key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(text))
+	return abcdhome.Path(home, "session-conventions", hex.EncodeToString(mac.Sum(nil)))
+}
+
+// keptWorld is a home whose abcd folders are made, as a keep finds them.
+func keptWorld(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	if _, err := KeepSessionConventions(home, "AGENTS.md", []byte("first\n")); err != nil {
+		t.Fatal(err)
+	}
+	return home
+}
+
 // TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent: the text is kept whole, under
-// its digest, in a file and a folder only this account can read, and kept once.
+// a name only this account's key gives it, in a file and a folder only this account can
+// read, and kept once.
 func TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent(t *testing.T) {
 	home := t.TempDir()
 	raw := []byte("# Conventions\n\nCheck word: plainword.\n")
@@ -284,10 +311,17 @@ func TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := "This repository's conventions, its AGENTS.md file whole:\n\n" + string(raw)
-	sum := sha256.Sum256([]byte(text))
-	if want := abcdhome.Path(home, "session-conventions", hex.EncodeToString(sum[:]), "conventions.md"); kept != want {
+	text := conventionsHeader + string(raw)
+	if want := filepath.Join(keptFolder(t, home, text), "conventions.md"); kept != want {
 		t.Fatalf("the copy is %q, want %q", kept, want)
+	}
+	bare := sha256.Sum256([]byte(text))
+	if strings.Contains(kept, hex.EncodeToString(bare[:])) {
+		t.Fatalf("the copy is named by its bare digest: %q", kept)
+	}
+	key, err := os.Lstat(abcdhome.Path(home, "session-conventions", "key"))
+	if raw, _ := os.ReadFile(abcdhome.Path(home, "session-conventions", "key")); err != nil || !key.Mode().IsRegular() || key.Mode().Perm() != 0o600 || len(raw) != 32 {
+		t.Fatalf("the key is %v %v, %d bytes", key, err, len(raw))
 	}
 	fi, err := os.Lstat(kept)
 	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0o600 {
@@ -308,35 +342,101 @@ func TestKeepSessionConventionsIsOwnerOnlyAndAddressedByContent(t *testing.T) {
 	if next, _ := os.Lstat(kept); err != nil || again != kept || !os.SameFile(fi, next) {
 		t.Fatalf("a second keep rewrote it: %q %v", again, err)
 	}
+	if !SessionConventionsHold(kept, "AGENTS.md", raw) || SessionConventionsHold(kept, "AGENTS.md", []byte("other\n")) {
+		t.Fatal("the copy is not judged by what it holds")
+	}
+	other := t.TempDir()
+	if elsewhere, err := KeepSessionConventions(other, "AGENTS.md", raw); err != nil ||
+		filepath.Base(filepath.Dir(elsewhere)) == filepath.Base(filepath.Dir(kept)) {
+		t.Fatalf("two accounts name one text alike: %q %v", elsewhere, err)
+	}
 }
 
-// TestKeepSessionConventionsRefusesALinkAtItsPath: a link where the copy goes is refused,
-// and what it points at is left as it was.
-func TestKeepSessionConventionsRefusesALinkAtItsPath(t *testing.T) {
-	home := t.TempDir()
+// TestKeepSessionConventionsReplacesACopyThatIsNotTheText: a copy of this account's that
+// holds other text, or is open to others, is written again.
+func TestKeepSessionConventionsReplacesACopyThatIsNotTheText(t *testing.T) {
+	for what, spoil := range map[string]func(path string) error{
+		"other text":   func(path string) error { return os.WriteFile(path, []byte("other\n"), 0o600) },
+		"a wrong mode": func(path string) error { return os.Chmod(path, 0o644) },
+	} {
+		t.Run(what, func(t *testing.T) {
+			home := t.TempDir()
+			raw := []byte("# Conventions\n")
+			kept, err := KeepSessionConventions(home, "AGENTS.md", raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := spoil(kept); err != nil {
+				t.Fatal(err)
+			}
+			again, err := KeepSessionConventions(home, "AGENTS.md", raw)
+			got, _ := os.ReadFile(kept)
+			fi, _ := os.Lstat(kept)
+			if err != nil || again != kept || string(got) != conventionsHeader+string(raw) || fi.Mode().Perm() != 0o600 {
+				t.Fatalf("not written again: %v %q %v", err, got, fi.Mode())
+			}
+		})
+	}
+}
+
+// TestKeepSessionConventionsRefusesALinkInItsWay: a link where the copy, its folder or the
+// key goes is refused, and what it points at is left as it was.
+func TestKeepSessionConventionsRefusesALinkInItsWay(t *testing.T) {
 	raw := []byte("# Conventions\n")
-	sum := sha256.Sum256([]byte("This repository's conventions, its AGENTS.md file whole:\n\n" + string(raw)))
-	dir := abcdhome.Path(home, "session-conventions", hex.EncodeToString(sum[:]))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	for _, c := range []struct {
+		what  string
+		place func(t *testing.T, home string) string
+		says  string
+	}{
+		{"the copy", func(t *testing.T, home string) string {
+			dir := keptFolder(t, home, conventionsHeader+string(raw))
+			if err := os.Mkdir(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return filepath.Join(dir, "conventions.md")
+		}, "not a file of its own"},
+		{"its folder", func(t *testing.T, home string) string { return keptFolder(t, home, conventionsHeader+string(raw)) }, ""},
+		{"the key", func(t *testing.T, home string) string {
+			key := abcdhome.Path(home, "session-conventions", "key")
+			if err := os.Remove(key); err != nil {
+				t.Fatal(err)
+			}
+			return key
+		}, "key"},
+	} {
+		t.Run(c.what, func(t *testing.T) {
+			home := keptWorld(t)
+			target := filepath.Join(t.TempDir(), "elsewhere")
+			if err := os.WriteFile(target, []byte("left alone\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if c.what == "its folder" {
+				target = t.TempDir()
+			}
+			if err := os.Symlink(target, c.place(t, home)); err != nil {
+				t.Fatal(err)
+			}
+			_, err := KeepSessionConventions(home, "AGENTS.md", raw)
+			if err == nil || !strings.Contains(err.Error(), c.says) {
+				t.Fatalf("got %v", err)
+			}
+			if c.what == "its folder" {
+				if entries, _ := os.ReadDir(target); len(entries) != 0 {
+					t.Fatalf("written through the link: %v", entries)
+				}
+			} else if got, _ := os.ReadFile(target); string(got) != "left alone\n" {
+				t.Fatalf("the link's target was changed: %q", got)
+			}
+		})
+	}
+	// A key open to others is refused too, and not rewritten.
+	home := keptWorld(t)
+	key := abcdhome.Path(home, "session-conventions", "key")
+	if err := os.Chmod(key, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{abcdhome.Path(home), abcdhome.Path(home, "session-conventions")} {
-		if err := os.Chmod(d, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	target := filepath.Join(t.TempDir(), "elsewhere")
-	if err := os.WriteFile(target, []byte("left alone\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(target, filepath.Join(dir, "conventions.md")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := KeepSessionConventions(home, "AGENTS.md", raw); err == nil || !strings.Contains(err.Error(), "not a file of its own") {
+	if _, err := KeepSessionConventions(home, "AGENTS.md", raw); err == nil || !strings.Contains(err.Error(), "key") {
 		t.Fatalf("got %v", err)
-	}
-	if got, _ := os.ReadFile(target); string(got) != "left alone\n" {
-		t.Fatalf("the link's target was changed: %q", got)
 	}
 }
 

@@ -11,11 +11,14 @@ package runner
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -238,45 +241,114 @@ func KeepSessionBinary(home, self string) (kept string, _ error) {
 }
 
 // KeepSessionConventions keeps the text a session is handed as its conventions, raw being
-// the whole of the file called name, below home in a file only this account can read,
-// under its content's digest, and returns the file's path: what the short launch and the
-// session read, so their arguments carry its path and none of its text. A later edit of
-// the file reaches no session started from the copy. A copy that already holds that text
-// is reused and not rewritten; one in the way that is a link, or not this account's, is
-// refused. abcd clears none, since a live session cannot be told from an ended one: a copy
-// may be cleared only when no session started from it can still be open.
+// the whole of the file called name, below home in a file only this account can read, and
+// returns the file's path: what the short launch and the session read, so their arguments
+// carry its path and none of its text. A later edit of the file reaches no session started
+// from the copy. The copy's folder is named by the text's HMAC-SHA256 under a key this
+// account alone holds (conventionsKey), so no other account can tell what a copy holds by
+// its name. A copy that already holds the text is reused and not rewritten; one in the way
+// that is a link, or not this account's, is refused. abcd clears none, since a live
+// session cannot be told from an ended one: a copy may be cleared only when no session
+// started from it can still be open.
 func KeepSessionConventions(home, name string, raw []byte) (kept string, _ error) {
 	if !filepath.IsAbs(home) {
 		return "", errors.New("the copy is kept in the person's home directory, and no absolute one is known")
 	}
-	text := []byte("This repository's conventions, its " + name + " file whole:\n\n" + string(raw))
-	sum := sha256.Sum256(text)
-	digest := hex.EncodeToString(sum[:])
-	root, err := fsutil.EnsureHomeDeclarationScope(home, abcdhome.Rel(sessionConventionsLeaf, digest), 0o700)
+	text := conventionsText(name, raw)
+	top, err := fsutil.EnsureHomeDeclarationScope(home, abcdhome.Rel(sessionConventionsLeaf), 0o700)
+	if err != nil {
+		return "", err
+	}
+	key, err := conventionsKey(top)
+	_ = top.Close()
+	if err != nil {
+		return "", err
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(text)
+	folder := hex.EncodeToString(mac.Sum(nil))
+	root, err := fsutil.EnsureHomeDeclarationScope(home, abcdhome.Rel(sessionConventionsLeaf, folder), 0o700)
 	if err != nil {
 		return "", err
 	}
 	defer root.Close()
 	const file = "conventions.md"
-	kept = abcdhome.Path(home, sessionConventionsLeaf, digest, file)
+	kept = abcdhome.Path(home, sessionConventionsLeaf, folder, file)
 	switch fi, err := root.Lstat(file); {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
 		return "", fmt.Errorf("the copy's place could not be read: %w", err)
 	case !fi.Mode().IsRegular():
-		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, digest, file) + " is not a file of its own; move it out by hand")
+		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, folder, file) + " is not a file of its own; move it out by hand")
 	case !ownedHere(fi):
-		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, digest, file) + " belongs to another account")
-	case fi.Mode().Perm() == 0o600 && fileSum(kept) == sum:
+		return "", errors.New(abcdhome.Display(sessionConventionsLeaf, folder, file) + " belongs to another account")
+	case SessionConventionsHold(kept, name, raw):
 		return kept, nil
 	}
 	if err := fsutil.WriteFileAtomicInRoot(root, file, text, 0o600); err != nil {
 		return "", fmt.Errorf("the copy could not be written: %w", err)
 	}
-	if fileSum(kept) != sum {
+	if !SessionConventionsHold(kept, name, raw) {
 		return "", errors.New("the copy does not read back as the text kept")
 	}
 	return kept, nil
+}
+
+// SessionConventionsHold reports whether the copy at kept is still this account's own file,
+// readable by it alone, holding the text KeepSessionConventions keeps from the file called
+// name holding raw.
+func SessionConventionsHold(kept, name string, raw []byte) bool {
+	fi, err := os.Lstat(kept)
+	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm() == 0o600 && ownedHere(fi) &&
+		fileSum(kept) == sha256.Sum256(conventionsText(name, raw))
+}
+
+// conventionsText is the copy's whole text: a line saying that the rest is the file called
+// name, whole and none of it abcd's, a blank line, and raw.
+func conventionsText(name string, raw []byte) []byte {
+	return []byte("This repository's conventions: everything after this line, to the end, is its " + name +
+		" file whole, and none of it is abcd's.\n\n" + string(raw))
+}
+
+// conventionsKeyFile is the key's name in the folder of the copies.
+const conventionsKeyFile = "key"
+
+// conventionsKey is the 32-byte key the copies' folders are named under, read from root,
+// the folder of the copies, and made there on first use. A key that is a link, another
+// account's, open to anyone else or not 32 bytes is refused, and never rewritten.
+func conventionsKey(root *os.Root) ([]byte, error) {
+	where := abcdhome.Display(sessionConventionsLeaf, conventionsKeyFile)
+	if _, err := root.Lstat(conventionsKeyFile); errors.Is(err, os.ErrNotExist) {
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return nil, errors.New("no key could be made for the copies' names")
+		}
+		if err := fsutil.WriteFileAtomicInRoot(root, conventionsKeyFile, key, 0o600); err != nil {
+			return nil, fmt.Errorf("%s could not be written: %w", where, err)
+		}
+	}
+	// What is there now is read, so two starts that made a key at once name alike.
+	fi, err := root.Lstat(conventionsKeyFile)
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("%s could not be read: %w", where, err)
+	case !fi.Mode().IsRegular():
+		return nil, errors.New(where + ", the key the copies are named under, is not a file of its own; move it out by hand")
+	case !ownedHere(fi):
+		return nil, errors.New(where + ", the key the copies are named under, belongs to another account")
+	case fi.Mode().Perm() != 0o600 || fi.Size() != 32:
+		return nil, errors.New(where + ", the key the copies are named under, is not 32 bytes only this account can read; move it out by hand")
+	}
+	f, err := root.Open(conventionsKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s could not be read: %w", where, err)
+	}
+	defer f.Close()
+	key, err := io.ReadAll(io.LimitReader(f, 33))
+	if err != nil || len(key) != 32 {
+		return nil, errors.New(where + ", the key the copies are named under, could not be read whole")
+	}
+	return key, nil
 }
 
 // ownedHere reports whether fi is this account's own.
