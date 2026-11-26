@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -181,5 +183,31 @@ func TestQuestionAdmittedInsideConversationWindow(t *testing.T) {
 		if res, _, _ := runQuestionVerb(t, "clean-product-chip"); res.Hook != question.OutcomeRefuseAway {
 			t.Errorf("the verb for session %q outside its window: %q; want refuse-away", id, res.Hook)
 		}
+	}
+}
+
+// TestAllowedStopEmitsWhenTheStateCannotBeSaved: a present stop whose wakes'
+// save fails is still shown with its line, the failure named, as it was
+// before the stop saved anything.
+func TestAllowedStopEmitsWhenTheStateCannotBeSaved(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	root := awayCheckout(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+	dir := filepath.Join(root, filepath.FromSlash(autonomy.SessionsDir))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	pinStopClock(t, time.Now().UTC(), time.UTC)
+	out, so, se := runStop(t, stopHookPayload(t, "nosave", root, false, "Done.", "*/10 * * * *"))
+	if out.Decision != "" || !strings.Contains(out.SystemMessage, "feat/behind") {
+		t.Errorf("a present stop whose state could not be saved: stdout %s stderr %s; want the present line", so, se)
+	}
+	if !strings.Contains(se, "could not be saved") {
+		t.Errorf("stderr %q does not name the failed save", se)
 	}
 }

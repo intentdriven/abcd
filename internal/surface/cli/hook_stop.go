@@ -255,7 +255,13 @@ nothing.`,
 			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, stateRead, v, away && !prev.Conversing(rec, now))
 			if v.Save {
 				if err := autonomy.SaveSession(copyRoot, p.SessionID, v.State); err != nil {
-					return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
+					if v.Block {
+						return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
+					}
+					// An allowed stop goes as judged, its line shown and its
+					// stop recorded: only the state it would have kept, the
+					// wakes among it, is lost, and that is named.
+					diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
 				}
 			}
 			for _, h := range v.HandBacks {
