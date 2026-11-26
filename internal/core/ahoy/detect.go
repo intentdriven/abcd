@@ -1164,12 +1164,33 @@ func detectHookManifest(pluginRoot string, pluginOK bool) []Gap {
 	}
 	reason := verifyHookManifest(pluginRoot)
 	if reason == "" {
-		return nil
+		return detectSubagentStart(pluginRoot)
 	}
 	return []Gap{{
 		ID: "hooks.manifest_missing", Category: PluginOwned, Scope: "machine",
 		Title: "hooks/hooks.json missing or malformed", Detail: reason,
 		FixHint: "Broken plugin install — reinstall.", Required: false, Resolvable: false,
+	}}
+}
+
+// detectSubagentStart raises the gap of an otherwise sound manifest whose
+// SubagentStart event reaches no `hook subagent-start`: an installed plugin from
+// before that hook, under which no sub-agent is told where the conventions and
+// the rules are (spc-2611251757228271). It is not required: an older manifest
+// was complete when it was written.
+func detectSubagentStart(pluginRoot string) []Gap {
+	events, ok := readHookEvents(pluginRoot)
+	if !ok {
+		return nil
+	}
+	if entries, _ := events["SubagentStart"].([]any); eventHasCommand(pluginRoot, entries, "hook subagent-start") {
+		return nil
+	}
+	return []Gap{{
+		ID: "hooks.subagent_start_unwired", Category: PluginOwned, Scope: "machine",
+		Title:   "hooks/hooks.json wires no sub-agent start",
+		Detail:  "The installed plugin's manifest has no SubagentStart entry that runs `abcd hook subagent-start`, so a sub-agent is not told where the conventions and the rules are.",
+		FixHint: "Update the plugin.", Required: false, Resolvable: false,
 	}}
 }
 

@@ -185,6 +185,27 @@
       "code": "spec/unknown-spec"
     },
     {
+      "code": "start/host-not-runnable"
+    },
+    {
+      "code": "start/no-verdict"
+    },
+    {
+      "code": "start/not-logged-in"
+    },
+    {
+      "code": "start/outside-a-terminal"
+    },
+    {
+      "code": "start/profile-unusable"
+    },
+    {
+      "code": "start/repository-unready"
+    },
+    {
+      "code": "start/wall-not-held"
+    },
+    {
       "code": "status/outside-checkout"
     },
     {

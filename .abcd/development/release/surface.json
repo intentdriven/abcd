@@ -1860,7 +1860,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1959,7 +1959,7 @@
       "path": "abcd guard hook",
       "hidden": false,
       "block": "agents",
-      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+      "sentence": "Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.",
       "flags": []
     },
     {
@@ -2227,6 +2227,11 @@
     },
     {
       "path": "abcd hook stop-failure",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook subagent-start",
       "hidden": false,
       "flags": []
     },
@@ -4901,6 +4906,29 @@
         },
         {
           "name": "remainder",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd start",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Start a session on abcd alone, making its separate login where none exists: Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.",
+      "flags": [
+        {
+          "name": "permission-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "profile",
           "shorthand": "",
           "type": "string",
           "required": false,

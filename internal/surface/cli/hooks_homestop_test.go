@@ -36,6 +36,7 @@ var stopWrapperEvents = []struct {
 	{"PreCompact", 1, []string{"hook prompt-router-reset"}},
 	{"SessionEnd", 1, []string{"hook session-end"}},
 	{"SubagentStop", 1, []string{"hook subagent-stop"}},
+	{"SubagentStart", 1, []string{"hook subagent-start"}},
 	{"Stop", 1, []string{"hook stop"}},
 	{"StopFailure", 1, []string{"hook stop-failure"}},
 }
@@ -174,5 +175,19 @@ func TestBootstrapWritesNothingBesideTheOldHome(t *testing.T) {
 				t.Fatalf("the stopped bootstrap changed the home:\nbefore:\n%s\nafter:\n%s", before, after)
 			}
 		})
+	}
+}
+
+// TestGuardShimHoldsAKilledGuardBesideTheOldFolder: the rung that runs while
+// the old ~/.abcd folder stands holds a killed guard's command too.
+func TestGuardShimHoldsAKilledGuardBesideTheOldFolder(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stderr, code := runShimHome(t, command, fakePluginRoot(t, "cat >/dev/null; kill -KILL $$"), "", home)
+	if code != 2 || !strings.Contains(stderr, "FAILED TO RUN") {
+		t.Errorf("a killed guard beside the old folder must hold the command (exit 2) and say so; exit %d, stderr %q", code, stderr)
 	}
 }

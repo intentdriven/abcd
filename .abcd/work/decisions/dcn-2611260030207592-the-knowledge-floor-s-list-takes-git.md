@@ -1,0 +1,6 @@
+---
+id: dcn-2611260030207592
+slug: the-knowledge-floor-s-list-takes-git
+date: 2026-11-26
+---
+2026-11-26 — The knowledge floor's list takes git, push (pushed, pushing), origin and diff (diffs) now, each with plain words, by the coordinator's ruling while the person is away (iss-2611252121330106, review round 2). Grounds: each is version control's own vocabulary with no everyday sense a product question needs, and a product question that uses one asks the person something they cannot answer. Limit, recorded and left as is: words with a common everyday sense are not listed (remote in 58 of the 513 files under the intents folder, clone in 34, fork in 26, GitHub as a product the person knows in 125), nor working tree (37), symlinked (10), checked out (5), branched or branching (0 and 2), or split spellings (work-tree, 0); and the introduction is read by shape, so a plain use shaped like a three-word definition passes ("CI is a required step here.", "A merge is a thing abcd does."): no shape rule separates the two. The counts are case-insensitive whole-word file counts of the intents folder on 2026-11-26. To reverse it, take the four rows out of the floor's page and the check's list in one change, or add a listed word the same way.

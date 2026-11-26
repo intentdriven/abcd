@@ -211,6 +211,39 @@ func TestAskingRulesNameTheVerbAndTheWriter(t *testing.T) {
 	}
 }
 
+// TestAskingRulesHandTheMaterialInThePersonsWords (iss-2611252121330106): the
+// writer rule has the caller hand the material in the words of the person the
+// question is for, and the floor rule says the check refuses a word below the
+// product thinker's floor that the question does not introduce, so the agent
+// reads before it writes a brief what the check will hold the question to.
+func TestAskingRulesHandTheMaterialInThePersonsWords(t *testing.T) {
+	writer, floor := "", ""
+	for _, r := range AskingRules(Default) {
+		if strings.Contains(r, "abcd:question-drafter") {
+			writer = r
+		}
+		if strings.Contains(r, KnowledgeFloorPage) {
+			floor = r
+		}
+	}
+	for _, want := range []string{
+		"hand it whom the question is for, then the material to quote, in that person's words",
+		"never in internals for the product thinker",
+	} {
+		if !strings.Contains(writer, want) {
+			t.Errorf("the writer rule must say %q: %s", want, writer)
+		}
+	}
+	for _, want := range []string{
+		"refuses a question to the product thinker that uses a word listed there",
+		"introduced in one sentence before its first use",
+	} {
+		if !strings.Contains(floor, want) {
+			t.Errorf("the floor rule must say %q: %s", want, floor)
+		}
+	}
+}
+
 // layoutRule is the rule that states the question's layout and its limits.
 func layoutRule(t *testing.T, rules []string) string {
 	t.Helper()

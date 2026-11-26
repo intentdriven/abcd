@@ -294,6 +294,9 @@ func (p Pattern) Describe() string {
 		if shape == ShapeForgeRefPath {
 			with = append(with, "a `…/git/refs/…` path")
 		}
+		if shape == ShapeReleaseTag {
+			with = append(with, "a release tag as its operand")
+		}
 	}
 	switch {
 	case p.MinOperands == 1:

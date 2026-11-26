@@ -3,8 +3,8 @@
 A destructive shell command typed by accident costs a person hours: a force
 push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
-and says what to run instead. It writes nothing but the record of a branch an
-agent creates, the one-shot allow a person records in their home folder with
+and says what to run instead. It writes nothing but the facts it keeps about a
+sub-agent whose write it judges, the record of a branch an agent creates, the one-shot allow a person records in their home folder with
 the guard's allow verb and, where the badge
 shows and the mode store reads, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question it admits and, while the mode names somebody, for abcd's question it refuses and for another tool's question (all below),
 and it costs nothing to have on: an unrecognised command passes through
@@ -216,7 +216,29 @@ program name the same way: allowing one delete (`abcd-guard-allow-any-program`),
 flipping a sources ledger line (`abcd-source-ledger-flip-any-program`, and
 `abcd-source-ledger-flip-retired-any-program` in the retired spelling), setting
 or lifting a stop (`abcd-implement-stop-any-program`) and choosing the folder a
-stop is read from (`abcd-ahoy-shared-folder-any-program`). Writes, moves and
+stop is read from (`abcd-ahoy-shared-folder-any-program`). An update that names
+a release tag is refused through the binary as `abcd-update-tag`, and as
+`abcd-update-tag-any-program` under a program whose basename carries abcd's or
+holds a part the line does not fix, or a `go run` of a Go file or an unnamed
+package after the line enters a directory named for abcd, or that names one with
+`-C` or in the file's path: its words are common to other programs,
+so a program of any other name is left alone wherever it stands
+(`"$DIR/deploy.sh" update v1.2.3`), and so are an update with no tag, its flags
+and its news sub-verb. A word the line does not fix is read as each word it can
+be, so `abcd "$V" README.md` is refused: `$V` can be the verb, and `README.md`
+is spelled as a tag can be. So is a word `xargs` adds or puts where its
+replacement string stands, and a path a `find` puts where `{}` stands, for this
+act and for the two above that no flag names: `xargs abcd update` and `find …
+-exec abcd update {} \;` are refused. A program the line names by nothing but a
+variable can be abcd, so `"$PM" update "$PKG"` and `"$PM" update v1.2.3` are
+refused as `program-name-unknown`, unless the line opens by giving the variable
+a fixed value (`PM=npm; "$PM" update "$PKG"`), or with a loop over fixed words,
+and nothing else on it can set the variable; the command is then read as the
+program each value names. Behind a launcher the guard does not
+step through (`gtimeout`, `watch`, `mise exec`, `fd -x`, an unquoted `parallel`)
+the update is the warn `unrecognised-launcher` where the line spells it through
+the binary with a tag or `{}`, and is not reached through a wrapper script or
+another build, or where neither stands. Writes, moves and
 removals of the stop's files are refused as `implement-stop-store-write`, since
 removing a stop is lifting it. The guard and the verbs hold against an agent acting by mistake; a stop binds an agent only where an operating-system account separates them. An
 approving review posted on the forge,
@@ -227,7 +249,7 @@ line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
 that comments or requests changes is not refused. The five merge ids,
-the six any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
+the seven any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against
@@ -297,7 +319,25 @@ the badge shows and the store was read, since a number names no person and
 the agent sets the mode before asking (decision 37), and by nobody elsewhere;
 each tab's `addressee` in the verdict is the person it was judged for; the
 binary's verb list
-is read from the command tree and passed in. The row limit is estimated with
+is read from the command tree and passed in. The register rule refuses a record
+number, a command, and a word below the product thinker's knowledge floor
+(iss-2611252121330106). The words are one list in `internal/core/question`, which a
+test holds equal to the table the floor's own page carries
+([`knowledge-floor.md`](../glossary/interview/knowledge-floor.md)); each word
+found on a tab is one finding, at its first use, naming the plain words the
+list gives. A word counts whole, in any case, in the plural and in the other
+forms the list names, joined to another by a hyphen included, and not inside a
+longer word. One the tab's question text introduces in one sentence before its
+first use passes on that tab, the floor's own rule. The sentence is read by its
+shape: the word opens it, bare or after "a", and it goes on to say what the
+word is or means without using the word again, or it ends on what the thing is
+called; "the merge" is a merge the reader is taken to know, so it introduces
+nothing. A sentence opening on a term the word starts ("A push notification
+is a message the app sends.") introduces that term alone. A short form the
+list names (CI, a PR) is introduced on its own, or in the sentence introducing
+the word, and is never introduced by its own long form ("A PR is a pull
+request."). No configuration lists further words or excepts any: the question
+limits' namespace takes its three keys alone. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview
 shows (the layout intent's decision 20). Every finding refuses at once with
@@ -309,14 +349,15 @@ into one group per rule and tab, in the order the first of each appeared,
 keeping the first finding and a count, and `question.RenderGroups` writes each
 group as the first finding's line (the tab, the part, the value, the limit and
 the remedy) closed by "(and N more such lines)" when the rule broke more than
-once on that tab, each line through `termsafe.Sanitize`. The last line points
+once on that tab, the register rule's naming each further value as well, each line through `termsafe.Sanitize`. The last line points
 at the question check and the writer: it says to check the next draft with
 the question check, naming its command, before asking it, or to draft it
 through the `abcd:question-drafter` agent, which does. Every rule on every tab is named, with no cut. The refusal's size
 follows the limits, not the payload: past the count findings, `CheckLimits`
 checks only the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]`
 options of each, and a rule that adds one finding per line of question text,
-the em dash in a list item, is one line per tab, so a refusal is at most the
+the em dash in a list item, is one line per tab; the register rule names each word
+once per tab, so its line is bounded by the list. A refusal is at most the
 rules times the checked tabs, the call's count finding and three fixed lines.
 The ten-line cut it replaced named only the first findings of a refusal past
 ten, and the agent fixed those, asked again, and was refused for the rest. The rows limit is the one
@@ -427,7 +468,9 @@ so a tab `unnamed` under it was checked with no mode set while one without it
 is checked where no mode is read; each tab's `addressee` and, where an
 admitted chip would re-set the mode, `addressee_changes`; every finding with whether it `refuses`;
 `by_rule`, the findings folded one entry per rule and tab with the first
-echoed value and a count, the groups the deny names one line each; `rows`
+echoed value and a count, the groups the deny names one line each (the
+register rule can take two on one tab, its words below the knowledge floor
+apart from its record numbers and commands and marked `floor`); `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
 the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
 three figures the draft was judged at (`rows`, `label_words`,
@@ -533,13 +576,102 @@ that otherwise the branch is a peer's and must be left untouched: never
 committed to, merged or pushed. A branch whose creator is recorded keeps the
 usual instruction.
 
+## The hold on a sub-agent's writes
+
+A sub-agent reads the repository's conventions before it writes
+(itd-2611251725190796, spc-2611251757228271; the refusal is ruled in
+dcn-2611251823160636). In a repository abcd manages whose rules are on, the hook
+refuses a sub-agent's write, with the host's deny, until a call of that
+sub-agent's own has named the conventions file: `AGENTS.md` at the checkout
+root, else `CLAUDE.md`. The arm is `subagentHold`
+(`internal/surface/cli/guard_subagent.go`), asked before the file-writing
+tools' own gate and, for the shell tool, once the session's root has resolved.
+
+**What is a write.** A call of one of the file-writing tools, wherever the file
+lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
+`rebase`, `cherry-pick`, `revert`, `am`, `pull` and `push`. `guard.RecordActs`
+reads each command of the line after the guard's own tokenizer, steps the words
+the registry's walker steps before a command (assignment words, the reserved
+words `if`, `then`, `elif`, `else`, `do`, `while`, `until`, `{` and `!`, `coproc`, `function NAME` and
+`repeat COUNT`; a function in any other form is held by the guard as
+`function-form-unread`, and is read as an act, so the hold asks) and git's global options with their values, and takes the
+subcommand by position, so `git stash push` and `echo git commit` are no write. A
+word a substitution or a variable prints is allowed as a global option's value
+and after the subcommand; as the program, an option word or the subcommand it
+reads as no act. A command run through a wrapper (`time`, `env`, `sudo`,
+`sh -c`, a script, an alias) is not seen, and neither is `abcd land`, since what it sends was held at
+its commit. Any other shell command goes on unasked: no closed reading of a line
+tells a write from a read, and an edit made through the shell is held at its
+commit.
+
+**What is a call.** The guard reads a call of a function the line defines in one
+shape: the function is one command of a fixed program that runs no other
+command, its arguments read only as `"$@"`, `$@`, `"$1"`…`"$9"`, `$1`…`$9`,
+`"${1}"`…`"${9}"` or `${1}`…`${9}`, and the call stands where a command starts on the line itself;
+the line is then judged again with the call replaced by the command its words
+make (`functionCallReadings`). Every other call, with words, of a function that
+reads its arguments is blocked as `function-form-unread`, so
+`greet() { echo "hello $1"; echo bye; }; greet world` is held. A line that
+names one of zsh's `functions[`, `aliases[`, `galiases[`, `saliases[` or
+`dis_functions[` tables anywhere on the line, inside an expansion or a quote
+too, runs `functions -c` or `-M`, defines several names with one `()`, or runs a
+command through zsh's `-` modifier is held the same way, since each can change
+what a name runs where the guard does not see it.
+
+**What is a reading.** The sub-agent's own transcript is read once at the held
+call, from where the host keeps it beside the session's
+(`<session>/subagents/agent-<id>.jsonl`), and judged by `history.JudgeSubagent`,
+the judge its stop uses ([`11-history.md`](11-history.md)). A call that is not
+itself a write and names the file, as a whole name, is a reading: the host's
+reading tool, `cat AGENTS.md` in the shell, a search for it. So is one that names
+a build lane's own brief (`.abcd/.work.local/run/<run>/<lane>/brief.md`), which
+carries the conventions whole. Naming is the test: the hold proves a skipped
+reading and never a careful one. A reading is kept as a fact beside the rules
+loader's ledgers
+([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)),
+and every later call answers from it.
+
+**The refusal** names the file and the root abcd looked in (the root left out
+where its path holds a space or a byte the start message would not print), says which calls
+pass, that the read goes in a call of its own, since one in the same shell line
+as the held command is not counted and one sent in the same turn may not be, and
+says to send the write again after it. It does not give way after some number of
+refusals: that would let through one that declines to read. So a sub-agent whose
+every tool writes can name the file in no call that counts, and stays held. The
+refusal says what such a one does, which is to end and say so to the session that
+started it, never held for this; its stop's line says its writes were held. None
+of the agents the plugin ships is one. A sub-agent the start hook never reached is held too: the guard asks
+the start hook's own test, and the refusal is what tells it.
+
+**Who is never held.** The session itself, whose calls the host's payload names
+no sub-agent for; abcd's four cold-reading agents, by the type the host names; a
+drive's stage, whose brief carries the conventions; and a sub-agent that never
+writes, for which no store is read. Nothing is held in a repository abcd does
+not manage, where its rules are switched off, or where neither file stands. A
+run in the checkout exempts nobody.
+
+**What cannot be judged is not held.** An agent or session id that can key no
+fact, a fact that cannot be read, git that does not answer inside the hook's
+deadline, a rules file that will not load, a payload with no absolute transcript
+path, and a transcript that is absent, empty, unreadable or over the size abcd
+reads each let the write go on to the guard's other checks. Where there is a key
+to keep it under, a fact says why, and that sub-agent is not judged again, with
+one exception: an absent or empty transcript is one the host has not written yet,
+so the next write is judged on what stands then. Its stop
+keeps a line saying so, which the staged listing prints, where its transcript shows no reading
+([`11-history.md`](11-history.md#a-stopping-sub-agents-line)).
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.
 The installed hook wraps the binary in a shim: the binary's own three statuses
 pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
-call through. One state is the exception, and it blocks on purpose: while
+call through. A guard killed by a signal (an exit above 128, which a resource
+limit or the host's timeout leaves) is not one that failed to start: it was
+judging the call and did not finish, so the shim holds it, exit 2 with its
+`FAILED TO RUN` line, rather than let a command run that the guard may have
+been about to refuse. One state is the exception, and it blocks on purpose: while
 anything stands at `~/.abcd`, the name abcd's folder had before
 `~/.abcd.noindex`, the hook exits 2, the host's blocking status, on every call
 the matcher hands it, with the stop's line on stderr. The reason is that abcd
@@ -595,8 +727,9 @@ the same answer.
 One limit is not among those states, because it is never false: the guard's
 reach. The manifest's pre-tool-use matcher hands the hook the shell tool, the
 question tool and the host's file-writing tools (`Write`, `Edit`, `MultiEdit`,
-`NotebookEdit`) and nothing else. A file those tools write is judged only by
-where it lands: in a main checkout two or more live sessions started in, outside
+`NotebookEdit`) and nothing else. A sub-agent's write is held until it has read
+the conventions ("The hold on a sub-agent's writes"); past that, a file those
+tools write is judged only by where it lands: in a main checkout two or more live sessions started in, outside
 that checkout's own local tier (`.abcd/.work.local/`, which git ignores), it is
 denied with the record verbs' refusal (`occupancy.CheckPath`, which walks up to
 the file's `.git` with no git subprocess; iss-2610280051498465), and anywhere
@@ -1236,17 +1369,21 @@ command: a pid list (`p=$(pgrep make); kill $p`), a stream path handed to a
 shell, shell text run through `eval "$X"` or placed in a string a shell runs,
 or `pkill` or `killall` as a variable's value standing as the program with an
 operand (`$P make`), because reading each would refuse the ordinary commands a
-variable carries a value for; whether to is an open ruling. Nor does an allow see what a
-lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
-`$(date)`): such a name can be any program, but with no operand after it no
-entry matches, so it allows by the posture above, where an allow means no entry
-matched. What a substitution prints is read only for the exact shape `cat
-<<DELIM`, a newline, the body, the delimiter line and blanks. `/bin/cat`,
-`command cat`, `cat -`, a redirection after the delimiter word, a
-backslash-newline before the `<<`, a command after the document, a
-backslash-newline after a backtick's document, and an output inside a `${…}`
-all leave it unknown, so each of those standing alone as the command allows,
-though bash runs what it prints; handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
+variable carries a value for; whether to is an open ruling. A command whose
+program is a substitution's output the guard does not read, alone (`$(cat
+msg.txt)`, `$(date)`) or through a variable the line set from one, is refused
+under `program-name-unknown`, because which program runs is unchecked. What a
+substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
+the body, the delimiter line and blanks, and for the path a lookup of one fixed
+name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
+with `|| true`), on a line that defines no function of that name or of the
+lookup's, no alias, and runs no eval or source. A value placed unquoted where
+the shell splits it is read as the words it splits into, and a line that gives
+IFS a value other than blanks holds every such word. `/bin/cat`, `command cat`, `cat -`, a redirection after the
+delimiter word, a backslash-newline before the `<<`, a command after the
+document, a backslash-newline after a backtick's document, and an output inside
+a `${…}` all leave it unknown, so each of those as the program is refused;
+handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

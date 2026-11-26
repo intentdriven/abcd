@@ -24,6 +24,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    fetch; provisioning fetches only a manifest-named, pinned,
    checksum-verified artifact. No version-discovery request exists anywhere
    in abcd ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
+   One is admitted, by a standing yes the person gives on their own machine,
+   and no code makes it yet
+   ([adr-2611251808065076](../../decisions/adrs/2611251808065076-abcd-asks-for-its-newest-release-on-a.md),
+   which refines adr-38 for that request alone).
    Tier-1 paths are enforceable in the zero-network test harness.
    The reservations on the shared remote (itd-2609091034175565) are fetched
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
