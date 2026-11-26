@@ -6,6 +6,7 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: []
+reverses: [adr-44]
 severity: minor
 impact: additive
 origin: researcher-authored
@@ -16,7 +17,11 @@ production_mode: hand-written
 
 ## Press Release
 
-> A repository's forge rulesets decide what an agent may push or merge, so today every ruleset change is reserved to the person: an agent that could change them could loosen its own limits. Many changes only add protection, such as a new ruleset that forbids deleting or force-pushing a branch abcd itself writes. The person wants such a change to be one an agent may apply in an autonomous run, so a landed feature's protection does not wait days for the person's return. The idea: abcd proves mechanically that a change only tightens (the new rule set is a superset of the old for every ref it touches, no bypass actor is added, enforcement only moves towards active, no ruleset is removed or narrowed), applies it through the existing confirmed remote-apply path when the proof holds, and refuses and queues it for the person otherwise. Decomposition, for the person to confirm: the capability is this intent; the trust rule (an agent never loosens a rule that binds it; a tighten-only change is proved, never judged) is an ADR and a brief invariant; the stance refines the evaluator-outside-the-loop principle; the remote-apply plumbing is the brief's. Verdict: SPLIT, the ADR to be minted when this is planned. Raised by the person on 2026-11-26 during the surge run, after the spot-check ruleset had to wait for them.
+> A repository's forge rulesets decide what an agent may push or merge, so today every ruleset change is reserved to the person: an agent that could change them could loosen its own limits. Many changes only add protection, such as a new ruleset that forbids deleting or force-pushing a branch abcd itself writes. The person wants such a change to be one an agent may apply in an autonomous run, so a landed feature's protection does not wait days for the person's return. The idea: abcd proves mechanically that a change only tightens (the new rule set is a superset of the old for every ref it touches, no bypass actor is added, enforcement only moves towards active, no ruleset is removed or narrowed), applies it when the proof holds through a dedicated verb that refreshes the committed mirror in the same change, and refuses and queues it for the person otherwise. Raised by the person on 2026-11-26 during the surge run, after the spot-check ruleset had to wait for them.
+
+Decomposition, for the person to confirm: the capability is this intent; the trust rule (an agent never loosens a rule that binds it; a tighten-only change is proved, never judged) is an ADR and a brief invariant; the stance refines the evaluator-outside-the-loop principle; the remote-apply plumbing is the brief's. Verdict: SPLIT, the ADR to be minted when this is planned.
+
+This partly reverses adr-44 decision 1, which says abcd writes remote state, rulesets among it, only through a dedicated verb the person invokes and confirms. Here an agent would invoke that verb in an autonomous run with no confirmation from the person, for a change the proof shows only tightens; a change that loosens, or one the proof cannot settle, stays the person's act as adr-44 has it. No such verb exists yet: today the person applies every ruleset by hand and refreshes the mirror (.abcd/work/rulesets/README.md). Typed link: `reverses` adr-44, in part, flagged for the person to confirm and never classified on its own. The nearest intent is the draft itd-92, whose read-only drift check reads the live rules a proof would start from; nothing here depends on it shipping first, so it carries no edge.
 
 ## Why This Matters
 
