@@ -155,7 +155,9 @@ a `.` entry, a vendored directory inside a checkout, a shared world-writable
 directory, or simply a file someone else put there. For `PreToolUse` the
 degraded path is the loud `UNGUARDED` line and exit 1, which this hook protocol
 reads as non-blocking: the command you asked for still runs, unguarded, with
-that line in front of you. Exit 1 is the one status that both lets the command
+that line in front of you. A guard killed by a signal while it judged the
+command is the exception: that command is held, exit 2, with the same
+`FAILED TO RUN` line. Exit 1 is the one status that both lets the command
 through and puts the warning where a human sees it, because a `PreToolUse` hook
 that exits 0 has its stderr discarded. What the degraded path never returns is
 that exit 0 with nothing on stdout, which the harness reads as the guard's own
