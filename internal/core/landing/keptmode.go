@@ -101,7 +101,7 @@ type keptFacts struct {
 	Roots    []string `json:"roots"`
 	Unread   string   `json:"unread"`
 	Address  string   `json:"address"`
-	EnvIdent bool     `json:"env_ident"`
+	EnvIdent string   `json:"env_ident"`
 	Identity string   `json:"identity"`
 }
 
@@ -123,7 +123,8 @@ func (f *keptFacts) valid() bool {
 			return false
 		}
 	}
-	return len(f.Unread) <= maxKeptUnread && (f.Address == "" || addressOf("https://"+f.Address) == f.Address)
+	return len(f.Unread) <= maxKeptUnread && (f.Address == "" || addressOf("https://"+f.Address) == f.Address) &&
+		(f.EnvIdent == "" || identityVar(f.EnvIdent))
 }
 
 // projectKey is the key the row selects an entry by: the kept facts, and

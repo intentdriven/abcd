@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func personRepo(t *testing.T, project string) (*gittest.Repo, string, string) {
 	// grafts or its shallow boundary: each case that wants one sets it.
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(k, "GIT_AUTHOR_") || strings.HasPrefix(k, "GIT_COMMITTER_") || k == "GIT_GRAFT_FILE" || k == "GIT_SHALLOW_FILE" {
+		if strings.HasPrefix(k, "GIT_AUTHOR_") || strings.HasPrefix(k, "GIT_COMMITTER_") || slices.Contains(identityVars, k) {
 			t.Setenv(k, "")
 			os.Unsetenv(k)
 		}
@@ -57,6 +58,11 @@ func personRepo(t *testing.T, project string) (*gittest.Repo, string, string) {
 	}
 	return repo, root, gittest.RootCommit(t, root)
 }
+
+// identityVars are the variables besides GIT_AUTHOR_* and GIT_COMMITTER_*
+// that personRepo clears: what chooses git's identity, grafts or shallow
+// boundary.
+var identityVars = []string{"GIT_GRAFT_FILE", "GIT_SHALLOW_FILE", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "XDG_CONFIG_HOME", "EMAIL"}
 
 // entry is one entry of the person's file, as the test writes it.
 type entry struct {
@@ -505,6 +511,43 @@ func TestTheProjectsFirstCommitsMustBeEstablished(t *testing.T) {
 			swapListRoots(t, func(context.Context, string, string) (string, error) { return "", nil })
 			return root
 		}, ModeHuman, "person", true, "first commit"},
+		{"a hand-built commit-graph giving the tip no parents", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeMachineConfig(t, autoConfig)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeHuman})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			repo.Git("commit-graph", "write", "--reachable")
+			gittest.ForgeCommitGraphRoot(t, filepath.Join(root, ".git"), repo.Git("rev-parse", "HEAD"))
+			return root
+		}, ModeHuman, "person", false, ""},
+		{"grafts written between the checks and the walk", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeMachineConfig(t, autoConfig)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeHuman})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			walk := listRoots
+			swapListRoots(t, func(ctx context.Context, dir, tip string) (string, error) {
+				if err := os.WriteFile(filepath.Join(root, ".git", "info", "grafts"), []byte(tip+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return walk(ctx, dir, tip)
+			})
+			return root
+		}, ModeHuman, "person", false, ""},
+		{"a shallow file written between the checks and the walk", func(t *testing.T, repo *gittest.Repo, root, sha string) string {
+			writeMachineConfig(t, autoConfig)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeHuman})
+			repo.Write("next.txt", "next")
+			repo.Commit("next")
+			walk := listRoots
+			swapListRoots(t, func(ctx context.Context, dir, tip string) (string, error) {
+				if err := os.WriteFile(filepath.Join(root, ".git", "shallow"), []byte(tip+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return walk(ctx, dir, tip)
+			})
+			return root
+		}, ModeHuman, "person", false, ""},
 		{"no entries: the walk is not asked", func(t *testing.T, _ *gittest.Repo, root, _ string) string {
 			swapListRoots(t, func(context.Context, string, string) (string, error) { return "", errors.New("asked") })
 			return root
@@ -575,7 +618,10 @@ func TestARepositorysNameIsItsWholeAddress(t *testing.T) {
 		{"a deeper path ending in the owner and name", "https://forge.invalid/group/Owner/Repo.git", personForge, "machine"},
 		{"an entry naming no host, on a deeper path", "https://forge.invalid/group/owner/repo.git", "owner/repo", "machine"},
 		{"the path in another case", "https://forge.invalid/owner/repo.git", personForge, "machine"},
-		{"no host", "file:///srv/Owner/Repo.git", "Owner/Repo", "machine"},
+		{"no host", "file:///srv/Owner/Repo.git", personForge, "machine"},
+		{"http, not https", "http://forge.invalid/Owner/Repo.git", personForge, "machine"},
+		{"git's own protocol", "git://forge.invalid/Owner/Repo.git", personForge, "machine"},
+		{"a % in the path", "https://forge.invalid/Owner/Re%70o.git", personForge, "machine"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo, root, sha := personRepo(t, "")
@@ -610,5 +656,142 @@ func TestAnAutoEntryWaitsWhileTheEnvironmentSetsGitsIdentity(t *testing.T) {
 	t.Setenv("GIT_COMMITTER_EMAIL", personEmail)
 	if f := readShown(t, root); f.Mode != ModeHuman || f.Layer != "person" || f.Withheld {
 		t.Fatalf("reading = %+v; want the person's own human", f)
+	}
+}
+
+// TestTheProjectsValueIsReadAsStored: the gate, the board and the prompt line
+// read the project's committed facilitator.mode from the tip as the object
+// store holds it, so a refs/replace entry over the file's blob, the tip's
+// tree or the tip itself is not read in its place.
+func TestTheProjectsValueIsReadAsStored(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		project string
+		replace func(t *testing.T, repo *gittest.Repo, tip string)
+		layer   string
+	}{
+		{"over the tip's config blob", humanConfig, func(t *testing.T, repo *gittest.Repo, tip string) {
+			p := filepath.Join(t.TempDir(), "auto.json")
+			if err := os.WriteFile(p, []byte(autoConfig), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			repo.Git("replace", repo.Git("rev-parse", tip+":.abcd/config.json"), repo.Git("hash-object", "-w", p))
+		}, "repo"},
+		{"over the tip's tree, which holds no file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
+			repo.Write(".abcd/config.json", autoConfig)
+			repo.Commit("auto")
+			other := repo.Git("rev-parse", "HEAD^{tree}")
+			repo.Git("reset", "-q", "--hard", tip)
+			repo.Git("replace", "-f", repo.Git("rev-parse", tip+"^{tree}"), other)
+		}, "bundled"},
+		{"over the tip itself, which holds no file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
+			repo.Write(".abcd/config.json", autoConfig)
+			repo.Commit("auto")
+			other := repo.Git("rev-parse", "HEAD")
+			repo.Git("reset", "-q", "--hard", tip)
+			repo.Git("replace", "-f", tip, other)
+		}, "bundled"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo, root := mergingRepo(t, c.project)
+			tip := repo.Git("rev-parse", "HEAD")
+			c.replace(t, repo, tip)
+			if got := repo.Git("cat-file", "-p", tip+":.abcd/config.json"); !strings.Contains(got, ModeAuto) {
+				t.Fatalf("the fixture's replace ref does not present auto: %q", got)
+			}
+			gate, err := readFacilitatorAt(layered.Roots{Home: os.Getenv("HOME")}, root, tip, "main")
+			if err != nil || gate.Mode != ModeHuman || gate.Layer != c.layer {
+				t.Errorf("the gate reads %+v, %v; want human from the %s layer, as stored", gate, err, c.layer)
+			}
+			if shown := readShown(t, root); shown.Mode != ModeHuman || shown.Layer != c.layer {
+				t.Errorf("the board reads %+v; want human from the %s layer, as stored", shown, c.layer)
+			}
+			if f, err := AutoForSessions(context.Background(), root); err != nil || f.Mode == ModeAuto {
+				t.Errorf("the prompt line reads %+v, %v; want not auto", f, err)
+			}
+		})
+	}
+}
+
+// TestAMisspeltEntryIsSaidPlainly: an entry whose forge is not a repository's
+// whole address, whose root is not a commit's full object name in lower
+// case, or that sets auto and names no address, refuses the file with a plain
+// reason.
+func TestAMisspeltEntryIsSaidPlainly(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		e    func(sha string) entry
+		says string
+	}{
+		{"a forge spelt as an address git reads", func(sha string) entry {
+			return entry{Email: personEmail, Root: sha, Forge: "https://forge.invalid/Owner/Repo", Mode: ModeHuman}
+		}, "not a repository's whole address"},
+		{"a root in upper case", func(sha string) entry {
+			return entry{Email: personEmail, Root: strings.ToUpper(sha), Forge: personForge, Mode: ModeHuman}
+		}, "lower-case"},
+		{"auto with no forge", func(sha string) entry {
+			return entry{Email: personEmail, Root: sha, Mode: ModeAuto}
+		}, "names no address"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, root, sha := personRepo(t, "")
+			writeMachineConfig(t, autoConfig)
+			writeEntries(t, c.e(sha))
+			f := readShown(t, root)
+			if f.Mode != ModeHuman || f.Layer != "person" || !f.Withheld || !strings.Contains(f.Origin, c.says) {
+				t.Fatalf("reading = %+v; want human from the person layer, saying %q", f, c.says)
+			}
+		})
+	}
+}
+
+// TestTheAddressIsTheOneGitWouldFetch: the repository's address is origin's
+// as git resolves it, the person's own url.*.insteadOf applied; an origin
+// with more than one url names no address, so no auto entry matches.
+func TestTheAddressIsTheOneGitWouldFetch(t *testing.T) {
+	t.Run("insteadOf in the person's own settings", func(t *testing.T) {
+		repo, root, sha := personRepo(t, "")
+		writeMachineConfig(t, humanConfig)
+		repo.Git("remote", "set-url", "origin", "fi:Owner/Repo")
+		global := "[url \"https://forge.invalid/\"]\n\tinsteadOf = fi:\n"
+		if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".gitconfig"), []byte(global), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+		if f := readShown(t, root); f.Mode != ModeAuto || f.Layer != "person" {
+			t.Fatalf("reading = %+v; want the person's auto at the address git would fetch", f)
+		}
+	})
+	t.Run("a second url", func(t *testing.T) {
+		repo, root, sha := personRepo(t, "")
+		writeMachineConfig(t, humanConfig)
+		repo.Git("config", "--add", "remote.origin.url", "https://forge.invalid/Owner/Repo.git")
+		writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+		if f := readShown(t, root); f.Mode != ModeHuman || f.Layer != "machine" {
+			t.Fatalf("reading = %+v; want no auto entry matched under two urls", f)
+		}
+	})
+}
+
+// TestAnAutoEntryWaitsWhileTheEnvironmentLocatesGitsSettings: while
+// GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, XDG_CONFIG_HOME or EMAIL is set,
+// git's identity can come from elsewhere, so an auto entry is not used.
+func TestAnAutoEntryWaitsWhileTheEnvironmentLocatesGitsSettings(t *testing.T) {
+	for _, name := range []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "XDG_CONFIG_HOME", "EMAIL"} {
+		t.Run(name, func(t *testing.T) {
+			_, root, sha := personRepo(t, "")
+			writeMachineConfig(t, autoConfig)
+			writeEntries(t, entry{Email: personEmail, Root: sha, Forge: personForge, Mode: ModeAuto})
+			value := os.DevNull
+			if name == "EMAIL" {
+				value = personEmail
+			} else if name == "XDG_CONFIG_HOME" {
+				value = t.TempDir()
+			}
+			t.Setenv(name, value)
+			if f := readShown(t, root); f.Mode != ModeHuman || f.Layer != "person" || !f.Withheld || !strings.Contains(f.Origin, name) {
+				t.Fatalf("reading = %+v; want human from the person layer, naming %s", f, name)
+			}
+		})
 	}
 }

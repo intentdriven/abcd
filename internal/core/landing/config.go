@@ -349,10 +349,12 @@ func resolveMode(vals []layerValue[string], in modeInput) Facilitator {
 // store of the repository at repoRoot, beside r's machine layer, never the
 // checkout of the branch being landed (dcn-2610230058333177). So a branch that
 // commits auto, or deletes the default branch's human, does not decide the
-// gate for itself. r's Repo is replaced; its Home and HomeRefused are kept.
-// The error is the reader's raw text, for the caller to mask.
+// gate for itself. The tip's trees and the file's blob are read as stored
+// (layered.Roots.RepoAtAsStored), so no replace ref stands one in for
+// another. r's Repo is replaced; its Home and HomeRefused are kept. The
+// error is the reader's raw text, for the caller to mask.
 func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
-	r.Repo, r.RepoAt, r.RepoAtName = repoRoot, tip, name
+	r.Repo, r.RepoAt, r.RepoAtName, r.RepoAtAsStored = repoRoot, tip, name, true
 	return readMode(r)
 }
 
@@ -366,8 +368,9 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // Its git questions are bound to ctx and read the commit's trees and the
 // file's blob as stored (layered.Roots.RepoAtAsStored: no replace ref stands
 // one in for another), as the landings reader, its one caller, reads the rest
-// of history; the merge gate's own read (readFacilitatorAt) is unchanged. The
-// error is the reader's raw text, for the caller to mask.
+// of history, and as the merge gate (readFacilitatorAt) and the default
+// branch's readers (defaultTipRoots) read the tip. The error is the reader's
+// raw text, for the caller to mask.
 func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
 	// Refused here, not left to layered: an empty RepoAt there means the
 	// working tree, so an empty name would read the working tree's mode as
@@ -562,7 +565,9 @@ func defaultTipRoots(ctx context.Context, cwd string) (r layered.Roots, ref stri
 	if ref == "" || err != nil || !gitutil.IsFullSHA(tip) {
 		return layered.Roots{}, "", ErrNoDefaultBranch
 	}
-	r.Repo, r.RepoAt, r.RepoAtName = root, tip, gitutil.ShortRef(ref)
+	// As stored, as the merge gate reads it: the prompt line and the board
+	// say what the gate will do.
+	r.Repo, r.RepoAt, r.RepoAtName, r.RepoAtAsStored = root, tip, gitutil.ShortRef(ref), true
 	return r, ref, nil
 }
 

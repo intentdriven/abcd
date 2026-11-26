@@ -102,12 +102,13 @@ const foreignHomeLayer = "home"
 // it and the kept reading keeps it: every first commit (parentless commit)
 // reachable from the default branch's tip, or why they could not be
 // established (unread); the repository's whole address (addressOf, "" for
-// none); and whether the environment sets git's identity.
+// none); and the variable in the environment that sets git's identity or
+// says where its settings are, "" for none (identityVar).
 type projectFacts struct {
 	roots    []string
 	unread   string
 	address  string
-	envIdent bool
+	envIdent string
 }
 
 // projectKey is how one reading comes by the facts: facts answers them,
@@ -190,11 +191,19 @@ func readPersonFile(home string) (personFile, bool, error) {
 		return personFile{}, false, fmt.Errorf("%s is refused: schema_version %d is not %d", personDisplay(), f.Schema, personSchema)
 	}
 	for i, e := range f.Entries {
+		n := i + 1
 		if err := checkMode(e.Mode); err != nil {
-			return personFile{}, false, fmt.Errorf("%s is refused: entry %d: %v; it takes human or auto", personDisplay(), i+1, err)
+			return personFile{}, false, fmt.Errorf("%s is refused: entry %d: %v; it takes human or auto", personDisplay(), n, err)
 		}
-		if strings.TrimSpace(e.Email) == "" || !gitutil.IsFullSHA(e.Root) {
-			return personFile{}, false, fmt.Errorf("%s is refused: entry %d names no email or no full root commit", personDisplay(), i+1)
+		switch {
+		case strings.TrimSpace(e.Email) == "":
+			return personFile{}, false, fmt.Errorf("%s is refused: entry %d names no email", personDisplay(), n)
+		case !gitutil.IsFullSHA(e.Root):
+			return personFile{}, false, fmt.Errorf("%s is refused: entry %d's root %q is not a commit's full object name, 40 or 64 lower-case hex digits", personDisplay(), n, e.Root)
+		case e.Forge != "" && addressOf("https://"+e.Forge) != e.Forge:
+			return personFile{}, false, fmt.Errorf("%s is refused: entry %d's forge %q is not a repository's whole address, its host and full path (forge.example/owner/name)", personDisplay(), n, e.Forge)
+		case e.Mode == ModeAuto && e.Forge == "":
+			return personFile{}, false, fmt.Errorf("%s is refused: entry %d sets auto and names no address, so it could never match", personDisplay(), n)
 		}
 	}
 	return f, true, nil
@@ -265,8 +274,8 @@ func readPerson(home string, key projectKey) (personReading, error) {
 		}
 		return withhold(diff + ", so your own setting for this project is not used (your identity record is " + ref.Display + ")")
 	}
-	if e.Mode == ModeAuto && facts.envIdent {
-		return withhold("variables in this environment set git's identity (GIT_AUTHOR_* or GIT_COMMITTER_*), so your own auto for this project is not used here")
+	if e.Mode == ModeAuto && facts.envIdent != "" {
+		return withhold(facts.envIdent + " is set in this environment, which can choose git's identity apart from your settings, so your own auto for this project is not used here")
 	}
 	if key.gate && e.Mode == ModeAuto {
 		return withhold("your own auto in " + personDisplay() + " arms only a pull request your own account opened, which this gate does not read yet, so it waits as for human")
@@ -354,9 +363,14 @@ func keyFor(ctx context.Context, r layered.Roots, gate bool) projectKey {
 var maxRootBytes = 1 << 20
 
 // listRoots lists every parentless commit reachable from tip, one per line,
-// as stored (replace refs off). A test substitutes it.
+// with history read as stored (gitutil.RunCappedBytesAsStoredContext: no
+// replace ref, no graft file, no commit-graph) and no shallow file
+// (--shallow-file with an empty path), so nothing written beside the
+// objects can cut the walk short; in a clone that is shallow, the missing
+// parent is an error. A test substitutes it.
 var listRoots = func(ctx context.Context, repo, tip string) (string, error) {
-	return gitutil.RunCappedContext(ctx, repo, maxRootBytes, "-c", "core.useReplaceRefs=false", "rev-list", "--max-parents=0", tip, "--")
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, repo, "", maxRootBytes, "--shallow-file", "", "-c", "core.useReplaceRefs=false", "rev-list", "--max-parents=0", tip, "--")
+	return string(out), err
 }
 
 // ctxErr is the error of a context that ended, from ctx or as err carries
@@ -377,7 +391,7 @@ func ctxErr(ctx context.Context, err error) error {
 // or answering past its cap or with nothing), unread says why; a context that
 // ends is an error.
 func factsOf(ctx context.Context, repo, tip string) (projectFacts, error) {
-	f := projectFacts{envIdent: envSetsIdent()}
+	f := projectFacts{envIdent: envIdentVar()}
 	for _, name := range []string{"GIT_GRAFT_FILE", "GIT_SHALLOW_FILE"} {
 		if os.Getenv(name) != "" {
 			f.unread = "this environment sets " + name + ", which changes where git's history begins"
@@ -430,38 +444,81 @@ func factsOf(ctx context.Context, repo, tip string) (projectFacts, error) {
 		f.unread = "git named no first commit of the project"
 		return f, nil
 	}
-	out, err = gitutil.RunCappedContext(ctx, repo, 4096, "config", "--get", "remote."+Remote+".url")
+	addr, err := originAddress(ctx, repo)
 	if e := ctxErr(ctx, err); e != nil {
 		return f, e
 	}
-	if err == nil {
-		f.address = addressOf(out)
-	}
+	f.address = addr
 	return f, nil
 }
 
-// envSetsIdent says whether any GIT_AUTHOR_* or GIT_COMMITTER_* variable is
-// set in this process's environment.
-func envSetsIdent() bool {
-	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
-		if strings.HasPrefix(k, "GIT_AUTHOR_") || strings.HasPrefix(k, "GIT_COMMITTER_") {
-			return true
-		}
+// originAddress is origin's whole address as the person's own git would fetch
+// from it (`git ls-remote --get-url`, their url.*.insteadOf applied), "" where
+// origin has no url, more than one, or one that is not a repository's whole
+// address. An error is a context that ended.
+func originAddress(ctx context.Context, repo string) (string, error) {
+	urls, err := personGit(ctx, repo, "config", "--get-all", "remote."+Remote+".url")
+	if e := ctxErr(ctx, err); e != nil {
+		return "", e
 	}
-	return false
+	if err != nil || len(strings.Fields(urls)) != 1 {
+		return "", nil
+	}
+	got, err := personGit(ctx, repo, "ls-remote", "--get-url", Remote)
+	if e := ctxErr(ctx, err); e != nil {
+		return "", e
+	}
+	if err != nil {
+		return "", nil
+	}
+	return addressOf(got), nil
 }
 
-// addressOf is a repository's whole address from any of git's spellings of
-// it (https://host/path.git, ssh://user@host/path, user@host:path): the host
-// lower-cased, a slash, and the full path, with .git and any leading or
-// trailing slash dropped; "" where it names no host or no path.
+// identityVar says whether name is a variable that sets git's identity
+// (GIT_AUTHOR_*, GIT_COMMITTER_*, EMAIL) or says where git reads the settings
+// that hold it (GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM, XDG_CONFIG_HOME).
+func identityVar(name string) bool {
+	switch name {
+	case "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "XDG_CONFIG_HOME", "EMAIL":
+		return true
+	}
+	return strings.HasPrefix(name, "GIT_AUTHOR_") || strings.HasPrefix(name, "GIT_COMMITTER_")
+}
+
+// envIdentVar is the first variable set in this process's environment that
+// identityVar names, in name order, "" for none.
+func envIdentVar() string {
+	var set []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); identityVar(k) {
+			set = append(set, k)
+		}
+	}
+	if len(set) == 0 {
+		return ""
+	}
+	slices.Sort(set)
+	return set[0]
+}
+
+// addressOf is a repository's whole address from the spellings of it git
+// fetches a forge's repository by (https://host/path.git,
+// ssh://user@host/path, user@host:path): the host lower-cased, a slash, and
+// the full path, with .git and any leading or trailing slash dropped; "" for
+// any other scheme, for a % anywhere (an escape reads one path as another),
+// and where it names no host or no path.
 func addressOf(raw string) string {
 	raw = strings.TrimSpace(raw)
+	if strings.Contains(raw, "%") {
+		return ""
+	}
 	var host, p string
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
-		if err != nil || u.Host == "" {
+		if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+			return ""
+		}
+		if s := strings.ToLower(u.Scheme); s != "https" && s != "ssh" {
 			return ""
 		}
 		host, p = u.Host, u.Path
@@ -510,20 +567,27 @@ func gitIdentDiff(ctx context.Context, repo string, rec identity.Record) (string
 	return "", nil
 }
 
-// maxIdentBytes caps one of git's identity lines.
-const maxIdentBytes = 4096
+// maxPersonGitBytes caps one answer of the person's own git.
+const maxPersonGitBytes = 4096
 
-// personGitVar is `git var role` in repo as the person's own git answers it,
-// its output past maxIdentBytes an error.
+// personGitVar is `git var role` in repo as the person's own git answers it.
 func personGitVar(ctx context.Context, repo, role string) (string, error) {
-	cmd := gitutil.WorkingTreeCommandContext(ctx, repo, "var", role)
+	return personGit(ctx, repo, "var", role)
+}
+
+// personGit is git with args in repo as the person's own git answers
+// (gitutil.WorkingTreeCommandContext: their global and system settings, the
+// program-starting knobs pinned off), its output past maxPersonGitBytes an
+// error. It is only for a read that starts nothing and opens no connection.
+func personGit(ctx context.Context, repo string, args ...string) (string, error) {
+	cmd := gitutil.WorkingTreeCommandContext(ctx, repo, args...)
 	var out bytes.Buffer
-	cmd.Stdout = &capped{w: &out, left: maxIdentBytes + 1}
+	cmd.Stdout = &capped{w: &out, left: maxPersonGitBytes + 1}
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git var %s: %w", role, err)
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	if out.Len() > maxIdentBytes {
-		return "", fmt.Errorf("git var %s: the answer ran past %d bytes", role, maxIdentBytes)
+	if out.Len() > maxPersonGitBytes {
+		return "", fmt.Errorf("git %s: the answer ran past %d bytes", strings.Join(args, " "), maxPersonGitBytes)
 	}
 	return out.String(), nil
 }

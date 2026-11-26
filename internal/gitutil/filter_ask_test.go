@@ -459,6 +459,11 @@ func TestTheOptionsThatStartAProgramAreReadAsGitTakesThem(t *testing.T) {
 	if v := gitutil.Subcommand([]string{"--attr-source", "HEAD", "status"}); v != "status" {
 		t.Errorf("--attr-source takes the next argument as its value: read %q as the subcommand", v)
 	}
+	// --shallow-file takes the next argument as its value, an empty one
+	// among them: the walk of a project's first commits passes one.
+	if v := gitutil.Subcommand([]string{"--shallow-file", "", "rev-list"}); v != "rev-list" {
+		t.Errorf("--shallow-file takes the next argument as its value: read %q as the subcommand", v)
+	}
 }
 
 // TestTheCheckIsGivenTheDirectoryEachGitRunsIn: the check
