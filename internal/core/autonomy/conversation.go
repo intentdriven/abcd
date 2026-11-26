@@ -88,7 +88,11 @@ func (s SessionState) Conversing(rec *Record, now time.Time) bool {
 func KeepWakes(st SessionState, crons []SessionCron, now time.Time) (next SessionState, changed bool) {
 	next = st
 	next.CronPrompts = rememberCrons(st.CronPrompts, crons)
-	next.CronPromptsUnmatched = unmatchableWakes(crons)
+	// A payload listing no wakes may be one whose host did not reach its task
+	// list, so the mark stands until a stop lists the wakes again.
+	if len(crons) > 0 {
+		next.CronPromptsUnmatched = unmatchableWakes(crons)
+	}
 	if next.PersonPromptAt.After(now) {
 		next.PersonPromptAt = time.Time{}
 	}

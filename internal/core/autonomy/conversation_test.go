@@ -287,3 +287,35 @@ func TestConversationLineIsAReading(t *testing.T) {
 		}
 	}
 }
+
+// TestWakesBound: up to maxCronPrompts distinct wakes are all kept and leave
+// the session's prompts readable; one more marks it, so no prompt reads as the
+// person's. A stop whose payload lists no wakes (the host's task list not
+// reached) leaves the mark as it was, since the wakes it let go may still
+// fire.
+func TestWakesBound(t *testing.T) {
+	now := at(t, "2026-11-26 06:00")
+	listed := func(n int) []SessionCron {
+		var out []SessionCron
+		for i := 0; i < n; i++ {
+			out = append(out, SessionCron{ID: "x", Schedule: "0 * * * *", Prompt: strings.Repeat("p", i+1)})
+		}
+		return out
+	}
+	at32, _ := KeepWakes(SessionState{}, listed(maxCronPrompts), now)
+	if at32.CronPromptsUnmatched || !personPrompt(at32, "status?") {
+		t.Errorf("%d wakes marked the session", maxCronPrompts)
+	}
+	for _, c := range listed(maxCronPrompts) {
+		if !knownCronPrompt(at32, c.Prompt) {
+			t.Fatalf("at the bound the wake %q was let go", c.Prompt)
+		}
+	}
+	at33, _ := KeepWakes(SessionState{}, listed(maxCronPrompts+1), now)
+	if !at33.CronPromptsUnmatched || personPrompt(at33, "status?") {
+		t.Errorf("%d wakes left the session's prompts readable", maxCronPrompts+1)
+	}
+	if after, _ := KeepWakes(at33, nil, now); !after.CronPromptsUnmatched {
+		t.Error("a stop listing no wakes cleared the mark")
+	}
+}
