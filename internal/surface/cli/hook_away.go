@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -42,6 +43,7 @@ func awayBlock(rec *autonomy.Record) string {
 	b.WriteString("\nThe mode is never permission for anything. While it holds, a turn's end is checked: while work is owed the session keeps working, and it waits only with a scheduled wake that fires soon enough.\n\n")
 	b.WriteString("Never ask the person a question while they are away.\n")
 	b.WriteString(autonomy.QuestionRoute() + "\n")
+	b.WriteString("An intent's open planning question is never a reason to stop: settle it " + intent.OpenQuestionsAwayRoute + " (iss-2611260602175153).\n")
 	b.WriteString("\nRun `abcd mode back` only on the person's word in this session.\n")
 	return b.String()
 }

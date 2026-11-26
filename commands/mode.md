@@ -158,6 +158,15 @@ message and the host's own resumptions open nothing. Every other session stays
 away, and once the 15 minutes pass the checks hold again in that session too:
 answer the person, then carry on with the owed work.
 
+**An intent's open question never stops the work while away.** The planning
+interview is how an intent's open questions are settled while the person is
+there. While they are away, `abcd build`'s start check, `abcd intent ready`, the
+record's page and the away block all name the other route: the session decides
+a technical or product question itself with `abcd decide` and marks it resolved
+citing that decision, queues one only the person may answer with
+`abcd mode queue`, and takes the next ready item meanwhile rather than waiting
+for their return.
+
 **A session whose setting reads as off a profile is warned.** After the set, one
 line on stderr opens `WARNING:` (stdout's JSON is untouched) when one setting in
 this session's environment reads as off a profile. A host that reports no such
