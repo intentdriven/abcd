@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // git runs git in dir under the isolated environment with a fixed identity,
@@ -98,7 +99,9 @@ func (f fixture) forge(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
-		return tipFromLsRemote(string(out), branch)
+		l := gitutil.RefListing{Ref: "refs/heads/" + branch}
+		l.Read(string(out))
+		return tipOf(l, branch)
 	}
 }
 
