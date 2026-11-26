@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func TestModeSetsTheStateBothWritersRead(t *testing.T) {
 		if got := string(runCLI(t, "mode")); got != st+"\n" {
 			t.Errorf("mode prints %q after `mode %s`", got, st)
 		}
-		res, err := statusline.Compose(root, statusline.Payload{}, statusline.Defaults())
+		res, err := statusline.ComposeContext(context.Background(), root, statusline.Payload{}, statusline.Defaults())
 		if err != nil {
 			t.Fatal(err)
 		}
