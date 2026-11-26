@@ -1683,6 +1683,7 @@ func TestAStopDuringTheWaitHolds(t *testing.T) {
 	if _, err := runstop.Lift(home, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	reserved := reservedAtFirstLand(t, w, res.Issue)
 	again := w.options(t)
 	again.Stop = make(chan struct{})
 	again.Drain.Max = 0
@@ -1691,19 +1692,16 @@ func TestAStopDuringTheWaitHolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
-		t.Fatalf("a new drive reserved a run a person's stop halted: %+v\n%s", r, w.said())
+	// Once the stop is lifted the drive's start takes the run up (itd-2611141610197753
+	// decision 1), naming no typed take-over.
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop != nil {
+		t.Fatalf("a new drive left the lifted stop's mark: %+v\n%s", c.Stop, w.said())
 	}
-	if !slices.ContainsFunc(next.PassedOver, func(p Excluded) bool {
-		return p.ID == res.Issue && strings.Contains(p.Reason, "implement resume --take "+res.Run)
-	}) {
-		t.Fatalf("the drive names the run and its take-over: %+v", next.PassedOver)
+	if slices.ContainsFunc(next.PassedOver, func(p Excluded) bool { return p.ID == res.Issue }) || strings.Contains(w.said(), "resume --take") {
+		t.Fatalf("the drive names the run it took up as a person's: %+v\n%s", next.PassedOver, w.said())
 	}
-	if _, err := TakeRun(w.repo.Root(), res.Run, Options{stopHome: home, Now: w.clock.now}); err != nil {
-		t.Fatalf("the take-over it waits for: %v", err)
-	}
-	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive {
-		t.Fatalf("the take-over reserves again: %+v", r)
+	if r := reserved(); r.State != claim.StateLive {
+		t.Fatalf("the take-up did not reserve the run again before it stepped: %+v", r)
 	}
 }
 
@@ -1758,7 +1756,7 @@ func TestALaneLetGoReadsAsNoPersonsHalt(t *testing.T) {
 		if !letGoByDrive(run) {
 			t.Errorf("the issue is let go for the wait:\n%s", w.said())
 		}
-		if why := waitsUntaken(w.repo.Root(), run); why != "" {
+		if why := waitsUntakenTo(w.repo.Root(), run, false); why != "" {
 			t.Errorf("nothing says a person has it: %q", why)
 		}
 		if haltedByPerson(w.repo.Root(), run.RunID) {

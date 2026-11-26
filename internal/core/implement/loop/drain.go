@@ -1353,7 +1353,7 @@ walk:
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
 			if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
-				if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+				if why := waitsUntakenTo(repoRoot, runs[i], o.driverIsSelf); why != "" {
 					res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				}
 			}
@@ -1403,7 +1403,7 @@ walk:
 		// whether its record has changed since; on origin the hand-back's
 		// tombstone and this drain's routes say so (drain_readmit.go).
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.covers(v.ID) && !r.issueHandedBack() }); i >= 0 {
-			if why := waitsUntaken(repoRoot, runs[i]); why != "" {
+			if why := waitsUntakenTo(repoRoot, runs[i], o.driverIsSelf); why != "" {
 				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckNeedsPerson, Reason: why})
 				continue
 			}

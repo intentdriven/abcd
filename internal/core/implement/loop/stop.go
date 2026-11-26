@@ -107,7 +107,7 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 		if err != nil || rec == nil {
 			return note, err
 		}
-		return note, stopRefusal(runID, *rec)
+		return note, stopRefusalTo(runID, *rec, o.driverIsSelf)
 	}
 	if r.Stop != nil {
 		return settle(*r.Stop)
@@ -132,15 +132,18 @@ func stopCheck(repoRoot, runID string, steps Stages, o Options) (string, error) 
 		case len(r.Refused) > 0:
 			said = "the read of where it stood was refused, so whether it lifted cannot be told"
 		}
+		remedy := "run `abcd implement resume --take " + runID + "`, which reserves the work again before anything steps"
+		if o.driverIsSelf {
+			remedy = "a drive's start takes it over where it may, which reserves the work again before anything steps"
+		}
 		return note, contend(StageStop, "", "", fmt.Sprintf("%s was halted by a stop set by %s at %s, and let its claims go; %s",
-			runID, termsafe.Sanitize(mark.SetBy), mark.SetAt.UTC().Format(time.RFC3339), said),
-			"run `abcd implement resume --take "+runID+"`, which reserves the work again before anything steps")
+			runID, termsafe.Sanitize(mark.SetBy), mark.SetAt.UTC().Format(time.RFC3339), said), remedy)
 	case !mark.FromFile:
 		// A signal's stop has no file to lift: it settles, and stays.
 		return settle(runstop.Stop{SetBy: mark.SetBy, SetAt: mark.SetAt})
 	case len(r.Refused) > 0:
 		// Only a read that saw clearly and found no stop is a lift.
-		return note, stopRefusal(runID, *mark)
+		return note, stopRefusalTo(runID, *mark, o.driverIsSelf)
 	}
 	// Lifted before the run let its claims go: it holds them still, so it just
 	// goes on.
@@ -279,8 +282,13 @@ func leftUnderStop(s runstop.Stop, left *Refusal) error {
 	return r
 }
 
-// stopRefusal is the answer a move gets while a stop holds.
-func stopRefusal(runID string, rec RunStop) error {
+// stopRefusal is the answer a move gets while a stop holds, as a session that is not a
+// drive reads it.
+func stopRefusal(runID string, rec RunStop) error { return stopRefusalTo(runID, rec, false) }
+
+// stopRefusalTo is stopRefusal for its reader: a drive (drive) takes a signal's run over at
+// its next start itself, so its remedy names no command a person types for it.
+func stopRefusalTo(runID string, rec RunStop, drive bool) error {
 	state := "with an agent still in its call; a later check settles it"
 	switch {
 	case rec.HaltedAt != nil:
@@ -289,8 +297,13 @@ func stopRefusal(runID string, rec RunStop) error {
 		state = "with work that could not be saved aside left uncommitted in its worktree and nowhere else; its claims lapse at their lease unless renewed, which the run renewal of a load-gate waiter or `abcd implement status` does; that run renewal skips a run parked at land, though the waiter's renewal of this copy's own reservations, which reads no run, still may renew its reservation; the run record names it"
 	}
 	remedy := "the person's own `abcd implement stop --lift` lifts it; hand back any receipt you hold with `abcd implement receipt`, then stop"
-	if !rec.FromFile {
+	switch {
+	case !rec.FromFile && drive:
+		remedy = "it came from a signal, and a drive's start takes the run over once it has settled, where nothing else drives it"
+	case !rec.FromFile:
 		remedy = "it came from a signal, and `abcd implement resume --take " + runID + "` takes the run over once it has settled; hand back any receipt you hold with `abcd implement receipt`, then stop"
+	case drive:
+		remedy = "the person's own `abcd implement stop --lift` lifts it, and a drive's start then takes the run up where it may"
 	}
 	reason := fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
 		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state)
@@ -333,25 +346,34 @@ func waitsForTakeOver(runID string) string {
 }
 
 // waitsForItsTakeOver says what a run a stop halted waits for, "" for a run no stop halted;
-// a record that cannot be read is said, and nothing is done on it.
-func waitsForItsTakeOver(repoRoot, runID string) string {
+// a record that cannot be read is said, and nothing is done on it. A drive (drive) is told
+// what its own start does, never a command a person types to take the run over.
+func waitsForItsTakeOver(repoRoot, runID string, drive bool) string {
 	c, err := runControl(repoRoot, runID)
+	id := termsafe.Sanitize(runID)
 	switch {
 	case err != nil:
-		return fmt.Sprintf("the control record of run %s cannot be read, so nothing is done for it: %s", termsafe.Sanitize(runID), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return fmt.Sprintf("the control record of run %s cannot be read, so nothing is done for it: %s", id, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	case c.Stop == nil || c.Stop.HaltedAt == nil:
 		return ""
+	case c.Stop.FromFile && drive:
+		return fmt.Sprintf("a person's stop halted run %s; once the person lifts it, a drive's start takes the run up where it may", id)
 	case c.Stop.FromFile:
 		return waitsForTakeOver(runID)
+	case drive:
+		return fmt.Sprintf("a signal to a drive halted run %s, which `%s` takes over at its start where it may", id, TerminalResumeCommand)
 	}
-	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", termsafe.Sanitize(runID), termsafe.Sanitize(runID))
+	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", id, id)
 }
 
-// stopMarkNote says why a stop's mark leaves nothing to be done for a run, "" for a run with
+// stopMarkNoteTo says why a stop's mark leaves nothing to be done for a run, "" for a run with
 // none: what a halted run waits for, or what takes up one that has not settled. A record
 // that cannot be read is said, and nothing is done on it.
-func stopMarkNote(repoRoot, runID string) string {
-	if note := waitsForItsTakeOver(repoRoot, runID); note != "" {
+//
+// A drive (drive) settles and takes up a marked run at its start where it may, so it is
+// told that, never a command a person types.
+func stopMarkNoteTo(repoRoot, runID string, drive bool) string {
+	if note := waitsForItsTakeOver(repoRoot, runID, drive); note != "" {
 		return note
 	}
 	c, err := runControl(repoRoot, runID)
@@ -359,6 +381,13 @@ func stopMarkNote(repoRoot, runID string) string {
 		return ""
 	}
 	id := termsafe.Sanitize(runID)
+	switch {
+	case drive && !c.Stop.FromFile:
+		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it yet: `%s` settles it and takes it over at its start where it may", id, TerminalResumeCommand)
+	case drive:
+		return fmt.Sprintf("a stop set by %s marked run %s, which has not settled, so nothing is done for it yet: a drive takes it up once the stop lifts",
+			termsafe.Sanitize(c.Stop.SetBy), id)
+	}
 	if !c.Stop.FromFile {
 		// A signal has nothing to lift, so its mark is only ever taken over.
 		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it: `abcd implement resume --take %s` takes it over", id, id)
@@ -406,20 +435,21 @@ func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error
 			}
 		}
 	}
-	note := stopMarkNote(repoRoot, runID)
+	note := stopMarkNoteTo(repoRoot, runID, o.driverIsSelf)
 	if note != "" && left != "" {
 		note += "; it is left as it stands: " + left
 	}
 	return note, nil
 }
 
-// waitsUntaken says what a run no later drive takes up waits for: one a person's stop halted,
+// waitsUntakenTo says what a run no later drive takes up waits for: one a person's stop halted,
 // or a parked one either kind of stop did. It is "" for any other.
-func waitsUntaken(repoRoot string, run State) string {
+// A drive (drive) is told what its own start does with the run (waitsForItsTakeOver).
+func waitsUntakenTo(repoRoot string, run State, drive bool) string {
 	if run.Complete() || (!haltedByPerson(repoRoot, run.RunID) && parkedAtLand(run) < 0) {
 		return ""
 	}
-	return waitsForItsTakeOver(repoRoot, run.RunID)
+	return waitsForItsTakeOver(repoRoot, run.RunID, drive)
 }
 
 // haltRun applies a stop in its order, one read from the file or one that did not
