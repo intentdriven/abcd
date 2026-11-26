@@ -430,20 +430,33 @@ func denyListing(dirs ...string) (func() error, error) {
 }
 
 // removeClone deletes the copy's clone dir. Its run's folder may be closed to
-// listing (denyListing), and deleting a tree opens the folder that holds it,
-// so the clone is first moved into a fresh folder of its own beside it, named
-// at random and readable, and deleted there; where it cannot be moved, it is
-// deleted where it is.
+// listing (denyListing), and os.RemoveAll opens the folder that holds what it
+// deletes, so the clone's entries are deleted from inside the clone, which
+// stays readable, and the emptied clone is then removed from its folder by
+// name, which owner write and traverse allow. A clone that is not a real
+// directory is removed as it is, never followed.
 func removeClone(dir string) error {
-	tmp, err := os.MkdirTemp(filepath.Dir(dir), ".removing-")
+	fi, err := os.Lstat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	case !fi.IsDir():
+		return os.Remove(dir)
+	}
+	ents, err := os.ReadDir(dir)
 	if err != nil {
-		return os.RemoveAll(dir)
+		return err
 	}
-	moved := filepath.Join(tmp, filepath.Base(dir))
-	if err := os.Rename(dir, moved); err != nil {
-		return errors.Join(os.RemoveAll(dir), os.Remove(tmp))
+	var errs []error
+	for _, e := range ents {
+		errs = append(errs, os.RemoveAll(filepath.Join(dir, e.Name())))
 	}
-	return errors.Join(os.RemoveAll(moved), os.Remove(tmp))
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+	return os.Remove(dir)
 }
 
 // runFolder makes run's folder in the hand-off store, a real directory

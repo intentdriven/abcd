@@ -1030,3 +1030,51 @@ func TestALaunchKilledOutrightLeavesNoFolderClosed(t *testing.T) {
 	back(host2, hostClone2)
 	modes("after a hand-back that found the lock free", 0o700)
 }
+
+// TestACloneIsDeletedFromAFolderClosedToListing: a copy's clone is deleted
+// whole while its run's folder is closed to listing, as a launch holds it,
+// leaving nothing beside it; a link in the clone's place is removed, never
+// followed.
+func TestACloneIsDeletedFromAFolderClosedToListing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the superuser lists a folder whatever its mode")
+	}
+	run := filepath.Join(t.TempDir(), "run")
+	clone := filepath.Join(run, "copy_a")
+	for _, d := range []string{filepath.Join(clone, ".git", "objects"), filepath.Join(clone, "widget")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(clone, ".git", "objects", "ab"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	kept := t.TempDir()
+	if err := os.WriteFile(filepath.Join(kept, "keep.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(kept, filepath.Join(run, "copy_b")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(run, listingDenied); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(run, 0o700) })
+	for _, dir := range []string{clone, filepath.Join(run, "copy_b")} {
+		if err := removeClone(dir); err != nil {
+			t.Fatalf("removeClone(%s) with its folder closed: %v", filepath.Base(dir), err)
+		}
+		if _, err := os.Lstat(dir); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s is still there: %v", filepath.Base(dir), err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(kept, "keep.txt")); err != nil {
+		t.Fatalf("a link's target was followed: %v", err)
+	}
+	if err := os.Chmod(run, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if ents, err := os.ReadDir(run); err != nil || len(ents) != 0 {
+		t.Fatalf("the run's folder holds %v (%v); want nothing", ents, err)
+	}
+}
