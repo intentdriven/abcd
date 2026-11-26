@@ -333,7 +333,8 @@ func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
 }
 
 // TestTheBoardSaysWhoMerges pins the facilitator: line (iss-2610262034286775,
-// itd-2611252117557299): the mode, whose setting it is and where it was set,
+// itd-2611252117557299): the mode, whose setting it is (the project enforces
+// auto, prevents it, or leaves it to each contributor) and where it was set,
 // and what the merge gate does with a ready pull request in it. human merges
 // once the technical facilitator approves; auto merges autonomously once a
 // review pair has passed. The product view draws it as a line of its own above
@@ -342,7 +343,9 @@ func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
 func TestTheBoardSaysWhoMerges(t *testing.T) {
 	person := &Merges{Mode: "human", Layer: "bundled", Origin: "bundled"}
 	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json at main"}
+	repoHuman := &Merges{Mode: "human", Layer: "repo", Origin: ".abcd/config.json at main"}
 	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	machineAuto := &Merges{Mode: "auto", Layer: "machine", Origin: abcdhome.Display("config.json")}
 	refusedHome := &Merges{Mode: "human", Layer: "machine", Origin: "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide human cannot be read; run abcd with your own HOME", HomeRefused: true}
 	for _, c := range []struct {
 		name string
@@ -351,15 +354,17 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		form Form
 		want string
 	}{
-		{"bundled, facilitator view", person, Facilitator, Text, "  facilitator: human (not set, the bundled default): merges once the technical facilitator approves the head"},
-		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head"},
-		{"machine human, facilitator view", machine, Facilitator, Text, "  facilitator: human (this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves the head"},
-		{"bundled, product view", person, Product, Text, "facilitator: human (not set, the bundled default): merges once the technical facilitator approves"},
-		{"repo auto, product view", repoAuto, Product, Text, "facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
-		{"repo auto, markdown", repoAuto, Product, Markdown, "- facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
-		{"machine human, product view", machine, Product, Text, "facilitator: human (this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves"},
-		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves the head"},
-		{"refused home, product view", refusedHome, Product, Text, "facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves"},
+		{"bundled, facilitator view", person, Facilitator, Text, "  facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head"},
+		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head"},
+		{"machine human, facilitator view", machine, Facilitator, Text, "  facilitator: human (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves the head"},
+		{"repo human, facilitator view", repoHuman, Facilitator, Text, "  facilitator: human (the project prevents auto, set in .abcd/config.json at main): merges once the technical facilitator approves the head"},
+		{"machine auto, facilitator view", machineAuto, Facilitator, Text, "  facilitator: auto (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges autonomously, once a review pair passes the head"},
+		{"bundled, product view", person, Product, Text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves"},
+		{"repo auto, product view", repoAuto, Product, Text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
+		{"repo auto, markdown", repoAuto, Product, Markdown, "- facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
+		{"machine human, product view", machine, Product, Text, "facilitator: human (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves"},
+		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves the head"},
+		{"refused home, product view", refusedHome, Product, Text, "facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 200, Rung: Mono})

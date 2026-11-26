@@ -175,7 +175,9 @@ const (
 // origin that decided it. Layer is "bundled" (Origin "bundled") when no layer
 // declares the key; otherwise Origin names the file that set it
 // (".abcd/config.json", or the machine file in its tilde form), or, for a
-// refused home, why the machine layer could not be read.
+// refused home, why the machine layer could not be read. Layer "repo" is the
+// project's committed value, which enforces auto or prevents it; any other
+// layer is a project that leaves the mode to each contributor.
 type Facilitator struct {
 	Key    string `json:"key"`
 	Mode   string `json:"mode"`
@@ -184,6 +186,34 @@ type Facilitator struct {
 	// HomeRefused says a refused home decided the mode (human), so Origin is
 	// the reason, not a file.
 	HomeRefused bool `json:"home_refused,omitempty"`
+	// Over is the computer's own value where the project's stands above it
+	// and they differ, "" otherwise: the project enforces auto over this
+	// computer's human, or prevents it over this computer's auto.
+	Over string `json:"over,omitempty"`
+}
+
+// Says is whose the mode is, in the ruling's words (dcn-2611252132144530):
+// the project enforces auto, the project prevents it, or the project leaves
+// it to each contributor, with what decided it then. The gate's reason, the
+// guard's reason, the prompt line and the board say it so.
+func (f Facilitator) Says() string {
+	var s string
+	switch {
+	case f.Layer == layered.Repo.String() && f.Mode == ModeAuto:
+		s = "the project enforces auto"
+	case f.Layer == layered.Repo.String():
+		s = "the project prevents auto"
+	case f.HomeRefused:
+		return "left to each contributor, and this computer's file could not be read"
+	case f.Layer == layered.Machine.String():
+		return "left to each contributor, and this computer's file sets " + f.Mode
+	default:
+		return "left to each contributor, and set nowhere"
+	}
+	if f.Over != "" {
+		s += " over this computer's " + f.Over
+	}
+	return s
 }
 
 // checkMode accepts the two modes, exactly as spelt.
@@ -198,14 +228,15 @@ func checkMode(m string) error {
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
 //
-// The precedence is land's switches' (readSwitches), not the reader's
-// ordinary one: human from any layer wins, so a person can take the role back
-// for every repository on their machine and no repository's file takes it from
-// them. Every layer that holds the key is decoded and checked, so a value other
-// than human or auto is refused in whichever layer it sits. With no human
-// anywhere, the highest layer that says auto decides; with no layer at all,
-// the bundled default human does. A home RootsFor refused hides the machine
-// layer, and with it any machine-wide human, so the mode reads as human.
+// The precedence is the product thinker's ruling of 2026-11-25
+// (dcn-2611252132144530): the project's committed value is above a person's
+// own, so a project enforces auto or prevents it, and with no value leaves the
+// mode to each contributor, whose computer's file then decides. Every layer
+// that holds the key is decoded and checked, so a value other than human or
+// auto is refused in whichever layer it sits. With neither layer, the bundled
+// default human decides. A home RootsFor refused hides the machine layer, so
+// where the project has no value the mode reads as human and says why; where
+// it has one, that value stands.
 func readMode(r layered.Roots) (Facilitator, error) {
 	return readModeContext(context.Background(), r)
 }
@@ -252,18 +283,34 @@ func repoLayerMode(vals []layerValue[string]) string {
 
 // resolveMode is facilitator.mode's one precedence (readMode) over the layers'
 // decoded values, highest first: every reader of the mode, the row's kept
-// reading among them, answers through it.
+// reading among them, answers through it (resolver_audit_test.go holds every
+// other reader to it). The repository layer's value decides first, with the
+// computer's own value it stands above where they differ; with none, the
+// highest other layer's; with neither, a refused home reads human and says
+// why, and else the bundled human does.
 func resolveMode(vals []layerValue[string], homeRefused bool) Facilitator {
-	for _, v := range vals {
-		if v.v == ModeHuman {
-			return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: v.layer, Origin: v.origin}
+	var project, other *layerValue[string]
+	for i := range vals {
+		switch {
+		case vals[i].layer == layered.Repo.String():
+			if project == nil {
+				project = &vals[i]
+			}
+		case other == nil:
+			other = &vals[i]
 		}
 	}
-	if homeRefused {
+	switch {
+	case project != nil:
+		f := Facilitator{Key: KeyFacilitatorMode, Mode: project.v, Layer: project.layer, Origin: project.origin}
+		if other != nil && other.v != project.v {
+			f.Over = other.v
+		}
+		return f
+	case other != nil:
+		return Facilitator{Key: KeyFacilitatorMode, Mode: other.v, Layer: other.layer, Origin: other.origin}
+	case homeRefused:
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman), HomeRefused: true}
-	}
-	if len(vals) > 0 {
-		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}
 	}
 	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}
 }
@@ -497,38 +544,45 @@ func deadlineErr(err error) error {
 }
 
 // AutoSessionLine is the one line the prompt hook gives a session on every
-// prompt while facilitator.mode is auto (iss-2611211700231699), beside the
-// away block and whether or not the person is away: what the setting means
-// for a session, as the person ruled it (dcn-2611070734169709). It grants
+// prompt while the resolved facilitator.mode is auto (iss-2611211700231699),
+// beside the away block and whether or not the person is away: what the
+// setting means for a session, as the person ruled it (dcn-2611070734169709),
+// and whose setting it is (Says). It is "" for any other reading. It grants
 // nothing an act did not already have: the question gate, the stop check and
 // the guard's acts reserved to the person are unchanged.
-const AutoSessionLine = "The technical facilitator is on auto (" + KeyFacilitatorMode + ", as the default branch and this machine set it): a technical question is decided and recorded with `abcd decide`, not asked, and finished work does not wait for a person to read it. An act a command page reserves to the person is still the person's: it waits for them and holds back nothing else, so carry on with the rest of the work."
+func AutoSessionLine(f Facilitator) string {
+	if f.Mode != ModeAuto {
+		return ""
+	}
+	return "The technical facilitator is on auto (" + KeyFacilitatorMode + ": " + f.Says() + "): a technical question is decided and recorded with `abcd decide`, not asked, and finished work does not wait for a person to read it. An act a command page reserves to the person is still the person's: it waits for them and holds back nothing else, so carry on with the rest of the work."
+}
 
-// AutoForSessions reports whether facilitator.mode is auto as the board reads
-// it (readDefaultFacilitatorContext): the default branch's committed
-// .abcd/config.json as last fetched and the machine layer, never the working
-// tree's copy, its git questions bounded by ctx and none of them asking the
-// network, so a hook can ask it on every prompt. A repository with no
-// default branch yet reads as not auto, with no error. The error is the
+// AutoForSessions is facilitator.mode as the board reads it
+// (readDefaultFacilitatorContext), the reading itself so the prompt line can
+// say whose it is: the default branch's committed .abcd/config.json as last
+// fetched and the machine layer, never the working tree's copy, its git
+// questions bounded by ctx and none of them asking the network, so a hook can
+// ask it on every prompt. A repository with no default branch yet reads as
+// the zero Facilitator, which is not auto, with no error. The error is the
 // reader's raw text, for the caller to mask; a caller takes it as human.
 //
 // It is also what keeps the reading the status line's row shows (keepMode):
 // the prompt hook has the second that the row does not, and asks git this
 // anyway. The kept reading never answers it.
-func AutoForSessions(ctx context.Context, root string) (bool, error) {
+func AutoForSessions(ctx context.Context, root string) (Facilitator, error) {
 	r, ref, err := defaultTipRoots(ctx, root)
 	switch {
 	case errors.Is(err, ErrNoDefaultBranch):
-		return false, nil
+		return Facilitator{}, nil
 	case err != nil:
-		return false, err
+		return Facilitator{}, err
 	}
 	vals, _, err := modeLayers(ctx, r)
 	keepMode(ctx, r, ref, vals, err)
 	if err != nil {
-		return false, err
+		return Facilitator{}, err
 	}
-	return resolveMode(vals, r.HomeRefused).Mode == ModeAuto, nil
+	return resolveMode(vals, r.HomeRefused), nil
 }
 
 // LiveMerging is the presence line's merging element on the board, read: the

@@ -206,7 +206,8 @@ func renderRow(in Input, set Settings) Row {
 }
 
 // MergingLabel opens the merging element, and MergingUnread is the whole of it
-// where the mode was not read: never a mode beside it.
+// where the mode was not read: never a mode beside it, and only why where the
+// computer's file could not be read.
 const (
 	MergingLabel  = "facilitator:"
 	MergingUnread = MergingLabel + " not read"
@@ -222,13 +223,17 @@ var whoseWords = map[MergingWhose]string{
 
 // mergingText is the merging element: `facilitator: auto (project)`, with
 // `, read 14:02` where the reading may be older than the default branch, or
-// `facilitator: not read`.
+// `facilitator: not read`, with `(computer's file not read)` where a refused
+// home is why.
 func mergingText(m Merging) string {
 	switch m.State {
 	case MergingUnasked:
 		return ""
 	case MergingHuman, MergingAuto:
 	default:
+		if m.Whose == WhoseComputerUnread {
+			return MergingUnread + " (" + whoseWords[m.Whose] + ")"
+		}
 		return MergingUnread
 	}
 	in := whoseWords[m.Whose]

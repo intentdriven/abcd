@@ -139,7 +139,8 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 // Merging is what a composition knows of the repository's facilitator.mode.
 type Merging struct {
 	State MergingState `json:"state"`
-	// Whose is whose setting decides the mode; "" with no mode.
+	// Whose is whose setting decides the mode; "" with no mode, but for
+	// WhoseComputerUnread, which says why there is none.
 	Whose MergingWhose `json:"whose,omitempty"`
 	// Read is when the reading was made, as the row says it, where the
 	// default branch is known to have moved since, or cannot be told not to

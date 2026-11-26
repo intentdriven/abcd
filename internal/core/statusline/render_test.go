@@ -691,7 +691,8 @@ func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
 // TestTheMergingElementNamesTheModeInEveryState pins the element's words: the
 // mode in both values and whose setting it is, the time a reading was made
 // where the default branch may have moved since, and `not read` with no mode
-// beside it. Unasked draws nothing.
+// beside it, saying so where the computer's file could not be read. Unasked
+// draws nothing.
 func TestTheMergingElementNamesTheModeInEveryState(t *testing.T) {
 	for _, c := range []struct {
 		m    Merging
@@ -707,6 +708,9 @@ func TestTheMergingElementNamesTheModeInEveryState(t *testing.T) {
 		{Merging{State: MergingHuman, Whose: WhoseComputer, Read: "2026-11-24 14:02"}, "facilitator: human (computer, read 2026-11-24 14:02)"},
 		{Merging{State: MergingUnknown}, "facilitator: not read"},
 		{Merging{State: MergingUnknown, Read: "14:02"}, "facilitator: not read"},
+		{Merging{State: MergingUnknown, Whose: WhoseComputerUnread}, "facilitator: not read (computer's file not read)"},
+		{Merging{State: MergingUnknown, Whose: WhoseComputerUnread, Read: "14:02"}, "facilitator: not read (computer's file not read)"},
+		{Merging{State: MergingUnknown, Whose: WhoseProject}, "facilitator: not read"},
 		{Merging{State: "\x1b[31mauto"}, "facilitator: not read"},
 		{Merging{}, ""},
 	} {

@@ -171,8 +171,10 @@ func Render(in Input, f Frame) []string {
 const facilitatorLabel = "facilitator: "
 
 // mergesText is the facilitator: line without its label: the mode, whose
-// setting it is and where it was set, and what the merge gate does with a
-// ready pull request in it (landing's mergeGate): under human it merges once
+// setting it is in the ruling's words (the project enforces auto, prevents it,
+// or leaves it to each contributor, dcn-2611252132144530) and where it was
+// set, and what the merge gate does with a ready pull request in it
+// (landing's mergeGate): under human it merges once
 // the technical facilitator approves, under auto autonomously once a review
 // pair passes. The facilitator view says it of the head. A refused read says
 // the mode was not read and carries the refusal; a refused home names itself,
@@ -185,14 +187,17 @@ func mergesText(m *Merges, v View) string {
 	if m.Refused != "" {
 		return termsafe.Sanitize("not read (" + m.Refused + ")")
 	}
-	whose := "the project's, set in " + m.Origin
+	whose := "the project prevents auto, set in " + m.Origin
 	switch {
+	case m.Layer == "repo" && m.Mode == "auto":
+		whose = "the project enforces it, set in " + m.Origin
+	case m.Layer == "repo":
 	case m.HomeRefused:
-		whose = "abcd could not read your own settings file safely"
-	case m.Layer == "bundled":
-		whose = "not set, the bundled default"
+		whose = "left to each contributor: abcd could not read your own settings file safely"
 	case m.Layer == "machine":
-		whose = "this computer's, set in " + m.Origin
+		whose = "left to each contributor: this computer's, set in " + m.Origin
+	default:
+		whose = "left to each contributor: not set, the bundled default"
 	}
 	outcome := "merges once the technical facilitator approves"
 	if m.Mode == "auto" {

@@ -96,8 +96,8 @@ func asBlock(line string) string {
 }
 
 // promptFacilitatorLine is what facilitator.mode adds to one prompt: while it
-// is auto, as the status line reads it, one line saying what that means for a
-// session (landing.AutoSessionLine, iss-2611211700231699), sent beside the away
+// resolves to auto, one line saying what that means for a session and whose
+// setting it is (landing.AutoSessionLine, iss-2611211700231699), sent beside the away
 // block on every prompt and outside the rules loader's dedup ledger, and ""
 // otherwise. Only in a checkout abcd manages at root, and never on a drive's
 // stage, as the away record is read. Its git questions are bounded by ctx, the
@@ -108,7 +108,7 @@ func promptFacilitatorLine(ctx context.Context, stderr io.Writer, root string) s
 	if root == "" || stageActive() || ctx.Err() != nil || !autonomy.Managed(root) {
 		return ""
 	}
-	auto, err := landing.AutoForSessions(ctx, root)
+	f, err := landing.AutoForSessions(ctx, root)
 	if err != nil {
 		if ctx.Err() == nil {
 			msg := strings.ReplaceAll(fsutil.RedactHome(err.Error()), root, ".")
@@ -116,10 +116,7 @@ func promptFacilitatorLine(ctx context.Context, stderr io.Writer, root string) s
 		}
 		return ""
 	}
-	if !auto {
-		return ""
-	}
-	return asBlock(landing.AutoSessionLine)
+	return asBlock(landing.AutoSessionLine(f))
 }
 
 // readAwayFailOpen is the hooks' read of the away record: ok false when there

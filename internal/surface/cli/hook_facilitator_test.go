@@ -103,3 +103,42 @@ func TestPromptRouterNoFacilitatorLineUnlessAuto(t *testing.T) {
 		})
 	}
 }
+
+// TestPromptRouterFacilitatorLineSaysWhoseItIs (itd-2611252049031692
+// criterion 20): the line is sent under the resolved auto and not under the
+// resolved human, and says whose setting it is. The project's committed value
+// stands above the computer's file, so a project's auto over the computer's
+// human sends it, and a project's human over the computer's auto does not.
+func TestPromptRouterFacilitatorLineSaysWhoseItIs(t *testing.T) {
+	const auto, human = `{"facilitator": {"mode": "auto"}}`, `{"facilitator": {"mode": "human"}}`
+	for _, c := range []struct {
+		name, committed, machine, whose string
+	}{
+		{"the project's auto over the computer's human", auto, human, "(facilitator.mode: the project enforces auto over this computer's human)"},
+		{"the project's auto", auto, "", "(facilitator.mode: the project enforces auto)"},
+		{"the computer's auto where the project leaves it to each", "", auto, "(facilitator.mode: left to each contributor, and this computer's file sets auto)"},
+		{"the project's human over the computer's auto", human, auto, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := mergingCheckout(t, c.committed)
+			if c.machine != "" {
+				writeMachineConfig(t, c.machine)
+			}
+			ownHookBudgets(t, 10*time.Second)
+			so, stderr, err := runSplit(t, awayPromptPayload("f4", root, "hello"), "hook", "prompt-router")
+			if err != nil {
+				t.Fatalf("prompt-router: %v\n%s", err, stderr)
+			}
+			out := decodePromptHook(t, so)
+			if c.whose == "" {
+				if hasFacilitatorLine(out.Context) {
+					t.Errorf("the facilitator line was sent under the project's human:\n%s", out.Context)
+				}
+				return
+			}
+			if !hasFacilitatorLine(out.Context) || !strings.Contains(out.Context, "on auto "+c.whose) {
+				t.Errorf("the facilitator line misses whose it is, %q:\n%s", c.whose, out.Context)
+			}
+		})
+	}
+}

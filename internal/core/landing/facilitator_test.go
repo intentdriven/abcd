@@ -349,19 +349,42 @@ func TestTheLaneDoesNotDecideItsOwnMode(t *testing.T) {
 	wantLeft(t, g, landGate(t, g), "facilitator.mode is human")
 }
 
-// human in the machine layer beats auto in the repository's.
-func TestTheMachinesHumanWins(t *testing.T) {
-	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
-	dir := abcdhome.Path(f.home)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
+// The project's committed value stands above the computer's file
+// (dcn-2611252132144530): the default branch's auto arms a reviewed head over
+// the computer's human, and its human holds one back over the computer's auto.
+func TestTheProjectsValueStandsAboveTheComputers(t *testing.T) {
+	for _, c := range []struct {
+		name, project, computer string
+		armed                   bool
+	}{
+		{"auto over the computer's human", autoConfig, humanConfig, true},
+		{"human over the computer's auto", humanConfig, autoConfig, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.project})
+			dir := abcdhome.Path(f.home)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(c.computer), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f.forge.reviews = "[]"
+			f.reviewed(t)
+			s := landGate(t, f)
+			if c.armed {
+				wantArmed(t, f, s)
+				if !strings.Contains(s.Note, "facilitator.mode is auto") || !strings.Contains(s.Note, "repo layer") {
+					t.Errorf("note = %q, want the project's auto named", s.Note)
+				}
+				return
+			}
+			wantLeft(t, f, s, "facilitator.mode is human")
+			if !strings.Contains(s.Note, "repo layer") {
+				t.Errorf("note = %q, want the project's human named", s.Note)
+			}
+		})
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(humanConfig), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f.forge.reviews = "[]"
-	f.reviewed(t)
-	wantLeft(t, f, landGate(t, f), "machine layer")
 }
 
 // A facilitator.mode refusal can quote a key a configuration file wrote; it

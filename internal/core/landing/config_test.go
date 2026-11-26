@@ -154,16 +154,19 @@ func TestAutoInTheMachineLayerAloneMakesAbcdTheFacilitator(t *testing.T) {
 	}
 }
 
-// A person takes the role back on their own machine, and no repository's file
-// takes it from them: human wins from any layer, though the repository's file
-// ordinarily beats the machine's.
-func TestHumanInTheMachineLayerWinsOverAutoInTheRepo(t *testing.T) {
+// The project's committed value is above the computer's (dcn-2611252132144530):
+// a project that commits auto is auto under the computer's human, and says it
+// enforces auto over it.
+func TestTheProjectsAutoStandsAboveTheComputersHuman(t *testing.T) {
 	f, err := readMode(configRoots(t, `{"facilitator":{"mode":"auto"}}`, `{"facilitator":{"mode":"human"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Mode != ModeHuman || f.Layer != "machine" || !strings.Contains(f.Origin, "abcd.noindex/config.json") {
-		t.Errorf("mode = %+v, want human from the machine file", f)
+	if f.Mode != ModeAuto || f.Layer != "repo" || f.Origin != ".abcd/config.json" || f.Over != ModeHuman {
+		t.Errorf("mode = %+v, want auto from .abcd/config.json over the computer's human", f)
+	}
+	if got, want := f.Says(), "the project enforces auto over this computer's human"; got != want {
+		t.Errorf("Says() = %q, want %q", got, want)
 	}
 }
 
@@ -229,17 +232,77 @@ func TestAFacilitatorThatIsNotAnObjectIsRefused(t *testing.T) {
 	}
 }
 
-// A home RootsFor refused hides the machine layer, and with it any machine-wide
-// human, so the facilitator reads as a person and says why.
-func TestARefusedHomeMakesTheFacilitatorAPerson(t *testing.T) {
+// A refused home no longer decides where the project has a value: a project
+// that commits auto is auto under it (criterion 3's first exception). Where
+// the project has none, the hidden computer's file reads as human and says why.
+func TestARefusedHomeDecidesOnlyWhereTheProjectHasNoValue(t *testing.T) {
 	r := configRoots(t, `{"facilitator":{"mode":"auto"}}`, "")
 	r.Home, r.HomeRefused = "", true
 	f, err := readMode(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.Mode != ModeHuman || f.Layer != "machine" || !strings.Contains(f.Origin, "home") {
+	if f.Mode != ModeAuto || f.Layer != "repo" || f.HomeRefused {
+		t.Errorf("mode = %+v, want auto from the repository file", f)
+	}
+	r = configRoots(t, "", "")
+	r.Home, r.HomeRefused = "", true
+	if f, err = readMode(r); err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeHuman || f.Layer != "machine" || !f.HomeRefused || !strings.Contains(f.Origin, "home") {
 		t.Errorf("mode = %+v, want human from the refused machine layer, saying why", f)
+	}
+}
+
+// TestTheProjectsValueDecidesFirst is the resolver's whole table without a
+// person's entry (itd-2611252049031692 criteria 1 and 3): the project's
+// committed value decides, then the computer's file, then the bundled human;
+// a refused home reads human only where the project has no value. Each cell
+// names the mode, the layer that decided it, the computer's value the
+// project's stands above where they differ, and whose it is in the words
+// enforced, prevented or left to each contributor.
+func TestTheProjectsValueDecidesFirst(t *testing.T) {
+	const auto, human = `{"facilitator":{"mode":"auto"}}`, `{"facilitator":{"mode":"human"}}`
+	const refused = "refused home"
+	for _, c := range []struct {
+		project, computer       string
+		mode, layer, over, says string
+	}{
+		{auto, auto, ModeAuto, "repo", "", "the project enforces auto"},
+		{auto, human, ModeAuto, "repo", ModeHuman, "the project enforces auto over this computer's human"},
+		{auto, "", ModeAuto, "repo", "", "the project enforces auto"},
+		{auto, refused, ModeAuto, "repo", "", "the project enforces auto"},
+		{human, auto, ModeHuman, "repo", ModeAuto, "the project prevents auto over this computer's auto"},
+		{human, human, ModeHuman, "repo", "", "the project prevents auto"},
+		{human, "", ModeHuman, "repo", "", "the project prevents auto"},
+		{human, refused, ModeHuman, "repo", "", "the project prevents auto"},
+		{"", auto, ModeAuto, "machine", "", "left to each contributor, and this computer's file sets auto"},
+		{"", human, ModeHuman, "machine", "", "left to each contributor, and this computer's file sets human"},
+		{"", "", ModeHuman, "bundled", "", "left to each contributor, and set nowhere"},
+		{"", refused, ModeHuman, "machine", "", "left to each contributor, and this computer's file could not be read"},
+	} {
+		name := "project " + c.project + ", computer " + c.computer
+		t.Run(name, func(t *testing.T) {
+			machine := c.computer
+			if machine == refused {
+				machine = ""
+			}
+			r := configRoots(t, c.project, machine)
+			if c.computer == refused {
+				r.Home, r.HomeRefused = "", true
+			}
+			f, err := readMode(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.Mode != c.mode || f.Layer != c.layer || f.Over != c.over {
+				t.Errorf("mode = %+v, want %s from the %s layer over %q", f, c.mode, c.layer, c.over)
+			}
+			if got := f.Says(); got != c.says {
+				t.Errorf("Says() = %q, want %q", got, c.says)
+			}
+		})
 	}
 }
 
@@ -259,9 +322,9 @@ func TestHumanInTheRepoUnderARefusedHomeIsReportedFromTheRepo(t *testing.T) {
 
 // The records write the setting as facilitator.mode, so a file may hold it as
 // one dotted key. The reader takes only the nested spelling, and silently
-// ignoring the dotted one would let a repository's auto beat the person's
-// machine-wide human, so it is refused in whichever layer it sits, naming the
-// file and the nested spelling a reader takes.
+// ignoring the dotted one would let a value its file meant to set go unread,
+// so it is refused in whichever layer it sits, naming the file and the nested
+// spelling a reader takes.
 func TestADottedFacilitatorModeKeyIsRefusedNamingItsFile(t *testing.T) {
 	for _, c := range []struct {
 		name, repo, machine, file, layer, key string
@@ -285,9 +348,9 @@ func TestADottedFacilitatorModeKeyIsRefusedNamingItsFile(t *testing.T) {
 }
 
 // A namespace spelt in another case is not the facilitator namespace, and
-// silently ignoring it would let a repository's auto beat the person's
-// machine-wide human, so it is refused in whichever layer it sits, naming the
-// file and the spelling a reader takes.
+// silently ignoring it would let a value its file meant to set go unread, so
+// it is refused in whichever layer it sits, naming the file and the spelling a
+// reader takes.
 func TestAMiscasedFacilitatorNamespaceIsRefusedNamingItsFile(t *testing.T) {
 	for _, c := range []struct {
 		name, repo, machine, file, layer, key string
