@@ -655,8 +655,12 @@ func (w *Written) brief(turn, asked int, answers []Answer, c carried) string {
 		"abcd's check refuses each in a question under a Product chip, unless the question introduces it in one sentence before its first use; a short form is introduced on its own, or named in the sentence introducing the word.\n\n")
 	for _, f := range question.BelowFloor() {
 		b.WriteString("- " + f.Word)
-		if len(f.Also) > 0 {
-			b.WriteString(" (also " + strings.Join(f.Also, ", ") + ")")
+		if len(f.Also)+len(f.Not) > 0 {
+			b.WriteString(" (also " + strings.Join(f.Also, ", "))
+			for _, n := range f.Not {
+				fmt.Fprintf(&b, "; %s: say %q", n, f.NotPlain)
+			}
+			b.WriteString(")")
 		}
 		if len(f.Short) > 0 {
 			b.WriteString(" (short " + strings.Join(f.Short, ", ") + ")")

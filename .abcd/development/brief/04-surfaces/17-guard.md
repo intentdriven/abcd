@@ -310,8 +310,11 @@ first use passes on that tab, the floor's own rule. The sentence is read by its
 shape: the word opens it, bare or after "a", and it goes on to say what the
 word is or means without using the word again, or it ends on what the thing is
 called; "the merge" is a merge the reader is taken to know, so it introduces
-nothing. A short form the list names (CI, a PR) is introduced on its own, or
-in the sentence introducing the word. No configuration lists further words or excepts any: the question
+nothing. A sentence opening on a term the word starts ("A push notification
+is a message the app sends.") introduces that term alone. A short form the
+list names (CI, a PR) is introduced on its own, or in the sentence introducing
+the word, and is never introduced by its own long form ("A PR is a pull
+request."). No configuration lists further words or excepts any: the question
 limits' namespace takes its three keys alone. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview

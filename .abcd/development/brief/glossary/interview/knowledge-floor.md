@@ -40,8 +40,9 @@ that fails this is rewritten, not annotated.
 
 The words the paragraph on the product thinker names, one to a row, each in the singular, with
 the other ways it is written and the plain words to use instead. The other written forms are the
-same word to a reader who knows it, its past tense or a clipping (merged, a repo), so a sentence
-introducing the word introduces them. A short form is an initialism or a coinage (CI, a PR, a
+same word to a reader who knows it, its past tense, a clipping or a negation (merged, a repo,
+uncommitted), so a sentence introducing the word introduces them; a negation carries its own
+plain words, in brackets after it. A short form is an initialism or a coinage (CI, a PR, a
 symlink), which a reader does not link to the word unless told, so it is introduced on its own,
 or named in the sentence introducing the word. abcd's question check refuses each one in a
 question to the product thinker, joined to another word by a hyphen ("auto-merge",
@@ -54,8 +55,8 @@ equal: a word is added to or taken from both, and from the paragraph, in one cha
 | version control | none | none | the kept history of every change |
 | checkout | none | none | the project's folder of work |
 | branch | none | none | a separate line of work |
-| merge | merged, merging, unmerged | none | adding finished work to the project |
-| commit | committed, committing, uncommitted | none | a saved change |
+| merge | merged, merging, unmerged (not yet added to the project) | none | adding finished work to the project |
+| commit | committed, committing, uncommitted (not yet saved) | none | a saved change |
 | worktree | none | none | a second folder of the project's work |
 | repository | repo | none | the project's files and their history |
 | pull request | none | PR | a request to add finished work |

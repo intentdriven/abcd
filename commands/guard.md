@@ -255,7 +255,9 @@ longer word (`emerged`) does not. A word the same tab's question text
 introduces in one sentence before its first use ("A checksum is a fingerprint
 saying two copies are identical.") passes on that tab; a sentence that uses
 the word it names ("The merge is the last step.") introduces nothing, and a
-short form (`CI`) is introduced on its own or in the word's sentence. A tab headed in
+short form (`CI`) is introduced on its own or in the word's sentence, never by
+its long form ("A PR is a pull request."). A sentence opening on a term the
+word starts ("A push notification is ...") introduces that term alone. A tab headed in
 the older form is judged by its own role word, so in one call a `Product Q2`
 tab is held to the product thinker's register beside a `Q1` tab asked while
 the mode names the facilitator. In a repository

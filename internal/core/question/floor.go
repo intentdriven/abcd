@@ -19,6 +19,10 @@ type FloorWord struct {
 	Also  []string
 	Short []string
 	Plain string
+	// Not is the word's negated forms ("uncommitted"), still the word to a
+	// reader who knows it, and NotPlain the plain words they say instead.
+	Not      []string
+	NotPlain string
 }
 
 // belowFloor is the words below the product thinker's knowledge floor, the
@@ -29,8 +33,8 @@ var belowFloor = []FloorWord{
 	{Word: "version control", Plain: "the kept history of every change"},
 	{Word: "checkout", Plain: "the project's folder of work"},
 	{Word: "branch", Plain: "a separate line of work"},
-	{Word: "merge", Also: []string{"merged", "merging", "unmerged"}, Plain: "adding finished work to the project"},
-	{Word: "commit", Also: []string{"committed", "committing", "uncommitted"}, Plain: "a saved change"},
+	{Word: "merge", Also: []string{"merged", "merging"}, Not: []string{"unmerged"}, NotPlain: "not yet added to the project", Plain: "adding finished work to the project"},
+	{Word: "commit", Also: []string{"committed", "committing"}, Not: []string{"uncommitted"}, NotPlain: "not yet saved", Plain: "a saved change"},
 	{Word: "worktree", Plain: "a second folder of the project's work"},
 	{Word: "repository", Also: []string{"repo"}, Plain: "the project's files and their history"},
 	{Word: "pull request", Short: []string{"PR"}, Plain: "a request to add finished work"},
@@ -58,6 +62,7 @@ func BelowFloor() []FloorWord {
 	for i := range out {
 		out[i].Also = slices.Clone(out[i].Also)
 		out[i].Short = slices.Clone(out[i].Short)
+		out[i].Not = slices.Clone(out[i].Not)
 	}
 	return out
 }
@@ -65,9 +70,11 @@ func BelowFloor() []FloorWord {
 // floorForm is one written form of a word below the floor, with its pattern.
 // Forms are tried longest first, so a merge queue is found as itself and not
 // also as a merge. group is 0 for the word and its other forms, and one more
-// than the index of a short form, which is introduced on its own.
+// than the index of a short form, which is introduced on its own. not marks a
+// negated form, which names its own plain words.
 type floorForm struct {
 	word, group int
+	not         bool
 	form        string
 	re          *regexp.Regexp
 }
@@ -84,6 +91,9 @@ func compileFloorForms() []floorForm {
 		}
 		for k, f := range forms {
 			out = append(out, floorForm{word: i, group: groups[k], form: f, re: formRe(f)})
+		}
+		for _, f := range w.Not {
+			out = append(out, floorForm{word: i, not: true, form: f, re: formRe(f)})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b floorForm) int { return len(b.form) - len(a.form) })
@@ -111,12 +121,15 @@ func formRe(f string) *regexp.Regexp {
 	if f == strings.ToUpper(f) {
 		fold = ""
 	}
-	return regexp.MustCompile(fold + strings.Join(parts, `[\s-]+`))
+	return regexp.MustCompile(fold + strings.Join(parts, `[\s\p{Zs}-]+`))
 }
 
 // floorUse is one use of a word below the floor: the word's index in
 // belowFloor, the form's group, and where the use starts and ends.
-type floorUse struct{ word, group, start, end int }
+type floorUse struct {
+	word, group, start, end int
+	not                     bool
+}
 
 // floorUses is every use of a word below the floor in s, in reading order. A
 // use is a whole word in any case, the plural included; a word inside a longer
@@ -134,7 +147,7 @@ func floorUses(s string) []floorUse {
 			for i := m[0]; i < m[1]; i++ {
 				taken[i] = true
 			}
-			out = append(out, floorUse{f.word, f.group, m[0], m[1]})
+			out = append(out, floorUse{word: f.word, group: f.group, start: m[0], end: m[1], not: f.not})
 		}
 	}
 	slices.SortFunc(out, func(a, b floorUse) int { return a.start - b.start })
@@ -178,9 +191,16 @@ const introWords = 3
 // introduces a word is longer.
 const introWindow = 1 << 10
 
+// introPhraseRe is a sentence opening on the product's own term whose first
+// word is the word below the floor ("A push notification is a message the app
+// sends."): one or two more words, then what the term is.
+var introPhraseRe = regexp.MustCompile(`(?i)^((?:[ \t]+\p{L}+){1,2}?)\s+(?:is|are|means?)\s+((?:an?|the|one|what|where|when|who|how)\b[^.?!;]*?)(?:[.!;]|\n[ \t]*\n|$)`)
+
 // introducedAt reports whether the use u of a word in s is in the sentence
-// that introduces it, and where that sentence ends.
-func introducedAt(s string, u floorUse) (int, bool) {
+// that introduces it, and where that sentence ends; phrase is the words after
+// it when the sentence introduces a term the word opens, which introduces that
+// term alone.
+func introducedAt(s string, u floorUse) (end int, phrase string, ok bool) {
 	before, after := s[:u.start], s[u.end:]
 	if len(before) > introWindow {
 		before = "x" + before[len(before)-introWindow:] // mid-sentence, so never an opening
@@ -188,23 +208,51 @@ func introducedAt(s string, u floorUse) (int, bool) {
 	if len(after) > introWindow {
 		after = after[:introWindow] + "?" // cut, so never an end
 	}
-	// What the word is said to be uses none of the word's own forms; a short
-	// form named in it ("CI for short") is the naming, not a use.
+	// What the word is said to be uses none of the word's own forms, and no
+	// long form defines its short one; a short form named in it ("CI for
+	// short") is the naming, not a use.
 	says := func(complement string) bool {
 		return len(strings.Fields(complement)) >= introWords &&
-			!slices.ContainsFunc(floorUses(complement), func(v floorUse) bool { return v.word == u.word && v.group == u.group })
+			!slices.ContainsFunc(floorUses(complement), func(v floorUse) bool {
+				return v.word == u.word && (v.group == u.group || v.group == 0)
+			})
 	}
 	if introOpensRe.MatchString(before) {
 		if m := introSaysRe.FindStringSubmatchIndex(after); m != nil && says(after[m[2]:m[3]]) {
-			return u.end + m[1], true
+			return u.end + m[1], "", true
+		}
+		if m := introPhraseRe.FindStringSubmatchIndex(after); m != nil && says(after[m[4]:m[5]]) {
+			return u.end + m[1], strings.ToLower(strings.Join(strings.Fields(after[m[2]:m[3]]), " ")), false
 		}
 	}
 	if m := introNamesRe.FindStringSubmatch(before); m != nil && says(m[1]) {
 		if e := introEndsRe.FindStringIndex(after); e != nil {
-			return u.end + e[1], true
+			return u.end + e[1], "", true
 		}
 	}
-	return 0, false
+	return 0, "", false
+}
+
+// introductions is what a tab's question text introduces: for each word and
+// form group, whether it is introduced, and the terms it opens that are.
+type introductions struct {
+	word  map[[2]int]bool
+	terms map[[2]int][]string
+}
+
+// covers reports whether the use u in s is introduced: its word, or the term
+// it opens there.
+func (in introductions) covers(s string, u floorUse) bool {
+	k := [2]int{u.word, u.group}
+	if in.word[k] {
+		return true
+	}
+	next := strings.ToLower(strings.Join(strings.Fields(s[u.end:min(len(s), u.end+introWindow)]), " "))
+	return slices.ContainsFunc(in.terms[k], func(t string) bool {
+		rest, ok := strings.CutPrefix(next, t)
+		r, _ := utf8.DecodeRuneInString(rest)
+		return ok && !wordRune(r)
+	})
 }
 
 // introduced is, for each word and form group, whether the tab's question text
@@ -212,33 +260,38 @@ func introducedAt(s string, u floorUse) (int, bool) {
 // named in the sentence introducing another form of the same word
 // ("Continuous integration (CI) is the automatic checks.", "CI (continuous
 // integration) is ..."). An initialism the sentence does not name is not
-// introduced with the word.
-func introduced(text string) map[[2]int]bool {
-	out := map[[2]int]bool{}
+// introduced with the word. A first use introducing a term the word opens
+// introduces that term.
+func introduced(text string) introductions {
+	in := introductions{word: map[[2]int]bool{}, terms: map[[2]int][]string{}}
 	sentences := map[int][][2]int{} // the word's introducing sentences, by word
 	for _, u := range floorUses(text) {
 		k := [2]int{u.word, u.group}
-		if _, met := out[k]; met {
+		if _, met := in.word[k]; met {
 			continue
 		}
 		if slices.ContainsFunc(sentences[u.word], func(sp [2]int) bool { return u.start >= sp[0] && u.start < sp[1] }) {
-			out[k] = true
+			in.word[k] = true
 			continue
 		}
-		end, ok := introducedAt(text, u)
-		out[k] = ok
+		end, term, ok := introducedAt(text, u)
+		in.word[k] = ok
+		if term != "" {
+			in.terms[k] = append(in.terms[k], term)
+		}
 		if ok {
 			sentences[u.word] = append(sentences[u.word], [2]int{u.start, end})
 		}
 	}
-	return out
+	return in
 }
 
 // floorRemedy is the remedy of a word below the floor whose plain words are
 // plain.
 func floorRemedy(plain string) string {
 	return fmt.Sprintf("Say %q instead, wherever the tab uses the word, or introduce it in one sentence of the question text before its first use, as in \"A checksum is a fingerprint saying two copies are identical.\" "+
-		"A word meant in its everyday sense or as the product's own word (a shop's checkout, a bank's branch) reads the same to the check, so introduce it once. "+
+		"A word meant in its everyday sense or as the product's own word (a shop's checkout, a bank's branch) reads the same to the check, so introduce it once: "+
+		"the sentence opens on the word bare or after \"a\" (\"A push is ...\"), never after \"the\", or on the product's own term the word opens (\"A push notification is ...\"), which introduces that term alone. "+
 		"The floor is stated at %s under abcd's plugin root.", plain, KnowledgeFloorPage)
 }
 
@@ -248,17 +301,24 @@ func floorRemedy(plain string) string {
 func floorFindings(n int, t Tab) []Finding {
 	intro := introduced(t.Text)
 	var out []Finding
-	named := map[[2]int]bool{}
+	type key struct {
+		word, group int
+		not         bool
+	}
+	named := map[key]bool{}
 	for _, fl := range fields(t) {
 		for _, u := range floorUses(fl.text) {
-			k := [2]int{u.word, u.group}
-			if intro[k] || named[k] {
+			k := key{u.word, u.group, u.not}
+			if intro.covers(fl.text, u) || named[k] {
 				continue
 			}
 			named[k] = true
-			w := belowFloor[u.word]
+			plain := belowFloor[u.word].Plain
+			if u.not {
+				plain = belowFloor[u.word].NotPlain
+			}
 			out = append(out, Finding{Tab: n, Part: fl.part, Rule: RuleRegister, Value: echo(fl.text[u.start:u.end]),
-				Limit: "no word below the product thinker's knowledge floor that the question does not introduce", Remedy: floorRemedy(w.Plain), Plain: w.Plain})
+				Limit: "no word below the product thinker's knowledge floor that the question does not introduce", Remedy: floorRemedy(plain), Plain: plain})
 		}
 	}
 	return out

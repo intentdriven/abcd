@@ -49,8 +49,12 @@ func TestBriefListsTheWordsBelowTheFloor(t *testing.T) {
 	}
 	for _, w := range question.BelowFloor() {
 		line := "- " + w.Word
-		if len(w.Also) > 0 {
-			line += " (also " + strings.Join(w.Also, ", ") + ")"
+		if len(w.Also)+len(w.Not) > 0 {
+			line += " (also " + strings.Join(w.Also, ", ")
+			for _, n := range w.Not {
+				line += "; " + n + ": say \"" + w.NotPlain + "\""
+			}
+			line += ")"
 		}
 		if len(w.Short) > 0 {
 			line += " (short " + strings.Join(w.Short, ", ") + ")"
@@ -60,7 +64,7 @@ func TestBriefListsTheWordsBelowTheFloor(t *testing.T) {
 			t.Errorf("the brief does not list %q as the whole entry %q", w.Word, line)
 		}
 	}
-	for _, entry := range []string{"\n- merge (also merged, merging, unmerged): ", "\n- repository (also repo): "} {
+	for _, entry := range []string{"\n- merge (also merged, merging; unmerged: say \"not yet added to the project\"): ", "\n- repository (also repo): "} {
 		if !strings.Contains(brief, entry) {
 			t.Errorf("the brief lacks the entry %q", entry)
 		}

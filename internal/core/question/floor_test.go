@@ -49,7 +49,16 @@ func floorPageList(t *testing.T) []FloorWord {
 			}
 			return out
 		}
-		out = append(out, FloorWord{Word: strings.TrimSpace(cells[0]), Also: list(cells[1]), Short: list(cells[2]), Plain: strings.TrimSpace(cells[3])})
+		w := FloorWord{Word: strings.TrimSpace(cells[0]), Short: list(cells[2]), Plain: strings.TrimSpace(cells[3])}
+		// A negated form carries its own plain words in brackets.
+		for _, a := range list(cells[1]) {
+			if form, plain, ok := strings.Cut(a, " ("); ok {
+				w.Not, w.NotPlain = append(w.Not, form), strings.TrimSuffix(plain, ")")
+				continue
+			}
+			w.Also = append(w.Also, a)
+		}
+		out = append(out, w)
 	}
 	return out
 }
@@ -63,7 +72,8 @@ func TestBelowFloorIsTheFloorPagesList(t *testing.T) {
 		t.Fatal("the check holds no word below the floor")
 	}
 	same := slices.EqualFunc(page, code, func(a, b FloorWord) bool {
-		return a.Word == b.Word && a.Plain == b.Plain && slices.Equal(a.Also, b.Also) && slices.Equal(a.Short, b.Short)
+		return a.Word == b.Word && a.Plain == b.Plain && slices.Equal(a.Also, b.Also) && slices.Equal(a.Short, b.Short) &&
+			slices.Equal(a.Not, b.Not) && a.NotPlain == b.NotPlain
 	})
 	if !same {
 		t.Errorf("the floor page's list and the check's differ:\npage %q\ncode %q", page, code)
@@ -178,6 +188,13 @@ func TestProductThinkerQuestionBelowTheFloorIsRefused(t *testing.T) {
 	if !strings.Contains(checksum.Remedy, "a shop's checkout") || !strings.Contains(checksum.Remedy, "a bank's branch") || !strings.Contains(checksum.Remedy, "introduce it once") {
 		t.Errorf("the remedy does not name the everyday sense and the product's own word: %q", checksum.Remedy)
 	}
+	// The way out it names is one the check admits: the word bare or after
+	// "a" as the subject, or as the first word of the product's own term.
+	for _, want := range []string{`"A push is ..."`, `"A push notification is ..."`} {
+		if !strings.Contains(checksum.Remedy, want) {
+			t.Errorf("the remedy does not show the introduction %s: %q", want, checksum.Remedy)
+		}
+	}
 	if checksum.Plain != "a fingerprint saying two copies are identical" {
 		t.Errorf("the finding carries plain words %q", checksum.Plain)
 	}
@@ -262,6 +279,10 @@ func TestBelowFloorWordsAreWholeWords(t *testing.T) {
 		"abcd pushes it, and pushed it.":      {"pushes"},
 		"abcd is pushing it.":                 {"pushing"},
 		"The work is force-pushed.":           {"pushed"},
+		// A Unicode space joins a phrase, and the echo shows it as a space.
+		"Open a pull\u00a0request for it.":    {"pull request"},
+		"The merge\u00a0queue is full.":       {"merge queue"},
+		"The merge\u2003queue is full.":       {"merge queue"},
 		"abcd sends it to origin.":            {"origin"},
 		"The diffs are shown.":                {"diffs"},
 		"They are different.":                 nil,
@@ -378,12 +399,40 @@ func TestAWordIntroducedInOneSentencePasses(t *testing.T) {
 		"CI is the automatic checks that run on every change. Continuous integration must pass.": {"Continuous integration"},
 		"A merge is the step where work is merged into the project. The merge waits.":            {"merge"},
 		"CI is the CI checks that run on every change. CI must pass.":                            {"CI"},
+		"A PR is a pull request. The PR waits.":                                                  {"PR", "pull request"},
+		"CI is continuous integration on every change. CI must pass.":                            {"CI", "continuous integration"},
+		"A symlink is a symbolic link to the file. The symlink is kept.":                         {"symlink", "symbolic link"},
+		"A push notification is a message the app sends to the phone. Push the change first.":    {"Push"},
+		"The origin is the shared copy of the project. The origin waits.":                        {"origin"},
 	} {
 		tab := wellBuiltTab()
 		tab.Text = text + "\n\n" + tab.Text
 		if got := valuesOf(CheckLimits(one(tab), Default, productThinker())); !slices.Equal(got, want) {
 			t.Errorf("%q: words named %q, want %q", text, got, want)
 		}
+	}
+	// The product's own term, the word its first word, is introduced as that
+	// term alone; and the bare form the remedy names is introduced.
+	for _, text := range []string{
+		"A push notification is a message the app sends to the phone. Each push notification is short.",
+		"A push is the step that sends saved changes to the shared copy. The push waits.",
+		"Origin is the shared copy of the project. The origin waits.",
+	} {
+		tab := wellBuiltTab()
+		tab.Text = text + "\n\n" + tab.Text
+		if fs := CheckLimits(one(tab), Default, productThinker()); len(fs) != 0 {
+			t.Errorf("%q: want it introduced, got:\n%s", text, render(fs))
+		}
+	}
+	// A negated form names its own plain words.
+	tab = wellBuiltTab()
+	tab.Text = "You have uncommitted work and unmerged changes.\n\n" + tab.Text
+	var plains []string
+	for _, f := range CheckLimits(one(tab), Default, productThinker()) {
+		plains = append(plains, f.Plain)
+	}
+	if want := []string{"not yet saved", "not yet added to the project"}; !slices.Equal(plains, want) {
+		t.Errorf("the negated forms name plain words %q, want %q", plains, want)
 	}
 	// An option's description introduces nothing: the material does.
 	tab = wellBuiltTab()
