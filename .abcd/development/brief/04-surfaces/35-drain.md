@@ -226,7 +226,11 @@ the members' holds are kept across moves, never released by the move that
 leaves them, and renewed at half their lease. The lane opens when no candidate
 is left, when the cap is reached, or when the person's live reservations would
 reach `reservation.max_live` with the next one, and then opens as it stands
-rather than waiting. A forming bundle may hold up to `bundle_max` of the
+rather than waiting. A bundle whose start is refused, for a reason that is not
+its reservation's, is passed over as a single lane's lead is: its holds are
+released, its lead is passed over for the rest of the move and of a drive, and
+its members go back among the eligible issues, which the move goes on to in
+the drain's order. A forming bundle may hold up to `bundle_max` of the
 person's live reservations across several moves; lowering the cap is the
 remedy for that cost. A stop, a pace window that elapses and an origin that
 does not answer keep `forming` and its holds, as an awaited judgement is

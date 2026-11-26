@@ -790,6 +790,11 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if t.o.Moved != nil {
 			t.o.Moved()
 		}
+		// A bundle's lead whose start was refused is passed over for the
+		// rest of the drive (DrainOptions.PassedLeads).
+		for _, p := range t.o.Drain.passLeads(res) {
+			t.say("passed over %s for the rest of this drive, as a bundle's lead whose start was refused: %s", p.ID, p.Reason)
+		}
 		t.boundaryDue = true
 		t.inHand = res.Judging != nil
 		// What was given once is taken once: the pace, the skips.

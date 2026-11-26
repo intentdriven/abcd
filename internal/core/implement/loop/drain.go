@@ -322,6 +322,12 @@ type DrainOptions struct {
 	// The outage and origin stops end the drain as before. Held in the drive's
 	// memory alone, never written.
 	PassedLanes []string
+	// PassedLeads are the leads of bundles whose start was refused this run of
+	// a drive, each with why: every move after passes such a lead over before
+	// anything is pushed or asked over it, and forms no bundle with it, as the
+	// move that passed it did (DrainResult.passedLeads). Held in the drive's
+	// memory alone, never written.
+	PassedLeads []Excluded
 	// driveEnds is set by a terminal drive, which sweeps on its own at its
 	// own end (terminal.go), so a move that ends the drain does not sweep
 	// for it as well (autosweep.go).
@@ -341,6 +347,29 @@ func (st DrainState) withoutPassed(d DrainOptions) DrainState {
 	}
 	st.Lanes = slices.DeleteFunc(slices.Clone(st.Lanes), func(l DrainLane) bool { return d.passedLane(l.RunID) })
 	return st
+}
+
+// passedLead is the pass-over the drive keeps for id as a bundle's lead, and
+// whether it keeps one (DrainOptions.PassedLeads).
+func (d DrainOptions) passedLead(id string) (Excluded, bool) {
+	i := slices.IndexFunc(d.PassedLeads, func(e Excluded) bool { return e.ID == id })
+	if i < 0 {
+		return Excluded{}, false
+	}
+	return d.PassedLeads[i], true
+}
+
+// passLeads keeps the leads res passed over in d, for every move after, and
+// returns those it did not keep already.
+func (d *DrainOptions) passLeads(res DrainResult) []Excluded {
+	var out []Excluded
+	for _, p := range res.passedLeads {
+		if _, ok := d.passedLead(p.ID); !ok {
+			d.PassedLeads = append(d.PassedLeads, p)
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // passedInProgress are the lanes of st in progress that the drive passed over.
@@ -417,6 +446,10 @@ type DrainResult struct {
 	// all the drain has left: it would have stopped at its cap or as empty, and
 	// stays open for them instead (DrainOptions.PassedLanes).
 	passedOnly []DrainLane
+	// passedLeads are the leads of the bundles this move passed over when
+	// their start was refused, each with why, which a drive keeps
+	// (DrainOptions.PassedLeads).
+	passedLeads []Excluded
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -1244,10 +1277,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}
 	var capped, held []string
+	// visited are the issues this move has walked, each walked once; released
+	// are those whose holds it released when a bundle's start was refused,
+	// which its view, fetched before, still shows held. A lead passed over,
+	// by this move or by the drive, joins no bundle.
+	visited := map[string]bool{}
+	var released []string
+	passedLead := func(id string) bool {
+		_, ok := d.passedLead(id)
+		return ok || slices.ContainsFunc(res.passedLeads, func(e Excluded) bool { return e.ID == id })
+	}
+	liveMine := func(id string) []string {
+		return slices.DeleteFunc(view.LiveHeldBy(capHolder, id), func(r string) bool { return slices.Contains(released, r) })
+	}
 	// A bundle forming takes its candidates rather than the drain's order,
 	// the rest of this move and each move after it, until its lane opens
 	// (drain_form.go).
-	form := former{repoRoot: repoRoot, st: &st, plan: plan, area: planArea(repoRoot, plan)}
+	form := former{repoRoot: repoRoot, st: &st, plan: plan, area: planArea(repoRoot, plan), passed: passedLead}
 	queue := lapsedLast(plan.Dispositions, st.Lapsed)
 	if st.Forming != nil {
 		fq, note, ok := form.queue()
@@ -1258,11 +1304,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			queue = fq
 		}
 	}
+walk:
 	for qi := 0; qi < len(queue); qi++ {
 		v := queue[qi]
-		if v.Outcome != capture.DrainEligible {
+		if v.Outcome != capture.DrainEligible || visited[v.ID] {
 			continue
 		}
+		visited[v.ID] = true
 		// An issue this drain has in hand is left; one it handed back is
 		// taken up again once its record has changed on origin
 		// (drain_readmit.go).
@@ -1287,6 +1335,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					continue
 				}
 			}
+		}
+		// A bundle's lead whose start was refused earlier in the drive is
+		// passed over for the rest of it, as the move that refused it did.
+		if p, ok := d.passedLead(v.ID); ok {
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: p.Check, Reason: "the drive passed it over for the rest of this run: " + p.Reason})
+			continue
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
 			ends := l.coolDownEnds()
@@ -1369,6 +1423,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 		}
 		hold, owned := ownHold(view, v.ID, footprint)
+		if slices.Contains(released, v.ID) {
+			hold, owned = claim.Reservation{}, false
+		}
 		judged := judgementFor(st, v.ID, remedyDigest(iss.Remedy))
 		// routedHold is the hold a routed judge's no was asked on in this
 		// move, which the move's view, fetched before it was taken, cannot
@@ -1397,7 +1454,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				// At the cap no reservation is made and no judgement asked:
 				// the drain waits for a pull request to merge.
 				if capHolder.Known() && capErr == nil {
-					if mine := view.LiveHeldBy(capHolder, v.ID); len(mine) >= capLimit {
+					if mine := liveMine(v.ID); len(mine) >= capLimit {
 						capped = mine
 						break
 					}
@@ -1490,7 +1547,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// stands.
 		if !byHand && fh == nil && reserving && form.forms(v.ID) {
 			if capHolder.Known() && capErr == nil {
-				if mine := view.LiveHeldBy(capHolder, v.ID); len(mine) >= capLimit {
+				if mine := liveMine(v.ID); len(mine) >= capLimit {
 					capped = mine
 					break
 				}
@@ -1620,9 +1677,28 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Next = bundleNext(st.Lanes[len(st.Lanes)-1], *opened.start)
 			return finish(true)
 		case opened.passed != nil:
+			// A bundle whose start is refused is passed over as a single
+			// lane's lead is, and the move goes on in the drain's order: its
+			// holds are released now, its lead is passed over for the rest of
+			// the move (and of a drive, DrainOptions.PassedLeads), and its
+			// members go back among the eligible issues, each reserved again
+			// before it opens or forms.
 			res.Passed = append(res.Passed, *opened.passed)
-			res.Next = "the bundle's lane did not open: " + opened.passed.Reason + "; run `abcd drain` again to take up the next eligible issue"
-			return finish(true)
+			res.passedLeads = append(res.passedLeads, *opened.passed)
+			if opened.contention {
+				held = append(held, opened.passed.Reason)
+			}
+			for _, id := range opened.issues {
+				if clause, _, _ := holds.release(id, ""); clause != "" {
+					leaseNotes = append(leaseNotes, clause)
+				}
+				released = append(released, id)
+				// The lead is walked no more in this move, whichever queue
+				// it came by; each member is walked again.
+				visited[id] = id == opened.passed.ID
+			}
+			queue, capped = lapsedLast(plan.Dispositions, st.Lapsed), nil
+			goto walk
 		}
 		capped = opened.capped
 	}

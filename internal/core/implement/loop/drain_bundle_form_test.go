@@ -741,3 +741,117 @@ func TestABundleStartsEndToEndWithItsMember(t *testing.T) {
 	heldStill(t, bare, lead, leadHold)
 	heldStill(t, bare, m1, m1Hold)
 }
+
+// refuseBundles makes the drain's bundle start refuse, as the start's budget
+// check does, every lead refuse names, recording each start asked for; any
+// other starts as the drain does.
+func refuseBundles(t *testing.T, refuse func(lead string) bool) *[]openedBundle {
+	t.Helper()
+	var got []openedBundle
+	was := startBundle
+	startBundle = func(repoRoot, lead string, o Options, members []laneMember) (StartResult, error) {
+		got = append(got, openedBundle{lead: lead, members: members})
+		if refuse(lead) {
+			return StartResult{}, &Refusal{Stage: "check", Check: CheckBudget, Reason: "the runner's quota is under the run's estimate", Remedy: "wait for the quota to refill"}
+		}
+		return was(repoRoot, lead, o, members)
+	}
+	t.Cleanup(func() { startBundle = was })
+	return &got
+}
+
+// driveMove is one drain move as a drive makes it: the host's answer to the
+// judgement res awaits, if any, under d, and what the move passed over kept
+// in d for every move after.
+func driveMove(t *testing.T, repo *gittest.Repo, d *DrainOptions, res DrainResult, answer string) DrainResult {
+	t.Helper()
+	move := *d
+	if res.Judging != nil {
+		move.Judgement = writeAnswer(t, repo, res.Judging, judgementAnswer(res.Judging, answer, "", noReason))
+	}
+	out, err := Drain(repo.Root(), Options{}, move)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.passLeads(out)
+	return out
+}
+
+// TestARefusedBundleGoesOnToTheNextEligibleIssue: with the cap at 2, a
+// bundle whose start is refused for a reason that is not its reservation's
+// passes its lead over as a single lane's start does: its holds are released,
+// and the move goes on in the drain's order, its member back among the
+// eligible issues, so a lane opens on the next eligible issue in the same
+// move or the next. Watched failing before the move went on: every move formed
+// the same bundle on the same lead and was refused again.
+func TestARefusedBundleGoesOnToTheNextEligibleIssue(t *testing.T) {
+	repo, bare := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	var lead string
+	asked := refuseBundles(t, func(l string) bool { return l == lead })
+	first := mustDrain(t, repo, Options{}, DrainOptions{})
+	var m1 string
+	lead, m1, _, _ = orderOf(t, first)
+	leadHold := refOf(t, bare, lead)
+	second := judge(t, repo, Options{}, first, JudgementNo, "", noReason)
+	third := judge(t, repo, Options{}, second, JudgementNo, "", noReason)
+	if len(*asked) != 1 || (*asked)[0].lead != lead {
+		t.Fatalf("the bundle on the lead was asked to start once: %+v", *asked)
+	}
+	if !slices.ContainsFunc(third.Passed, func(e Excluded) bool { return e.ID == lead && e.Check == CheckBudget }) {
+		t.Fatalf("the refused bundle's lead is passed over with the start's check: %+v", third.Passed)
+	}
+	plainlyReleasedOver(t, bare, lead, leadHold)
+	lane := third
+	if lane.Start == nil {
+		d := DrainOptions{}
+		lane = driveMove(t, repo, &d, third, JudgementNo)
+	}
+	if lane.Start == nil || lane.Lane == nil || lane.Lane.Issue != m1 {
+		t.Fatalf("a lane opens on the next eligible issue in the same move or the next: %+v", lane)
+	}
+	if slices.Contains(lane.Lane.Bundle, lead) {
+		t.Fatalf("the lane carries the lead passed over: %+v", lane.Lane)
+	}
+}
+
+// TestARefusedLeadIsNotPickedAgainInTheDrive: a drive keeps the lead of a
+// bundle whose start was refused passed over for the rest of its run, so no
+// bundle it forms after, in that move or a later one, is led by that lead or
+// carries it; with every bundle refused, each lead is asked to start once,
+// and the drain works through its order to the last issue, which opens alone.
+// Watched failing before a drive kept the pass-over: the next move formed a
+// bundle on the same lead again.
+func TestARefusedLeadIsNotPickedAgainInTheDrive(t *testing.T) {
+	repo, _ := bundleDrainRepo(t)
+	bundleMachineConfig(t, `{"drain":{"bundle_max":2}}`)
+	asked := refuseBundles(t, func(string) bool { return true })
+	d := DrainOptions{}
+	res := driveMove(t, repo, &d, DrainResult{}, "")
+	lead, _, _, last := orderOf(t, res)
+	for i := 0; i < 8 && res.Start == nil; i++ {
+		if res.Judging == nil && res.Stopped != "" {
+			break
+		}
+		res = driveMove(t, repo, &d, res, JudgementNo)
+	}
+	var passed []string
+	for _, b := range *asked {
+		ids := []string{b.lead}
+		for _, m := range b.members {
+			ids = append(ids, m.issue)
+		}
+		for _, id := range ids {
+			if slices.Contains(passed, id) {
+				t.Fatalf("a bundle the drive formed after %s was passed over carries it: %+v", id, *asked)
+			}
+		}
+		passed = append(passed, b.lead)
+	}
+	if len(passed) == 0 || passed[0] != lead {
+		t.Fatalf("the first bundle asked to start is on the lead: %+v", *asked)
+	}
+	if res.Start == nil || res.Lane == nil || res.Lane.Issue != last || len(res.Lane.Bundle) != 0 {
+		t.Fatalf("the drain works through its order to the last issue, which opens alone: %+v", res)
+	}
+}

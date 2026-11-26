@@ -488,7 +488,10 @@ skipped, lapsed or already run, reserving it and asking its judgement. A no
 adds it to the bundle, and a yes hands it back alone. Every hold is kept and
 renewed across the moves. The lane opens with the lead and its members once
 no member is left, the cap is reached, or the next reservation would reach
-`reservation.max_live`. A stop, an elapsed pace window and an origin that
+`reservation.max_live`. A bundle whose start is refused for a reason that is
+not its reservation's releases its holds, passes its lead over for the rest of
+the move and of a drive, and returns its members to the eligible issues, which
+the move goes on to. A stop, an elapsed pace window and an origin that
 does not answer keep the bundle forming; a drain that ends, or a drive that
 lets go, releases every forming hold with no tombstone. A member the lane's
 receipt hands back alone is routed as a lane's hand-back of its kind, a pull

@@ -106,13 +106,15 @@ func cloneHold(h *DrainHold) *DrainHold {
 // size is how many issues the forming bundle holds, its lead included.
 func (f *DrainForming) size() int { return len(f.entries()) }
 
-// former is what one move's forming reads: the drain's state, its plan and
-// how it reads an issue's area.
+// former is what one move's forming reads: the drain's state, its plan, how
+// it reads an issue's area, and the issues passed over as a bundle's lead, by
+// this move or by the drive, which join no bundle (nil passes none over).
 type former struct {
 	repoRoot string
 	st       *DrainState
 	plan     capture.DrainPlan
 	area     func(id string) string
+	passed   func(id string) bool
 }
 
 // standing reports whether id still stands in a bundle: it is eligible in the
@@ -138,7 +140,11 @@ func (m former) standing(id string) bool {
 // cap is counted as the bundle forms, since a candidate passed over or
 // answered yes leaves room for the next.
 func (m former) candidates(id string) []string {
-	return bundleCandidates(m.plan.Dispositions, id, len(m.plan.Dispositions)+1, m.area)
+	out := bundleCandidates(m.plan.Dispositions, id, len(m.plan.Dispositions)+1, m.area)
+	if m.passed != nil {
+		out = slices.DeleteFunc(out, m.passed)
+	}
+	return out
 }
 
 // queue is what a move takes next for the bundle st is forming: the
@@ -266,15 +272,19 @@ func drainLaneOptions(o Options, st DrainState, footprint []string, plan *captur
 }
 
 // bundleOpened is what opening a forming bundle came to: the lane's start, or
-// the issue another holds and why, or the reservations the person is at the
-// cap with, or the refusal that stops the move; left says which members left
-// the bundle before it opened, and why.
+// the lead passed over and why, or the reservations the person is at the cap
+// with, or the refusal that stops the move; left says which members left the
+// bundle before it opened, and why. A lead passed over names every issue the
+// bundle carried as it came to open, the lead first, and contention is true
+// when another's hold refused its start.
 type bundleOpened struct {
-	start  *StartResult
-	passed *Excluded
-	capped []string
-	err    error
-	left   string
+	start      *StartResult
+	passed     *Excluded
+	issues     []string
+	contention bool
+	capped     []string
+	err        error
+	left       string
 }
 
 // reservedFootprint reports whether fp, the footprint an issue's found_at now
@@ -299,10 +309,13 @@ func reservedFootprint(view *claim.Snapshot, id string, hold *DrainHold, fp []st
 // it starts. Forming is cleared either way: a start that fails releases every
 // hold on the move's way out (judgeHolds.settle, starting), and the
 // judgements are kept, so a later move forms the bundle again without asking
-// any of them again.
+// any of them again. A start refused for a reason the drain passes a single
+// lane's lead over for passes this lead over, and the move releases the
+// bundle's holds and goes on in the drain's order (Drain).
 func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainPlan, rule drainrule.Rule, holds *judgeHolds, view *claim.Snapshot, now time.Time) bundleOpened {
 	f := st.Forming
 	st.Forming = nil
+	all := f.ids()
 	// footprintOf is the footprint id's found_at names now, and whether it
 	// is still the one its hold reserved: an issue whose found_at no longer
 	// names a path, or names another since it was reserved, is not opened on
@@ -317,7 +330,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 	}
 	leadFP, ok := footprintOf(f.Lead, f.Hold)
 	if !ok {
-		return bundleOpened{passed: &Excluded{ID: f.Lead, Check: CheckReservation, Reason: "its found_at names no path, or another than its reservation's footprint, since the drain reserved it" +
+		return bundleOpened{issues: all, passed: &Excluded{ID: f.Lead, Check: CheckReservation, Reason: "its found_at names no path, or another than its reservation's footprint, since the drain reserved it" +
 			"; the bundle with " + strings.Join(f.ids()[1:], ", ") + " did not open, and its reservations are released"}}
 	}
 	var left []string
@@ -364,7 +377,7 @@ func openBundle(repoRoot string, o Options, st *DrainState, plan *capture.DrainP
 		if err := unreadableRefusal(repoRoot, r.unjudged); err != nil {
 			return bundleOpened{err: err}
 		}
-		return bundleOpened{left: leftNote, passed: &Excluded{ID: f.Lead, Check: r.Check, Reason: termsafe.Sanitize(r.Reason) +
+		return bundleOpened{left: leftNote, issues: all, contention: r.Contention, passed: &Excluded{ID: f.Lead, Check: r.Check, Reason: termsafe.Sanitize(r.Reason) +
 			"; the bundle with " + strings.Join(f.ids()[1:], ", ") + " did not open, and its reservations are released"}}
 	}
 	ids := f.ids()
