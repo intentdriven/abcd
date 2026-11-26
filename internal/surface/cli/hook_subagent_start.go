@@ -110,6 +110,16 @@ func runHookSubagentStart(cmd *cobra.Command, _ []string) (err error) {
 	select {
 	case a = <-done:
 	case <-ctx.Done():
+		// The work and the bound may end together: an answer that is there
+		// is the work's, and it is delivered as if it had come first.
+		select {
+		case a = <-done:
+			if !errors.Is(a.err, errSubagentStartSpent) {
+				return deliverSubagentStart(cmd, a)
+			}
+			return subagentStartFailed(cmd, a.in, fmt.Errorf("it did not finish within %s", bound))
+		default:
+		}
 		// Stdin may never end, and the work may be past any cancelling. What
 		// was read of the payload says whose failure this is.
 		select {
@@ -121,17 +131,29 @@ func runHookSubagentStart(cmd *cobra.Command, _ []string) (err error) {
 		}
 		return subagentStartFailed(cmd, in, fmt.Errorf("it did not finish within %s", bound))
 	}
-	in = a.in
+	if errors.Is(a.err, errSubagentStartSpent) {
+		return subagentStartFailed(cmd, a.in, fmt.Errorf("it did not finish within %s", bound))
+	}
+	return deliverSubagentStart(cmd, a)
+}
+
+// deliverSubagentStart writes a finished answer. An answer that cannot be
+// written told the sub-agent nothing, so the told fact the work kept for it
+// is taken back, and the sub-agent reads as never told rather than told.
+func deliverSubagentStart(cmd *cobra.Command, a subagentStartAnswer) error {
 	switch {
-	case errors.Is(a.err, errSubagentStartSpent):
-		return subagentStartFailed(cmd, in, fmt.Errorf("it did not finish within %s", bound))
 	case a.err != nil:
-		return subagentStartFailed(cmd, in, a.err)
+		return subagentStartFailed(cmd, a.in, a.err)
 	case len(a.out) == 0:
 		return nil
 	}
 	if _, werr := cmd.OutOrStdout().Write(a.out); werr != nil {
-		return subagentStartFailed(cmd, in, errors.New("its answer could not be written"))
+		if subagentKey(a.in.SessionID, a.in.AgentID) {
+			if rec, found, err := rules.ReadSubagentFact(a.in.SessionID, a.in.AgentID, rules.SubagentTold); err == nil && found && rec.By == rules.SubagentToldByStart {
+				_ = rules.RemoveSubagentFact(a.in.SessionID, a.in.AgentID, rules.SubagentTold)
+			}
+		}
+		return subagentStartFailed(cmd, a.in, errors.New("its answer could not be written"))
 	}
 	_, _ = cmd.ErrOrStderr().Write(a.notes)
 	return nil
