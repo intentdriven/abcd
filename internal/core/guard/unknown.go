@@ -1717,6 +1717,18 @@ func functionFormSignal() payloadSignal {
 	}
 }
 
+// functionArgumentsSignal is the verdict on a line whose calls of a function
+// it defines cannot be read with their words (functionCallReadings).
+func functionArgumentsSignal() payloadSignal {
+	return payloadSignal{
+		id:        functionFormEntryID,
+		verdict:   VerdictBlock,
+		family:    familyFunction,
+		reason:    "abcd cannot read a function on this line with the words it is called with.",
+		successor: "Write the commands out with their words, then run them.",
+	}
+}
+
 // unknownSitesBlockSignal is the fail-closed verdict for a segment whose walk
 // to command position met more words of unknown name than maxUnknownSites.
 func unknownSitesBlockSignal() payloadSignal {

@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -95,6 +96,16 @@ func TestFunctionInAnUnusualFormIsHeld(t *testing.T) {
 func TestFunctionFormStaysLinear(t *testing.T) {
 	build := func(n int) string { return strings.Repeat("function f if a { ", n) }
 	assertWorkGrowth(t, build, 903, "a function in an unusual form is held where the walk meets it, never walked past")
+	// A line of calls is read once per call, to a bound.
+	calls := func(n int) string {
+		var b strings.Builder
+		b.WriteString(`f() { echo "$1" "$2"; }; `)
+		for i := range n {
+			fmt.Fprintf(&b, "f a%d b; ", i)
+		}
+		return b.String()
+	}
+	assertWorkGrowth(t, calls, 1<<9, "each call of a function the line defines is read once, to maxFunctionReadings")
 	// The work count above does not see what each place the walk arrives at
 	// costs the entries after it; the arrivals are counted here.
 	segs, err := tokenize(build(3610))
@@ -104,6 +115,65 @@ func TestFunctionFormStaysLinear(t *testing.T) {
 	for _, s := range segs {
 		if out, _, _ := walkToCommand(s.tokens); len(out) > 1 {
 			t.Errorf("the walk arrives at %d places in a %d-word segment, want one at most", len(out), len(s.tokens))
+		}
+	}
+}
+
+// TestFunctionCallIsReadWithItsWords: a function the line defines is read at
+// each call with the call's words in its arguments' place ("$@", "$*",
+// $1…$9, after any `shift`), and held where they cannot stand in.
+func TestFunctionCallIsReadWithItsWords(t *testing.T) {
+	const held = "function-form-unread"
+	args := strings.TrimPrefix(hazardLine, "git ")
+	for _, line := range []string{
+		`f(){ abcd "$@"; }; f guard allow ` + args,
+		`f() { git "$@"; }; f ` + args,
+		`f () { git $*; }; f ` + args,
+		`f() { git "$1" "${2}" "$3" "$4"; }; f ` + args,
+		`f() { git "$1" $2; }; f push "--force origin"`,
+		`f() { shift; git "$@"; }; f x ` + args,
+		`function f { git "$@"; }; f ` + args,
+		`f() { g "$@"; }; g() { git "$@"; }; f ` + args,
+		`f() { git "${1:-status}" "$2" "$3" "$4"; }; f ` + args,
+		`bash -c 'f() { git "$@"; }; f ` + args + `'`,
+		`if true; then f() { git "$@"; }; fi; time f ` + args,
+		`f() { git "$@"x; }; f ` + args,
+		`f() { git "$* x"; }; f ` + args,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, want a block", line, d.Verdict, d.EntryID)
+		}
+	}
+	for _, line := range []string{
+		`function f { git $argv; }; f ` + args,
+		`f() { git "${1#x}"; }; f x` + args,
+		`f() { git "${@:2}"; }; f x ` + args,
+		`f() { git "$=1"; }; f push`,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock || !containsString(d.Matches, held) {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want a block holding %q", line, d.Verdict, d.EntryID, d.Matches, held)
+		}
+	}
+	// A call is read as the command its words make, no more.
+	for call, direct := range map[string]string{
+		`f(){ abcd "$@"; }; f update v1.2.3`:  `abcd update v1.2.3`,
+		`f() { git "$@"; }; f ` + args:        hazardLine,
+		`f() { git status "$@"; }; f --short`: `git status --short`,
+	} {
+		if got, want := readingOf(t, call), readingOf(t, direct); got.Verdict != want.Verdict {
+			t.Errorf("Check(%q) = %q, want %q as Check(%q)", call, got.Verdict, want.Verdict, direct)
+		}
+	}
+	for _, line := range []string{
+		`f() { echo hi; }; f`,
+		`f() { echo "$1"; }; f x`,
+		`f() { git status "$@"; }; f --short`,
+		`function f { git status; }; f`,
+		`echo "$1"`,
+		`awk '{print $1}' x`,
+	} {
+		if d := readingOf(t, line); d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want no block", line, d.Verdict, d.EntryID, d.Matches)
 		}
 	}
 }

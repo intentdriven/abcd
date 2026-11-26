@@ -57,7 +57,12 @@ bash reads it, and a here-document whose delimiter line never comes is a
 the guard did not check. A function is read in two forms, `name() { … }` and
 `function name { … }` with one plain name; the `function` keyword in any other
 form (several names, an option, a quoted name or brace) is a **block**
-(`function-form-unread`): write it in one of those forms, then run it.
+(`function-form-unread`): write it in one of those forms, then run it. A call
+of a function the line defines is read with the call's words in place of the
+arguments its body reads (`$1`…`$9`, `$@`, `$*`, from each offset where it
+shifts); one whose body reads an argument through an operator
+(`${1#x}`, `${1:0:1}`) is held the same way. A function in a script the line
+runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a

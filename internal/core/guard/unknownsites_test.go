@@ -64,8 +64,11 @@ var wordReaders = map[string]string{
 	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
 	"commandWords": "exempt: steps reserved words, grammar no substitution prints, and words whose NAME= the line writes; its callers refuse an unknown word as the program",
 	// match.go: the `function` keyword's NAMEs.
-	"plainFunctionName": "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
-	"functionQuoted":    "exempt: reads only the keyword, its NAME and the word after it, and the tokenizer's record of which the line left unquoted",
+	"plainFunctionName":    "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
+	"argumentBody":         "exempt: reads the body of a `${…}` expansion the tokenizer hands it, never a command's word",
+	"functionCallReadings": "commandSites places each call; a name nothing fixes names no function the line defines",
+	"functionBody":         "exempt: reads only `{`, `}`, reserved words and `function` to bound a body; each command in it is read by its own walk",
+	"functionQuoted":       "exempt: reads only the keyword, its NAME and the word after it, and the tokenizer's record of which the line left unquoted",
 	// recordacts.go: the sub-agent hold's reading of the git commands that
 	// record or send work.
 	"recordActIn": "isUnknown on the program, every option word and the subcommand: a word nothing fixes there is read as no act",

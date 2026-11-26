@@ -41,7 +41,14 @@ import (
 // Raised to 30 when the RS003 ledger read's cases landed
 // (scripts/check-issue-resolution-cases.sh, iss-2610181757540736): four more
 // here-document openers, each read alone as heredoc-unterminated, the same way
-// the file's others already are.
+// the file's others already are. Raised to 34 when a call of a function the
+// line defines came to be read with the call's words in its arguments' place
+// (functionCallReadings): three of the scripts read whole as one command
+// (.githooks/commit-msg, .githooks/pre-push, scripts/preflight-receipt.sh)
+// call a function that reads an argument through an operator no word stands
+// for (`${1%/}`, `${1##*/}`, `${1:0:1}`), and are held as function-form-unread,
+// and scripts/check-wip-source-cases.sh read whole runs `bash "$SCRIPT"` with a
+// case's words, which blocks as that command does.
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -57,7 +64,7 @@ import (
 // (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
 // same two warns.
 const (
-	maxSweepBlocks = 30
+	maxSweepBlocks = 34
 	maxSweepWarns  = 39
 )
 

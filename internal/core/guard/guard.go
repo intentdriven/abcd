@@ -652,6 +652,17 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// raises a synthetic (entry-less) signal folded in by severity below.
 	segs, signals := expandPayloads(segs, depth)
 	walkSegments(segs)
+	// A function the line defines is read at each call with the call's
+	// words in its arguments' place (functionCallReadings). A script the
+	// line runs is read as it stands.
+	if run == nil {
+		if calls, hold := functionCallReadings(segs); hold {
+			signals = append(signals, functionArgumentsSignal())
+		} else if len(calls) > 0 {
+			segs = append(segs, calls...)
+			walkSegments(segs)
+		}
+	}
 
 	// A script the line points a shell at is read and judged now, while each
 	// segment still stands where the payload expansion put it: the reading
