@@ -8,7 +8,9 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -43,8 +45,10 @@ import (
 //       origin never sets anything.
 //     - A view that only shows the figure (the ceiling row of abcd peers)
 //       asks no network and reads it at origin's default branch as this
-//       checkout last fetched it. The act that adds the reservation decides,
-//       and the drain's wait at the cap reads as the act does (MaxLiveFor).
+//       checkout last fetched it. The act that adds the reservation decides.
+//       The drain's wait at the cap (MaxLiveFor) asks no network either: it
+//       reads at the branch origin last named to an act here, so a branch
+//       this checkout merely tracks does not hold it at a wait.
 //     A checkout that names no default branch of origin reads no repository
 //     figure in a view, and the note says so.
 //  3. reservation.max_live in ~/.abcd.noindex/config.json, the machine layer
@@ -160,6 +164,7 @@ func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 			return machineAfter(home, lim, note)
 		}
 		name := Remote + "/" + branch
+		keepOriginDefault(root, branch)
 		if !commitHere(root, tip) {
 			if err := fetchTip(root, branch, tip); err != nil {
 				return liveLimit{}, "", err
@@ -379,13 +384,69 @@ func checkMaxLive(n int) error {
 }
 
 // MaxLiveFor is the cap of the person whose home o names (o.Home, else the
-// process's own) in the checkout at root, read as an act that adds a
-// reservation reads it (actMaxLive): at the commit origin names, asking it, so
-// a caller that counts from a view it already holds (the drain's wait) never
-// stops at a figure a branch this checkout merely tracks sets. Whatever the
-// act would refuse, origin unanswering among it, is refused here the same way,
-// and such a caller leaves the count to the act.
+// process's own) in the checkout at root, for a caller that counts from a view
+// it already holds (the drain's wait). It asks no network: it reads the
+// repository's figure at the remote-tracking ref of the branch origin last
+// named as its default when an act here asked it (keepOriginDefault), else at
+// the default branch this checkout tracks, so a branch this checkout merely
+// tracks does not hold such a caller at a wait once an act has asked origin.
+// Whatever would refuse the act (the ref naming no commit here, an unusable
+// figure, a machine file that cannot be read) is refused here, and such a
+// caller leaves the count to the act, which decides.
 func MaxLiveFor(root string, o Options) (int, error) {
-	lim, _, err := actMaxLive(root, originDefault(root), o.home())
+	ref := originDefault(root)
+	if b := keptOriginDefault(root); b != "" {
+		ref = "refs/remotes/" + Remote + "/" + b
+	}
+	lim, _, err := repoMaxLive(root, ref)
+	if err != nil {
+		return 0, err
+	}
+	lim, _, err = machineMaxLive(o.home(), lim, true)
 	return lim.N, err
+}
+
+// originDefaultRel keeps the branch origin last named as its default when an
+// act asked it, for MaxLiveFor.
+const originDefaultRel = stateRelDir + "/origin-default"
+
+// keepOriginDefault records branch, origin's answer, for MaxLiveFor; a
+// checkout without its local tier, or a write that fails, keeps nothing, and
+// MaxLiveFor then reads the tracked default.
+func keepOriginDefault(root, branch string) {
+	if tierPresent(root) != nil {
+		return
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer r.Close()
+	if mkStateDir(r, stateRelDir) != nil {
+		return
+	}
+	_ = fsutil.WriteFileAtomicInRoot(r, originDefaultRel, []byte(branch+"\n"), stateMode)
+}
+
+// keptOriginDefault is the branch keepOriginDefault last recorded, "" when
+// none reads as a valid branch name, or the file is tracked by git (a
+// checkout's committed files never speak for origin).
+func keptOriginDefault(root string) string {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return ""
+	}
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, originDefaultRel, 512)
+	if err != nil || localtier.Untracked(root, originDefaultRel) != nil {
+		return ""
+	}
+	b := strings.TrimSpace(string(data))
+	if b == "" || b == "HEAD" {
+		return ""
+	}
+	if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+b); err != nil {
+		return ""
+	}
+	return b
 }

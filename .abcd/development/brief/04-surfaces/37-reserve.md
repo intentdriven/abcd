@@ -422,7 +422,9 @@ repository allows, and a commit that never reached origin never sets the
 ceiling. An origin that answers but names no branch with a commit as its
 default (it holds none, or its HEAD is detached) has no file for the figure:
 the ten applies, lowered by the machine alone, and the note says so. The
-drain's wait at the cap reads the figure the same way. The
+drain's wait at the cap asks no network: it reads the figure at the branch
+origin last named to a reservation act in that checkout, and where that
+cannot be read it leaves the count to the act. The
 ceiling row of `abcd peers` asks no network and reads the figure as the
 checkout last fetched it; the act decides. A view in a checkout with no default branch of origin reads
 no repository figure and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
