@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -535,7 +536,7 @@ func writeAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileMode,
 			return err
 		}
 	}
-	tmp, tmpRel, err := createTempInRoot(root, dir)
+	tmp, tmpRel, err := createTempInRoot(root, dir, 0o600)
 	if err != nil {
 		return err
 	}
@@ -605,11 +606,11 @@ func WriteFileAtomicModeOfInRoot(root *os.Root, rel, from string, data []byte) e
 	return WriteFileAtomicInRoot(root, rel, data, perm)
 }
 
-// createTempInRoot creates an exclusively-owned temp file in dir inside root,
-// returning it and its root-relative path. os.CreateTemp cannot be used here: it
-// resolves a path outside any containment scope, which is precisely what the
-// root exists to prevent.
-func createTempInRoot(root *os.Root, dir string) (*os.File, string, error) {
+// createTempInRoot creates an exclusively-owned temp file in dir inside root at
+// perm (under the umask), returning it and its root-relative path.
+// os.CreateTemp cannot be used here: it resolves a path outside any containment
+// scope, which is precisely what the root exists to prevent.
+func createTempInRoot(root *os.Root, dir string, perm os.FileMode) (*os.File, string, error) {
 	var buf [8]byte
 	for range 100 {
 		if _, err := rand.Read(buf[:]); err != nil {
@@ -619,7 +620,7 @@ func createTempInRoot(root *os.Root, dir string) (*os.File, string, error) {
 		if dir != "." {
 			rel = dir + "/" + rel
 		}
-		f, err := root.OpenFile(rel, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		f, err := root.OpenFile(rel, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm)
 		if err == nil {
 			return f, rel, nil
 		}
@@ -787,54 +788,142 @@ func ProbeRealDirAll(base, rel string) (ok bool, err error) {
 }
 
 // CreateExclusiveIn writes data to rel INSIDE root, failing if rel already
-// exists. It is the canonical primitive for a durable write that must (a) stay
-// contained under a directory even against a symlinked ancestor, and (b) never
-// replace an existing file.
+// exists. It is the canonical primitive for a durable write-once file that must
+// (a) stay contained under a directory even against a symlinked ancestor, (b)
+// never replace an existing file, and (c) appear only whole.
 //
 // It is deliberately not WriteFileAtomic. That primitive's contract is atomic
-// REPLACEMENT — a temp file renamed over the target — which is the right shape
-// when a file is rewritten in place, and the wrong one here: the rename would
-// happily clobber, and the containment would depend on the caller having resolved
-// the directory safely rather than on the Root. Here the exclusive create IS both
-// guarantees at once. There is no partial-overwrite hazard to protect against,
-// because the file cannot already exist; a crash mid-write leaves a short file,
-// which the caller's own no-overwrite refusal surfaces on the next run rather than
-// silently completing.
+// REPLACEMENT — a temp file renamed over the target — and a rename clobbers
+// whatever stands at the name. Here the name is taken with a hard link instead:
+// the content is written to an unpredictable temp name in rel's own directory,
+// flushed and closed, and only then linked to rel, and link(2) refuses a name
+// that exists, whatever it is (a dangling symlink included), exactly as the
+// O_EXCL create it replaces did. So the final name appears only once its
+// content is complete: a process killed part-way leaves at most a stray temp
+// name, never a short record that every later exclusive create would refuse.
+// Of concurrent creators exactly one links first, and the rest are refused.
+// Both names are resolved through root (os.Root.Link is linkat with no
+// follow flag), so neither can be steered out of it.
 //
-// rel is slash-separated and relative to root. os.ErrExist is returned unwrapped
-// enough for errors.Is, so a caller can map it to its own typed refusal. A write
-// that fails after the create removes the partial file.
+// On a filesystem with no hard links (FAT and exFAT among them), the link's
+// refusal is taken as that and the name is claimed with an O_EXCL create of an
+// empty file, over which the complete temp file is then renamed. The exclusive
+// contract is the same; a crash in the instant between the two leaves an empty
+// file rather than none, a window two syscalls wide rather than the whole write.
+//
+// rel is slash-separated and relative to root, and its directory must exist. A
+// refusal names rel, never the temp name: an existing rel is a *fs.PathError
+// satisfying errors.Is(err, fs.ErrExist) and os.IsExist, so a caller can map it
+// to its own typed refusal. perm is the new file's mode under the umask. Every
+// failure removes the temp name, and the success path removes it too, leaving
+// rel the file's only link. The parent directory is flushed afterwards, so the
+// new name survives a crash, as WriteFileAtomic's does.
 func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode) error {
-	f, err := root.OpenFile(rel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+	dir := path.Dir(rel)
+	tmp, tmpRel, err := createTempInRoot(root, dir, perm)
 	if err != nil {
+		return namedFor(rel, err)
+	}
+	abandon := func(err error) error {
+		tmp.Close()
+		_ = root.Remove(tmpRel)
 		return err
 	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		_ = root.Remove(rel)
+	if err := exclusiveWrite(tmp, data); err != nil {
+		return abandon(err)
+	}
+	if err := Flush(tmp); err != nil {
+		return abandon(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = root.Remove(tmpRel)
 		return err
 	}
-	if err := Flush(f); err != nil {
-		f.Close()
-		_ = root.Remove(rel)
-		return err
+	err = linkIn(root, tmpRel, rel)
+	switch {
+	case err == nil:
+		// Best-effort: rel is complete and in place, so a failure to drop the
+		// temp name must not report the create as failed; a retry would only be
+		// refused by the file this call made.
+		_ = root.Remove(tmpRel)
+	case noHardLinks(err):
+		err = claimThenRename(root, tmpRel, rel, perm)
+	default:
+		_ = root.Remove(tmpRel)
 	}
-	if err := f.Close(); err != nil {
-		_ = root.Remove(rel)
-		return err
+	if err != nil {
+		return namedFor(rel, err)
 	}
-	// Fsync the PARENT too, for the same reason WriteFileAtomic does: syncing the
+	// Fsync the PARENT, for the same reason WriteFileAtomic does: syncing the
 	// file makes its CONTENT durable, not its NAME. A caller that writes this file
 	// and then durably records a pointer to it would otherwise survive a crash
 	// holding the pointer and no directory entry — a pointer to nothing, which is
 	// the exact state such a caller's rollback exists to prevent. Best-effort:
 	// some filesystems refuse a directory fsync.
-	if d, err := root.Open(path.Dir(rel)); err == nil {
-		_ = Flush(d)
-		_ = d.Close()
+	syncDirInRoot(root, dir)
+	return nil
+}
+
+// noHardLinks reports whether a link's refusal says the filesystem has no hard
+// links: ENOTSUP or EOPNOTSUPP (macOS, and Linux for some filesystems), or EPERM,
+// which Linux returns for a filesystem that cannot link and which a file this
+// process just created can raise for no other reason.
+func noHardLinks(err error) bool {
+	return errors.Is(err, errors.ErrUnsupported) || errors.Is(err, syscall.EPERM)
+}
+
+// claimThenRename is CreateExclusiveIn's route on a filesystem with no hard
+// links: claim rel with an O_EXCL create, so a name that exists is refused as
+// before, then rename the complete temp file over the empty claim. It removes
+// the temp name, and the claim when the rename fails.
+func claimThenRename(root *os.Root, tmpRel, rel string, perm os.FileMode) error {
+	claim, err := root.OpenFile(rel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+	if err != nil {
+		_ = root.Remove(tmpRel)
+		return err
+	}
+	if err := claim.Close(); err != nil {
+		_ = root.Remove(tmpRel)
+		_ = root.Remove(rel)
+		return err
+	}
+	if err := root.Rename(tmpRel, rel); err != nil {
+		_ = root.Remove(tmpRel)
+		_ = root.Remove(rel)
+		return err
 	}
 	return nil
 }
+
+// namedFor restates a refusal met on the temp name or the link as one on rel,
+// the caller's path, in the shape an O_EXCL open of rel gave: a *fs.PathError
+// carrying the same cause, so errors.Is and os.IsExist read it unchanged.
+func namedFor(rel string, err error) error {
+	var le *os.LinkError
+	if errors.As(err, &le) {
+		op := le.Op
+		if op == "linkat" {
+			op = "openat"
+		}
+		return &fs.PathError{Op: op, Path: rel, Err: le.Err}
+	}
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return &fs.PathError{Op: pe.Op, Path: rel, Err: pe.Err}
+	}
+	return err
+}
+
+// exclusiveWrite writes CreateExclusiveIn's content. It is a variable so a test
+// can stop a write part-way and look at what a crash at that instant leaves.
+var exclusiveWrite = func(f *os.File, data []byte) error {
+	_, err := f.Write(data)
+	return err
+}
+
+// linkIn is the hard link CreateExclusiveIn names its file with. It is a
+// variable so a test can stand in a filesystem that has no hard links.
+var linkIn = (*os.Root).Link
 
 // ErrNotOneLine is AppendLineIn's refusal: the payload is empty or carries a line
 // break, so one call would not append exactly one record.
