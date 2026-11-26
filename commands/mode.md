@@ -158,9 +158,15 @@ naming the window: the session may wait for the person's reply only holding a
 wake, so the checks read it again once the window ends. The prompt hook says
 so in one line beside the away block. A prompt that one of the session's own
 wakes fires, a background task's report, another session's message and the
-host's own resumptions open nothing; every stop, present or away, keeps the
-session's wakes so their prompts are known, and a session listing more wakes
-than its state keeps (32) has no prompt open its window. A prompt typed under
+host's own resumptions open nothing. Every stop the check reads, present or
+away, keeps the session's wakes so their prompts are known; a stop it allows
+before reading them (its time spent before the checkout is named, a session
+state it cannot read, a payload it cannot read, or a turn the host ends on an
+error) keeps nothing, so a wake made in that turn reads as the person's at its
+first firing and opens one window, whose own turn's end then keeps it. A
+session holding more wakes than its state keeps (32), or a wake whose prompt
+is a slash command, which reaches the prompt hook expanded rather than as it
+was set, has no prompt open its window. A prompt typed under
 one away record opens nothing under the next. Every other session stays away,
 and once the 15 minutes pass the checks hold again in that session at its next
 turn's end: answer the person, then carry on with the owed work. Anything

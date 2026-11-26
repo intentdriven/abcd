@@ -107,11 +107,14 @@ session holds a scheduled wake that fires soon enough. With work owed and no
 wake, the turn's end is held, naming the window, so a session the person spoke
 to is still read again once the window ends (dcn-2611262057069959). The prompt
 hook tells the session so in one line. A prompt is the person's unless it is
-one of the session's wakes, as every stop check, present or away, has kept
-them, or opens as one of the host's own prompts does (a background task's
-report, another session's message, a usage-limit resumption, a continued
-session's summary); in a session listing more wakes than its state keeps, no
-prompt is. The window is read only under the record it was opened under, so a
+one of the session's wakes, as every stop the check reads, present or away,
+has kept them, or opens as one of the host's own prompts does (a background
+task's report, another session's message, a usage-limit resumption, a
+continued session's summary); in a session holding more wakes than its state
+keeps, or a wake whose prompt is a slash command, which reaches the prompt hook
+expanded (dcn-2611262236204687), no prompt is. A stop the check allows before
+reading its wakes keeps none, so a wake made in that turn reads as the
+person's once, at its first firing. The window is read only under the record it was opened under, so a
 prompt typed under one record opens nothing under the next. Every other
 session stays away, and the window closes on its own, so the person can add to
 a conversation without ending the mode and setting it again. Anything running

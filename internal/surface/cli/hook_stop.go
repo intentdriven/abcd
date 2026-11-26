@@ -145,9 +145,11 @@ A prompt the person typed in the session while away (abcd mode, the person
 talking while away) has its stops read as present ones for 15 minutes after
 it, under the record it was typed under: allowed when nothing is owed or the
 session holds a qualifying wake, and otherwise blocked, naming the window, so
-the session is read again once the window ends. Every stop, present or away,
-keeps the session's wakes' prompts in its state, so the prompt hook can tell a
-wake firing from the person typing. The prompt hook and this one read and
+the session is read again once the window ends. Every stop the check reads,
+present or away, keeps the session's wakes' prompts in its state, so the
+prompt hook can tell a wake firing from the person typing; a stop allowed
+before they are read (the checkout not named in time, the session's state
+unreadable) keeps none. The prompt hook and this one read and
 write that state as any process of this account can, so the window holds
 against other accounts and stale state, not against this account's own agent;
 nothing enforces more.
