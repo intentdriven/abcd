@@ -205,8 +205,9 @@ func AskTheBinaryBlock(name, rung string) string {
 // begin marker through its end marker. Its first line names the facts' format
 // version and sends the reader to the running binary where the two disagree.
 // For each command the page covers it lists the usage line, each input with
-// its schema version, and the example. A page whose commands declare no
-// visible flag and read no input gets the first line alone.
+// its schema version, the example, and what usually follows the command's
+// success. A page whose commands declare no visible flag, read no input and
+// name nothing that follows gets the first line alone.
 func CommandFactsBlock(facts []surface.Facts, name, rung string) string {
 	var b strings.Builder
 	b.WriteString(CommandFactsBegin + "\n")
@@ -235,16 +236,25 @@ func CommandFactsBlock(facts []surface.Facts, name, rung string) string {
 				}
 			}
 		}
+		switch {
+		case f.NoNext != "":
+			b.WriteString("  - Nothing usually follows: " + f.NoNext + ".\n")
+		case len(f.Next) > 0:
+			b.WriteString("  - What usually follows:\n")
+			for _, s := range f.Next {
+				b.WriteString("    - " + codeSpan(s.Command) + ", " + s.When + ".\n")
+			}
+		}
 	}
 	b.WriteString(GeneratedEnd)
 	return b.String()
 }
 
 // declaresAnything reports whether any of the commands declares a visible flag
-// of its own or reads an input.
+// of its own, reads an input, or names what usually follows it.
 func declaresAnything(facts []surface.Facts) bool {
 	for _, f := range facts {
-		if len(f.Inputs) > 0 {
+		if len(f.Inputs) > 0 || len(f.Next) > 0 || f.NoNext != "" {
 			return true
 		}
 		for _, fl := range f.Flags {

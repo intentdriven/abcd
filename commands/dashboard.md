@@ -108,17 +108,26 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain dashboard` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain dashboard` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd dashboard [flags]`
   - An example call is `abcd dashboard`.
+  - What usually follows:
+    - `abcd dashboard start`, when the dashboard is not running.
+    - `abcd dashboard stop`, when it runs and is no longer wanted.
 - `abcd dashboard start [flags]`
   - An example call is `abcd dashboard start`.
+  - What usually follows:
+    - `abcd dashboard status`, to see its address and the devices that opened it.
 - `abcd dashboard status [flags]`
   - An example call is `abcd dashboard status`.
+  - What usually follows:
+    - `abcd dashboard start`, when the dashboard is not running.
+    - `abcd dashboard stop`, when it runs and is no longer wanted.
 - `abcd dashboard stop [flags]`
   - An example call is `abcd dashboard stop`.
+  - Nothing usually follows: the dashboard is stopped, and nothing usually follows.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

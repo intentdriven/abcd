@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd memory",
@@ -12,6 +12,12 @@
         "add",
         "list",
         "remove"
+      ],
+      "next": [
+        {
+          "command": "abcd memory list",
+          "when": "to read every note with its recall words"
+        }
       ]
     },
     {
@@ -45,7 +51,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd memory add --title \"The tests need the race flag\" --recall test --recall race --by Example:model-1 < note.txt"
+      "example": "abcd memory add --title \"The tests need the race flag\" --recall test --recall race --by Example:model-1 < note.txt",
+      "next": [
+        {
+          "command": "abcd memory list",
+          "when": "to see the note among the others"
+        }
+      ]
     },
     {
       "path": "abcd memory list",
@@ -53,7 +65,13 @@
       "usage": "abcd memory list [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd memory list"
+      "example": "abcd memory list",
+      "next": [
+        {
+          "command": "abcd memory remove <mem-id>",
+          "when": "to remove a note that no longer holds"
+        }
+      ]
     },
     {
       "path": "abcd memory remove",
@@ -61,7 +79,13 @@
       "usage": "abcd memory remove <mem-id> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd memory remove mem-2609010000000001"
+      "example": "abcd memory remove mem-2609010000000001",
+      "next": [
+        {
+          "command": "abcd memory list",
+          "when": "to see the notes left"
+        }
+      ]
     }
   ]
 }

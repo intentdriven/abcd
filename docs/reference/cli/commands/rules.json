@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd rules",
@@ -16,7 +16,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd rules"
+      "example": "abcd rules",
+      "no_next": "the rules are read and followed; nothing usually follows"
     }
   ]
 }

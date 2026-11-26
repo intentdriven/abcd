@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd history",
@@ -19,6 +19,16 @@
         "separation",
         "show",
         "staged"
+      ],
+      "next": [
+        {
+          "command": "abcd history drain",
+          "when": "to redact and store every transcript staged for this repository"
+        },
+        {
+          "command": "abcd history list",
+          "when": "to list the stored transcripts"
+        }
       ]
     },
     {
@@ -48,7 +58,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history capture 0123abcd-session.jsonl"
+      "example": "abcd history capture 0123abcd-session.jsonl",
+      "next": [
+        {
+          "command": "abcd history list",
+          "when": "to see the stored transcript among the others"
+        }
+      ]
     },
     {
       "path": "abcd history discard",
@@ -69,7 +85,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history discard 0123abcd-session.raw --yes"
+      "example": "abcd history discard 0123abcd-session.raw --yes",
+      "next": [
+        {
+          "command": "abcd history staged",
+          "when": "to see the transcripts still staged"
+        }
+      ]
     },
     {
       "path": "abcd history drain",
@@ -77,7 +99,14 @@
       "usage": "abcd history drain [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd history drain"
+      "example": "abcd history drain",
+      "next": [
+        {
+          "command": "abcd history list",
+          "when": "to see the transcripts it stored"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd history ingest",
@@ -94,7 +123,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history ingest --into ."
+      "example": "abcd history ingest --into .",
+      "next": [
+        {
+          "command": "abcd history list",
+          "when": "to see the transcripts it stored"
+        }
+      ]
     },
     {
       "path": "abcd history list",
@@ -107,7 +142,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history list"
+      "example": "abcd history list",
+      "next": [
+        {
+          "command": "abcd history show <session-id>",
+          "when": "to read one stored transcript"
+        }
+      ]
     },
     {
       "path": "abcd history migrate",
@@ -124,7 +165,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history migrate"
+      "example": "abcd history migrate",
+      "next": [
+        {
+          "command": "abcd history list",
+          "when": "to see the repaired records"
+        }
+      ]
     },
     {
       "path": "abcd history reconstruct",
@@ -152,7 +199,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history reconstruct 0123abcd-session"
+      "example": "abcd history reconstruct 0123abcd-session",
+      "no_next": "the artefact and its telemetry are written for reading; nothing usually follows"
     },
     {
       "path": "abcd history separation",
@@ -160,7 +208,8 @@
       "usage": "abcd history separation [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd history separation"
+      "example": "abcd history separation",
+      "no_next": "the report answers the question asked; nothing usually follows"
     },
     {
       "path": "abcd history show",
@@ -168,7 +217,13 @@
       "usage": "abcd history show <session-id-or-filename> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd history show 0123abcd-session"
+      "example": "abcd history show 0123abcd-session",
+      "next": [
+        {
+          "command": "abcd history reconstruct <session-id>",
+          "when": "to render the session with its sub-agents as one artefact"
+        }
+      ]
     },
     {
       "path": "abcd history staged",
@@ -185,7 +240,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd history staged"
+      "example": "abcd history staged",
+      "next": [
+        {
+          "command": "abcd history drain",
+          "when": "to redact and store what is staged"
+        },
+        {
+          "command": "abcd history discard <staged-filename> --yes",
+          "when": "to delete a staged transcript for good"
+        }
+      ]
     }
   ]
 }

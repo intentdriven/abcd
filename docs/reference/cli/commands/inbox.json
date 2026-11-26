@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd inbox",
@@ -11,6 +11,12 @@
       "subcommands": [
         "promote",
         "show"
+      ],
+      "next": [
+        {
+          "command": "abcd inbox show <id>",
+          "when": "to read one report whole"
+        }
       ]
     },
     {
@@ -19,7 +25,13 @@
       "usage": "abcd inbox promote <id> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd inbox promote rpt-2609010000000001"
+      "example": "abcd inbox promote rpt-2609010000000001",
+      "next": [
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the capture it filed"
+        }
+      ]
     },
     {
       "path": "abcd inbox show",
@@ -27,7 +39,13 @@
       "usage": "abcd inbox show <id> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd inbox show rpt-2609010000000001"
+      "example": "abcd inbox show rpt-2609010000000001",
+      "next": [
+        {
+          "command": "abcd inbox promote <id>",
+          "when": "to file the report as a capture"
+        }
+      ]
     }
   ]
 }

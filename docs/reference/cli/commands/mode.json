@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd mode",
@@ -12,6 +12,16 @@
         "autonomous",
         "back",
         "queue"
+      ],
+      "next": [
+        {
+          "command": "abcd mode autonomous",
+          "when": "when the person is going away"
+        },
+        {
+          "command": "abcd mode back",
+          "when": "when the person is back"
+        }
       ]
     },
     {
@@ -29,7 +39,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd mode autonomous --until 09:00"
+      "example": "abcd mode autonomous --until 09:00",
+      "next": [
+        {
+          "command": "abcd mode queue \"<step>\"",
+          "when": "to queue a step for the person's return"
+        },
+        {
+          "command": "abcd mode back",
+          "when": "when the person is back"
+        }
+      ]
     },
     {
       "path": "abcd mode back",
@@ -37,7 +57,8 @@
       "usage": "abcd mode back [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd mode back"
+      "example": "abcd mode back",
+      "no_next": "the queue is printed for the person to act on; nothing usually follows"
     },
     {
       "path": "abcd mode queue",
@@ -45,7 +66,13 @@
       "usage": "abcd mode queue [<step>] [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd mode queue \"approve the embargo close for the example advisory\""
+      "example": "abcd mode queue \"approve the embargo close for the example advisory\"",
+      "next": [
+        {
+          "command": "abcd mode back",
+          "when": "when the person is back"
+        }
+      ]
     }
   ]
 }

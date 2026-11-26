@@ -465,31 +465,53 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain history` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain history` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd history [flags]`
   - An example call is `abcd history`.
+  - What usually follows:
+    - `abcd history drain`, to redact and store every transcript staged for this repository.
+    - `abcd history list`, to list the stored transcripts.
 - `abcd history capture [<transcript-file> | - | --session <id> --all <path>...] [flags]`
   - An example call is `abcd history capture 0123abcd-session.jsonl`.
+  - What usually follows:
+    - `abcd history list`, to see the stored transcript among the others.
 - `abcd history discard <staged-filename> --yes [flags]`
   - An example call is `abcd history discard 0123abcd-session.raw --yes`.
+  - What usually follows:
+    - `abcd history staged`, to see the transcripts still staged.
 - `abcd history drain [flags]`
   - An example call is `abcd history drain`.
+  - What usually follows:
+    - `abcd history list`, to see the transcripts it stored.
 - `abcd history ingest [<path>...] [flags]`
   - An example call is `abcd history ingest --into .`.
+  - What usually follows:
+    - `abcd history list`, to see the transcripts it stored.
 - `abcd history list [flags]`
   - An example call is `abcd history list`.
+  - What usually follows:
+    - `abcd history show <session-id>`, to read one stored transcript.
 - `abcd history migrate [flags]`
   - An example call is `abcd history migrate`.
+  - What usually follows:
+    - `abcd history list`, to see the repaired records.
 - `abcd history reconstruct <session-id> [flags]`
   - An example call is `abcd history reconstruct 0123abcd-session`.
+  - Nothing usually follows: the artefact and its telemetry are written for reading; nothing usually follows.
 - `abcd history separation [flags]`
   - An example call is `abcd history separation`.
+  - Nothing usually follows: the report answers the question asked; nothing usually follows.
 - `abcd history show <session-id-or-filename> [flags]`
   - An example call is `abcd history show 0123abcd-session`.
+  - What usually follows:
+    - `abcd history reconstruct <session-id>`, to render the session with its sub-agents as one artefact.
 - `abcd history staged [flags]`
   - An example call is `abcd history staged`.
+  - What usually follows:
+    - `abcd history drain`, to redact and store what is staged.
+    - `abcd history discard <staged-filename> --yes`, to delete a staged transcript for good.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -636,11 +636,14 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain land` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain land` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd land [<branch>] [flags]`
   - An example call is `abcd land`.
+  - What usually follows:
+    - `abcd landings`, to see how the change landed once the queue merges it.
+    - `abcd reserve <record-id> --release`, to release the record's reservation once it merges.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

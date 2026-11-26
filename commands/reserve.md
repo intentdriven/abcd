@@ -764,11 +764,14 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reserve` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reserve` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd reserve <record-id> [flags]`
   - An example call is `abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go`.
+  - What usually follows:
+    - `abcd reserve <record-id> --release`, once the work on the record is done.
+    - `abcd peers`, to see the reservation beside the others.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

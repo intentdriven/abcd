@@ -2027,38 +2027,70 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ahoy` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd ahoy [flags]`
   - An example call is `abcd ahoy`.
+  - What usually follows:
+    - `abcd ahoy install`, when it lists an install gap.
+    - `abcd ahoy doctor`, to see every gap, user-scope state included.
 - `abcd ahoy connect [<provider>] [flags]`
   - An example call is `abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none`.
+  - What usually follows:
+    - `abcd ahoy credential`, to list the credentials abcd now reads.
+    - `abcd ahoy doctor`, to check nothing else is missing.
 - `abcd ahoy credential [<name>] [flags]`
   - An example call is `abcd ahoy credential`.
+  - What usually follows:
+    - `abcd ahoy connect <provider>`, to configure the provider the credential is for.
 - `abcd ahoy doctor [flags]`
   - An example call is `abcd ahoy doctor`.
+  - What usually follows:
+    - `abcd ahoy install`, when it reports a gap install can apply.
 - `abcd ahoy install [flags]`
   - Reads `--answers`, the interview answers.
   - An example call is `abcd ahoy install`.
+  - What usually follows:
+    - `abcd ahoy doctor`, to confirm no gap is left.
+    - `abcd`, to read the board of the repository just set up.
 - `abcd ahoy remote [flags]`
   - An example call is `abcd ahoy remote`.
+  - What usually follows:
+    - `abcd ahoy remote apply`, when a GitHub setting differs from the baseline.
 - `abcd ahoy remote apply [flags]`
   - An example call is `abcd ahoy remote apply`.
+  - What usually follows:
+    - `abcd ahoy remote`, to confirm no setting differs any more.
 - `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
   - An example call is `abcd ahoy shared-folder /Users/Shared`.
+  - What usually follows:
+    - `abcd implement stop`, to stop the unattended runs of every account that chose the folder.
 - `abcd ahoy uninstall [flags]`
   - An example call is `abcd ahoy uninstall`.
+  - Nothing usually follows: abcd is gone from the repository, so no abcd command usually follows.
 - `abcd ahoy worktree [flags]`
   - An example call is `abcd ahoy worktree`.
+  - What usually follows:
+    - `abcd ahoy worktree add <name>`, to start a second session's work in a worktree of its own.
+    - `abcd ahoy worktree prune --dry-run`, to see which merged, clean worktrees can be reclaimed.
 - `abcd ahoy worktree add <name> [flags]`
   - An example call is `abcd ahoy worktree add example-lane`.
+  - What usually follows:
+    - `abcd reserve <record-id> --footprint <path>`, before working a record in the new worktree.
 - `abcd ahoy worktree list [flags]`
   - An example call is `abcd ahoy worktree list`.
+  - What usually follows:
+    - `abcd ahoy worktree prune --dry-run`, to see which merged, clean worktrees can be reclaimed.
 - `abcd ahoy worktree prune [flags]`
   - An example call is `abcd ahoy worktree prune --dry-run`.
+  - What usually follows:
+    - `abcd ahoy worktree prune`, after a --dry-run, to reclaim what it listed.
+    - `abcd ahoy worktree list`, to see the worktrees left.
 - `abcd ahoy worktree trim-cache [flags]`
   - An example call is `abcd ahoy worktree trim-cache --dry-run`.
+  - What usually follows:
+    - `abcd ahoy worktree trim-cache`, after a --dry-run, to delete what it listed.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

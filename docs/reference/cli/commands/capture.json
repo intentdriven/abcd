@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd capture",
@@ -101,6 +101,16 @@
         "resolve",
         "surprise",
         "wontfix"
+      ],
+      "next": [
+        {
+          "command": "abcd reserve <iss-N> --footprint <path>",
+          "when": "before starting work on the issue"
+        },
+        {
+          "command": "abcd capture resolve <iss-N> \"<what fixed it>\" --impact <impact>",
+          "when": "once the fix lands"
+        }
       ]
     },
     {
@@ -114,7 +124,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture admit rdi-2609010000000001 --grounds \"the widened configuration is one the next release has to serve\""
+      "example": "abcd capture admit rdi-2609010000000001 --grounds \"the widened configuration is one the next release has to serve\"",
+      "next": [
+        {
+          "command": "abcd capture disposition <rdi-N> --state <state> --grounds \"<why>\"",
+          "when": "to answer the run's other reading items"
+        }
+      ]
     },
     {
       "path": "abcd capture defer",
@@ -131,7 +147,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture defer iss-2609010000000001 --after v0.1.0 --reason \"the fix needs the parser rewrite that lands next cycle\""
+      "example": "abcd capture defer iss-2609010000000001 --after v0.1.0 --reason \"the fix needs the parser rewrite that lands next cycle\"",
+      "next": [
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the open issues the deferral leaves"
+        }
+      ]
     },
     {
       "path": "abcd capture disposition",
@@ -174,7 +196,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture disposition rdi-2609010000000001 --state accepted --grounds \"pursued: the tension is real and the next reading will show it again\""
+      "example": "abcd capture disposition rdi-2609010000000001 --state accepted --grounds \"pursued: the tension is real and the next reading will show it again\"",
+      "next": [
+        {
+          "command": "abcd capture promote <rdi-N>",
+          "when": "when the item was accepted and should become an intent draft"
+        }
+      ]
     },
     {
       "path": "abcd capture link",
@@ -191,7 +219,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002"
+      "example": "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002",
+      "next": [
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the issue among the others, blocked or not"
+        }
+      ]
     },
     {
       "path": "abcd capture list",
@@ -216,7 +250,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture list --open"
+      "example": "abcd capture list --open",
+      "next": [
+        {
+          "command": "abcd <iss-N>",
+          "when": "to see one issue whole and its next move"
+        },
+        {
+          "command": "abcd reserve <iss-N> --footprint <path>",
+          "when": "before starting work on one"
+        }
+      ]
     },
     {
       "path": "abcd capture mentions",
@@ -229,7 +273,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture mentions"
+      "example": "abcd capture mentions",
+      "next": [
+        {
+          "command": "abcd capture resolve <iss-N> \"<what fixed it>\" --impact <impact>",
+          "when": "for an issue a landed change already fixed"
+        }
+      ]
     },
     {
       "path": "abcd capture migrate",
@@ -242,7 +292,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture migrate"
+      "example": "abcd capture migrate",
+      "next": [
+        {
+          "command": "abcd capture migrate --apply",
+          "when": "after a practice run, to rewrite what it listed"
+        }
+      ]
     },
     {
       "path": "abcd capture promote",
@@ -268,7 +324,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture promote iss-2609010000000001"
+      "example": "abcd capture promote iss-2609010000000001",
+      "next": [
+        {
+          "command": "abcd intent plan <itd-N>",
+          "when": "to plan the draft the promotion filed"
+        }
+      ]
     },
     {
       "path": "abcd capture reframe",
@@ -293,7 +355,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds \"the reading showed the construal assumed a single operator\" --open"
+      "example": "abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds \"the reading showed the construal assumed a single operator\" --open",
+      "next": [
+        {
+          "command": "abcd capture reframe --complete <rfm-N>",
+          "when": "once the reframe has been worked through"
+        }
+      ]
     },
     {
       "path": "abcd capture remedy",
@@ -301,7 +369,13 @@
       "usage": "abcd capture remedy <iss-N> <text> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd capture remedy iss-2609010000000001 \"make the map before the first write\""
+      "example": "abcd capture remedy iss-2609010000000001 \"make the map before the first write\"",
+      "next": [
+        {
+          "command": "abcd reserve <iss-N> --footprint <path>",
+          "when": "before starting the fix"
+        }
+      ]
     },
     {
       "path": "abcd capture resolve",
@@ -349,7 +423,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture resolve iss-2609010000000001 \"fixed by the parser change\" --impact fix"
+      "example": "abcd capture resolve iss-2609010000000001 \"fixed by the parser change\" --impact fix",
+      "next": [
+        {
+          "command": "abcd reserve <iss-N> --release",
+          "when": "to release the issue's reservation"
+        },
+        {
+          "command": "abcd land",
+          "when": "to push the branch carrying the fix and queue its pull request"
+        }
+      ]
     },
     {
       "path": "abcd capture surprise",
@@ -362,7 +446,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture surprise --occasioned-by rdi-2609010000000001 \"the proposal nobody expected ranked first\""
+      "example": "abcd capture surprise --occasioned-by rdi-2609010000000001 \"the proposal nobody expected ranked first\"",
+      "next": [
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the ledger the surprise sits beside"
+        }
+      ]
     },
     {
       "path": "abcd capture wontfix",
@@ -388,7 +478,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture wontfix iss-2609010000000001 \"the behaviour is the documented one\""
+      "example": "abcd capture wontfix iss-2609010000000001 \"the behaviour is the documented one\"",
+      "next": [
+        {
+          "command": "abcd reserve <iss-N> --release",
+          "when": "to release the issue's reservation, if one was held"
+        }
+      ]
     }
   ]
 }

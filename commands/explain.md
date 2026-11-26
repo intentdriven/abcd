@@ -37,6 +37,9 @@ It prints, in at most 40 lines and in this order:
 - each filled-in input it reads, with the schema version this binary reads and
   the call that prints the input's shape;
 - the worked example, when it has one;
+- what usually comes next once the command succeeds: each step's command,
+  its words in angle brackets values to fill in, and when the step applies,
+  or `Next: nothing usually follows:` and the reason;
 - the sub-commands, when it has any.
 
 A boolean flag takes no value and reads `(bool)`. A hidden flag is left out of
@@ -119,12 +122,31 @@ left out when it is empty or false; `each` is present only on a list flag and
 says what in each value `allowed` applies to: `member` when every member of a
 comma-list or repeated value is one of the set, or the name of the segment
 that is, such as `tier` in a route's `<agent>=<tier>`), `inputs` (each with
-`flag`, `kind`, `name`, `schema_version` and `version_in`), `example` and
-`subcommands`. A sub-command
+`flag`, `kind`, `name`, `schema_version` and `version_in`), `example`,
+`subcommands`, `next` (each step with `command` and `when`), `no_next` (the
+reason nothing usually follows, in place of `next`) and `streaming` (present
+on a command whose run can write a document before its last one). A sub-command
 of a hidden parent, such as one on the hook plane, carries no `hidden` key of
 its own, though its text answer says `(hidden)`. With `--input` it prints the
 input's shape: `path`, `flag`, `name`, `schema_version`, `version_in`, `root`
 (`object` or `array`), `fields` and `example`.
+
+## What comes next after a success
+
+Every visible command's successful result under `--json` is a JSON object
+that ends with a `next_steps` key: the same steps `explain` prints for the
+command, each with `command` and `when`, or an empty list where nothing
+usually follows. The key is added after every key the result already has, and
+no other byte of the result changes, so a reader of the result as it was is
+not broken. It is `next_steps`, never `next`: several results carry a `next`
+of their own, such as the loop's next action, and keep it as it was. A
+command whose run can write more than one document (a loop's refusal
+document ahead of the error object, say) carries `next_steps` on its closing
+summary alone, and a document a refusal follows carries none. A hidden command
+adds nothing. Four commands print a JSON array rather than an object, and an
+array takes no key without breaking its readers: `abcd decide` bare,
+`abcd history list`, `abcd history staged` and `abcd library ledger`. Their
+results are left as they were, and `explain` still names their next steps.
 
 For a code, `--json` prints the code's entry: `code`, `summary`,
 `explanation`, `next` (holding `{command}` where the refused command is filled
@@ -164,11 +186,12 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain explain` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain explain` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd explain [<verb> [<sub-verb>...] | <code>] [flags]`
   - An example call is `abcd explain ideate record --input verdict-json`.
+  - Nothing usually follows: the answer is what the next call is built from; no abcd command usually follows it.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

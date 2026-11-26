@@ -269,6 +269,12 @@ func failOpenNoArgs(cmd *cobra.Command, args []string) error {
 // status board (abcd's convention: bare invocation never mutates); subcommands
 // carry the actions.
 func NewRootCommand() *cobra.Command {
+	return newRootCommand(surface.NextFor)
+}
+
+// newRootCommand is NewRootCommand with the next-steps lookup injected, so a
+// test can give a fixture verb an entry without swapping the binary's table.
+func newRootCommand(nextFor func(path string) (surface.Next, bool)) *cobra.Command {
 	var asJSON bool
 	var noColor bool
 	var viewFlag, formatFlag string
@@ -292,6 +298,14 @@ func NewRootCommand() *cobra.Command {
 			"and staleness it reports are unchanged.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Under --json, a visible command's stdout carries its path and its
+		// next steps, so render can add them to a successful result
+		// (spc-2610301431108175 step 6, next_steps.go). No sub-command
+		// declares a pre-run hook of its own, which would replace this one.
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			installNextSteps(cmd, asJSON, nextFor)
+			return nil
+		},
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
 		// what is my next move" (spc-26). The positional is accepted iff it
 		// matches the record-id shape — any other positional reproduces
@@ -5047,9 +5061,7 @@ func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
 	if err != nil {
 		return err
 	}
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(res)
+	return render(cmd.OutOrStdout(), true, res, nil)
 }
 
 // runAhoyIdentity is `ahoy --identity`, the identity gate's canonical,
@@ -5778,8 +5790,7 @@ func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Wri
 		return err
 	}
 	buf.WriteByte('\n')
-	_, err = w.Write(buf.Bytes())
-	return err
+	return writeDocument(w, buf.Bytes(), docOne, renderStyle)
 }
 
 // strayStoreNotes names a record store sitting BELOW the checkout root, between
@@ -7975,15 +7986,13 @@ func embeddedPaths(err error) []string {
 
 // render writes v as indented JSON when asJSON is set, otherwise delegates to
 // the text renderer. Keeping this one helper is what makes every command's
-// --json behaviour uniform.
+// --json behaviour uniform. Written to a visible command's stdout, the
+// document carries the command's next steps as a top-level next_steps key,
+// spliced in after every key it already has (next_steps.go); a streaming
+// command's closing summary goes through renderFinal instead, and a document
+// a refusal follows through renderRefused.
 func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
-	if asJSON {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(v)
-	}
-	text(w)
-	return nil
+	return renderAs(w, asJSON, v, text, docOne)
 }
 
 // enumHelp renders a closed enum's accepted values for a flag's help line. It

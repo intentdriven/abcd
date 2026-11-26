@@ -370,34 +370,58 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lab` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lab` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd lab [flags]`
   - An example call is `abcd lab`.
+  - What usually follows:
+    - `abcd lab mint "<question>"`, to open a lab for a new question.
 - `abcd lab harvest <lab-id> [flags]`
   - An example call is `abcd lab harvest lab-260901000000-0123abc`.
+  - What usually follows:
+    - `abcd capture "<text>" --remedy "<fix>"`, to file a capture candidate the harvest names.
 - `abcd lab matrix <lab-id> <declaration.json> [flags]`
   - An example call is `abcd lab matrix lab-260901000000-0123abc matrix.json`.
+  - What usually follows:
+    - `abcd lab matrix report <lab-id> <run-id>`, once the matrix run is recorded.
 - `abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [flags]`
   - An example call is `abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1`.
+  - What usually follows:
+    - `abcd lab matrix review <lab-id> <run-id> <task>`, once every copy of a code task is handed back.
 - `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
   - An example call is `abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3`.
+  - What usually follows:
+    - `abcd lab matrix report <lab-id> <run-id>`, once the verdicts are recorded.
 - `abcd lab matrix report <lab-id> <run-id> [flags]`
   - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
+  - What usually follows:
+    - `abcd lab matrix rerun <lab-id> <run-id>`, to plan a re-run of the recorded run.
 - `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`
   - An example call is `abcd lab matrix rerun lab-260901000000-0123abc mx-260901000000-0a1b`.
+  - What usually follows:
+    - `abcd lab matrix report <lab-id> <run-id>`, once the re-run is recorded.
 - `abcd lab matrix review <lab-id> <run-id> <task> [flags]`
   - Reads `--answers`, the interview answers.
   - An example call is `abcd lab matrix review lab-260901000000-0123abc mx-260901000000-0a1b feature-a`.
+  - What usually follows:
+    - `abcd lab matrix report <lab-id> <run-id>`, once the reviewers' answers are recorded.
 - `abcd lab mint <question> [flags]`
   - An example call is `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`.
+  - What usually follows:
+    - `abcd lab preflight <lab-id>`, to run the lab's isolation checks before its first probe.
 - `abcd lab preflight <lab-id> [flags]`
   - An example call is `abcd lab preflight lab-260901000000-0123abc`.
+  - What usually follows:
+    - `abcd lab record <lab-id> <probe>`, to scaffold the lab's first probe record.
 - `abcd lab record <lab-id> <probe> [flags]`
   - An example call is `abcd lab record lab-260901000000-0123abc bare-status`.
+  - What usually follows:
+    - `abcd lab harvest <lab-id>`, once the probes are recorded.
 - `abcd lab sweep <lab-id> [flags]`
   - An example call is `abcd lab sweep lab-260901000000-0123abc`.
+  - What usually follows:
+    - `abcd lab harvest <lab-id>`, once the sweep finds nothing retracted.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

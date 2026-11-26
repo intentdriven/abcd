@@ -1266,13 +1266,19 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain build` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd build <itd-N|iss-N> [--auto-plan] [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
   - An example call is `abcd build itd-2609010000000001`.
+  - What usually follows:
+    - `abcd implement step`, to perform the run's next stage.
+    - `abcd implement status`, to see the run lane by lane.
 - `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
   - An example call is `abcd build next`.
+  - What usually follows:
+    - `abcd implement step`, to perform the started run's next stage.
+    - `abcd implement status`, to see the run lane by lane.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

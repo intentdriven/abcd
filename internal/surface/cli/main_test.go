@@ -190,8 +190,16 @@ func TestMain(m *testing.M) {
 	// (spc-2610301431108175 approach 5): one leaving with a code no reader
 	// can resolve fails the binary (refusal_codes_test.go).
 	refusalCodesBroken := installRefusalCodeCheck()
+	// Every --json document a visible command renders is held to the next
+	// steps' splice (spc-2610301431108175 step 6): one already carrying a
+	// top-level next_steps, or one that is not an object from a command the
+	// exemption list does not name, fails the binary (next_steps_test.go).
+	nextStepsBroken := installNextStepsCheck()
 	code := m.Run()
 	if refusalCodesBroken() && code == 0 {
+		code = 1
+	}
+	if nextStepsBroken() && code == 0 {
 		code = 1
 	}
 	_ = os.RemoveAll(emptyHome)

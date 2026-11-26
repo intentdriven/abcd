@@ -513,16 +513,22 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd reading [flags]`
   - An example call is `abcd reading`.
+  - What usually follows:
+    - `abcd reading assemble --position <position> --target <HEAD|sha>`, to assemble a reading's input.
 - `abcd reading assemble --position <position> --target <HEAD|sha> [flags]`
   - An example call is `abcd reading assemble --position widening --target HEAD`.
+  - What usually follows:
+    - `abcd reading ingest --reading-json <path>`, once the reading has been run and returned its JSON.
 - `abcd reading ingest --reading-json <path> [--dry-run] [flags]`
   - Reads `--reading-json`, the reading output, at schema version 1, in its _type tag; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reading ingest --input reading-json` prints its shape.
   - An example call is `abcd reading ingest --reading-json reading.json`.
+  - What usually follows:
+    - `abcd capture disposition <rdi-N> --state <state> --grounds "<why>"`, to answer each reading item.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

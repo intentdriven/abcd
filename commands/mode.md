@@ -242,17 +242,26 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain mode` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain mode` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd mode [<state>] [flags]`
   - An example call is `abcd mode`.
+  - What usually follows:
+    - `abcd mode autonomous`, when the person is going away.
+    - `abcd mode back`, when the person is back.
 - `abcd mode autonomous [flags]`
   - An example call is `abcd mode autonomous --until 09:00`.
+  - What usually follows:
+    - `abcd mode queue "<step>"`, to queue a step for the person's return.
+    - `abcd mode back`, when the person is back.
 - `abcd mode back [flags]`
   - An example call is `abcd mode back`.
+  - Nothing usually follows: the queue is printed for the person to act on; nothing usually follows.
 - `abcd mode queue [<step>] [flags]`
   - An example call is `abcd mode queue "approve the embargo close for the example advisory"`.
+  - What usually follows:
+    - `abcd mode back`, when the person is back.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd banlist",
@@ -13,6 +13,12 @@
         "list",
         "migrate",
         "remove"
+      ],
+      "next": [
+        {
+          "command": "abcd banlist add --private <key> <pattern>",
+          "when": "to ban a name that is missing"
+        }
       ]
     },
     {
@@ -42,7 +48,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'"
+      "example": "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'",
+      "next": [
+        {
+          "command": "abcd banlist list --private",
+          "when": "to see the entry among the others, by key"
+        }
+      ]
     },
     {
       "path": "abcd banlist list",
@@ -59,7 +71,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd banlist list --private"
+      "example": "abcd banlist list --private",
+      "next": [
+        {
+          "command": "abcd banlist remove --private <key>",
+          "when": "to drop an entry that no longer applies"
+        }
+      ]
     },
     {
       "path": "abcd banlist migrate",
@@ -67,7 +85,13 @@
       "usage": "abcd banlist migrate [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd banlist migrate"
+      "example": "abcd banlist migrate",
+      "next": [
+        {
+          "command": "abcd banlist list --private",
+          "when": "to see the keyed store"
+        }
+      ]
     },
     {
       "path": "abcd banlist remove",
@@ -84,7 +108,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd banlist remove --private acme-internal"
+      "example": "abcd banlist remove --private acme-internal",
+      "next": [
+        {
+          "command": "abcd banlist list --private",
+          "when": "to see the entries left"
+        }
+      ]
     }
   ]
 }

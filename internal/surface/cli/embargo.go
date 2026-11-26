@@ -487,7 +487,13 @@ func newEmbargoCheckCommand(asJSON *bool) *cobra.Command {
 			for i := range res.Findings {
 				res.Findings[i].Source = fsutil.RedactHome(res.Findings[i].Source)
 			}
-			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoCheck(w, res) }); rerr != nil {
+			// A finding's document is the refusal's, so it carries no next
+			// steps (spc-2610301431108175 step 6).
+			emit := render
+			if !res.Clean() {
+				emit = renderRefused
+			}
+			if rerr := emit(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoCheck(w, res) }); rerr != nil {
 				return rerr
 			}
 			if !res.Clean() {

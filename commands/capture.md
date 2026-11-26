@@ -845,37 +845,68 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain capture` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd capture [text] [flags]`
   - An example call is `abcd capture "the board drops its last row on an empty ledger" --remedy "render the row before the count"`.
+  - What usually follows:
+    - `abcd reserve <iss-N> --footprint <path>`, before starting work on the issue.
+    - `abcd capture resolve <iss-N> "<what fixed it>" --impact <impact>`, once the fix lands.
 - `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
   - An example call is `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`.
+  - What usually follows:
+    - `abcd capture disposition <rdi-N> --state <state> --grounds "<why>"`, to answer the run's other reading items.
 - `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
   - An example call is `abcd capture defer iss-2609010000000001 --after v0.1.0 --reason "the fix needs the parser rewrite that lands next cycle"`.
+  - What usually follows:
+    - `abcd capture list --open`, to see the open issues the deferral leaves.
 - `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
   - An example call is `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`.
+  - What usually follows:
+    - `abcd capture promote <rdi-N>`, when the item was accepted and should become an intent draft.
 - `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
   - An example call is `abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002`.
+  - What usually follows:
+    - `abcd capture list --open`, to see the issue among the others, blocked or not.
 - `abcd capture list [flags]`
   - An example call is `abcd capture list --open`.
+  - What usually follows:
+    - `abcd <iss-N>`, to see one issue whole and its next move.
+    - `abcd reserve <iss-N> --footprint <path>`, before starting work on one.
 - `abcd capture mentions [--ref <branch>] [flags]`
   - An example call is `abcd capture mentions`.
+  - What usually follows:
+    - `abcd capture resolve <iss-N> "<what fixed it>" --impact <impact>`, for an issue a landed change already fixed.
 - `abcd capture migrate [--apply] [flags]`
   - An example call is `abcd capture migrate`.
+  - What usually follows:
+    - `abcd capture migrate --apply`, after a practice run, to rewrite what it listed.
 - `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
   - An example call is `abcd capture promote iss-2609010000000001`.
+  - What usually follows:
+    - `abcd intent plan <itd-N>`, to plan the draft the promotion filed.
 - `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`
   - An example call is `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`.
+  - What usually follows:
+    - `abcd capture reframe --complete <rfm-N>`, once the reframe has been worked through.
 - `abcd capture remedy <iss-N> <text> [flags]`
   - An example call is `abcd capture remedy iss-2609010000000001 "make the map before the first write"`.
+  - What usually follows:
+    - `abcd reserve <iss-N> --footprint <path>`, before starting the fix.
 - `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
   - An example call is `abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix`.
+  - What usually follows:
+    - `abcd reserve <iss-N> --release`, to release the issue's reservation.
+    - `abcd land`, to push the branch carrying the fix and queue its pull request.
 - `abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" [flags]`
   - An example call is `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`.
+  - What usually follows:
+    - `abcd capture list --open`, to see the ledger the surprise sits beside.
 - `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [--duplicates <iss-N|itd-N,...>] [flags]`
   - An example call is `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`.
+  - What usually follows:
+    - `abcd reserve <iss-N> --release`, to release the issue's reservation, if one was held.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

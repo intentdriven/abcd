@@ -1474,24 +1474,40 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd launch [flags]`
   - An example call is `abcd launch --dry-run`.
+  - What usually follows:
+    - `abcd launch ship --dry-run`, to preview the release cut alone.
+    - `abcd launch ship`, once the preview and the gates are clean, to cut the release.
 - `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
   - An example call is `abcd launch archive --out dist`.
+  - Nothing usually follows: the archive is written for the release job; nothing usually follows.
 - `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
   - An example call is `abcd launch manifests --tree public`.
+  - What usually follows:
+    - `abcd launch --dry-run`, to preview the rest of the release gates.
 - `abcd launch receipts [flags]`
   - An example call is `abcd launch receipts`.
+  - What usually follows:
+    - `abcd launch --dry-run`, to preview the rest of the release gates.
 - `abcd launch reland [<pull request>] [--assisted-by <Vendor>:<model-version>] [flags]`
   - An example call is `abcd launch reland 1618`.
+  - What usually follows:
+    - `abcd land`, to push the relanded bump and queue its pull request.
 - `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
   - An example call is `abcd launch scaffold`.
+  - What usually follows:
+    - `abcd launch scaffold --confirm`, once the person agrees to what a practice run listed.
+    - `abcd launch --dry-run`, to preview the release gates it scaffolded.
 - `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
   - Reads `--changelog-json`, the composed changelog, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch ship --input changelog-json` prints its shape.
   - An example call is `abcd launch ship --dry-run`.
+  - What usually follows:
+    - `abcd launch ship`, after a --dry-run, to cut the release.
+    - `abcd reflect <release-tag>`, once the release is cut, to open its retrospective.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

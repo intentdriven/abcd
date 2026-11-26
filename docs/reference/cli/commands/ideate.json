@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd ideate",
@@ -10,6 +10,12 @@
       "example": "abcd ideate",
       "subcommands": [
         "record"
+      ],
+      "next": [
+        {
+          "command": "abcd ideate record <idea-slug> --verdict-json <file>",
+          "when": "once the host has run the gauntlet and composed its verdict"
+        }
       ]
     },
     {
@@ -43,7 +49,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd ideate record widen-the-public-api --verdict-json verdict.json"
+      "example": "abcd ideate record widen-the-public-api --verdict-json verdict.json",
+      "next": [
+        {
+          "command": "abcd intent \"<text>\"",
+          "when": "when the verdict admits the idea, to file it as a draft intent"
+        }
+      ]
     }
   ]
 }

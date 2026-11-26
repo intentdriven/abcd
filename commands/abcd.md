@@ -310,11 +310,15 @@ repo (contributors) or a platform carrying no released binary; they are never a
 prerequisite for a plugin or CLI user.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain abcd` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd [<record-id>] [flags]`
   - An example call is `abcd`.
+  - What usually follows:
+    - `abcd <record-id>`, to see what one record on the board is and its next move.
+    - `abcd capture "<text>" --remedy "<fix>"`, when the board shows a defect not yet on the ledger.
+    - `abcd build next`, to start the readiest planned intent.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

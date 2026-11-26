@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd drain",
@@ -78,7 +78,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json"
+      "example": "abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the drain's lanes"
+        },
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the issues handed back"
+        }
+      ]
     }
   ]
 }
