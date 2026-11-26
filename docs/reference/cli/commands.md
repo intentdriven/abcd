@@ -4923,12 +4923,14 @@ abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/hos
 
 ##### `abcd lab matrix judge`
 
-Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.
+Draw a writing or check task's judging packet, or record its verdicts: Writes the packet once; refuses a verdict file that does not validate.
 
 **Usage:** `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
 
 abcd lab matrix judge <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>
 abcd lab matrix judge <lab-id> <run-id> <task> --verdicts <file> [--host <login>]
+abcd lab matrix judge <lab-id> <run-id> <check> [--matcher <file> | --verdicts <file>]
+abcd lab matrix judge <lab-id> <run-id> <check> --table [--proposals <file>] [--labels <file>]
 
 Draw a writing task's judging, once, from its made copies: the packet a judging
 session is given and the key that stays on this machine, both written in the
@@ -4942,20 +4944,44 @@ eight copies to draw, enough that every pair of models meets in one.
 packet, validated as untrusted input, one ranking per judge identity; --host
 names the host's own GitHub login, whose rankings are reported apart.
 
-Refused, exit 2, with nothing written: a task that is not one of the run's
-writing tasks, no made copy, a missing example, too few judges, a judging
-already drawn, a task with a copy handed to the host and not handed back, a
-packet the secret screen refuses, and a verdict file that does not validate.
-A halted lab exits 1.
+A check task is judged in two phases. Alone, the verb joins its copies'
+findings by their exact keys and draws, once, the packet: every distinct
+finding shuffled under a code, with no model, cell, run or path named and no
+verdict proposed. Where the declaration names a matcher cell and two findings
+or more are left apart, it first draws the matcher's request about those
+alone; --matcher <file> records the matcher's answer, joins its pairs, draws a
+sample of them for people to label, and draws the packet. With no matcher the
+findings no key joins stay rows of their own. Asked again, the verb shows the
+judging as it stands. --verdicts <file> locks the person's verdict on every
+finding, once. --table builds the second phase once the verdicts are locked:
+each finding a row and each model a column, with each model's precision,
+unique valid findings, recall and overlap. --proposals <file> is the proposer
+cell's verdict on each finding, given exactly when the declaration names a
+proposer; --labels <file> is the people's labels on the matcher's sample, and
+its agreement is reported on ten labelled pairs or more, otherwise not
+estimable. A matcher or proposer on a runner route waits for a launcher, and
+the host never answers for it. Nothing of a check is filed or written where
+the release gates read.
+
+Refused, exit 2, with no record written: a task that is not one of the run's
+writing or check tasks, no made copy, a missing example, too few judges, a
+judging already drawn, a task with a copy handed to the host and not handed
+back, a packet the secret screen refuses, a verdict, matcher, proposal or label
+file that does not validate, a second verdict file or table, a table before the
+verdicts are locked, and an answer for a runner cell. A halted lab exits 1.
 
 **Flags:**
 
 ```
-      --bad string        the bad example each judge calibrates on, a file
-      --good string       the good example each judge calibrates on, a file
-      --host string       with --verdicts: the host's own GitHub login, whose rankings are reported apart
-      --judges string     how many judges' subsets to draw, a whole number
-      --verdicts string   a judging session's verdict file; records it
+      --bad string           the bad example each judge calibrates on, a file
+      --good string          the good example each judge calibrates on, a file
+      --host string          with --verdicts: the host's own GitHub login, whose rankings are reported apart
+      --judges string        how many judges' subsets to draw, a whole number
+      --labels string        with --table: the people's labels on the matcher's sample, a JSON file
+      --matcher string       a check task's matcher answer, a JSON file; records it and draws the packet
+      --proposals string     with --table: the proposer cell's verdict on each finding, a JSON file
+      --table[=true|false]   builds a check task's second phase, once its verdicts are locked
+      --verdicts string      a judging session's verdict file; records it
 ```
 
 **Example:**

@@ -879,6 +879,19 @@ func refuses(fd scanner.Finding) bool {
 
 // refused is screen's refusal of a finding: its file, line and kind.
 func refused(name string, fd scanner.Finding) error {
-	return fmt.Errorf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
-		name, fd.Line, fd.Kind)
+	return &screenRefusal{name: name, line: fd.Line, kind: fd.Kind}
+}
+
+// screenRefusal is the secret screen refusing a record: what it found and
+// where, so a caller screening text that is not yet a record can say where
+// in its own input the finding is.
+type screenRefusal struct {
+	name string
+	line int
+	kind string
+}
+
+func (e *screenRefusal) Error() string {
+	return fmt.Sprintf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
+		e.name, e.line, e.kind)
 }
