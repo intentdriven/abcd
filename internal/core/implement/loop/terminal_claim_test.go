@@ -598,6 +598,37 @@ func TestADriverlessRunWithAnUnsettledMarkIsLeft(t *testing.T) {
 	}
 }
 
+// TestALapseIsJudgedFromOrigin: a run that names no driver, its mark unsettled, is taken
+// on a lapsed reservation only as origin reads it. A hold renewed there since this
+// checkout last fetched leaves the run, though the checkout's own copy reads it lapsed.
+// Its drain is gone, so the start judges it before any move has fetched.
+func TestALapseIsJudgedFromOrigin(t *testing.T) {
+	w, first := claimSaveFails(t)
+	root := w.repo.Root()
+	claimClearDriver(t, root, first.Run)
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(DrainStateRel))); err != nil {
+		t.Fatal(err)
+	}
+	tracking := claim.TrackingPrefix + first.Issue
+	stale := strings.TrimSpace(w.repo.Git("rev-parse", tracking))
+	w.clock.t = reservationOf(t, root, first.Issue, w.clock.t).EffectiveExpiry.Add(time.Minute)
+	if _, err := claim.Reserve(root, claim.Request{Record: first.Issue, Renew: true}, claimOptions(w.clock.t)); err != nil {
+		t.Fatalf("the renewal on origin: %v", err)
+	}
+	w.repo.Git("update-ref", tracking, stale)
+	if r := reservationOf(t, root, first.Issue, w.clock.t); r.State != claim.StateExpired {
+		t.Fatalf("premise: this checkout's copy reads the hold lapsed: %+v", r)
+	}
+	next, err := RunTerminal(context.Background(), root, claimBounded(t, w))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftNamed(t, w, next, first.Issue, first.Run, "names no driver")
+	if c := controlOf(t, root, first.Run); c.Driver != nil {
+		t.Fatalf("the start claimed a run whose hold origin reads live: %+v", c.Driver)
+	}
+}
+
 // TestADriverlessRunWithASettledMarkIsTaken: a settled mark is the sign its session ended,
 // so a run that names no driver is taken all the same.
 func TestADriverlessRunWithASettledMarkIsTaken(t *testing.T) {
@@ -670,7 +701,9 @@ func TestASignalHaltsARunTheStartStepsThatNoDrainLists(t *testing.T) {
 }
 
 // TestABoundLetsGoARunTheStartStepsThatNoDrainLists: the drive's end lets the run the start
-// took and steps go, as it lets go the drain's lanes, so a later drive takes it up.
+// took and steps go, as it lets go the drain's lanes: its reservation is released and its
+// record says the drive let it go. A later start does not take such a run up yet, since it
+// carries no mark; that is a later step's (the lane plan's L2).
 func TestABoundLetsGoARunTheStartStepsThatNoDrainLists(t *testing.T) {
 	w, run, home := claimReplaced(t)
 	var until time.Time

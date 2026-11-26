@@ -2507,15 +2507,20 @@ func (t *terminal) mayTake(run State, c control) string {
 	return termsafe.Sanitize(fsutil.RedactHome(why + "; " + act))
 }
 
-// lapsed reports whether the reservation of run's issue has lapsed on its lease, as the
-// checkout last fetched it: a sign that whoever held it has ended. One that cannot be read
-// is no such sign.
+// lapsed reports whether the reservation of run's issue has lapsed on its lease, as origin
+// reads it now: a sign that whoever held it has ended. The reservations are fetched first,
+// as peerTook fetches them, since this checkout's last fetch can miss a renewal made since;
+// a fetch that fails, or a hold that cannot be read, is no such sign.
 func (t *terminal) lapsed(run State) bool {
 	issue := run.Issue()
 	if issue == "" {
 		return false
 	}
-	snap, err := claim.View(t.repoRoot, t.now())
+	now := t.now()
+	if _, err := claim.Fetch(t.repoRoot, claimOptions(now)); err != nil {
+		return false
+	}
+	snap, err := claim.View(t.repoRoot, now)
 	if err != nil {
 		return false
 	}
