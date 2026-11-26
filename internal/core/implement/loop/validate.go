@@ -1574,20 +1574,14 @@ func placeReturn(repoRoot, runID, rel, route string, ret string, o Options) (boo
 			if i < 0 {
 				return nil
 			}
-			f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filePerm)
+			// Whole or not at all: a return that stands at rel is taken as
+			// placed, so a short one a crash left would stand for good.
+			err = fsutil.CreateExclusiveIn(root, rel, []byte(ret), filePerm)
 			if errors.Is(err, fs.ErrExist) {
 				return nil
 			}
 			if err != nil {
 				return fmt.Errorf("writing %s: %w", rel, err)
-			}
-			_, werr := f.WriteString(ret)
-			if cerr := f.Close(); werr == nil {
-				werr = cerr
-			}
-			if werr != nil {
-				_ = root.Remove(rel)
-				return fmt.Errorf("writing %s: %w", rel, werr)
 			}
 			st.Lanes[i].Awaits[k].Answered = &RouteAnswer{Route: route, SHA256: answerDigest([]byte(ret))}
 			if err := storeState(root, st, right); err != nil {
