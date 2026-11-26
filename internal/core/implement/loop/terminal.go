@@ -790,6 +790,15 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		if t.o.Moved != nil {
 			t.o.Moved()
 		}
+		// A bundle's lead whose start was refused is passed over for the
+		// rest of the drive (DrainOptions.PassedLeads).
+		for _, p := range t.o.Drain.passLeads(res) {
+			if p.Contention {
+				t.say("passed over %s, a bundle's lead another holds, until the drive's wait on it ends: %s", p.ID, p.Reason)
+				continue
+			}
+			t.say("passed over %s for the rest of this drive, as a bundle's lead whose start was refused: %s", p.ID, p.Reason)
+		}
 		t.boundaryDue = true
 		t.inHand = res.Judging != nil
 		// What was given once is taken once: the pace, the skips.
@@ -821,6 +830,10 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 				t.sleep(ctx, d, res.Next)
 			} else if t.idle(ctx, d, res.Next) {
 				return t.ended(TerminalWaited), nil
+			} else {
+				// The wait on held work is over: a bundle's lead another held
+				// is looked at again (DrainOptions.PassedLeads).
+				t.o.Drain.retryHeldLeads()
 			}
 			continue
 		}
@@ -1031,7 +1044,7 @@ func (t *terminal) sayMove(res DrainResult) {
 	for _, f := range res.Finished {
 		switch {
 		case f.Done:
-			t.say("finished %s", f.Issue)
+			t.say("finished %s", laneIssues(f.Issue, f.RunID, f.Bundle))
 		case f.Note != "" && t.notedFinish[f.RunID] != f.Note:
 			if t.notedFinish == nil {
 				t.notedFinish = map[string]string{}
@@ -2571,8 +2584,10 @@ func dropRun(repoRoot, runID, why, whose string, now time.Time, o Options) error
 }
 
 // letGo releases what the run holds and no lane is working on: each lane in
-// progress, left on its branch, and a judgement's hold no lane opened on. A
-// lane parked at its pull request keeps its own.
+// progress, left on its branch, a judgement's hold no lane opened on, and
+// every hold of a bundle the drain is forming, which it clears. Each goes
+// plainly, publishing no hand-back. A lane parked at its pull request keeps
+// its own.
 //
 // A release is a push, which a drive makes only under what it holds
 // (heldBeforeGit), so it compares first, before it takes the drain's lock,
@@ -2627,16 +2642,22 @@ func (t *terminal) letGo() {
 				return true, nil
 			})
 		}
-		if j := st.Judging; j != nil && live {
-			if j.Hold != nil {
-				clause, _ := releaseReservationAt(t.repoRoot, j.Issue, j.Hold.Commit, "", now)
-				t.say("%s: %s", j.Issue, clause)
-			}
-			st.Judging = nil
-			st.UpdatedAt = now
-			return writeDrain(t.repoRoot, st)
+		if !live || (st.Judging == nil && st.Forming == nil) {
+			return nil
 		}
-		return nil
+		if j := st.Judging; j != nil && j.Hold != nil {
+			clause, _ := releaseReservationAt(t.repoRoot, j.Issue, j.Hold.Commit, "", now)
+			t.say("%s: %s", j.Issue, clause)
+		}
+		// A bundle forming lets its lead and every member go, each plainly
+		// and over the hold the drain took on it, as a judgement's hold is.
+		for _, h := range formingHolds(st.Forming) {
+			clause, _ := releaseReservationAt(t.repoRoot, h.issue, h.hold.Commit, "", now)
+			t.say("%s: %s", h.issue, clause)
+		}
+		st.Judging, st.Forming = nil, nil
+		st.UpdatedAt = now
+		return writeDrain(t.repoRoot, st)
 	})
 	if err != nil {
 		t.say("what this run holds was not released, and lapses with its lease "+unlessRenewedEither+": %s", err.Error())
@@ -2660,8 +2681,8 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		return
 	}
 	type left struct {
-		id  string
-		run bool
+		id           string
+		run, forming bool
 	}
 	var ids []left
 	for _, l := range st.Lanes {
@@ -2682,6 +2703,11 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 	if j := st.Judging; j != nil && live && j.Hold != nil {
 		ids = append(ids, left{id: j.Issue})
 	}
+	if live {
+		for _, h := range formingHolds(st.Forming) {
+			ids = append(ids, left{id: h.issue, forming: true})
+		}
+	}
 	snap, verr := claim.View(t.repoRoot, now)
 	for _, l := range ids {
 		var r claim.Reservation
@@ -2690,8 +2716,35 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			r, _ = snap.Lookup(l.id)
 		}
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
-			termsafe.Sanitize(l.id), heldLapse(r, read, l.run), termsafe.Sanitize(l.id))
+			termsafe.Sanitize(l.id), lapse(r, read, l.run, l.forming), termsafe.Sanitize(l.id))
 	}
+}
+
+// formingHolds is each hold of the bundle f forms, the lead's first and then
+// each member's in the order judged (DrainForming.entries); an issue recorded
+// with no hold has none to release. Nil f forms none.
+func formingHolds(f *DrainForming) []formingEntry {
+	var out []formingEntry
+	for _, e := range f.entries() {
+		if e.hold != nil {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// unlessFormingRenewed is the clause a lapse says of a live reservation this
+// copy's last push takes and a forming bundle holds: a drain's move renews
+// it at half its lease (renewInProgress), as a load-gate waiter does.
+const unlessFormingRenewed = "unless an `abcd drain` move in this copy, or a load-gate waiter in this copy, renews it"
+
+// lapse is heldLapse, with a forming bundle's hold (forming) named with the
+// renewers it has.
+func lapse(r claim.Reservation, read, run, forming bool) string {
+	if forming {
+		return lapsesUnless(r, read, unlessFormingRenewed)
+	}
+	return heldLapse(r, read, run)
 }
 
 // heldLapse says when a reservation leftHeld names lapses. Only a live
@@ -2701,13 +2754,20 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 // in this copy as well as by a load-gate waiter (UnlessRunRenewed); a
 // judgement's hold by the waiter alone (claim.RenewDue).
 func heldLapse(r claim.Reservation, read, run bool) string {
+	if run {
+		return lapsesUnless(r, read, UnlessRunRenewed)
+	}
+	return lapsesUnless(r, read, unlessWaiterRenews)
+}
+
+// lapsesUnless says when a reservation leftHeld names lapses, with unless,
+// the clause naming what renews it, for a live reservation this copy's last
+// push takes, the only one that can be renewed here.
+func lapsesUnless(r claim.Reservation, read bool, unless string) string {
 	if !read || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return "lapses with its lease"
 	}
-	if run {
-		return "lapses at " + stamp(r.EffectiveExpiry) + " " + UnlessRunRenewed
-	}
-	return "lapses at " + stamp(r.EffectiveExpiry) + " " + unlessWaiterRenews
+	return "lapses at " + stamp(r.EffectiveExpiry) + " " + unless
 }
 
 // ended is the run's result as it ends: unless a kill or a stop from elsewhere

@@ -259,3 +259,14 @@ func planArea(repoRoot string, plan capture.DrainPlan) func(id string) string {
 		return issueArea(repoRoot, iss)
 	}
 }
+
+// ReadDrainForming is the bundle the drain in progress is forming, its lead
+// and the members judged so far, as the front door's summary names it after a
+// move (step 4); nil when no drain is in progress or none forms.
+func ReadDrainForming(repoRoot string) (*DrainForming, error) {
+	st, live, err := readDrain(repoRoot)
+	if err != nil || !live {
+		return nil, err
+	}
+	return st.Forming, nil
+}
