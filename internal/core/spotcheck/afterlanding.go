@@ -379,8 +379,8 @@ const maxFilesPerKey = 4
 // maxReadFiles files are read; a key none of whose files reads takes no
 // place, and a key beyond either bound waits for a later window, as a record
 // that reaches origin late does. unread counts the files that did not read
-// as records; a group whose read bound is spent with places still open and
-// some file unread refuses the draw, naming the count. So every record population is listed
+// as records; a group whose read bound is spent before any of its records
+// read, with some file unread, refuses the draw, naming the count. So every record population is listed
 // whole, and the next draw knows each record already drawn from by its key.
 // A file whose name is not a record's is never read, and one whose content
 // does not read as its name gives is no record.
@@ -496,11 +496,12 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 			}
 		}
 		unread += missed
-		if spent && listed < maxListedKeys && missed > 0 {
-			// The group's read bound went on files that are not records
-			// with places still open: the window is not drawn short of
-			// records that may read beyond them.
-			return nil, nil, unread, fmt.Errorf("the spot-check's %s ran out of its read of %d files with %d place(s) open, and %d record file(s) on origin did not read as records", g, budget, maxListedKeys-listed, missed)
+		if spent && listed == 0 && missed > 0 {
+			// The group's whole read bound went on files that are not
+			// records: the window is not drawn with that group empty while
+			// records may read beyond them. A group that listed some is
+			// drawn from those, and the note counts the rest.
+			return nil, nil, unread, fmt.Errorf("the spot-check's %s listed none of its records within its read of %d files, and %d record file(s) on origin did not read as records", g, budget, missed)
 		}
 	}
 	return hbs, ds, unread, nil

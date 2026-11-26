@@ -278,7 +278,70 @@ func TestACycleWhoseRecordGroupIsNotListedIsSetAside(t *testing.T) {
 	}
 	c.plant(map[string]string{CyclesDir + "/" + forged.ID + ".json": cycleJSON(t, forged, sevenDays(3))})
 	note := c.observe(q1000.Add(time.Hour))
-	if !strings.Contains(note, "drew cycle "+cycleID(q1000, line)) || !strings.Contains(note, forged.ID+" on origin does not verify") {
+	if !strings.Contains(note, "drew cycle "+cycleID(q1000, line)) || !strings.Contains(note, forged.ID+" on origin does not verify (its "+GroupDrainHandBacks+" population is not listed") {
 		t.Fatalf("the observation over a cycle with an unlisted record group said %q", note)
+	}
+}
+
+// plantUnread puts a file under a hand-back's name for each issue on origin's
+// store branch, made at at, whose content is not the record its name gives.
+func (c *drawCase) plantUnread(at time.Time, issues ...string) {
+	c.t.Helper()
+	files := map[string]string{}
+	for _, issue := range issues {
+		f, err := handBack(issue, at).typed().file()
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		files[f.path()] = "{}\n"
+	}
+	c.plant(files)
+}
+
+// TestAGroupWhoseReadBoundEndsAfterARecordIsDrawn: a group whose read bound
+// is spent after some of its records read is drawn from the records that
+// read, and the note counts the files that did not.
+func TestAGroupWhoseReadBoundEndsAfterARecordIsDrawn(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	saved := maxReadFiles
+	maxReadFiles = 4
+	t.Cleanup(func() { maxReadFiles = saved })
+	c.plantUnread(w0.Add(time.Minute), "iss-60")
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.plantUnread(w0.Add(2*time.Hour), "iss-80", "iss-81")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, "1 record file(s)") {
+		t.Fatalf("the draw over a group whose read bound ended after a record said %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want the record that read, %v", got, want)
+	}
+}
+
+// TestAGroupThatListsNoRecordWithinItsReadBoundIsNotDrawn: a group whose
+// read bound is spent before any of its files reads as a record refuses the
+// draw, naming the count, and writes nothing.
+func TestAGroupThatListsNoRecordWithinItsReadBoundIsNotDrawn(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	saved := maxReadFiles
+	maxReadFiles = 4
+	t.Cleanup(func() { maxReadFiles = saved })
+	c.plantUnread(w0.Add(time.Minute), "iss-60", "iss-61", "iss-62")
+	c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	tip := c.originTip()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "listed none of its records") || !strings.Contains(note, "2 record file(s)") || !strings.Contains(note, "nothing was drawn") {
+		t.Fatalf("the draw over a group that listed no record said %q", note)
+	}
+	if c.originTip() != tip {
+		t.Fatal("a refused draw moved origin's branch")
 	}
 }
