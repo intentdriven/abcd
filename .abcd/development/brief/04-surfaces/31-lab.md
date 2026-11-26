@@ -123,9 +123,10 @@ labelled pairs up. The matcher and the proposer are cells the person declares,
 on their own routes and never on a builder's route or model, and each is
 optional: nothing is chosen for the person. The model is compared by its name
 with what carriers add to one model set aside: the provider prefix, a known
-carrier's dotted region and vendor (`us.anthropic.`), a routing variant such
-as `:free` or `:latest`, a carrier's revision tail, a date or `@` stamp, a
-trailing `-latest`, case, spaces, and a dot or a dash between version digits.
+carrier's dotted region and vendor (`us.anthropic.`) and, behind it, the
+carrier's revision tail (`-v1:0`), a routing variant such as `:free` or
+`:latest`, a context suffix such as `[1m]`, a date or `@` stamp, a trailing
+`-latest`, case, spaces, and a dot or a dash between version digits.
 A size or quantisation tag (`:7b`), a model's own dotted name (`aya.expanse`)
 and the version number itself still tell two models apart, a host builder is
 compared by the model its copies were served, and the plan's judges note asks the person to check the

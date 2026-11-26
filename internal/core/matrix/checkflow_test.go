@@ -381,19 +381,34 @@ func TestARunnerMatcherWaitsForItsLauncher(t *testing.T) {
 // of the check is drawn (spec step 9).
 func TestAJudgeNamingTheModelAHostBuilderServedIsRefused(t *testing.T) {
 	const shared = "The guard reads its registry from the plugin root."
-	runnerMatcher := func(in *runInputs) {
-		in.Declaration = []byte(withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/host-model"}`))
-		in.Cells = append(in.Cells, CellPin{Cell: "match-or", Role: RoleMatcher, Source: SourceOpenRouter, Runner: "opencode",
-			Model: "openrouter/vendor/host-model", HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}})
+	runnerMatcher := func(model string) func(in *runInputs) {
+		return func(in *runInputs) {
+			in.Declaration = []byte(withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@` + model + `"}`))
+			pin := CellPin{Cell: "match-or", Role: RoleMatcher, Source: SourceProvider, Runner: "opencode", Model: model, HarnessVersion: "1.2.3"}
+			if strings.HasPrefix(model, "openrouter/") {
+				pin.Source, pin.ProviderPin = SourceOpenRouter, &ProviderPin{Order: []string{"provider-a"}}
+			}
+			in.Cells = append(in.Cells, pin)
+		}
 	}
 	// One model under each spelling a served name may carry: another case, a
-	// dated snapshot, a variant tag, spaces about it, a dashed date.
-	for _, served := range []string{"Host-Model", "host-model-20261001", "host-model:free", " host-model ", "vendor/host-model-2026-10-01"} {
+	// dated snapshot, a variant tag, spaces about it, a dashed date, and a
+	// bracketed context suffix (`[1m]`), as a host reports its served model.
+	for _, c := range []struct{ served, judge string }{
+		{"Host-Model", "openrouter/vendor/host-model"},
+		{"host-model-20261001", "openrouter/vendor/host-model"},
+		{"host-model:free", "openrouter/vendor/host-model"},
+		{" host-model ", "openrouter/vendor/host-model"},
+		{"vendor/host-model-2026-10-01", "openrouter/vendor/host-model"},
+		{"host-model[1m]", "openrouter/vendor/host-model"},
+		{"claude-opus-5-5[1m]", "anthropic/claude-opus-5-5"},
+	} {
+		served := c.served
 		t.Run(served, func(t *testing.T) {
 			r, home, m, rec := checkFlowLab(t, []checkCopyAt{
 				{TrialKey{Task: checkTask, Cell: "host-big", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Run ahoy first."), StatusPassed, served},
 				{TrialKey{Task: checkTask, Cell: "or-cheap", Repeat: 1}, dfAnswer(t, shared, "public:docs/guide.md:Ahoy is optional."), StatusPassed, ""},
-			}, runnerMatcher)
+			}, runnerMatcher(c.judge))
 			if _, err := DrawCheck(r.Root(), m.ID, rec.RunID, checkTask); err == nil || !strings.Contains(err.Error(), "host-big") {
 				t.Fatalf("DrawCheck = %v; want the matcher refused as the model host-big served", err)
 			}

@@ -442,12 +442,15 @@ func judgeOnBuilder(role Role, judge, builder string) error {
 
 // modelKey is the model a route's <provider>/<model>, or a served name,
 // names, read so that one model under the spellings carriers give it is one
-// key: the spaces about it trimmed and its case folded; every provider prefix
+// key: the spaces about it trimmed and its case folded; a trailing bracketed
+// context suffix (`[1m]`) cut, as samemodel reads it; every provider prefix
 // cut, a slash one (openrouter/vendor/) and a dotted carrier one, a vendor
 // from carrierVendors with or without a region from carrierRegions before it
 // (us.vendor., vendor.), while any other dotted name is the model's own and
 // kept whole (aya.expanse and yi.expanse stay two); a carrier's revision tail
-// (-v1:0) cut; a routing variant after a colon cut, from the closed list
+// (-v1:0, or -1:0 as some vendors' ids end) cut only where that dotted
+// carrier prefix is cut too, so a bare name ending in digits and a colon
+// keeps them; a routing variant after a colon cut, from the closed list
 // routingVariants (`:free`, `:latest`), while any other colon tag, a size or
 // a quantisation (`:7b`, `:q4_K_M`), is kept; a snapshot stamp cut, after an
 // at sign or as a date at the end (-YYYYMMDD, -YYYY-MM-DD, -YYYY-MM), and a
@@ -455,16 +458,20 @@ func judgeOnBuilder(role Role, judge, builder string) error {
 // one (4.5 and 4-5). A cut that would leave nothing is not made, so a name
 // that is all prefix or tail keys as itself and never as the empty key. So
 // vendor/model-4-5, openrouter/vendor/Model-4.5:free,
-// us.anthropic.model-4-5-20261001-v1:0 and model-4.5@20261001 are one model,
-// while model-4 and model-4-5, or qwen2.5-coder:7b and qwen2.5-coder:32b,
-// stay two. Two models that differ only so are taken as one, so a judge is
-// refused rather than let judge what may be its own copies.
+// us.anthropic.model-4-5-20261001-v1:0, model-4.5[1m] and model-4.5@20261001
+// are one model, while model-4 and model-4-5, or qwen2.5-coder:7b and
+// qwen2.5-coder:32b, stay two. Two models that differ only so are taken as
+// one, so a judge is refused rather than let judge what may be its own
+// copies.
 func modelKey(model string) string {
 	model = strings.ToLower(strings.TrimSpace(model))
+	model = cutKept(contextSuffixRe, model)
 	if i := strings.LastIndexByte(model, '/'); i >= 0 && i < len(model)-1 {
 		model = model[i+1:]
 	}
-	model = cutKept(carrierRevisionRe, model)
+	if dottedCarrierRe.MatchString(model) {
+		model = cutKept(carrierRevisionRe, model)
+	}
 	model = cutKept(routingVariantRe, model)
 	model = cutKept(atStampRe, model)
 	for {
@@ -516,7 +523,8 @@ var (
 
 var (
 	routingVariantRe  = regexp.MustCompile(`:(` + strings.Join(routingVariants, "|") + `)$`)
-	carrierRevisionRe = regexp.MustCompile(`-v[0-9]+:[0-9]+$`)
+	contextSuffixRe   = regexp.MustCompile(`\s*\[[^\[\]]*\]$`)
+	carrierRevisionRe = regexp.MustCompile(`-v?[0-9]+:[0-9]+$`)
 	atStampRe         = regexp.MustCompile(`@([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
 	datedSnapshotRe   = regexp.MustCompile(`-([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
 	latestRe          = regexp.MustCompile(`-latest$`)

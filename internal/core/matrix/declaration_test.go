@@ -393,6 +393,46 @@ func TestModelKeyReadsALatestAliasAsTheModel(t *testing.T) {
 	}
 }
 
+// A bracketed context suffix (`[1m]`) names the same model with a longer
+// context window, so it keys as that model, as samemodel reads it.
+func TestModelKeyReadsAContextSuffixAsTheModel(t *testing.T) {
+	for _, p := range [][2]string{
+		{"claude-opus-5-5[1m]", "anthropic/claude-opus-5-5"},
+		{"model-x [1m]", "model-x"},
+		{"model-x-20261001[1m]", "vendor/model-x"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a != b || a == "" {
+			t.Errorf("modelKey(%q) = %q and modelKey(%q) = %q; want one model", p[0], a, p[1], b)
+		}
+	}
+	if k := modelKey("[1m]"); k == "" {
+		t.Error("modelKey of a lone suffix is empty; want a key")
+	}
+}
+
+// A carrier's revision tail is cut only after its dotted prefix was, with or
+// without the v (openai.gpt-oss-120b-1:0), so a bare name that ends in digits
+// and a colon keeps them.
+func TestModelKeyCutsARevisionTailOnlyAfterACarrierPrefix(t *testing.T) {
+	for _, p := range [][2]string{
+		{"openai/gpt-oss-120b", "openai.gpt-oss-120b-1:0"},
+		{"openai/gpt-oss-120b", "us.openai.gpt-oss-120b-1:0"},
+		{"anthropic/model-x", "us.anthropic.model-x-v1:0"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a != b || a == "" {
+			t.Errorf("modelKey(%q) = %q and modelKey(%q) = %q; want one model", p[0], a, p[1], b)
+		}
+	}
+	for _, p := range [][2]string{
+		{"local/model-x-1:0", "local/model-x"},
+		{"local/model-x-v1:0", "local/model-x"},
+	} {
+		if a, b := modelKey(p[0]), modelKey(p[1]); a == b {
+			t.Errorf("modelKey(%q) and modelKey(%q) are both %q; want two models", p[0], p[1], a)
+		}
+	}
+}
+
 // A dotted prefix is cut only where a carrier writes it, its region and its
 // vendor before the model (us.anthropic.), so a model's own dotted name keeps
 // what tells it apart, and no name keys as nothing.
