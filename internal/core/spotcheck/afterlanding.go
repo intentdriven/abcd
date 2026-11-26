@@ -73,9 +73,9 @@ func AfterLanding(parent context.Context, o Observed) string {
 		return "spot-check: " + err.Error() + "; nothing was drawn"
 	}
 	if st.open {
-		cfg, err := windowConfig(o.Root, st.from)
+		cfg, why, err := windowConfig(ctx, o.Root, st.from)
 		if err != nil {
-			return "spot-check: the spotcheck configuration cannot be read (" + redact(err) + "); nothing was drawn"
+			return "spot-check: " + err.Error() + "; nothing was drawn"
 		}
 		cl, err := windowClose(ctx, o.Root, cfg, st.from, st.fromTime, tip)
 		if err != nil {
@@ -87,18 +87,24 @@ func AfterLanding(parent context.Context, o Observed) string {
 				return "spot-check: " + err.Error()
 			}
 			if len(pending) == 0 {
-				if st.markErr != nil {
-					return "spot-check: " + strings.TrimPrefix(markNote(st.markErr), "; ")
-				}
-				return ""
+				return withTail("", markNote(st.markErr)+defaultsNote(why))
 			}
-			return carry(ctx, o.Root) + markNote(st.markErr)
+			return withTail(carry(ctx, o.Root), markNote(st.markErr)+defaultsNote(why))
 		}
 		if note := notYet(cl, o.Now); note != "" {
-			return note
+			return note + defaultsNote(why)
 		}
 	}
 	return draw(ctx, o, tip)
+}
+
+// withTail is note with tail, each "" for nothing to say, as one note: a
+// tail alone stands as the note's whole.
+func withTail(note, tail string) string {
+	if note == "" && tail != "" {
+		return "spot-check: " + strings.TrimPrefix(tail, "; ")
+	}
+	return note + tail
 }
 
 // notYet is the note for a window that has closed before the round its
@@ -165,7 +171,15 @@ func draw(ctx context.Context, o Observed, tip string) string {
 		// window's population.
 		pending = pending[:min(len(pending), maxPushFiles-len(groupOrder)*maxPerGroup-1)]
 		if !st.open {
-			w, err := encodeFile("", WindowOpenFile, WindowOpen{SchemaVersion: SchemaVersion, Commit: tip, At: o.Now, Holder: Holder()})
+			// The opening is never earlier than its commit, so a tip
+			// committed by a clock ahead of this one opens at the tip's own
+			// time; readers past it hold that to their clock.
+			at, err := committedAt(ctx, o.Root, tip)
+			if err != nil {
+				return "spot-check: " + err.Error() + "; nothing was drawn"
+			}
+			at = later(at, o.Now)
+			w, err := encodeFile("", WindowOpenFile, WindowOpen{SchemaVersion: SchemaVersion, Commit: tip, At: at, Holder: Holder()})
 			if err != nil {
 				return "spot-check: " + err.Error()
 			}
@@ -174,12 +188,13 @@ func draw(ctx context.Context, o Observed, tip string) string {
 				last = err
 				continue
 			}
-			note := markNote(writeMark(ctx, o.Root, mark{Commit: commit, Opened: tip, OpenedAt: o.Now}))
+			// The mark keeps the opening once its commit's child confirms it.
+			note := markNote(writeMark(ctx, o.Root, mark{Commit: commit}))
 			return "spot-check: the first window opened at " + tip[:12] + "; nothing is drawn until it passes" + setAside(st) + note
 		}
-		cfg, err := windowConfig(o.Root, st.from)
+		cfg, why, err := windowConfig(ctx, o.Root, st.from)
 		if err != nil {
-			return "spot-check: the spotcheck configuration cannot be read (" + redact(err) + "); nothing was drawn"
+			return "spot-check: " + err.Error() + "; nothing was drawn"
 		}
 		cl, err := windowClose(ctx, o.Root, cfg, st.from, st.fromTime, tip)
 		if err != nil {
@@ -188,16 +203,16 @@ func draw(ctx context.Context, o Observed, tip string) string {
 		if cl.by == "" {
 			// Another writer drew this window first.
 			if len(pending) == 0 {
-				return ""
+				return withTail("", defaultsNote(why))
 			}
 			if _, err := pushOver(ctx, o.Root, st.tracking, pending, fmt.Sprintf("spotcheck: %d record(s)", len(pending))); err != nil {
 				last = err
 				continue
 			}
-			return fmt.Sprintf("spot-check: carried %d record(s) to %s", len(pending), Branch)
+			return fmt.Sprintf("spot-check: carried %d record(s) to %s", len(pending), Branch) + defaultsNote(why)
 		}
 		if note := notYet(cl, o.Now); note != "" {
-			return note
+			return note + defaultsNote(why)
 		}
 		round := roundAt(cl.at)
 		if beacon == nil || beacon.Round != round {
@@ -207,7 +222,7 @@ func draw(ctx context.Context, o Observed, tip string) string {
 			}
 			beacon = &b
 		}
-		c, items, err := makeCycle(ctx, o, cfg, st, cl, *beacon, pending)
+		c, items, err := makeCycle(ctx, o, cfg, why != "", st, cl, *beacon, pending)
 		if err != nil {
 			return "spot-check: " + err.Error() + "; nothing was drawn"
 		}
@@ -228,7 +243,7 @@ func draw(ctx context.Context, o Observed, tip string) string {
 		for _, g := range c.Groups {
 			drawn += len(g.Drawn)
 		}
-		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + setAside(st) + note
+		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + defaultsNote(why) + setAside(st) + note
 	}
 	return "spot-check: the push to " + Branch + " was refused twice (" + redact(last) + "); nothing was drawn, and the next landing tries again"
 }
@@ -262,9 +277,10 @@ func setAside(st windowState) string {
 // makeCycle draws the cycle closing st's window at cl: the landings of the
 // window (from st.from exclusive to cl.commit), the records origin's copy
 // holds that no earlier verified cycle drew from, the size over the cycles
-// before it, and an item file per drawn key. pending are the typed records
+// before it, and an item file per drawn key; defaults says the bundled
+// defaults counted the window (windowConfig). pending are the typed records
 // this checkout carries in the same commit, read as origin's own.
-func makeCycle(ctx context.Context, o Observed, cfg Config, st windowState, cl closing, b Beacon, pending []file) (Cycle, []file, error) {
+func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st windowState, cl closing, b Beacon, pending []file) (Cycle, []file, error) {
 	reader := registeredReader()
 	if reader == nil {
 		return Cycle{}, nil, errNoReader
@@ -330,7 +346,7 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, st windowState, cl c
 		return Cycle{}, nil, errors.New("the beacon's randomness does not read")
 	}
 	c := Cycle{SchemaVersion: SchemaVersion, ID: cycleID(cl.at, cl.commit), FromCommit: st.from, ToCommit: cl.commit,
-		FromTime: st.fromTime, ToTime: cl.at, ClosedBy: cl.by, Window: CycleWindow{Days: cfg.WindowDays, Changes: cfg.WindowChanges, Commits: len(cl.commits)},
+		FromTime: st.fromTime, ToTime: cl.at, ClosedBy: cl.by, Window: CycleWindow{Days: cfg.WindowDays, Changes: cfg.WindowChanges, Commits: len(cl.commits), Defaults: defaults},
 		Site: o.Site, Beacon: b, Draw: DrawRule,
 		Sample: Sample{PerGroup: cfg.PerGroup, Size: size, Why: why, Counted: counted}, Holder: Holder()}
 	var items []file

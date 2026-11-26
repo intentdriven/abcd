@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,11 +97,14 @@ type Cycle struct {
 
 // CycleWindow is the window's bounds as the default branch configured them
 // at the window's start (windowConfig): WindowDays, and WindowChanges, 0
-// when unset; and Commits, the first-parent commits the window spans.
+// when unset; Commits, the first-parent commits the window spans; and
+// Defaults, true when the block did not read there and the bundled defaults
+// counted the window.
 type CycleWindow struct {
-	Days    int `json:"days"`
-	Changes int `json:"changes"`
-	Commits int `json:"commits"`
+	Days     int  `json:"days"`
+	Changes  int  `json:"changes"`
+	Commits  int  `json:"commits"`
+	Defaults bool `json:"defaults,omitempty"`
 }
 
 // Sample is the size a cycle drew at and why.
@@ -170,14 +174,18 @@ type windowState struct {
 	// none.
 	tracking string
 	files    map[string]entry
-	// open says window-open.json is there; opened and openedAt are its
-	// opening, and from and fromTime are where the window now open began:
-	// the last verified cycle's end, else the opening.
-	open     bool
-	opened   string
-	openedAt time.Time
-	from     string
-	fromTime time.Time
+	// open says window-open.json is there and its opening verifies
+	// (verifyOpening); opened and openedAt are that opening, and from and
+	// fromTime are where the window now open began: the last verified
+	// cycle's end, else the opening. confirmed says the opening's commit has
+	// its child on the default branch, so its bounds are all checked and the
+	// mark may keep it.
+	open      bool
+	confirmed bool
+	opened    string
+	openedAt  time.Time
+	from      string
+	fromTime  time.Time
 	// cycles are the verified cycles, in window order: each starts where the
 	// one before it ended, the first at the opening.
 	cycles []Cycle
@@ -188,19 +196,85 @@ type windowState struct {
 	markErr error
 }
 
-// clockSkew is how far past the reader's clock a cycle's close may lie and
-// still be read: a close beyond it was never drawn, whatever its file says.
+// clockSkew is how far past the reader's clock a cycle's close, or the
+// window's opening, may lie and still be read: one beyond it was never
+// written then, whatever its file says.
 const clockSkew = 5 * time.Minute
 
+// errAhead is a cycle whose window this checkout's copy of the default
+// branch does not close yet: drawn, it may be, from a tip not fetched here.
+var errAhead = errors.New("its window does not close on this checkout's copy of the default branch")
+
+// verifyOpening checks the window's opening against origin's default branch
+// up to tip, as stored. Its moment is its writer's word, held to the line: no
+// later than now allows, no earlier than its commit was committed, and, once
+// that commit has its first-parent child on the line, no later than the
+// child was committed; an honest writer opens at the tip it read, between
+// the two. why is the bound an opening fails, "" when it holds: one that
+// fails is no window's start, and the next observer opens the window afresh
+// over it. An opening at a commit the line does not hold, or not on its
+// first parents, passes here and is refused loudly by windowClose, as a
+// commit this checkout has not fetched yet may be the line's next. confirmed
+// says the child is there, so every bound was checked and none can fail
+// later. err is a line that could not be read, which sets nothing aside.
+func verifyOpening(ctx context.Context, root, tip string, w WindowOpen, now time.Time) (confirmed bool, why string, err error) {
+	if w.At.After(now.Add(clockSkew)) {
+		return false, "it opens after now", nil
+	}
+	if on, err := isAncestor(ctx, root, w.Commit, tip); err != nil || !on {
+		return false, "", nil
+	}
+	ct, err := committedAt(ctx, root, w.Commit)
+	if err != nil {
+		return false, "", err
+	}
+	if w.At.Before(ct) {
+		return false, "it opens before its commit was committed", nil
+	}
+	if w.Commit == tip {
+		return false, "", nil
+	}
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxListingBytes, "log", "--first-parent", "--reverse", "--format=%H %ct %P", w.Commit+".."+tip, "--")
+	if err != nil {
+		return false, "", fmt.Errorf("reading the spot-check's opening: %s", redact(err))
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	f := strings.Fields(first)
+	if len(f) < 3 || f[2] != w.Commit {
+		return false, "", nil
+	}
+	secs, err := strconv.ParseInt(f[1], 10, 64)
+	if err != nil {
+		return false, "", errors.New("reading the spot-check's opening: git answered a line of an unexpected shape")
+	}
+	if w.At.After(time.Unix(secs, 0)) {
+		return false, "it opens after its commit's child on the default branch was committed", nil
+	}
+	return true, "", nil
+}
+
+// committedAt is when commit was committed, as stored.
+func committedAt(ctx context.Context, root, commit string) (time.Time, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", 64, "log", "-1", "--format=%ct", commit, "--")
+	secs, perr := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil || perr != nil {
+		return time.Time{}, fmt.Errorf("git answered no commit time for %s, so the window's opening cannot be checked", commit[:12])
+	}
+	return time.Unix(secs, 0).UTC(), nil
+}
+
 // readWindow is the window as origin's copy, last fetched, holds it, read
-// locally and checked against this machine's mark. Every cycle is verified
-// (verifyCycle) and chained from the opening in window order; a cycle that
-// fails either is set aside, named in unverified, and is no window boundary,
-// so its window is drawn afresh. A copy that does not hold the mark's commit,
-// its opening or its newest verified cycle is refused as rewritten. A copy
-// that holds files the store does not write under the draw's names, or an
-// opening that does not read, is an error: a window is never guessed. A copy
-// that reads is kept as the new mark.
+// locally and checked against this machine's mark. The opening is verified
+// (verifyOpening), and one that fails is set aside, named in unverified, and
+// is no window's start, so the window is opened afresh. Every cycle is
+// verified (verifyCycle) and chained from the opening in window order; a
+// cycle that fails either is set aside the same way and is no window
+// boundary, so its window is drawn afresh. A copy that does not hold the
+// mark's commit, its opening or its newest verified cycle is refused as
+// rewritten. A copy that holds files the store does not write under the
+// draw's names, or an opening that does not read, is an error: a window is
+// never guessed. A copy that reads is kept as the new mark, its opening once
+// confirmed.
 func readWindow(ctx context.Context, root string, now time.Time, tip string) (windowState, error) {
 	tracking, err := storeRef(ctx, root, TrackingRef)
 	if err != nil {
@@ -233,7 +307,15 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 		if !gitutil.IsFullSHA(w.Commit) || w.At.IsZero() {
 			return windowState{}, errors.New("the spot-check's window-open.json does not read as one this package writes")
 		}
-		st.open, st.opened, st.openedAt, st.from, st.fromTime = true, w.Commit, w.At, w.Commit, w.At
+		confirmed, why, err := verifyOpening(ctx, root, tip, w, now)
+		if err != nil {
+			return windowState{}, err
+		}
+		if why != "" {
+			st.unverified = append(st.unverified, "the window's opening on origin does not verify ("+why+"), so it was set aside")
+		} else {
+			st.open, st.confirmed, st.opened, st.openedAt, st.from, st.fromTime = true, confirmed, w.Commit, w.At, w.Commit, w.At
+		}
 	}
 	if marked && m.Opened != "" && (m.Opened != st.opened || !m.OpenedAt.Equal(st.openedAt)) {
 		return windowState{}, rewritten("the window's opening (" + m.Opened[:12] + ")")
@@ -249,6 +331,10 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 		default:
 			err = verifyCycle(ctx, root, tip, c, id, st.from, st.fromTime, now)
 		}
+		if errors.Is(err, errAhead) {
+			st.unverified = append(st.unverified, "cycle "+id+" on origin cannot be checked against this checkout's copy of the default branch yet, so it was set aside")
+			continue
+		}
 		if err != nil {
 			st.unverified = append(st.unverified, "cycle "+id+" on origin does not verify ("+err.Error()+"), so it was set aside")
 			continue
@@ -259,7 +345,7 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 	if marked && m.Cycle != "" && !slices.ContainsFunc(st.cycles, func(c Cycle) bool { return c.ID == m.Cycle }) {
 		return windowState{}, rewritten("the cycle " + m.Cycle)
 	}
-	if st.open && (!marked || m.Commit != tracking) {
+	if st.open && (!marked || m.Commit != tracking || st.confirmed && m.Opened == "") {
 		// A mark this machine cannot write leaves the last one standing,
 		// which still refuses a branch rewritten past it; the note says so.
 		st.markErr = writeMark(ctx, root, st.mark(tracking))
@@ -267,9 +353,14 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 	return st, nil
 }
 
-// mark is st as the high-water mark keeps it, at the store's commit.
+// mark is st as the high-water mark keeps it, at the store's commit: its
+// opening only once confirmed, as one not yet confirmed may still fail its
+// bounds, and is then opened afresh rather than refused as rewritten.
 func (st windowState) mark(commit string) mark {
-	m := mark{Commit: commit, Opened: st.opened, OpenedAt: st.openedAt}
+	m := mark{Commit: commit}
+	if st.confirmed {
+		m.Opened, m.OpenedAt = st.opened, st.openedAt
+	}
 	if n := len(st.cycles); n > 0 {
 		c := st.cycles[n-1]
 		m.Cycle, m.CycleFrom, m.CycleTo = c.ID, c.FromCommit, c.ToCommit
@@ -301,16 +392,19 @@ func verifyCycle(ctx context.Context, root, tip string, c Cycle, id, from string
 	case c.ToTime.After(now.Add(clockSkew)):
 		return errors.New("it closes after now")
 	}
-	cfg, err := windowConfig(root, from)
+	cfg, why, err := windowConfig(ctx, root, from)
 	if err != nil {
-		return errors.New("its window's configuration does not read")
+		return errors.New("its window's start is not held here")
 	}
-	if c.Window.Days != cfg.WindowDays || c.Window.Changes != cfg.WindowChanges || c.Sample.PerGroup != cfg.PerGroup {
+	if c.Window.Days != cfg.WindowDays || c.Window.Changes != cfg.WindowChanges || c.Sample.PerGroup != cfg.PerGroup || c.Window.Defaults != (why != "") {
 		return errors.New("its window is not the one the default branch configures")
 	}
 	cl, err := windowClose(ctx, root, cfg, from, fromTime, tip)
-	if err != nil || cl.by == "" {
+	if err != nil {
 		return errors.New("the default branch gives its window no close")
+	}
+	if cl.by == "" {
+		return errAhead
 	}
 	if c.ClosedBy != cl.by || c.ToCommit != cl.commit || !c.ToTime.Equal(cl.at) || c.Window.Commits != len(cl.commits) {
 		return errors.New("its close is not the one the default branch gives")

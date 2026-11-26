@@ -26,7 +26,10 @@ func clone(t *testing.T, bare string) *gittest.Repo {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	r.Write("a.txt", "a\n")
-	r.Commit("the base")
+	r.Git("add", "-A")
+	// The base is committed before every window these tests open, as a
+	// window's opening is never earlier than its commit.
+	commitAt(t, r, w0.Add(-24*time.Hour))
 	r.Git("remote", "add", "origin", bare)
 	return r
 }

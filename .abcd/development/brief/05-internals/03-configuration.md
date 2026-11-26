@@ -872,9 +872,14 @@ cycle checks it by the same values.
   round that close fixes is published.
 - **`per_group` is the most a group draws.** The size halves, rounded up, after
   three closed cycles in a row found nothing, and is whole again after a finding.
-- **A nonsense value refuses.** A value out of bounds or not a whole number, or a
-  misspelt key under `spotcheck`, refuses the observation, naming the file and
-  the key, and nothing is drawn; it never falls back to the default.
+- **A block that does not read counts its window by the defaults.** A value out
+  of bounds or not a whole number, a misspelt key under `spotcheck`, or a
+  `.abcd/config.json` that does not parse, at the commit a window starts at,
+  counts that window by the bundled defaults: every observation's note says so,
+  naming the file and the key, the window is still drawn, and its cycle records
+  `"defaults": true`, so every reader verifies it by the same values. A
+  corrected block takes effect from the next window, which starts at a later
+  commit.
 
 ### Staged config keys
 
