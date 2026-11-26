@@ -12,10 +12,16 @@ var recordActs = map[string]bool{
 	"revert": true, "am": true, "pull": true, "push": true,
 }
 
+// functionAct is the act RecordActs reads for a function in a form the guard
+// does not read (functionFormSignal): its body is not seen here, so it is
+// read as an act.
+const functionAct = "function"
+
 // RecordActs reads command for the git commands that make a commit or send
 // one, in the order written. It refuses nothing and decides nothing. A line the
 // tokenizer cannot split is read as no act, as is a command run through a
-// wrapper, a shell string or a script, which is not seen here.
+// wrapper, a shell string or a script, which is not seen here. A function in a
+// form the guard does not read is functionAct.
 func RecordActs(command string) []string {
 	segs, err := tokenize(command)
 	if err != nil {
@@ -23,6 +29,10 @@ func RecordActs(command string) []string {
 	}
 	var out []string
 	for _, s := range segs {
+		if _, read := commandWordsRead(s.tokens); s.functionQuoted || !read {
+			out = append(out, functionAct)
+			continue
+		}
 		if act := recordActIn(s.tokens); act != "" {
 			out = append(out, act)
 		}

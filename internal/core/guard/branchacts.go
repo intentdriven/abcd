@@ -106,6 +106,13 @@ func branchActsIn(toks []string) []BranchAct {
 // wrapper: a command run through `time`, `env`, `sudo` or `sh -c` is not read.
 // A function in any other form is no command (skipFunction): Check holds it.
 func commandWords(toks []string) []string {
+	words, _ := commandWordsRead(toks)
+	return words
+}
+
+// commandWordsRead is commandWords, with read false for a function in a form
+// the walker does not read (skipFunction).
+func commandWordsRead(toks []string) (words []string, read bool) {
 	lastBrace := lastBraceIndex(toks)
 	for i := 0; i < len(toks); {
 		switch t := toks[i]; {
@@ -116,16 +123,16 @@ func commandWords(toks []string) []string {
 		case t == "function":
 			body, ok := skipFunction(toks, i+1, lastBrace)
 			if !ok {
-				return nil
+				return nil, false
 			}
 			i = body
 		case t == "repeat":
 			i = skipWord(toks, i+1)
 		default:
-			return toks[i:]
+			return toks[i:], true
 		}
 	}
-	return nil
+	return nil, true
 }
 
 // flagValue reads a value-taking option at args[i] spelled one of names:

@@ -551,7 +551,7 @@ reads each command of the line after the guard's own tokenizer, steps the words
 the registry's walker steps before a command (assignment words, the reserved
 words `if`, `then`, `do`, `{` and `!`, `coproc`, `function NAME` and
 `repeat COUNT`; a function in any other form is held by the guard as
-`function-form-unread`, and no act is read in it) and git's global options with their values, and takes the
+`function-form-unread`, and is read as an act, so the hold asks) and git's global options with their values, and takes the
 subcommand by position, so `git stash push` and `echo git commit` are no write. A
 word a substitution or a variable prints is allowed as a global option's value
 and after the subcommand; as the program, an option word or the subcommand it
@@ -610,7 +610,11 @@ A broken guard never bricks a session and never silently stops protecting one.
 The installed hook wraps the binary in a shim: the binary's own three statuses
 pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
-call through. One state is the exception, and it blocks on purpose: while
+call through. A guard killed by a signal (an exit above 128, which a resource
+limit or the host's timeout leaves) is not one that failed to start: it was
+judging the call and did not finish, so the shim holds it, exit 2 with its
+`FAILED TO RUN` line, rather than let a command run that the guard may have
+been about to refuse. One state is the exception, and it blocks on purpose: while
 anything stands at `~/.abcd`, the name abcd's folder had before
 `~/.abcd.noindex`, the hook exits 2, the host's blocking status, on every call
 the matcher hands it, with the stop's line on stderr. The reason is that abcd

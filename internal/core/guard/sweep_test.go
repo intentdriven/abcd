@@ -48,7 +48,14 @@ import (
 // call a function that reads an argument through an operator no word stands
 // for (`${1%/}`, `${1##*/}`, `${1:0:1}`), and are held as function-form-unread,
 // and scripts/check-wip-source-cases.sh read whole runs `bash "$SCRIPT"` with a
-// case's words, which blocks as that command does.
+// case's words, which blocks as that command does. Raised to 39 when such a
+// call came to be read in the simple case only, every other call with words of
+// a function that reads its arguments held: five more scripts read whole
+// (scripts/check-reviews.sh, scripts/check-reviews-cases.sh,
+// scripts/check-attribution.sh, scripts/check-attribution-cases.sh,
+// scripts/preflight-scans.sh) call a function whose body calls another
+// function the script defines, or a program a variable names, and are held as
+// function-form-unread.
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -64,7 +71,7 @@ import (
 // (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
 // same two warns.
 const (
-	maxSweepBlocks = 34
+	maxSweepBlocks = 39
 	maxSweepWarns  = 39
 )
 

@@ -105,7 +105,7 @@ func TestFunctionFormStaysLinear(t *testing.T) {
 		}
 		return b.String()
 	}
-	assertWorkGrowth(t, calls, 1<<9, "each call of a function the line defines is read once, to maxFunctionReadings")
+	assertWorkGrowth(t, calls, 1<<9, "each call of a function the line defines is read once, to maxFunctionWords")
 	// The work count above does not see what each place the walk arrives at
 	// costs the entries after it; the arrivals are counted here.
 	segs, err := tokenize(build(3610))
@@ -176,4 +176,97 @@ func TestFunctionCallIsReadWithItsWords(t *testing.T) {
 			t.Errorf("Check(%q) = %q via %q, matches %v, want no block", line, d.Verdict, d.EntryID, d.Matches)
 		}
 	}
+}
+
+// TestFunctionCallIsReadOnlyInTheSimpleCase: a call is read with its words
+// only where the body's span is certain, the body calls no function the line
+// defines, changes its arguments by a bare `shift` alone, and the words put
+// stay within maxFunctionWords. Every other call, with words, of a function
+// that reads its arguments is held.
+func TestFunctionCallIsReadOnlyInTheSimpleCase(t *testing.T) {
+	const held = "function-form-unread"
+	args := strings.TrimPrefix(hazardLine, "git ")
+	for _, line := range []string{
+		// The body's span is not certain.
+		`f() { time { :; }; git "$@"; }; f ` + args,
+		`f() { coproc { :; }; git "$@"; }; f ` + args,
+		`f() { '}'; git "$@"; }; f ` + args,
+		`f() { echo }; git "$@"; }; f ` + args,
+		`f() ( git "$@" ); f ` + args,
+		// The body calls a function the line defines.
+		`f() { f $@ $@; }; f a b`,
+		`f() { g "$@"; }; g() { git "$@"; }; f ` + args,
+		`a(){ b "$@"; }; b(){ c "$@"; }; c(){ d "$@"; }; d(){ e "$@"; }; e(){ git "$@"; }; a ` + args,
+		`f() { "$@"; }; g() { git "$@"; }; f g ` + args,
+		// The body changes its arguments other than by a bare shift.
+		`f() { set -- ` + args + `; git "$@"; }; f x`,
+		`f() { builtin shift; git "$@"; }; f x ` + args,
+		`f() { command shift; git "$@"; }; f x ` + args,
+		`f() { shift 2; git "$@"; }; f x y ` + args,
+		`f() { eval set -- ` + args + `; git "$@"; }; f x`,
+		`f() { argv=(` + args + `); git "$@"; }; f x`,
+		// zsh reads an argument in a form no word stands for.
+		`f() { git ${(@)argv}; }; f ` + args,
+		`f() { git ${(z)1}; }; f "` + args + `"`,
+		`f() { git $@[1,-1]; }; f ` + args,
+		`f() { git $1[1,9]; }; f push`,
+		`f() { git "$1[1,9]"; }; f push`,
+		`() { git "$@"; } ` + args,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock || !containsString(d.Matches, held) {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want a block holding %q", line, d.Verdict, d.EntryID, d.Matches, held)
+		}
+	}
+	// A group inside a substitution in the body is the substitution's own.
+	for _, line := range []string{
+		`f() { x=$( { echo; } ); git "$@"; }; f ` + args,
+		`f() { shift; git "$@"; }; f x ` + args,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, want a block", line, d.Verdict, d.EntryID)
+		}
+	}
+	for _, line := range []string{
+		`f() { echo "$1"; }; f x`,
+		`f() { set -e; echo "$1"; }; f x`,
+		`f() { shift; echo "$@"; }; f x y`,
+		`f() { git status; }; g() { f; }; g x`,
+	} {
+		if d := readingOf(t, line); d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want no block", line, d.Verdict, d.EntryID, d.Matches)
+		}
+	}
+}
+
+// TestFunctionCallReadingStaysWithinItsBudget: the readings of a line's calls
+// put no more than maxFunctionWords words, however many sites, words, shifts
+// or definitions the line holds; past it the line is held, and the cost
+// stays linear in the line.
+func TestFunctionCallReadingStaysWithinItsBudget(t *testing.T) {
+	sites := func(m int) string { return `f() { shift; echo` + strings.Repeat(` "$@"`, m) + `; }; f` }
+	words := func(n int) string { return strings.Repeat(" w", n) }
+	shifted := `f() { shift; git "$@"; }; f`
+	for _, line := range []string{
+		sites(16) + words(512),
+		shifted + words(5120),
+		`f() { f "$@" "$@"; }; f a b`,
+		strings.Repeat("a();", 13000) + "a x",
+		strings.Repeat("a() { ", 2000) + "a x",
+	} {
+		segs, err := tokenize(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		walkSegments(segs)
+		out, hold := functionCallReadings(segs)
+		n := 0
+		for _, s := range out {
+			n += len(s.tokens)
+		}
+		if !hold || n > maxFunctionWords {
+			t.Errorf("a %d-byte line: hold %v, %d words put; want it held within %d", len(line), hold, n, maxFunctionWords)
+		}
+	}
+	assertWorkGrowth(t, func(n int) string { return sites(16) + words(n) }, 256, "the words a call's readings put are charged to one budget")
+	assertWorkGrowth(t, func(n int) string { return shifted + words(n) }, 1280, "each offset a shift reads from is charged to the budget")
 }

@@ -43,6 +43,15 @@ type segment struct {
 	// (functionCallReadings).
 	definesFunction []string
 	argumentsUnread bool
+	// nest is how many commands a substitution suspends around this one, 0
+	// at its text's own level; braceOdd records a `{` or `}` word that
+	// neither opens a group where a command starts nor closes one as the
+	// command's first word; anonymousFunction records zsh's anonymous
+	// function, `() { …; } words`, opening at this command. functionBody
+	// places a function's body by them.
+	nest              int
+	braceOdd          bool
+	anonymousFunction bool
 	// heredocUnterminated records that this command opened a here-document
 	// whose delimiter line never came, so the tokenizer read the rest of the
 	// input as body without knowing whether it WAS body. bash runs such a line
@@ -602,6 +611,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// that the text read a function's arguments in a form no call's
 		// word stands for (segment.definesFunction, segment.argumentsUnread).
 		defNext, argsUnread bool
+		// braceOdd rides with the segment (segment.braceOdd), anonNext
+		// carries an empty `()` that ended no command to the command after
+		// it (segment.anonymousFunction), and closingSub records the flush
+		// of a substitution's last command, one level in (segment.nest).
+		braceOdd, anonNext, closingSub bool
 		// curGlob rides with the WORD being built and globs with the segment:
 		// an unquoted `*`, `?` or `[` marks the word as a pattern bash expands.
 		// Only the default branch sets it — bytes that arrive through a quote,
@@ -1099,6 +1113,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			keywords[len(toks)] = true
 		}
+		// A `{` or `}` word anywhere else than where it opens a group, or
+		// closes one as the command's first word, is odd (segment.braceOdd).
+		if tok == "{" || tok == "}" {
+			head := len(toks) == 2 && toks[0] == "function"
+			braceOdd = braceOdd || !bare || !allReserved(toks) && !head || tok == "}" && len(toks) > 0
+		}
 		// A `{` or `}` the line leaves wholly unquoted, in command position,
 		// opens or closes a group; a quoted one (`}""`, `}''`) is a command's
 		// name, and the group's input still reaches the commands after it.
@@ -1120,12 +1140,26 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		flushToken()
 		defParen := defNext
 		defNext = false
-		defer func() { argsUnread = false }()
+		defer func() { argsUnread, braceOdd = false, false }()
+		nest := 0
+		for _, p := range parens {
+			if p.saved != nil {
+				nest++
+			}
+		}
+		if closingSub {
+			nest++
+		}
+		if defParen && len(toks) == 0 && !hasCur {
+			anonNext = true
+		}
 		if len(toks) > 0 {
 			quotedFn, definedFn := functionQuoted(toks, keywords)
-			if name := toks[len(toks)-1]; defParen && !strings.Contains(name, "=") {
+			if name := toks[len(toks)-1]; defParen && !strings.Contains(name, "=") && !containsString(definedFn, name) {
 				definedFn = append(definedFn, name)
 			}
+			anonymous := anonNext
+			anonNext = false
 			inTest = (inTest || testsWords(toks, keywords)) && !containsString(toks, "]]")
 			for _, k := range curDocs {
 				docOwners[k] = len(segs)
@@ -1136,6 +1170,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), functionQuoted: quotedFn, definesFunction: definedFn, argumentsUnread: argsUnread,
+				nest: nest, braceOdd: braceOdd, anonymousFunction: anonymous,
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
 				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
@@ -1161,7 +1196,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		} else if len(curRedirs) > 0 {
 			// A command of redirections alone still opens its files: `> f`
 			// truncates f. It is kept, with no words, for the files it writes.
-			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
+			segs = append(segs, segment{chain: chain, home: list, at: len(segs), nest: nest,
 				redirects: curRedirs, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, afterAnd: andNext, end: pos})
 			curRedirs, andNext = nil, false
 		}
@@ -1407,7 +1442,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// substitution always contributes exactly one word, the /dev/fd path the
 	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution = func(e *enclosing) {
+		closingSub = true
 		flushSegment()
+		closingSub = false
 		resumeDocs(e)
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
@@ -1590,6 +1627,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
+					argsUnread = argsUnread || argumentName(line[j+1:k]) && k < len(line) && line[k] == '['
 					// Only a plain `"$NAME"` or `"$1"` is one word: `"$@"`
 					// yields one per element, and zsh reads a subscript or a
 					// modifier after the name (`"$a[@]"`, `"$v:h"`).
@@ -1954,6 +1992,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
 			addParam(paramText(line[i:end]))
+			// zsh reads `$1[1,3]` and `$@[2,-1]` as a subscript.
+			argsUnread = argsUnread || argumentName(line[i+1:end]) && end < len(line) && line[end] == '['
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false

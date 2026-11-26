@@ -1390,6 +1390,12 @@ func functionQuoted(toks []string, bare map[int]bool) (quoted bool, defined []st
 // arguments: `1`…`9` and on, `@`, `*`, or zsh's `argv`.
 func argumentName(name string) bool {
 	name = strings.TrimLeft(name, "#!^~=")
+	// zsh's flags in parentheses: `${(@)argv}`, `${(z)1}`.
+	if strings.HasPrefix(name, "(") {
+		if k := strings.IndexByte(name, ')'); k > 0 {
+			name = strings.TrimLeft(name[k+1:], "#!^~=")
+		}
+	}
 	if name == "" {
 		return false
 	}
@@ -1433,103 +1439,164 @@ func argumentBody(body string) bool {
 	return rest == "" || rest[0] == '-' || rest[0] == '=' || rest[0] == '?'
 }
 
-// maxFunctionReadings bounds the readings functionCallReadings makes of one
-// line; past it the line is held (functionArgumentsSignal).
-const maxFunctionReadings = 2048
+// maxFunctionWords bounds the words functionCallReadings puts for one line:
+// the commands it scans for the bodies' spans and every word of each reading.
+// Past it the line is held (functionArgumentsSignal).
+const maxFunctionWords = 4096
 
-// maxFunctionCallDepth bounds how many calls deep a call made in a body read
-// with a call's words is read in its turn.
-const maxFunctionCallDepth = 4
-
-// functionCallReadings reads each call, on the line, of a function the line
-// defines (segment.definesFunction) with its words in the arguments' place:
-// every command of its body that reads an argument is read once more for each
-// call, its `$1`…`$9`, `$@` and `$*` replaced by the call's words, and from
-// each offset where the body holds a `shift`. A body is the commands from the
-// definition to the `}` closing its `{` (functionBody). hold reports a call
-// that cannot be read so: a body reading an argument in a form no word stands
-// for (segment.argumentsUnread), a spelling that does not line up, or more
-// readings than maxFunctionReadings.
+// functionCallReadings reads each call, with words, of a function the line
+// defines (segment.definesFunction) with those words in its arguments' place,
+// in the one case it reads: the body's span is certain (functionBody), no
+// command in it calls a function the line defines or a program the line does
+// not name, it changes its arguments by a bare `shift` alone
+// (argumentsChange), and the readings put no more than maxFunctionWords words.
+// Every command of such a body that reads an argument is read once more for
+// each call, its `$1`…`$9`, `$@` and `$*` replaced by the call's words, and
+// from each offset a `shift` leaves. hold reports a call with words of a
+// function that reads its arguments in any other case, an argument read in a
+// form no word stands for (segment.argumentsUnread) included, and zsh's
+// anonymous function on a line that reads an argument.
 func functionCallReadings(segs []segment) (out []segment, hold bool) {
-	type body struct {
-		reads          []int
-		shifts, unread bool
-	}
-	bodies := map[string]*body{}
+	defs := map[string][]int{}
+	anonymous := false
 	for i, s := range segs {
 		for _, n := range s.definesFunction {
-			b := &body{}
-			lo, hi := functionBody(segs, i)
-			for j := lo; j <= hi; j++ {
-				if w := commandWords(segs[j].tokens); len(w) > 0 && w[0] == "shift" {
-					b.shifts = true
-				}
-				b.unread = b.unread || segs[j].argumentsUnread
-				if readsArgument(segs[j]) {
-					b.reads = append(b.reads, j)
-				}
+			defs[n] = append(defs[n], i)
+		}
+		anonymous = anonymous || s.anonymousFunction
+	}
+	if anonymous {
+		for _, s := range segs {
+			if s.argumentsUnread || readsArgument(s) {
+				return nil, true
 			}
-			if old, ok := bodies[n]; ok {
-				// A name defined twice is read with either body.
-				b.reads = append(old.reads, b.reads...)
-				b.shifts, b.unread = b.shifts || old.shifts, b.unread || old.unread
-			}
-			bodies[n] = b
 		}
 	}
-	if len(bodies) == 0 {
+	if len(defs) == 0 {
 		return nil, false
 	}
+	budget := maxFunctionWords
+	charge := func(n int) bool {
+		budget -= n
+		return budget >= 0
+	}
+	// names reports a command position in s that runs a function the line
+	// defines, or a program the line does not name; in a body, a word an
+	// argument writes there is read with the call's words instead.
+	names := func(s segment, body bool) bool {
+		for _, a := range commandSites(s) {
+			t := s.tokens[a.idx]
+			if _, ok := defs[t]; ok && !containsString(s.definesFunction, t) {
+				return true
+			}
+			if isUnknown(t) {
+				if refs, ok := argumentRefs(s, a.idx); body && ok && readsArgumentRefs(refs) {
+					continue
+				}
+				return true
+			}
+		}
+		return false
+	}
+	type read struct{ at, many int }
+	type body struct {
+		reads  []read
+		shifts bool
+		held   bool
+	}
+	bodies := map[string]*body{}
+	bodyOf := func(name string) *body {
+		if b, ok := bodies[name]; ok {
+			return b
+		}
+		b := &body{}
+		bodies[name] = b
+		reads, odd := false, false
+		for _, at := range defs[name] {
+			lo, hi, certain := functionBody(segs, at, charge)
+			odd = odd || !certain
+			for j := lo; j <= hi; j++ {
+				s := segs[j]
+				// A span past the budget is not read: the call is held.
+				if !charge(len(s.tokens) + 1) {
+					b.held = true
+					return b
+				}
+				shift, other := argumentsChange(s)
+				b.shifts = b.shifts || shift
+				odd = odd || other || s.argumentsUnread || names(s, true)
+				reads = reads || s.argumentsUnread
+				if !readsArgument(s) {
+					continue
+				}
+				reads = true
+				r := read{at: j}
+				for idx := range s.variable {
+					refs, _ := argumentRefs(s, idx)
+					for _, ref := range refs {
+						if ref.name != "" && argumentIndex(ref.name) == -1 {
+							r.many++
+						}
+					}
+				}
+				b.reads = append(b.reads, r)
+			}
+		}
+		b.held = reads && odd
+		if !reads {
+			b.reads = nil
+		}
+		return b
+	}
 	type call struct {
-		body  *body
-		args  []argumentWord
-		depth int
+		body *body
+		args []argumentWord
 	}
 	var calls []call
 	seen := map[string]bool{}
-	callsIn := func(s segment, depth int) bool {
+	for _, s := range segs {
 		for _, a := range commandSites(s) {
-			b := bodies[s.tokens[a.idx]]
-			if b == nil || a.idx+1 >= len(s.tokens) || len(b.reads) == 0 && !b.unread {
+			name := s.tokens[a.idx]
+			if _, ok := defs[name]; !ok || a.idx+1 >= len(s.tokens) || containsString(s.definesFunction, name) {
 				continue
 			}
-			if b.unread {
-				return false
+			b := bodyOf(name)
+			if budget < 0 || b.held {
+				return nil, true
 			}
-			if key := s.tokens[a.idx] + "\x00" + strings.Join(s.tokens[a.idx+1:], "\x00\x00"); !seen[key] {
+			if len(b.reads) == 0 {
+				continue
+			}
+			if !charge(len(s.tokens) - a.idx) {
+				return nil, true
+			}
+			if key := name + "\x00" + strings.Join(s.tokens[a.idx+1:], "\x00\x00"); !seen[key] {
 				seen[key] = true
-				calls = append(calls, call{body: b, args: wordsOf(s, a.idx+1), depth: depth})
+				calls = append(calls, call{body: b, args: wordsOf(s, a.idx+1)})
 			}
 		}
-		return true
 	}
-	for _, s := range segs {
-		if !callsIn(s, 0) {
-			return nil, true
-		}
-	}
-	budget := maxFunctionReadings
-	for len(calls) > 0 {
-		c := calls[0]
-		calls = calls[1:]
+	for _, c := range calls {
 		last := 0
 		if c.body.shifts {
 			last = len(c.args)
 		}
 		for k := 0; k <= last; k++ {
+			if !charge(len(c.args) - k + 1) {
+				return nil, true
+			}
 			for _, split := range argumentSplits(c.args[k:]) {
-				for _, bi := range c.body.reads {
-					if budget == 0 {
+				for _, r := range c.body.reads {
+					if !charge(len(segs[r.at].tokens) + r.many*len(split)) {
 						return nil, true
 					}
-					budget--
-					d, ok := withArguments(segs[bi], split)
+					d, ok := withArguments(segs[r.at], split)
 					if !ok {
 						return nil, true
 					}
 					walked := []segment{d}
 					walkSegments(walked)
-					if c.depth+1 < maxFunctionCallDepth && !callsIn(walked[0], c.depth+1) {
+					if names(walked[0], false) {
 						return nil, true
 					}
 					out = append(out, walked[0])
@@ -1541,40 +1608,111 @@ func functionCallReadings(segs []segment) (out []segment, hold bool) {
 }
 
 // functionBody is the span of segs, lo to hi, that holds the body of the
-// function segs[at] defines: from the command that opens its `{` to the `}`
-// that closes it, counting the groups opened and closed between. A body that
-// opens no `{` there (a subshell, an `if`) runs to the end of segs.
-func functionBody(segs []segment, at int) (lo, hi int) {
+// function segs[at] defines: from the definition to the `}` that closes the
+// `{` it opens, counting the groups opened and closed at the definition's own
+// level between (segment.nest; a substitution's commands and a string's are
+// their own). certain is false where the span cannot be placed so: a body
+// that opens no `{`, a `{` or `}` word anywhere but where it opens or closes
+// a group (segment.braceOdd), a group the line leaves open, or more words
+// scanned than charge allows. The span then runs to the end of segs.
+func functionBody(segs []segment, at int, charge func(int) bool) (lo, hi int, certain bool) {
+	def := segs[at]
 	lo, hi = at, len(segs)-1
 	depth, opened := 0, false
 	for j := at; j < len(segs); j++ {
-		toks := segs[j].tokens
+		s := segs[j]
+		if !charge(len(s.tokens) + 1) {
+			return lo, hi, false
+		}
+		if s.home != def.home || s.nest > def.nest {
+			continue
+		}
+		if s.nest < def.nest || s.braceOdd {
+			return lo, hi, false
+		}
+		toks := s.tokens
 		if len(toks) > 0 && toks[0] == "}" {
 			depth--
-			if opened && depth <= 0 {
-				return lo, j
+			if depth < 0 || !opened {
+				return lo, hi, false
 			}
+			if depth == 0 {
+				return lo, j, true
+			}
+			continue
 		}
-	words:
-		for i := 0; i < len(toks); i++ {
-			switch t := toks[i]; {
-			case t == "{":
+		i := 0
+		if len(toks) >= 2 && toks[0] == "function" {
+			i = 2
+		}
+		for ; i < len(toks) && reserved[toks[i]]; i++ {
+			if toks[i] == "{" {
 				depth++
 				opened = true
-				continue
-			case reserved[t] || isAssignment(t):
-				continue
-			case t == "function" && i+1 < len(toks):
-				i++
-				continue
 			}
-			break words
 		}
-		if j > at+1 && !opened {
-			return lo, hi
+		if j > at && !opened {
+			return lo, hi, false
 		}
 	}
-	return lo, hi
+	return lo, hi, false
+}
+
+// argumentsChange reports how a command changes the arguments of the function
+// it runs in: shift for a bare `shift`, and other for anything else that can
+// (a `shift` with a count or through `builtin` or `command`, a `set` that
+// sets them, `eval`, `.` and `source`, which run text that can, and zsh's
+// `argv` assigned).
+func argumentsChange(s segment) (shift, other bool) {
+	if s.arrayOf == "argv" {
+		other = true
+	}
+	for _, t := range s.tokens {
+		if strings.HasPrefix(t, "argv=") || strings.HasPrefix(t, "argv+=") || strings.HasPrefix(t, "argv[") {
+			other = true
+		}
+	}
+	lead := len(s.tokens) - len(commandWords(s.tokens))
+	for _, a := range commandSites(s) {
+		w := s.tokens[a.idx:]
+		stepped := a.idx != lead
+		for len(w) > 1 && (w[0] == "builtin" || w[0] == "command") {
+			w, stepped = w[1:], true
+		}
+		switch w[0] {
+		case "shift":
+			if len(w) == 1 && !stepped {
+				shift = true
+			} else {
+				other = true
+			}
+		case "set":
+			other = other || setsArguments(w[1:])
+		case "eval", ".", "source":
+			other = true
+		}
+	}
+	return shift, other
+}
+
+// setsArguments reports whether `set` with words sets the positional
+// arguments: `--` or `-`, or a word that is no option (or no option's value,
+// as `-o pipefail`'s is).
+func setsArguments(words []string) bool {
+	for i := 0; i < len(words); i++ {
+		w := words[i]
+		switch {
+		case isUnknown(w), w == "--", w == "-":
+			return true
+		case strings.HasPrefix(w, "-") || strings.HasPrefix(w, "+"):
+			if strings.HasSuffix(w, "o") {
+				i++
+			}
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 // argumentWord is one word a call hands its function, with its records: the

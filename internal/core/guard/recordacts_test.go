@@ -53,11 +53,13 @@ func TestRecordActsReadsTheGitCommandsThatRecordOrSend(t *testing.T) {
 		{"git status", nil},
 		{"function git { :; }", nil},
 		// A function in any other form is held by Check (function-form-unread),
-		// so no act is read in it.
-		{"function f g { git commit -m x; }; f", nil},
-		{"function -T f { git push; }", nil},
-		{"function if g { git commit -m x; }; g", nil},
-		{"function f if git pull {; then :; fi", nil},
+		// and is an act whose body is not read: the hold asks.
+		{"function f g { git commit -m x; }; f", []string{"function"}},
+		{"function -T f { git push; }", []string{"function"}},
+		{"function if g { git commit -m x; }; g", []string{"function"}},
+		{"function f if git pull {; then :; fi", []string{"function"}},
+		{"function 'f' { git commit -m x; }; f", []string{"function"}},
+		{`function f { :; }; function \g { :; }`, []string{"function"}},
 		{"if git diff --quiet; then git status; fi", nil},
 		{"then commit", nil},
 		{"{ $g commit; }", nil},

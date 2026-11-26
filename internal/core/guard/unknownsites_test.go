@@ -61,8 +61,10 @@ var wordReaders = map[string]string{
 
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
-	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
-	"commandWords": "exempt: steps reserved words, grammar no substitution prints, and words whose NAME= the line writes; its callers refuse an unknown word as the program",
+	"branchActsIn":     "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	"commandWordsRead": "exempt: steps reserved words, grammar no substitution prints, and words whose NAME= the line writes; its callers refuse an unknown word as the program",
+	"argumentsChange":  "exempt: reads the program at each command site commandSites places, which unknown.go walks; a name nothing fixes there holds the call (functionCallReadings)",
+	"setsArguments":    "exempt: an option of `set` is a dash the line writes; a word nothing fixes is read as setting the arguments",
 	// match.go: the `function` keyword's NAMEs.
 	"plainFunctionName":    "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
 	"argumentBody":         "exempt: reads the body of a `${…}` expansion the tokenizer hands it, never a command's word",

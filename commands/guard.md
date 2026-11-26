@@ -59,10 +59,15 @@ the guard did not check. A function is read in two forms, `name() { … }` and
 form (several names, an option, a quoted name or brace) is a **block**
 (`function-form-unread`): write it in one of those forms, then run it. A call
 of a function the line defines is read with the call's words in place of the
-arguments its body reads (`$1`…`$9`, `$@`, `$*`, from each offset where it
-shifts); one whose body reads an argument through an operator
-(`${1#x}`, `${1:0:1}`) is held the same way. A function in a script the line
-runs is read as the script stands.
+arguments its body reads (`$1`…`$9`, `$@`, `$*`, from each offset where a bare
+`shift` leaves them) in the simple case only: the body is one `{ … }` whose
+braces the guard can place, it calls no function the line defines, and it
+changes its arguments by a bare `shift` alone. Any other call, with words, of a
+function that reads its arguments is held the same way: a body that reads one
+through an operator (`${1#x}`, `${1:0:1}`, zsh's flags and subscripts), runs
+`set`, `eval` or `source`, shifts by a count, calls another function of the
+line, or a line whose readings would put more than a few thousand words. A
+function in a script the line runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
