@@ -1683,6 +1683,7 @@ func TestAStopDuringTheWaitHolds(t *testing.T) {
 	if _, err := runstop.Lift(home, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	reserved := reservedAtFirstLand(t, w, res.Issue)
 	again := w.options(t)
 	again.Stop = make(chan struct{})
 	again.Drain.Max = 0
@@ -1698,6 +1699,9 @@ func TestAStopDuringTheWaitHolds(t *testing.T) {
 	}
 	if slices.ContainsFunc(next.PassedOver, func(p Excluded) bool { return p.ID == res.Issue }) || strings.Contains(w.said(), "resume --take") {
 		t.Fatalf("the drive names the run it took up as a person's: %+v\n%s", next.PassedOver, w.said())
+	}
+	if r := reserved(); r.State != claim.StateLive {
+		t.Fatalf("the take-up did not reserve the run again before it stepped: %+v", r)
 	}
 }
 
@@ -1752,7 +1756,7 @@ func TestALaneLetGoReadsAsNoPersonsHalt(t *testing.T) {
 		if !letGoByDrive(run) {
 			t.Errorf("the issue is let go for the wait:\n%s", w.said())
 		}
-		if why := waitsUntaken(w.repo.Root(), run); why != "" {
+		if why := waitsUntakenTo(w.repo.Root(), run, false); why != "" {
 			t.Errorf("nothing says a person has it: %q", why)
 		}
 		if haltedByPerson(w.repo.Root(), run.RunID) {

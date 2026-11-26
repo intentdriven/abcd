@@ -539,11 +539,11 @@ func TestAnUnsettledMarkNamesWhatTakesItUp(t *testing.T) {
 		}
 	}
 	mark(true)
-	if note := stopMarkNote(f.repo.Root(), f.runID); !strings.Contains(note, "once the stop lifts") || !strings.Contains(note, "implement step --run "+f.runID) {
+	if note := stopMarkNoteTo(f.repo.Root(), f.runID, false); !strings.Contains(note, "once the stop lifts") || !strings.Contains(note, "implement step --run "+f.runID) {
 		t.Fatalf("a person's stop: %s", note)
 	}
 	mark(false)
-	note := stopMarkNote(f.repo.Root(), f.runID)
+	note := stopMarkNoteTo(f.repo.Root(), f.runID, false)
 	if !strings.Contains(note, "implement resume --take "+f.runID) || strings.Contains(note, "lifts") || strings.Contains(note, "implement step") {
 		t.Fatalf("a signal: %s", note)
 	}
@@ -782,6 +782,9 @@ func laterDriveTakesOver(t *testing.T, w *terminalWorld, res TerminalResult) {
 	}
 	if strings.Contains(said, "resume --take") || strings.Contains(said, "step --run "+res.Run) {
 		t.Fatalf("a later drive names a typed take-over:\n%s", said)
+	}
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive {
+		t.Fatalf("the take-over did not reserve the parked run again: %+v", r)
 	}
 }
 

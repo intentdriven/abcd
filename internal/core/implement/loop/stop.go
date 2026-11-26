@@ -303,7 +303,7 @@ func stopRefusalTo(runID string, rec RunStop, drive bool) error {
 	case !rec.FromFile:
 		remedy = "it came from a signal, and `abcd implement resume --take " + runID + "` takes the run over once it has settled; hand back any receipt you hold with `abcd implement receipt`, then stop"
 	case drive:
-		remedy = "the person's own `abcd implement stop --lift` lifts it, and a drive's start then takes the run up"
+		remedy = "the person's own `abcd implement stop --lift` lifts it, and a drive's start then takes the run up where it may"
 	}
 	reason := fmt.Sprintf("a stop set by %s at %s holds: %s is halted %s, and nothing further starts",
 		termsafe.Sanitize(rec.SetBy), rec.SetAt.UTC().Format(time.RFC3339), runID, state)
@@ -357,22 +357,21 @@ func waitsForItsTakeOver(repoRoot, runID string, drive bool) string {
 	case c.Stop == nil || c.Stop.HaltedAt == nil:
 		return ""
 	case c.Stop.FromFile && drive:
-		return fmt.Sprintf("a person's stop halted run %s; once the person lifts it, a drive's start takes the run up", id)
+		return fmt.Sprintf("a person's stop halted run %s; once the person lifts it, a drive's start takes the run up where it may", id)
 	case c.Stop.FromFile:
 		return waitsForTakeOver(runID)
 	case drive:
-		return fmt.Sprintf("a signal to a drive halted run %s, which `%s` takes over at its start", id, TerminalResumeCommand)
+		return fmt.Sprintf("a signal to a drive halted run %s, which `%s` takes over at its start where it may", id, TerminalResumeCommand)
 	}
 	return fmt.Sprintf("a signal to a drive halted run %s, which waits for `abcd implement resume --take %s`", id, id)
 }
 
-// stopMarkNote says why a stop's mark leaves nothing to be done for a run, "" for a run with
+// stopMarkNoteTo says why a stop's mark leaves nothing to be done for a run, "" for a run with
 // none: what a halted run waits for, or what takes up one that has not settled. A record
 // that cannot be read is said, and nothing is done on it.
-func stopMarkNote(repoRoot, runID string) string { return stopMarkNoteTo(repoRoot, runID, false) }
-
-// stopMarkNoteTo is stopMarkNote for its reader: a drive (drive) settles and takes up a
-// marked run at its start, so it is told that, never a command a person types.
+//
+// A drive (drive) settles and takes up a marked run at its start where it may, so it is
+// told that, never a command a person types.
 func stopMarkNoteTo(repoRoot, runID string, drive bool) string {
 	if note := waitsForItsTakeOver(repoRoot, runID, drive); note != "" {
 		return note
@@ -384,7 +383,7 @@ func stopMarkNoteTo(repoRoot, runID string, drive bool) string {
 	id := termsafe.Sanitize(runID)
 	switch {
 	case drive && !c.Stop.FromFile:
-		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it yet: `%s` settles it and takes it over at its start", id, TerminalResumeCommand)
+		return fmt.Sprintf("a signal to a drive marked run %s, which has not settled, so nothing is done for it yet: `%s` settles it and takes it over at its start where it may", id, TerminalResumeCommand)
 	case drive:
 		return fmt.Sprintf("a stop set by %s marked run %s, which has not settled, so nothing is done for it yet: a drive takes it up once the stop lifts",
 			termsafe.Sanitize(c.Stop.SetBy), id)
@@ -443,12 +442,9 @@ func parkedStopNote(repoRoot, runID string, ours bool, o Options) (string, error
 	return note, nil
 }
 
-// waitsUntaken says what a run no later drive takes up waits for: one a person's stop halted,
+// waitsUntakenTo says what a run no later drive takes up waits for: one a person's stop halted,
 // or a parked one either kind of stop did. It is "" for any other.
-func waitsUntaken(repoRoot string, run State) string { return waitsUntakenTo(repoRoot, run, false) }
-
-// waitsUntakenTo is waitsUntaken for its reader: a drive (drive) is told what its own start
-// does with the run (waitsForItsTakeOver).
+// A drive (drive) is told what its own start does with the run (waitsForItsTakeOver).
 func waitsUntakenTo(repoRoot string, run State, drive bool) string {
 	if run.Complete() || (!haltedByPerson(repoRoot, run.RunID) && parkedAtLand(run) < 0) {
 		return ""

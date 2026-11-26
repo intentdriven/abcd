@@ -242,6 +242,10 @@ func personHaltedLane(t *testing.T) (*terminalWorld, TerminalResult, string) {
 // rest; nothing it says names a typed take-over (itd-2611141610197753 decision 1).
 func TestAPersonsLiftedHaltIsTakenUpByTheNextDrive(t *testing.T) {
 	w, res, home := personHaltedLane(t)
+	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
+		t.Fatalf("premise: the stop released the reservation: %+v", r)
+	}
+	reserved := reservedAtFirstLand(t, w, res.Issue)
 	w.lines = nil
 	o := w.options(t)
 	o.Stop = make(chan struct{})
@@ -263,6 +267,9 @@ func TestAPersonsLiftedHaltIsTakenUpByTheNextDrive(t *testing.T) {
 	}
 	if !slices.Contains(lanesDone(t, w.repo), res.Issue) {
 		t.Fatalf("the run it took is not landed: %+v\n%s", next, strings.Join(w.lines, "\n"))
+	}
+	if r := reserved(); r.State != claim.StateLive {
+		t.Fatalf("the take-up did not reserve the run again before it stepped: %+v", r)
 	}
 }
 
@@ -291,10 +298,11 @@ func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
 	}
 }
 
-// TestALanePassedOverSaysWhenItWasTakenOver: the drain's lines say what became of each lane,
-// so a lane a drive passed over, its run held by a live driver in another terminal, reads
-// halted only while the run is, and reads as taken over once someone has taken it over.
-func TestALanePassedOverSaysWhenItWasTakenOver(t *testing.T) {
+// TestALanePassedOverStaysTheDrains: a lane a drive passes over, its run held by a live
+// driver in another terminal, is passed over in the drive's memory alone. The drain's state
+// still reads it in progress, before a take-over and after it, so the drain hands it out
+// again and no later start reads it as a run outside the drain.
+func TestALanePassedOverStaysTheDrains(t *testing.T) {
 	w, res, home := personHaltedLane(t)
 	claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
 	claimDriverIs(t, w.repo.Root(), res.Run, claimOtherLogin)
@@ -315,13 +323,13 @@ func TestALanePassedOverSaysWhenItWasTakenOver(t *testing.T) {
 		}
 		return move.Lanes[i].Outcome
 	}
-	if got := outcome(); got != DrainLaneHalted {
-		t.Fatalf("before the take-over the lane reads %q", got)
+	if got := outcome(); got != DrainLaneInProgress {
+		t.Fatalf("after the pass-over the lane reads %q", got)
 	}
 	if _, err := TakeRun(w.repo.Root(), res.Run, Options{stopHome: home, Now: w.clock.now}); err != nil {
 		t.Fatal(err)
 	}
-	if got := outcome(); got != "taken-over" {
+	if got := outcome(); got != DrainLaneInProgress {
 		t.Fatalf("after the take-over the lane reads %q", got)
 	}
 }
