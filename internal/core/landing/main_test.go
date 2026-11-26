@@ -17,8 +17,8 @@ func TestMain(m *testing.M) {
 	// stands in its own read (Options.StopRead).
 	stopReadingOff = true
 	// The account's own home is the test's HOME, which each test names: the
-	// machine layer and a person's own setting are read for the mode only
-	// there (personmode.go).
+	// person's global setting is read for the mode only there
+	// (personmode.go).
 	AccountHome = os.UserHomeDir
 	cleanup, err := gittest.HideGHLogin()
 	if err != nil {

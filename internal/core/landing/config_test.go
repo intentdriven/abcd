@@ -258,9 +258,10 @@ func TestARefusedHomeDecidesOnlyWhereTheProjectHasNoValue(t *testing.T) {
 	}
 }
 
-// TestTheProjectsValueDecidesFirst is the resolver's whole table without a
-// person's entry (itd-2611252049031692 criteria 1 and 3): the project's
-// committed value decides, then the computer's file, then the bundled human;
+// TestTheProjectsValueDecidesFirst is the resolver's whole table
+// (itd-2611252049031692 criteria 1 and 3): the project's committed value
+// decides, then the computer's file, the person's global setting, then the
+// bundled human;
 // a refused home reads human only where the project has no value. Each cell
 // names the mode, the layer that decided it, the computer's value the
 // project's stands above where they differ, and whose it is in the words

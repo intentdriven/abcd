@@ -177,7 +177,9 @@ const (
 // (".abcd/config.json", or the machine file in its tilde form), or, for a
 // refused home, why the machine layer could not be read. Layer "repo" is the
 // project's committed value, which enforces auto or prevents it; any other
-// layer is a project that leaves the mode to each contributor.
+// layer is a project that leaves the mode to each contributor, where the
+// person's global setting (the machine layer, this computer's file in their
+// own home) decides.
 type Facilitator struct {
 	Key    string `json:"key"`
 	Mode   string `json:"mode"`
@@ -190,13 +192,6 @@ type Facilitator struct {
 	// and they differ, "" otherwise: the project enforces auto over this
 	// computer's human, or prevents it over this computer's auto.
 	Over string `json:"over,omitempty"`
-	// Withheld says a person's own setting was there and is not used here
-	// (refused, not this person's, or git acting as another), so the mode
-	// is human from the person layer and Origin says why.
-	Withheld bool `json:"withheld,omitempty"`
-	// Note is what is said beside a project value that stands: a refusal of
-	// the person's own file (personmode.go).
-	Note string `json:"note,omitempty"`
 }
 
 // Says is whose the mode is, in the ruling's words (dcn-2611252132144530):
@@ -212,10 +207,6 @@ func (f Facilitator) Says() string {
 		s = "the project prevents auto"
 	case f.Layer == foreignHomeLayer:
 		return "left to each contributor, and HOME is not your account's own, so no setting of yours is read here"
-	case f.Layer == personLayer && f.Withheld:
-		return "left to each contributor, and your own setting is not used here, so human"
-	case f.Layer == personLayer:
-		return "left to each contributor, and your own for this project sets " + f.Mode
 	case f.HomeRefused:
 		return "left to each contributor, and this computer's file could not be read"
 	case f.Layer == layered.Machine.String():
@@ -241,34 +232,29 @@ func checkMode(m string) error {
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
 //
-// The precedence is the product thinker's ruling of 2026-11-25
-// (dcn-2611252132144530): the project's committed value is above a person's
-// own, so a project enforces auto or prevents it, and with no value leaves the
-// mode to each contributor, whose own entry for this project decides, and
-// with none the computer's file (personmode.go). Every layer
-// that holds the key is decoded and checked, so a value other than human or
-// auto is refused in whichever layer it sits. With neither layer, the bundled
-// default human decides. A home RootsFor refused hides the machine layer, so
-// where the project has no value the mode reads as human and says why; where
-// it has one, that value stands. It is the merge gate's reading, which holds a
-// person's own auto back (personmode.go).
+// The precedence is the product owner's rulings of 2026-11-25
+// (dcn-2611252132144530) and 2026-11-26: two places decide. The project's
+// committed value is above a person's own, so a project enforces auto or
+// prevents it; with no value it leaves the mode to each contributor, whose
+// global setting, the computer's file in their own home, decides
+// (personmode.go). There is no setting of a person's for one project. Every
+// layer that holds the key is decoded and checked, so a value other than human
+// or auto is refused in whichever layer it sits. With neither layer, the
+// bundled default human decides. A home RootsFor refused hides the machine
+// layer, so where the project has no value the mode reads as human and says
+// why; where it has one, that value stands.
 func readMode(r layered.Roots) (Facilitator, error) {
-	return readModeContext(context.Background(), r, true)
+	return readModeContext(context.Background(), r)
 }
 
-// readModeContext reads the layers r names and a person's own setting for the
-// project its repository layer is read at, and resolves them, with the git
-// questions bounded by ctx (layered.LoadContext); gate is the merge gate's
-// reading, which holds a person's own auto back (personmode.go).
-func readModeContext(ctx context.Context, r layered.Roots, gate bool) (Facilitator, error) {
+// readModeContext reads the layers r names and resolves them, with the git
+// questions bounded by ctx (layered.LoadContext).
+func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) {
 	vals, _, err := modeLayers(ctx, r)
 	if err != nil {
 		return Facilitator{}, err
 	}
-	vals, in, err := inputFor(r, vals, keyFor(ctx, r, gate))
-	if err != nil {
-		return Facilitator{}, err
-	}
+	vals, in := inputFor(r, vals)
 	return resolveMode(vals, in), nil
 }
 
@@ -306,11 +292,10 @@ func repoLayerMode(vals []layerValue[string]) string {
 // decoded values, highest first: every reader of the mode, the row's kept
 // reading among them, answers through it (resolver_audit_test.go holds every
 // other reader to it). The repository layer's value decides first, with the
-// computer's own value it stands above where they differ and anything said of
-// the person's own file beside it; with none, a person's own setting for this
-// project; with none, the highest other layer's; with neither, a home whose
-// computer's file is not read reads human and says why, and else the bundled
-// human does.
+// computer's own value it stands above where they differ; with none, the
+// highest other layer's, which is the person's global setting; with neither,
+// a home whose computer's file is not read reads human and says why, and else
+// the bundled human does.
 func resolveMode(vals []layerValue[string], in modeInput) Facilitator {
 	var project, other *layerValue[string]
 	for i := range vals {
@@ -329,10 +314,7 @@ func resolveMode(vals []layerValue[string], in modeInput) Facilitator {
 		if other != nil && other.v != project.v {
 			f.Over = other.v
 		}
-		f.Note = in.person.note
 		return f
-	case in.person.mode != "":
-		return Facilitator{Key: KeyFacilitatorMode, Mode: in.person.mode, Layer: personLayer, Origin: in.person.origin, Withheld: in.person.withheld}
 	case other != nil:
 		return Facilitator{Key: KeyFacilitatorMode, Mode: other.v, Layer: other.layer, Origin: other.origin}
 	case in.foreign:
@@ -534,7 +516,7 @@ func readDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator
 	if err != nil {
 		return Facilitator{}, err
 	}
-	return readModeContext(ctx, r, false)
+	return readModeContext(ctx, r)
 }
 
 // defaultTipRoots is the Roots readDefaultFacilitatorContext reads the mode
@@ -611,18 +593,11 @@ func AutoForSessions(ctx context.Context, root string) (Facilitator, error) {
 		return Facilitator{}, err
 	}
 	vals, _, err := modeLayers(ctx, r)
-	var in modeInput
-	if err == nil {
-		// A context that ended while the project's facts were asked is no
-		// reading, and nothing is kept for it.
-		if vals, in, err = inputFor(r, vals, keyFor(ctx, r, false)); err != nil {
-			return Facilitator{}, err
-		}
-	}
-	keepMode(ctx, r, ref, vals, err, in.person)
+	keepMode(ctx, r, ref, vals, err)
 	if err != nil {
 		return Facilitator{}, err
 	}
+	vals, in := inputFor(r, vals)
 	return resolveMode(vals, in), nil
 }
 
@@ -669,8 +644,6 @@ func (f Facilitator) merging() statusline.Merging {
 		m.Whose = statusline.WhoseComputerUnread
 	case f.Layer == foreignHomeLayer:
 		m.Whose = statusline.WhoseNotYourHome
-	case f.Layer == personLayer:
-		m.Whose = statusline.WhosePerson
 	case f.Layer == layered.Repo.String():
 		m.Whose = statusline.WhoseProject
 	case f.Layer == layered.Machine.String():

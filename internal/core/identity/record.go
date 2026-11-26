@@ -133,16 +133,6 @@ func loadRecord(home, rootSHA string) (rec Record, ref RecordRef, found bool, er
 	return Record{}, RecordRef{}, false, nil
 }
 
-// ReadRecord is the identity record that applies to the repository whose root
-// commit is rootSHA, for the person whose home is home, read with loadRecord's
-// guards: the repository's own record, else the machine-wide default. found
-// is false when neither exists; a record that is there and cannot be trusted
-// is an error wrapping ErrRecordRefused. The facilitator's mode reads it to
-// select a person's own entry (itd-2611252049031692).
-func ReadRecord(home, rootSHA string) (rec Record, ref RecordRef, found bool, err error) {
-	return loadRecord(home, rootSHA)
-}
-
 // LoadRecordForTest is loadRecord for another package's tests, which read
 // back the record a verb wrote; no production code outside this package reads
 // the record by hand.

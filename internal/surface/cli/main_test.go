@@ -59,9 +59,9 @@ func TestMain(m *testing.M) {
 	// The verbs here read a stop from the fixture home each test names, and the
 	// machine's own shared folder stops no test.
 	runstop.AccountHome = os.UserHomeDir
-	// So is the home the facilitator's mode reads a person's own setting and
-	// the computer's file from, which in production is the account
-	// database's alone (landing.AccountHome).
+	// So is the home the facilitator's mode reads the person's global
+	// setting from, which in production is the account database's alone
+	// (landing.AccountHome).
 	landing.AccountHome = os.UserHomeDir
 	runstop.WellKnownFolder = func() string { return "" }
 	// No test here, nor a child of one acting as the binary, trims the

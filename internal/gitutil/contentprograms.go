@@ -24,9 +24,8 @@ import (
 // (iss-2611140432160343).
 
 // globalValued are git's global options that take their value as the next
-// argument, before the subcommand. --shallow-file takes one only in that
-// form (git refuses --shallow-file=<path>), an empty one among them.
-var globalValued = []string{"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source", "--shallow-file"}
+// argument, before the subcommand.
+var globalValued = []string{"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source"}
 
 // Subcommand is the git subcommand args run, past git's global options and
 // their values; "" when there is none.

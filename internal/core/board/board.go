@@ -194,8 +194,6 @@ func mergesText(m *Merges, v View) string {
 	case m.Layer == "repo":
 	case m.Layer == "home":
 		whose = "left to each contributor: HOME is not your account's own, so no setting of yours is read here"
-	case m.Layer == "person":
-		whose = "left to each contributor: yours, here, " + m.Origin
 	case m.HomeRefused:
 		whose = "left to each contributor: abcd could not read your own settings file safely"
 	case m.Layer == "machine":

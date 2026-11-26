@@ -163,10 +163,10 @@ const (
 )
 
 // MergingWhose is whose setting decides the mode, as the resolver's layer
-// says: the default branch's committed file (the project's), a person's own
-// entry for this project, the computer's file, neither, or the computer's
-// file that could not be read because abcd refused the home, where the
-// resolver's own answer stands.
+// says: the default branch's committed file (the project's), the computer's
+// file (the person's global setting), neither, the computer's file that could
+// not be read because abcd refused the home, where the resolver's own answer
+// stands, or a HOME that is not the person's own.
 type MergingWhose string
 
 const (
@@ -174,9 +174,6 @@ const (
 	WhoseComputer       MergingWhose = "computer"
 	WhoseUnset          MergingWhose = "unset"
 	WhoseComputerUnread MergingWhose = "computer-unread"
-	// WhosePerson is a person's own entry for this project, where the project
-	// leaves the mode to each contributor (itd-2611252049031692).
-	WhosePerson MergingWhose = "person"
 	// WhoseNotYourHome is a HOME that is not this account's own, where no
 	// setting of the person's is read on purpose and the project leaves the
 	// mode to each.

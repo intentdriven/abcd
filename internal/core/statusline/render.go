@@ -219,7 +219,6 @@ var whoseWords = map[MergingWhose]string{
 	WhoseComputer:       "computer",
 	WhoseUnset:          "not set",
 	WhoseComputerUnread: "computer's file not read",
-	WhosePerson:         "yours, here",
 	WhoseNotYourHome:    "not your home",
 }
 
