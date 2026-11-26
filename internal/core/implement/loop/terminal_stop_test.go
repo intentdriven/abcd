@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -461,15 +462,63 @@ func TestAPushThatFailsAtTakeUpBacksOff(t *testing.T) {
 // stopLater is a drive typed in the first terminal after the drive before it has gone.
 const stopLater = 7050
 
+// stopLatest is a drive typed in the first terminal after stopLater has gone too.
+const stopLatest = 7060
+
 // stopLaterStart stands in the table a later start reads: the first terminal, with this
 // drive in it, and every earlier drive gone.
 func stopLaterStart(t *testing.T) {
 	t.Helper()
-	standIn(t, sessionname.Table{ReadAt: claimRead, Procs: []machineload.Proc{
+	stopStartAs(t, stopLater, false)
+}
+
+// stopStartAs stands in the table a start as self reads: the first terminal, with self in
+// it, every earlier drive gone, and the second terminal alive where other is set.
+func stopStartAs(t *testing.T, self int, other bool) {
+	t.Helper()
+	procs := []machineload.Proc{
 		{PID: claimLogin, PPID: 1, Name: "login", Age: time.Hour},
 		{PID: claimShell, PPID: claimLogin, Name: "-zsh", Age: 59 * time.Minute},
-		{PID: stopLater, PPID: claimShell, Name: "abcd", Age: time.Minute},
-	}}, claimShell, stopLater)
+		{PID: self, PPID: claimShell, Name: "abcd", Age: time.Minute},
+	}
+	if other {
+		procs = append(procs,
+			machineload.Proc{PID: claimOtherLogin, PPID: 1, Name: "login", Age: 30 * time.Minute},
+			machineload.Proc{PID: claimOtherShell, PPID: claimOtherLogin, Name: "-zsh", Age: 29 * time.Minute})
+	}
+	standIn(t, sessionname.Table{ReadAt: claimRead, Procs: procs}, claimShell, self)
+}
+
+// stopLetGoAtBound is claimReplaced whose start steps the run no drain lists and ends at its
+// bound, letting the run go with no mark.
+func stopLetGoAtBound(t *testing.T) (*terminalWorld, State, string) {
+	t.Helper()
+	w, run, home := claimReplaced(t)
+	var until time.Time
+	claimHoldAtLand(w, func() { w.clock.t = until.Add(time.Minute) })
+	res, err := claimStartWith(t, w, home, func(o *TerminalOptions) {
+		until = w.clock.t.Add(time.Hour)
+		o.Until = until
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := ReadState(w.repo.Root(), run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalUntil || !letGoByDrive(after) {
+		t.Fatalf("premise: the start's bound lets the run go: %+v\n%s", res, w.said())
+	}
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Stop != nil {
+		t.Fatalf("premise: no mark: %+v", c.Stop)
+	}
+	return w, run, home
+}
+
+// tookUpLine reports whether a line of the start says it took runID up.
+func tookUpLine(w *terminalWorld, runID string) bool {
+	return slices.ContainsFunc(w.lines, func(l string) bool { return strings.Contains(l, "took up") && strings.Contains(l, runID) })
 }
 
 // stopKilled is a world whose first drive, started from the first terminal, was killed
@@ -600,7 +649,8 @@ func TestAnInterruptKeepsTheHoldOfARunItCouldNotClaim(t *testing.T) {
 		t.Fatalf("the run reads as let go: %+v", after.Record)
 	}
 	at := stamp(r.EffectiveExpiry)
-	if !strings.Contains(w.said(), run.Key+": its reservation is kept") || !strings.Contains(w.said(), "lapses at "+at) {
+	if !strings.Contains(w.said(), run.Key+": its reservation is kept") || !strings.Contains(w.said(), "lapses at "+at) ||
+		!strings.Contains(w.said(), "reads the run as reserved until "+at) || !strings.Contains(w.said(), "`abcd reserve "+run.Key+" --release`") {
 		t.Fatalf("the drive does not say the reservation is kept and when it lapses (%s):\n%s", at, w.said())
 	}
 	if res.Run != run.RunID || res.Lapses == nil || !res.Lapses.Equal(r.EffectiveExpiry) {
@@ -723,6 +773,133 @@ func TestALaterStartTakesUpARunNoDrainListsThatADrivesEndLetGo(t *testing.T) {
 		i := slices.IndexFunc(res.PassedOver, func(p Excluded) bool { return p.ID == run.Key })
 		if i < 0 || !strings.Contains(res.PassedOver[i].Reason, "lifts the stop") || strings.Contains(w.said(), "took up") {
 			t.Fatalf("the later start does not leave the run to the person's stop: %+v\n%s", res.PassedOver, w.said())
+		}
+	})
+}
+
+// TestALaterStartAfterADroppedTakeUpTakesNothing: a later start's take-up of a run a drive
+// let go backs off a peer who holds the issue now, and drops the lane. The start after that
+// has nothing to take up: it says nothing of taking the run up and claims no driver on it.
+func TestALaterStartAfterADroppedTakeUpTakesNothing(t *testing.T) {
+	w, run, home := stopLetGoAtBound(t)
+	q := otherCopy(t, w.bare, quinnEmail)
+	if _, err := claim.Reserve(q, claim.Request{Record: run.Key, Footprint: []string{"commands/drain.md"}}, as(t, q, claim.Options{Now: w.clock.now})); err != nil {
+		t.Fatal(err)
+	}
+	stopLaterStart(t)
+	claimStart(t, w, home)
+	if after, err := ReadState(w.repo.Root(), run.RunID); err != nil || tookUpLine(w, run.RunID) {
+		t.Fatalf("premise: the take-up backs off the peer: %v\n%s", err, w.said())
+	} else if outcome, _, _ := laneOutcome(after); outcome == DrainLaneInProgress {
+		t.Fatalf("premise: the take-up drops the lane:\n%s", w.said())
+	}
+	stopStartAs(t, stopLatest, false)
+	claimStart(t, w, home)
+	if tookUpLine(w, run.RunID) {
+		t.Fatalf("the start takes up a run whose lane was dropped:\n%s", w.said())
+	}
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Driver != nil && c.Driver.PID == stopLatest {
+		t.Fatalf("the start claimed a run whose lane was dropped: %+v", c.Driver)
+	}
+}
+
+// TestALaterStartLeavesALetGoRunWhoseDriverLivesElsewhere: the run a drive let go was taken
+// since by a session in the second terminal, alive. A later start leaves it and names who
+// holds it.
+func TestALaterStartLeavesALetGoRunWhoseDriverLivesElsewhere(t *testing.T) {
+	w, run, home := stopLetGoAtBound(t)
+	stopStartAs(t, stopLater, true)
+	claimDriverIs(t, w.repo.Root(), run.RunID, claimOtherLogin)
+	res := claimStart(t, w, home)
+	i := slices.IndexFunc(res.PassedOver, func(p Excluded) bool { return p.ID == run.Key })
+	if i < 0 || !strings.Contains(res.PassedOver[i].Reason, "process "+strconv.Itoa(claimOtherLogin)) || tookUpLine(w, run.RunID) {
+		t.Fatalf("the start does not leave the run to its live driver: %+v\n%s", res.PassedOver, w.said())
+	}
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Driver == nil || c.Driver.PID != claimOtherLogin {
+		t.Fatalf("the start took the run from its live driver: %+v", c.Driver)
+	}
+}
+
+// TestALaterStartLeavesADriverlessLetGoRun: a run a drive let go that names no driver
+// carries no sign its session ended while its reservation has not lapsed on origin, so a
+// later start leaves it and names the step that claims it.
+func TestALaterStartLeavesADriverlessLetGoRun(t *testing.T) {
+	w, run, home := stopLetGoAtBound(t)
+	claimClearDriver(t, w.repo.Root(), run.RunID)
+	stopLaterStart(t)
+	res := claimStart(t, w, home)
+	i := slices.IndexFunc(res.PassedOver, func(p Excluded) bool { return p.ID == run.Key })
+	if i < 0 || !strings.Contains(res.PassedOver[i].Reason, "names no driver") || tookUpLine(w, run.RunID) {
+		t.Fatalf("the start does not leave the driverless run: %+v\n%s", res.PassedOver, w.said())
+	}
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Driver != nil {
+		t.Fatalf("the start claimed the driverless run: %+v", c.Driver)
+	}
+}
+
+// TestALaterStartTakesUpARunALimitLetGo: a run no drain lists that a drive let go for a
+// long limit, its driver gone since, is taken up by a later start and driven to its end.
+func TestALaterStartTakesUpARunALimitLetGo(t *testing.T) {
+	w, run, home := stopKilled(t)
+	root := w.repo.Root()
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(DrainStateRel))); err != nil {
+		t.Fatal(err)
+	}
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now, stopHome: home}})
+	tm.letGoForLimit(run.RunID)
+	if after, err := ReadState(root, run.RunID); err != nil || !letGoByDrive(after) {
+		t.Fatalf("premise: the limit lets the run go: %v", err)
+	}
+	stopLaterStart(t)
+	claimStart(t, w, home)
+	if !tookUpLine(w, run.RunID) {
+		t.Fatalf("the later start does not take the run up:\n%s", w.said())
+	}
+	if after, err := ReadState(root, run.RunID); err != nil || !after.Complete() {
+		t.Fatalf("the run the later start took up is not driven to its end: %v\n%s", err, w.said())
+	}
+}
+
+// TestALetGoTheComparisonStopsNamesAKeptHoldAsKept: where the drive's comparison stops its
+// let-go, a run the signal's stop could not be applied to is named as kept, with when it
+// lapses and the release a person makes, and not as a release left undone: the lead and
+// every member of a run the drain lists, and the step that claims a run no drain lists.
+func TestALetGoTheComparisonStopsNamesAKeptHoldAsKept(t *testing.T) {
+	t.Run("listed, with members", func(t *testing.T) {
+		repo, _, runID, c := bundleDrainLane(t)
+		claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
+		claimDriverIs(t, repo.Root(), runID, claimOtherLogin)
+		stateAtVersion(t, repo.Root(), runID, schemaVersionPrevious)
+		var lines []string
+		tm := newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: c.now}, Say: func(s string) { lines = append(lines, s) }})
+		tm.haltOnSignal()
+		tm.leftHeld(errors.New("the comparison did not finish"), c.t)
+		said := strings.Join(lines, "\n")
+		for _, id := range bundleIssues {
+			if !strings.Contains(said, id+": its reservation is kept") || strings.Contains(said, id+": its reservation was not released") ||
+				!strings.Contains(said, "`abcd reserve "+id+" --release` releases it by hand") {
+				t.Fatalf("%s is not named as kept:\n%s", id, said)
+			}
+		}
+		if !strings.Contains(said, "reads the run as reserved until ") {
+			t.Fatalf("the kept line does not say until when:\n%s", said)
+		}
+	})
+	t.Run("unlisted", func(t *testing.T) {
+		w, run, _ := stopUnclaimable(t, schemaVersionPrevious)
+		root := w.repo.Root()
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(DrainStateRel))); err != nil {
+			t.Fatal(err)
+		}
+		var lines []string
+		tm := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now}, Say: func(s string) { lines = append(lines, s) }})
+		tm.stepped = []string{run.RunID}
+		tm.haltOnSignal()
+		tm.leftHeld(errors.New("the comparison did not finish"), w.clock.t)
+		said := strings.Join(lines, "\n")
+		if !strings.Contains(said, run.Key+": its reservation is kept") || !strings.Contains(said, "`abcd implement step --run "+run.RunID+"`") ||
+			strings.Contains(said, "reads the run as reserved") || strings.Contains(said, "start the drive again") {
+			t.Fatalf("the kept line of a run no drain lists does not name the step that claims it:\n%s", said)
 		}
 	})
 }

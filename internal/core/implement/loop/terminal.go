@@ -2418,12 +2418,16 @@ func (t *terminal) takeEarlier(ctx context.Context) (string, error) {
 	return "", nil
 }
 
-// letGoUnlisted reports whether run is an issue's run, short of its pull request, that a
-// drive's end or a limit let go (letGoByDrive) and that no lane of the drain lists: the
-// drain's own lanes are taken up as they come to hand (takeUp), a parked run keeps its
-// holds, and an intent's build is the person's.
+// letGoUnlisted reports whether run is an issue's run in progress, short of its pull
+// request, that a drive's end or a limit let go (letGoByDrive) and that no lane of the
+// drain lists: the drain's own lanes are taken up as they come to hand (takeUp), a parked
+// run keeps its holds, an intent's build is the person's, and a run whose lane was handed
+// back or dropped since (a take-up that backed off) has nothing to take up.
 func (t *terminal) letGoUnlisted(run State, listed func(string) (string, bool)) bool {
 	if run.Issue() == "" || !letGoByDrive(run) || parkedAtLand(run) >= 0 {
+		return false
+	}
+	if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 		return false
 	}
 	_, ours := listed(run.RunID)
@@ -2501,7 +2505,9 @@ func (t *terminal) stopOver(runID string, c control) string {
 // over (itd-2611141610197753's third criterion), "" where it may: the driver is gone, it is
 // this process, or it is the process this drive's shell runs under with nothing but shells
 // beneath it (startedUnder). A run that names no driver is taken only on a sign its session
-// ended: its mark has settled, or the reservation of its issue has lapsed. Otherwise it
+// ended: its mark has settled, or the reservation of its issue has lapsed. A run a drive's
+// end let go with no mark is judged the same way, so one that names no driver is taken
+// only once its reservation has lapsed on origin. Otherwise it
 // says who holds the run and the act that frees it: a live driver in another terminal or a
 // host session keeps it, and a process table that cannot be read leaves it, since whether
 // its driver lives cannot be told and a take-over resets the run's worktrees.
@@ -2511,8 +2517,11 @@ func (t *terminal) mayTake(run State, c control) string {
 	}
 	id := termsafe.Sanitize(run.RunID)
 	if c.Driver == nil {
-		if c.Stop == nil || c.Stop.HaltedAt != nil || t.lapsed(run) {
+		if (c.Stop != nil && c.Stop.HaltedAt != nil) || t.lapsed(run) {
 			return ""
+		}
+		if c.Stop == nil {
+			return fmt.Sprintf("run %s names no driver and carries no mark, so whether the session that let it go has ended cannot be told, and it is left as it stands; `abcd implement step --run %s` claims it and steps it on", id, id)
 		}
 		return fmt.Sprintf("run %s names no driver and its mark has not settled, so whether the session that drove it has ended cannot be told, and it is left as it stands; once its reservation lapses, a drive's next start takes it up, or the person takes it over with `abcd implement resume --take %s`", id, id)
 	}
@@ -2964,7 +2973,7 @@ func (t *terminal) letGo() {
 			// So does a run the signal's stop could not be applied to, which no mark
 			// stands on: its reservations lapse with their leases.
 			if t.unstoppedRun(runID) {
-				t.sayKept(run, now)
+				t.sayKept(run, drainLists(st, runID), now)
 				continue
 			}
 			// A run with members lets every issue it holds go, each plainly.
@@ -3048,8 +3057,8 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		return
 	}
 	type left struct {
-		id           string
-		run, forming bool
+		id, runID              string
+		run, forming, unlisted bool
 	}
 	var ids []left
 	for _, runID := range t.heldInProgress(st) {
@@ -3063,11 +3072,11 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		// A run the signal's stop could not be applied to keeps its holds on purpose, so
 		// it is named as kept, not as a release to make by hand.
 		if t.unstoppedRun(runID) {
-			t.sayKept(run, now)
+			t.sayKept(run, drainLists(st, runID), now)
 			continue
 		}
 		for _, id := range run.reservedIssues() {
-			ids = append(ids, left{id: id, run: true})
+			ids = append(ids, left{id: id, runID: runID, run: true, unlisted: !drainLists(st, runID)})
 		}
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
@@ -3085,8 +3094,14 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		if read {
 			r, _ = snap.Lookup(l.id)
 		}
-		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or start the drive again, which takes the run up",
-			termsafe.Sanitize(l.id), lapse(r, read, l.run, l.forming), termsafe.Sanitize(l.id))
+		// A run no drain lists is not taken up by a start while it is reserved, so its way
+		// on is the step that claims it.
+		again := "start the drive again, which takes the run up"
+		if l.unlisted {
+			again = "step the run on with `abcd implement step --run " + termsafe.Sanitize(l.runID) + "`"
+		}
+		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or %s",
+			termsafe.Sanitize(l.id), lapse(r, read, l.run, l.forming), termsafe.Sanitize(l.id), again)
 	}
 }
 
@@ -3096,18 +3111,36 @@ func (t *terminal) unstoppedRun(runID string) bool {
 }
 
 // sayKept names each issue run holds, the lead's and every member's, as kept for the stop
-// that could not be applied to it, with when its lease lapses. It reads only.
-func (t *terminal) sayKept(run State, now time.Time) {
+// that could not be applied to it, with when its lease lapses, what frees the run, and the
+// release a person makes by hand. A run the drain lists (listed) is read as reserved by the
+// next start until then; one no drain lists is taken up by no start while it is reserved,
+// so the step that claims it is named. It reads only.
+func (t *terminal) sayKept(run State, listed bool, now time.Time) {
 	snap, verr := claim.View(t.repoRoot, now)
+	runID := termsafe.Sanitize(run.RunID)
 	for _, id := range run.reservedIssues() {
 		var r claim.Reservation
 		read := verr == nil
 		if read {
 			r, _ = snap.Lookup(id)
 		}
-		t.say("%s: its reservation is kept, since the stop could not be applied to run %s, and %s; the next start reads the run as reserved",
-			termsafe.Sanitize(id), termsafe.Sanitize(run.RunID), heldLapse(r, read, true))
+		until := "its lease lapses"
+		if read && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+			until = stamp(r.EffectiveExpiry)
+		}
+		on := "the next start reads the run as reserved until " + until
+		if !listed {
+			on = "no drain lists the run, so no start takes it up while it is reserved: `abcd implement step --run " + runID + "` claims it and steps it on"
+		}
+		key := termsafe.Sanitize(id)
+		t.say("%s: its reservation is kept, since the stop could not be applied to run %s, and %s; %s; `abcd reserve %s --release` releases it by hand",
+			key, runID, heldLapse(r, read, true), on, key)
 	}
+}
+
+// drainLists reports whether a lane of st names runID.
+func drainLists(st DrainState, runID string) bool {
+	return slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.RunID == runID })
 }
 
 // formingHolds is each hold of the bundle f forms, the lead's first and then
