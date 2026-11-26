@@ -155,11 +155,33 @@ func (h *judgeHolds) keep(issue string) {
 	}
 }
 
-// settle releases every hold the move is not done with and awaited does not
-// record, and returns the move's clause for each. A hold a lane was starting
-// on is released even when awaited records it: the start failed, so no lane
-// holds it, and the move's error leaves awaited on disk.
-func (h *judgeHolds) settle(awaited *DrainJudging) []string {
+// addForming records the holds of the bundle forming carries into the move,
+// the lead's and each member's (drain_form.go), as holds the move knows.
+func (h *judgeHolds) addForming(f *DrainForming) {
+	for _, e := range f.entries() {
+		h.add(e.issue, e.hold, false)
+	}
+}
+
+// moved records that issue's hold at from is now to: a renewal the move
+// pushed (renewForming). The hold is the move's own from then on, taken after
+// its view was read, so a release goes to origin rather than reading the
+// view's older tip as moved on.
+func (h *judgeHolds) moved(issue, from string, to DrainHold) {
+	for i := range h.held {
+		if h.held[i].issue == issue && h.held[i].hold.Commit == from {
+			h.held[i].hold, h.held[i].fresh = to, true
+		}
+	}
+}
+
+// settle releases every hold the move is not done with and that neither
+// awaited nor forming records, and returns the move's clause for each: a
+// forming bundle's holds are kept across moves as the judgement awaited's is
+// (drain_form.go). A hold a lane was starting on is released even when
+// awaited or forming records it: the start failed, so no lane holds it, and
+// the move's error leaves them on disk.
+func (h *judgeHolds) settle(awaited *DrainJudging, forming *DrainForming) []string {
 	var out []string
 	for i := range h.held {
 		k := &h.held[i]
@@ -167,6 +189,9 @@ func (h *judgeHolds) settle(awaited *DrainJudging) []string {
 			continue
 		}
 		if !k.starting && awaited != nil && awaited.Issue == k.issue && awaited.Hold != nil && awaited.Hold.Commit == k.hold.Commit {
+			continue
+		}
+		if !k.starting && forming.holds(k.issue, k.hold.Commit) {
 			continue
 		}
 		c, _ := h.releaseOne(k, "")

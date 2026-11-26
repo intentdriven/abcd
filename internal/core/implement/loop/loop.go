@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landings"
@@ -154,6 +155,13 @@ type Options struct {
 	// the judgement over it: the lane a no opens starts on it, and
 	// reserveStart pushes nothing. Nil, the start reserves as it always has.
 	held *heldReservation
+	// members are the issues a lane the drain opens on a bundle carries beside
+	// its lead, the start's key (spc-2611201455051897 step 4), each on the
+	// hold the drain reserved it on before its judgement, as held is the
+	// lead's: the start writes each on the new run with that hold and pushes
+	// nothing for it. Nil, the run carries no members, as every run but a
+	// bundle's.
+	members []laneMember
 	// plan is the drain plan an issue's start check reads in place of the
 	// checkout's ledger: the drain sets it to the plan its move read from
 	// origin's default branch (drain_origin.go). Nil, the check reads the
@@ -460,6 +468,10 @@ type StartResult struct {
 	// through on because reservation.fork_origin names it (claim's
 	// Result.ForkAllowed); "" when none was.
 	ForkAllowed string `json:"fork_allowed,omitempty"`
+	// Lead is the run's lead when the start found the run by a member it
+	// carries rather than by its key (a build of a bundle's member resumes
+	// the bundle's run); "" on every other start.
+	Lead string `json:"lead,omitempty"`
 	// Closed is each lane a resumed build closed because its pull request had
 	// merged (closeOnResume); empty when it closed none.
 	Closed []ClosedLane `json:"closed,omitempty"`
@@ -724,6 +736,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		return StartResult{}, refuse("check", CheckKey, "", key+" is an issue, and --auto-plan plans a draft intent; an issue has nothing to plan",
 			"build the issue without --auto-plan: `abcd build "+key+"`")
 	}
+	if err := membersCheck(repoRoot, key, o); err != nil {
+		return StartResult{}, err
+	}
 	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
 		return StartResult{}, err
@@ -732,6 +747,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		return StartResult{}, err
 	}
 	if res, ok, err := resumeLive(repoRoot, key, o.drain, o.Trial); err != nil || ok {
+		lead := res.Lead
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -777,6 +793,11 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 				}
 			}
 			return StartResult{}, err
+		}
+		// The closing rebuilds the result, keeping its lines, so the lead a
+		// member found is named again on what it returns.
+		if res.Lead == "" {
+			res.Lead = lead
 		}
 		return res, nil
 	}
@@ -903,6 +924,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 		// while the checks ran: it is resumed, not duplicated.
 		if st, ok := liveRun(runs, chk.Key, o.drain, o.Trial); ok {
 			res = startResult(st, nil, true)
+			byMember(&res, st, chk.Key)
 			keep = true
 			if pick != nil {
 				return pickedLive(res)
@@ -911,6 +933,9 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 				return resumeWithFlags(res, flags)
 			}
 			return nil
+		}
+		if err := carriedElsewhere(runs, o); err != nil {
+			return err
 		}
 		id, err := freeRunID(root, o.Minter)
 		if err != nil {
@@ -947,6 +972,7 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			Pace:            &pace,
 			Review:          &review,
 			ReservedAt:      rsv.at,
+			Bundle:          bundleMembers(o.members),
 			Trial:           o.Trial,
 			Frozen:          o.Frozen,
 			Admitted:        admission(chk, o),
@@ -991,8 +1017,13 @@ func startChecked(repoRoot, key string, o Options, pick *RunPick) (StartResult, 
 			if rsv.at != nil {
 				at = rsv.at.UTC().Truncate(time.Second)
 			}
-			st.Record = append(st.Record, Entry{At: at, Stage: StageReservation, Note: rsv.note})
+			lead := Entry{At: at, Stage: StageReservation, Note: rsv.note}
+			if st.hasMembers() {
+				lead.Issue = st.Key
+			}
+			st.Record = append(st.Record, lead)
 		}
+		bundleLines(&st, o.members, now)
 		if pick != nil {
 			rp := *pick
 			rp.Lane = st.Lanes[0].ID
@@ -1162,6 +1193,7 @@ func resumeLive(repoRoot, key string, drain, trial bool) (StartResult, bool, err
 		}
 		if st, ok := liveRun(runs, key, drain, trial); ok {
 			res, found = startResult(st, nil, true), true
+			byMember(&res, st, key)
 		}
 		return nil
 	})
@@ -1204,12 +1236,135 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 		"resume without --pace, --sub-agents and --fix-rounds; the run keeps the pace it started on")
 }
 
-// liveRun returns the run for key that is not complete. For a drain's lane
-// (drain), an issue run whose lane was handed back is over too; for any
-// caller, one a newer run of the issue has followed is (superseded).
+// laneMember is one member a bundle's start carries (Options.members): the
+// issue, the footprint the drain reserved it with, and the hold the drain
+// took to judge it, nil only in a checkout with no origin to reserve on.
+type laneMember struct {
+	issue     string
+	footprint []string
+	held      *heldReservation
+}
+
+// membersCheck refuses members a start cannot carry, before anything is read
+// or reserved: members ride only an issue run, never a trial, each an issue
+// id other than the lead's and every other member's, each with the footprint
+// it was reserved with and, in a checkout with an origin, the hold the drain
+// reserved it on, since the start pushes nothing for a member. A start with
+// no members passes.
+func membersCheck(repoRoot, key string, o Options) error {
+	if len(o.members) == 0 {
+		return nil
+	}
+	why := ""
+	switch {
+	case !validIssueKey(key):
+		why = "a run carries members only when an issue leads it"
+	case o.Trial:
+		why = "a trial copy carries no members"
+	}
+	seen := []string{key}
+	for _, m := range o.members {
+		if why != "" {
+			break
+		}
+		switch {
+		case !validIssueKey(m.issue):
+			why = "a member is not an issue id"
+		case slices.ContainsFunc(seen, func(id string) bool { return recordid.SameID(id, m.issue) }):
+			why = m.issue + " is named twice among the lead and its members"
+		case len(m.footprint) == 0:
+			why = m.issue + " names no footprint"
+		}
+		seen = append(seen, m.issue)
+	}
+	if why == "" && !o.noReserve && slices.ContainsFunc(o.members, func(m laneMember) bool { return m.held == nil }) {
+		ok, err := claim.HasOrigin(repoRoot)
+		if err != nil {
+			return err
+		}
+		if ok {
+			why = "a member has no hold, and a bundle's start pushes no reservation for a member"
+		}
+	}
+	if why == "" {
+		return nil
+	}
+	return refuse("check", "", "", "the bundle cannot start: "+why+"; nothing was started",
+		"drain again: the drain reserves each member before its judgement and hands every hold to the lane it opens")
+}
+
+// carriedElsewhere refuses a bundle's start when another live run already
+// carries one of its members, naming the member and the run: an issue is
+// carried by one run at a time.
+func carriedElsewhere(runs []State, o Options) error {
+	for _, m := range o.members {
+		if st, ok := liveRun(runs, m.issue, o.drain, o.Trial); ok {
+			return contend("check", CheckPeers, "", fmt.Sprintf("%s is carried by %s, so no second run takes it; nothing was started", m.issue, st.RunID),
+				"drain again: the drain passes over an issue a run in this copy carries")
+		}
+	}
+	return nil
+}
+
+// bundleLines are the start's record lines for a run with members: one
+// naming the members, and each member's reservation line, naming its issue
+// and carrying the drain's note for its hold. A run without members gets
+// none.
+func bundleLines(st *State, members []laneMember, now time.Time) {
+	if len(members) == 0 {
+		return
+	}
+	ids := make([]string, len(members))
+	for i, m := range members {
+		ids[i] = m.issue
+	}
+	st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
+		Note: fmt.Sprintf("the run carries %d member(s) beside its lead %s: %s", len(members), st.Key, strings.Join(ids, ", "))})
+	for _, m := range members {
+		if m.held == nil {
+			continue
+		}
+		st.Record = append(st.Record, Entry{At: m.held.at.UTC().Truncate(time.Second), Stage: StageReservation, Note: m.held.note, Issue: m.issue})
+	}
+}
+
+// bundleMembers is the run's Bundle for members, each on the time its hold
+// was claimed; nil for none, so a run without members writes no bundle key.
+func bundleMembers(members []laneMember) []Member {
+	var out []Member
+	for _, m := range members {
+		mb := Member{Issue: m.issue, Footprint: slices.Clone(m.footprint)}
+		if m.held != nil {
+			t := m.held.at
+			mb.ReservedAt = &t
+		}
+		out = append(out, mb)
+	}
+	return out
+}
+
+// byMember says, on a resumed start, that the run was found by a member it
+// carries rather than by its key: the result names the run's lead, and a
+// line says which run carries the member. A run found by its key is left as
+// it is.
+func byMember(res *StartResult, st State, key string) {
+	if recordid.SameID(st.Key, key) {
+		return
+	}
+	res.Lead = st.Key
+	res.Diagnostics = append(res.Diagnostics, fmt.Sprintf("%s is a member of %s, whose lead is %s; the build resumes that run", key, st.RunID, st.Key))
+}
+
+// liveRun returns the run that carries key and is not complete: the run it
+// leads, or the run it is a member of (covers), so a build of a bundle's
+// member resumes the bundle's run. A member handed back alone, and every
+// issue of a run the drain split, is carried by no run, and a run without
+// members carries its key alone, as before. For a drain's lane (drain), an
+// issue run whose lane was handed back is over too; for any caller, one a
+// newer run of the issue has followed is (superseded).
 func liveRun(runs []State, key string, drain, trial bool) (State, bool) {
 	for i, st := range runs {
-		if recordid.SameID(st.Key, key) && st.Trial == trial && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
+		if st.covers(key) && st.Trial == trial && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
 			return st, true
 		}
 	}

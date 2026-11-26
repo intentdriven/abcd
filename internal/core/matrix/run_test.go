@@ -900,3 +900,55 @@ func TestTheScreenPassesTheNumberAHomeIsNamedBy(t *testing.T) {
 		t.Errorf("the screen under HOME=%s refused the number it is named by: %v", home, err)
 	}
 }
+
+// A run pins its matcher and its proposer as it pins every cell, each in the
+// role it was declared in (spec step 9), and a run recorded before either
+// field existed still reads and reports.
+func TestARunPinsItsMatcherAndProposerInTheirRoles(t *testing.T) {
+	in := inputs(t)
+	in.Declaration = []byte(withJudges(`"matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/judge"},
+  "proposer": {"id": "propose-local", "route": "proposer=runner:opencode@local/judge"}`))
+	if _, err := newRunRecord(in); err == nil || !strings.Contains(err.Error(), "names 5") {
+		t.Fatalf("a run pinning neither judge = %v; want it refused for a cell with no pin", err)
+	}
+	in.Cells = append(in.Cells,
+		CellPin{Cell: "match-or", Role: RoleMatcher, Source: SourceOpenRouter, Runner: "opencode", Model: "openrouter/vendor/judge",
+			HarnessVersion: "1.2.3", ProviderPin: &ProviderPin{Order: []string{"provider-a"}}},
+		CellPin{Cell: "propose-local", Role: RoleProposer, Source: SourceLocal, Runner: "opencode", Model: "local/judge", HarnessVersion: "1.2.3",
+			LocalPin: &LocalPin{Runtime: "llama-server", RuntimeVersion: "b6000", WeightsSHA256: hex64("8"), Quantisation: "Q4_K_M"}})
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatalf("newRunRecord: %v", err)
+	}
+	roles := map[string]Role{}
+	for _, p := range rec.Cells {
+		roles[p.Cell] = p.Role
+	}
+	if roles["match-or"] != RoleMatcher || roles["propose-local"] != RoleProposer {
+		t.Fatalf("pins = %+v; want the matcher and the proposer in their roles", rec.Cells)
+	}
+	swapped := in
+	swapped.Cells = append([]CellPin(nil), in.Cells...)
+	swapped.Cells[3].Role = RoleReviewer
+	if _, err := newRunRecord(swapped); err == nil || !strings.Contains(err.Error(), "declared a matcher") {
+		t.Fatalf("a matcher pinned a reviewer = %v; want it refused", err)
+	}
+
+	// A run of the declaration as it was written before reads back and
+	// reports, its check waiting for its verdicts.
+	r, _, m, old, _ := checkLab(t)
+	js, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(js), "matcher") || strings.Contains(string(js), "proposer") {
+		t.Fatalf("a run with no judge declared records one: %s", js)
+	}
+	rep, err := BuildReport(r.Root(), m.ID, old.RunID)
+	if err != nil {
+		t.Fatalf("BuildReport: %v", err)
+	}
+	if len(rep.Check) != 1 || rep.Check[0].Table != nil {
+		t.Fatalf("check = %+v; want the check's row, its table not yet built", rep.Check)
+	}
+}

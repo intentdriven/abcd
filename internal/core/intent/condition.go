@@ -224,7 +224,7 @@ func loadIntentContent(repoRoot, intentID string) (Intent, string, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return Intent{}, "", fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return Intent{}, "", unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	data, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
 	if err != nil {

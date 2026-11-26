@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"golang.org/x/text/unicode/norm"
@@ -179,7 +180,8 @@ type heldStore struct {
 func Check(req CheckRequest) (CheckResult, error) {
 	now := clock(req.Now)
 	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 && len(req.Records) == 0 {
-		return CheckResult{}, refuse("there is nothing to check", "name a commit range with --range <a>..<b>, or a text with --file <path> (- for stdin)")
+		return CheckResult{}, refusal.Wrap(refusal.EmbargoMissingInput,
+			refuse("there is nothing to check", "name a commit range with --range <a>..<b>, or a text with --file <path> (- for stdin)"))
 	}
 	for _, id := range req.Records {
 		if !recordid.CitedIDRe.MatchString(id) {

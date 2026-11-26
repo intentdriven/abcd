@@ -4,10 +4,11 @@ package runner
 // (spc-2610230813348813 step 1; adr-2610222222326104's amendment of
 // 2026-11-04): the directory under ~/.abcd.noindex/profiles/ the person names,
 // or the one directory there is, the launch's environment and its arguments.
-// The person makes each directory and logs the harness into it once, in their
-// own shell; abcd never reads, stores or forwards the login. Nothing else reads
-// the directory, so itd-2611040344170206, whose choosing among several, registry
-// and creating command go further, still replaces this file's one function and
+// abcd start makes an account's first directory (session_start.go) and the person
+// any other by hand; the person logs the harness into each once, in their own
+// shell; abcd never reads, stores or forwards the login. A session started on a
+// profile reads the same directory, so itd-2611040344170206, whose choosing among
+// several and registry go further, still replaces this file's one function and
 // moves nothing the person logged in. Nothing here moves a drive between
 // directories: the person's name is the whole of the choice.
 
@@ -165,16 +166,16 @@ func DriveProfile(home, name string) (Profile, error) {
 	}
 	sort.Strings(names)
 	held := termsafe.Sanitize(strings.Join(names, ", "))
-	makeOne := fmt.Sprintf("make one and log the harness into it once, in your own shell: "+
-		"`mkdir -p %sdrive && CLAUDE_CONFIG_DIR=%sdrive claude`, then the harness's own login step; abcd never logs a harness in", shown, shown)
+	const makes = " in a plain terminal, which makes one and prints the harness's own login command, " +
+		"to run once in your own shell; abcd never logs a harness in"
 	switch {
 	case name != "" && slices.Contains(names, name):
 	case name != "" && len(names) == 0:
-		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: %s", ErrNoProfile, shown, makeOne)
+		return Profile{}, fmt.Errorf("%w named by --profile under %s, which holds none: run `abcd start --profile <name>`, with the name you gave,%s", ErrNoProfile, shown, makes)
 	case name != "":
 		return Profile{}, fmt.Errorf("%w named by --profile under %s (the value given is not repeated here), which holds %s", ErrNoProfile, shown, held)
 	case len(names) == 0:
-		return Profile{}, fmt.Errorf("%w under %s: %s", ErrNoProfile, shown, makeOne)
+		return Profile{}, fmt.Errorf("%w under %s: run `abcd start`%s", ErrNoProfile, shown, makes)
 	case len(names) > 1:
 		return Profile{}, fmt.Errorf("%w under %s (%s): name the one this drive runs on with --profile <name>; a drive never chooses among them or moves from one to another",
 			ErrSeveralProfiles, shown, held)

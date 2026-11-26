@@ -164,8 +164,8 @@ var sentences = map[string]string{
 	"abcd explain": "Print how to call one command, an input's shape, or what a refusal code means: " +
 		"Writes nothing; refuses a command path or a code the binary does not have.",
 
-	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+	"abcd guard": "Judge a shell command against the hazard registry: " +
+		"Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard question": "Check a draft question as the hook will judge it: " +
@@ -174,8 +174,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
 		"Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
-	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
-		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+	"abcd guard hook": "Judge a host's pre-tool-use call: " +
+		"Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.",
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
@@ -352,7 +352,7 @@ var sentences = map[string]string{
 		"Writes only with --receipt; refuses a runner cell's copy.",
 	"abcd lab matrix review": "Draw a code task's blinded reviewer requests, or record the reviewers' answers: " +
 		"Writes the requests once; refuses an answer that does not validate.",
-	"abcd lab matrix judge": "Draw a writing task's judging packet, or record a judging session's verdicts: " +
+	"abcd lab matrix judge": "Draw a writing or check task's judging packet, or record its verdicts: " +
 		"Writes the packet once; refuses a verdict file that does not validate.",
 	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
 		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
@@ -433,6 +433,9 @@ var sentences = map[string]string{
 
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
+
+	"abcd start": "Start a session on abcd alone, making its separate login where none exists: " +
+		"Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.",
 
 	"abcd sweep": "List the worktrees, branches, reservations and reports left lying around, or clear the spent: " +
 		"Writes only the fetch bare; refuses a failed fetch.",

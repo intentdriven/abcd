@@ -1,8 +1,8 @@
 ---
 id: itd-2611141610192096
 slug: a-drive-s-terminal-output-reads-at-a
-spec_id: null
-kind: null
+spec_id: spc-2611251805244246
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611141610197753]
@@ -181,11 +181,11 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 ## Scope Conditions
 
-- A terminal of 50 columns or more. The lab drew 50, 80 and 120 and nothing narrower.
-- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn.
-- The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules.
-- The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this.
-- Until the option menu of decision 1 is built, "one step away" means `abcd implement status` in a second terminal and the log's path.
+- A terminal of 50 columns or more. The lab drew 50, 80 and 120 and nothing narrower. <!-- cond: cond-2611251805245558 -->
+- A terminal that honours the three control sequences the prototype uses to redraw a region in place. Where output is not a terminal, or `TERM=dumb`, the drive writes plain lines. `NO_COLOR` switches off colour and nothing else: the region is still redrawn. <!-- cond: cond-2611251805240700 -->
+- The state line is the one itd-2611141610197753 defines and stores. This intent draws it and defines none of its words or rules. <!-- cond: cond-2611251805245053 -->
+- The lab drew one recorded fixture run of three lanes and a set of hostile titles. It did not wire the renderers into `abcd drain --drive`, redraw on a resize or on a timer, or put the drive's two output streams through one writer; each is part of building this. <!-- cond: cond-2611251805240775 -->
+- Until the option menu of decision 1 is built, "one step away" means `abcd implement status` in a second terminal and the log's path. <!-- cond: cond-2611251805247450 -->
 
 ## What's Out of Scope
 
@@ -201,7 +201,7 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 - **Given** a terminal of 50 columns or more, **when** the drive starts, **then** the start is at most seven lines and none wraps, and `?` at the question shows the full plan, wrapped at word breaks.
   - Evidence: lab-261114145658-67e1f9b, F-13 and F-20.
-- **Given** output that is a terminal, **when** the drive runs, **then** each event is one line no wider than the window, the region below is redrawn in place and its first live line is the state line of itd-2611141610197753, and no line wraps at 50, 80 or 120 columns.
+- **Given** output that is a terminal and input that is that same terminal, **when** the drive runs, **then** each event is one line no wider than the window, the region below is redrawn in place and its first live line is the state line of itd-2611141610197753, and no line wraps at 50, 80 or 120 columns.
   - Evidence: lab-261114145658-67e1f9b, F-13.
 - **Given** output that is not a terminal, or `TERM=dumb`, **when** the drive runs, **then** it writes plain lines with no control code, whole ids and a `state:` line when the state changes. **Given** `NO_COLOR` at a terminal, **then** the output carries no colour code and the region is still redrawn in place. **Given** any output, **then** nothing is conveyed by colour alone. **Given** an issue title carrying control codes, **then** it is masked before it is measured or drawn.
   - Evidence: lab-261114145658-67e1f9b, F-13; itd-2610030810370060, criteria B3, B4 and B7. The lab's brief grouped `NO_COLOR` with the plain cases; the criterion it cites asks only for no colour codes, so this criterion keeps the redrawn region under `NO_COLOR`.
@@ -210,7 +210,7 @@ We expect a person to learn the drive's state from the screen without scrolling,
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
+All resolved by the product thinker: on 2026-11-15 (decisions 1 to 3), and the start screen's review line, which the planning of 2026-11-25 put to them, on 2026-11-25 (decision 4).
 
 ## Decisions
 
@@ -218,9 +218,15 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 3).
    - Answer: the drive offers options. A person cycles through them with Space and accepts the one shown with Enter. The default option does nothing, so an accidental Enter changes nothing. This is none of the three answers the lab offered (no keys, a typed letter and Enter, or single keys by a new terminal mode).
    - Where it is built: in a larger refresh of the command line and terminal interface for the autonomous run, which also needs a headless mode so that a native macOS app can later connect to the command line. That refresh is itd-2611150636498012, and this intent's design works without it.
 2. **Stop after the current lane is wanted, and is one of those options** (product thinker, 2026-11-15; formerly DQ-11).
-   - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today.
+   - Answer: yes. It is reached as an option of the menu in decision 1. Ctrl-C keeps its meaning as today. **Changed 2026-11-25:** itd-2611150636498012's decision 6 gives the first Ctrl-C the stop after the lane in hand too, the second today's orderly stop and the third the kill, so today's meaning of an interrupt no longer holds.
 3. **The terminal shows the footer, not the table** (product thinker, 2026-11-15; formerly DQ-12).
    - Answer: the footer, three live lines with every event a line above. The cost is more scrollback, 23 rows for the whole fixture run against 15 for the table.
+4. **The start's `review` line names the reviewers only** (product thinker, 2026-11-25; the planning's product question on what that line holds).
+   - Question: today's start names the review pair with each class's model and effort on one line of about 190 characters, which a shipped criterion of itd-2611101419006280 asks for before the yes, and a test pins those models before the question; this intent's first criterion asks for a start of at most seven lines, none wrapping at 50 columns. The line cannot be both.
+   - Answer: the line names the reviewers and nothing more, as the draft draws it (`review   ruthless and security reviewers`). The models and efforts are in the full plan that `?` shows and in the log, where every start writes the full plan. The start keeps at most seven lines. The shipped test that pins the models before the question is rewritten to pin them on `?` and in the log. The shipped criterion's letter still holds: the pair is named before the yes, and no class name is shown alone.
+   - Alternatives and what each costs: one line per review role with its class, model and effort, which the product thinker first chose and then set aside for this answer; it shows what a round runs on before the yes, makes the start nine lines and amends the first criterion, and still cuts a long model name at 50 columns. The reviewers' names with what a round costs in agent runs, which keeps seven lines but shows a count in place of a model and adds a figure the estimate must keep right.
+   - What it costs: a person who answers `y` without pressing `?` has not seen which models a review round runs on. The full plan is one key away, and the `lanes` line already carries the agent runs the drive is expected to spend.
+5. **The live region needs input from the same terminal as well as output to it** (technical facilitator, 2026-11-25, at the planning of itd-2611150636498012). The second criterion now names both, so it agrees with the sixth criterion of itd-2611150636498012: where the input is not the output's terminal, the drive writes plain lines and no region. The cost is that a drive whose input is redirected at a terminal loses its redrawn footer.
 
 ## Typed Links
 

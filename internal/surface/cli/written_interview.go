@@ -30,6 +30,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/surface/cli/ask"
@@ -86,8 +87,8 @@ func (e *finishError) Unwrap() error { return e.err }
 func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlags) (interview.WrittenResult, error) {
 	errOut := cmd.ErrOrStderr()
 	if !interview.ValidAnsweredIn(f.answeredIn) {
-		return interview.WrittenResult{}, &exitError{Code: 2, Msg: fmt.Sprintf("%s: --answered-in must be %q or %q (nothing was run)",
-			w.Verb, interview.Terminal, interview.ClaudeCode)}
+		return interview.WrittenResult{}, refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("%s: --answered-in must be %q or %q (nothing was run)",
+			w.Verb, interview.Terminal, interview.ClaudeCode))
 	}
 	roots, notes := layered.RootsFor(w.Repo)
 	for _, n := range notes {
@@ -95,17 +96,17 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	}
 	cfg, err := runner.Load(roots)
 	if err != nil {
-		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + " (nothing was run)"}
+		return interview.WrittenResult{}, refused(2, refusal.InterviewInvalidConfig, w.Verb+": "+termsafe.Sanitize(fsutil.RedactHome(err.Error()))+" (nothing was run)")
 	}
 	for _, d := range cfg.Diagnostics {
 		fmt.Fprintln(errOut, termsafe.Sanitize(fsutil.RedactHome(d)))
 	}
 	if !interview.Reaches(cfg, w.Role) {
-		return interview.WrittenResult{}, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(w.NoRoute().Error())}
+		return interview.WrittenResult{}, refused(2, refusal.InterviewUnreachableRole, termsafe.SanitizeBlock(w.NoRoute().Error()))
 	}
 	limits, note, err := questionLimitsFor(roots, errOut)
 	if err != nil {
-		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + err.Error() + " (nothing was run)"}
+		return interview.WrittenResult{}, refused(2, refusal.InterviewInvalidConfig, w.Verb+": "+err.Error()+" (nothing was run)")
 	}
 	w.Limits, w.LimitsNote = limits, note
 	w.Config = cfg
@@ -117,19 +118,19 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	case f.answers != "":
 		data, err := fsutil.ReadGuarded(f.answers, interview.MaxAnswersBytes)
 		if err != nil {
-			return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": reading the answers file (its path is not repeated here): " + pathErrorCause(err).Error() + " (nothing was run)"}
+			return interview.WrittenResult{}, refused(2, refusal.InterviewInvalidAnswers, w.Verb+": reading the answers file (its path is not repeated here): "+pathErrorCause(err).Error()+" (nothing was run)")
 		}
 		file, err := interview.ParseAnswers(data, w.Name)
 		if err != nil {
-			return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": " + termsafe.Sanitize(scrubPaths(err)) + " (nothing was run)"}
+			return interview.WrittenResult{}, refused(2, refusal.InterviewInvalidAnswers, w.Verb+": "+termsafe.Sanitize(scrubPaths(err))+" (nothing was run)")
 		}
 		w.Answer = fileAnswerer(errOut, w.Verb, file, f.answeredIn, !term.UTF8Locale(os.Getenv))
 	case drawn:
 		// The layers' notes drawnTerminal returns are the ones printed above.
 		w.Answer = drawnAnswerer(tm)
 	default:
-		return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": the questions are drawn only at a terminal (stdin, stdout and stderr " +
-			"all terminals); anywhere else they are answered from --answers <file>, by ordinal (Q1, Q2, ...) (nothing was run)"}
+		return interview.WrittenResult{}, refused(2, refusal.InterviewMissingTerminal, w.Verb+": the questions are drawn only at a terminal (stdin, stdout and stderr "+
+			"all terminals); anywhere else they are answered from --answers <file>, by ordinal (Q1, Q2, ...) (nothing was run)")
 	}
 
 	ctx := cmd.Context()
@@ -150,19 +151,19 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	switch {
 	case errors.As(err, &changes):
 		// Ahead of an interrupt: what the role changed is the thing to read.
-		return res, &exitError{Code: 1, Msg: w.Verb + ": " + termsafe.SanitizeBlock(changes.Error())}
+		return res, exitWith(1, refusal.None, w.Verb+": "+termsafe.SanitizeBlock(changes.Error()))
 	case errors.As(err, &noRoute):
-		return res, &exitError{Code: 2, Msg: termsafe.SanitizeBlock(err.Error())}
+		return res, refused(2, refusal.InterviewUnreachableRole, termsafe.SanitizeBlock(err.Error()))
 	case errors.Is(err, interview.ErrNoLocalTier):
-		return res, &exitError{Code: 2, Msg: msg + " (nothing was run)"}
+		return res, refused(2, refusal.InterviewInvalidConfig, msg+" (nothing was run)")
 	case errors.Is(err, ask.ErrInterrupted), errors.Is(err, interview.ErrInterrupted):
-		return res, &exitError{Code: ask.ExitInterrupted, Msg: w.Verb + ": interrupted; the answers given before it are kept"}
+		return res, exitWith(ask.ExitInterrupted, refusal.None, w.Verb+": interrupted; the answers given before it are kept")
 	case errors.As(err, &fin):
 		return res, fin
 	case errors.Is(err, interview.ErrNothingRecorded):
-		return res, &exitError{Code: 2, Msg: msg}
+		return res, refused(2, refusal.InterviewInvalidAnswers, msg)
 	}
-	return res, &exitError{Code: 1, Msg: msg}
+	return res, exitWith(1, refusal.None, msg)
 }
 
 // drawnAnswerer puts each ask at the terminal through the answer loop, every

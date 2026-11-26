@@ -54,6 +54,7 @@ var binaryHooks = []binaryHook{
 	{event: "PreCompact", verb: "prompt-router-reset"},
 	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
 	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},
+	{event: "SubagentStart", verb: "subagent-start", neverBootstraps: true},
 	{event: "Stop", verb: "stop", neverBootstraps: true},
 	{event: "StopFailure", verb: "stop-failure", neverBootstraps: true},
 }

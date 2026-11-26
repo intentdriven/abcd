@@ -85,11 +85,11 @@ func TestGitBangAliasIsInspectedAsAShellPayload(t *testing.T) {
 	if d.Verdict != VerdictBlock || d.EntryID != "git-push-force" {
 		t.Fatalf("Check(bang alias carrying a force push) = %q via %q, want %q via %q", d.Verdict, d.EntryID, VerdictBlock, "git-push-force")
 	}
-	// A bang body the guard cannot read is the shell family's loud warn, never a
-	// silent allow.
+	// A bang body whose program is a substitution's output the guard does not
+	// read runs a program nothing checked: held, never a silent allow.
 	d = checkGuard(t, `git -c alias.p='!$(printf cm)' p`)
-	if d.Verdict != VerdictWarn || d.EntryID != syntheticEntryID {
-		t.Fatalf("Check(bang alias carrying a substitution) = %q via %q, want %q via %q", d.Verdict, d.EntryID, VerdictWarn, syntheticEntryID)
+	if d.Verdict != VerdictBlock || d.EntryID != unknownProgramEntryID {
+		t.Fatalf("Check(bang alias carrying a substitution) = %q via %q, want %q via %q", d.Verdict, d.EntryID, VerdictBlock, unknownProgramEntryID)
 	}
 }
 

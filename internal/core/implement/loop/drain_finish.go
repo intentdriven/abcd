@@ -22,6 +22,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -34,8 +35,15 @@ type DrainFinished struct {
 	Issue string `json:"issue"`
 	RunID string `json:"run_id"`
 	PR    int    `json:"pr,omitempty"`
-	Done  bool   `json:"done"`
-	Note  string `json:"note"`
+	// Bundle is the members the lane carried to its merge beside Issue, its
+	// lead (spc-2611201455051897 step 4): each is done with the lane. A
+	// member handed back alone before the merge is not among them, and stays
+	// handed back. Empty for a lane of one issue. A lead handed back alone is
+	// not finished either: Issue is then "", and the lane is named by its run
+	// and Bundle.
+	Bundle []string `json:"bundle,omitempty"`
+	Done   bool     `json:"done"`
+	Note   string   `json:"note"`
 }
 
 // DrainParked is one lane parked at land whose head is not on the default
@@ -44,8 +52,14 @@ type DrainParked struct {
 	Issue string `json:"issue"`
 	RunID string `json:"run_id"`
 	PR    int    `json:"pr"`
-	State string `json:"state"`
-	Note  string `json:"note"`
+	// Bundle is the members the run still carried beside Issue as the move
+	// read it, a member handed back alone left out; a pull request closed
+	// unmerged hands back each of them with the lead. Empty for a lane of one
+	// issue. Issue is "" once the lead was handed back alone; for a closed
+	// pull request both are as the hand-back's locked save read them.
+	Bundle []string `json:"bundle,omitempty"`
+	State  string   `json:"state"`
+	Note   string   `json:"note"`
 }
 
 // HandBackClosed is the kind a parked lane whose pull request was closed
@@ -150,7 +164,7 @@ func listParked(repoRoot string) (map[int]listedPR, string) {
 // waiting on its merge, or unread when the listing could not be read or does
 // not show the lane's pull request, which keeps the lane held as before.
 func readParked(run State, lane Lane, listed map[int]listedPR, unread string) DrainParked {
-	p := DrainParked{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
+	p := DrainParked{Issue: run.carriedLead(), RunID: run.RunID, PR: lane.PR, Bundle: run.members()}
 	n := "pull request #" + strconv.Itoa(lane.PR)
 	if unread != "" {
 		p.State, p.Note = ParkedUnread, n+" could not be read from the forge ("+unread+"), so its lane is kept held"
@@ -236,7 +250,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		// is done on its word, whatever it reads as: it is named.
 		if driveStopped(run.RunID) {
 			if i := parkedAtLand(run); i >= 0 {
-				out = append(out, DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[i].PR,
+				out = append(out, DrainFinished{Issue: run.carriedLead(), RunID: run.RunID, PR: run.Lanes[i].PR, Bundle: run.members(),
 					Note: fsutil.RedactHome("a drive stopped on " + run.RunID + ", so it is left as it stands: " + driveStopRemedy(run.RunID))})
 			}
 			continue
@@ -251,7 +265,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		}
 		if note != "" {
 			marked = append(marked, run)
-			reads = append(reads, DrainParked{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[i].PR, State: ParkedStopHolds, Note: fsutil.RedactHome(note)})
+			reads = append(reads, DrainParked{Issue: run.carriedLead(), RunID: run.RunID, PR: run.Lanes[i].PR, Bundle: run.members(), State: ParkedStopHolds, Note: fsutil.RedactHome(note)})
 			continue
 		}
 		parked = append(parked, run)
@@ -309,7 +323,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		return out, reads, nil
 	}
 	refused := func(run State, r *Refusal) DrainFinished {
-		return DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[parkedAtLand(run)].PR,
+		return DrainFinished{Issue: run.carriedLead(), RunID: run.RunID, PR: run.Lanes[parkedAtLand(run)].PR, Bundle: run.members(),
 			Note: fsutil.RedactHome(r.Reason + "; " + r.Remedy)}
 	}
 	first := parked[0].Lanes[parkedAtLand(parked[0])]
@@ -342,7 +356,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 		if !drainsRun(lanes, run.RunID) {
 			save = o.passingSave()
 		}
-		f := DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: lane.PR}
+		f := DrainFinished{Issue: run.carriedLead(), RunID: run.RunID, PR: lane.PR, Bundle: run.members()}
 		// A stop can reach the run while the forge is read and the default branch fetched.
 		if note := stopMarkNote(repoRoot, run.RunID); note != "" {
 			p := read[run.RunID]
@@ -404,7 +418,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 				}
 			}
 			if p.State == ParkedClosed {
-				if p.Note, err = handBackClosed(repoRoot, run.RunID, now, save); err != nil {
+				if p.Note, err = handBackClosed(repoRoot, run.RunID, now, save, &p); err != nil {
 					return nil, nil, err
 				}
 				if p.Note == "" {
@@ -428,6 +442,9 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 			if w.kind != wantBinary || w.hold {
 				return false, nil
 			}
+			// The issues the lane carries to its merge are those the save
+			// reads, an issue handed back alone since the listing left out.
+			f.Issue, f.Bundle = st.carriedLead(), st.members()
 			// No remote identity: a lane parked at its landing (parkedAtLand) moves
 			// only through the land stage, never the worktree stage that checks it.
 			res, err := performMove(repoRoot, st, parkedStages(), w, now, nil, nil, nil, nil)
@@ -593,11 +610,18 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 // handBackClosed hands run's parked lane back as closed, its pull request
 // closed without merging, and releases the issue's reservation with the
 // hand-back's tombstone once the save has written the hand-back, under the same
-// lock (releaseAfterWrite). It returns
+// lock (releaseAfterWrite). A closed pull request is a person's word on the
+// whole lane, never a split (spc-2611201455051897 step 4): in a run with
+// members the one hand-back covers every issue still held, the record's line
+// names each, and the release tombstones each once with the closed kind,
+// leaving a member handed back alone before with its own (releaseOnHandBack).
+// The issues it hands back are those the save reads under the run's lock, so
+// read's Issue and Bundle are set from them, not from the listing read before
+// the lock, which a hand-back made meanwhile may have left behind. It returns
 // the record's line, "" when the lane is no longer parked (a step running at
 // the same time moved it), or why save left the run as its file stands
 // (mayWholeSave), nothing handed back and nothing released.
-func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (string, error) {
+func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame, read *DrainParked) (string, error) {
 	note := ""
 	var release *handBackRelease
 	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
@@ -607,10 +631,11 @@ func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (stri
 			return false, nil
 		}
 		lane := st.Lanes[i]
+		read.Issue, read.Bundle = st.carriedLead(), st.members()
 		hb := HandBack{Kind: HandBackClosed, Reason: "pull request #" + strconv.Itoa(lane.PR) + " was closed without merging",
 			Home: "a person: the issue stays open, and the lane's run " + st.RunID + " keeps its worktree and branch until `abcd implement step --run " +
 				st.RunID + " --discard " + lane.ID + "` discards them"}
-		handBackLane(st, &lane, hb, "", now)
+		handBackLane(st, &lane, hb, closedSummary(*st, hb), now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		note = st.Record[len(st.Record)-1].Note
@@ -626,12 +651,66 @@ func handBackClosed(repoRoot, runID string, now time.Time, save saveFrame) (stri
 	return note, err
 }
 
+// closedSummary is the record's line for a run with members handed back as
+// closed: every issue the run still holds, the reason and the home; "" for a
+// run without members, which handBackLane words as before.
+func closedSummary(st State, hb HandBack) string {
+	if !st.hasMembers() {
+		return ""
+	}
+	issues := st.Issues()
+	verb := "are"
+	if len(issues) == 1 {
+		verb = "is"
+	}
+	return fmt.Sprintf("%s %s handed back as %s: %s; the home of each: %s", andList(issues), verb, hb.Kind, hb.Reason, hb.Home)
+}
+
+// carriedLead is the issue a parked or finished lane is named by: the run's
+// issue while the run still carries it, "" for an intent's run and for a run
+// whose lead was handed back alone, which the lane no longer finishes or holds
+// (members then names what it still carries).
+func (s State) carriedLead() string {
+	if s.LeadHandBack != nil {
+		return ""
+	}
+	return s.Issue()
+}
+
+// members is each member a run still carries beside its lead, in order, one
+// handed back alone left out: what a parked or finished lane names besides
+// its issue. Nil for a run without members.
+func (s State) members() []string {
+	var out []string
+	for _, id := range s.Issues() {
+		if !recordid.SameID(id, s.Key) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// laneIssues names a lane's issue and, for a bundle, its members, as the
+// move's notes name a lane: "iss-A's run R" for a lane of one, as before,
+// "iss-A's run R with its member(s) iss-B and iss-C" for a bundle, and "run R
+// with its member(s) iss-B and iss-C" for one whose lead was handed back alone.
+func laneIssues(issue, runID string, bundle []string) string {
+	s := fmt.Sprintf("%s's run %s", issue, runID)
+	if issue == "" {
+		s = "run " + runID
+	}
+	if len(bundle) > 0 {
+		s += " with its member(s) " + andList(bundle)
+	}
+	return s
+}
+
 // parkedNote names, before a drain move's next move, the parked lanes it read from their
 // pull requests, those it could not read and those a stop's mark left it to do nothing for.
 func parkedNote(ps []DrainParked) string {
 	var read, unread, held []string
 	for _, p := range ps {
-		part := fmt.Sprintf("%s's run %s: %s", p.Issue, p.RunID, p.Note)
+		part := laneIssues(p.Issue, p.RunID, p.Bundle) + ": " + p.Note
 		switch p.State {
 		case ParkedUnread:
 			unread = append(unread, part)
@@ -664,9 +743,9 @@ func finishedNote(fs []DrainFinished) string {
 			pr = ", pull request #" + strconv.Itoa(f.PR)
 		}
 		if f.Done {
-			done = append(done, fmt.Sprintf("%s's run %s%s", f.Issue, f.RunID, pr))
+			done = append(done, laneIssues(f.Issue, f.RunID, f.Bundle)+pr)
 		} else {
-			not = append(not, fmt.Sprintf("%s's run %s%s (%s)", f.Issue, f.RunID, pr, f.Note))
+			not = append(not, fmt.Sprintf("%s%s (%s)", laneIssues(f.Issue, f.RunID, f.Bundle), pr, f.Note))
 		}
 	}
 	var parts []string

@@ -61,7 +61,7 @@ func RecordGrounds(repoRoot, intentID string, g grounds.Grounds) (GroundsResult,
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return GroundsResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return GroundsResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	// Population is forward-only, and the readiness gate SAYS so: it exempts
 	// shipped/ and superseded/ records from the grounds check on the ground that

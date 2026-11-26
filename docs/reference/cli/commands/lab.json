@@ -72,7 +72,7 @@
     },
     {
       "path": "abcd lab matrix judge",
-      "sentence": "Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.",
+      "sentence": "Draw a writing or check task's judging packet, or record its verdicts: Writes the packet once; refuses a verdict file that does not validate.",
       "usage": "abcd lab matrix judge <lab-id> <run-id> <task> [flags]",
       "flags": [
         {
@@ -90,6 +90,22 @@
         {
           "name": "judges",
           "type": "string"
+        },
+        {
+          "name": "labels",
+          "type": "string"
+        },
+        {
+          "name": "matcher",
+          "type": "string"
+        },
+        {
+          "name": "proposals",
+          "type": "string"
+        },
+        {
+          "name": "table",
+          "type": "bool"
         },
         {
           "name": "verdicts",
