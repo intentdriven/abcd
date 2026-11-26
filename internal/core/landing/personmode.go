@@ -1,7 +1,7 @@
 package landing
 
 // A person's own facilitator mode (itd-2611252049031692). Two places decide
-// the mode, as the product owner ruled on 2026-11-26: what the project commits
+// the mode, as the product thinker ruled on 2026-11-26: what the project commits
 // on its default branch, which enforces auto or prevents it; and otherwise the
 // person's global setting, facilitator.mode in ~/.abcd.noindex/config.json
 // (the machine layer). With neither, a person is the facilitator. There is no

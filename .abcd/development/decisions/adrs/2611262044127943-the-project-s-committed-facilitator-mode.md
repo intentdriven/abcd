@@ -5,7 +5,7 @@ status: accepted
 date: 2026-11-26
 supersedes: null
 superseded_by: null
-reverses: [adr-2610150603484802]
+reverses: [adr-2610150603484802, dcn-2611252040395990]
 refines: [adr-2609151528057260]
 related_intents: [itd-2611252049031692, itd-2610150602547271, itd-97, itd-2611252117557299]
 related_rfcs: []
@@ -17,7 +17,10 @@ related_adrs: [adr-2610150603484802, adr-2609151528057260, adr-2611011332427073]
 Typed links: `reverses` in part
 [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md)
 (two of its clauses: that `human` from any layer wins over `auto`, and that the
-declaration lives in `.abcd/config.json` alone); `refines`
+declaration lives in `.abcd/config.json` alone), and `reverses` in part
+[dcn-2611252040395990](../../../work/decisions/dcn-2611252040395990-the-product-thinker-ruled-on-2026-11-25.md)
+(its per-repository personal setting, and its leaving "human from any layer
+wins" untouched); `refines`
 [adr-2609151528057260](2609151528057260-three-roles-who-each-artefact-addresses.md)
 (its technical facilitator is a mode a role can be in; this says who decides
 the mode, and that auto is the whole role).
@@ -40,11 +43,24 @@ change the project's value. The draft of itd-2611252049031692 read that as
 three places: the project's value, a person's own entry for one project, and
 the computer's file as the person's default.
 
-On 2026-11-26 the product owner ruled again, and more simply. Two places
-decide, and only two. A third, a person's setting for one repository, is not
-kept: "simpler; if we ever need a third option, we can revisit". They also
-confirmed dcn-2611252138203673, and answered that a person's own `auto` merges
-only the pull requests they opened.
+dcn-2611252040395990 had held the mode as a personal setting for each
+repository, and had said that adr-2610150603484802's "human from any layer
+wins" was left untouched.
+
+On 2026-11-26 the product thinker ruled again, and more simply. Their own
+words, so that no later reader has to take the reversal on trust:
+
+- Asked whether two clauses of adr-2610150603484802 go, "human from any layer
+  wins over auto" and the setting living only in `.abcd/config.json`: "yes,
+  both go".
+- On the per-repository personal setting: "I think we should remove the
+  personal per-repo option -- it's global and enforced per repo only; simpler;
+  if we ever need a third option, we can revisit. For now, we don't".
+- On abcd never merging a change to the repository's committed mode line, the
+  person merging it on the forge by hand (dcn-2611252138203673): "confirmed".
+- On whether a person's own `auto` merges a colleague's pull request: "only
+  your own".
+- On the plan of itd-2611252049031692: "yes, I sign the plan off".
 
 ## Decision
 
@@ -77,9 +93,12 @@ opened.
 What stands of adr-2610150603484802: a person is the facilitator until told
 otherwise, and abcd's own repository commits `auto`. What is reversed: `human`
 from any layer no longer wins (an enforced `auto` holds over a person's own
-`human`), and the declaration is no longer the repository's file alone.
+`human`), and the declaration is no longer the repository's file alone. Of
+dcn-2611252040395990, the setting held for each repository is reversed, and so
+is its leaving "human from any layer wins" untouched; that the mode is a
+person's own setting and that the status line says whose it is both stand.
 
-Ruled by the product owner, 2026-11-26.
+Ruled by the product thinker, 2026-11-26 ("yes, both go").
 
 ## Alternatives Considered
 
@@ -91,7 +110,7 @@ Ruled by the product owner, 2026-11-26.
 - **Three places, with a person's entry for each project** between the two,
   selected by the identity record and matched on the project's first commit
   and forge address: what the draft built first. Rejected by the product
-  owner as more than is needed now; it brought an identity check, a fork rule
+  thinker as more than is needed now ("For now, we don't"); it brought an identity check, a fork rule
   and a kept set of project facts, each a way for the row and the gate to
   disagree. It can be revisited if a third option is ever needed.
 - **`human` from any layer wins**, as before: rejected on 2026-11-25, since a

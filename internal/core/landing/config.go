@@ -232,7 +232,7 @@ func checkMode(m string) error {
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
 //
-// The precedence is the product owner's rulings of 2026-11-25
+// The precedence is the product thinker's rulings of 2026-11-25
 // (dcn-2611252132144530) and 2026-11-26: two places decide. The project's
 // committed value is above a person's own, so a project enforces auto or
 // prevents it; with no value it leaves the mode to each contributor, whose
