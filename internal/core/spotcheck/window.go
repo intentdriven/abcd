@@ -1,11 +1,17 @@
 package spotcheck
 
 // window.go is the trigger (spc-2610301925429250 approach 3): a window spans
-// everything since the last cycle, or since the window opened, and closes at
-// the first landing observed once either bound has passed.
+// the default branch's first-parent line since the last cycle, or since the
+// window opened, and its close is read from that line alone, so every
+// checkout that reads it finds the same close whenever it looks. By days, the
+// window closes at its start plus WindowDays, once a commit of the line was
+// committed after that moment, and ends at the last commit committed before
+// it; by changes, it closes at the WindowChanges-th commit of the line, at
+// that commit's time. Whichever comes first on the line closes it.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,33 +20,57 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// windowClosedBy is the bound a window that began at from has passed by now,
-// changes first-parent commits later: ClosedByDays once WindowDays whole
-// days have gone by, ClosedByChanges once WindowChanges (when set) commits
-// have landed, the days first when both have; "" when neither has.
-func windowClosedBy(c Config, from time.Time, changes int, now time.Time) string {
-	if !now.Before(from.Add(time.Duration(c.WindowDays) * 24 * time.Hour)) {
-		return ClosedByDays
-	}
-	if c.WindowChanges > 0 && changes >= c.WindowChanges {
-		return ClosedByChanges
-	}
-	return ""
+// closing is a window's close as its line gives it: the bound that closed it
+// ("" while the window is open), the commit it ends at and the moment it
+// closed, which fixes its round.
+type closing struct {
+	by     string
+	commit string
+	at     time.Time
 }
 
-// changesSince counts the first-parent commits from from to tip, both full
-// object names this checkout holds, as stored: one local git command.
-func changesSince(ctx context.Context, root, from, tip string) (int, error) {
+// windowClose reads the close of the window that began at from (fromTime)
+// from origin's default branch up to tip, as stored: one local git command.
+// A start the line does not hold is an error, never an open window.
+func windowClose(ctx context.Context, root string, c Config, from string, fromTime time.Time, tip string) (closing, error) {
 	if from == tip {
-		return 0, nil
+		return closing{}, nil
 	}
-	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", 64, "rev-list", "--first-parent", "--count", from+".."+tip, "--")
+	on, err := isAncestor(ctx, root, from, tip)
 	if err != nil {
-		return 0, fmt.Errorf("counting the changes since the spot-check's last window: %s", redact(err))
+		return closing{}, err
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("counting the changes since the spot-check's last window: git answered %q", strings.TrimSpace(string(out)))
+	if !on {
+		return closing{}, fmt.Errorf("the spot-check's window starts at %s, which origin's default branch does not hold", from[:12])
 	}
-	return n, nil
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxListingBytes, "log", "--first-parent", "--reverse", "--format=%H %ct", from+".."+tip, "--")
+	if err != nil {
+		return closing{}, fmt.Errorf("reading the spot-check's window: %s", redact(err))
+	}
+	daysAt := fromTime.Add(time.Duration(c.WindowDays) * 24 * time.Hour)
+	last, n := from, 0
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		sha, ct, ok := strings.Cut(line, " ")
+		secs, err := strconv.ParseInt(ct, 10, 64)
+		if !ok || err != nil || !gitutil.IsFullSHA(sha) {
+			return closing{}, errors.New("reading the spot-check's window: git answered a line of an unexpected shape")
+		}
+		at := time.Unix(secs, 0).UTC()
+		if at.After(daysAt) {
+			return closing{by: ClosedByDays, commit: last, at: daysAt}, nil
+		}
+		last, n = sha, n+1
+		if c.WindowChanges > 0 && n == c.WindowChanges {
+			return closing{by: ClosedByChanges, commit: sha, at: later(at, fromTime)}, nil
+		}
+	}
+	return closing{}, nil
+}
+
+// later is the later of a and b.
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }

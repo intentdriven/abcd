@@ -103,15 +103,18 @@ func (c *drawCase) originFile(p string) string {
 	return gitIn(c.t, c.bare, "show", BranchRef+":"+p)
 }
 
-// land puts n first-parent commits on origin's main and fetches it.
+// land puts n first-parent commits on origin's main, committed inside the
+// first window, and fetches it.
 func (c *drawCase) land(n int) string {
 	c.t.Helper()
-	for range n {
-		c.r.Commit("a landing")
-	}
-	c.r.Git("push", "-q", "origin", "HEAD:refs/heads/main")
-	c.r.Git("fetch", "-q", "origin")
-	return c.r.Git("rev-parse", "origin/main")
+	return c.landAt(n, w0.Add(time.Hour))
+}
+
+// closeWindow lands the commit, committed just after the first window's seven
+// days, that closes it.
+func (c *drawCase) closeWindow() {
+	c.t.Helper()
+	c.landAt(1, q1000.Add(time.Second))
 }
 
 func TestFirstCheckOpensTheWindow(t *testing.T) {
@@ -138,21 +141,21 @@ func TestFirstCheckOpensTheWindow(t *testing.T) {
 // says nothing. A record to carry is carried at the next observation.
 func TestWindowNotPassedDrawsNothingAndFetchesNothing(t *testing.T) {
 	c := newDrawCase(t)
-	c.observe(at0)
+	c.observe(w0)
 	tip := c.originTip()
 	c.r.Git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
-	if note := c.observe(at0.Add(6 * 24 * time.Hour)); note != "" {
+	if note := c.observe(w0.Add(6 * 24 * time.Hour)); note != "" {
 		t.Fatalf("an observation inside the window said %q", note)
 	}
 	if c.beacons != 0 || c.reads != 0 {
 		t.Fatalf("inside the window the beacon was asked %d and the reader %d times", c.beacons, c.reads)
 	}
-	write(t, c.r.Root(), hb(handBack("iss-1", at0.Add(time.Hour))))
-	if note := c.observe(at0.Add(6 * 24 * time.Hour)); !strings.Contains(note, "not fetched") {
+	write(t, c.r.Root(), hb(handBack("iss-1", w0.Add(time.Hour))))
+	if note := c.observe(w0.Add(6 * 24 * time.Hour)); !strings.Contains(note, "not fetched") {
 		t.Fatalf("a record to carry with origin gone: note %q", note)
 	}
 	c.r.Git("remote", "set-url", "origin", c.bare)
-	if note := c.observe(at0.Add(6 * 24 * time.Hour)); !strings.Contains(note, "carried 1 record") {
+	if note := c.observe(w0.Add(6 * 24 * time.Hour)); !strings.Contains(note, "carried 1 record") {
 		t.Fatalf("the record was not carried: %q", note)
 	}
 	if c.originTip() == tip || c.beacons != 0 {
@@ -167,18 +170,19 @@ func TestWindowNotPassedDrawsNothingAndFetchesNothing(t *testing.T) {
 // cycle's end.
 func TestADrawAtAPassedWindow(t *testing.T) {
 	c := newDrawCase(t)
-	c.observe(at0)
+	c.observe(w0)
 	from := c.r.Git("rev-parse", "origin/main")
 	to := c.land(3)
 	for i := range 14 {
 		c.rows = append(c.rows, row(fmt.Sprintf("%040x", i+1), ClassDrain))
 	}
 	c.rows = append(c.rows, row(fmt.Sprintf("%040x", 100), ClassAutomatic), row(fmt.Sprintf("%040x", 101), "person-approved"))
-	h := handBack("iss-2", at0.Add(24*time.Hour))
+	h := handBack("iss-2", w0.Add(24*time.Hour))
 	h.Reason = "the secret reason the drain wrote"
-	d := gateDecision(4, sha('f'), true, at0.Add(25*time.Hour))
+	d := gateDecision(4, sha('f'), true, w0.Add(25*time.Hour))
 	write(t, c.r.Root(), Batch{HandBacks: []HandBack{h}, Decisions: []Decision{d}})
-	at := at0.Add(8 * 24 * time.Hour)
+	c.closeWindow()
+	at := q1000.Add(time.Hour)
 	note := c.observe(at)
 	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, "13 item(s)") {
 		t.Fatalf("the draw's note is %q", note)
@@ -186,7 +190,7 @@ func TestADrawAtAPassedWindow(t *testing.T) {
 	if c.from != from || c.to != to {
 		t.Fatalf("the reader read %s..%s; want %s..%s", c.from, c.to, from, to)
 	}
-	id := cycleID(at, to)
+	id := cycleID(q1000, to)
 	var cy Cycle
 	if err := json.Unmarshal([]byte(c.originFile(CyclesDir+"/"+id+".json")), &cy); err != nil {
 		t.Fatal(err)
@@ -241,13 +245,14 @@ func TestBeaconUnreachableWritesNothing(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := newDrawCase(t)
-			c.observe(at0)
+			c.observe(w0)
 			c.land(1)
 			c.rows = []LandingRow{row(sha('a'), ClassDrain)}
-			write(t, c.r.Root(), hb(handBack("iss-2", at0.Add(time.Hour))))
+			write(t, c.r.Root(), hb(handBack("iss-2", w0.Add(time.Hour))))
+			c.closeWindow()
 			tip := c.originTip()
 			c.beacon = reply
-			note := c.observe(at0.Add(8 * 24 * time.Hour))
+			note := c.observe(q1000.Add(time.Hour))
 			if !strings.Contains(note, "beacon") || !strings.Contains(note, "nothing was drawn") {
 				t.Fatalf("the refused draw's note is %q", note)
 			}
@@ -255,7 +260,7 @@ func TestBeaconUnreachableWritesNothing(t *testing.T) {
 				t.Fatal("a refused draw moved origin's branch")
 			}
 			c.beacon = func() ([]byte, error) { return beaconReply("1000", vectorSignature, ""), nil }
-			if note := c.observe(at0.Add(8*24*time.Hour + time.Minute)); !strings.Contains(note, "drew cycle") {
+			if note := c.observe(q1000.Add(time.Hour + time.Minute)); !strings.Contains(note, "drew cycle") {
 				t.Fatalf("the next observation did not draw: %q", note)
 			}
 		})
@@ -266,10 +271,11 @@ func TestBeaconUnreachableWritesNothing(t *testing.T) {
 // as the spec lists it.
 func TestBeaconBadSignatureWritesNothing(t *testing.T) {
 	c := newDrawCase(t)
-	c.observe(at0)
+	c.observe(w0)
+	c.closeWindow()
 	tip := c.originTip()
 	c.beacon = func() ([]byte, error) { return beaconReply("999", vectorSignature, ""), nil }
-	note := c.observe(at0.Add(8 * 24 * time.Hour))
+	note := c.observe(q1000.Add(time.Hour))
 	if !strings.Contains(note, "round 999") || !strings.Contains(note, "does not verify") || c.originTip() != tip {
 		t.Fatalf("note %q, origin moved %v", note, c.originTip() != tip)
 	}
@@ -279,14 +285,15 @@ func TestBeaconBadSignatureWritesNothing(t *testing.T) {
 // it was, the draw refused, and the window passed.
 func TestRejectedPushLeavesNoCycle(t *testing.T) {
 	c := newDrawCase(t)
-	c.observe(at0)
+	c.observe(w0)
+	c.closeWindow()
 	tip := c.originTip()
 	hooks := t.TempDir()
 	if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	c.r.Git("config", "core.hooksPath", hooks)
-	note := c.observe(at0.Add(8 * 24 * time.Hour))
+	note := c.observe(q1000.Add(time.Hour))
 	if !strings.Contains(note, "refused twice") || c.originTip() != tip {
 		t.Fatalf("note %q; origin moved %v", note, c.originTip() != tip)
 	}
@@ -296,10 +303,11 @@ func TestRejectedPushLeavesNoCycle(t *testing.T) {
 // draws nothing.
 func TestDrawWithNoReaderIsRefused(t *testing.T) {
 	c := newDrawCase(t)
-	c.observe(at0)
+	c.observe(w0)
 	RegisterLandingsReader(nil)
+	c.closeWindow()
 	tip := c.originTip()
-	if note := c.observe(at0.Add(8 * 24 * time.Hour)); !strings.Contains(note, "no landings reader") || c.originTip() != tip {
+	if note := c.observe(q1000.Add(time.Hour)); !strings.Contains(note, "no landings reader") || c.originTip() != tip {
 		t.Fatalf("note %q", note)
 	}
 }

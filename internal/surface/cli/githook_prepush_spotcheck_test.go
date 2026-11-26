@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,7 +15,8 @@ import (
 // adr-2611251806496719): refs/heads/abcd-spotcheck, the spot-check's store, is
 // an orphan of small JSON files under the store's folders, pushed by abcd
 // with the hooks running and no receipt. The row admits a fast-forward whose
-// every commit holds only regular files at the store's paths; every other
+// every commit holds only regular files at the store's paths, each within the
+// store's bound, adding no more files than one push of the store's; every other
 // push to the branch is gated as any branch is, a branch whose name merely
 // begins like it is no branch of the row, and the store is never deleted.
 
@@ -64,7 +66,37 @@ var (
 	windowOpen = storeFile{path: "window-open.json", body: "{}\n"}
 	aHandBack  = storeFile{path: "handbacks/20261125T010203Z-iss-12-0123456789abcdef.json", body: "{}\n"}
 	anItem     = storeFile{path: "items/20261125T010203Z-0123456789ab/001-drain-landed-" + strings.Repeat("a", 40) + ".json", body: "{}\n"}
+	aCycle     = storeFile{path: "cycles/20261125T010203Z-0123456789ab.json", body: "{}\n"}
 )
+
+// storeCommitOf writes a commit over parent whose tree adds n files of one
+// content under handbacks/, in one index update.
+func (c *prePushCase) storeCommitOf(parent string, n int) string {
+	c.t.Helper()
+	index := filepath.Join(c.t.TempDir(), "index")
+	p := filepath.Join(c.t.TempDir(), "f")
+	if err := os.WriteFile(p, []byte("{}\n"), 0o644); err != nil {
+		c.t.Fatal(err)
+	}
+	git := func(stdin string, args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir, cmd.Stdin = c.dir, strings.NewReader(stdin)
+		cmd.Env = append(gittest.Env(c.t), "GIT_INDEX_FILE="+index)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			c.t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("", "read-tree", parent+"^{tree}")
+	sha := git("", "hash-object", "-w", p)
+	var info strings.Builder
+	for i := range n {
+		fmt.Fprintf(&info, "100644 %s\thandbacks/20261125T010203Z-iss-%d-0123456789abcdef.json\n", sha, i)
+	}
+	git(info.String(), "update-index", "--add", "--index-info")
+	return c.commitTree(git("", "write-tree"), parent, "spotcheck: records")
+}
 
 // TestPrePushPassesStoreCommitsWithoutAReceipt: the store's first push (an
 // orphan create) and the next (a fast-forward over it) pass with no receipt.
@@ -80,6 +112,33 @@ func TestPrePushPassesStoreCommitsWithoutAReceipt(t *testing.T) {
 	}
 	if got := c.remoteRef(spotcheckRef); got != next {
 		t.Fatalf("the remote holds %q, want %s", got, next)
+	}
+	// A cycle may be larger than a record, up to its own bound, and a push
+	// may add as many files as the store's writer puts in one.
+	big := c.storeCommit(next, storeFile{path: aCycle.path, body: strings.Repeat("x", 256<<10)})
+	if out, err := c.push("--porcelain", "origin", big+":"+spotcheckRef); err != nil {
+		t.Fatalf("a cycle within its bound was refused\n%s", out)
+	}
+	many := c.storeCommitOf(big, 1000)
+	if out, err := c.push("--porcelain", "origin", many+":"+spotcheckRef); err != nil {
+		t.Fatalf("a push of a thousand files was refused\n%s", out)
+	}
+}
+
+// TestPrePushGatesAStorePushOfTooManyFiles: a push that adds more files than
+// the store's writer puts in one needs a receipt.
+func TestPrePushGatesAStorePushOfTooManyFiles(t *testing.T) {
+	c := newPrePushCase(t)
+	first := c.storeCommit("", windowOpen)
+	if out, err := c.push("origin", first+":"+spotcheckRef); err != nil {
+		t.Fatalf("the store's first commit was refused\n%s", out)
+	}
+	out, err := c.push("origin", c.storeCommitOf(first, 1001)+":"+spotcheckRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a push of 1,001 files passed without a receipt (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(spotcheckRef); got != first {
+		t.Errorf("the remote holds %q, want %s", got, first)
 	}
 }
 
@@ -109,6 +168,8 @@ func TestPrePushGatesEveryOtherPushToTheStore(t *testing.T) {
 		"another folder":             {path: "scripts/x.json", body: "{}\n"},
 		"a name with a space":        {path: "handbacks/a b.json", body: "{}\n"},
 		"a store folder file at top": {path: "handbacks.json", body: "{}\n"},
+		"a record over its bound":    {path: aHandBack.path, body: strings.Repeat("x", 16<<10+1)},
+		"a cycle over its bound":     {path: aCycle.path, body: strings.Repeat("x", 256<<10+1)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := newPrePushCase(t)

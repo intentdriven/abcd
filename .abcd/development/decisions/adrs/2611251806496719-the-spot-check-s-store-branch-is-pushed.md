@@ -30,9 +30,12 @@ The push hook's receipt-less table gains a third row: the branch `abcd-spotcheck
 
 - it is a fast-forward of the branch, or its creation;
 - every commit it moves (`<remote>..<local>` on an update, everything reachable from `<local>` on a creation) has a tree holding nothing but regular, non-executable files, each at `window-open.json` or at a path of `.json` names under `handbacks/`, `decisions/`, `cycles/`, `items/` or `judgements/`, made of letters, digits, `.`, `_` and `-`;
+- every file is within the store reader's own bound, 16 KiB, or 256 KiB for a cycle under `cycles/`, and the push adds or changes no more than 1,000 files, the most the store's writer puts in one push;
 - the walk read every commit in full, as the reservation check requires of a shallow clone.
 
-A deletion of the branch is refused outright: the store is kept for ever. Any other push to the branch is gated as any branch is. The forge ruleset that blocks deletion and non-fast-forward pushes of `refs/heads/abcd-spotcheck` is the person's act, applied from a mirror under `.abcd/work/rulesets/` as every ruleset is.
+A deletion of the branch is refused outright: the store is kept for ever. Any other push to the branch is gated as any branch is. The forge ruleset that blocks deletion and non-fast-forward pushes of `refs/heads/abcd-spotcheck` is the person's act, applied from its mirror, `.abcd/work/rulesets/spotcheck-protection.json`, as every ruleset is, before the first draw on any machine.
+
+Because the row admits content, abcd's reader never trusts what it reads there ([dcn-2611260013430233](../../../work/decisions/dcn-2611260013430233-the-technical-facilitator-under.md)). Every cycle is verified wherever it is read: its id is its close's, it starts where its window began, its close is no later than the reader's clock allows, its round is the one its close fixes on the chain's pinned clock, its signature verifies under the pinned key, and its drawn lists are the ones that round gives over its populations. A cycle that fails is set aside, named, and its window drawn afresh, so a hand-made or future-dated cycle can neither end a window nor stop a later draw. A window's close, and so its round and its draw, is read from the default branch's history alone, the same for every drawer at any moment. Each machine keeps a high-water mark of the last copy it verified, in the person's home store, and refuses a branch that no longer holds it, deleted or rewritten, opening no first window over it. Records join a population by their arrival on the branch, and a judgement counts only when it reads as the judgement of the item and role its path names.
 
 ## Alternatives Considered
 
@@ -44,6 +47,7 @@ A deletion of the branch is refused outright: the store is kept for ever. Any ot
 ## Consequences
 
 - **Easier:** a landing's draw and its records reach `origin` from any machine whose hooks run, so the queue is one queue for every machine.
-- **Harder:** the shape check judges paths and modes, never content: a push under the row can carry any JSON at a store path. abcd's reader is the guard on content, since it reads every file strictly and names one it cannot read; nothing on the branch is ever built, run or merged.
+- **Harder:** the shape check judges paths, modes, sizes and the count, never content: a push under the row can carry any JSON at a store path, within the bounds. abcd's reader is the guard on content: it reads every file strictly, verifies every cycle, and names one it cannot read or verify; nothing on the branch is ever built, run or merged.
+- **The residual:** whoever holds the person's push rights can still write a cycle that verifies over a population it chose, hold a record back until a window's draw is known, or write judgements that halve the next sample. Verification removes the free choice of round and of drawn list and makes every cycle recomputable; it cannot tell an agent from the person when both push with one credential. Who may judge is the review lane's to settle.
 - **The hook is a local-only check.** A push made where no hook runs is held only by the forge's ruleset, as for the other two rows.
 - **A new obligation:** a change to the store's folders changes this row's check in the same change.

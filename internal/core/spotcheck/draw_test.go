@@ -60,7 +60,7 @@ func TestEveryItemCanBeDrawn(t *testing.T) {
 	}
 }
 
-// TestLargePopulationStoresRangeAndHash: a population of up to 5,000 keys is
+// TestLargePopulationStoresRangeAndHash: a population of up to 1,000 keys is
 // kept whole and sorted; above it, by its first and last key and the hash of
 // the sorted keys.
 func TestLargePopulationStoresRangeAndHash(t *testing.T) {
@@ -68,13 +68,30 @@ func TestLargePopulationStoresRangeAndHash(t *testing.T) {
 	if small.Count != 2 || !slices.Equal(small.Keys, []string{"a", "b"}) || small.SHA256 != "" {
 		t.Fatalf("population = %+v", small)
 	}
-	keys := keysN(5001)
+	keys := keysN(maxListedKeys + 1)
 	big := population(keys)
 	sum := sha256.Sum256([]byte(strings.Join(keys, "\n") + "\n"))
-	if big.Count != 5001 || big.Keys != nil || big.First != keys[0] || big.Last != keys[5000] || big.SHA256 != hex.EncodeToString(sum[:]) {
-		t.Fatalf("population of 5,001 = count %d, %d keys, %s..%s, %s", big.Count, len(big.Keys), big.First, big.Last, big.SHA256)
+	if big.Count != maxListedKeys+1 || big.Keys != nil || big.First != keys[0] || big.Last != keys[maxListedKeys] || big.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatalf("population of 1,001 = count %d, %d keys, %s..%s, %s", big.Count, len(big.Keys), big.First, big.Last, big.SHA256)
 	}
-	if whole := population(keys[:5000]); len(whole.Keys) != 5000 {
-		t.Fatalf("a population of 5,000 kept %d keys whole", len(whole.Keys))
+	if whole := population(keys[:maxListedKeys]); len(whole.Keys) != maxListedKeys {
+		t.Fatalf("a population of 1,000 kept %d keys whole", len(whole.Keys))
+	}
+}
+
+// TestACycleListingEveryGroupWholeFitsItsBound: four groups of the most keys
+// a population lists whole, each key as long as a record's, encode within a
+// cycle's bound, so a busy window never makes a draw that cannot be written.
+func TestACycleListingEveryGroupWholeFitsItsBound(t *testing.T) {
+	keys := make([]string, maxListedKeys)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("20261113T070000Z-iss-%016d", i)
+	}
+	c := Cycle{SchemaVersion: SchemaVersion, ID: cycleID(at0, sha('a')), Sample: Sample{Counted: []string{}}}
+	for _, g := range groupOrder {
+		c.Groups = append(c.Groups, GroupDraw{Group: g, Population: population(keys), Drawn: keys[:maxPerGroup]})
+	}
+	if _, err := encodeFile(CyclesDir, c.ID+".json", c); err != nil {
+		t.Fatal(err)
 	}
 }

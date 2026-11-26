@@ -23,18 +23,18 @@ func keysOf(cs []candidate) []string {
 }
 
 // TestFourGroupsFromTheirSources: rows classed drain and automatic and the
-// hand-backs and decisions in the window make the four groups; a row of any
-// other class, person-approved among them, and a record outside the window,
-// are never drawn.
+// hand-backs and decisions no earlier cycle drew from make the four groups;
+// a row of any other class, person-approved among them, and a record an
+// earlier cycle's population held, are never drawn.
 func TestFourGroupsFromTheirSources(t *testing.T) {
-	from, to := at0.Add(-time.Hour), at0.Add(time.Hour)
+	to := at0.Add(time.Hour)
 	rows := []LandingRow{row(sha('a'), ClassDrain), row(sha('b'), ClassAutomatic, "itd-2610301750162657"), row(sha('c'), ClassAutomatic),
 		row(sha('d'), "person-approved"), row(sha('e'), "person-push")}
 	hIn, hOut := handBack("iss-1", at0), handBack("iss-2", to.Add(time.Second))
 	dIn := gateDecision(9, sha('f'), true, at0)
 	groups, err := populations(rows,
 		[]namedHandBack{{name: fileOf(t, hIn).name, h: hIn}, {name: fileOf(t, hOut).name, h: hOut}},
-		[]namedDecision{{name: fileOf(t, dIn).name, d: dIn}}, from, to)
+		[]namedDecision{{name: fileOf(t, dIn).name, d: dIn}}, map[string]map[string]bool{GroupDrainHandBacks: {recordKey(fileOf(t, hOut).name): true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFourGroupsFromTheirSources(t *testing.T) {
 func TestUnreadApprovalRefusesTheDraw(t *testing.T) {
 	r := row(sha('a'), ClassAutomatic)
 	r.ForgeUnread = true
-	if _, err := populations([]LandingRow{row(sha('b'), ClassDrain), r}, nil, nil, at0, at0); err == nil || !strings.Contains(err.Error(), "forge") {
+	if _, err := populations([]LandingRow{row(sha('b'), ClassDrain), r}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "forge") {
 		t.Fatalf("a row whose forge answer was not read was drawn from (err %v)", err)
 	}
 }
@@ -80,7 +80,7 @@ func TestDriftedRecordIsOneItem(t *testing.T) {
 	if fa.name == fb.name {
 		t.Fatal("the two records share a name")
 	}
-	groups, err := populations(nil, []namedHandBack{{name: fa.name, h: a}, {name: fb.name, h: b}}, nil, at0.Add(-time.Second), at0)
+	groups, err := populations(nil, []namedHandBack{{name: fa.name, h: a}, {name: fb.name, h: b}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestItemCopiesItsStateAtTheDraw(t *testing.T) {
 	r.Lane, r.RulePath, r.Resolves = "Some Lane words", "/home/x/rule.md", []string{"iss-12", "not an id"}
 	h := handBack("iss-4", at0)
 	d := Decision{Kind: KindDrainJudgement, At: at0, Issue: "iss-5", Question: "may it?", Answer: "yes", Model: "claude-opus-4-8", Rule: "adr-2609291342092738", Reason: "because it said so"}
-	groups, err := populations([]LandingRow{r}, []namedHandBack{{name: fileOf(t, h).name, h: h}}, []namedDecision{{name: fileOf(t, d).name, d: d}}, at0.Add(-time.Second), at0)
+	groups, err := populations([]LandingRow{r}, []namedHandBack{{name: fileOf(t, h).name, h: h}}, []namedDecision{{name: fileOf(t, d).name, d: d}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

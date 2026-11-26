@@ -212,11 +212,12 @@ The following are non-negotiable invariants — any architectural choice that vi
    store as last fetched, from disk, and makes one push of the records this
    checkout holds that origin's copy lacks, or nothing when it holds none.
    Once the window has passed (or before the first window opens) it makes one
-   fetch of the store's branch, one fetch of the latest round of the drand
-   beacon over HTTPS from `api.drand.sh` (then `api2.drand.sh`, then
-   `api3.drand.sh` when one before cannot be reached), within ten seconds in
-   all, the landings reader's forge reads for the window, and one push of the
-   cycle, each tried once more after a fresh fetch when origin refuses it.
+   fetch of the store's branch, one fetch of the drand beacon's round that the
+   window's close fixes, asked by number over HTTPS from `api.drand.sh` (then
+   `api2.drand.sh`, then `api3.drand.sh` when one before cannot be reached),
+   within ten seconds in all and only once that round is published, the
+   landings reader's forge reads for the window, and one push of the cycle,
+   each tried once more after a fresh fetch when origin refuses it.
    Only typed fields leave the machine: a record's free text stays on its local
    copy.
    Setup (`abcd ahoy install`) downloads abcd only on a yes to the question

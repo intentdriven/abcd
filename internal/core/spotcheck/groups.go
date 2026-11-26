@@ -173,11 +173,15 @@ func recordKey(name string) string {
 }
 
 // populations are the window's four groups: the reader's rows classed drain
-// and automatic, and the hand-backs and decisions whose time falls in
-// (from, to]. A row whose approval was not read from the forge refuses them
-// all. Within a group, records of one key are one candidate, the record of
-// the greatest file name copied.
-func populations(rows []LandingRow, hbs []namedHandBack, ds []namedDecision, from, to time.Time) (map[string][]candidate, error) {
+// and automatic, and the hand-backs and decisions origin's copy holds whose
+// key no earlier verified cycle's population of their group held (seen, by
+// group). Membership is by arrival on the store's branch, never by the time
+// a record names, so a record that reaches origin after its window was drawn
+// is drawn from in the next, and every record is in exactly one population.
+// A row whose approval was not read from the forge refuses them all. Within
+// a group, records of one key are one candidate, the record of the greatest
+// file name copied.
+func populations(rows []LandingRow, hbs []namedHandBack, ds []namedDecision, seen map[string]map[string]bool) (map[string][]candidate, error) {
 	groups := map[string][]candidate{}
 	for _, r := range rows {
 		if r.ForgeUnread {
@@ -196,13 +200,12 @@ func populations(rows []LandingRow, hbs []namedHandBack, ds []namedDecision, fro
 		}
 		groups[g] = append(groups[g], candidate{key: t.Commit, roles: roles, landing: &t})
 	}
-	in := func(at time.Time) bool { return at.After(from) && !at.After(to) }
 	pickH := map[string]namedHandBack{}
 	for _, h := range hbs {
-		if !in(h.h.At) {
+		k := recordKey(h.name)
+		if seen[GroupDrainHandBacks][k] {
 			continue
 		}
-		k := recordKey(h.name)
 		if old, ok := pickH[k]; !ok || h.name > old.name {
 			pickH[k] = h
 		}
@@ -213,10 +216,10 @@ func populations(rows []LandingRow, hbs []namedHandBack, ds []namedDecision, fro
 	}
 	pickD := map[string]namedDecision{}
 	for _, d := range ds {
-		if !in(d.d.At) {
+		k := recordKey(d.name)
+		if seen[GroupFacilitatorDecisions][k] {
 			continue
 		}
-		k := recordKey(d.name)
 		if old, ok := pickD[k]; !ok || d.name > old.name {
 			pickD[k] = d
 		}

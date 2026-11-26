@@ -342,14 +342,21 @@ spot-check (itd-2610301750162657), and the `landed` step's note carries what it
 did. While the window (`spotcheck.window_days`, seven days by default) has not
 passed, it pushes only the records this checkout holds that the store branch
 `abcd-spotcheck` on origin lacks, and asks nothing when it holds none. Once the
-window has passed, it fetches the store branch and one round of the drand public
-randomness beacon, checks the round's signature itself, draws up to
-`spotcheck.per_group` items from each group of the work decided with no person
-involved, and pushes the drawn items to the branch. Only typed fields reach
-origin: a record's free text stays on the machine that wrote it. A draw that
-cannot be made (the beacon unreachable or its signature wrong, the forge
-unread, the push refused twice) writes nothing, says why, and leaves the
-landing as proved; the next landing observed tries again.
+window has passed, it fetches the store branch and the one round of the drand
+public randomness beacon that the window's close fixes, checks the round's
+signature itself, draws up to `spotcheck.per_group` items from each group of
+the work decided with no person involved, and pushes the drawn items to the
+branch. The window's close is read from the default branch's history, so the
+draw is the same whoever makes it and whenever; until its round is published
+the note says the window is not yet drawable. Every cycle already on the
+branch is verified as it is read, and one that does not verify is named and
+its window drawn again. Only typed fields reach origin: a record's free text
+stays on the machine that wrote it. A draw that cannot be made (the beacon
+unreachable, its signature wrong or another round than the one asked, the
+forge unread, the push refused twice) writes nothing, says why, and leaves the
+landing as proved; the next landing observed tries again. A store branch on
+origin that no longer holds what this machine last verified there, deleted or
+rewritten, is refused in one line, and nothing is written over it.
 
 **What `human` holds against.** The gate assumes agents keep the rules: it
 stops an agent merging by mistake, not one set on getting round it. The

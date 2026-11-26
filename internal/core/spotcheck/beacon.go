@@ -1,10 +1,12 @@
 package spotcheck
 
 // beacon.go is the draw's seed (spc-2610301925429250 approach 4): one round
-// of drand's quicknet chain, a public randomness beacon no agent can steer,
-// fetched only once a window has closed and verified here, at the draw,
-// under the chain's pinned public key. A round whose signature does not
-// verify is no seed at all: the draw is refused and nothing is written.
+// of drand's quicknet chain, a public randomness beacon, the round fixed by
+// the window's close on the chain's pinned clock, asked for by number only
+// once it is published, and verified under the chain's pinned public key at
+// the draw and again wherever a cycle is read back. A round whose signature
+// does not verify, or that is not the round the close fixes, is no seed at
+// all: the draw is refused and nothing is written.
 
 import (
 	"bytes"
@@ -18,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/cloudflare/circl/sign/bls"
@@ -36,6 +39,30 @@ const ChainHash = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e
 // G2 (scheme bls-unchained-g1-rfc9380: signatures on G1, keys on G2), read
 // from the same info reply.
 const chainPoint = "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a"
+
+// The quicknet chain's clock, read from the same info reply and pinned with
+// its hash and key: round 1 was published at chainGenesis (Unix seconds), and
+// one round follows every chainPeriod. A window's round is fixed by this
+// clock alone (roundAt), never by the moment a draw asks for it.
+const (
+	chainGenesis = 1692803367
+	chainPeriod  = 3 * time.Second
+)
+
+// roundTime is the moment round r is published.
+func roundTime(r uint64) time.Time {
+	return time.Unix(chainGenesis, 0).UTC().Add(time.Duration(r-1) * chainPeriod)
+}
+
+// roundAt is the first round published at or after t: the round a window
+// that closes at t is drawn from.
+func roundAt(t time.Time) uint64 {
+	d := t.Sub(time.Unix(chainGenesis, 0))
+	if d <= 0 {
+		return 1
+	}
+	return uint64((d+chainPeriod-1)/chainPeriod) + 1
+}
 
 // The beacon's bounds.
 const (
@@ -99,18 +126,19 @@ var beaconGet = func(ctx context.Context, rawURL string) ([]byte, error) {
 // the one failure on which the next host is asked.
 var errUnreachable = errors.New("unreachable")
 
-// fetchBeacon is the chain's latest round, asked of each host in turn until
-// one answers, within BeaconTimeout, and verified under the pinned key. A
-// reply that is read and refused (over its bound, malformed, of another
-// chain, a signature that does not verify) refuses the fetch: no other host
-// is asked, since a host that answers wrongly is no reason to trust the next.
-// Every refusal names the beacon, and the round where one was read.
-func fetchBeacon(parent context.Context, now time.Time) (Beacon, error) {
+// fetchBeacon is the chain's round, asked by number of each host in turn
+// until one answers, within BeaconTimeout, and verified under the pinned key.
+// A reply that is read and refused (over its bound, malformed, of another
+// chain, a signature that does not verify, another round than the one asked)
+// refuses the fetch: no other host is asked, since a host that answers
+// wrongly is no reason to trust the next. Every refusal names the beacon, and
+// the round where one was read.
+func fetchBeacon(parent context.Context, round uint64, now time.Time) (Beacon, error) {
 	ctx, cancel := context.WithTimeout(parent, BeaconTimeout)
 	defer cancel()
 	var last error
 	for _, host := range beaconHosts {
-		u := "https://" + host + "/" + ChainHash + "/public/latest"
+		u := "https://" + host + "/" + ChainHash + "/public/" + strconv.FormatUint(round, 10)
 		body, err := beaconGet(ctx, u)
 		if err != nil {
 			last = fmt.Errorf("%s: %w (%s)", host, errUnreachable, redact(err))
@@ -123,10 +151,34 @@ func fetchBeacon(parent context.Context, now time.Time) (Beacon, error) {
 		if err != nil {
 			return Beacon{}, fmt.Errorf("the beacon at %s: %w", host, err)
 		}
+		if b.Round != round {
+			return Beacon{}, fmt.Errorf("the beacon at %s answered round %d when round %d was asked", host, b.Round, round)
+		}
 		b.URL, b.FetchedAt = u, now.UTC().Truncate(time.Second)
 		return b, nil
 	}
 	return Beacon{}, fmt.Errorf("the beacon could not be reached: %w", last)
+}
+
+// verifyBeacon checks a beacon a cycle keeps, as read back: of the pinned
+// chain, its signature that of its round under the pinned key, and its
+// randomness the hash of that signature.
+func verifyBeacon(b Beacon) error {
+	if b.ChainHash != ChainHash || b.Round == 0 {
+		return errors.New("its beacon is not a round of the pinned chain")
+	}
+	sig, err := sigBytes(b.Signature)
+	if err != nil {
+		return fmt.Errorf("its beacon's %w", err)
+	}
+	r, err := verifyRound(b.Round, sig)
+	if err != nil {
+		return fmt.Errorf("its round %d: %w", b.Round, err)
+	}
+	if b.Randomness != hex.EncodeToString(r[:]) {
+		return fmt.Errorf("its round %d carries a randomness that is not the hash of its signature", b.Round)
+	}
+	return nil
 }
 
 // beaconReplyFields are the fields of a reply the fetch reads; any other

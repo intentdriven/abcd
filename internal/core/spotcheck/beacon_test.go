@@ -37,7 +37,7 @@ func TestBeaconVerify(t *testing.T) {
 	}
 }
 
-// beaconReply is a reply body as the chain's latest round is served.
+// beaconReply is a reply body as the chain serves a round.
 func beaconReply(round, sig, randomness string) []byte {
 	b := `{"round":` + round + `,"signature":"` + sig + `"`
 	if randomness != "" {
@@ -69,14 +69,14 @@ func TestBeaconFetchVerifiesTheRound(t *testing.T) {
 		"api.drand.sh": func() ([]byte, error) { return beaconReply("1000", vectorSignature, vectorRandomness), nil },
 	})
 	now := time.Date(2026, 11, 25, 1, 2, 3, 0, time.UTC)
-	b, err := fetchBeacon(context.Background(), now)
+	b, err := fetchBeacon(context.Background(), 1000, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b.Round != vectorRound || b.Signature != vectorSignature || b.Randomness != vectorRandomness || b.ChainHash != ChainHash || !b.FetchedAt.Equal(now) {
 		t.Fatalf("beacon = %+v", b)
 	}
-	if b.URL != "https://api.drand.sh/"+ChainHash+"/public/latest" {
+	if b.URL != "https://api.drand.sh/"+ChainHash+"/public/1000" {
 		t.Fatalf("the beacon names %s", b.URL)
 	}
 }
@@ -99,7 +99,7 @@ func TestBeaconReplyBounds(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			serve(t, map[string]func() ([]byte, error){"api.drand.sh": func() ([]byte, error) { return body, nil }})
-			if b, err := fetchBeacon(context.Background(), time.Now()); err == nil {
+			if b, err := fetchBeacon(context.Background(), 1000, time.Now()); err == nil {
 				t.Fatalf("the reply was taken: %+v", b)
 			} else if !strings.Contains(err.Error(), "beacon") {
 				t.Fatalf("the refusal does not name the beacon: %v", err)
@@ -118,7 +118,7 @@ func TestBeaconOtherChainRefused(t *testing.T) {
 	serve(t, map[string]func() ([]byte, error){"api.drand.sh": func() ([]byte, error) {
 		return []byte(`{"round":1000,"signature":"` + vectorSignature + `","chain_hash":"` + other + `"}`), nil
 	}})
-	if _, err := fetchBeacon(context.Background(), time.Now()); err == nil || !strings.Contains(err.Error(), "chain") {
+	if _, err := fetchBeacon(context.Background(), 1000, time.Now()); err == nil || !strings.Contains(err.Error(), "chain") {
 		t.Fatalf("a reply of another chain was taken (err %v)", err)
 	}
 }
@@ -129,7 +129,7 @@ func TestBeaconRandomnessMustMatch(t *testing.T) {
 	serve(t, map[string]func() ([]byte, error){"api.drand.sh": func() ([]byte, error) {
 		return beaconReply("1000", vectorSignature, strings.Repeat("0", 64)), nil
 	}})
-	if _, err := fetchBeacon(context.Background(), time.Now()); err == nil || !strings.Contains(err.Error(), "randomness") {
+	if _, err := fetchBeacon(context.Background(), 1000, time.Now()); err == nil || !strings.Contains(err.Error(), "randomness") {
 		t.Fatalf("a reply whose randomness is not its signature's hash was taken (err %v)", err)
 	}
 }
@@ -141,7 +141,7 @@ func TestBeaconHostFallbackOrder(t *testing.T) {
 	asked := serve(t, map[string]func() ([]byte, error){
 		"api3.drand.sh": func() ([]byte, error) { return beaconReply("1000", vectorSignature, ""), nil },
 	})
-	b, err := fetchBeacon(context.Background(), time.Now())
+	b, err := fetchBeacon(context.Background(), 1000, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +162,38 @@ func TestBeaconHostFallbackOrder(t *testing.T) {
 		"api.drand.sh":  func() ([]byte, error) { return beaconReply("1001", vectorSignature, ""), nil },
 		"api2.drand.sh": func() ([]byte, error) { return beaconReply("1000", vectorSignature, ""), nil },
 	})
-	if _, err := fetchBeacon(context.Background(), time.Now()); err == nil || len(*asked) != 1 {
+	if _, err := fetchBeacon(context.Background(), 1000, time.Now()); err == nil || len(*asked) != 1 {
 		t.Fatalf("a refused reply was followed by another host (asked %q, err %v)", *asked, err)
 	}
 
 	asked = serve(t, nil)
-	if _, err := fetchBeacon(context.Background(), time.Now()); err == nil || len(*asked) != 3 || !strings.Contains(err.Error(), "unreachable") {
+	if _, err := fetchBeacon(context.Background(), 1000, time.Now()); err == nil || len(*asked) != 3 || !strings.Contains(err.Error(), "unreachable") {
 		t.Fatalf("no host answering was not refused naming why (asked %q, err %v)", *asked, err)
+	}
+}
+
+// TestRoundAtTheChainsClock: a window's round is the first the chain
+// publishes at or after its close, on the pinned genesis and period.
+func TestRoundAtTheChainsClock(t *testing.T) {
+	at := roundTime(1000)
+	for when, want := range map[time.Time]uint64{at: 1000, at.Add(-time.Second): 1000, at.Add(-3 * time.Second): 999, at.Add(time.Second): 1001,
+		at.Add(7 * 24 * time.Hour): 202600, time.Unix(chainGenesis, 0): 1, time.Unix(0, 0): 1} {
+		if got := roundAt(when); got != want {
+			t.Errorf("roundAt(%s) = %d; want %d", when, got, want)
+		}
+	}
+	if at.Unix() != 1692806364 {
+		t.Fatalf("round 1000 is published at %d", at.Unix())
+	}
+}
+
+// TestFetchRefusesAnotherRound: a host that answers a verified round other
+// than the one asked is refused, naming both.
+func TestFetchRefusesAnotherRound(t *testing.T) {
+	serve(t, map[string]func() ([]byte, error){
+		"api.drand.sh": func() ([]byte, error) { return beaconReply("1000", vectorSignature, vectorRandomness), nil },
+	})
+	if _, err := fetchBeacon(context.Background(), 202600, time.Now()); err == nil || !strings.Contains(err.Error(), "round 1000 when round 202600") {
+		t.Fatalf("another round was taken (err %v)", err)
 	}
 }

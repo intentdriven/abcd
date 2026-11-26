@@ -110,8 +110,10 @@
 #      commits hold the store's small JSON files and nothing else. The
 #      spotcheck_shape check admits a fast-forward (or the creation) whose
 #      every commit holds only regular, non-executable files at the store's
-#      paths, read in full; anything else pushed to the branch is gated as any
-#      branch is, and a deletion is refused: the store is kept for ever.
+#      paths, each within the store reader's own bound, read in full, and that
+#      adds no more files than the store's writer puts in one push; anything
+#      else pushed to the branch is gated as any branch is, and a deletion is
+#      refused: the store is kept for ever.
 #
 #      A commit is "already on a remote", and needs no receipt for that, only
 #      when a remote-tracking ref outside every receipt-less prefix holds it.
@@ -230,41 +232,59 @@ reservation_shape() {
 # "-". A path git quotes (one holding any other byte) never matches.
 spotcheck_path_re='^(window-open\.json|(handbacks|decisions|cycles|items|judgements)(/[A-Za-z0-9._-]+)+\.json)$'
 
+# The store's bounds, the reader's and the writer's own (internal/core/spotcheck:
+# maxRecordBytes, maxCycleBytes, maxPushFiles): the most bytes a file may hold,
+# a cycle under cycles/ more since it lists its populations, and the most files
+# one push may add or change.
+spotcheck_max_bytes=16384
+spotcheck_max_cycle_bytes=262144
+spotcheck_max_files=1000
+
 # spotcheck_shape is the spot-check store's shape check, for the branch the
 # push names ($branch): the branch is abcd-spotcheck itself, the push is a
 # fast-forward (or a create), the walk reads the range in full, and every
 # commit it moves holds nothing but regular, non-executable files at store
-# paths (spotcheck_path_re), no segment "." or "..". The range is everything
-# new on an update and everything reachable on a create, so a commit of the
+# paths (spotcheck_path_re), no segment "." or "..", each within its bound
+# (spotcheck_max_bytes, spotcheck_max_cycle_bytes), and the push adds or
+# changes no more than spotcheck_max_files files. The range is everything new
+# on an update and everything reachable on a create, so a commit of the
 # product's history pushed to the branch walks into a tree holding other
-# paths and is gated as any branch is. Only paths and modes are judged: the
-# store's reader judges every file's content, and nothing on the branch is
-# built, run or merged.
+# paths and is gated as any branch is. Only paths, modes, sizes and the count
+# are judged: the store's reader judges every file's content, and nothing on
+# the branch is built, run or merged.
 spotcheck_shape() {
-  local remote_sha="$1" local_sha="$2" range commit commits listing line meta path
+  local remote_sha="$1" local_sha="$2" range commit commits listing line meta path changed
+  local mode type sha size limit
   [ "$branch" = "abcd-spotcheck" ] || return 1
   if is_null_id "$remote_sha"; then
     range="$local_sha"
+    changed="$(git ls-tree -r --name-only --full-tree "$local_sha" 2>/dev/null)" || return 1
   else
     git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null || return 1
     range="$remote_sha..$local_sha"
+    changed="$(git diff-tree -r --name-only "$remote_sha" "$local_sha" 2>/dev/null)" || return 1
   fi
+  [ "$(printf '%s' "$changed" | grep -c '')" -le "$spotcheck_max_files" ] || return 1
   read_in_full "$range" || return 1
   commits="$(git rev-list "$range" 2>/dev/null)" || return 1
   for commit in $commits; do
-    listing="$(git ls-tree -r --full-tree "$commit" 2>/dev/null)" || return 1
+    listing="$(git ls-tree -r -l --full-tree "$commit" 2>/dev/null)" || return 1
     while IFS= read -r line; do
       [ -n "$line" ] || continue
       meta="${line%%$'\t'*}"
       path="${line#*$'\t'}"
-      case "$meta" in
-      "100644 blob "*) ;;
-      *) return 1 ;;
-      esac
+      read -r mode type sha size <<<"$meta"
+      [ "$mode $type" = "100644 blob" ] || return 1
+      [[ "$sha" =~ ^[0-9a-f]{40}([0-9a-f]{24})?$ && "$size" =~ ^[0-9]{1,9}$ ]] || return 1
       [[ "$path" =~ $spotcheck_path_re ]] || return 1
       case "/$path/" in
       */./* | */../*) return 1 ;;
       esac
+      limit="$spotcheck_max_bytes"
+      case "$path" in
+      cycles/*) limit="$spotcheck_max_cycle_bytes" ;;
+      esac
+      [ "$size" -le "$limit" ] || return 1
     done <<<"$listing"
   done
 }

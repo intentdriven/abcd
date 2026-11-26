@@ -466,9 +466,14 @@ local copy of the store (`refs/abcd/spotcheck`), with the mode's layer and
 whether a review receipt named the head. While the window has not passed, the
 observation reads the store as last fetched and pushes only records origin's
 branch `abcd-spotcheck` lacks. Once it has passed it fetches the branch, takes
-one verified round of the drand quicknet beacon (signature checked against the
-pinned key, ten seconds in all), draws by HMAC over the round's randomness,
-and pushes the cycle over the tracking tip, tried once more after a refusal.
+the verified round of the drand quicknet beacon that the window's close fixes
+on the chain's pinned clock (asked by number once published, its signature
+checked against the pinned key, ten seconds in all), draws by HMAC over the
+round's randomness, and pushes the cycle over the tracking tip, tried once more
+after a refusal. Every cycle read back is verified the same way and set aside
+when it fails, and a branch that no longer holds this machine's high-water
+mark is refused
+([dcn-2611260013430233](../../../work/decisions/dcn-2611260013430233-the-technical-facilitator-under.md)).
 Only typed fields reach origin, and an observation that cannot draw writes
 nothing and leaves the landing proved. The branch takes no preflight receipt:
 the pre-push hook admits it by a row of its own

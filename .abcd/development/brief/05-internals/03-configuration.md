@@ -849,7 +849,8 @@ may run to in this repository: a whole number from 16 to 200, 40 by default
 
 The `spotcheck` block sets the spot-check's window and its sample
 (`internal/core/spotcheck/config.go`, itd-2610301750162657), read through the
-layered resolver, the repository layer last and winning.
+layered resolver, the repository layer last and winning, at origin's default
+branch as stored: a value only in the working tree sizes no draw.
 
 ```jsonc
 {
@@ -862,9 +863,11 @@ layered resolver, the repository layer last and winning.
 ```
 
 - **The first bound to pass closes the window.** A window spans everything since
-  the last cycle, and closes at the first landing observed once `window_days`
-  whole days have gone by or, when set, `window_changes` first-parent commits
-  have landed on the default branch.
+  the last cycle and closes as the default branch's first-parent line gives it:
+  `window_days` whole days after it began, once a commit was committed after
+  that moment, or, when set, at the `window_changes`-th commit, whichever comes
+  first on the line. The draw is made at the first landing observed after the
+  round that close fixes is published.
 - **`per_group` is the most a group draws.** The size halves, rounded up, after
   three closed cycles in a row found nothing, and is whole again after a finding.
 - **A nonsense value refuses.** A value out of bounds or not a whole number, or a

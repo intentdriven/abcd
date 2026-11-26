@@ -3,6 +3,7 @@ package spotcheck
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -42,35 +43,55 @@ func TestOpenCycleCountsAsNeither(t *testing.T) {
 	}
 }
 
-// TestSizeCountsClosedCyclesInWindowOrder: the tally reads the cycles origin's
-// copy holds newest first by window, whatever order the files are listed in,
-// and stops once three closed ones are found.
-func TestSizeCountsClosedCyclesInWindowOrder(t *testing.T) {
+// tallyCase is origin's copy holding n cycles of one drawn item each, for
+// the tally: judge(i) is cycle i's judgement file, "" for none.
+func tallyCase(t *testing.T, n int, judge func(i int, id, stem string) string) (windowState, []string, string) {
+	t.Helper()
 	r, _ := originWithRemote(t)
 	files := map[string]string{}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	var ids []string
-	for i := range 5 {
+	var cycles []Cycle
+	stem := itemStem(1, GroupDrainLanded, "k")
+	for i := range n {
 		id := cycleID(base.Add(time.Duration(i)*24*time.Hour), fmt.Sprintf("%040x", i+1))
 		ids = append(ids, id)
-		files[CyclesDir+"/"+id+".json"] = encodeOrFail(t, Cycle{SchemaVersion: SchemaVersion, ID: id, ToCommit: fmt.Sprintf("%040x", i+1), ToTime: base})
+		c := Cycle{SchemaVersion: SchemaVersion, ID: id, Groups: []GroupDraw{{Group: GroupDrainLanded, Drawn: []string{"k"}},
+			{Group: GroupAutomaticMerges}, {Group: GroupDrainHandBacks}, {Group: GroupFacilitatorDecisions}}}
+		cycles = append(cycles, c)
 		it := Item{SchemaVersion: SchemaVersion, Cycle: id, Number: 1, Group: GroupDrainLanded, Key: "k", Roles: []string{RoleFacilitator}}
-		files[ItemsDir+"/"+id+"/"+itemStem(1, GroupDrainLanded, "k")+".json"] = encodeOrFail(t, it)
-		// The newest (4) is open; 3 found a fault; 2, 1, 0 are clean.
-		if i < 4 {
-			verdict := "sound"
-			if i == 3 {
-				verdict = "wrong"
-			}
-			files[JudgementsDir+"/"+id+"/"+itemStem(1, GroupDrainLanded, "k")+"."+RoleFacilitator+".json"] = `{"verdict":"` + verdict + `"}` + "\n"
+		files[ItemsDir+"/"+id+"/"+stem+".json"] = encodeOrFail(t, it)
+		if j := judge(i, id, stem); j != "" {
+			files[JudgementsDir+"/"+id+"/"+stem+"."+RoleFacilitator+".json"] = j
 		}
 	}
-	setTracking(t, r, files)
-	st, err := readWindow(t.Context(), r.Root())
+	tracking := setTracking(t, r, files)
+	listed, err := listFiles(t.Context(), r.Root(), tracking)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tallies, err := tallyCycles(t.Context(), r.Root(), st)
+	return windowState{tracking: tracking, files: listed, cycles: cycles, open: true}, ids, r.Root()
+}
+
+// judgementOf is a judgement file as the review lane writes one.
+func judgementOf(t *testing.T, id, stem, verdict string) string {
+	return encodeOrFail(t, Judgement{SchemaVersion: SchemaVersion, Cycle: id, Item: stem, Role: RoleFacilitator, Verdict: verdict})
+}
+
+// TestSizeCountsClosedCyclesInWindowOrder: the tally reads the verified
+// cycles newest first by window, and stops once three closed ones are found.
+func TestSizeCountsClosedCyclesInWindowOrder(t *testing.T) {
+	st, ids, root := tallyCase(t, 5, func(i int, id, stem string) string {
+		// The newest (4) is open; 3 found a fault; 2, 1, 0 are clean.
+		switch {
+		case i == 4:
+			return ""
+		case i == 3:
+			return judgementOf(t, id, stem, VerdictWrong)
+		}
+		return judgementOf(t, id, stem, VerdictSound)
+	})
+	tallies, err := tallyCycles(t.Context(), root, st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,5 +101,32 @@ func TestSizeCountsClosedCyclesInWindowOrder(t *testing.T) {
 	}
 	if size, why, _ := sampleSize(10, tallies); size != 10 || why != SizeFull {
 		t.Fatalf("size = %d %s; want full, after the finding in %s", size, why, ids[3])
+	}
+}
+
+// TestAJudgementThatDoesNotReadLeavesTheCycleOpen: a file at a judgement's
+// path that does not read as that judgement (empty, a verdict alone, another
+// item's, a verdict outside the set) is no judgement, so three such cycles
+// never halve the sample.
+func TestAJudgementThatDoesNotReadLeavesTheCycleOpen(t *testing.T) {
+	for name, body := range map[string]func(id, stem string) string{
+		"empty object": func(string, string) string { return "{}\n" },
+		"verdict only": func(string, string) string { return `{"verdict":"sound"}` + "\n" },
+		"another item": func(id, _ string) string { return judgementOf(t, id, itemStem(2, GroupDrainLanded, "k"), VerdictSound) },
+		"odd verdict":  func(id, stem string) string { return judgementOf(t, id, stem, "fine") },
+		"repeated key": func(id, stem string) string {
+			return strings.Replace(judgementOf(t, id, stem, VerdictWrong), `"verdict": "wrong"`, `"verdict": "wrong", "verdict": "sound"`, 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st, _, root := tallyCase(t, 3, func(_ int, id, stem string) string { return body(id, stem) })
+			tallies, err := tallyCycles(t.Context(), root, st)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if size, why, _ := sampleSize(10, tallies); size != 10 || why != SizeFull {
+				t.Fatalf("three cycles of judgements that do not read halved the sample: %d %s (%+v)", size, why, tallies)
+			}
+		})
 	}
 }

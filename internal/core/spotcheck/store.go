@@ -149,6 +149,9 @@ const (
 	maxRecordBytes = 16 << 10
 	// maxListingBytes bounds one listing of the store's files.
 	maxListingBytes = 8 << 20
+	// maxPushFiles bounds the files one push adds or changes, as the pre-push
+	// hook bounds them.
+	maxPushFiles = 1000
 	// maxTries bounds the moves of the local copy one write makes when
 	// another writer of the checkout moved it first.
 	maxTries = 3
@@ -521,7 +524,10 @@ func (d Decision) file() (file, error) {
 
 // encode is v as a record file holds it: indented JSON and a newline, within
 // maxRecordBytes.
-func encode(v any) ([]byte, error) {
+func encode(v any) ([]byte, error) { return encodeWithin(v, maxRecordBytes) }
+
+// encodeWithin is encode within limit bytes.
+func encodeWithin(v any, limit int) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
@@ -529,8 +535,8 @@ func encode(v any) ([]byte, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	if b.Len() > maxRecordBytes {
-		return nil, fmt.Errorf("the record is %d bytes, over the store's %d", b.Len(), maxRecordBytes)
+	if b.Len() > limit {
+		return nil, fmt.Errorf("the record is %d bytes, over the store's %d", b.Len(), limit)
 	}
 	return b.Bytes(), nil
 }
@@ -1257,6 +1263,9 @@ func push(ctx context.Context, root string) (PushResult, error) {
 		if err != nil {
 			return PushResult{}, err
 		}
+		// A backlog over one push's bound goes in turns, the rest with the
+		// next push.
+		todo = todo[:min(len(todo), maxPushFiles)]
 		res := PushResult{Pushed: len(todo), Unreadable: unreadable}
 		if len(todo) == 0 {
 			return res, nil
@@ -1281,14 +1290,23 @@ func push(ctx context.Context, root string) (PushResult, error) {
 
 // fetchTracking fetches the store's branch into its tracking ref and answers
 // the commit it names, "" when origin holds no such branch (a stale tracking
-// ref is then removed).
+// ref is then removed). A branch that no longer holds this machine's mark
+// (holdsMark), gone from origin or rewritten there, is refused: the tracking
+// ref of a gone branch is kept, and nothing is written over either.
 func fetchTracking(ctx context.Context, root string) (string, error) {
 	found, err := claim.FetchBranch(ctx, root, BranchRef, TrackingRef)
 	if err != nil {
 		return "", fmt.Errorf("the spot-check's branch was not fetched: %w", stopped("push", err))
 	}
 	if found {
-		return storeRef(ctx, root, TrackingRef)
+		tracking, err := storeRef(ctx, root, TrackingRef)
+		if err != nil {
+			return "", err
+		}
+		return tracking, holdsMark(ctx, root, tracking)
+	}
+	if err := holdsMark(ctx, root, ""); err != nil {
+		return "", err
 	}
 	if old, err := storeRef(ctx, root, TrackingRef); err == nil && old != "" {
 		if _, err := storeGit(ctx, root, "", "", "update-ref", "-d", TrackingRef, old); err != nil {
@@ -1358,6 +1376,9 @@ func outbound(ctx context.Context, root string, theirs map[string]entry) (todo [
 // put right by the next fetch); a push that fails leaves nothing behind but
 // an unreferenced commit.
 func pushOver(ctx context.Context, root, tracking string, files []file, msg string) (string, error) {
+	if len(files) > maxPushFiles {
+		return "", fmt.Errorf("the push would carry %d files, over the %d one push of the spot-check's may", len(files), maxPushFiles)
+	}
 	tree, err := treeWith(ctx, root, tracking, files)
 	if err != nil {
 		return "", err
