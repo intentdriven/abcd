@@ -518,3 +518,58 @@ func TestADetachedHeadOnOriginHasNoRepositoryFigure(t *testing.T) {
 	}
 	reserveN(t, p, 5)
 }
+
+// TestTheDrainsCountReadsOnlyTheSavedDefault: the drain's count at the cap
+// (MaxLiveFor) reads the figure at the branch an adding act here last heard
+// origin name, 4 after an act; with no saved name it reads no figure and
+// leaves the count to the act, rather than reading at the default branch
+// this checkout tracks. A saved name git tracks, one that is no valid branch
+// name, and a checkout with no local tier to save one in each read as no
+// saved name.
+func TestTheDrainsCountReadsOnlyTheSavedDefault(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	acted := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	reserveN(t, acted, 1)
+	if n, err := MaxLiveFor(acted.dir, acted.opts()); err != nil || n != 4 {
+		t.Fatalf("after an act: %d, %v; want the repository's 4", n, err)
+	}
+	save := func(p *participant, body string) {
+		t.Helper()
+		dir := filepath.Join(p.dir, filepath.FromSlash(stateRelDir))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p.dir, filepath.FromSlash(originDefaultRel)), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		lay  func(p *participant)
+	}{
+		{"no act has saved a name", func(*participant) {}},
+		{"a saved name git tracks", func(p *participant) {
+			save(p, "main\n")
+			p.git("add", "-f", originDefaultRel)
+			p.git("commit", "-q", "-m", "track the saved name")
+		}},
+		{"a saved name that is no valid branch name", func(p *participant) { save(p, "a..b\n") }},
+		{"a saved name of HEAD", func(p *participant) { save(p, "HEAD\n") }},
+		{"no local tier", func(p *participant) {
+			if err := os.RemoveAll(filepath.Join(p.dir, filepath.FromSlash(tierRelDir))); err != nil {
+				t.Fatal(err)
+			}
+			keepOriginDefault(p.dir, "main")
+		}},
+	} {
+		p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+		c.lay(p)
+		if b := keptOriginDefault(p.dir); b != "" {
+			t.Errorf("%s: the saved name reads %q; want none", c.name, b)
+		}
+		if n, err := MaxLiveFor(p.dir, p.opts()); !errors.Is(err, errNoKeptDefault) {
+			t.Errorf("%s: %d, %v; want no figure, the count left to the act", c.name, n, err)
+		}
+	}
+}
