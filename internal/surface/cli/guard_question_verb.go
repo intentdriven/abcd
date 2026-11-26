@@ -226,7 +226,7 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "guard question: " + err.Error()}
 			}
 			cwd, _ := os.Getwd()
-			reads := questionState(cmd, cwd)
+			reads := questionState(cmd, cwd, "")
 			v := question.Decide(fields, reads.state, reads.state.Limits)
 			res := questionCheckOf(form, v, structural, ready, reads)
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {

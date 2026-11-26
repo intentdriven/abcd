@@ -98,6 +98,18 @@ wait for their return; that word is kept in the record, narrows what sessions
 do, and grants nothing. A prompt never ends the mode; its time does, or the
 person's word that they are back.
 
+**The person talking while away.** A prompt the person types in a session
+while the record holds does not end the mode, but opens a window of 15 minutes
+in which that session reads them as present (iss-2611260602137306): its turn
+ends are judged as a present session's, and its questions go to the person and
+are checked as when they are present. The prompt hook tells the session so in
+one line. A prompt is the person's unless it is one of the session's wakes, as
+the stop check last saw them, or opens as one of the host's own prompts does (a
+background task's report, another session's message, a usage-limit resumption,
+a continued session's summary). Every other session stays away, and the window
+closes on its own, so the person can add to a conversation without ending the
+mode and setting it again.
+
 **The queue and the return.** While the record holds, a session keeps a step
 for the person's return instead of asking them: an act only the person may
 approve. On their return the record is ended by word, which prints one plain

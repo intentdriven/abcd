@@ -403,7 +403,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 		if guardGitStalls(in.Cwd) {
 			return questionFailOpen(cmd.ErrOrStderr(), "%s", errors.New(guardGitTimeout("the session directory")))
 		}
-		return questionGate(cmd, in.Cwd, in.ToolInput.Questions, toolInputKeysCollide(raw))
+		return questionGate(cmd, in.Cwd, in.SessionID, in.ToolInput.Questions, toolInputKeysCollide(raw))
 	}
 	// A file the host's own tools write is judged by the occupancy of the
 	// working tree it lands in, not the registry (iss-2610280051498465).

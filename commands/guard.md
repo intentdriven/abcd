@@ -292,6 +292,12 @@ question from the reason's list. An away record that cannot be read safely
 reads as not away, and the hook says so on stderr, with the warning status
 only where it would otherwise admit the question silently.
 
+A session the person is talking to is the exception: for 15 minutes after a
+prompt they typed in it, its questions are checked as when they are present
+([the person talking while away](mode.md)), by the hook for that session and
+by `abcd guard question`, which names no session, for any session of the
+checkout inside that window.
+
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not
 load, a git that does not answer — allows the command and warns loudly. A guard

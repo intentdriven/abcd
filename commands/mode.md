@@ -148,6 +148,16 @@ or one already past, is refused (exit 2) with nothing written. Add
 narrows what sessions do and grants nothing. Tell the user the `terms` the
 verb prints. A prompt never ends the mode.
 
+**The person talking while away.** A prompt the person types in a session while
+the mode holds does not end it, but for 15 minutes after it that session reads
+them as present: its turn ends are not held, and its questions go to them on
+the host's question tool and are checked as when they are present. The prompt
+hook says so in one line beside the away block. A prompt that one of the
+session's own wakes fires, a background task's report, another session's
+message and the host's own resumptions open nothing. Every other session stays
+away, and once the 15 minutes pass the checks hold again in that session too:
+answer the person, then carry on with the owed work.
+
 **A session whose setting reads as off a profile is warned.** After the set, one
 line on stderr opens `WARNING:` (stdout's JSON is untouched) when one setting in
 this session's environment reads as off a profile. A host that reports no such

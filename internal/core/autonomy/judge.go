@@ -116,6 +116,21 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 		}
 		return v
 	}
+	if away && st.Conversing(now) {
+		// The person typed a prompt in this session within the window
+		// (iss-2611260602137306): the stop is the present one, and the state
+		// is kept as it was but for the wakes' prompts, so the away counts
+		// resume where they stood once the window ends.
+		next := st
+		next.SchemaVersion = SchemaVersion
+		next.CronPrompts = rememberCrons(st.CronPrompts, in.SessionCrons)
+		owed, _ = settleHandBacks(rec, owed, false)
+		v := Verdict{Save: true, State: next}
+		if !owed.Empty() {
+			v.SystemMessage = presentLine(owed)
+		}
+		return v
+	}
 	owed, handBacks := settleHandBacks(rec, owed, away)
 	if !away {
 		if owed.Empty() {
@@ -126,6 +141,7 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 
 	next := st
 	next.SchemaVersion = SchemaVersion
+	next.CronPrompts = rememberCrons(st.CronPrompts, in.SessionCrons)
 	if cfp := owed.CappedFingerprint(); cfp != next.WakeFingerprint {
 		next.Wakes, next.WakeFingerprint, next.WaitingSince = 0, cfp, time.Time{}
 	}

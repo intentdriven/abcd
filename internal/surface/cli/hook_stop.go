@@ -222,7 +222,10 @@ nothing.`,
 				}
 			}
 			v := autonomy.Judge(rec, owed, in, prev, now)
-			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, v, away)
+			// A session the person is talking to reads as present for the
+			// checklist too, inside the conversation window
+			// (iss-2611260602137306).
+			v = stopChecklistBehind(ctx, cmd, copyRoot, p.SessionID, owed, in, prev, v, away && !prev.Conversing(now))
 			if v.Save {
 				if err := autonomy.SaveSession(copyRoot, p.SessionID, v.State); err != nil {
 					return stopAllow(cmd, "the session's state could not be saved (%s)", fsutil.RedactHome(err.Error()))
@@ -269,12 +272,19 @@ func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sess
 		return v
 	}
 	if !away {
-		st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
-		if err != nil {
-			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
-			return v
+		// Inside the conversation window the verdict already holds the state
+		// to save (Judge kept the wakes' prompts), and the note is folded
+		// into it, so one write keeps both.
+		if v.Save {
+			prev = v.State
+		} else {
+			st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
+			if err != nil {
+				diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the session's state could not be read (%s); no checklist note is left", fsutil.RedactHome(err.Error()))
+				return v
+			}
+			prev = st
 		}
-		prev = st
 	}
 	res := checklist.Result{Source: checklist.FromNothing}
 	if len(owed.Owned) > 0 {
@@ -283,6 +293,10 @@ func stopChecklistBehind(ctx context.Context, cmd *cobra.Command, copyRoot, sess
 		}
 	}
 	v, present, save := autonomy.JudgeChecklist(v, autonomy.CheckBehind(owed.Owned, res), in, prev, away)
+	if save && !away && v.Save {
+		v.State = present
+		return v
+	}
 	if save {
 		if err := autonomy.SaveSession(copyRoot, sessionID, present); err != nil {
 			diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the checklist note was not left for the next prompt (%s)", fsutil.RedactHome(err.Error()))
