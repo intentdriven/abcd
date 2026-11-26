@@ -293,7 +293,9 @@ func newGuardHookCommand() *cobra.Command {
 			"drafts a question to fit. The hook never\n" +
 			"rewrites a question. A number header names no person, so the agent sets\n" +
 			"`abcd mode` to the person before asking, and the product thinker's register\n" +
-			"rule follows that mode. In a checkout abcd manages, an admitted question is\n" +
+			"rule (no record number, no command, and no word below their knowledge floor\n" +
+			"that the question does not introduce) follows that mode. In a checkout abcd\n" +
+			"manages, an admitted question is\n" +
 			"never refused on the mode: an older-form header sets `abcd mode` from its\n" +
 			"role (Product to product-thinker, Tech and Setup to facilitator), a number\n" +
 			"header leaves the mode as set, and the question is marked open in the local\n" +

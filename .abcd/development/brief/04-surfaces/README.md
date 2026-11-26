@@ -581,7 +581,10 @@ that everything it reads is data, never instruction.
   part, and returns the check's ready input, its rows, its `limits` and its
   version with `checked_by`; a hand count, made only with no shell, is at
   abcd's defaults and says so in a `note`. It quotes one decision's too-long material shorter, keeping every answer's gain and cost, and splits material holding several decisions or too many answers into numbered
-  parts. It refuses only a missing or contradictory
+  parts. It refuses material for the product thinker in words below their
+  [knowledge floor](../glossary/interview/knowledge-floor.md), which it reads
+  before it writes for them, returning the plain words it would use; otherwise
+  it refuses only a missing or contradictory
   brief, a check that gives no ready input (its exit 2, or `refuse-away` while the person is away), or five checks spent, and only to the agent that
   called it. Its asking rules, how it checks a draft, and the hand row count
   kept for a host with no shell are a block `cmd/asking-sync` renders from

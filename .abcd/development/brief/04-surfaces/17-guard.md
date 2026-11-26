@@ -297,7 +297,25 @@ the badge shows and the store was read, since a number names no person and
 the agent sets the mode before asking (decision 37), and by nobody elsewhere;
 each tab's `addressee` in the verdict is the person it was judged for; the
 binary's verb list
-is read from the command tree and passed in. The row limit is estimated with
+is read from the command tree and passed in. The register rule refuses a record
+number, a command, and a word below the product thinker's knowledge floor
+(iss-2611252121330106). The words are one list in `internal/core/question`, which a
+test holds equal to the table the floor's own page carries
+([`knowledge-floor.md`](../glossary/interview/knowledge-floor.md)); each word
+found on a tab is one finding, at its first use, naming the plain words the
+list gives. A word counts whole, in any case, in the plural and in the other
+forms the list names, joined to another by a hyphen included, and not inside a
+longer word. One the tab's question text introduces in one sentence before its
+first use passes on that tab, the floor's own rule. The sentence is read by its
+shape: the word opens it, bare or after "a", and it goes on to say what the
+word is or means without using the word again, or it ends on what the thing is
+called; "the merge" is a merge the reader is taken to know, so it introduces
+nothing. A sentence opening on a term the word starts ("A push notification
+is a message the app sends.") introduces that term alone. A short form the
+list names (CI, a PR) is introduced on its own, or in the sentence introducing
+the word, and is never introduced by its own long form ("A PR is a pull
+request."). No configuration lists further words or excepts any: the question
+limits' namespace takes its three keys alone. The row limit is estimated with
 the host's frame measured at 80 by 24, and a side preview on any option is
 refused, because the host hides every option's description while a preview
 shows (the layout intent's decision 20). Every finding refuses at once with
@@ -309,14 +327,15 @@ into one group per rule and tab, in the order the first of each appeared,
 keeping the first finding and a count, and `question.RenderGroups` writes each
 group as the first finding's line (the tab, the part, the value, the limit and
 the remedy) closed by "(and N more such lines)" when the rule broke more than
-once on that tab, each line through `termsafe.Sanitize`. The last line points
+once on that tab, the register rule's naming each further value as well, each line through `termsafe.Sanitize`. The last line points
 at the question check and the writer: it says to check the next draft with
 the question check, naming its command, before asking it, or to draft it
 through the `abcd:question-drafter` agent, which does. Every rule on every tab is named, with no cut. The refusal's size
 follows the limits, not the payload: past the count findings, `CheckLimits`
 checks only the first `QuestionsPerCall[1]` tabs and the first `OptionsPerQ[1]`
 options of each, and a rule that adds one finding per line of question text,
-the em dash in a list item, is one line per tab, so a refusal is at most the
+the em dash in a list item, is one line per tab; the register rule names each word
+once per tab, so its line is bounded by the list. A refusal is at most the
 rules times the checked tabs, the call's count finding and three fixed lines.
 The ten-line cut it replaced named only the first findings of a refusal past
 ten, and the agent fixed those, asked again, and was refused for the rest. The rows limit is the one
@@ -427,7 +446,9 @@ so a tab `unnamed` under it was checked with no mode set while one without it
 is checked where no mode is read; each tab's `addressee` and, where an
 admitted chip would re-set the mode, `addressee_changes`; every finding with whether it `refuses`;
 `by_rule`, the findings folded one entry per rule and tab with the first
-echoed value and a count, the groups the deny names one line each; `rows`
+echoed value and a count, the groups the deny names one line each (the
+register rule can take two on one tab, its words below the knowledge floor
+apart from its record numbers and commands and marked `floor`); `rows`
 per tab (`header_and_frame`, `question_text`, `options`, `total`, the split
 the rows rule computes) with `rows_limit`; `limits` and `limits_source`, the
 three figures the draft was judged at (`rows`, `label_words`,

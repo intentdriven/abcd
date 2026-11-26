@@ -217,12 +217,15 @@ func handWritten(page string) string {
 
 // TestWriterPageStatesItsRefusalsAndFallbacks (spc-2610301917245442, step 4;
 // approach 9): the hand-written part of the question-writing agent's page
-// states its three refusals, each returned to the calling agent only (a
+// states its four refusals, each returned to the calling agent only (a
 // missing or contradictory part of the brief, the mode in force among them,
 // an `unnamed` addressee under `badge: true` included, but not one under
 // `badge: false`; the check giving no ready input, on its
-// exit 2 or a `refuse-away`; five checks spent with the last findings), and
-// the caller's `abcd mode managed` when it abandons a question after one;
+// exit 2 or a `refuse-away`; five checks spent with the last findings;
+// material for the product thinker in words below their knowledge floor, with
+// the plain words, iss-2611252121330106), that the floor's page is read before
+// anything is written and a row limit the brief names is not used, and the
+// caller's `abcd mode managed` when it abandons a question after one;
 // the draft piped as one line of JSON; the `questions` array of `ready` as
 // what is returned; the `checked_by` field with its three values;
 // the five-check bound; that it never refuses for length, splitting into
@@ -256,6 +259,9 @@ func TestWriterPageStatesItsRefusalsAndFallbacks(t *testing.T) {
 		"what it returns":                                {"`questions`", "`rows`", "`version`", "`ready`"},
 		"the limits it reports are the check's":          {"`limits` is the check's `limits`", "never figures of your own or either file's"},
 		"a hand count is at abcd's defaults":             {"A hand count is made at abcd's defaults", "neither the repository's values nor the person's were read", "Say so in a `note` beside `checked_by`"},
+		"the floor, read before writing":                 {"Before you write for the product thinker, read the page", "`.abcd/development/brief/glossary/interview/knowledge-floor.md`", "under the plugin root"},
+		"the refusal of material below the floor":        {"You refuse for four causes only", "the material uses words below their knowledge floor", `"plain_words"`, "you never swap the words of material"},
+		"a row limit in the brief is not used":           {"A row limit the brief names is not one of them: use the limit the check reports"},
 		"an unchecked pass is not done":                  {"exits 0 with a `ready` input and `abcds` `true`", "An exit 0 with `hook` `admit-unchecked` is not done", "`abcds` is `false`", "Fix the header to abcd's number"},
 	} {
 		for _, p := range phrases {
