@@ -2507,7 +2507,9 @@ func (t *terminal) stopOver(runID string, c control) string {
 // beneath it (startedUnder). A run that names no driver is taken only on a sign its session
 // ended: its mark has settled, or the reservation of its issue has lapsed. A run a drive's
 // end let go with no mark is judged the same way, so one that names no driver is taken
-// only once its reservation has lapsed on origin. Otherwise it
+// only where its release did not reach origin and that tip has lapsed: a release that
+// reached origin reads as released, never as lapsed, so no start takes such a run, and
+// the step that claims it (`abcd implement step --run`) is the way on. Otherwise it
 // says who holds the run and the act that frees it: a live driver in another terminal or a
 // host session keeps it, and a process table that cannot be read leaves it, since whether
 // its driver lives cannot be told and a take-over resets the run's worktrees.
