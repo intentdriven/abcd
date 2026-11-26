@@ -3,8 +3,8 @@
 A destructive shell command typed by accident costs a person hours: a force
 push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
-and says what to run instead. It writes nothing but the record of a branch an
-agent creates, the one-shot allow a person records in their home folder with
+and says what to run instead. It writes nothing but the facts it keeps about a
+sub-agent whose write it judges, the record of a branch an agent creates, the one-shot allow a person records in their home folder with
 the guard's allow verb and, where the badge
 shows and the mode store reads, the waiting-on mode an admitted older-form chip sets and the marker saying a question is open, written for abcd's question it admits and, while the mode names somebody, for abcd's question it refuses and for another tool's question (all below),
 and it costs nothing to have on: an unrecognised command passes through
@@ -549,7 +549,7 @@ lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `am`, `pull` and `push`. `guard.RecordActs`
 reads each command of the line after the guard's own tokenizer, steps the words
 the registry's walker steps before a command (assignment words, the reserved
-words `if`, `then`, `do`, `{` and `!`, `coproc`, `function NAME` and
+words `if`, `then`, `elif`, `else`, `do`, `while`, `until`, `{` and `!`, `coproc`, `function NAME` and
 `repeat COUNT`; a function in any other form is held by the guard as
 `function-form-unread`, and is read as an act, so the hold asks) and git's global options with their values, and takes the
 subcommand by position, so `git stash push` and `echo git commit` are no write. A
@@ -560,6 +560,19 @@ reads as no act. A command run through a wrapper (`time`, `env`, `sudo`,
 its commit. Any other shell command goes on unasked: no closed reading of a line
 tells a write from a read, and an edit made through the shell is held at its
 commit.
+
+**What is a call.** The guard reads a call of a function the line defines in one
+shape: the function is one command of a fixed program that runs no other
+command, its arguments read only as `"$@"`, `$@`, `"$1"`…`"$9"`, `$1`…`$9` or
+`${1}`…`${9}`, and the call stands where a command starts on the line itself;
+the line is then judged again with the call replaced by the command its words
+make (`functionCallReadings`). Every other call, with words, of a function that
+reads its arguments is blocked as `function-form-unread`, so
+`greet() { echo "hello $1"; echo bye; }; greet world` is held. A line naming
+zsh's `functions[` or `aliases[` tables (or `galiases[`, `saliases[`,
+`dis_functions[`), running `functions -c` or `-M`, defining several names with
+one `()`, or running a command through zsh's `-` modifier is held the same way,
+since each changes what a name runs where the guard does not see it.
 
 **What is a reading.** The sub-agent's own transcript is read once at the held
 call, from where the host keeps it beside the session's
@@ -601,7 +614,7 @@ reads each let the write go on to the guard's other checks. Where there is a key
 to keep it under, a fact says why, and that sub-agent is not judged again, with
 one exception: an absent or empty transcript is one the host has not written yet,
 so the next write is judged on what stands then. Its stop
-keeps a line saying so, which the staged listing prints
+keeps a line saying so, which the staged listing prints, where its transcript shows no reading
 ([`11-history.md`](11-history.md#a-stopping-sub-agents-line)).
 
 ## Fail-open-loud

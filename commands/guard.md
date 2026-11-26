@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | question [<file>|-] [--ask] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
@@ -69,7 +69,11 @@ call, with words, of a function that reads its arguments is a **block**
 (`function-form-unread`): a body of more than one command, a loop, an
 assignment or a declaration, an argument read in any other form, a call after
 a wrapper or inside a substitution, a line that defines an alias, or a line
-whose readings run past a few thousand words. A function in a script the line
+whose readings run past a few thousand words. So is a line that changes what a
+name runs where the guard does not see it: one naming zsh's `functions[`,
+`aliases[`, `galiases[`, `saliases[` or `dis_functions[`, running `functions -c`
+or `functions -M`, defining several names with one `()` (`f x() { … }`), or
+running a command through zsh's `-` modifier. A function in a script the line
 runs is read as the script stands.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
@@ -364,7 +368,8 @@ and one sent in the same turn may not be. Never work around a hold by writing
 through another tool: read the file. A call that names a build lane's own brief
 stands for the reading. The session's own calls, abcd's cold-reading agents and
 a drive's stage are never held, and a write that cannot be judged is not held:
-the sub-agent's stop keeps a line saying so, and `history staged` lists it.
+where its transcript shows no reading, the sub-agent's stop keeps a line saying
+so, and `history staged` lists it.
 
 A call through any other
 tool never reaches the guard: a command a tool from another extension runs is

@@ -2401,7 +2401,7 @@ abcd explain ideate record --input verdict-json
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
+Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -2638,6 +2638,12 @@ no backslash in it is read the same way. On a line where another command
 names IFS an unquoted one is blocked (ifs-split-unread), because the
 guard splits on the default IFS only. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
+A call of a function the line defines is read with its words in one
+shape only, a body of one command reading them as `"$@"` or `"$1"`;
+any other call, with words, of a function that reads them is blocked
+(function-form-unread), and so is a line that renames what a name runs
+through zsh's `functions[` or `aliases[` tables, `functions -c` or `-M`,
+a `()` definition of several names, or the `-` modifier.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.
@@ -2695,7 +2701,7 @@ abcd guard check --command 'git push --force origin main'
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
+Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.
 
 **Usage:** `abcd guard hook`
 
@@ -2750,7 +2756,7 @@ and writes nothing is a reading, and one that names the brief of a build's
 lane stands for it. Without one the write is refused with the host's deny,
 whose reason names the file, where abcd looked for it and the read to make.
 The session's own calls, abcd's cold-reading agents and a drive's stage are
-never held, and what cannot be judged is not held: the sub-agent's stop
+never held, and what cannot be judged is not held: with no reading, its stop
 says so.
 
 A call through any other tool never reaches the guard: a command a tool from

@@ -109,6 +109,12 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"names IFS an unquoted one is blocked (ifs-split-unread), because the\n" +
 			"guard splits on the default IFS only. Two `sh -c` or `eval` layers are\n" +
 			"followed; a payload nested deeper is blocked.\n" +
+			"A call of a function the line defines is read with its words in one\n" +
+			"shape only, a body of one command reading them as `\"$@\"` or `\"$1\"`;\n" +
+			"any other call, with words, of a function that reads them is blocked\n" +
+			"(function-form-unread), and so is a line that renames what a name runs\n" +
+			"through zsh's `functions[` or `aliases[` tables, `functions -c` or `-M`,\n" +
+			"a `()` definition of several names, or the `-` modifier.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
 			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
@@ -274,7 +280,7 @@ func newGuardHookCommand() *cobra.Command {
 			"lane stands for it. Without one the write is refused with the host's deny,\n" +
 			"whose reason names the file, where abcd looked for it and the read to make.\n" +
 			"The session's own calls, abcd's cold-reading agents and a drive's stage are\n" +
-			"never held, and what cannot be judged is not held: the sub-agent's stop\n" +
+			"never held, and what cannot be judged is not held: with no reading, its stop\n" +
 			"says so.\n\n" +
 			"A call through any other tool never reaches the guard: a command a tool from\n" +
 			"another extension runs is neither checked nor warned about. That is the guard's\n" +
