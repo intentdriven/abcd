@@ -3,6 +3,7 @@ package guard
 import (
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -53,16 +54,20 @@ type carriedValue struct {
 	folded, dash bool
 }
 
-// maxCarriedValues bounds the values one name is read with. A name assigned
-// more often holds the first maxCarriedValues-1 values and then one that
-// stands for the rest: output the guard did not read, fed by every command
-// any of them held, so a value past the bound is never dropped unread.
-const maxCarriedValues = 8
+// maxCarriedValues bounds the values one name is read with, so the line keeps
+// what it reads of them in a bounded list; the line's budget (carriedBudget) is
+// what bounds the readings. A name assigned more often holds the first
+// maxCarriedValues-1 values and then one that stands for the rest: output the
+// guard did not read, fed by every command any of them held, so a value past
+// the bound is never dropped unread.
+const maxCarriedValues = 1024
 
-// maxCarriedReadings bounds the readings of one command with values in place.
-// Past it, the first maxCarriedReadings-1 combinations are read, and then one
-// that stands for the rest, in which each name holding several values holds
-// output the guard did not read, fed by every command any of them held.
+// maxCarriedReadings bounds the readings of one command whose words use two
+// names or more, with values in place; a command using one name is read with
+// each of its values. Past it, the first maxCarriedReadings-1 combinations are
+// read, and then one that stands for the rest, in which each name holding
+// several values holds output the guard did not read, fed by every command any
+// of them held.
 const maxCarriedReadings = 64
 
 // The readings with values in place past each command's first are bounded
@@ -85,6 +90,12 @@ const (
 type carriedBudget struct {
 	text, readings, bytes int
 	unread                bool
+	// programOutput records a command whose program is a value holding
+	// output the guard did not read (carriedSegments).
+	programOutput, programHeld bool
+	// suppliedHeld records an xargs that runs words it reads from its input
+	// as commands (xargsRunsInput).
+	suppliedHeld bool
 }
 
 // grant adds the words of segs to the text the line has read.
@@ -128,8 +139,22 @@ func carriedReadings(segs []segment, budget *carriedBudget) (map[int][]segment, 
 	var out map[int][]segment
 	var signals []payloadSignal
 	ends := loopEnds(segs)
+	var args *[]string
 	for k, s := range segs {
 		readings := []segment{s}
+		// The words a `set` gives the positional parameters are the arguments
+		// a later `"$@"` or `"$1"` hands its command.
+		if args != nil && !budget.unread {
+			if d, ok := positionalReading(s, *args); ok {
+				if out == nil {
+					out = map[int][]segment{}
+				}
+				out[k] = append(out[k], d)
+			}
+		}
+		if a, ok := setsPositionals(s, args); ok {
+			args = a
+		}
 		if len(vals) > 0 && len(s.variable) > 0 && !budget.unread {
 			ds, held, runsOutput, unread := carriedSegments(s, vals, budget)
 			if unread && !budget.unread {
@@ -144,12 +169,15 @@ func carriedReadings(segs []segment, budget *carriedBudget) (map[int][]segment, 
 				if out == nil {
 					out = map[int][]segment{}
 				}
-				out[k] = ds
+				out[k] = append(out[k], ds...)
 				readings = ds
 			}
 			if runsOutput {
 				signals = append(signals, carriedOutputSignal())
 			}
+		}
+		if budget.programOutput || unreadProgram(s) {
+			budget.programHeld = true
 		}
 		var loopIn []feed
 		if e, ok := ends[k]; ok {
@@ -160,6 +188,89 @@ func carriedReadings(segs []segment, budget *carriedBudget) (map[int][]segment, 
 		}
 	}
 	return out, signals
+}
+
+// setsPositionals reports whether s gives the positional parameters new words,
+// and the words: a `set` with operands, or a `shift` of words a `set` gave
+// (args, nil when none did). A word the line does not fix among set's options,
+// or a shift by one, leaves words no line fixes, two of them.
+func setsPositionals(s segment, args *[]string) (*[]string, bool) {
+	t := s.tokens
+	if len(t) == 0 || s.carrier != 0 {
+		return nil, false
+	}
+	unread := &[]string{unknownText, unknownText}
+	switch t[0] {
+	case "set":
+		for i := 1; i < len(t); i++ {
+			switch w := t[i]; {
+			case w == "--":
+				words := append([]string(nil), t[i+1:]...)
+				return &words, true
+			case unfixed(w):
+				return unread, true
+			case !strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "+"):
+				words := append([]string(nil), t[i:]...)
+				return &words, true
+			case len(w) > 1 && w[len(w)-1] == 'o':
+				// -o, or a cluster ending in it (`-euo pipefail`), takes the
+				// next word as an option's name.
+				i++
+			}
+		}
+	case "shift":
+		if args == nil {
+			return nil, false
+		}
+		n := 1
+		if len(t) > 1 {
+			if !allDigits(t[1]) || len(t[1]) > 4 {
+				return unread, true
+			}
+			n = 0
+			for _, c := range t[1] {
+				n = n*10 + int(c-'0')
+			}
+		}
+		words := (*args)[min(n, len(*args)):]
+		return &words, true
+	}
+	return nil, false
+}
+
+// positionalReading is s read with the words args holds in place of each word
+// that is a positional parameter whole: `$@` and `$*` as every word, `$N` as the
+// Nth. ok is false where s holds none.
+func positionalReading(s segment, args []string) (segment, bool) {
+	d := segment{chain: s.chain, fromFixedOutput: true, valuesPlaced: true}
+	found := false
+	for i, t := range s.tokens {
+		sp := s.spelled[i]
+		if len(sp) == 0 || !isUnknown(t) {
+			d.tokens = append(d.tokens, t)
+			continue
+		}
+		name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(sp[0], "$"), "{"), "}")
+		switch {
+		case !strings.HasPrefix(sp[0], "$") || name == "":
+			d.tokens = append(d.tokens, t)
+		case name == "@" || name == "*":
+			d.tokens = append(d.tokens, args...)
+			found = true
+		case allDigits(name) && len(name) <= 4 && strings.Trim(name, "0") != "":
+			n := 0
+			for _, c := range name {
+				n = n*10 + int(c-'0')
+			}
+			if n >= 1 && n <= len(args) {
+				d.tokens = append(d.tokens, args[n-1])
+			}
+			found = true
+		default:
+			d.tokens = append(d.tokens, t)
+		}
+	}
+	return d, found
 }
 
 // loopEnds maps each `while` or `until` command of segs to the `done` that
@@ -219,6 +330,9 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 			v.tmpl, v.spell = "", ""
 		}
 		v.output = isUnknown(v.tok) && v.tmpl == ""
+		if name, ok := lookedUpName(v.tok, v.feeds); ok {
+			v.tok, v.output = unknownText+"/"+path.Base(name), false
+		}
 		return v
 	}
 	assign := func(i int) {
@@ -303,10 +417,15 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 }
 
 // addValue appends v to a name's values, folding every value past the bound
-// into one that stands for output the guard did not read.
+// into one that stands for output the guard did not read. A value spelled as
+// one the name already holds is that value, fed by the commands of both: the
+// readings of the two differ only in what feeds the word, which every reading
+// of feeds takes as any of them.
 func addValue(vs []carriedValue, v carriedValue) []carriedValue {
-	for _, have := range vs {
-		if have.tok == v.tok && have.tmpl == v.tmpl && len(have.feeds) == 0 && len(v.feeds) == 0 {
+	for k, have := range vs {
+		if have.tok == v.tok && have.tmpl == v.tmpl && have.spell == v.spell && have.output == v.output &&
+			have.folded == v.folded && have.dash == v.dash {
+			vs[k].feeds = joinFeeds(have.feeds, v.feeds)
 			return vs
 		}
 	}
@@ -402,16 +521,20 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 			}
 		}
 	}
+	bound := maxCarriedReadings
+	if len(names) == 1 {
+		bound = len(vals[names[0]])
+	}
 	combos := 1
 	for _, nm := range names {
-		if combos *= len(vals[nm]); combos > maxCarriedReadings {
+		if combos *= len(vals[nm]); combos > bound {
 			break
 		}
 	}
-	folded := combos > maxCarriedReadings
-	combos = min(combos, maxCarriedReadings)
+	folded := combos > bound
+	combos = min(combos, bound)
 	pick := make(map[string]carriedValue, len(names))
-	var wordAt map[int]bool
+	var wordAt, runsAt map[int]bool
 	for k := 0; k < combos; k++ {
 		r := k
 		for _, nm := range names {
@@ -447,6 +570,13 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 			placeValues(&d, u.i, s.variable[u.i], u.names, picked)
 			if output {
 				outputAt = append(outputAt, u.i)
+				// A program the guard did not read is not judged.
+				if runsAt == nil {
+					runsAt = runningPrograms(s)
+				}
+				if runsAt[u.i] && !s.casePattern && s.arrayOf == "" && isUnknown(path.Base(d.tokens[u.i])) {
+					budget.programOutput = true
+				}
 			}
 		}
 		if k > 0 && !budget.spend(d) {
@@ -461,17 +591,131 @@ func carriedSegments(s segment, vals map[string][]carriedValue, budget *carriedB
 }
 
 // programWords is the words of s that stand as a command's program, other than
-// the name `command -v` or `-V` looks up, which runs nothing.
+// the name a `command -v` or `-V` that is the command's own program looks up,
+// which runs nothing.
 func programWords(s segment) map[int]bool {
 	out := map[int]bool{}
 	for _, a := range commandSites(s) {
-		i := a.idx
-		if i >= 2 && s.tokens[i-2] == "command" && strings.HasPrefix(s.tokens[i-1], "-") && strings.ContainsAny(s.tokens[i-1], "vV") {
-			continue
+		if !looksUp(s, a.idx) {
+			out[a.idx] = true
 		}
-		out[i] = true
 	}
 	return out
+}
+
+// looksUp reports whether word i of s is the name a `command -v` or `-V` that is
+// the command's own program looks up, which runs nothing.
+func looksUp(s segment, i int) bool {
+	arr := arrivalsOf(s)
+	return i >= 2 && len(arr) > 0 && arr[0].idx == i-2 && s.tokens[i-2] == "command" &&
+		strings.HasPrefix(s.tokens[i-1], "-") && strings.ContainsAny(s.tokens[i-1], "vV")
+}
+
+// runningPrograms is the words of s that run as a program for certain: its first
+// word of command position, and each after a wrapper whose name the line fixes.
+// The words a walk reaches only behind a name it does not know are guesses, not
+// these.
+func runningPrograms(s segment) map[int]bool {
+	out := map[int]bool{}
+	for _, a := range arrivalsOf(s) {
+		if !looksUp(s, a.idx) {
+			out[a.idx] = true
+		}
+		if !a.wrapper || unfixed(s.tokens[a.idx]) {
+			break
+		}
+	}
+	return out
+}
+
+// unreadProgram reports whether a command of s runs, as its program, the output
+// of a command substitution: a word whose name nothing on the line spells.
+func unreadProgram(s segment) bool {
+	if s.carrier != 0 || s.valuesPlaced || s.speculative || s.casePattern || s.arrayOf != "" {
+		return false
+	}
+	if _, ok := fixedOutputSegment(s); ok {
+		return false
+	}
+	for i := range runningPrograms(s) {
+		_, isVar := s.variable[i]
+		_, joined := s.literal[i]
+		if isUnknown(path.Base(s.tokens[i])) && !isVar && !joined && !emptyOutput(s, i) && !lookupOutput(s.tokens[i], s.feeds[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// emptyOutput reports whether word i is wholly the output of substitutions
+// with no command in them (`$( )`, two backticks), which print nothing: the
+// program is then the next word, read as the program where an unknown name
+// stands.
+func emptyOutput(s segment, i int) bool {
+	if s.substitutionUnread || strings.Trim(s.tokens[i], unknownText) != "" {
+		return false
+	}
+	for _, f := range s.feeds[i] {
+		if f.hi > f.lo {
+			return false
+		}
+	}
+	return true
+}
+
+// lookupOutput reports whether a word is wholly the output of commands that print
+// where a program is (`command -v NAME`, `which NAME`, `type -P NAME`, `whence -p
+// NAME`) or nothing (`true`, `:`), for one fixed NAME each: the word is then the
+// path of a program the line names, read as such where its value is placed
+// (recordAssignments).
+func lookupOutput(tok string, feeds []feed) bool {
+	_, ok := lookedUpName(tok, feeds)
+	return ok
+}
+
+// lookedUpName is the program a lookupOutput word names.
+func lookedUpName(tok string, feeds []feed) (string, bool) {
+	if tok != unknownText || len(feeds) == 0 {
+		return "", false
+	}
+	name := ""
+	for _, f := range feeds {
+		if f.list == nil || f.hi > len(f.list.segs) {
+			return "", false
+		}
+		for _, s := range f.list.segs[f.lo:f.hi] {
+			t := s.tokens
+			switch {
+			case len(t) == 1 && (t[0] == "true" || t[0] == ":"):
+				continue
+			case len(t) == 3 && (t[0] == "command" && t[1] == "-v" || t[0] == "type" && (t[1] == "-P" || t[1] == "-p") ||
+				t[0] == "whence" && t[1] == "-p"), len(t) == 2 && t[0] == "which":
+				n := t[len(t)-1]
+				if unfixed(n) || !fixedValue.MatchString(n) || name != "" && n != name {
+					return "", false
+				}
+				name = n
+			default:
+				return "", false
+			}
+		}
+	}
+	return name, name != ""
+}
+
+// unreadProgramSignal is the fail-closed verdict on a command whose program is
+// output the guard did not read: a command substitution, or a variable the line
+// set from one.
+func unreadProgramSignal() payloadSignal {
+	return payloadSignal{
+		id:      unknownProgramEntryID,
+		verdict: VerdictBlock,
+		family:  familySubstitution,
+		last:    true,
+		reason: "This command runs, as its program, the output of a command substitution, directly or through a variable " +
+			"the line set from one, so which program runs is not something the guard has checked.",
+		successor: "Name the program the command runs, so the guard checks the command that actually runs.",
+	}
 }
 
 // wholeWord reports whether a word's template is nothing but variables.
@@ -544,12 +788,10 @@ func carriedUnreadSignal() payloadSignal {
 		id:      commandTooLongEntryID,
 		verdict: VerdictBlock,
 		family:  familyCommandLength,
-		reason: "This line gives its variables more values, or more combinations of them, than the guard puts in place (" +
-			itoa(maxCarriedValues) + " values a name, " + itoa(maxCarriedReadings) + " readings a command, " +
-			"and for a line a reading for every " + itoa(carriedBytesPerReading) + " bytes it holds), " +
-			"so a command that uses them has not been checked.",
-		successor: "Split the line, or give each variable the one value the command needs, " +
-			"so the guard checks the command that actually runs.",
+		reason: "The guard could not read every value this line gives a word (it reads " +
+			itoa(maxCarriedReadings) + " combinations for a word of several variables, and for a line about one reading for every " +
+			itoa(carriedBytesPerReading) + " bytes it holds), so a command that uses them has not been checked.",
+		successor: "Run the commands one at a time, or run the script directly, so the guard checks each command that runs.",
 	}
 }
 
@@ -1126,6 +1368,20 @@ func runsFetchedFile(s segment, isFetched func(string) bool) bool {
 		}
 	}
 	return false
+}
+
+// joinFeeds returns the feeds of a and then those of b that a does not hold.
+func joinFeeds(a, b []feed) []feed {
+	out := a
+	for _, f := range b {
+		if !slices.Contains(out, f) {
+			if len(out) == len(a) {
+				out = append([]feed(nil), a...)
+			}
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // mergeRuns holds runs as one covering run per tokenize call they name: the

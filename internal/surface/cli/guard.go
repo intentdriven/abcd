@@ -85,6 +85,13 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"any program its known text allows, so an unknown name with any operand\n" +
 			"reads as `pkill` too; a block that fires only on such a name is reported\n" +
 			"as program-name-unknown, and the way past is to spell the program's name.\n" +
+			"A command whose program is a substitution's output the guard does not\n" +
+			"read, alone or through a variable the line set from one (`$(date)`,\n" +
+			"`P=$(cat f); $P make`), is refused under program-name-unknown, since\n" +
+			"which program runs is unchecked. The output read is a document printed\n" +
+			"as exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
+			"blanks, and the path a lookup of one fixed name prints (`command -v go`,\n" +
+			"`which go`, `type -P go`, `whence -p go`, alone or `|| true`).\n" +
 			"A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,\n" +
 			"as the program's name, as a flag (`--$VAR`) and in a string handed to a\n" +
 			"shell, and a value the line assigns before it uses it is read in place.\n" +
@@ -140,12 +147,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"cannot read is warned or, for `env -S`, blocked) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +
-			"a lone substitution standing as the whole command (`$(cat msg.txt)`,\n" +
-			"`$(date)`), which can be any program but matches no entry with no\n" +
-			"operand after it, and so a document printed that way through any shape\n" +
-			"but exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
-			"blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command\n" +
-			"beside it, a backslash-newline in it, a `${…}` around it),\n" +
+
 			"or a dangerous form no entry describes. Coverage is what the registry\n" +
 			"names.\n\n" +
 			"The candidate comes from --command, or from stdin when the flag is absent.\n" +

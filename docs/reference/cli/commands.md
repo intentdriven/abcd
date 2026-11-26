@@ -2614,6 +2614,13 @@ operand it is one operand; in command position (`$(echo git) push`) it is
 any program its known text allows, so an unknown name with any operand
 reads as `pkill` too; a block that fires only on such a name is reported
 as program-name-unknown, and the way past is to spell the program's name.
+A command whose program is a substitution's output the guard does not
+read, alone or through a variable the line set from one (`$(date)`,
+`P=$(cat f); $P make`), is refused under program-name-unknown, since
+which program runs is unchecked. The output read is a document printed
+as exactly `cat <<DELIM`, a newline, the body, the delimiter line and
+blanks, and the path a lookup of one fixed name prints (`command -v go`,
+`which go`, `type -P go`, `whence -p go`, alone or `|| true`).
 A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,
 as the program's name, as a flag (`--$VAR`) and in a string handed to a
 shell, and a value the line assigns before it uses it is read in place.
@@ -2669,12 +2676,6 @@ an execute-a-string payload IS read, `sh -c` and `env -S`, and one the guard
 cannot read is warned or, for `env -S`, blocked) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
-a lone substitution standing as the whole command (`$(cat msg.txt)`,
-`$(date)`), which can be any program but matches no entry with no
-operand after it, and so a document printed that way through any shape
-but exactly `cat <<DELIM`, a newline, the body, the delimiter line and
-blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command
-beside it, a backslash-newline in it, a `${…}` around it),
 or a dangerous form no entry describes. Coverage is what the registry
 names.
 

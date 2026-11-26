@@ -178,10 +178,16 @@ var wordReaders = map[string]string{
 	"program":       "commandSites, isUnknown and unfixed: a word nothing on the line fixes is no fixed program",
 	"segmentMaySet": "commandSites and unfixed: a word no line fixes may set the variable",
 	"maySetBy":      "exempt: reads the words a builtin is handed, and a word no line fixes (unfixed) counts as naming the variable",
+	"quietCommand":  "isUnknown and unfixed: a word no line fixes, other than a plain variable's value, makes the command one that may set a variable",
 
 	// carried.go: the values a line assigns, in place.
-	"programWords": "commandSites: every word the walk may run as a program, but the name command -v looks up",
-	"leadsDash":    "exempt: reads a value the line assigned, as fixed text, not a word of the line",
+	"programWords":    "commandSites: every word the walk may run as a program, but the name command -v looks up",
+	"carriedSegments": "isUnknown: a value placed as a running program that the guard did not read holds the line (unreadProgram)",
+	"lookedUpName":    "unfixed: a lookup of a name no line fixes prints no fixed program",
+	"looksUp":         "exempt: reads the literal command and its -v or -V option ahead of the first word commandSites places; any other word is read as running",
+	"setsPositionals": "unfixed: a word no line fixes among set's words gives positional parameters no fixed value, read as unknown",
+	"unreadProgram":   "isUnknown: a running program the guard did not read holds the line",
+	"leadsDash":       "exempt: reads a value the line assigned, as fixed text, not a word of the line",
 
 	// supplied.go: the words xargs and a find hand the command they run.
 	"suppliedReadings": "commandSites, commandNamed and anyProgram for xargs and find: a name nothing fixes is read as neither, and a supplied word is unknownText",
@@ -239,6 +245,7 @@ var wordReaders = map[string]string{
 	"readTar":            "isUnknown: a word no line fixes may be -P, so the archive is judged as able to land anywhere",
 	"unzipTargets":       "exempt: reads unzip's literal option letters; a word no line fixes is read as the archive, and -d's value goes through resolveToken or valueAt, which refuse an unknown word",
 	"xargsReplacement":   "isUnknown: an option word no line fixes may name a replacement string, so every word of the command is read as unknown (xargsView)",
+	"xargsRunsInput":     "isUnknown: a program word or a command string xargs fills from its input, or with an option no line fixes, holds the line",
 	"plainFrom":          "isUnknown: a word the line does not fix voids the no-file exemption it guards",
 	"gitOutputs":         "exempt: each --output value goes through at or valueAt, which refuse an unknown word",
 	"moverReads":         "exempt: matches the command's name literally and hands its words to readOptsEach or gitRead, which read an unknown word as unsure or loose",

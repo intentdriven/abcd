@@ -868,13 +868,19 @@ func (r Registry) decide(v verdicts) Decision {
 
 	// The first synthetic block and warn (id order is not meaningful for the
 	// entry-less verdicts, so the first encountered wins its pool).
+	// A signal marked last wins only a pool no other signal reaches.
 	var synBlock, synWarn *payloadSignal
-	for i := range signals {
-		switch {
-		case signals[i].verdict == VerdictBlock && synBlock == nil:
-			synBlock = &signals[i]
-		case signals[i].verdict == VerdictWarn && synWarn == nil:
-			synWarn = &signals[i]
+	for _, last := range []bool{false, true} {
+		for i := range signals {
+			if signals[i].last != last {
+				continue
+			}
+			switch {
+			case signals[i].verdict == VerdictBlock && synBlock == nil:
+				synBlock = &signals[i]
+			case signals[i].verdict == VerdictWarn && synWarn == nil:
+				synWarn = &signals[i]
+			}
 		}
 	}
 

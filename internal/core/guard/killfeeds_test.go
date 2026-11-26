@@ -55,7 +55,7 @@ func TestKillFedThroughAStringXargsRunsIsBlocked(t *testing.T) {
 		{`xargs -a <(pgrep make) myrunner kill`, VerdictWarn, speculativeEntryID},
 
 		{`echo 4242 | xargs sh -c 'kill "$@"' _`, VerdictAllow, ""},
-		{`xargs -I{} sh -c 'kill {}' < pidfile`, VerdictAllow, ""},
+		{`xargs -I{} sh -c 'kill {}' < pidfile`, VerdictBlock, ""},
 		{`pgrep make | xargs sh -c 'echo "$@"' _`, VerdictAllow, ""},
 		{`pgrep make | sh -c 'wc -l'`, VerdictAllow, ""},
 		{`echo 4242 | sh -c 'xargs kill'`, VerdictAllow, ""},

@@ -1258,17 +1258,18 @@ command: a pid list (`p=$(pgrep make); kill $p`), a stream path handed to a
 shell, shell text run through `eval "$X"` or placed in a string a shell runs,
 or `pkill` or `killall` as a variable's value standing as the program with an
 operand (`$P make`), because reading each would refuse the ordinary commands a
-variable carries a value for; whether to is an open ruling. Nor does an allow see what a
-lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
-`$(date)`): such a name can be any program, but with no operand after it no
-entry matches, so it allows by the posture above, where an allow means no entry
-matched. What a substitution prints is read only for the exact shape `cat
-<<DELIM`, a newline, the body, the delimiter line and blanks. `/bin/cat`,
-`command cat`, `cat -`, a redirection after the delimiter word, a
-backslash-newline before the `<<`, a command after the document, a
-backslash-newline after a backtick's document, and an output inside a `${…}`
-all leave it unknown, so each of those standing alone as the command allows,
-though bash runs what it prints; handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
+variable carries a value for; whether to is an open ruling. A command whose
+program is a substitution's output the guard does not read, alone (`$(cat
+msg.txt)`, `$(date)`) or through a variable the line set from one, is refused
+under `program-name-unknown`, because which program runs is unchecked. What a
+substitution prints is read only for the exact shape `cat <<DELIM`, a newline,
+the body, the delimiter line and blanks, and for the path a lookup of one fixed
+name prints (`command -v go`, `which go`, `type -P go`, `whence -p go`, alone or
+with `|| true`). `/bin/cat`, `command cat`, `cat -`, a redirection after the
+delimiter word, a backslash-newline before the `<<`, a command after the
+document, a backslash-newline after a backtick's document, and an output inside
+a `${…}` all leave it unknown, so each of those as the program is refused;
+handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

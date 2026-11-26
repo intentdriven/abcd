@@ -126,6 +126,122 @@ func maySetBy(base string, args []string) bool {
 	return false
 }
 
+// quietPrograms are the commands that set no variable of the shell that runs
+// them, whatever words they are handed: a line whose every other command is one
+// of these, or a plain assignment of fixed text, can fix the program a variable
+// names (quietCommand). printf is one only without -v, and a test only where
+// none of its words can assign in arithmetic.
+var quietPrograms = map[string]bool{
+	"echo": true, "printf": true, "test": true, "[": true, "[[": true,
+	"true": true, "false": true, ":": true, "cd": true,
+}
+
+// quietKeywords open a command without running one; quietClosers close a
+// compound command and are all the command holds.
+var (
+	quietKeywords = map[string]bool{"do": true, "then": true, "else": true, "elif": true, "if": true, "!": true, "{": true}
+	quietClosers  = map[string]bool{"done": true, "fi": true, "}": true, "esac": true}
+)
+
+// quietCommand reports whether s is a command that cannot give any variable of
+// the line a value: one of quietPrograms, a plain assignment of fixed text, a
+// for-loop's opening over words, a case's opening or one of its patterns, or a
+// keyword that runs nothing, every word of it free of any expansion other than
+// a plain variable's, and of a pattern outside a case's patterns. Every
+// other command may set a variable, and so may any word the guard does not read
+// as plain.
+func quietCommand(s segment) bool {
+	if s.arrayOf != "" || len(s.assignsInText) > 0 || len(s.numbersInText) > 0 {
+		return false
+	}
+	toks := s.tokens
+	from := 0
+	for from < len(toks) && quietKeywords[toks[from]] {
+		from++
+	}
+	if from == len(toks) || len(toks)-from == 1 && quietClosers[toks[from]] {
+		return true
+	}
+	// A case matches its word against patterns, which bash neither runs nor
+	// expands as file names.
+	matches := s.casePattern || toks[from] == "case"
+	for i := from; i < len(toks); i++ {
+		t := toks[i]
+		if s.globAt(i) && !matches && t != "[" && t != "]" && t != "[[" && t != "]]" {
+			return false
+		}
+		if isUnknown(t) && !plainVariableWord(s, i) {
+			return false
+		}
+	}
+	prog, args := toks[from], toks[from+1:]
+	switch {
+	case s.casePattern:
+		return true
+	case prog == "case":
+		return len(args) >= 2 && args[1] == "in"
+	case allAssignments(toks[from:]):
+		for _, t := range toks[from:] {
+			_, eq, appends, subscript, ok := splitAssignment(t)
+			if !ok || appends || subscript || unfixed(t[eq+1:]) {
+				return false
+			}
+		}
+		return true
+	case prog == "for":
+		return len(args) >= 2 && isName(args[0]) && args[1] == "in"
+	case prog == "printf":
+		return len(args) == 0 || !unfixed(args[0]) && (args[0] == "--" || !strings.HasPrefix(args[0], "-"))
+	case prog == "test" || prog == "[" || prog == "[[":
+		for _, a := range args {
+			if strings.Contains(a, "=") && a != "=" && a != "==" && a != "!=" && a != "=~" {
+				return false
+			}
+		}
+	}
+	return quietPrograms[prog]
+}
+
+// plainVariableWord reports whether word i of s holds no expansion but a plain
+// variable's (`$NAME`, `${NAME}`, a positional), with no transform, flag, default
+// or subscript.
+func plainVariableWord(s segment, i int) bool {
+	tmpl, ok := s.variable[i]
+	if !ok || tmpl == "" || s.transformed[i] {
+		return false
+	}
+	for _, sp := range s.spelled[i] {
+		if !plainSpelling(sp) {
+			return false
+		}
+	}
+	return len(s.spelled[i]) > 0
+}
+
+// plainSpelling reports whether every `$` of a word's spelling opens a plain
+// name or positional, bare or in braces.
+func plainSpelling(sp string) bool {
+	for i := 0; i < len(sp); i++ {
+		if sp[i] != '$' {
+			continue
+		}
+		j := i + 1
+		braced := j < len(sp) && sp[j] == '{'
+		if braced {
+			j++
+		}
+		k := j
+		for k < len(sp) && (nameByte(sp[k]) || k == j && (sp[k] == '@' || sp[k] == '*' || sp[k] == '#' || sp[k] == '?')) {
+			k++
+		}
+		if k == j || braced && (k >= len(sp) || sp[k] != '}') {
+			return false
+		}
+		i = k - 1
+	}
+	return true
+}
+
 // fixedReader answers, for the commands of one line, whether the line fixes the
 // program a command's variables name. It reads the line once for what every
 // command shares, and each variable's mentions once, so its cost is linear in
@@ -143,6 +259,9 @@ type fixedReader struct {
 	names map[string]*fixedName
 	// read counts the words and bytes read, so a test can hold the cost.
 	read int
+	// loud is the commands of the line other than readings that are not
+	// quietCommand, up to two of them.
+	loud []int
 }
 
 // fixedName is what the line does with one variable: whether the commands it
@@ -188,6 +307,15 @@ func newFixedReader(text string, segs []segment) *fixedReader {
 		scanned = s.end
 		f.opening = j + 1
 	}
+	for j, s := range segs {
+		if len(f.loud) == 2 {
+			break
+		}
+		f.read += len(s.tokens)
+		if s.carrier == 0 && !s.valuesPlaced && !quietCommand(s) {
+			f.loud = append(f.loud, j)
+		}
+	}
 	for f.assigns < f.opening && len(segs[f.assigns].tokens) > 0 && allAssignments(segs[f.assigns].tokens) {
 		f.assigns++
 	}
@@ -213,6 +341,11 @@ func newFixedReader(text string, segs []segment) *fixedReader {
 // the values (carriedSegments).
 func (f *fixedReader) program(i int) bool {
 	s := f.segs[i]
+	for _, k := range f.loud {
+		if k != i {
+			return false
+		}
+	}
 	sites := commandSites(s)
 	if s.carrier != 0 || len(sites) == 0 {
 		return false

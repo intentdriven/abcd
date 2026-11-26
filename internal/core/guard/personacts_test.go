@@ -595,9 +595,10 @@ func TestAnActsProgramIsReadByItsBasename(t *testing.T) {
 }
 
 // TestAProgramTheLineFixesIsNotReadAsAbcd: a variable that names the program, set
-// on the line to fixed words no other command of it can change, is the program those
-// words name. Where the line does not fix it, the update with a tag stays refused,
-// and the refusal says what stands in the name's place.
+// on the line to fixed words, where every other command of the line is one that sets
+// no variable (quietCommand), is the program those words name. Where the line does
+// not fix it, the update with a tag stays refused, and the refusal says what stands
+// in the name's place.
 func TestAProgramTheLineFixesIsNotReadAsAbcd(t *testing.T) {
 	reg := Defaults()
 	for _, cmd := range []string{
@@ -606,22 +607,16 @@ func TestAProgramTheLineFixesIsNotReadAsAbcd(t *testing.T) {
 		`PM=npm && $PM update "$PKG"`,
 		"PM=npm\n${PM} update \"$PKG\"",
 		`PKG=lodash; PM=npm; "$PM" update "$PKG"`,
-		`PM=npm; "$PM" ci; "$PM" update "$PKG"`,
 		`PM=npm; BIN=/opt/bin; "$BIN/$PM" update v1.2.3`,
-		`PM=npm; "$PM" ci < list.txt || "$PM" update v1.2.3`,
 		`for PM in npm yarn; do "$PM" update "$PKG"; done`,
 		`for PM in npm yarn; do "$PM" update v1.2.3; done`,
-		`for PM in npm pnpm; do echo "$PM"; "$PM" update "$PKG" || exit 1; done`,
-		`PM=npm; ls | xargs "$PM" update`,
 		`PM=npm; [ -f package.json ] && "$PM" update v1.2.3`,
 		`PM=npm; [[ -f package.json ]] && "$PM" update v1.2.3`,
-		`PM=npm; print "updating $PKG"; "$PM" update v1.2.3`,
 		`PM=npm; printf '%s\n' "$MSG"; "$PM" update v1.2.3`,
-		`PM=npm; export NODE_ENV="$E"; "$PM" update v1.2.3`,
-		`PM=npm; declare -r MODE="$M"; "$PM" update v1.2.3`,
-		`PM=npm; wait "$pid"; "$PM" update v1.2.3`,
-		`PM=npm; read -r -p "$PROMPT" ans; "$PM" update v1.2.3`,
-		`PM=npm; getopts "$OPTS" opt; "$PM" update v1.2.3`,
+		`for PM in npm pnpm; do echo "$PM"; "$PM" update "$PKG"; done`,
+		`PM=npm; cd web && echo "in $PWD"; true; : ok; "$PM" update v1.2.3`,
+		`PM=npm; if [ -n "$CI" ]; then echo ci; else echo local; fi; "$PM" update v1.2.3`,
+		`PM=npm; test -d node_modules || echo none; "$PM" update v1.2.3`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
@@ -694,6 +689,30 @@ func TestAProgramTheLineFixesIsNotReadAsAbcd(t *testing.T) {
 		{`for PM in; do :; done; "$PM" update v1.2.3`, unknownProgramEntryID},
 		{`PM=env; "$PM" "$X" update v1.2.3`, unknownProgramEntryID},
 		{`PM=env; "$PM" abcd update v0.7.0`, entry},
+		{`PM=npm; n=P; declare -n r="${n}M"; r=abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; n=P; local -n r="${n}M"; r=abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; n=P; typeset -n r="${n}M"; r=abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; declare -n r=$1; r=abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; declare -n r; r=PM; r=abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; printf -vPM abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; print -vPM abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; read -aPM < f; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; read PM?; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; printf -v PM? abcd; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; zmodload zsh/pcre; pcre_compile x; pcre_match -v PM x; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; n=PM; : ${(P)n::=abcd}; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; n=PM; echo ${(P)n::=abcd}; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; n=PM; zstat -A "$n" f; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; echo *; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; echo $(true); "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; [[ 1 -eq PM=1 ]]; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; printf "$F" x; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; X=$(true); "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`PM=npm; "$PM" ci; "$PM" update v1.2.3`, unknownProgramEntryID},
+		{`$PM:s/x// update v1.2.3`, updateTagAnyEntryID},
+		{`PM=xbcd; $PM:s/x/a/ update v1.2.3`, updateTagAnyEntryID},
+		{`PM=xbcd; "$PM:s/x/a/" update v1.2.3`, updateTagAnyEntryID},
+		{`PM=abcdX; $PM[1,4] update v1.2.3`, updateTagAnyEntryID},
 	} {
 		d, err := reg.Check(c.cmd)
 		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -774,6 +793,32 @@ func TestARepositorysGuardFileCannotClaimAPersonActsID(t *testing.T) {
 		}
 		if d, err := ld.Registry.Check("scripts/abcd.sh update v0.7.0"); err != nil || d.EntryID != updateTagAnyEntryID || d.Verdict != VerdictBlock {
 			t.Errorf("%s: the registry left in force reads an update with a tag as %q via %q, %v", a.id, d.Verdict, d.EntryID, err)
+		}
+	}
+}
+
+// TestAnUnlistedCommandLeavesNoProgramFixed: a command that is not one of the few
+// that set no variable, anywhere on the line, leaves a variable's program unread,
+// whatever the command; the same line with a listed command in its place fixes it.
+func TestAnUnlistedCommandLeavesNoProgramFixed(t *testing.T) {
+	reg := Defaults()
+	for _, quiet := range []string{"echo hi", "printf '%s' x", "true", "false", ":", "cd web", "test -f x", "[ -f x ]", "[[ -f x ]]", "X=1"} {
+		cmd := `PM=npm; ` + quiet + `; "$PM" update v1.2.3`
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)
+		}
+	}
+	for _, loud := range []string{
+		"ls", "cat f", "make", "npm ci", "grep x f", "print hi", "read x", "declare x=1", "export X=1",
+		"local x", "typeset x", "readonly x", "set -e", "unset x", "eval true", "source f", ". f", "trap '' INT",
+		"alias a=b", "zmodload zsh/pcre", "getopts a o", "mapfile a", "shift", "wait", "builtin echo hi",
+		"command echo hi", "env", "let x=1", "vared x", "zstyle x y z", "select x in a; do :; done",
+		"X=(a b)", "X+=a", "X=$Y", "for x in $(ls); do :; done", "echo ${x:=y}", "echo $((x=1))",
+	} {
+		cmd := `PM=npm; ` + loud + `; "$PM" update v1.2.3`
+		d, err := reg.Check(cmd)
+		if err != nil || d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, %v; want it refused", cmd, d.Verdict, d.EntryID, err)
 		}
 	}
 }

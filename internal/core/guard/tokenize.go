@@ -81,6 +81,13 @@ type segment struct {
 	// xargs's -J string, so the program and the words after it are all input
 	// xargs reads: any of them can be a verb.
 	programSupplied bool
+	// speculative records a window Tier 2 reads from a later word of a command
+	// (speculate.go): a guess, which holds none of the per-word records.
+	speculative bool
+	// casePattern records a command a `)` with no `(` open ended, with the
+	// ones a `|` joined to it: a case pattern and its alternatives, whose
+	// words are matched against and never run.
+	casePattern bool
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
@@ -708,6 +715,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds    map[int][]feed
 		curFeeds []feed
 		pipeFrom int
+		// patAlts holds the commands of the line so far that a `|` ended
+		// outside every paren: a case pattern's alternatives if a `)` with
+		// no `(` open ends the next (segment.casePattern).
+		patAlts []int
 		// braceFrom holds, per `{ … }` group still open, the pipeFrom its
 		// opening word stood in. A group's output is everything its commands
 		// print, so the pipeline a `}` closes resumes where the group began:
@@ -1581,6 +1592,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
 					addParam(paramText(line[j:k]))
+					curVarAt[len(curVarAt)-1].transform = modifiedParam(line, k)
 					// Only a plain `"$NAME"` or `"$1"` is one word: `"$@"`
 					// yields one per element, and zsh reads a subscript or a
 					// modifier after the name (`"$a[@]"`, `"$v:h"`).
@@ -1594,6 +1606,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					// zsh's `"$=V"`, `"$^@"` and `"$~@"` split or expand
 					// what they print.
 					addParam("$" + strings.TrimLeft(line[j+1:k], zshParamFlags))
+					curVarAt[len(curVarAt)-1].transform = modifiedParam(line, k)
 					curSplit = true
 					j = k
 					continue
@@ -1681,6 +1694,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			i++
 		case c == '\n':
 			flushSegment()
+			patAlts = nil
 			i++
 			// A pending heredoc body starts on the NEXT LINE, and is DATA, not
 			// commands: writing a document that names a hazard must never read
@@ -1932,6 +1946,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// as a pattern, read as an unquoted one is.
 			end := zshFlaggedParamEnd(line, i+1)
 			addParam("$" + strings.TrimLeft(line[i+1:end], zshParamFlags))
+			curVarAt[len(curVarAt)-1].transform = modifiedParam(line, end)
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false
@@ -1943,6 +1958,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
 			addParam(paramText(line[i:end]))
+			curVarAt[len(curVarAt)-1].transform = modifiedParam(line, end)
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false
@@ -2032,7 +2048,28 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					}
 				}
 			}
+			before := len(segs)
 			flushSegment()
+			if len(parens) == 0 {
+				grew := len(segs) > before
+				switch {
+				case c == '|' && !(i+1 < len(line) && (line[i+1] == '|' || line[i+1] == '&')):
+					if grew {
+						patAlts = append(patAlts, len(segs)-1)
+					}
+				case c == ')':
+					// A `)` no `(` opened ends a case pattern: its words are
+					// matched against, not run.
+					if grew {
+						for _, k := range append(patAlts, len(segs)-1) {
+							segs[k].casePattern = true
+						}
+					}
+					patAlts = nil
+				default:
+					patAlts = nil
+				}
+			}
 			if c == '&' && !(i+1 < len(line) && line[i+1] == '&') && len(segs) > 0 {
 				segs[len(segs)-1].background = true
 			}
@@ -2809,6 +2846,14 @@ func plainParam(line string, j, k int) bool {
 		return k+1 >= len(line) || strings.IndexByte(zshModifiers, line[k+1]) < 0
 	}
 	return true
+}
+
+// modifiedParam reports whether the text at k, straight after an unbraced
+// parameter, is one zsh reads as part of it: a subscript (`$v[1]`) or a modifier
+// (`$v:t`, `$v:s/a/b/`), so the expansion prints another text than the value.
+func modifiedParam(line string, k int) bool {
+	return k < len(line) && (line[k] == '[' ||
+		line[k] == ':' && k+1 < len(line) && strings.IndexByte(zshModifiers, line[k+1]) >= 0)
 }
 
 // zshModifiers are the characters that, after a `:` that follows an unbraced

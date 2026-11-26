@@ -407,6 +407,7 @@ func xargsReplacement(s segment, from, site int) (repl string, ok, all, unsure b
 			if repl == "" && i+1 < site {
 				repl = s.tokens[i+1]
 				i++
+				unsure = unsure || unfixed(repl)
 			}
 		case 'i':
 			repl, ok, all = t[k+1:], true, false

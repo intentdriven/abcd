@@ -239,7 +239,7 @@ type actReading struct {
 func actReadings(s segment, site arrival) []actReading {
 	tok := s.tokens[site.idx]
 	base := path.Base(tok)
-	fixed, open := carriesAbcd(tok), isUnknown(base) || strings.ContainsRune(base, varMark)
+	fixed, open := carriesAbcd(tok), isUnknown(base) || strings.ContainsRune(base, varMark) || s.transformed[site.idx]
 	out := []actReading{{from: site.idx + 1, fixedName: fixed, named: fixed || open}}
 	if open {
 		return out

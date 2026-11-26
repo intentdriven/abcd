@@ -72,6 +72,10 @@ type payloadSignal struct {
 	// guard cannot place, a file it cannot read, a spent budget — which a
 	// script's reading carries out whatever its tier (script.go).
 	fromRead bool
+	// last marks a hold on what the guard did not read at all, which speaks
+	// for its pool only where no other entry-less verdict does: one that names
+	// what it read tells more.
+	last bool
 }
 
 // entryID is the id this signal is reported under.
@@ -134,6 +138,11 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		// in its words, as another reading of it, and a command whose words
 		// hold a value's output passes that output on (segment.carries).
 		budget.grant(item.segs)
+		for _, s := range item.segs {
+			if !budget.suppliedHeld && xargsRunsInput(s) {
+				budget.suppliedHeld = true
+			}
+		}
 		carried, carriedSigs := carriedReadings(item.segs, budget)
 		signals = append(signals, carriedSigs...)
 		// The records go to the copy of each command in out, and to its
@@ -270,6 +279,14 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 	}
 	if splitAfterIFS(out) {
 		signals = append(signals, ifsSplitSignal())
+	}
+	// The holds on a program or a command string the guard did not read
+	// (payloadSignal.last).
+	if budget.programHeld {
+		signals = append(signals, unreadProgramSignal())
+	}
+	if budget.suppliedHeld {
+		signals = append(signals, suppliedStringSignal())
 	}
 	return out, signals
 }

@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -104,11 +105,86 @@ func TestEveryCombinationOfAWordsValuesIsRead(t *testing.T) {
 		{dashed + `git push "$A$B$C" origin main`, VerdictBlock, ""},
 		{emptyFirst + `git push "$A$B$C" origin main`, VerdictBlock, unread},
 		{line + `git push "$A$B$C" origin main`, VerdictAllow, ""},
-		// A name given more values than the guard reads is held the same way.
-		{`P=p1; P=p2; P=p3; P=p4; P=p5; P=p6; P=p7; P=p8; P=pkill; $P make`, VerdictBlock, unread},
-		{`F=-a; F=-b; F=-c; F=-d; F=-e; F=-g; F=-h; F=-i; F=-j; git push "$F" origin main`, VerdictBlock, unread},
+		// A name used alone in a word is read with every value it is given.
+		{`P=p1; P=p2; P=p3; P=p4; P=p5; P=p6; P=p7; P=p8; P=pkill; $P make`, VerdictBlock, "pkill-by-pattern"},
+		{`F=-a; F=-b; F=-c; F=-e; F=-g; F=-h; F=-i; F=-j; F=-k; F=-f; git push "$F" origin main`, VerdictBlock, "git-push-force"},
 		// A name given that many values and used inside other text, as data, is not.
 		{`M=a; M=b; M=c; M=d; M=e; M=f; M=g; M=h; M=i; echo "made $M"`, VerdictAllow, ""},
+		// A name of many values in a word of its own is read with each of them.
+		{`for t in go node npm git make gcc jq curl docker; do $t --version; done`, VerdictAllow, ""},
+		{`for V in a b c d e f g h /; do rm -rf "$V"; done`, VerdictBlock, "rm-rf-root-or-home"},
+		{`for P in a b c d e f g h i j k pkill; do $P make; done`, VerdictBlock, "pkill-by-pattern"},
+		// A command -v that is the command's own program looks the name up; one
+		// another program runs is no lookup.
+		{line + `command -v "$A$B$C"`, VerdictAllow, ""},
+		{line + `env command -v "$A$B$C" make`, VerdictBlock, unread},
+	})
+}
+
+// TestAProgramFromOutputIsUnread: a command whose program is the output of a
+// command substitution, directly or through a variable the line set from one, is
+// not judged as any program.
+func TestAProgramFromOutputIsUnread(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`P=$(echo pkill); $P make`, VerdictBlock, unknownProgramEntryID},
+		{`$(echo pkill) make`, VerdictBlock, unknownProgramEntryID},
+		{`env $(echo pkill) make`, VerdictBlock, unknownProgramEntryID},
+		{`$(echo abcd) update v1.2.3`, VerdictBlock, unknownProgramEntryID},
+		{`read -r P; $P make`, VerdictBlock, unknownProgramEntryID},
+		{`"$(go env GOROOT)/bin/go" version`, VerdictAllow, ""},
+		{`echo $(date)`, VerdictAllow, ""},
+		{`$(cat msg.txt)`, VerdictBlock, unknownProgramEntryID},
+		{"$(date)", VerdictBlock, unknownProgramEntryID},
+		{"P=$(cat f)\ncase x in\n  a) \"$P\" make ;;\nesac", VerdictBlock, unknownProgramEntryID},
+
+		// What a lookup of one fixed name prints is that program's path.
+		{`g=$(command -v go 2>/dev/null || true); "$g" build ./...`, VerdictAllow, ""},
+		{`g=$(which go); "$g" build ./...`, VerdictAllow, ""},
+		{`g=$(command -v pkill); "$g" make`, VerdictBlock, "pkill-by-pattern"},
+		{`g=$(command -v "$N"); "$g" make`, VerdictBlock, unknownProgramEntryID},
+		{`g=$(command -v go; cat f); "$g" make`, VerdictBlock, unknownProgramEntryID},
+
+		// A substitution with no command in it prints nothing.
+		{"``", VerdictAllow, ""},
+		{"$( )", VerdictAllow, ""},
+		{"`` pkill make", VerdictBlock, ""},
+
+		// A case pattern is matched against, not run.
+		{"P=$(cat f)\ncase x in\n  \"$P\"*) true ;;\n  \"$P\"|a) true ;;\nesac", VerdictAllow, ""},
+		{"P=$(cat f); case \"$P\" in a) true ;; esac", VerdictAllow, ""},
+		{"P=$(cat f); case x in \"$P\") true ;; esac", VerdictAllow, ""},
+		{"P=$(cat f); case x in a) \"$P\" make ;; esac", VerdictBlock, unknownProgramEntryID},
+		{"P=$(cat f); ( \"$P\" make )", VerdictBlock, unknownProgramEntryID},
+		{"P=$(cat f); a=(\"$P\")", VerdictAllow, ""},
+	})
+}
+
+// TestValuesSpelledAlikeAreReadOnce: a name assigned the same text many
+// times, as a script that sets d=$(mktemp -d) for each of its cases does, is
+// read with that text once, fed by every command that printed it, so a use of
+// it costs one reading however often it is set.
+func TestValuesSpelledAlikeAreReadOnce(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 400; i++ {
+		fmt.Fprintf(&b, "d=$(mktemp -d); rm -rf \"$d\"; ls \"$d\"/x\n")
+	}
+	runVerdictCases(t, []verdictCase{
+		{b.String(), VerdictAllow, ""},
+		{"p=$(cat pids); p=$(pgrep make); kill $p", VerdictBlock, "kill-by-search"},
+		{"p=$(pgrep make); p=$(cat pids); kill $p", VerdictBlock, "kill-by-search"},
+	})
+}
+
+// TestTheWordsSetGivesAreTheArguments: the words a `set` gives the positional
+// parameters are what a later `"$@"`, `"$*"` or `"$N"` hands its command.
+func TestTheWordsSetGivesAreTheArguments(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`set -- update v1.2.3; abcd "$@"`, VerdictBlock, "abcd-update-tag"},
+		{`set -- update v1.2.3; abcd $*`, VerdictBlock, "abcd-update-tag"},
+		{`set -- x update v1.2.3; shift; abcd "$@"`, VerdictBlock, "abcd-update-tag"},
+		{`set -e -- update v1.2.3; abcd "$1" "$2"`, VerdictBlock, ""},
+		{`set -- status; abcd "$@"`, VerdictAllow, ""},
+		{`set -e; abcd "$@"`, VerdictAllow, ""},
 	})
 }
 
@@ -140,7 +216,7 @@ func TestCarriedValuesCostWhatTheLineHolds(t *testing.T) {
 	if err != nil || d.Verdict != VerdictBlock || d.EntryID != commandTooLongEntryID {
 		t.Errorf("a line past the bound on readings = %q via %q, %v; want it held as unread", d.Verdict, d.EntryID, err)
 	}
-	d, err = Defaults().Check("PM=npm; " + strings.Repeat(`"$PM" update v1; `, 3000))
+	d, err = Defaults().Check("PM=npm; " + strings.Repeat(`"$PM" ci; `, 3000))
 	if err != nil || d.Verdict == VerdictBlock {
 		t.Errorf("a line of one fixed value used 3000 times = %q via %q, %v; want it read", d.Verdict, d.EntryID, err)
 	}

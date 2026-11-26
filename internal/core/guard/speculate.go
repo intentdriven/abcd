@@ -183,7 +183,7 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 		}
 		// The glob record travels with the window: a globbed flag behind an
 		// unrecognised launcher is still a pattern bash expands.
-		cand := segment{tokens: tokens, chain: s.chain, piped: s.piped}
+		cand := segment{tokens: tokens, chain: s.chain, piped: s.piped, speculative: true}
 		if !noglob {
 			cand.globbed = s.globSlice(start, start+len(tokens))
 		}

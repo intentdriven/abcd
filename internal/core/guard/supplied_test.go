@@ -42,7 +42,7 @@ func TestSuppliedWordsAreReadAsAnActsWords(t *testing.T) {
 		{`cat tag.txt | /usr/bin/xargs bin/abcd-darwin-arm64 update`, tagAny},
 		{`cat tag.txt | xargs bash scripts/abcd.sh update`, tagAny},
 		{`cat tag.txt | xargs -I% sh -c 'abcd update %'`, tag},
-		{`cat tag.txt | xargs "$OPT" abcd update`, "abcd-ahoy-shared-folder"},
+		{`cat tag.txt | xargs "$OPT" abcd update`, "abcd-update-tag"},
 		{`f() { xargs abcd update; }; f < tag.txt`, tag},
 		{`echo update | xargs -I{} abcd {} v0.7.0`, tag},
 		{`echo update v0.7.0 | xargs abcd`, "abcd-ahoy-shared-folder"},
@@ -128,6 +128,16 @@ func TestAPlaceholderAsTheProgramIsReadAsItsWords(t *testing.T) {
 		`echo abcd | xargs -i {} update v0.7.0`,
 		`echo v0.7.0 | xargs --repl=% abcd update %`,
 		`echo v0.7.0 | xargs --r=% abcd update %`,
+		`echo abcd update | xargs -J "$(echo X)" X v1.2.3`,
+		`echo abcd | xargs -I"$(echo X)" X update v1.2.3`,
+		`echo abcd update | xargs $O X v1.2.3`,
+		`echo abcd | xargs -I "$R" X update v1.2.3`,
+		`echo abcd update v1.2.3 | xargs -J % %`,
+		`echo ls | xargs -J % % -l`,
+		`echo pkill make | xargs -I{} sh -c '{}'`,
+		`echo pkill make | xargs -I% bash -c 'echo start; %'`,
+		`echo pkill make | xargs sh -c`,
+		`echo pkill make | xargs -I{} zsh -c "{}"`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict != VerdictBlock {
 			t.Errorf("Check(%q) = %q via %q, %v; want it refused", cmd, d.Verdict, d.EntryID, err)
@@ -135,6 +145,8 @@ func TestAPlaceholderAsTheProgramIsReadAsItsWords(t *testing.T) {
 	}
 	for _, cmd := range []string{
 		`echo x | xargs --repl=% echo %`,
+		`ls | xargs -I{} sh -c 'echo "$1"' _ {}`,
+		`ls | xargs sh -c 'echo "$@"' _`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %q via %q, %v; want it not refused", cmd, d.Verdict, d.EntryID, err)

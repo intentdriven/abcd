@@ -1,6 +1,9 @@
 package guard
 
-import "strings"
+import (
+	"path"
+	"strings"
+)
 
 // supplied.go reads the words a command receives from the program that runs it:
 // what xargs reads from its input, and the paths a find's -exec hands over. The
@@ -74,7 +77,8 @@ func suppliedMatch(p Pattern, readings []segment) (hit, named bool) {
 // the words xargs reads there
 // (placeholderWords); with no replacement string, xargs adds two words after the
 // command's own, since its input may hold the verb and its operand; and where the
-// line does not fix the options, every word of the command can be any.
+// line does not fix the options, every word of the command can be any, the
+// program's own included, and any of them a verb.
 func xargsSupplied(s segment, x, site int) segment {
 	repl, ok, all, unsure := xargsReplacement(s, x+1, site)
 	d := segment{chain: s.chain, fromFixedOutput: true, valuesPlaced: true}
@@ -83,11 +87,11 @@ func xargsSupplied(s segment, x, site int) segment {
 		d.tokens = append(d.tokens, t)
 		globbed = append(globbed, glob)
 	}
-	d.programSupplied = ok && all && s.tokens[site] == repl
+	d.programSupplied = unsure || ok && all && s.tokens[site] == repl
 	for i := site; i < len(s.tokens); i++ {
 		t := s.tokens[i]
 		switch {
-		case !ok && !unsure || i == site && unsure:
+		case !ok && !unsure:
 			add(t, s.globAt(i))
 		case unsure:
 			add(unknownText, false)
@@ -106,6 +110,69 @@ func xargsSupplied(s segment, x, site int) segment {
 		d.globbed = globbed
 	}
 	return d
+}
+
+// xargsRunsInput reports whether an xargs s runs runs, as commands, words it reads
+// from its input: its program is a word its input fills (xargsSupplied), or a
+// command string a shell or eval it runs takes holds one, which the guard has not
+// read. It reads up to maxUnknownSites of the words the walk can reach as xargs's
+// program, as suppliedReadings does.
+func xargsRunsInput(s segment) bool {
+	if s.speculative {
+		return false
+	}
+	named := false
+	for _, t := range s.tokens {
+		named = named || strings.Contains(t, "xargs")
+	}
+	if !named {
+		return false
+	}
+	xargs := -1
+	for _, a := range arrivalsOf(s) {
+		if tok := s.tokens[a.idx]; a.wrapper && xargs < 0 && !anyProgram(tok) && commandNamed(s, a, "xargs") {
+			xargs = a.idx
+		}
+	}
+	if xargs < 0 {
+		return false
+	}
+	own := 0
+	for _, ref := range payloadsOf(s) {
+		own += strings.Count(ref.payload, unknownText)
+	}
+	viewed := 0
+	for _, a := range commandSites(s) {
+		if a.idx <= xargs || viewed >= maxUnknownSites {
+			continue
+		}
+		viewed++
+		d := xargsSupplied(s, xargs, a.idx)
+		if len(d.tokens) > 0 && d.tokens[0] != s.tokens[a.idx] && isUnknown(path.Base(d.tokens[0])) {
+			return true
+		}
+		n := 0
+		for _, ref := range payloadsOf(d) {
+			n += strings.Count(ref.payload, unknownText)
+		}
+		if n > own {
+			return true
+		}
+	}
+	return false
+}
+
+// suppliedStringSignal is the fail-closed verdict on an xargs that runs, as
+// commands, words it reads from its input (xargsRunsInput).
+func suppliedStringSignal() payloadSignal {
+	return payloadSignal{
+		verdict: VerdictBlock,
+		family:  familyShell,
+		last:    true,
+		reason: "This line has xargs run, as a command or as a command string a shell runs, words it reads from its input, " +
+			"so the command that runs is not something the guard has checked.",
+		successor: "Write the command out where it runs, so the guard reads it, and hand xargs only its operands.",
+	}
 }
 
 // placeholderWords is the words a word t stands for, where p is the placeholder a

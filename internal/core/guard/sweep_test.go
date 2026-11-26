@@ -42,6 +42,10 @@ import (
 // (scripts/check-issue-resolution-cases.sh, iss-2610181757540736): four more
 // here-document openers, each read alone as heredoc-unterminated, the same way
 // the file's others already are.
+// Raised to 35 when a command whose program is a substitution's output the
+// guard does not read came to be refused: five lines of prose and make that
+// spell one when read as shell, `$(call pinned_gofmt,check)` and its write
+// twin, two "```text" fence lines and a sentence holding `(`_*`, …)`.
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -55,7 +59,7 @@ import (
 // command line and the file whole, as the other exec "$BIN" "$@" launchers
 // already do.
 const (
-	maxSweepBlocks = 30
+	maxSweepBlocks = 35
 	maxSweepWarns  = 37
 )
 
