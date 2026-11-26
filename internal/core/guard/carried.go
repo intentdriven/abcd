@@ -392,26 +392,17 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 	if s.arrayOf != "" {
 		return vals
 	}
-	// A keyword that opens a branch, a loop body, a group or a negation runs
-	// nothing, so the assignments after it are the command's (`then P=pkill`,
-	// `{ P=pkill`, `! P=pkill`): a value of fixed text is carried as it is
-	// standing alone. A command's output assigned there is not carried, and
-	// the name keeps the reading it had: abcd's own hook scripts pick their
-	// binary that way, in a branch, and reading it as that output would block
-	// them.
-	from := 0
-	for from < len(s.tokens) && quietKeywords[s.tokens[from]] {
-		from++
-	}
+	// A keyword that opens a branch, a loop body or condition, a group, a
+	// negation or a timed command runs nothing itself, so the assignments after
+	// it are the command's, read as they are standing alone (`then P=pkill`,
+	// `while P=pkill`, `{ P=pkill`, `! P=pkill`, `repeat 2 P=pkill`).
+	from := assignmentStart(s.tokens)
 	all := from < len(s.tokens)
 	for _, t := range s.tokens[from:] {
 		all = all && isAssignment(t)
 	}
 	if all {
 		for i := from; i < len(s.tokens); i++ {
-			if _, eq, _, _, ok := splitAssignment(s.tokens[i]); ok && from > 0 && word(i, eq+1).output {
-				continue
-			}
 			assign(i)
 		}
 		return vals
@@ -863,6 +854,29 @@ func lookupShape(tok string, feeds []feed) (string, bool) {
 		}
 	}
 	return name, name != ""
+}
+
+// assignmentKeywords open a command without running one, ahead of the words
+// that are the command: quietKeywords, and the loop conditions and the timing
+// words, which quietCommand does not read as quiet since the command after them
+// runs.
+var assignmentKeywords = map[string]bool{"while": true, "until": true, "time": true}
+
+// assignmentStart is the index of the first word of tokens past the keywords
+// that open it (quietKeywords, assignmentKeywords, and zsh's `repeat N`).
+func assignmentStart(tokens []string) int {
+	from := 0
+	for from < len(tokens) {
+		switch t := tokens[from]; {
+		case quietKeywords[t] || assignmentKeywords[t]:
+			from++
+		case t == "repeat" && from+1 < len(tokens):
+			from += 2
+		default:
+			return from
+		}
+	}
+	return from
 }
 
 // rebindsProgram reports whether s is a hash that binds a name to a file of its

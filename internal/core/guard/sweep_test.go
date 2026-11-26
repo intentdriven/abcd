@@ -86,9 +86,17 @@ import (
 // already do. Raised to 39 when the SubagentStart hook's shim landed
 // (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
 // same two warns.
+//
+// Blocks raised to 76, and warns lowered to 16, when an assignment after a
+// keyword began to be carried (`then x=$(…)`, `while P=…`): the hook
+// shims pick their binary with `x=$("$g" hook dogfood-binary)` inside a
+// branch and run "$x", which is a program the guard does not read, so each
+// shim's command line and the file whole move from warn to block, as the
+// same lines do written outside a branch. Measured before and after: 7,603
+// allow, 54 block and 34 warn, then 7,599 allow, 76 block and 16 warn.
 const (
-	maxSweepBlocks = 54
-	maxSweepWarns  = 39
+	maxSweepBlocks = 76
+	maxSweepWarns  = 16
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {
