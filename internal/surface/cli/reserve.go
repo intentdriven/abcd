@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -769,8 +770,10 @@ func noteMachineHome(w io.Writer, verb string) {
 // paths with commas and names no path in the checkout (iss-2611260633438543):
 // the flag takes one path per use, so such a value would be stored as one
 // path named with a comma that no overlap check ever matches. A path whose
-// own name holds a comma, and exists, passes. It returns the refusal's text,
-// naming the repeated-flag form, or "" when every value is one path.
+// own name holds a comma, and exists, passes; a value that names one path and
+// a stray comma is refused as well, since it would be stored with the comma.
+// It returns the refusal's text, naming the repeated-flag form with each path
+// quoted for the shell, or "" when every value is one path.
 func commaJoinedFootprint(root string, footprint []string) string {
 	for _, v := range footprint {
 		if !strings.Contains(v, ",") {
@@ -785,12 +788,17 @@ func commaJoinedFootprint(root string, footprint []string) string {
 				parts = append(parts, part)
 			}
 		}
-		if len(parts) < 2 {
-			continue
+		if len(parts) == 0 {
+			return "abcd reserve: --footprint " + strconv.Quote(termsafe.Sanitize(v)) +
+				" names no path, only commas; name each path with its own flag; nothing was pushed"
+		}
+		quoted := make([]string, len(parts))
+		for i, part := range parts {
+			quoted[i] = shellquote.Single(part)
 		}
 		return "abcd reserve: --footprint takes one path per use, and " + strconv.Quote(termsafe.Sanitize(v)) +
-			" joins several with commas; name each with its own flag: --footprint " +
-			termsafe.Sanitize(strings.Join(parts, " --footprint ")) + "; nothing was pushed"
+			" joins it with commas; name each path with its own flag: --footprint " +
+			termsafe.Sanitize(strings.Join(quoted, " --footprint ")) + "; nothing was pushed"
 	}
 	return ""
 }
