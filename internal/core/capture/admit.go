@@ -290,7 +290,10 @@ func validateAdmissionStrict(fm map[string]any) error {
 // passed, then folded, then held to grounds.ValidateText, which refuses the
 // empty, whitespace, control-character, too-short and vocabulary-only texts.
 func requireFreeGrounds(repoRoot, verb, raw string) (string, int, string, error) {
-	red, n, degraded := redactLedgerText(repoRoot, raw)
+	red, n, degraded, err := redactLedgerText(repoRoot, raw)
+	if err != nil {
+		return "", 0, "", err
+	}
 	folded := grounds.Fold(red)
 	if err := grounds.ValidateText(folded); err != nil {
 		return "", 0, "", fmt.Errorf("%s: %w: %v; nothing written", verb, ErrGroundsRefused, err)

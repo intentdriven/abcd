@@ -260,3 +260,31 @@ func TestTheTextRedactorReScansWhatItRedacted(t *testing.T) {
 		t.Fatalf("Redact left %q with %v; want the text refused, a span surviving", out, err)
 	}
 }
+
+// TestTheLedgerRedactorsReScanWhatTheyRedacted holds the issue ledger's two
+// redactors to scanner.Redact's contract: the caller re-scans the result and
+// fails closed if a span survived (an occurrence the augmenter did not
+// report, here).
+func TestTheLedgerRedactorsReScanWhatTheyRedacted(t *testing.T) {
+	repo := t.TempDir()
+	firstOnly := &augmenttest.Func{F: func(text, file string) ([]scanner.Finding, error) {
+		all := augmenttest.Locate(text, file, augmenttest.Value, augmenttest.Kind)
+		if len(all) > 1 {
+			all = all[:1]
+		}
+		return all, nil
+	}}
+	orig := newLedgerScanner
+	t.Cleanup(func() { newLedgerScanner = orig })
+	newLedgerScanner = func(root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(context.Background(), root, scanner.WithAugmenter(firstOnly))
+	}
+	in := "once " + augmenttest.Value + " and twice " + augmenttest.Value
+	if out, _, _, err := redactLedgerText(repo, in); strings.Contains(out, augmenttest.Value) || !errors.Is(err, ErrRedactionResidual) {
+		t.Errorf("redactLedgerText handed back %q, %v; want the text refused, a span surviving", out, err)
+	}
+	r := newLedgerRedactor(repo)
+	if out, _ := r.redact(in); strings.Contains(out, augmenttest.Value) || !errors.Is(r.Err(), ErrRedactionResidual) {
+		t.Errorf("ledgerRedactor.redact handed back %q, %v; want the text refused, a span surviving", out, r.Err())
+	}
+}

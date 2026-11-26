@@ -155,12 +155,19 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// rewritten.
 	var redacted int
 	var degraded string
-	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded =
+	var rerr error
+	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded, rerr =
 		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
+	if rerr != nil {
+		return CaptureResult{}, rerr
+	}
 	// The remedy is free text too, and the drain hands it to a lane as the brief
 	// (itd-82), so it is redacted by the same redactor and counted with the rest.
 	{
-		r, n, deg := redactLedgerText(repoRoot, req.Remedy)
+		r, n, deg, err := redactLedgerText(repoRoot, req.Remedy)
+		if err != nil {
+			return CaptureResult{}, err
+		}
 		req.Remedy, redacted = r, redacted+n
 		if deg != "" {
 			degraded = deg
@@ -169,7 +176,10 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// What fixed it is the resolution note, free text redacted as resolve
 	// redacts its note.
 	if req.Fixed != "" {
-		r, n, deg := redactLedgerText(repoRoot, strings.TrimSpace(req.Fixed))
+		r, n, deg, err := redactLedgerText(repoRoot, strings.TrimSpace(req.Fixed))
+		if err != nil {
+			return CaptureResult{}, err
+		}
 		req.Fixed, redacted = r, redacted+n
 		if deg != "" {
 			degraded = deg
@@ -697,7 +707,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		// The note is the only free text a transition adds, so it is what gets
 		// redacted — before it is written into the record, never after, so no
 		// rewritten span can reach a field the validator has already passed.
-		redNote, redacted, degraded := redactLedgerText(rr, note)
+		redNote, redacted, degraded, err := redactLedgerText(rr, note)
+		if err != nil {
+			return err
+		}
 		// Hidden runes are encoded at the record boundary, as the capture body's
 		// are (iss-2608301206073609).
 		redNote = termsafe.EncodeHiddenRunesBlock(redNote)
