@@ -161,6 +161,11 @@ func recordAssignments(s segment, vals map[string][]carriedValue, loopIn []feed)
 		if sp := s.spelled[i]; len(sp) == 1 && len(sp[0]) >= from {
 			v.spell = sp[0][from:]
 		}
+		// A value spelled with a trim, a replacement or another transform is
+		// not the text of the variables it names: the guard does not read it.
+		if s.transformed[i] {
+			v.tmpl, v.spell = "", ""
+		}
 		v.output = isUnknown(v.tok) && v.tmpl == ""
 		return v
 	}
@@ -292,8 +297,17 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 	}
 	sort.Ints(idx)
 	var uses []carriedUse
+	var opaque []int
 	for _, i := range idx {
 		tmpl := s.variable[i]
+		// A word that transforms a value the line assigned is not that value:
+		// the guard does not read what it prints.
+		if s.transformed[i] {
+			if spellsAssigned(s.spelled[i], vals) {
+				opaque = append(opaque, i)
+			}
+			continue
+		}
 		if tmpl == "" || i >= len(s.tokens) || len(s.spelled[i]) != 1 {
 			continue
 		}
@@ -311,8 +325,9 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 			uses = append(uses, carriedUse{i: i, names: names})
 		}
 	}
+	runsOutput := len(opaque) > 0 && outputRunAsString(s, opaque)
 	if len(uses) == 0 {
-		return nil, nil, false
+		return nil, nil, runsOutput
 	}
 	var held []feed
 	for _, u := range uses {
@@ -342,7 +357,6 @@ func carriedSegments(s segment, vals map[string][]carriedValue) ([]segment, []fe
 	combos = min(combos, maxCarriedReadings)
 	pick := make(map[string]carriedValue, len(names))
 	var out []segment
-	runsOutput := false
 	for k := 0; k < combos; k++ {
 		r := k
 		for _, nm := range names {
@@ -416,6 +430,37 @@ func siteNames(tmpl, spell string) (names []string, ok bool) {
 	return names, j == len(spell)
 }
 
+// spellsAssigned reports whether a spelling of a word names a variable vals
+// holds a value of.
+func spellsAssigned(spells []string, vals map[string][]carriedValue) bool {
+	for _, spell := range spells {
+		if spellNamesAssigned(spell, vals) {
+			return true
+		}
+	}
+	return false
+}
+
+func spellNamesAssigned(spell string, vals map[string][]carriedValue) bool {
+	for i := 0; i < len(spell); i++ {
+		if spell[i] != '$' {
+			continue
+		}
+		j := i + 1
+		if j < len(spell) && spell[j] == '{' {
+			j++
+		}
+		k := j
+		for k < len(spell) && nameByte(spell[k]) {
+			k++
+		}
+		if k > j && len(vals[spell[j:k]]) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // carriedCopy is s as a reading of its own: its per-word records copied so a
 // word can be rewritten, and its walk and its place in a tokenize call's
 // output dropped, since its words are not the ones that call emitted.
@@ -423,6 +468,7 @@ func carriedCopy(s segment) segment {
 	d := s
 	d.tokens = append([]string(nil), s.tokens...)
 	d.variable = copyMap(s.variable)
+	d.transformed = copyMap(s.transformed)
 	d.spelled = copyMap(s.spelled)
 	d.feeds = copyMap(s.feeds)
 	d.ifsSplit = copyMap(s.ifsSplit)

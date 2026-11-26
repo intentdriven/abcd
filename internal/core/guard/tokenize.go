@@ -91,6 +91,11 @@ type segment struct {
 	// unknown.go), and a string handed to a shell carries the value's mark
 	// for the re-read to take as a variable's (payloadView).
 	variable map[int]string
+	// transformed records, per token index, a word filed under variable one of
+	// whose sites is written with a trim, a replacement, a substring or a case
+	// change (varSite.transform): it prints another text than the value, so no
+	// reading takes it for the value of the names it spells.
+	transformed map[int]bool
 	// spelled records, per token index, a word holding a parameter
 	// expansion's mark as the line WROTE it, as the set of texts it can
 	// print (spellWritten): each variable's mark replaced by each text its
@@ -622,6 +627,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it as segment.leadFrom.
 		leads    map[int]bool
 		leadFrom map[int]leadSource
+		// transforms rides with the segment (segment.transformed).
+		transforms map[int]bool
 		// keywords records, per token index of the command being built, a
 		// for, case, in or [[ the line leaves wholly unquoted, which
 		// bashParens and testsWords read.
@@ -890,6 +897,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			vars = map[int]string{}
 		}
 		vars[len(toks)] = text
+		for _, site := range curVarAt {
+			if site.transform {
+				if transforms == nil {
+					transforms = map[int]bool{}
+				}
+				transforms[len(toks)] = true
+				break
+			}
+		}
 	}
 	// addVar leaves the mark of a parameter expansion where its value goes,
 	// and records the texts it can print as the line wrote them
@@ -1109,7 +1125,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
-				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
+				stdinIn: groupIn, home: list, at: len(segs), variable: vars, transformed: transforms, spelled: spells,
 				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
@@ -1121,6 +1137,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			globs = nil
 			lits = nil
 			vars = nil
+			transforms = nil
 			spells = nil
 			splits = nil
 			fieldSplits = nil
@@ -1273,7 +1290,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub, curSplit: curSplit,
+			toks: toks, globs: globs, lits: lits, vars: vars, transforms: transforms, curVar: curVar, curSub: curSub, curSplit: curSplit,
 			spells: spells, curVarAt: curVarAt, splits: splits, fieldSplits: fieldSplits, leads: leads, leadFrom: leadFrom, keywords: keywords,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
@@ -1286,6 +1303,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curQuoted = false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub, curSplit = nil, nil, false, false, false
+		transforms = nil
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
@@ -1358,6 +1376,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		transforms = e.transforms
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
@@ -1386,6 +1405,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub, curSplit = e.vars, e.curVar, e.curSub, e.curSplit
+		transforms = e.transforms
 		spells, curVarAt, splits, fieldSplits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.fieldSplits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
@@ -3023,6 +3043,7 @@ type enclosing struct {
 	fieldSplits map[int]bool
 	leads       map[int]bool
 	leadFrom    map[int]leadSource
+	transforms  map[int]bool
 	keywords    map[int]bool
 	cur         []byte
 	curMask     []byte

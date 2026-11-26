@@ -241,7 +241,7 @@ func (f *fixedReader) program(i int) bool {
 // unfixed part of it is a plain `$NAME` or `${NAME}`.
 func variableNames(s segment, idx int) ([]string, bool) {
 	tmpl, ok := s.variable[idx]
-	if !ok || tmpl == "" || len(s.spelled[idx]) != 1 {
+	if !ok || tmpl == "" || s.transformed[idx] || len(s.spelled[idx]) != 1 {
 		return nil, false
 	}
 	return siteNames(tmpl, s.spelled[idx][0])
