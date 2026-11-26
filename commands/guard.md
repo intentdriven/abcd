@@ -332,9 +332,13 @@ only where it would otherwise admit the question silently.
 
 A session the person is talking to is the exception: for 15 minutes after a
 prompt they typed in it, its questions are checked as when they are present
-([the person talking while away](mode.md)), by the hook for that session and
-by `abcd guard question`, which names no session, for any session of the
-checkout inside that window.
+([the person talking while away](mode.md)), by the hook for the session its
+payload names and by `abcd guard question` for the session the host's
+environment names (`CLAUDE_CODE_SESSION_ID`), each read from that session's
+start copy; with no session named, no window is read and the question stays
+refused. Anything running as this account can write the session's state or run
+the prompt hook by hand, so the window holds against other accounts and stale
+state, not against this account's own agent; nothing enforces more.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not

@@ -150,13 +150,24 @@ verb prints. A prompt never ends the mode.
 
 **The person talking while away.** A prompt the person types in a session while
 the mode holds does not end it, but for 15 minutes after it that session reads
-them as present: its turn ends are not held, and its questions go to them on
-the host's question tool and are checked as when they are present. The prompt
-hook says so in one line beside the away block. A prompt that one of the
-session's own wakes fires, a background task's report, another session's
-message and the host's own resumptions open nothing. Every other session stays
-away, and once the 15 minutes pass the checks hold again in that session too:
-answer the person, then carry on with the owed work.
+them as present: its questions go to them on the host's question tool and are
+checked as when they are present, and its turn ends are allowed as a present
+session's when nothing is owed or the session holds a scheduled wake that fires
+soon enough. While work is owed and no wake is held, the turn's end is held,
+naming the window: the session may wait for the person's reply only holding a
+wake, so the checks read it again once the window ends. The prompt hook says
+so in one line beside the away block. A prompt that one of the session's own
+wakes fires, a background task's report, another session's message and the
+host's own resumptions open nothing; every stop, present or away, keeps the
+session's wakes so their prompts are known, and a session listing more wakes
+than its state keeps (32) has no prompt open its window. A prompt typed under
+one away record opens nothing under the next. Every other session stays away,
+and once the 15 minutes pass the checks hold again in that session at its next
+turn's end: answer the person, then carry on with the owed work. Anything
+running as this account can write the session's state or run the prompt hook
+by hand, so the window holds against other accounts and stale state, not
+against this account's own agent; nothing enforces more. It is a convenience
+for the person, not a boundary against the agent.
 
 **An intent's open question never stops the work while away.** The planning
 interview is how an intent's open questions are settled while the person is
