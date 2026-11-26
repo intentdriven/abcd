@@ -186,8 +186,10 @@ func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now tim
 }
 
 // ConversationLine is the agent's line on a prompt that opened or renewed the
-// window: the person is here in this session, for now.
+// window: the person reads as here in this session, for now. It says the
+// prompt reads as theirs, since that is inferred from what the prompt is not
+// (personPrompt), never proved.
 func ConversationLine() string {
-	return "abcd: the person typed this prompt, so for " + shortDuration(ConversationWindow) +
+	return "abcd: this prompt reads as the person's (it is not a wake of this session's nor one of the host's own prompts), so for " + shortDuration(ConversationWindow) +
 		" after it this session reads them as present although the away record holds: answer them, and put a question to them on the host's question tool rather than routing it. Every other session stays away. While work is owed, a turn's end here is allowed only holding a scheduled wake (a cron that fires within the away check's deadline), so the away checks read this session again once the window ends: carry on with owed work after answering."
 }

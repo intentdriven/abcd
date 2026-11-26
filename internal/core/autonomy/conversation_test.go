@@ -272,3 +272,18 @@ func TestConversingNeedsTheHoldingRecord(t *testing.T) {
 		t.Error("a stamp within the record's first second reads as a window under it")
 	}
 }
+
+// TestConversationLineIsAReading: the agent's line says the prompt reads as
+// the person's, which is what the check infers, never that the person typed
+// it, which nothing proves.
+func TestConversationLineIsAReading(t *testing.T) {
+	line := ConversationLine()
+	if strings.Contains(line, "the person typed this prompt") {
+		t.Errorf("the line states as fact who typed the prompt: %q", line)
+	}
+	for _, want := range []string{"reads as the person's", "this session reads them as present"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the line %q lacks %q", line, want)
+		}
+	}
+}
