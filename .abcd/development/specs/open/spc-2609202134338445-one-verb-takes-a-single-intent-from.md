@@ -289,7 +289,12 @@ spec stays open until the last lane closes it.
   aside, counted toward stuck), which today stops an intent's run, extended to
   intent runs, and the operability itd-2611141610197753 gives issue drives
   extended to builds. It also questions the blocker: the step waits on the
-  whole of itd-2610222215485265, whose remainder is the key route a
-  subscription-only person does not use, and whether it should wait only on
-  that intent's built subscription-route steps is the product thinker's to
-  rule. Nothing in the step changes here.
+  whole of itd-2610222215485265, whose remainder spc-2611051628562376 holds as
+  three steps: the live proof on the one walled login (MUST, live, still open),
+  the key route a subscription-only person does not use, and the ruling on a
+  lane paused past an outage. Whether the step should wait only on that
+  intent's subscription-route steps, the built drive and that live proof, is
+  the product thinker's to rule. The idea is already held by the draft
+  itd-2611251725209625, which dcn-2611251726008978 schedules after
+  itd-2611251725190796 and itd-2611251725203320. Nothing in the step changes
+  here.
