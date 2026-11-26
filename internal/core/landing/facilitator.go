@@ -172,7 +172,7 @@ func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), modeLineTimeout)
 	defer cancel()
-	out, err := gitutil.RunLimitedContext(ctx, root, maxMergeBaseBytes, "merge-base", tip, head)
+	out, err := gitutil.RunCappedContext(ctx, root, maxMergeBaseBytes, "merge-base", tip, head)
 	base := strings.TrimSpace(out)
 	if err != nil || !gitutil.IsFullSHA(base) {
 		return cannot("no merge base of " + short(head) + " and " + tipName + " can be read")
