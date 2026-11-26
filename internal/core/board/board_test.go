@@ -346,6 +346,7 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 	repoHuman := &Merges{Mode: "human", Layer: "repo", Origin: ".abcd/config.json at main"}
 	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
 	machineAuto := &Merges{Mode: "auto", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	yours := &Merges{Mode: "auto", Layer: "person", Origin: "set in " + abcdhome.Display("facilitator.json")}
 	refusedHome := &Merges{Mode: "human", Layer: "machine", Origin: "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide human cannot be read; run abcd with your own HOME", HomeRefused: true}
 	for _, c := range []struct {
 		name string
@@ -359,6 +360,7 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		{"machine human, facilitator view", machine, Facilitator, Text, "  facilitator: human (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves the head"},
 		{"repo human, facilitator view", repoHuman, Facilitator, Text, "  facilitator: human (the project prevents auto, set in .abcd/config.json at main): merges once the technical facilitator approves the head"},
 		{"machine auto, facilitator view", machineAuto, Facilitator, Text, "  facilitator: auto (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges autonomously, once a review pair passes the head"},
+		{"a person's own, facilitator view", yours, Facilitator, Text, "  facilitator: auto (left to each contributor: yours, here, set in " + abcdhome.Display("facilitator.json") + "): merges autonomously, once a review pair passes the head"},
 		{"bundled, product view", person, Product, Text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves"},
 		{"repo auto, product view", repoAuto, Product, Text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
 		{"repo auto, markdown", repoAuto, Product, Markdown, "- facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},

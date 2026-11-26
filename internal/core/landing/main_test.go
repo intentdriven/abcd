@@ -16,6 +16,10 @@ func TestMain(m *testing.M) {
 	// A stop on the machine running the tests holds no test here; a test of the stop
 	// stands in its own read (Options.StopRead).
 	stopReadingOff = true
+	// The account's own home is the test's HOME, which each test names: the
+	// machine layer and a person's own setting are read for the mode only
+	// there (personmode.go).
+	AccountHome = os.UserHomeDir
 	cleanup, err := gittest.HideGHLogin()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "landing tests: cannot hide the machine's gh login:", err)

@@ -219,6 +219,7 @@ var whoseWords = map[MergingWhose]string{
 	WhoseComputer:       "computer",
 	WhoseUnset:          "not set",
 	WhoseComputerUnread: "computer's file not read",
+	WhosePerson:         "yours, here",
 }
 
 // mergingText is the merging element: `facilitator: auto (project)`, with

@@ -15,6 +15,9 @@ import (
 func configRoots(t *testing.T, repo, machine string) layered.Roots {
 	t.Helper()
 	r := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
+	// The machine layer is read for the mode only where it is the account's
+	// own home (personmode.go), which the test's HOME stands for.
+	t.Setenv("HOME", r.Home)
 	write := func(p, body string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)

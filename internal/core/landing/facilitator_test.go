@@ -362,6 +362,7 @@ func TestTheProjectsValueStandsAboveTheComputers(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.project})
+			t.Setenv("HOME", f.home)
 			dir := abcdhome.Path(f.home)
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				t.Fatal(err)

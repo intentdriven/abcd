@@ -192,6 +192,8 @@ func mergesText(m *Merges, v View) string {
 	case m.Layer == "repo" && m.Mode == "auto":
 		whose = "the project enforces it, set in " + m.Origin
 	case m.Layer == "repo":
+	case m.Layer == "person":
+		whose = "left to each contributor: yours, here, " + m.Origin
 	case m.HomeRefused:
 		whose = "left to each contributor: abcd could not read your own settings file safely"
 	case m.Layer == "machine":
