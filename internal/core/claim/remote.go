@@ -581,10 +581,13 @@ func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, e
 	if r := redacted(ferr); r.notRun != nil {
 		return false, &FetchError{Reason: r.text, cause: r.notRun, what: echoName(ref), outcome: "nothing was fetched"}
 	}
+	// git lists every branch whose name ends in ref's path as well
+	// (refs/heads/x/refs/heads/abcd-spotcheck), so the listing is read line
+	// by line and only ref's own line says origin holds it.
 	list := []string{"ls-remote", "--heads", Remote, ref}
 	trace(list...)
-	out, lerr := gitutil.NetContext(ctx, root, list...)
-	if lerr == nil && strings.TrimSpace(out) == "" {
+	l := gitutil.RefListing{Ref: ref}
+	if lerr := gitutil.NetEachContext(ctx, root, gitutil.RefLineMax, l.Line, list...); lerr == nil && l.Tips == 0 {
 		return false, nil
 	}
 	return false, &FetchError{Reason: redacted(ferr).text, cause: redacted(ferr).notRun, what: echoName(ref), outcome: "nothing was fetched"}
@@ -1169,33 +1172,21 @@ func remoteDefault(root string) (string, error) {
 	return "refs/remotes/" + Remote + "/" + branch, nil
 }
 
-// headLineMax bounds one line of origin's listing of HEAD as it is read: far
-// past any ref name a forge accepts, so a line naming HEAD is never cut.
-const headLineMax = 64 << 10
-
 // originHeadLines asks origin what its HEAD is, with `git ls-remote --symref
 // origin HEAD`: target is the ref its symbolic-ref line names (symref false
 // when there is no such line, a detached HEAD), and tip the object name on
 // its own line ("" when there is none). The listing also names every ref
 // whose last component is HEAD (refs/heads/x/HEAD), however many origin
-// holds, so it is read one line at a time (gitutil.NetEach), each line
-// bounded, and only the two lines whose ref is exactly HEAD are kept.
+// holds, so it is read one line at a time (gitutil.NetEach) and only the
+// lines whose ref is exactly HEAD are kept (gitutil.RefListing).
 func originHeadLines(root string) (target string, symref bool, tip string, err error) {
 	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
 	trace(args...)
-	err = gitutil.NetEach(root, headLineMax, func(line string) {
-		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
-			if t, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
-				target, symref = t, true
-			}
-		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
-			tip = sha
-		}
-	}, args...)
-	if err != nil {
+	l := gitutil.RefListing{Ref: "HEAD"}
+	if err := gitutil.NetEach(root, gitutil.RefLineMax, l.Line, args...); err != nil {
 		return "", false, "", err
 	}
-	return target, symref, tip, nil
+	return l.Target, l.Symrefs > 0, l.Tip, nil
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the

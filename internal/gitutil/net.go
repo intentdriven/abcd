@@ -21,8 +21,11 @@ import (
 const (
 	// NetTimeout is the longest one networked git command may run.
 	NetTimeout = 10 * time.Minute
-	// netOutputCap bounds what such a command may write to stdout.
-	netOutputCap = 1 << 20
+	// NetOutputCap bounds what such a command may write to stdout, for Net,
+	// LocalGit, NetContext and NetInputContext: an answer past it is an
+	// OutputCapError. It is exported so a reader that must know it (a test
+	// building a listing past it) reads the bound itself, not a copy.
+	NetOutputCap = 1 << 20
 	// netStderrCap bounds how much of its stderr an error carries.
 	netStderrCap = 2048
 	// The bounds a stalled connection meets.
@@ -53,7 +56,7 @@ const (
 // ssh, unless the developer configured their own ssh command, gives up a
 // connect after 30 seconds and a silent connection after four missed
 // keepalives. Stdout is returned within
-// netOutputCap, on a failure too (a porcelain push reports its rejections
+// NetOutputCap, on a failure too (a porcelain push reports its rejections
 // there); a failure's error carries git's bounded stderr. On a failure both are
 // scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
 // Under a test binary, networked git is restricted to local transports with
@@ -107,6 +110,79 @@ func (w *lineSink) flush() {
 		w.each(string(w.buf))
 		w.buf, w.open = w.buf[:0], false
 	}
+}
+
+// LineWriter is the line splitter NetEach reads git's output through, for a
+// caller that runs git itself (the dogfood builder, under its own
+// environment): set it as the command's stdout, and call Flush once the
+// command has succeeded, for a last line with no newline.
+type LineWriter struct{ s lineSink }
+
+// NewLineWriter hands each line written to it to each, without its newline,
+// a line longer than maxLine bytes cut to its first maxLine.
+func NewLineWriter(maxLine int, each func(line string)) *LineWriter {
+	return &LineWriter{s: lineSink{max: maxLine, each: each}}
+}
+
+func (w *LineWriter) Write(p []byte) (int, error) { return w.s.Write(p) }
+
+// Flush hands each the last line when the output did not end in a newline.
+func (w *LineWriter) Flush() { w.s.flush() }
+
+// NetEachContext is NetContext for a command whose output may run to any
+// length, read as NetEach reads it: each line of stdout is handed to each as
+// it is read, none is kept, and no bound on the whole output applies. Like
+// NetContext it runs none of the checkout's hooks and is bounded by ctx as
+// well as by NetTimeout. A line handed over before a failure is not an
+// answer: only a nil error says the listing was read to its end.
+func NetEachContext(ctx context.Context, dir string, maxLine int, each func(line string), args ...string) error {
+	w := &lineSink{max: maxLine, each: each}
+	_, err := runHookedContext(ctx, dir, true, "", append([]string{"-c", "core.hooksPath=/dev/null"}, args...), w)
+	if err == nil {
+		w.flush()
+	}
+	return err
+}
+
+// RunNetEachContext is RunLimitedNetContext for a command whose output may
+// run to any length (a ref listing a pusher can fill): the same isolated
+// command, environment and check, with each line of stdout handed to each as
+// it is read, as NetEach hands it, rather than the output cut at a bound. A
+// line handed over before a failure is not an answer: only a nil error says
+// the listing was read to its end.
+func RunNetEachContext(ctx context.Context, root string, maxLine int, each func(line string), args ...string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	if err := askBeforeHooked(root, args); err != nil {
+		return err
+	}
+	cmd := isolatedGitContextAsking(ctx, root, false, append(fetchRecursionOff(args), args...))
+	cmd.Env = netEnv(cmd.Env)
+	w := &lineSink{max: maxLine, each: each}
+	e := &capWriter{remaining: 4096}
+	err := procgroup.RunToEOF(ctx, cmd, w, e)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	if err != nil {
+		return fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+	}
+	w.flush()
+	return nil
+}
+
+// OutputCapError is a networked command's answer that ran past NetOutputCap
+// (Net, LocalGit, NetContext and NetInputContext): it was not kept, so a
+// reader that can take the output line by line (NetEach, NetEachContext)
+// may ask again through one.
+type OutputCapError struct {
+	What string
+	Cap  int
+}
+
+func (e *OutputCapError) Error() string {
+	return fmt.Sprintf("%s wrote more than %d bytes", e.What, e.Cap)
 }
 
 // NetInputContext is Net with stdin fed to the command, bounded by ctx as
@@ -205,9 +281,10 @@ var ErrBeforeHookedGitSet = errors.New("a check before every hooked or networked
 // SetBeforeHookedGit sets a check every git command abcd starts with the
 // repository's hooks, merge drivers or content filters on, or that reaches a
 // remote, asks first, before the command is built: Net, NetEach, NetInputContext,
-// NetContext and LocalGit (runHookedContext), RunCommitCommandBounded and
-// RunCommitCommandBoundedAsStored (runCommitBounded), WorkingTreeCommand and
-// WorkingTreeCommandContext, and RunLimitedNetContext. An isolated command
+// NetContext, NetEachContext and LocalGit (runHookedContext),
+// RunCommitCommandBounded and RunCommitCommandBoundedAsStored
+// (runCommitBounded), WorkingTreeCommand and WorkingTreeCommandContext, and
+// RunLimitedNetContext and RunNetEachContext. An isolated command
 // (Run and its kin) has its hooks and the other programs ExecPins names
 // pinned off, but not content filters, textconv and external diff programs
 // or merge drivers, so one that can start one of those
@@ -299,13 +376,13 @@ func runHookedContext(parent context.Context, dir string, network bool, stdin st
 			msg = msg[:netStderrCap]
 		}
 		out := ScrubURLCredentials(stdout.String())
-		if len(out) > netOutputCap {
-			out = out[:netOutputCap]
+		if len(out) > NetOutputCap {
+			out = out[:NetOutputCap]
 		}
 		return out, fmt.Errorf("%s: %v (%s)", what, err, msg)
 	}
-	if stdout.Len() > netOutputCap {
-		return "", fmt.Errorf("%s wrote more than %d bytes", what, netOutputCap)
+	if stdout.Len() > NetOutputCap {
+		return "", &OutputCapError{What: what, Cap: NetOutputCap}
 	}
 	return stdout.String(), nil
 }
@@ -438,8 +515,9 @@ var netGuardOff atomic.Bool
 
 // netEnv is the environment of every git command abcd runs that may reach a
 // remote, built on env, the environment it would otherwise run with: Net,
-// NetEach, NetInputContext (and through them RemoteHeadBranch, the landing and the
-// reservation code) and RunLimitedNetContext. Outside a test binary it is env
+// NetEach, NetInputContext, NetContext, NetEachContext (and through them
+// RemoteHeadBranch, RemoteHeadTip, the landing and the reservation code),
+// RunLimitedNetContext and RunNetEachContext. Outside a test binary it is env
 // unchanged, so the person's own configuration and credential helpers apply
 // exactly as their own git applies them. Under a test binary
 // (testing.Testing) networked git is restricted to local transports with no
