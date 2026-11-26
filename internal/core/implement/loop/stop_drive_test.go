@@ -758,42 +758,55 @@ func signalAtTheArmingStep(t *testing.T) (*terminalWorld, TerminalResult) {
 	return w, res
 }
 
-// laterDrivePassesOver wants a later drive to name the run as a person's to take over.
-func laterDrivePassesOver(t *testing.T, w *terminalWorld, res TerminalResult) {
+// laterDriveTakesOver wants a later drive's start to take the run over itself: it says
+// so, the signal's mark is gone, and nothing it says names the run as a person's to take
+// over or a command to type for it.
+func laterDriveTakesOver(t *testing.T, w *terminalWorld, res TerminalResult) {
 	t.Helper()
+	w.lines = nil
 	next := w.options(t)
 	next.Stop = make(chan struct{})
 	later, err := RunTerminal(context.Background(), w.repo.Root(), next)
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := slices.IndexFunc(later.PassedOver, func(p Excluded) bool { return p.ID == res.Issue })
-	if i < 0 || later.PassedOver[i].Check != CheckNeedsPerson || !strings.Contains(later.PassedOver[i].Reason, "implement resume --take "+res.Run) {
-		t.Fatalf("a later drive does not name it: %+v\n%s", later.PassedOver, strings.Join(w.lines, "\n"))
+	said := strings.Join(w.lines, "\n")
+	if !strings.Contains(said, "took over "+res.Issue+", run "+res.Run) {
+		t.Fatalf("a later drive does not take the run over:\n%s", said)
+	}
+	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop != nil {
+		t.Fatalf("the signal's mark stands: %+v", c.Stop)
+	}
+	if slices.ContainsFunc(later.PassedOver, func(p Excluded) bool { return p.ID == res.Issue }) {
+		t.Fatalf("a later drive names the run it took as passed over: %+v", later.PassedOver)
+	}
+	if strings.Contains(said, "resume --take") || strings.Contains(said, "step --run "+res.Run) {
+		t.Fatalf("a later drive names a typed take-over:\n%s", said)
 	}
 }
 
-// TestASignalAtTheArmingStepWaitsForItsTakeOver: a later drive takes up no parked lane, so
-// the end names no command that would, and that drive names the run and goes on.
-func TestASignalAtTheArmingStepWaitsForItsTakeOver(t *testing.T) {
+// TestASignalAtTheArmingStepIsTakenOverByTheNextStart: a later drive's start takes up the
+// parked lane a signal halted, so the end names the command that starts one and no typed
+// take-over, and that drive takes the run over.
+func TestASignalAtTheArmingStepIsTakenOverByTheNextStart(t *testing.T) {
 	w, res := signalAtTheArmingStep(t)
-	if res.Resume != "" {
-		t.Fatalf("the end names a command that takes up no parked lane: %+v", res)
+	if res.Resume != TerminalResumeCommand {
+		t.Fatalf("the end does not name the command that takes the parked lane up: %+v", res)
 	}
-	if !strings.Contains(strings.Join(w.lines, "\n"), "implement resume --take "+res.Run) {
-		t.Fatalf("the end does not name the take-over:\n%s", strings.Join(w.lines, "\n"))
+	if said := strings.Join(w.lines, "\n"); strings.Contains(said, "resume --take") || !strings.Contains(said, TerminalResumeCommand) {
+		t.Fatalf("the end names a typed take-over, or not the drive's start:\n%s", said)
 	}
-	laterDrivePassesOver(t, w, res)
+	laterDriveTakesOver(t, w, res)
 }
 
-// TestANewDrainNamesARunASignalParked: a drain begun since has no lane of that issue in hand,
-// and is told the same.
-func TestANewDrainNamesARunASignalParked(t *testing.T) {
+// TestANewDrainTakesOverARunASignalParked: a drain begun since lists no lane of that issue,
+// and the start takes the run over all the same (decision 2).
+func TestANewDrainTakesOverARunASignalParked(t *testing.T) {
 	w, res := signalAtTheArmingStep(t)
 	if err := os.Remove(filepath.Join(w.repo.Root(), filepath.FromSlash(DrainStateRel))); err != nil {
 		t.Fatal(err)
 	}
-	laterDrivePassesOver(t, w, res)
+	laterDriveTakesOver(t, w, res)
 }
 
 // TestADriveNamesAParkedRunItLeftAlone: what is not finished is not said to be, says what it

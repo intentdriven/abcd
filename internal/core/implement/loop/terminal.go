@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -736,6 +737,11 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	defer unset()
 	if t.o.Resumed {
 		t.reportHeldBack()
+	}
+	if ended, err := t.takeEarlier(ctx); err != nil {
+		return t.ended(TerminalRefused), err
+	} else if ended != "" {
+		return t.ended(ended), nil
 	}
 	for {
 		if ended := t.boundEnded(ctx); ended != "" {
@@ -1961,25 +1967,32 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	// Nothing reserves while a stop's mark stands. The run takes what it can of the stop.
-	// One a person's stop halted waits for an explicit take-over, after the lift too. One
-	// this drive's own signal halted is its own terminal's person's to go on with, so it
-	// is taken over here, which reserves it again and clears the mark in that order.
+	// Nothing reserves while a stop's mark stands. A stop that holds ends the drive, as
+	// it ends every wait. Otherwise the run is taken over where this drive may take it
+	// (mayTake), a person's lifted stop as a signal's (itd-2611141610197753 decision 1):
+	// a mark not yet settled takes the check first (settleMark), and the take-over
+	// reserves the run again and clears the mark in that order. A run the drive may not
+	// take is named and passed over, and the drain goes on to other work.
 	if c, err := runControl(t.repoRoot, runID); err == nil && c.Stop != nil {
-		_, checked := stopCheck(t.repoRoot, runID, t.o.Stages, t.o.Options)
-		c, err = runControl(t.repoRoot, runID)
-		switch {
-		case err != nil:
-			return false, ""
-		case c.Stop != nil && c.Stop.HaltedAt != nil && c.Stop.FromFile:
-			return t.passOverHalted(run)
-		case c.Stop != nil && c.Stop.HaltedAt != nil:
-			return t.takeOver(ctx, run)
-		case c.Stop != nil:
+		if t.stopHolds() {
+			_, checked := stopCheck(t.repoRoot, runID, t.o.Stages, t.o.Options)
 			if t.haltedBy(checked) {
 				return true, TerminalHalted
 			}
 			return false, ""
+		}
+		if why := t.mayTake(run, c); why != "" {
+			return t.passOverHalted(run, why)
+		}
+		why, gone := t.settleMark(runID)
+		switch {
+		case why != "":
+			if t.idle(ctx, TerminalWaitFloor, why) {
+				return true, TerminalWaited
+			}
+			return true, ""
+		case !gone:
+			return t.takeOver(ctx, run)
 		}
 		if run, err = ReadState(t.repoRoot, runID); err != nil {
 			return false, ""
@@ -2238,9 +2251,9 @@ func retryLetGoRelease(repoRoot string, run State, id, why string, now time.Time
 	return why, nil
 }
 
-// passOverHalted leaves a run a person's stop halted to its explicit take-over, names it and
-// has the drain go on to other work, as takeUp reports.
-func (t *terminal) passOverHalted(run State) (bool, string) {
+// passOverHalted leaves a marked run this drive may not take as it stands, names it with
+// why, and has the drain go on to other work, as takeUp reports.
+func (t *terminal) passOverHalted(run State, why string) (bool, string) {
 	err := fsutil.WithFileLock(filepath.Join(t.repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
 		st, _, err := readDrain(t.repoRoot)
 		if err != nil {
@@ -2259,8 +2272,192 @@ func (t *terminal) passOverHalted(run State) (bool, string) {
 		t.stoppedBy(fmt.Errorf("%s could not be passed over: %w", run.RunID, err))
 		return true, TerminalWall
 	}
-	t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: waitsForTakeOver(run.RunID)})
+	t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: why})
 	return true, ""
+}
+
+// takeEarlier takes over, before the drive's first move, every run in this checkout that a
+// stop's mark stands on and that this drive may take (itd-2611141610197753 decisions 1 and
+// 2): a signal's mark, settled or not, and a person's stop once it is lifted, on a run the
+// drain lists or on one no drain lists, a run parked at its pull request among them.
+//
+// A lane the drain lists in progress short of its pull request is left to come to hand,
+// where takeUp takes it over by the same rules, unless a stop holds over it, which is
+// named here since the drive then ends before any lane comes to hand. Each run is judged
+// before anything is changed (mayTake): one a stop still holds over, one whose live
+// recorded driver is neither gone, this process nor the process this drive's shell runs
+// under (startedUnder), and one whose driver cannot be judged because the process table
+// cannot be read are left as they stand and named, with who holds them. The take-over's
+// own claim (TakeRun) lets an idle driver that claimed before the halt give way without
+// asking any of that, which is why the judgement is made here first.
+//
+// A run taken that is parked at its pull request is read and finished by the moves, as
+// any parked run of the checkout is (finishMerged). One not parked and not the drain's
+// lane in progress is no drain's to hand out, so it is stepped here, before the first
+// move, as a plain run (driveLane): it counts against no cap, and a hand-back stays on it.
+// It returns why the drive ends, "" to go on.
+func (t *terminal) takeEarlier(ctx context.Context) (string, error) {
+	runs, err := Runs(t.repoRoot)
+	if err != nil {
+		t.say("the runs in this checkout could not be read to take up what an interrupt left: %s", err.Error())
+		return "", nil
+	}
+	var lanes []DrainLane
+	if st, _, err := readDrain(t.repoRoot); err == nil {
+		lanes = st.Lanes
+	}
+	inProgress := func(runID string) bool {
+		return slices.ContainsFunc(lanes, func(l DrainLane) bool { return l.RunID == runID && l.Outcome == DrainLaneInProgress })
+	}
+	for _, run := range runs {
+		if run.Complete() || driveStopped(run.RunID) || t.passedLane(run.RunID) {
+			continue
+		}
+		c, err := runControl(t.repoRoot, run.RunID)
+		if err != nil {
+			t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: waitsForItsTakeOver(t.repoRoot, run.RunID, true)})
+			continue
+		}
+		if c.Stop == nil {
+			continue
+		}
+		parked := parkedAtLand(run) >= 0
+		if why := t.stopOver(run.RunID, c); why != "" {
+			t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: why})
+			continue
+		}
+		if inProgress(run.RunID) && !parked {
+			continue
+		}
+		if why := t.mayTake(run, c); why != "" {
+			t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: why})
+			continue
+		}
+		why, gone := t.settleMark(run.RunID)
+		switch {
+		case why != "":
+			t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson, Reason: why})
+			continue
+		case gone:
+			t.say("the stop marking %s, run %s, lifted before the run halted, so it goes on", run.Key, run.RunID)
+		default:
+			res, err := TakeRun(t.repoRoot, run.RunID, t.takeUpOptions())
+			if err != nil {
+				if t.haltedBy(err) {
+					return TerminalHalted, nil
+				}
+				t.notePassedOver(Excluded{ID: run.Key, Check: CheckNeedsPerson,
+					Reason: termsafe.Sanitize(fsutil.RedactHome(fmt.Sprintf("run %s was not taken over at the drive's start: %s", run.RunID, refusalReason(err))))})
+				continue
+			}
+			t.say("took over %s, run %s: its reservation is held again", run.Key, run.RunID)
+			for _, line := range res.Left {
+				t.say("%s", line)
+			}
+		}
+		if parked || inProgress(run.RunID) {
+			continue
+		}
+		ended, err := t.driveLane(ctx, run.RunID)
+		if err != nil || ended != "" {
+			return ended, err
+		}
+	}
+	return "", nil
+}
+
+// stopOver says why a stop's read leaves run c marks as it stands, "" where the read saw
+// clearly and found no stop: a stop that holds over the run, which the person lifts, or a
+// read that cannot be trusted, which is neither a stop nor its lift.
+func (t *terminal) stopOver(runID string, c control) string {
+	id := termsafe.Sanitize(runID)
+	r := t.o.Options.stopRead(c.Shared)
+	switch {
+	case r.Stop != nil:
+		return fmt.Sprintf("a stop set by %s at %s holds over run %s, which is left as it stands; once the person lifts the stop, a drive's start takes it up",
+			termsafe.Sanitize(r.Stop.SetBy), r.Stop.SetAt.UTC().Format(time.RFC3339), id)
+	case r.Held != "" || len(r.Refused) > 0:
+		why := r.Held
+		if why == "" {
+			why = strings.Join(r.Refused, "; ")
+		}
+		return termsafe.Sanitize(fsutil.RedactHome(fmt.Sprintf("whether a stop holds over run %s cannot be told, so it is left as it stands: %s", id, why)))
+	}
+	return ""
+}
+
+// mayTake judges the driver run's control record c names before this drive takes the run
+// over (itd-2611141610197753's third criterion), "" where it may: no driver is named, the
+// driver is gone, it is this process, or it is the process this drive's shell runs under
+// with nothing but shells beneath it (startedUnder). Otherwise it says who holds the run:
+// a live driver in another terminal or a host session keeps it, and a process table that
+// cannot be read leaves it, since whether its driver lives cannot be told and a take-over
+// resets the run's worktrees.
+func (t *terminal) mayTake(run State, c control) string {
+	if why := t.stopOver(run.RunID, c); why != "" {
+		return why
+	}
+	if c.Driver == nil {
+		return ""
+	}
+	d, id := *c.Driver, termsafe.Sanitize(run.RunID)
+	tab, err := readProcs()
+	if err != nil {
+		return fmt.Sprintf("the process table cannot be read, so whether %s still drives run %s cannot be told, and the run is left as it stands; this drive's next start looks again",
+			driverName(d), id)
+	}
+	if !tab.Alive(d.host()) {
+		return ""
+	}
+	if h, _, err := selfDriver(tab); err == nil && h.PID == d.PID {
+		return ""
+	}
+	took, kept := t.o.Options.startedUnder(tab, d)
+	if took {
+		return ""
+	}
+	why := fmt.Sprintf("run %s is held by %s, which has been alive since it took the run at %s, so this drive leaves it as it stands",
+		id, driverName(d), d.At.UTC().Format(time.RFC3339))
+	if kept.why != "" {
+		why += "; " + kept.why
+	}
+	return termsafe.Sanitize(fsutil.RedactHome(why))
+}
+
+// settleMark has a mark on the run that has not settled take the check every move makes,
+// so the run settles where it may: why it could not, "" where it did, and gone where the
+// mark went with the check, a person's stop lifted before the run halted. The check saves
+// the run whole, which a file stating another version allows its driver alone, so the
+// drive claims the run first, over the driver mayTake has judged it may replace. A mark
+// that stays unsettled has an agent still in its call, which the drive waits for.
+func (t *terminal) settleMark(runID string) (why string, gone bool) {
+	id := termsafe.Sanitize(runID)
+	c, err := runControl(t.repoRoot, runID)
+	switch {
+	case err != nil:
+		return waitsForItsTakeOver(t.repoRoot, runID, true), false
+	case c.Stop == nil:
+		return "", true
+	case c.Stop.HaltedAt != nil:
+		return "", false
+	}
+	if err := claimDriver(t.repoRoot, runID, t.takeUpOptions(), false); err != nil {
+		return termsafe.Sanitize(fsutil.RedactHome(fmt.Sprintf("run %s could not be claimed to settle its mark: %s", id, refusalReason(err)))), false
+	}
+	_, checked := stopCheck(t.repoRoot, runID, t.o.Stages, t.o.Options)
+	c, err = runControl(t.repoRoot, runID)
+	switch {
+	case err != nil:
+		return waitsForItsTakeOver(t.repoRoot, runID, true), false
+	case c.Stop == nil:
+		return "", true
+	case c.Stop.HaltedAt != nil:
+		return "", false
+	}
+	if r, ok := leftAtVersion(checked); ok {
+		return termsafe.Sanitize(fsutil.RedactHome(fmt.Sprintf("the mark on run %s has not settled: %s", id, r.Reason))), false
+	}
+	return fmt.Sprintf("an agent of run %s is still in its call, so its mark has not settled; this drive takes the run over once it has", id), false
 }
 
 // passLane passes over the lane of run, whose file states another version this drive may
@@ -2815,16 +3012,22 @@ func (t *terminal) ended(why string) TerminalResult {
 		}
 		res.Run, res.Issue = l.RunID, l.Issue
 		run, rerr := ReadState(t.repoRoot, l.RunID)
-		// A later drive takes up no parked lane, so the command that would is not named.
+		// A later drive's start takes up a parked lane only where a stop's mark stands on
+		// it (takeEarlier), so the command is named for that one alone; the moves of any
+		// drain read the others from their pull requests.
 		parked := rerr == nil && parkedAtLand(run) >= 0
-		// Nor is any after a hold to a run's profile, whose reason names the ways on.
-		if why != TerminalHalted && !driveStopped(l.RunID) && !parked && !t.heldToProfile {
+		note, marked := "", false
+		if parked {
+			note = waitsForItsTakeOver(t.repoRoot, l.RunID, true)
+			c, cerr := runControl(t.repoRoot, l.RunID)
+			marked = cerr == nil && c.Stop != nil
+		}
+		// Nor is any named after a hold to a run's profile, whose reason names the ways on.
+		if why != TerminalHalted && !driveStopped(l.RunID) && (!parked || marked) && !t.heldToProfile {
 			res.Resume = TerminalResumeCommand
 		}
-		if parked {
-			if note := waitsForItsTakeOver(t.repoRoot, l.RunID); note != "" {
-				t.say("%s: %s", l.Issue, note)
-			}
+		if note != "" {
+			t.say("%s: %s", l.Issue, note)
 		}
 		if rerr == nil {
 			if i := run.current(); i >= 0 {

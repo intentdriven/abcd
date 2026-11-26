@@ -237,11 +237,12 @@ func personHaltedLane(t *testing.T) (*terminalWorld, TerminalResult, string) {
 	return w, res, home
 }
 
-// TestAPersonsHaltWaitsForItsTakeOver: nothing resumes by itself when a person's stop lifts,
-// so a new drive names the run and passes over it, reserving nothing for it and taking up
-// other work. The explicit take-over is what it waits for, and it still works.
-func TestAPersonsHaltWaitsForItsTakeOver(t *testing.T) {
+// TestAPersonsLiftedHaltIsTakenUpByTheNextDrive: once the person has lifted their stop, a
+// new drive's start takes the run it halted over, reserving it again, and lands it with the
+// rest; nothing it says names a typed take-over (itd-2611141610197753 decision 1).
+func TestAPersonsLiftedHaltIsTakenUpByTheNextDrive(t *testing.T) {
 	w, res, home := personHaltedLane(t)
+	w.lines = nil
 	o := w.options(t)
 	o.Stop = make(chan struct{})
 	o.Drain.Max = 0
@@ -250,43 +251,24 @@ func TestAPersonsHaltWaitsForItsTakeOver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop == nil || c.Stop.HaltedAt == nil {
-		t.Fatalf("a new drive took the run over: %+v\n%s", c.Stop, strings.Join(w.lines, "\n"))
-	}
-	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
-		t.Fatalf("a new drive reserved the halted run's issue: %+v", r)
-	}
-	named := false
-	for _, p := range next.PassedOver {
-		named = named || (p.ID == res.Issue && strings.Contains(p.Reason, "implement resume --take "+res.Run))
-	}
-	if !named {
-		t.Fatalf("the drive does not name the run and its take-over: %+v", next.PassedOver)
-	}
-	if next.Ended != DrainStoppedCap || len(lanesDone(t, w.repo)) != 2 {
-		t.Fatalf("the drive goes on to other work: %+v\n%s", next, strings.Join(w.lines, "\n"))
-	}
-	again, err := Drain(w.repo.Root(), o.Options, o.Drain)
-	if err != nil {
-		t.Fatal(err)
-	}
-	i := slices.IndexFunc(again.Passed, func(p Excluded) bool { return p.ID == res.Issue })
-	if i < 0 || again.Passed[i].Check != CheckNeedsPerson || !strings.Contains(again.Passed[i].Reason, "implement resume --take "+res.Run) {
-		t.Fatalf("a later drain does not name the run and its take-over: %+v", again.Passed)
-	}
-	if _, err := TakeRun(w.repo.Root(), res.Run, Options{stopHome: home, Now: w.clock.now}); err != nil {
-		t.Fatalf("the take-over it waits for: %v", err)
-	}
 	if c := controlOf(t, w.repo.Root(), res.Run); c.Stop != nil {
-		t.Fatalf("the take-over left the mark: %+v", c.Stop)
+		t.Fatalf("a new drive left the mark: %+v\n%s", c.Stop, strings.Join(w.lines, "\n"))
 	}
-	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateLive {
-		t.Fatalf("the take-over reserves again: %+v", r)
+	if !strings.Contains(strings.Join(w.lines, "\n"), "took over "+res.Issue+", run "+res.Run) {
+		t.Fatalf("the drive does not say it took the run over:\n%s", strings.Join(w.lines, "\n"))
+	}
+	if slices.ContainsFunc(next.PassedOver, func(p Excluded) bool { return p.ID == res.Issue }) ||
+		strings.Contains(strings.Join(w.lines, "\n"), "resume --take") {
+		t.Fatalf("the drive names the run it took as a person's: %+v\n%s", next.PassedOver, strings.Join(w.lines, "\n"))
+	}
+	if !slices.Contains(lanesDone(t, w.repo), res.Issue) {
+		t.Fatalf("the run it took is not landed: %+v\n%s", next, strings.Join(w.lines, "\n"))
 	}
 }
 
 // TestNothingIsReservedWhileAStopHoldsAMarkedRun: a drive that let the run's reservation go
-// would take it again on its way back to the lane. A person's mark on the run stops that.
+// would take it again on its way back to the lane. A stop that holds over the marked run
+// stops that, and ends the drive.
 func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
 	w, res, home := personHaltedLane(t)
 	if err := mutate(w.repo.Root(), res.Run, func(_ *os.Root, st *State) (bool, error) {
@@ -295,10 +277,13 @@ func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := runstop.Set(home, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	o := w.options(t)
 	o.Options.stopHome = home
 	done, ended := newTerminal(w.repo.Root(), o).takeUp(context.Background(), res.Run)
-	if !done || ended != "" {
+	if !done || ended != TerminalHalted {
 		t.Fatalf("the take-up: %v, %q", done, ended)
 	}
 	if r := reservationOf(t, w.repo.Root(), res.Issue, w.clock.t); r.State != claim.StateReleased {
@@ -307,10 +292,12 @@ func TestNothingIsReservedWhileAStopHoldsAMarkedRun(t *testing.T) {
 }
 
 // TestALanePassedOverSaysWhenItWasTakenOver: the drain's lines say what became of each lane,
-// so a lane passed over reads halted only while the run is, and reads as a person's once they
-// have taken it over.
+// so a lane a drive passed over, its run held by a live driver in another terminal, reads
+// halted only while the run is, and reads as taken over once someone has taken it over.
 func TestALanePassedOverSaysWhenItWasTakenOver(t *testing.T) {
 	w, res, home := personHaltedLane(t)
+	claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
+	claimDriverIs(t, w.repo.Root(), res.Run, claimOtherLogin)
 	o := w.options(t)
 	o.Options.stopHome = home
 	if done, ended := newTerminal(w.repo.Root(), o).takeUp(context.Background(), res.Run); !done || ended != "" {
