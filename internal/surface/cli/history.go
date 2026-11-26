@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -262,6 +263,14 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					"abcd history: the stage-miss marker is unreadable (%s)\n",
 					termsafe.Sanitize(missErr.Error()))
 			}
+			// The lines a sub-agent's stop kept, and its start hook's failures:
+			// both hooks' stderr is seen by nobody (spc-2611251757228271).
+			lines, hasLines, linesErr := history.ReadSubagentLines(repoRoot, rootSHA)
+			if linesErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"abcd history: the record of sub-agents' readings is unreadable (%s)\n",
+					termsafe.Sanitize(fsutil.RedactHome(linesErr.Error())))
+			}
 			if staged == nil {
 				staged = []history.Staged{}
 			}
@@ -300,6 +309,17 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					if !miss.EarlierLostAt.IsZero() {
 						fmt.Fprintf(w, "NOTE: the count starts at %s, when an unreadable record of earlier misses was replaced; misses before then are not counted.\n",
 							miss.EarlierLostAt.Format("2006-01-02T15:04:05Z"))
+					}
+				}
+				if hasLines {
+					fmt.Fprintf(w, "\nNOTE: %d sub-agent line(s) kept (first %s, last %s); the newest %d:\n",
+						lines.Count, lines.FirstSeen.Format("2006-01-02T15:04:05Z"), lines.LastSeen.Format("2006-01-02T15:04:05Z"), len(lines.Lines))
+					for _, l := range slices.Backward(lines.Lines) {
+						fmt.Fprintf(w, "%s  %s\n", l.At.Format("2006-01-02T15:04:05Z"), subagentLineText(l))
+					}
+					if !lines.EarlierLostAt.IsZero() {
+						fmt.Fprintf(w, "NOTE: the count starts at %s, when an unreadable record of earlier lines was replaced; lines before then are not counted.\n",
+							lines.EarlierLostAt.Format("2006-01-02T15:04:05Z"))
 					}
 				}
 			}

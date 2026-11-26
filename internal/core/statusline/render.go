@@ -51,8 +51,10 @@ const (
 	KeySevenDay ElementKey = "seven_day"
 	KeyIntents  ElementKey = "intents"
 	KeyIssues   ElementKey = "issues"
-	// KeyMerging says merging is autonomous, while the repository's
-	// facilitator.mode is auto (itd-2610150602547271); under human it drops.
+	// KeyMerging names the repository's facilitator.mode, human and auto
+	// alike, and whose setting it is, or says it was not read
+	// (itd-2611252117557299). The key keeps its name, which a setting and a
+	// program may carry.
 	KeyMerging ElementKey = "merging"
 	// KeySession is the session's name (itd-2610111707085098). It is not in
 	// order and has no switch: it is the session's own name, shown whenever
@@ -63,7 +65,7 @@ const (
 // order is the fixed element order itd-200's commitments set: the badge, the
 // repository name, the branch, the model, the context percentage, the
 // five-hour and seven-day usage percentages, and the record's intent and issue
-// counts. The merging element (itd-2610150602547271) follows the branch: like
+// counts. The merging element (itd-2611252117557299) follows the branch: like
 // the two before it, it is a fact about the repository, and it sits left of
 // the payload elements so a narrow host cuts it after them.
 //
@@ -157,9 +159,9 @@ type Input struct {
 	Repo    Repo    `json:"repo"`
 	Payload Payload `json:"payload"`
 	Counts  Counts  `json:"counts"`
-	// AutonomousMerging reports that the repository's facilitator.mode is
-	// auto, as the merge gate reads it. False renders no merging element.
-	AutonomousMerging bool `json:"autonomous_merging"`
+	// Merging is the repository's facilitator.mode as the composition knows
+	// it; MergingUnasked renders no merging element.
+	Merging Merging `json:"merging"`
 }
 
 // renderRow composes the row.
@@ -203,8 +205,41 @@ func renderRow(in Input, set Settings) Row {
 	return row
 }
 
-// MergingText is the merging element's words.
-const MergingText = "autonomous merging"
+// MergingLabel opens the merging element, and MergingUnread is the whole of it
+// where the mode was not read: never a mode beside it.
+const (
+	MergingLabel  = "facilitator:"
+	MergingUnread = MergingLabel + " not read"
+)
+
+// whoseWords are the shortest words for whose setting decides the mode.
+var whoseWords = map[MergingWhose]string{
+	WhoseProject:        "project",
+	WhoseComputer:       "computer",
+	WhoseUnset:          "not set",
+	WhoseComputerUnread: "computer's file not read",
+}
+
+// mergingText is the merging element: `facilitator: auto (project)`, with
+// `, read 14:02` where the reading may be older than the default branch, or
+// `facilitator: not read`.
+func mergingText(m Merging) string {
+	switch m.State {
+	case MergingUnasked:
+		return ""
+	case MergingHuman, MergingAuto:
+	default:
+		return MergingUnread
+	}
+	in := whoseWords[m.Whose]
+	if m.Read != "" {
+		in += ", read " + m.Read
+	}
+	if in == "" {
+		return MergingLabel + " " + string(m.State)
+	}
+	return termsafe.Sanitize(MergingLabel + " " + string(m.State) + " (" + strings.TrimPrefix(in, ", ") + ")")
+}
 
 // elementText is the plain text of one non-badge element, or "" when the
 // element has nothing to say and must drop.
@@ -215,10 +250,7 @@ func elementText(k ElementKey, in Input) string {
 	case KeyBranch:
 		return termsafe.Sanitize(strings.TrimSpace(in.Repo.Branch))
 	case KeyMerging:
-		if in.AutonomousMerging {
-			return MergingText
-		}
-		return ""
+		return mergingText(in.Merging)
 	case KeyModel:
 		return strings.TrimSpace(in.Payload.Model)
 	case KeyContext:

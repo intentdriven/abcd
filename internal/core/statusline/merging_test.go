@@ -9,36 +9,36 @@ import (
 // While the repository's facilitator.mode is auto, the row says merging is
 // autonomous; under human, or where the mode cannot be read, it says nothing.
 // The mode is read through MergingMode, which the front door sets to
-// landing.AutonomousMerging: this package cannot import landing, so the
-// reading itself — the default branch's committed .abcd/config.json and the
-// machine layer, never the working tree's copy — is proved in landing's tests.
+// landing.KeptMerging: this package cannot import landing, so the
+// reading itself — the kept reading of the default branch's committed
+// .abcd/config.json beside the machine layer — is proved in landing's tests.
 // What is proved here is the element's wiring: what the row does with the
 // reader's answer, with no reader, and with the element switched off.
 
 // withMergingMode sets MergingMode to read for the rest of the test, and
 // restores whatever was there after it.
-func withMergingMode(t *testing.T, read func(ctx context.Context, root string) (bool, string)) {
+func withMergingMode(t *testing.T, read func(ctx context.Context, root string) (Merging, string)) {
 	t.Helper()
 	prev := MergingMode
 	MergingMode = read
 	t.Cleanup(func() { MergingMode = prev })
 }
 
-// mergingAnswer is a reader that gives auto and note whatever it is asked,
+// mergingAnswer is a reader that gives m and note whatever it is asked,
 // and counts the roots it was asked about.
-func mergingAnswer(auto bool, note string, asked *[]string) func(context.Context, string) (bool, string) {
-	return func(_ context.Context, root string) (bool, string) {
+func mergingAnswer(m MergingState, note string, asked *[]string) func(context.Context, string) (Merging, string) {
+	return func(_ context.Context, root string) (Merging, string) {
 		if asked != nil {
 			*asked = append(*asked, root)
 		}
-		return auto, note
+		return Merging{State: m}, note
 	}
 }
 
-func TestTheRowSaysMergingIsAutonomousUnderAuto(t *testing.T) {
+func TestTheRowNamesTheModeAfterTheBranch(t *testing.T) {
 	root := composeRepo(t)
 	var asked []string
-	withMergingMode(t, mergingAnswer(true, "", &asked))
+	withMergingMode(t, mergingAnswer(MergingAuto, "", &asked))
 	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
@@ -46,8 +46,8 @@ func TestTheRowSaysMergingIsAutonomousUnderAuto(t *testing.T) {
 	if len(asked) != 1 || asked[0] != root {
 		t.Errorf("the reader was asked about %q, want once about %q", asked, root)
 	}
-	if got := plainOf(t, res.Row, KeyMerging); got != "autonomous merging" {
-		t.Errorf("merging element = %q, want %q", got, "autonomous merging")
+	if got := plainOf(t, res.Row, KeyMerging); got != "facilitator: auto" {
+		t.Errorf("merging element = %q, want %q", got, "facilitator: auto")
 	}
 	if len(res.Notes) != 0 {
 		t.Errorf("notes = %q, want none", res.Notes)
@@ -66,15 +66,17 @@ func TestTheRowSaysMergingIsAutonomousUnderAuto(t *testing.T) {
 	}
 }
 
-func TestTheRowSaysNothingOfMergingOtherwise(t *testing.T) {
+// TestTheRowNamesHumanToo: human is named as auto is (itd-2611252117557299,
+// replacing itd-2610150602547271's silence under human, dcn-2611252202181153).
+func TestTheRowNamesHumanToo(t *testing.T) {
 	root := composeRepo(t)
-	withMergingMode(t, mergingAnswer(false, "", nil))
+	withMergingMode(t, mergingAnswer(MergingHuman, "", nil))
 	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if el, ok := res.Row.Element(KeyMerging); ok {
-		t.Errorf("the row says %q: %q", el.Plain, res.Row.Plain())
+	if got := plainOf(t, res.Row, KeyMerging); got != "facilitator: human" {
+		t.Errorf("merging element = %q, want %q", got, "facilitator: human")
 	}
 	if len(res.Notes) != 0 {
 		t.Errorf("notes = %q, want none", res.Notes)
@@ -107,7 +109,7 @@ func TestTheMergingElementIsSwitchable(t *testing.T) {
 	// not read at all, so there is none.
 	root := composeRepo(t)
 	var asked []string
-	withMergingMode(t, mergingAnswer(false, "statusline: DROPPED the merging element — facilitator.mode could not be read (x)", &asked))
+	withMergingMode(t, mergingAnswer(MergingUnknown, "statusline: facilitator.mode was not read (x)", &asked))
 	set := Defaults()
 	if !set.Enabled(KeyMerging) {
 		t.Fatal("the merging element is off by default")
@@ -124,7 +126,7 @@ func TestTheMergingElementIsSwitchable(t *testing.T) {
 		t.Errorf("notes = %q, want none: a switched-off element reads nothing", res.Notes)
 	}
 
-	withMergingMode(t, mergingAnswer(true, "", &asked))
+	withMergingMode(t, mergingAnswer(MergingAuto, "", &asked))
 	res, err = ComposeContext(context.Background(), root, Payload{}, set)
 	if err != nil {
 		t.Fatal(err)
@@ -137,19 +139,19 @@ func TestTheMergingElementIsSwitchable(t *testing.T) {
 	}
 }
 
-// TestAReaderNoteDropsTheMergingElementAndIsPassedOn: a reader that could not
-// read the mode returns a note; the row drops the element, keeps the rest,
-// and hands the note on, as it is, for the front door's stderr.
-func TestAReaderNoteDropsTheMergingElementAndIsPassedOn(t *testing.T) {
+// TestAReaderNoteSaysNotReadAndIsPassedOn: a reader that could not read the
+// mode returns a note; the element says the mode was not read, the row keeps
+// the rest, and the note is handed on, as it is, for the front door's stderr.
+func TestAReaderNoteSaysNotReadAndIsPassedOn(t *testing.T) {
 	root := composeRepo(t)
-	const note = "statusline: DROPPED the merging element — facilitator.mode could not be read (a value that is not a mode)"
-	withMergingMode(t, mergingAnswer(false, note, nil))
+	const note = "statusline: facilitator.mode was not read (a value that is not a mode)"
+	withMergingMode(t, mergingAnswer(MergingUnknown, note, nil))
 	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if el, ok := res.Row.Element(KeyMerging); ok {
-		t.Errorf("the row says %q over a mode that does not read", el.Plain)
+	if got := plainOf(t, res.Row, KeyMerging); got != "facilitator: not read" {
+		t.Errorf("the row says %q over a mode that does not read", got)
 	}
 	if _, ok := res.Row.Element(KeyPresence); !ok {
 		t.Errorf("the badge dropped: %q", res.Row.Plain())

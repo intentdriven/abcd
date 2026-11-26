@@ -1,6 +1,7 @@
 package statusline
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,7 +88,7 @@ func TestComposeReadsTheThreeInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Compose(root, p, Defaults())
+	res, err := ComposeContext(context.Background(), root, p, Defaults())
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestComposeReadsTheThreeInputs(t *testing.T) {
 func TestComposeWithoutARecordDropsTheCounts(t *testing.T) {
 	root := composeRepo(t)
 	set := Defaults()
-	res, err := Compose(root, Payload{}, set)
+	res, err := ComposeContext(context.Background(), root, Payload{}, set)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestComposeRendersTheShortShaOnADetachedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := strings.TrimSpace(string(out))
-	res, err := Compose(root, Payload{}, Defaults())
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestComposeRefusesAMalformedStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(mode.FileRelPath)), []byte("everyone\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Compose(root, Payload{}, Defaults()); err == nil {
+	if _, err := ComposeContext(context.Background(), root, Payload{}, Defaults()); err == nil {
 		t.Fatal("a malformed mode store composed a row")
 	}
 }
@@ -213,7 +214,7 @@ func TestComposeNotesAnUnreadableRecordAndKeepsTheRow(t *testing.T) {
 				t.Fatal(err)
 			}
 			tc.stand(t, drafts)
-			res, err := Compose(root, Payload{}, Defaults())
+			res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 			if err != nil {
 				t.Fatalf("Compose: %v", err)
 			}
@@ -273,7 +274,7 @@ func TestComposeCountsAreFolderCounts(t *testing.T) {
 	lay(".abcd/development/intents/planned/itd-3-c.md", "garbage\n")
 	lay(".abcd/development/intents/shipped/itd-4-d.md", "shipped, not counted\n")
 
-	res, err := Compose(root, Payload{}, Defaults())
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}

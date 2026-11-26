@@ -29,6 +29,16 @@ type raiserProbe struct {
 	// in, when set, readies the call before it runs: the directory it runs
 	// in, the environment it runs under. It is set with from.
 	in func(t *testing.T)
+	// alone runs the probe in a subtest of its own, so what its in sets,
+	// test seams included, is undone before the next probe runs. It is set
+	// with apart.
+	alone bool
+}
+
+// apart is p run in a subtest of its own, after in readies it.
+func (p raiserProbe) apart(in func(t *testing.T)) raiserProbe {
+	p.in, p.alone = in, true
+	return p
 }
 
 // from is p run after in readies it.
@@ -116,10 +126,20 @@ func TestRaisedByIsWhatTheVerbsRaise(t *testing.T) {
 	for _, name := range slices.Sorted(maps.Keys(raiserProbeSets)) {
 		t.Run(name, func(t *testing.T) {
 			for _, p := range raiserProbeSets[name](t) {
-				if p.in != nil {
-					p.in(t)
+				var code int
+				var env errorEnvelope
+				var out string
+				run := func(t *testing.T) {
+					if p.in != nil {
+						p.in(t)
+					}
+					code, env, out = codedRefusal(t, p.args...)
 				}
-				code, env, out := codedRefusal(t, p.args...)
+				if p.alone {
+					t.Run(p.want, run)
+				} else {
+					run(t)
+				}
 				if code != p.wantExit() || env.Code != p.want {
 					t.Errorf("abcd %s: exit %d code %q, want exit %d and %s:\n%s", strings.Join(p.args, " "), code, env.Code, p.wantExit(), p.want, out)
 					continue

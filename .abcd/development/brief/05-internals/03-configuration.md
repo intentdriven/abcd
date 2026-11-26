@@ -17,8 +17,9 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
 (how many live reservations one person may hold across all of their sessions:
-1 to 100 and 10 by default), read from the machine layer alone
-(`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
+1 to 100 and 10 by default), set by the repository's file at origin's default
+branch and lowered, never raised, by the machine's (below;
+`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
 4 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), the load gate's
@@ -259,6 +260,25 @@ a reservation on a fork naming the file and never stops one anywhere else. The m
 layer alone and is not one of the twenty-four. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
+
+The `reservation.max_live` key, one person's ceiling on live reservations, 1
+to 100 and 10 by default, runs the other way (itd-2611251809580662 decisions 3
+and 8, refining dcn-2611222342270127 for this key alone): the repository's
+`.abcd/config.json` sets it, read as stored at the commit origin itself names
+as its default branch's tip when an act adds a reservation (an act refused,
+to be run again, where origin cannot be asked or that commit cannot be
+fetched), and as last
+fetched by a view that only shows it, never from a working tree or
+another branch, and `~/.abcd.noindex/config.json` may lower it on that machine
+and never raise it, a higher figure there ignored and named. A checkout with no
+default branch of origin reads no repository figure and says so. In the
+repository's file the `reservation` namespace takes `max_live` and
+`fork_origin`; `reservation.github_username` is refused there, naming the file
+and the commit. A repository value out of range or an unknown key refuses an
+act that adds a reservation, naming the file at the branch; a machine file that
+is there but cannot be read refuses it too, naming the file, and one that is
+not there reads as none. Neither refuses a release or a renewal
+(`internal/core/claim/maxlive.go`).
 
 The `drain.bundle_max` key is read through the same reader, and a repository
 may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the
@@ -1370,7 +1390,11 @@ event takes only a build's exit 0 as its answer: none of those verbs exits 2 on
 purpose, and a Go crash does, which the host would read as a block. Any other
 exit, a death by a signal included, is said on stderr and the installed release runs the same
 event from the same input, so a verb the build began before it died runs again
-whole. A build that answers is the reviewed tip's answer, so a defect the
+whole. A sub-agent's start takes exit 1 as a build's answer too: that verb fails
+at exit 1 on purpose, within its own bound and with the failure counted, and a
+second run does not fit the manifest's timeout and would count the one start
+twice. A build too old to carry the verb exits 1 as well, so such a start is not
+told, with the build's line on stderr. A build that answers is the reviewed tip's answer, so a defect the
 reviewed branch carries is one these hooks carry too. A machine with no list
 pays one file test per hook.
 
@@ -1514,9 +1538,7 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `matrix.spend_cap` (a repository's figure refused),
 `review.max_reviewers`, `models.classes` and `models.effort` (a repository's skipped with a warning),
-`reservation.github_username`, `reservation.max_live` (1 to
-100, 10 by default, read past to 10 when the file cannot be read, which the
-refusal at the cap says), `load.preflights` (how many preflights the first
+`reservation.github_username`, `load.preflights` (how many preflights the first
 gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
@@ -1581,7 +1603,8 @@ whose news was shown in `after-update/`
 one marker per running host session in `occupancy/`, the session-name register
 in `sessions/names.json`
 ([`../04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md#what-ships-today)), the
-rules loader's per-session ledgers in `rules-state/`, the dashboard's run file,
+rules loader's per-session ledgers and the sub-agents' facts ([what a starting
+sub-agent is told](#what-a-starting-sub-agent-is-told)) in `rules-state/`, the dashboard's run file,
 seen devices and lock in `dashboard/`
 ([`../04-surfaces/36-dashboard.md`](../04-surfaces/36-dashboard.md#starting-stopping-reading-the-state)), this account's holder id in `holder-id`, the load gate's three
 holds in `load-wait.json`, `load-wait-race.json` and `load-wait-narrow.json` (taken under
@@ -1591,7 +1614,8 @@ check directory those stages run from in `tests/<root-sha>/` ([the check
 directory](#the-check-directory)), the drive's per-preflight checkouts in
 `preflight-checkouts/`, a walled stage's home in `stage-homes/`, the scheduled
 verdicts in `scheduled-runs/<root-sha>/`, the run stop in `stop.json` where no
-shared folder holds it, the drive's separate logins in `profiles/`,
+shared folder holds it, the separate logins in `profiles/`, whose first directory `abcd start` makes and the person logs in,
+the copies of abcd an open session's hooks run in `session-bin/`, the copies of the conventions text it reads in `session-conventions/`,
 the folder this account shares with another in `shared-folder.json`, the context
 fill the status line leaves in `fill/`, the record of the line install added to a shell startup
 file in `shell-path.json`, the installed-tools record in `tools.json`, and the
@@ -1667,7 +1691,7 @@ permission guard (a regular file this uid owns that no one else can write) —
 `credential-homes.json`, `tools.json`, `identity.json`,
 `identity/<root-sha>.json`, the files of `away/<root-sha>/`, the one-shot allows
 in `guard-allow/<root-sha>/`, the markers in `occupancy/`,
-`sessions/names.json`, the ledgers in `rules-state/`, `dashboard/run.json`,
+`sessions/names.json`, the ledgers and the sub-agents' facts in `rules-state/`, `dashboard/run.json`,
 `dashboard/seen.json`, and the check records and builds in
 `dogfood/<root-sha>/` — is refused when `~/.abcd.noindex`, or a directory
 below it on the way to the file, is a symlink: the rule the rules loader states
@@ -2035,6 +2059,73 @@ in two cases:
   a prompt without the prefix drops it from the set, and the next `*NAME`
   renders it again, with no edit to `rules.json`.
 
+## What a starting sub-agent is told
+
+The rules loader runs when a person sends a prompt, and a sub-agent is sent none;
+the conventions file reaches it only where the host loads it. So `hook
+subagent-start` (itd-2611251725190796, spc-2611251757228271) tells each sub-agent,
+as it starts, where the conventions are and which commands print the rules. Its
+output is one JSON object, whole or absent, whose
+`hookSpecificOutput.additionalContext` carries:
+
+- the conventions file, `AGENTS.md` at the checkout root or else `CLAUDE.md`, the
+  root the hook looked in (left out where its path holds a space or any byte
+  outside letters, digits and `/ . _ - + @ ~ , : =`, so no word of a directory's
+  name reads as abcd's), and that a sub-agent given another worktree reads the
+  copy at that worktree's root: the payload carries the session's directory and
+  never the sub-agent's own. The file is looked at and never opened, so no word
+  of it, its check word included, can reach the output. With neither file the
+  message says nothing of one;
+- that the guard refuses the sub-agent's writes until a call of its own has read
+  that file
+  ([`../04-surfaces/17-guard.md`](../04-surfaces/17-guard.md#the-hold-on-a-sub-agents-writes));
+- the two commands: `rules --prompt "<your task in one sentence>"`, which names
+  the domains a task recalls, and `rules <DOMAIN>`, which prints one. They run
+  the hook's own executable by its absolute path, in every checkout
+  (dcn-2611252223137667), in single quotes where it holds any other printable
+  byte. Where it cannot be printed (not valid UTF-8, or a rune that does not
+  print) the two commands are left out and the message says so: no other abcd
+  is named in its place;
+- the names of the domains in force, with their count, each one an override names
+  labelled as `abcd rules` labels it. The document fits
+  `rules.InjectionBudgetBytes`: a list that does not is replaced whole by the
+  count and the command that prints it (the count alone where the commands are
+  left out), and no name is cut.
+
+It carries no rule's text. The hook is silent, at exit 0 and with nothing
+written, in a repository abcd does not manage, where the rules are switched off in
+the repository or on the machine, and for abcd's four cold-reading agents, whose
+context may hold no repository path.
+
+The hook holds itself to 5 seconds (`subagentStartBound`), set before stdin is
+read, under the manifest's 10. A payload it cannot read, a rules file that will not
+load, git that does not answer, a fact that cannot be written, a panic and a spent
+bound each leave stdout empty, put one line on stderr and exit 1: never 0, which
+would hide it, and never 2, the host's blocking status. The sub-agent starts all
+the same. The failure is counted in the history lane's `subagent-readings.json`,
+in the store the session-start hook noted for the session, and the line says so
+where there is none.
+
+**A sub-agent's facts** are kept in `rules-state/`, beside the session ledgers and
+under the same folder, guard and age (`internal/core/rules/subagent.go`). Each is
+one small file, named by a digest of the session id and the agent id and by the
+fact: `told` (the file, the root, and whether the start hook or the guard told
+it; the start hook keeps it last, with its answer made and not yet written, so a
+bound spent as it is kept, or an answer that cannot be written after it, leaves a
+`told` fact for a sub-agent that was not told, whose stop's line then says what it
+skipped), `passed` (it has read the file, or a build lane's brief that carries it),
+`held` and `unjudged` (what the guard did about its writes) and `judged` (its
+stop's line is kept). A fact is written once and never rewritten from a read, so
+two hooks answering for one sub-agent cannot lose each other's; an `unjudged` fact
+whose cause settles nothing is replaced whole by one whose cause does. They are no part
+of the session's ledger, which every prompt rewrites and each session start
+removes. A payload whose ids can key nothing leaves no fact, and that sub-agent is
+told and never judged or held. A fact is swept seven days after it was written,
+with the ledgers.
+
+The sub-agent's stop reads the facts and keeps one line for what it skipped
+([`../04-surfaces/11-history.md`](../04-surfaces/11-history.md#a-stopping-sub-agents-line)).
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
@@ -2331,19 +2422,25 @@ world-writable, and recorded as this
 machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
 message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse`,
 `PermissionRequest` and `PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
-and the transcript hooks declare none. Every event that runs `bootstrap.sh`
+`SubagentStart`
+declares a 10-second timeout, and the transcript hooks declare none. Every event that runs `bootstrap.sh`
 names a `statusMessage`, the host's spinner text while the hook runs, because the
 salvage sends the script's output nowhere; the text states no duration, since
 those limits differ. A test pins every event's timeout and the message
 (`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
-`SubagentStop` are among the four
+`SubagentStop` are among the five
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the
 transcript the hook exists to capture (iss-2608210934566223). Both resolve the
 plugin root, then PATH, then say the transcript was not captured. `SubagentStop`
 additionally never exits non-zero beyond that refusal, because exit 2 is the host's
-BLOCKING code on that event. `Stop` and `StopFailure` carry the away
+BLOCKING code on that event. `SubagentStart` carries `hook subagent-start`
+([what a starting sub-agent is told](#what-a-starting-sub-agent-is-told)) and
+downloads nothing, since a sub-agent's start does not wait on a fetch:
+it resolves the plugin root, then PATH, then says in one line, at exit 1, that the
+sub-agent was not told, and the verb holds itself to 5 seconds under the manifest's
+10. `Stop` and `StopFailure` carry the away
 mode's stop check (`hook stop`, `hook stop-failure`, spc-2610180914469489) and fire
 at a turn's end, where a fetch would hold the session; each resolves the plugin
 root, then PATH, then says what did not happen, at exit 1, never `Stop`'s

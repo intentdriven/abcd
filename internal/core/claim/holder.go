@@ -54,11 +54,18 @@ const (
 	holderKey       = holderNamespace + ".github_username"
 )
 
-// reservationKeys are every key the reservation namespace takes, in every
-// layer: the holder's and the cap's (each read from the machine layer alone,
-// maxlive.go) and the fork check's opt-out (fork.go, read from both). Each
-// reader claims them all, so one reader's key is never another's unknown key.
+// reservationKeys are every key the reservation namespace takes in the
+// machine's file and in a working tree's: the holder's (read from the machine
+// layer alone), the cap's (maxlive.go) and the fork check's opt-out (fork.go,
+// read from both). Each reader claims them all, so one reader's key is never
+// another's unknown key.
 var reservationKeys = []string{"github_username", "fork_origin", "max_live"}
+
+// repoReservationKeys are the keys the reservation namespace takes in the
+// repository's file as the cap reads it, at origin's default branch
+// (maxlive.go): the cap's own and the fork check's repository-wide opt-out.
+// The holder's username is a person's, so the cap refuses it there by name.
+var repoReservationKeys = []string{"max_live", "fork_origin"}
 
 // identity is a git identity: the one read under the person's own
 // configuration, and the author and committer of every reservation commit.

@@ -270,8 +270,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"the call opens nothing; before that time a drain opens nothing, and after it the\n" +
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
 			"is all); at the cap, or when nothing eligible is left, held or not, the drain reports\n" +
-			"and ends. When you hold your cap of live reservations (ten unless reservation.max_live\n" +
-			"in your machine's config.json sets another, from 1 to 100), or every\n" +
+			"and ends. When you hold your cap of live reservations (ten unless the repository's\n" +
+			"reservation.max_live in .abcd/config.json at origin's default branch sets another,\n" +
+			"from 1 to 100, or your machine's config.json lowers it), or every\n" +
 			"eligible issue left is held by another, a move neither refuses nor ends: it reserves\n" +
 			"and asks nothing, writes waiting_until fifteen minutes on (apart from the pace\n" +
 			"window) and waiting, \"cap\" or \"held\", for which of the two it waits on, names the\n" +
