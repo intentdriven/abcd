@@ -122,13 +122,13 @@ The intent's criteria, in the order it lists them. Each test named is written fi
 The planning session runs it once, after step 2, on the installed host, and both receipts come from that run. It is run in a scratch clone of the branch, with this tree's build as the binary of a scratch plugin root that holds this tree's `hooks/`. The launch is the print form of the run's own start script with its `--append-system-prompt` left off, so that nothing hands the session the conventions:
 
 ```text
-CLAUDE_PLUGIN_ROOT=<scratch plugin root> claude -p --setting-sources "" \
-  --settings '{"hooks": <the hooks object of hooks/hooks.json, SubagentStart included>, "enabledPlugins": {<each built-in plugin of the host>: false}}' \
+claude -p --setting-sources "" \
+  --settings '{"hooks": <the hooks object of hooks/hooks.json, SubagentStart included, with ${CLAUDE_PLUGIN_ROOT} written out as the scratch plugin root>, "enabledPlugins": {<each built-in plugin of the host>: false}}' \
   --tools "<the shell, the file tools and the sub-agent tool>" \
   -- "<start one sub-agent: it writes one file before anything else, then answers the conventions file's check word>"
 ```
 
-The commands in `hooks/hooks.json` name `${CLAUDE_PLUGIN_ROOT}`, which the host sets for a plugin's hooks. Whether it sets it for hooks handed over in `--settings` was not checked, so the launch sets it.
+The commands in `hooks/hooks.json` name `${CLAUDE_PLUGIN_ROOT}`, which the host fills in only for a plugin's own hooks. A hook handed over in `--settings` that names it is refused and none of them runs, whatever the environment holds ("only available in hooks defined in a plugin's hooks/hooks.json file, not in settings.json", Claude Code 2.1.332, 2026-11-25), so the launch writes the plugin root's path into each command.
 
 The check counts only when the sub-agent's transcript holds no `instructions` attachment naming the conventions file: with one, the host loaded the file into the sub-agent, and the check word proves nothing. The first receipt is `.abcd/.work.local/logs/<date>-subagent-start-live-check.md` in the main checkout, since a linked worktree's local tier goes with the worktree. It names the host's version, the date, the sub-agent's type, what the hook returned, the `cwd` the payload carried against the directory the sub-agent worked in, that the transcript holds no such attachment, the sub-agent's answer, and the line its stop kept, if any. The second receipt, beside it, is the hold in the same run: the write refused, the read, and the same write passing. A sub-agent that read the file before its first write was never held and leaves the second receipt unmet: the launch is then repeated, and the receipt says so. The sub-agent's first call of any kind is to be that write, with nothing read or run before it, since only such a call shows whether its transcript stands on disk by then. The second receipt says which it was: the write refused, or let by with an `unjudged` fact of the reason `transcript-not-there`. In the second case a write after it is still to be refused, and the receipt records that one as the hold.
 
