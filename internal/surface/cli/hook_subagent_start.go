@@ -69,6 +69,7 @@ var errSubagentStartSpent = errors.New("the bound was spent")
 type subagentStartAnswer struct {
 	in    hookInput
 	out   []byte
+	told  *rules.SubagentRecord // the told fact to keep before out is written, nil for none
 	notes []byte
 	err   error
 }
@@ -102,7 +103,7 @@ func runHookSubagentStart(cmd *cobra.Command, _ []string) (err error) {
 		}
 		read <- a.in
 		var notes bytes.Buffer
-		a.out, a.err = subagentStartMessage(ctx, a.in, &notes)
+		a.out, a.told, a.err = subagentStartMessage(ctx, a.in, &notes)
 		a.notes = notes.Bytes()
 	}()
 
@@ -147,8 +148,17 @@ func deliverSubagentStart(cmd *cobra.Command, a subagentStartAnswer) error {
 	case len(a.out) == 0:
 		return nil
 	}
+	// The note is kept here, by the one goroutine that writes to the host, and
+	// before the answer: a note that cannot be kept sends nothing, so every
+	// sub-agent that was told has one, and a bound spent while the work ran
+	// leaves none, since the work keeps no fact itself.
+	if a.told != nil {
+		if err := rules.WriteSubagentFact(a.in.SessionID, a.in.AgentID, rules.SubagentTold, *a.told); err != nil {
+			return subagentStartFailed(cmd, a.in, errors.New("the note that it was told could not be kept"))
+		}
+	}
 	if _, werr := cmd.OutOrStdout().Write(a.out); werr != nil {
-		if subagentKey(a.in.SessionID, a.in.AgentID) {
+		if a.told != nil {
 			if rec, found, err := rules.ReadSubagentFact(a.in.SessionID, a.in.AgentID, rules.SubagentTold); err == nil && found && rec.By == rules.SubagentToldByStart {
 				_ = rules.RemoveSubagentFact(a.in.SessionID, a.in.AgentID, rules.SubagentTold)
 			}
@@ -209,32 +219,31 @@ func subagentKey(session, agent string) bool {
 }
 
 // subagentStartMessage is the stdout document for one payload, nil where the
-// sub-agent is told nothing. Anything the helpers have to say goes to notes.
-func subagentStartMessage(ctx context.Context, in hookInput, notes io.Writer) ([]byte, error) {
+// sub-agent is told nothing, and the told fact the hook keeps before it writes
+// the document, nil where it keeps none. It writes no fact itself: the hook
+// may give up on it at its bound, and a fact kept by work given up on would
+// say the sub-agent was told when nothing reached it. Anything the helpers
+// have to say goes to notes.
+func subagentStartMessage(ctx context.Context, in hookInput, notes io.Writer) ([]byte, *rules.SubagentRecord, error) {
 	if coldReader(in.AgentType) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	c, err := subagentConventions(ctx, orProcessDir(in.Cwd), notes)
 	if err != nil || !c.Applies {
-		return nil, err
+		return nil, nil, err
 	}
 	doc, err := composeSubagentStart(c, subagentAbcd(), notes)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// The note comes last, so a bound spent above leaves none. It comes before
-	// the answer is written and not after: a note that cannot be kept sends
-	// nothing, so every sub-agent that was told has one.
 	if err := ctx.Err(); err != nil {
-		return nil, errSubagentStartSpent
+		return nil, nil, errSubagentStartSpent
 	}
+	var told *rules.SubagentRecord
 	if subagentKey(in.SessionID, in.AgentID) {
-		told := rules.SubagentRecord{File: c.File, Root: c.Root, By: rules.SubagentToldByStart}
-		if err := rules.WriteSubagentFact(in.SessionID, in.AgentID, rules.SubagentTold, told); err != nil {
-			return nil, errors.New("the note that it was told could not be kept")
-		}
+		told = &rules.SubagentRecord{File: c.File, Root: c.Root, By: rules.SubagentToldByStart}
 	}
-	return doc, nil
+	return doc, told, nil
 }
 
 // conventionsScope is where a sub-agent's conventions come from: the checkout

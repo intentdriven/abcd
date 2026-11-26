@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -31,5 +32,22 @@ func TestSubagentStartKeepsNoToldFactForAnAnswerNotDelivered(t *testing.T) {
 	}
 	if _, found, err := rules.ReadSubagentFact("s1", "a1", rules.SubagentTold); err != nil || found {
 		t.Errorf("a told fact stands for an answer never delivered (found %v, err %v)", found, err)
+	}
+}
+
+// TestSubagentStartWorkKeepsNoFact: the work beside the bound keeps no told
+// fact itself, since the hook may give up on it at the bound, and a fact kept
+// by work given up on says the sub-agent was told when nothing reached it. It
+// hands the fact back, and only the hook keeps it, before it writes the answer.
+func TestSubagentStartWorkKeepsNoFact(t *testing.T) {
+	repo, _ := subagentRepo(t)
+	in := hookInput{SessionID: "s1", AgentID: "a1", AgentType: "t", Cwd: repo.Root()}
+	var notes bytes.Buffer
+	doc, told, err := subagentStartMessage(context.Background(), in, &notes)
+	if err != nil || len(doc) == 0 || told == nil {
+		t.Fatalf("the work: doc %d bytes, told %v, err %v; want an answer and a fact to keep", len(doc), told, err)
+	}
+	if _, found, err := rules.ReadSubagentFact("s1", "a1", rules.SubagentTold); err != nil || found {
+		t.Errorf("the work kept a told fact itself (found %v, err %v)", found, err)
 	}
 }
