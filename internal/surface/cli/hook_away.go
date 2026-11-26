@@ -53,8 +53,10 @@ func awayBlock(rec *autonomy.Record) string {
 type awayView struct {
 	Block   string
 	Message string
-	// Holds is whether the away record holds at this prompt.
-	Holds bool
+	// Holds is whether the away record holds at this prompt, and Record is
+	// that record when it does.
+	Holds  bool
+	Record *autonomy.Record
 }
 
 // readPromptAway reads the away record for the repository whose root commit
@@ -83,7 +85,7 @@ func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView 
 	}
 	switch {
 	case holds:
-		return awayView{Block: awayBlock(rec), Message: rec.PersonLine(), Holds: true}
+		return awayView{Block: awayBlock(rec), Message: rec.PersonLine(), Holds: true, Record: rec}
 	case rec.Lapsed(now):
 		return awayView{Block: asBlock(rec.LapsedSessionLine()), Message: rec.LapsedLine()}
 	}
@@ -97,7 +99,7 @@ func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView 
 // hook's deadline: a deadline spent opens nothing and names nothing, and any
 // other failure is named on stderr and opens nothing, so the session stays
 // away, as it was.
-func promptConversation(ctx context.Context, stderr io.Writer, cwd, sessionID, prompt string) string {
+func promptConversation(ctx context.Context, stderr io.Writer, cwd, sessionID, prompt string, rec *autonomy.Record) string {
 	if stageActive() || !autonomy.ValidSessionID(sessionID) || ctx.Err() != nil {
 		return ""
 	}
@@ -105,7 +107,7 @@ func promptConversation(ctx context.Context, stderr io.Writer, cwd, sessionID, p
 	if err != nil {
 		return ""
 	}
-	opened, err := autonomy.NotePrompt(ctx, copyRoot, sessionID, prompt, time.Now())
+	opened, err := autonomy.NotePrompt(ctx, copyRoot, sessionID, prompt, rec, time.Now())
 	if err != nil {
 		if ctx.Err() == nil {
 			diagnosticLine(stderr, "abcd mode: the prompt did not open the conversation window (%s)", fsutil.RedactHome(err.Error()))

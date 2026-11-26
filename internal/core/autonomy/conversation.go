@@ -167,8 +167,10 @@ func personPrompt(st SessionState, prompt string) bool {
 // calls it only while the away record holds. The wakes are those every stop
 // check of the session has kept (KeepWakes), present or away. A prompt that
 // opens nothing drops a stamp later than now, so a clock stepped back cannot
-// open a window later.
-func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now time.Time) (bool, error) {
+// open a window later. It reports the window open only when the stamp counts
+// under rec, the record holding now (Conversing): a prompt in the record's
+// first second is stamped but opens nothing.
+func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, rec *Record, now time.Time) (bool, error) {
 	st, err := LoadSession(ctx, copyRoot, sessionID)
 	if err != nil {
 		return false, err
@@ -186,7 +188,7 @@ func NotePrompt(ctx context.Context, copyRoot, sessionID, prompt string, now tim
 	if err := SaveSession(copyRoot, sessionID, st); err != nil {
 		return false, err
 	}
-	return true, nil
+	return st.Conversing(rec, now), nil
 }
 
 // ConversationLine is the agent's line on a prompt that opened or renewed the

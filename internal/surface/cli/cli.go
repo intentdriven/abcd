@@ -2077,7 +2077,7 @@ outside the dedup ledger.`,
 			// for a while, and the agent is told so.
 			if away.Holds {
 				convCtx, convCancel := context.WithDeadline(context.Background(), deadline)
-				away.Block = joinBlocks(away.Block, promptConversation(convCtx, cmd.ErrOrStderr(), cwd, in.SessionID, in.Prompt))
+				away.Block = joinBlocks(away.Block, promptConversation(convCtx, cmd.ErrOrStderr(), cwd, in.SessionID, in.Prompt, away.Record))
 				convCancel()
 			}
 			// The checklist's behind note a present session's last stop left

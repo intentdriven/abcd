@@ -202,7 +202,7 @@ func TestNotePrompt(t *testing.T) {
 			if err := SaveSession(copyRoot, id, base); err != nil {
 				t.Fatal(err)
 			}
-			opened, err := NotePrompt(ctx, copyRoot, id, c.prompt, now)
+			opened, err := NotePrompt(ctx, copyRoot, id, c.prompt, rec, now)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -228,7 +228,7 @@ func TestNotePrompt(t *testing.T) {
 	if err := SaveSession(copyRoot, id, future); err != nil {
 		t.Fatal(err)
 	}
-	if opened, err := NotePrompt(ctx, copyRoot, id, "Build, regular look", now); err != nil || opened {
+	if opened, err := NotePrompt(ctx, copyRoot, id, "Build, regular look", rec, now); err != nil || opened {
 		t.Fatalf("a wake's prompt: opened %v, err %v", opened, err)
 	}
 	st, err := LoadSession(ctx, copyRoot, id)
@@ -242,7 +242,7 @@ func TestNotePrompt(t *testing.T) {
 	if err := SaveSession(copyRoot, id, SessionState{CronPromptsUnmatched: true}); err != nil {
 		t.Fatal(err)
 	}
-	if opened, err := NotePrompt(ctx, copyRoot, id, "status?", now); err != nil || opened {
+	if opened, err := NotePrompt(ctx, copyRoot, id, "status?", rec, now); err != nil || opened {
 		t.Errorf("past the wakes' bound: opened %v, err %v; want nothing opened", opened, err)
 	}
 }
@@ -317,5 +317,22 @@ func TestWakesBound(t *testing.T) {
 	}
 	if after, _ := KeepWakes(at33, nil, now); !after.CronPromptsUnmatched {
 		t.Error("a stop listing no wakes cleared the mark")
+	}
+}
+
+// TestNotePromptInTheRecordsFirstSecond: a prompt the window would not count
+// (stamped within the record's first second) is not reported as opening it.
+func TestNotePromptInTheRecordsFirstSecond(t *testing.T) {
+	ctx := context.Background()
+	now := at(t, "2026-11-26 06:00").Add(400 * time.Millisecond)
+	rec := awayRec(now, false)
+	rec.Start = now.Truncate(time.Second)
+	copyRoot := t.TempDir()
+	if opened, err := NotePrompt(ctx, copyRoot, "sess-1", "status?", rec, now); err != nil || opened {
+		t.Errorf("a prompt in the record's first second: opened %v, err %v; want nothing reported open", opened, err)
+	}
+	later := now.Add(2 * time.Second)
+	if opened, err := NotePrompt(ctx, copyRoot, "sess-1", "status?", rec, later); err != nil || !opened {
+		t.Errorf("a prompt two seconds in: opened %v, err %v; want it open", opened, err)
 	}
 }
