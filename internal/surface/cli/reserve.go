@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -458,6 +460,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return refused(2, refusal.ReserveOutsideCheckout, "abcd reserve: "+err.Error()+"; nothing was pushed")
 			}
+			if msg := commaJoinedFootprint(root, footprint); msg != "" {
+				return refused(2, refusal.UsageInvalidFlagValue, msg)
+			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			req := claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
 				TakeOver: takeOver, Release: release, Admit: admit, WarnOwnOverlap: true}
@@ -758,4 +763,34 @@ func noteMachineHome(w io.Writer, verb string) {
 	if _, note := layered.MachineRoots(home); note != "" {
 		fmt.Fprintln(w, verb+": "+termsafe.Sanitize(fsutil.RedactHome(note)))
 	}
+}
+
+// commaJoinedFootprint refuses a --footprint value that joins two or more
+// paths with commas and names no path in the checkout (iss-2611260633438543):
+// the flag takes one path per use, so such a value would be stored as one
+// path named with a comma that no overlap check ever matches. A path whose
+// own name holds a comma, and exists, passes. It returns the refusal's text,
+// naming the repeated-flag form, or "" when every value is one path.
+func commaJoinedFootprint(root string, footprint []string) string {
+	for _, v := range footprint {
+		if !strings.Contains(v, ",") {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(v))); err == nil {
+			continue
+		}
+		var parts []string
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				parts = append(parts, part)
+			}
+		}
+		if len(parts) < 2 {
+			continue
+		}
+		return "abcd reserve: --footprint takes one path per use, and " + strconv.Quote(termsafe.Sanitize(v)) +
+			" joins several with commas; name each with its own flag: --footprint " +
+			termsafe.Sanitize(strings.Join(parts, " --footprint ")) + "; nothing was pushed"
+	}
+	return ""
 }
