@@ -126,10 +126,16 @@ Ruled by the product thinker, 2026-11-26 ("yes, both go").
 - A project that commits `auto` is auto for a person whose global setting is
   `human`, and under a home abcd refuses; that is the breaking part of
   itd-2611252049031692.
-- A person's global `auto` arms only their own pull requests once the gate
-  reads who opened one. Until that step of itd-2611252049031692 lands, the
-  gate keeps the behaviour that shipped, where a maintainer's pull request goes
-  through under the computer's `auto`.
+- The merge gate holds both rules beside the order. A person's global `auto`
+  arms only a pull request the forge account abcd runs as opened, and judges
+  anyone else's as `human` judges it, waiting for an approval of its head or
+  for its author to land it (dcn-2611262202295309, superseding
+  dcn-2611262048349309). A pull request whose diff changes the committed
+  `facilitator.mode` line is armed in no mode, and the person merges it on the
+  forge's page (dcn-2611262202306256). The shell guard does not yet hold
+  either rule for a merge command an agent types, and an arming of abcd's own
+  that already stands at such a head is not yet taken back off; both are
+  spc-2611262159212693.
 - `abcd facilitator auto|human` writes only `~/.abcd.noindex/config.json`; it
   takes no flag that chooses where.
 - [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md),
