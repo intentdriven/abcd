@@ -28,7 +28,7 @@ import (
 // the list's length when the list was made, and it only falls: a step that
 // codes a file's last refusal removes the file from the list and lowers this
 // number with it, so a file cannot be added without one being taken off.
-const refusalUncodedCeiling = 80
+const refusalUncodedCeiling = 66
 
 // refusalUncodedFiles reads the exemption list: the files, from the package
 // directory, whose literals carry no code yet.
@@ -338,7 +338,14 @@ func codedRefusal(t *testing.T, args ...string) (int, errorEnvelope, string) {
 	t.Helper()
 	var stdout, stderr strings.Builder
 	code := Run(append(slices.Clone(args), "--json"), &stdout, &stderr)
-	dec := json.NewDecoder(strings.NewReader(stdout.String()))
+	// A verb that speaks in lines before it refuses writes them ahead of the envelope.
+	doc := stdout.String()
+	if !strings.HasPrefix(doc, "{") {
+		if i := strings.Index(doc, "\n{"); i >= 0 {
+			doc = doc[i+1:]
+		}
+	}
+	dec := json.NewDecoder(strings.NewReader(doc))
 	var env errorEnvelope
 	for dec.More() {
 		var doc errorEnvelope

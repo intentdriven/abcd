@@ -4,6 +4,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // wrappers are commands that RUN another command with the same intent, so the
@@ -1303,14 +1305,802 @@ func skipCoproc(tokens []string, pos int) int {
 // tokenizer splits `function NAME() {` at the parentheses, which leaves
 // `function NAME` a segment of its own and the body a segment after it, so
 // stepping the NAME leaves that segment no command, as `NAME()` leaves none.
-// The NAME is any word: bash accepts a function name no identifier rule
-// covers (`function a-b {`), so it is never read as the body.
+// The NAME may be a word no identifier rule covers: bash accepts
+// `function a-b {`.
 //
-// zsh's `repeat COUNT command` is the same shape, a keyword and one word of
-// its own before the command it runs, and is stepped the same way. Like
-// `coproc`, it is a keyword of one shell only; elsewhere it names a program
-// that is not found, so the command after it never runs there.
-func skipFunction(tokens []string, pos int) int {
+// The guard reads the keyword in its ordinary form only
+// (dcn-2611260046000744): one plain NAME (plainFunctionName), then the end of
+// the segment, an unquoted `{`, or a compound command bash reads as the body
+// with no `{` after it in the segment. ok is false for every other form, the
+// several NAMEs and options zsh takes among them, and the caller holds the
+// command (functionFormSignal) rather than reading the shell's wider grammar.
+// lastBrace is the index of the segment's last `{` token, or -1, so a line of
+// keywords costs one pass.
+func skipFunction(tokens []string, pos, lastBrace int) (body int, ok bool) {
+	if pos >= len(tokens) || !plainFunctionName(tokens[pos]) {
+		return pos, false
+	}
+	next := pos + 1
+	if next == len(tokens) || tokens[next] == "{" || functionBodyWords[tokens[next]] && lastBrace < next {
+		return next, true
+	}
+	return pos, false
+}
+
+// functionBodyWords are the words that open a compound command bash takes as
+// a function's body without a `{`.
+var functionBodyWords = map[string]bool{"if": true, "while": true, "until": true, "for": true, "case": true, "select": true, "[[": true}
+
+// functionShellWords are the words a shell gives a meaning of its own, which
+// a plain function NAME is never.
+var functionShellWords = map[string]bool{
+	"fi": true, "done": true, "esac": true, "in": true, "for": true, "case": true, "select": true,
+	"function": true, "time": true, "coproc": true, "repeat": true, "[[": true, "]]": true,
+}
+
+// zshNameTables are zsh's parameters that hold the shell's functions and
+// aliases: a word that assigns into one changes what a name runs.
+var zshNameTables = []string{"functions", "aliases", "galiases", "saliases", "dis_functions"}
+
+// namesTableText reports whether text names one of zsh's tables of functions
+// or aliases with a subscript anywhere, inside an expansion or a quote too
+// (`${functions[ls]::=…}` assigns while it expands). A text that only reads
+// one is held with it: no word of the line tells the two apart.
+func namesTableText(text string) bool {
+	for _, table := range zshNameTables {
+		if strings.Contains(text, table+"[") {
+			return true
+		}
+	}
+	return false
+}
+
+// namesRedefined reports whether s changes which command a name runs where
+// the guard does not see it: a word assigning into one of zsh's tables of
+// functions or aliases (`functions[NAME]=…`, `aliases[NAME]=…`, the table
+// whole), a `functions` command copying or defining one by option
+// (`functions -c`, `functions -M`), or zsh's `-` modifier as the program.
+// Check holds the line (functionFormSignal).
+func namesRedefined(s segment) bool {
+	for _, t := range s.tokens {
+		for _, table := range zshNameTables {
+			if rest, ok := strings.CutPrefix(t, table); ok && (strings.HasPrefix(rest, "[") || strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, "+=")) {
+				return true
+			}
+		}
+	}
+	for _, a := range arrivalsOf(s) {
+		switch s.tokens[a.idx] {
+		case "-":
+			if !s.afterGroup {
+				return true
+			}
+		case "functions":
+			for _, t := range s.tokens[a.idx+1:] {
+				if t == "--" {
+					break
+				}
+				if len(t) > 1 && (t[0] == '-' || t[0] == '+') && strings.ContainsAny(t[1:], "cM") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// plainFunctionName reports whether name is the one plain NAME of the
+// keyword's ordinary form: a word the line fixes, no reserved or shell word,
+// no option, and no brace in it.
+func plainFunctionName(name string) bool {
+	return name != "" && !reserved[name] && !functionShellWords[name] && !isUnknown(name) &&
+		name[0] != '-' && !strings.ContainsAny(name, "{}")
+}
+
+// lastBraceIndex is the index of the last `{` among tokens, or -1.
+func lastBraceIndex(tokens []string) int {
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if tokens[i] == "{" {
+			return i
+		}
+	}
+	return -1
+}
+
+// functionQuoted reports whether a `function` keyword the line leaves
+// unquoted, at command position, takes a NAME the line quotes or escapes, or
+// has a quoted or escaped `{` after its NAME, where the tokens alone read an
+// opener (`function f '{' g { …; }`). bare holds the indices of the words the
+// tokenizer saw wholly unquoted among the keyword, its NAME and `{` (its
+// keywords record). The command is held (functionFormSignal). defined is the
+// NAME of each such keyword at command position, and stop the index of the
+// first word past the words stepped before a command and those keywords.
+func functionQuoted(toks []string, bare map[int]bool) (quoted bool, defined []string, stop int) {
+	i := 0
+	for i < len(toks) {
+		switch t := toks[i]; {
+		case isAssignment(t) || reserved[t] || t == "time":
+			i++
+		case t == "coproc":
+			i = skipCoproc(toks, i+1)
+		case t == "repeat":
+			i = skipWord(toks, i+1)
+		case t == "function" && bare[i]:
+			if i+1 < len(toks) {
+				defined = append(defined, toks[i+1])
+			}
+			if i+1 < len(toks) && !bare[i+1] || i+2 < len(toks) && toks[i+2] == "{" && !bare[i+2] {
+				return true, defined, i
+			}
+			i += 2
+		default:
+			return false, defined, i
+		}
+	}
+	return false, defined, len(toks)
+}
+
+// argumentName reports whether name, a parameter's name as a `$` or `${`
+// writes it (its flags and a `#` stripped), is one of a function's
+// arguments: `1`…`9` and on, `@`, `*`, or zsh's `argv`.
+func argumentName(name string) bool {
+	name = strings.TrimLeft(name, "#!^~=")
+	// zsh's flags in parentheses: `${(@)argv}`, `${(z)1}`.
+	if strings.HasPrefix(name, "(") {
+		if k := strings.IndexByte(name, ')'); k > 0 {
+			name = strings.TrimLeft(name[k+1:], "#!^~=")
+		}
+	}
+	if name == "" {
+		return false
+	}
+	if c := name[0]; c >= '1' && c <= '9' || c == '@' || c == '*' {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(name, "argv"); ok {
+		return rest == "" || !isShellNameByte(rest[0])
+	}
+	return false
+}
+
+// isShellNameByte reports whether c can continue a parameter's name.
+func isShellNameByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// plainArgument reports whether name, a `$` parameter's, is an argument
+// whose value is the call's word as it is: `1`…`9`, `@` or `*`.
+func plainArgument(name string) bool {
+	return len(name) == 1 && (name[0] >= '1' && name[0] <= '9' || name[0] == '@' || name[0] == '*')
+}
+
+// argumentBody reports whether body, a `${…}` expansion's, prints an argument
+// as the call's word or a default in its place: the argument alone (`${1}`,
+// `${12}`, `${@}`), or one with `-`, `=` or `?` and their `:` forms.
+func argumentBody(body string) bool {
+	rest := body
+	switch {
+	case rest == "":
+		return false
+	case rest[0] == '@' || rest[0] == '*':
+		rest = rest[1:]
+	default:
+		rest = strings.TrimLeft(rest, "0123456789")
+		if len(rest) == len(body) {
+			return false
+		}
+	}
+	rest = strings.TrimPrefix(rest, ":")
+	return rest == "" || rest[0] == '-' || rest[0] == '=' || rest[0] == '?'
+}
+
+// maxFunctionWords bounds the words functionCallReadings scans for one line,
+// the commands it scans for the bodies' spans and the words each reading puts
+// included, and maxFunctionLineBytes the text it hands the guard again, all
+// the readings together. Past either the line is held
+// (functionArgumentsSignal).
+const (
+	maxFunctionWords     = 4096
+	maxFunctionLineBytes = 1 << 16
+)
+
+// functionLaunchers are the programs a function's one command may not run for
+// its call to be read (simpleFunction), and the names it may not have: a
+// shell, a string or a file run as commands, a wrapper that runs the command
+// after it, and the builtins that change the shell's own state. The walk's own
+// wrappers (walkToCommand) are refused besides.
+var functionLaunchers = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "mksh": true, "yash": true,
+	"posh": true, "fish": true, "csh": true, "tcsh": true, "busybox": true,
+	"eval": true, "source": true, ".": true, "exec": true, "env": true, "nohup": true,
+	"command": true, "builtin": true, "xargs": true, "time": true, "repeat": true, "coproc": true,
+	"sudo": true, "doas": true, "su": true, "nice": true, "ionice": true, "timeout": true,
+	"stdbuf": true, "setsid": true, "chroot": true, "flock": true, "watch": true, "script": true,
+	"nocorrect": true, "noglob": true, "function": true, "declare": true, "local": true,
+	"typeset": true, "export": true, "readonly": true, "integer": true, "float": true, "set": true,
+	"shift": true, "unset": true, "alias": true, "unalias": true, "shopt": true, "setopt": true,
+	"unsetopt": true, "emulate": true, "trap": true, "read": true, "mapfile": true,
+	"readarray": true, "getopts": true, "let": true, "enable": true, "hash": true, "autoload": true,
+	"zmodload": true, "disable": true, "return": true, "caller": true, "fc": true, "[[": true,
+}
+
+// bodyWord is one word after the program of a function's one command
+// (simpleFunction): a word the line fixes (ref 0), or one argument as it
+// stands alone, `$@` (ref -1) or `$N` (ref N), quoted or not.
+type bodyWord struct {
+	text   string
+	glob   bool
+	ref    int
+	quoted bool
+}
+
+// simpleBody is a function whose calls are read with their words: its one
+// command's program and the words after it.
+type simpleBody struct {
+	prog  string
+	words []bodyWord
+	// unquoted records an argument the command reads unquoted, which a line
+	// that names IFS splits as the guard does not.
+	unquoted bool
+}
+
+// functionCallReadings reads each call, with words, of a function the line
+// defines with those words in its arguments' place, in the one case it reads
+// (simpleFunction): a function of one command on its own line, called at a
+// plain command position of the line itself (spliceCall). Each reading is the
+// line again with the call's command replaced by the command its words make,
+// which Check judges as a line of its own. hold reports any other call with
+// words of a function that reads its arguments (mayReadArgument), one at a
+// wrapper's place or after one, a line that defines an alias beside such a
+// function, zsh's anonymous function on a line that reads an argument, and a
+// line past maxFunctionWords or maxFunctionLineBytes.
+func functionCallReadings(command string, segs []segment) (lines []string, hold bool) {
+	defs := map[string][]int{}
+	anonymous, aliases, ifs := false, false, false
+	for i, s := range segs {
+		for _, n := range s.definesFunction {
+			defs[n] = append(defs[n], i)
+		}
+		anonymous = anonymous || s.anonymousFunction
+		for _, a := range arrivalsOf(s) {
+			if t := s.tokens[a.idx]; t == "alias" || t == "shopt" || t == "setopt" {
+				aliases = true
+			}
+		}
+		for _, t := range s.tokens {
+			ifs = ifs || strings.Contains(t, "IFS")
+		}
+	}
+	if anonymous {
+		for _, s := range segs {
+			if mayReadArgument(s) {
+				return nil, true
+			}
+		}
+	}
+	if len(defs) == 0 {
+		return nil, false
+	}
+	budget, bytes := maxFunctionWords, maxFunctionLineBytes
+	charge := func(n int) bool {
+		budget -= n
+		return budget >= 0
+	}
+	type info struct {
+		reads bool
+		body  *simpleBody
+	}
+	infos := map[string]*info{}
+	infoOf := func(name string) *info {
+		if in, ok := infos[name]; ok {
+			return in
+		}
+		in := &info{}
+		infos[name] = in
+		for _, at := range defs[name] {
+			lo, hi, _ := functionBody(segs, at, charge)
+			for j := lo; j <= hi && !in.reads; j++ {
+				// A span past the budget is not read: it is taken to read
+				// its arguments, and its call is held.
+				in.reads = !charge(len(segs[j].tokens)+1) || mayReadArgument(segs[j])
+			}
+		}
+		if in.reads && len(defs[name]) == 1 {
+			in.body = simpleFunction(command, segs, defs[name][0], defs)
+		}
+		return in
+	}
+	// A function whose name a wrapper or a keyword spells is not seen where
+	// it is called (`nohup NAME`, `repeat NAME`), and one the line names
+	// through an alias is called by another name: either is held once it
+	// reads its arguments.
+	for name := range defs {
+		if (aliases || !plainCallName(name)) && infoOf(name).reads {
+			return nil, true
+		}
+	}
+	for ci, s := range segs {
+		wrapped := false
+		for _, a := range arrivalsOf(s) {
+			name := s.tokens[a.idx]
+			_, defined := defs[name]
+			if !defined || a.idx+1 >= len(s.tokens) || containsString(s.definesFunction, name) {
+				wrapped = wrapped || a.wrapper
+				continue
+			}
+			in := infoOf(name)
+			if budget < 0 {
+				return nil, true
+			}
+			if !in.reads {
+				wrapped = wrapped || a.wrapper
+				continue
+			}
+			if in.body == nil || a.wrapper || wrapped || ifs && in.body.unquoted {
+				return nil, true
+			}
+			line, ok := spliceCall(command, segs, ci, a, in.body)
+			if !ok {
+				return nil, true
+			}
+			if bytes -= len(line); bytes < 0 {
+				return nil, true
+			}
+			lines = append(lines, line)
+			wrapped = wrapped || a.wrapper
+		}
+	}
+	return lines, false
+}
+
+// simpleFunction is the body of the function segs[at] defines when it is the
+// one shape whose calls are read: `NAME() { CMD; }` or `function NAME { CMD;
+// }` on one line, where NAME is a plain name no wrapper, keyword or launcher
+// spells, defined once and alone, and CMD is one command with no assignment
+// before it and no redirection, whose program is a word the line fixes that is
+// no launcher (functionLaunchers), no function the line defines and no wrapper
+// the walk steps, and whose every other word is fixed or is exactly one of
+// `"$@"`, `$@`, `"$N"`, `$N`, `"${N}"` and `${N}` (N from 1 to 9). It is nil
+// for any other function.
+func simpleFunction(command string, segs []segment, at int, defs map[string][]int) *simpleBody {
+	def := segs[at]
+	if len(def.definesFunction) != 1 || def.functionQuoted || def.home != segs[0].home || def.nest != 0 {
+		return nil
+	}
+	name := def.definesFunction[0]
+	if !plainCallName(name) {
+		return nil
+	}
+	var body, closing segment
+	off := 0
+	switch {
+	case len(def.tokens) == 1 && def.tokens[0] == name || len(def.tokens) == 2 && def.tokens[0] == "function" && def.tokens[1] == name:
+		if at+2 >= len(segs) || len(def.redirects) > 0 {
+			return nil
+		}
+		body, closing, off = segs[at+1], segs[at+2], 1
+		if len(body.tokens) == 0 || body.tokens[0] != "{" {
+			return nil
+		}
+	case len(def.tokens) >= 3 && def.tokens[0] == "function" && def.tokens[1] == name && def.tokens[2] == "{":
+		if at+1 >= len(segs) {
+			return nil
+		}
+		body, closing, off = def, segs[at+1], 3
+	default:
+		return nil
+	}
+	if len(closing.tokens) != 1 || closing.tokens[0] != "}" || len(closing.redirects) > 0 || len(body.redirects) > 0 {
+		return nil
+	}
+	for _, s := range []segment{body, closing} {
+		if s.home != def.home || s.nest != def.nest || s.chain != def.chain || s.braceOdd ||
+			s.argumentsUnread || s.functionQuoted || s.heredocUnterminated || s.substitutionUnread {
+			return nil
+		}
+	}
+	if def.begin < 0 || closing.end > len(command) || def.begin > closing.end || strings.ContainsAny(command[def.begin:closing.end], "\n\r") {
+		return nil
+	}
+	if len(body.tokens) <= off {
+		return nil
+	}
+	arr := arrivalsOf(body)
+	if len(arr) != 1 || arr[0].idx != off || arr[0].wrapper {
+		return nil
+	}
+	prog := body.tokens[off]
+	if _, isVar := body.variable[off]; isVar || isUnknown(prog) || body.globAt(off) || isAssignment(prog) ||
+		reserved[prog] || functionLaunchers[prog] || functionLaunchers[path.Base(prog)] {
+		return nil
+	}
+	if _, ok := defs[prog]; ok {
+		return nil
+	}
+	sb := &simpleBody{prog: prog}
+	for k := off + 1; k < len(body.tokens); k++ {
+		tok := body.tokens[k]
+		if v, isVar := body.variable[k]; isVar {
+			sp := body.spelled[k]
+			if v != string(varMark) || len(sp) == 0 {
+				return nil
+			}
+			// A default, an alternative or any other text the word can
+			// print besides the argument (`${1:-x}`) is no plain argument.
+			for _, alt := range sp[1:] {
+				if alt != "" {
+					return nil
+				}
+			}
+			w := bodyWord{}
+			switch t := sp[0]; {
+			case t == "$@":
+				w.ref, w.quoted = -1, !body.ifsSplit[k]
+			case len(t) == 2 && t[0] == '$' && t[1] >= '1' && t[1] <= '9':
+				w.ref, w.quoted = int(t[1]-'0'), !body.fieldSplit[k]
+			case len(t) == 4 && t[:2] == "${" && t[2] >= '1' && t[2] <= '9' && t[3] == '}':
+				w.ref, w.quoted = int(t[2]-'0'), !body.fieldSplit[k]
+			default:
+				return nil
+			}
+			sb.unquoted = sb.unquoted || !w.quoted
+			sb.words = append(sb.words, w)
+			continue
+		}
+		if isUnknown(tok) {
+			return nil
+		}
+		sb.words = append(sb.words, bodyWord{text: tok, glob: body.globAt(k)})
+	}
+	return sb
+}
+
+// plainCallName reports whether name is one a call reaches as the function:
+// a shell name the walk takes as a command, not a keyword, a launcher
+// (functionLaunchers) or a wrapper it steps through.
+func plainCallName(name string) bool {
+	if !isShellName(name) || reserved[name] || functionShellWords[name] || functionLaunchers[name] {
+		return false
+	}
+	out, _, _ := walkToCommand([]string{name, "x"})
+	return len(out) == 1 && out[0].idx == 0 && !out[0].wrapper
+}
+
+// spliceCall is command with the call at arrival a of segs[ci] replaced by
+// the command body makes of the call's words: the call must stand at a plain
+// command position of the line's own text (only reserved words before it, no
+// redirection, not inside a substitution), and every word it hands must be
+// one the line fixes. ok is false otherwise, and where a word cannot be
+// written back as the shell would read it (renderWord).
+func spliceCall(command string, segs []segment, ci int, a arrival, body *simpleBody) (string, bool) {
+	s := segs[ci]
+	if s.home != segs[0].home || s.nest != 0 || len(s.redirects) > 0 || s.heredocUnterminated ||
+		s.begin < 0 || s.end > len(command) || s.begin > s.end || !strings.HasPrefix(command[s.begin:], s.tokens[0]) {
+		return "", false
+	}
+	for _, t := range s.tokens[:a.idx] {
+		if !reserved[t] {
+			return "", false
+		}
+	}
+	var args []bodyWord
+	for k := a.idx + 1; k < len(s.tokens); k++ {
+		if _, isVar := s.variable[k]; isVar || isUnknown(s.tokens[k]) {
+			return "", false
+		}
+		args = append(args, bodyWord{text: s.tokens[k], glob: s.globAt(k)})
+	}
+	parts := append([]string(nil), s.tokens[:a.idx]...)
+	prog, ok := renderWord(body.prog, false, true)
+	if !ok {
+		return "", false
+	}
+	parts = append(parts, prog)
+	put := func(w bodyWord, quoted bool) bool {
+		text, ok := renderWord(w.text, w.glob, quoted)
+		if ok && text != "" {
+			parts = append(parts, text)
+		}
+		return ok
+	}
+	for _, w := range body.words {
+		switch {
+		case w.ref == 0:
+			if !put(w, true) {
+				return "", false
+			}
+		case w.ref == -1:
+			for _, arg := range args {
+				if !put(arg, w.quoted) {
+					return "", false
+				}
+			}
+		case w.ref <= len(args):
+			if !put(args[w.ref-1], w.quoted) {
+				return "", false
+			}
+		case w.quoted:
+			parts = append(parts, "''")
+		}
+	}
+	return command[:s.begin] + strings.Join(parts, " ") + command[s.end:], true
+}
+
+// renderWord writes a word back as shell text that reads as the word does,
+// or more widely: as it stands where every byte is one the shell takes as it
+// is (a glob's pattern bytes included, where the word was a pattern), and
+// single-quoted otherwise. A word read unquoted, which the shell would split
+// and match as a pattern, is written only as it stands, and an empty one is
+// no word; a pattern or a home spelling that needs quoting is not written.
+func renderWord(text string, glob, quoted bool) (string, bool) {
+	if text == "" {
+		if quoted {
+			return "''", true
+		}
+		return "", true
+	}
+	plain := true
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case strings.IndexByte("_./:,+=@%~-", c) >= 0:
+		case glob && strings.IndexByte("*?[]", c) >= 0:
+		default:
+			plain = false
+		}
+	}
+	switch {
+	case plain:
+		return text, true
+	case !quoted || glob || strings.HasPrefix(text, "~"):
+		return "", false
+	}
+	return shellquote.Single(text), true
+}
+
+// mayReadArgument reports whether a command can read a function's
+// arguments: a word that reads one (readsArgument), one in a form no word
+// stands for (segment.argumentsUnread), or a spelling that names one in any
+// form (spellsArgument) or that a line naming IFS capped.
+func mayReadArgument(s segment) bool {
+	if s.argumentsUnread || readsArgument(s) {
+		return true
+	}
+	for _, texts := range s.spelled {
+		for _, t := range texts {
+			// A spelling a line that names IFS capped (capIFSSplits) may
+			// have been one.
+			if t == spellCapped || spellsArgument(t) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// spellsArgument reports whether text holds a `$` that can read a
+// function's arguments in any form: `$1`, `$@`, `$*`, `${!…}`, `${#1}`, a
+// flag in parentheses, zsh's `$=1`, `$~1`, `$^1` and `$argv`.
+func spellsArgument(text string) bool {
+	for i := 0; i < len(text); i++ {
+		if text[i] != '$' {
+			continue
+		}
+		j := i + 1
+		if j < len(text) && text[j] == '{' {
+			j++
+			if j < len(text) && text[j] == '(' {
+				return true
+			}
+		}
+		for j < len(text) && strings.IndexByte("=~^", text[j]) >= 0 {
+			j++
+		}
+		if j >= len(text) {
+			continue
+		}
+		switch c := text[j]; {
+		case c >= '1' && c <= '9', c == '@', c == '*', c == '!':
+			return true
+		case c == '#' && j+1 < len(text) && (text[j+1] >= '1' && text[j+1] <= '9' || text[j+1] == '@' || text[j+1] == '*'):
+			return true
+		case strings.HasPrefix(text[j:], "argv"):
+			return true
+		}
+	}
+	return false
+}
+
+// functionBody is the span of segs, lo to hi, that holds the body of the
+// function segs[at] defines: from the definition to the `}` that closes the
+// `{` it opens, counting the groups opened and closed at the definition's own
+// level between (segment.nest; a substitution's commands and a string's are
+// their own). certain is false where the span cannot be placed so: a body
+// that opens no `{`, a `{` or `}` word anywhere but where it opens or closes
+// a group (segment.braceOdd), a group the line leaves open, or more words
+// scanned than charge allows. The span then runs to the end of segs.
+func functionBody(segs []segment, at int, charge func(int) bool) (lo, hi int, certain bool) {
+	def := segs[at]
+	lo, hi = at, len(segs)-1
+	depth, opened := 0, false
+	for j := at; j < len(segs); j++ {
+		s := segs[j]
+		if !charge(len(s.tokens) + 1) {
+			return lo, hi, false
+		}
+		if s.home != def.home || s.nest > def.nest {
+			continue
+		}
+		if s.nest < def.nest || s.braceOdd {
+			return lo, hi, false
+		}
+		toks := s.tokens
+		if len(toks) > 0 && toks[0] == "}" {
+			depth--
+			if depth < 0 || !opened {
+				return lo, hi, false
+			}
+			if depth == 0 {
+				return lo, j, true
+			}
+			continue
+		}
+		i := 0
+		if len(toks) >= 2 && toks[0] == "function" {
+			i = 2
+		}
+		for ; i < len(toks) && reserved[toks[i]]; i++ {
+			if toks[i] == "{" {
+				depth++
+				opened = true
+			}
+		}
+		if j > at && !opened {
+			return lo, hi, false
+		}
+	}
+	return lo, hi, false
+}
+
+// argumentRef is one parameter a word reads, as the line wrote it, from the
+// word's written spelling (segment.spelled) at the place its value goes
+// (segment.variable).
+type argumentRef struct {
+	literal string // the text before it
+	name    string // its name: `1`, `@`, `HOME`; "" after the last one
+}
+
+// argumentRefs splits the word at idx of s into its parameters, in order. ok
+// is false where the word's spelling does not line up with the places its
+// values go and any text it can print names an argument; one that names none
+// is read as holding no argument.
+func argumentRefs(s segment, idx int) (refs []argumentRef, ok bool) {
+	tmpl, has := s.variable[idx]
+	spelled := s.spelled[idx]
+	if !has || tmpl == "" || len(spelled) == 0 {
+		return nil, true
+	}
+	refs, ok = alignedRefs(tmpl, spelled[0])
+	if ok {
+		return refs, true
+	}
+	for _, text := range spelled {
+		if namesArgument(text) {
+			return nil, false
+		}
+	}
+	return nil, true
+}
+
+// namesArgument reports whether text, a word's spelling, holds a `$` that
+// reads a function's argument (`$1`, `${1`, `$@`, `$*`).
+func namesArgument(text string) bool {
+	for i := 0; i+1 < len(text); i++ {
+		if text[i] != '$' {
+			continue
+		}
+		c := text[i+1]
+		if c == '{' && i+2 < len(text) {
+			c = text[i+2]
+		}
+		if c >= '1' && c <= '9' || c == '@' || c == '*' {
+			return true
+		}
+	}
+	return false
+}
+
+// alignedRefs is argumentRefs on the word's template (segment.variable) and
+// its written spelling.
+func alignedRefs(tmpl, w string) (refs []argumentRef, ok bool) {
+	var lit strings.Builder
+	j := 0
+	for i := 0; i < len(tmpl); i++ {
+		if tmpl[i] != varMark {
+			if j >= len(w) || w[j] != tmpl[i] {
+				return nil, false
+			}
+			lit.WriteByte(tmpl[i])
+			j++
+			continue
+		}
+		if j >= len(w) || w[j] != '$' {
+			return nil, false
+		}
+		j++
+		start := j
+		switch {
+		case j < len(w) && w[j] == '{':
+			end := strings.IndexByte(w[j:], '}')
+			if end < 0 {
+				return nil, false
+			}
+			refs = append(refs, argumentRef{literal: lit.String(), name: w[j+1 : j+end]})
+			j += end + 1
+		case j < len(w) && (w[j] >= '0' && w[j] <= '9' || strings.IndexByte("@*#?$!-", w[j]) >= 0):
+			refs = append(refs, argumentRef{literal: lit.String(), name: w[j : j+1]})
+			j++
+		default:
+			for j < len(w) && isShellNameByte(w[j]) {
+				j++
+			}
+			refs = append(refs, argumentRef{literal: lit.String(), name: w[start:j]})
+		}
+		lit.Reset()
+	}
+	if j != len(w) {
+		return nil, false
+	}
+	return append(refs, argumentRef{literal: lit.String()}), true
+}
+
+// readsArgument reports whether a word of s reads a function's argument, or
+// spells one that does not line up (which withArguments refuses).
+func readsArgument(s segment) bool {
+	for idx := range s.variable {
+		refs, ok := argumentRefs(s, idx)
+		if !ok || readsArgumentRefs(refs) {
+			return true
+		}
+	}
+	return false
+}
+
+// argumentIndex is name's place among a call's words: 1… for `1`…, -1 for
+// `@` and `*`, and 0 for a parameter that is no argument.
+func argumentIndex(name string) int {
+	if name == "@" || name == "*" {
+		return -1
+	}
+	if name == "" || strings.Trim(name, "0123456789") != "" || name[0] == '0' {
+		return 0
+	}
+	n := 0
+	for _, c := range name {
+		n = n*10 + int(c-'0')
+		if n > 1<<16 {
+			return 1 << 16
+		}
+	}
+	return n
+}
+
+// readsArgumentRefs reports whether any of refs is a function's argument.
+func readsArgumentRefs(refs []argumentRef) bool {
+	for _, r := range refs {
+		if argumentIndex(r.name) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// skipWord advances past the one word at pos: zsh's `repeat COUNT command`, a
+// keyword and one word of its own before the command it runs. Like `coproc`,
+// it is a keyword of one shell only; elsewhere it names a program that is not
+// found, so the command after it never runs there.
+func skipWord(tokens []string, pos int) int {
 	if pos < len(tokens) {
 		return pos + 1
 	}

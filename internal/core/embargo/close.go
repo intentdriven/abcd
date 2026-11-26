@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/banlist"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 )
 
 // CloseRequest closes one advisory on GitHub with the explanation its verdict
@@ -165,7 +166,8 @@ func Close(req CloseRequest) (CloseResult, error) {
 		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds, not-a-vulnerability or public-track is closed, and this one's verdict is not; nothing was sent",
 			"record one of those verdicts with `abcd embargo triage` first")
 	case st.Repo == "":
-		return CloseResult{}, refuse("the embargo store does not name its repository; nothing was sent", "run `abcd embargo intake` once, then run it again")
+		return CloseResult{}, refusal.Wrap(refusal.EmbargoMissingStore,
+			refuse("the embargo store does not name its repository; nothing was sent", "run `abcd embargo intake` once, then run it again"))
 	}
 	text, err := s.closingText(a)
 	if err != nil {

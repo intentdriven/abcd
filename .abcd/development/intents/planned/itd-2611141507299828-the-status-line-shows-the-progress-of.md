@@ -1,17 +1,17 @@
 ---
 id: itd-2611141507299828
 slug: the-status-line-shows-the-progress-of
-spec_id: null
-kind: null
+spec_id: spc-2611251806215442
+kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2611031342000215, itd-2610281253044600]
+builds_on: [itd-2611031342000215, itd-2610281253044600, itd-2611141610197753]
 severity: minor
 related_intents: [itd-2611150636498012]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
-blocked_by: [itd-2611141610197753]
+blocked_by: []
 ---
 
 # The status line shows the progress of work that runs without the person
@@ -92,13 +92,13 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## Scope Conditions
 
-- A drive that keeps one stored line of state: working, waiting, stalled or stopped; since when; on what; and what a person can do. That line is defined by itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot); this intent reads the line and does not define it. Until the line exists the drive part is absent, never derived from the log.
-- The stored line carries the time it was last written, so that a drive that died without writing a final state can be told from one that is working. The row judges age from that time alone; it does not read the process table. The spec of itd-2611141610197753 stores a next-write time for such a reader and says what it costs: a drive that died during a long wait can read as waiting for up to an hour.
-- A host that runs the status command on a timer as well as on its own events (the refresh interval itd-2611031342000215 sets at install). On a host that refreshes only on events, "within one refresh" is as long as the gap between events, and a stall may sit unseen while the session is idle.
-- A host that passes the terminal's width to the status command in `COLUMNS` (itd-2611031342000215). Without the width the row cannot choose what to drop and renders in full, with the badge-first order as its only protection, as today.
-- A session open in a checkout of the repository on the machine where the drive runs. A drive on another machine or a hosted runner, and a person with no session open, are outside what a status line can reach.
-- Pull-request state is as fresh as the last time something other than the status command read the forge. A detached refresh, filled at most once a minute, keeps it current (decision 6); the status command never asks the forge, so a pull request the forge removed from its queue shows as dropped out once that refresh has read it.
-- A managed checkout: the row renders only there, and the person's previous status command runs everywhere else, unchanged.
+- A drive that keeps one stored line of state: working, waiting, stalled or stopped; since when; on what; and what a person can do. That line is defined by itd-2611141610197753 (a drive carries on from one command, and says in one line when it cannot); this intent reads the line and does not define it. Until the line exists the drive part is absent, never derived from the log. <!-- cond: cond-2611251806210408 -->
+- The stored line carries the time it was last written, so that a drive that died without writing a final state can be told from one that is working. The row judges age from that time alone; it does not read the process table. The spec of itd-2611141610197753 stores a next-write time for such a reader and says what it costs: a drive that died during a long wait can read as waiting for up to an hour. <!-- cond: cond-2611251806218403 -->
+- A host that runs the status command on a timer as well as on its own events (the refresh interval itd-2611031342000215 sets at install). On a host that refreshes only on events, "within one refresh" is as long as the gap between events, and a stall may sit unseen while the session is idle. <!-- cond: cond-2611251806216416 -->
+- A host that passes the terminal's width to the status command in `COLUMNS` (itd-2611031342000215). Without the width the row cannot choose what to drop and renders in full, with the badge-first order as its only protection, as today. <!-- cond: cond-2611251806214886 -->
+- A session open in a checkout of the repository on the machine where the drive runs. A drive on another machine or a hosted runner, and a person with no session open, are outside what a status line can reach. <!-- cond: cond-2611251806210527 -->
+- Pull-request state is as fresh as the last time something other than the status command read the forge. A detached refresh, filled at most once a minute, keeps it current (decision 6); the status command never asks the forge, so a pull request the forge removed from its queue shows as dropped out once that refresh has read it. <!-- cond: cond-2611251806218164 -->
+- A managed checkout: the row renders only there, and the person's previous status command runs everywhere else, unchanged. <!-- cond: cond-2611251806215698 -->
 
 ## What's Out of Scope
 
@@ -139,7 +139,7 @@ Two drafts already extend the row. itd-2610281253044600 adds one element, the ti
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 1 to 10).
+All resolved by the product thinker on 2026-11-15 (decisions 1 to 10). Whether the session-matching question of itd-2610281253044600 must be answered first was settled by the technical facilitator on 2026-11-25: it need not (decision 11).
 
 ## Decisions
 
@@ -153,13 +153,14 @@ All resolved by the product thinker on 2026-11-15 (decisions 1 to 10).
 8. **A running check's progress is step k of n, for checks this session started, and the row drops a check when it ends** (product thinker, 2026-11-15; formerly question 8). The cost is that steps differ in length by orders of magnitude, so 14 of 17 can mean most of the time is still ahead.
 9. **One wording for both views, always in product terms** (product thinker, 2026-11-15; formerly question 9). The row uses none of the drive's internal terms, such as `in flight`, `set aside` or `handed back`. The spec proposes the words.
 10. **With several drives, the row shows the worst state among them, with a count** (product thinker, 2026-11-15; formerly question 10). The cost is more than one state file read on every refresh.
+11. **Planned on the planner's spec as written, without waiting on itd-2610281253044600** (technical facilitator, 2026-11-25, on delegation; no product question blocks it). A session's own pull requests are those the session armed: the command that arms one names its session at that act and records the pull request under the session's id, and a check this session started is matched the same way by the load gate's waiter. The drive's part is the repository's on the machine and matches no session. So the match between a session and the record it holds, which that draft's open question asks about, is not needed here, and the store-worktree case it turns on does not arise. The cost: a pull request armed by a session that has since ended, or by a drive, shows in no session's row, which the criterion as ruled already excludes. Reading "own" as the pull requests of the work a session holds would be a later extension that waits on that draft, and nothing built here is undone by it.
 
 ## Typed Links
 
 - builds_on: itd-2611031342000215 (the row's views, its dropping order by width, its per-element settings, its warning style and the rule that the row never waits on the network).
-- builds_on: itd-2610281253044600 (the match between a session and the work it holds, which "this session's own pull requests" depends on; its second open question is the same question).
+- builds_on: itd-2610281253044600 (the status line says what each session is working on). Its open question on matching a session to the record it holds is not this intent's: "this session's own pull requests" means those the session armed, recorded under the session's id at the arming (decision 11).
 - related: itd-2610222215485265 (the drive whose state the row shows), itd-200, itd-2609212130146198 and itd-2610111707085098 (the row, its badge and the session's name, all shipped), itd-2611031342011261 (the launch ledger, whose remaining spec has an open question on whether the status path may gain a second written file; this intent adds no write, so it does not wait on that answer, and it must not be read as settling it).
-- depends on: itd-2611141610197753, which defines the drive's one stored line of state (in `blocked_by`).
+- builds_on: itd-2611141610197753, which defines the drive's one stored line of state. It was in `blocked_by` until the planning of 2026-11-25 made it `builds_on` (dcn-2611251806134844), so the steps that need nothing of it can start; the drive's steps wait in their own text for that intent's stored state.
 - evidence: `.abcd/development/research/notes/drive-operations-2026-11.md`, events 3, 4 and 5.
 
 ## Audit Notes

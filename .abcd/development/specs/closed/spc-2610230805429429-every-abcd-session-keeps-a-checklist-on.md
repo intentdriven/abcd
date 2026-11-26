@@ -72,11 +72,12 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - packages: internal/surface/cli, hooks
    - tests: internal/surface/cli
    - landed: 92b207905
-7. **The crash lab**
-   The kill loop and the power-cycle receipts, recorded in a dated research note (technical criterion 2).
+7. **The crash lab: the kill loop**
+   A writer killed at random points 1,000 times, recorded in a dated research note, [the crash lab's study](../../research/notes/2026-11-25-checklist-crash-lab-study.md) (technical criterion 2, its kill half). The power-cycle receipts are step 10, carried to the remainder.
    - needs: 1
    - packages: internal/core/checklist
    - tests: internal/core/checklist
+   - landed: 73535fed5
 8. **A live capture in a real Claude Code session**
    Write three items; force `/compact` and show the context after compaction holds them; repeat with an automatic compaction on a long session. Script output alone is not the proof (story 2).
    - needs: 2, 3
@@ -88,6 +89,11 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
    - packages: commands/checklist.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/surface/cli
    - landed: 994f1adc9
+10. **The crash lab: the power-cycle receipts**
+   Two hard power cuts, one on macOS and one on Linux, each cut while a writer runs, and the read after the restart recorded in the crash lab's research note: a valid checklist, last-good or the "nothing" line, never a secret (technical criterion 2, its power-cut half). A step only a person at each machine can do; until it lands, the pages state only what the kill loop proved.
+   - needs: 7
+   - packages: internal/core/checklist
+   - tests: internal/core/checklist
 
 ## Remainder: waits, promises, wakes, the blocker sweep and the return lists
 

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -69,13 +71,24 @@ type Estimate struct {
 // JudgeNeed is who judges one task and how many of them it needs (decisions
 // 21, 22, 26): a code task is judged by its hidden tests and the reviewer
 // models; a writing task by people, each ranking at most eight copies so that
-// every pair of models meets; a check by the person and one outside judge.
+// every pair of models meets; a check by the person and, where one is
+// declared, the proposer cell outside the matrix.
 type JudgeNeed struct {
 	Task  string   `json:"task"`
 	Kind  TaskKind `json:"kind"`
 	Who   string   `json:"who"`
 	Count int      `json:"count"`
 	Note  string   `json:"note,omitempty"`
+}
+
+// HiddenTestsConsent is one code task's hidden tests as the plan shows them:
+// the folder they are read from, the command that runs them, and the sentence
+// saying what abcd does with that command.
+type HiddenTestsConsent struct {
+	Task    string   `json:"task"`
+	Folder  string   `json:"folder"`
+	Command []string `json:"command"`
+	Consent string   `json:"consent"`
 }
 
 // Plan is what the person consents to.
@@ -95,6 +108,10 @@ type Plan struct {
 	Concurrency int         `json:"concurrency"`
 	Time        Estimate    `json:"time"`
 	Judges      []JudgeNeed `json:"judges"`
+	// HiddenTests is each code task's hidden tests the declaration names,
+	// with the line the person consents to: abcd runs each copy's code with
+	// that command (decision 9). Absent where no task names any.
+	HiddenTests []HiddenTestsConsent `json:"hidden_tests,omitempty"`
 	// Digest is the sha256 of the plan with Digest left blank: consent names
 	// it, so a plan that changed after it was shown is never started.
 	Digest string `json:"digest"`
@@ -171,6 +188,7 @@ func buildPlan(in PlanInputs) (Plan, error) {
 	p.Cost = costOf(d, p.Cells, p.Copies)
 	p.Time = planTime(d, p.Copies)
 	p.Judges = judgesOf(d)
+	p.HiddenTests = hiddenTestsOf(d)
 	if p.Digest, err = p.digest(); err != nil {
 		return Plan{}, err
 	}
@@ -235,11 +253,15 @@ func resolveCell(c roleCell, api *oracle.APIConfig, check func(oracle.FlagRoute)
 	return pc, nil
 }
 
-// copiesOf counts the copies: every cell does every task.
+// copiesOf counts the copies: every builder and reviewer cell does every
+// task. A matcher or a proposer makes no copy.
 func copiesOf(d Declaration) Copies {
 	per := len(d.Tasks)
 	c := Copies{MaxByCell: map[string]int{}}
 	for _, rc := range d.cells() {
+		if rc.role.judge() {
+			continue
+		}
 		c.PilotTotal += per * d.Repeats.Pilot
 		c.MaxTotal += per * d.Repeats.Max
 		c.MaxByCell[rc.ID] = per * d.Repeats.Max
@@ -249,11 +271,24 @@ func copiesOf(d Declaration) Copies {
 
 // costOf is the expected cost by source at the most copies (decision 36): a
 // metered cell's declared cost per copy times its copies, summed per source;
-// a metered source with any cell that declared none is not estimated.
+// a metered source with any cell that declared none is not estimated. A
+// matcher or a proposer answers once for each check task, so its cost per
+// copy is its cost per answer.
 func costOf(d Declaration, cells []PlannedCell, copies Copies) []SourceCost {
 	byID := map[string]Cell{}
+	uses := map[string]int{}
+	checks := 0
+	for _, t := range d.Tasks {
+		if t.Kind == KindCheck {
+			checks++
+		}
+	}
 	for _, rc := range d.cells() {
 		byID[rc.ID] = rc.Cell
+		uses[rc.ID] = copies.MaxByCell[rc.ID]
+		if rc.role.judge() {
+			uses[rc.ID] = checks
+		}
 	}
 	sums := map[Source]*SourceCost{}
 	var order []Source
@@ -277,7 +312,7 @@ func costOf(d Declaration, cells []PlannedCell, copies Copies) []SourceCost {
 			sc.Expected, sc.Note = nil, "not estimated; bounded by your cap"
 			continue
 		}
-		sc.Expected.Amount += cpc.Amount * float64(copies.MaxByCell[pc.Cell])
+		sc.Expected.Amount += cpc.Amount * float64(uses[pc.Cell])
 	}
 	out := make([]SourceCost, 0, len(order))
 	for _, s := range order {
@@ -291,11 +326,15 @@ func costOf(d Declaration, cells []PlannedCell, copies Copies) []SourceCost {
 }
 
 // planTime is the run's time (decision 35): a bound at the most copies when every
-// cell declares its minutes per copy, spread over the run's concurrency;
-// otherwise known after the pilot.
+// cell that makes copies declares its minutes per copy, spread over the run's
+// concurrency; otherwise known after the pilot. A matcher's or a proposer's
+// answer is given after the copies, as the person judges, so it is not in it.
 func planTime(d Declaration, copies Copies) Estimate {
 	total := 0.0
 	for _, rc := range d.cells() {
+		if rc.role.judge() {
+			continue
+		}
 		if rc.MinutesPerCopy == nil {
 			return Estimate{Note: "known after the pilot"}
 		}
@@ -321,10 +360,74 @@ func judgesOf(d Declaration) []JudgeNeed {
 			out = append(out, JudgeNeed{Task: t.ID, Kind: t.Kind, Who: "people who have not read the copies, blind to their authors", Count: n,
 				Note: fmt.Sprintf("each ranks at most %d copies; with fewer than %d judges each ranking is reported on its own", maxJudgeSubset, judgeFloor)})
 		case KindCheck:
-			out = append(out, JudgeNeed{Task: t.ID, Kind: t.Kind, Who: "you and one outside judge", Count: 2})
+			out = append(out, checkJudges(d, t))
 		}
 	}
 	return out
+}
+
+// checkJudges is who judges a check task (spec step 9): the person, then the
+// proposer cell where one is declared; and what joins the findings no exact
+// key joins, the matcher cell, or nothing, when the person declares none.
+func checkJudges(d Declaration, t Task) JudgeNeed {
+	j := JudgeNeed{Task: t.ID, Kind: t.Kind, Who: "you, with no verdict proposed", Count: 1}
+	if d.Proposer != nil {
+		j.Who, j.Count = "you, then the proposer cell "+d.Proposer.ID+" outside the matrix", 2
+	}
+	if d.Matcher != nil {
+		j.Who += "; the matcher cell " + d.Matcher.ID + " joins the findings no exact key joins"
+		j.Note = "the matcher's agreement is reported on a sample of its pairs you label"
+	} else {
+		j.Who += "; the findings no exact key joins stay unmatched, each a row of its own"
+		j.Note = "no matcher cell is declared, so the matcher's agreement is not estimable"
+	}
+	if d.Matcher != nil || d.Proposer != nil {
+		j.Note += "; a judge is held apart from the builders by its model's name read with its provider, carrier, variant tag and date set aside, so check that the judges' routes above name other models than the builders'"
+	}
+	for _, c := range []*Cell{d.Matcher, d.Proposer} {
+		if c != nil && c.Route != "host" {
+			j.Note += "; " + c.ID + " is a runner cell, and its answer waits for a launcher this build of abcd does not have, so the check's judging stops there until one does"
+		}
+	}
+	return j
+}
+
+// hiddenTestsOf is each code task's hidden tests with the line the person
+// consents to.
+func hiddenTestsOf(d Declaration) []HiddenTestsConsent {
+	var out []HiddenTestsConsent
+	for _, t := range d.Tasks {
+		if t.Kind != KindCode || t.HiddenTests == "" {
+			continue
+		}
+		out = append(out, HiddenTestsConsent{Task: t.ID, Folder: t.HiddenTests, Command: slices.Clone(t.TestCommand),
+			Consent: fmt.Sprintf("abcd will run each copy's code of %s with `%s`, in an export of the copy with the hidden tests from %s added, never in its clone; "+
+				"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report",
+				t.ID, commandLine(t.TestCommand), consentQuote(t.HiddenTests))})
+	}
+	return out
+}
+
+// commandLine is a command's words as one line, each word holding anything
+// but printable ASCII other than a space or a quote quoted (consentQuote), so
+// the person reads where each word ends and what each letter is: a Unicode
+// space inside a word, or a letter from another script that looks like an
+// ASCII one, is shown as its escape.
+func commandLine(words []string) string {
+	out := make([]string, len(words))
+	for i, w := range words {
+		out[i] = w
+		if strings.ContainsFunc(w, func(r rune) bool { return r <= ' ' || r > '~' || strings.ContainsRune("\"'`\\", r) }) {
+			out[i] = consentQuote(w)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// consentQuote is s quoted for the consent line: every rune outside ASCII
+// escaped, and a backtick too, since the line fences the command in them.
+func consentQuote(s string) string {
+	return strings.ReplaceAll(strconv.QuoteToASCII(s), "`", `\x60`)
 }
 
 // digest is the sha256 of the plan's canonical JSON with Digest blank. A plan

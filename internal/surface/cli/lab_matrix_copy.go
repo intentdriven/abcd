@@ -288,13 +288,18 @@ type labMatrixJudged struct {
 }
 
 // newLabMatrixJudgeCommand builds `lab matrix judge`: a writing task's judging
-// drawn from its copies, and with --verdicts a session's verdicts recorded.
+// drawn from its copies, and with --verdicts a session's verdicts recorded; a
+// check task's judging in two phases, its matcher's answer, the person's
+// locked verdicts and the second phase's table (spec step 9).
 func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
-	var good, bad, judges, verdicts, host string
+	var good, bad, judges, verdicts, host, matcher, proposals, labels string
+	var table bool
 	cmd := &cobra.Command{
 		Use: "judge <lab-id> <run-id> <task>",
 		Long: "abcd lab matrix judge <lab-id> <run-id> <task> --good <file> --bad <file> --judges <n>\n" +
-			"abcd lab matrix judge <lab-id> <run-id> <task> --verdicts <file> [--host <login>]\n\n" +
+			"abcd lab matrix judge <lab-id> <run-id> <task> --verdicts <file> [--host <login>]\n" +
+			"abcd lab matrix judge <lab-id> <run-id> <check> [--matcher <file> | --verdicts <file>]\n" +
+			"abcd lab matrix judge <lab-id> <run-id> <check> --table [--proposals <file>] [--labels <file>]\n\n" +
 			"Draw a writing task's judging, once, from its made copies: the packet a judging\n" +
 			"session is given and the key that stays on this machine, both written in the\n" +
 			"run's state. Each copy is rendered as inert text with every mention of where it\n" +
@@ -305,17 +310,49 @@ func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
 			"--verdicts <file> records a judging session's verdict file against that\n" +
 			"packet, validated as untrusted input, one ranking per judge identity; --host\n" +
 			"names the host's own GitHub login, whose rankings are reported apart.\n\n" +
-			"Refused, exit 2, with nothing written: a task that is not one of the run's\n" +
-			"writing tasks, no made copy, a missing example, too few judges, a judging\n" +
-			"already drawn, a task with a copy handed to the host and not handed back, a\n" +
-			"packet the secret screen refuses, and a verdict file that does not validate.\n" +
-			"A halted lab exits 1.",
+			"A check task is judged in two phases. Alone, the verb joins its copies'\n" +
+			"findings by their exact keys and draws, once, the packet: every distinct\n" +
+			"finding shuffled under a code, with no model, cell, run or path named and no\n" +
+			"verdict proposed. Where the declaration names a matcher cell and two findings\n" +
+			"or more are left apart, it first draws the matcher's request about those\n" +
+			"alone; --matcher <file> records the matcher's answer, joins its pairs, draws a\n" +
+			"sample of them for people to label, and draws the packet. With no matcher the\n" +
+			"findings no key joins stay rows of their own. Asked again, the verb shows the\n" +
+			"judging as it stands. --verdicts <file> locks the person's verdict on every\n" +
+			"finding, once. --table builds the second phase once the verdicts are locked:\n" +
+			"each finding a row and each model a column, with each model's precision,\n" +
+			"unique valid findings, recall and overlap. --proposals <file> is the proposer\n" +
+			"cell's verdict on each finding, given exactly when the declaration names a\n" +
+			"proposer; --labels <file> is the people's labels on the matcher's sample, and\n" +
+			"its agreement is reported on ten labelled pairs or more, otherwise not\n" +
+			"estimable. A matcher or proposer on a runner route waits for a launcher, and\n" +
+			"the host never answers for it. Nothing of a check is filed or written where\n" +
+			"the release gates read.\n\n" +
+			"Refused, exit 2, with no record written: a task that is not one of the run's\n" +
+			"writing or check tasks, no made copy, a missing example, too few judges, a\n" +
+			"judging already drawn, a task with a copy handed to the host and not handed\n" +
+			"back, a packet the secret screen refuses, a verdict, matcher, proposal or label\n" +
+			"file that does not validate, a second verdict file or table, a table before the\n" +
+			"verdicts are locked, and an answer for a runner cell. A halted lab exits 1.",
 		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const verb = "abcd lab matrix judge"
 			root, err := labRoot(verb)
 			if err != nil {
 				return err
+			}
+			kind, err := matrix.RunTaskKind(root, args[0], args[1], args[2])
+			if err != nil {
+				return verbFailure(verb, err)
+			}
+			if kind == matrix.KindCheck {
+				return judgeCheck(cmd, *asJSON, verb, root, args, checkJudgeFlags{matcher: matcher, verdicts: verdicts,
+					proposals: proposals, labels: labels, table: table})
+			}
+			for _, f := range []string{"matcher", "proposals", "labels", "table"} {
+				if cmd.Flags().Changed(f) {
+					return &exitError{Code: 2, Msg: verb + ": --" + f + " goes with a check task's judging, and " + termsafe.Sanitize(args[2]) + " is not one of the run's check tasks; nothing was written"}
+				}
 			}
 			out := labMatrixJudged{Task: args[2]}
 			if verdicts != "" {
@@ -373,5 +410,167 @@ func newLabMatrixJudgeCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&judges, "judges", "", "how many judges' subsets to draw, a whole number")
 	cmd.Flags().StringVar(&verdicts, "verdicts", "", "a judging session's verdict file; records it")
 	cmd.Flags().StringVar(&host, "host", "", "with --verdicts: the host's own GitHub login, whose rankings are reported apart")
+	cmd.Flags().StringVar(&matcher, "matcher", "", "a check task's matcher answer, a JSON file; records it and draws the packet")
+	cmd.Flags().BoolVar(&table, "table", false, "builds a check task's second phase, once its verdicts are locked")
+	cmd.Flags().StringVar(&proposals, "proposals", "", "with --table: the proposer cell's verdict on each finding, a JSON file")
+	cmd.Flags().StringVar(&labels, "labels", "", "with --table: the people's labels on the matcher's sample, a JSON file")
 	return cmd
+}
+
+// checkJudgeFlags is what `lab matrix judge` was given for a check task.
+type checkJudgeFlags struct {
+	matcher, verdicts, proposals, labels string
+	table                                bool
+}
+
+// maxMatcherFile bounds a matcher's answer, a proposal file and a label file
+// as read from the host; the core holds each to its own bound after.
+const maxMatcherFile = 4 << 20
+
+// labMatrixCheckLocked is a check's locked verdicts as the verb shows them.
+type labMatrixCheckLocked struct {
+	Task   string `json:"task"`
+	Packet string `json:"packet"`
+	Judged int    `json:"judged"`
+	Valid  int    `json:"valid"`
+}
+
+// judgeCheck is `lab matrix judge` on a check task: one step of its judging,
+// or, given none, the draw of its first phase or the judging as it stands.
+func judgeCheck(cmd *cobra.Command, asJSON bool, verb, root string, args []string, f checkJudgeFlags) error {
+	for _, flag := range []string{"good", "bad", "judges", "host"} {
+		if cmd.Flags().Changed(flag) {
+			return &exitError{Code: 2, Msg: verb + ": --" + flag + " goes with a writing task's judging, and " + termsafe.Sanitize(args[2]) + " is a check; nothing was written"}
+		}
+	}
+	steps := 0
+	for _, on := range []bool{f.matcher != "", f.verdicts != "", f.table} {
+		if on {
+			steps++
+		}
+	}
+	if steps > 1 {
+		return &exitError{Code: 2, Msg: verb + ": --matcher, --verdicts and --table are one step each; give one at a time; nothing was written"}
+	}
+	if !f.table && (f.proposals != "" || f.labels != "") {
+		return &exitError{Code: 2, Msg: verb + ": --proposals and --labels go with --table; nothing was written"}
+	}
+	w := cmd.OutOrStdout()
+	lab, run, task := args[0], args[1], args[2]
+	switch {
+	case f.matcher != "":
+		data, err := readHanded(verb, "matcher's answer", f.matcher, maxMatcherFile)
+		if err != nil {
+			return err
+		}
+		j, err := matrix.RecordCheckMatcher(root, lab, run, task, data)
+		if err != nil {
+			return verbFailure(verb, err)
+		}
+		return render(w, asJSON, j, func(w io.Writer) { renderCheckJudging(w, verb, j) })
+	case f.verdicts != "":
+		data, err := readHanded(verb, "verdict file", f.verdicts, maxVerdictFile)
+		if err != nil {
+			return err
+		}
+		v, err := matrix.RecordCheckVerdicts(root, lab, run, task, data)
+		if err != nil {
+			return verbFailure(verb, err)
+		}
+		out := labMatrixCheckLocked{Task: task, Packet: v.Packet, Judged: len(v.Valid)}
+		for _, ok := range v.Valid {
+			if ok {
+				out.Valid++
+			}
+		}
+		return render(w, asJSON, out, func(w io.Writer) {
+			fmt.Fprintf(w, "%s %s: locked %d verdict(s), %d valid; packet %s\n", verb, termsafe.Sanitize(task), out.Judged, out.Valid, termsafe.Sanitize(out.Packet))
+		})
+	case f.table:
+		var proposals, labels []byte
+		var err error
+		if f.proposals != "" {
+			if proposals, err = readHanded(verb, "proposals", f.proposals, maxMatcherFile); err != nil {
+				return err
+			}
+		}
+		if f.labels != "" {
+			if labels, err = readHanded(verb, "labels", f.labels, maxMatcherFile); err != nil {
+				return err
+			}
+		}
+		t, err := matrix.RecordCheckTable(root, lab, run, task, proposals, labels)
+		if err != nil {
+			return verbFailure(verb, err)
+		}
+		return render(w, asJSON, t, func(w io.Writer) { renderCheckTable(w, verb, t) })
+	}
+	j, err := matrix.DrawCheck(root, lab, run, task)
+	if err != nil {
+		return verbFailure(verb, err)
+	}
+	return render(w, asJSON, j, func(w io.Writer) { renderCheckJudging(w, verb, j) })
+}
+
+// judgeCellLine names a check's matcher or proposer for the person.
+func judgeCellLine(c *matrix.JudgeCell) string {
+	if c == nil {
+		return "none declared"
+	}
+	s := termsafe.Sanitize(c.Cell) + " (" + termsafe.Sanitize(string(c.Source)) + ")"
+	if c.AwaitingRunner {
+		s += ", a runner cell: its answer waits for a launcher this build does not have"
+	}
+	return s
+}
+
+// renderCheckJudging prints where a check task's judging stands and what is
+// to be handed out next, every field read back from the lab's state escaped.
+func renderCheckJudging(w io.Writer, verb string, j matrix.CheckJudging) {
+	fmt.Fprintf(w, "%s %s: %s; %d copies, %d finding(s) left apart by the exact keys\n", verb, termsafe.Sanitize(j.Task),
+		termsafe.Sanitize(string(j.Stage)), j.Copies, j.Leftovers)
+	fmt.Fprintf(w, "  matcher:  %s\n  proposer: %s\n", judgeCellLine(j.Matcher), judgeCellLine(j.Proposer))
+	if j.Waiting != "" {
+		fmt.Fprintf(w, "  waiting: %s\n", termsafe.SanitizeLine(j.Waiting))
+	}
+	if j.MatcherRequest != nil && j.Stage == matrix.CheckAwaitingMatcher && j.Waiting == "" {
+		fmt.Fprintf(w, "  the matcher's request holds %d finding(s) (--json shows it); record its answer with --matcher <file>\n", len(j.MatcherRequest.Items))
+	}
+	if len(j.Sample) > 0 {
+		fmt.Fprintf(w, "  %d pair(s) of the matcher's are drawn for people to label; give the labels with --table --labels <file>\n", len(j.Sample))
+	}
+	if j.Packet != nil {
+		fmt.Fprintf(w, "  packet %s: %d finding(s) to judge (--json shows it)\n", termsafe.Sanitize(j.PacketDigest), len(j.Packet.Items))
+	}
+	switch j.Stage {
+	case matrix.CheckAwaitingVerdicts:
+		fmt.Fprintln(w, "  record the person's locked verdicts with --verdicts <file>")
+	case matrix.CheckVerdictsLocked:
+		fmt.Fprintln(w, "  the verdicts are locked; build the second phase with --table")
+	}
+}
+
+// renderCheckTable prints a check's second phase, every field escaped.
+func renderCheckTable(w io.Writer, verb string, t matrix.CheckTable) {
+	fmt.Fprintf(w, "%s %s: %d distinct finding(s) over %d model(s)\n", verb, termsafe.Sanitize(t.Task), len(t.Rows), len(t.Cells))
+	rate := func(r matrix.Rate) string {
+		if !r.Estimable() {
+			return "not estimable"
+		}
+		return fmt.Sprintf("%d of %d", r.Hits, r.Of)
+	}
+	for _, s := range t.Scores {
+		fmt.Fprintf(w, "  %-14s precision %s, unique valid %d, recall against the valid findings %s\n", termsafe.Sanitize(s.Cell),
+			rate(s.Precision), s.UniqueValid, rate(s.RecallValid))
+	}
+	for _, o := range t.Overlap {
+		fmt.Fprintf(w, "  overlap %s and %s: %d of %d\n", termsafe.Sanitize(o.A), termsafe.Sanitize(o.B), o.Both, o.Either)
+	}
+	if a := t.Matcher; a != nil {
+		if a.NotEstimable != "" {
+			fmt.Fprintf(w, "  matcher's agreement: not estimable: %s\n", termsafe.Sanitize(a.NotEstimable))
+		} else {
+			fmt.Fprintf(w, "  matcher's agreement: %s labelled pairs\n", rate(a.Agreed))
+		}
+	}
 }

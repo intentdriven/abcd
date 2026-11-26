@@ -1,6 +1,8 @@
 package matrix
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -193,7 +195,7 @@ func TestThePlanShowsTheLoadCapTheCoresTimeAndJudges(t *testing.T) {
 	for _, j := range p.Judges {
 		kinds[j.Kind] = j
 	}
-	if kinds[KindCode].Count != 1 || kinds[KindWriting].Count < 3 || kinds[KindCheck].Count != 2 {
+	if kinds[KindCode].Count != 1 || kinds[KindWriting].Count < 3 || kinds[KindCheck].Count != 1 {
 		t.Fatalf("judges = %+v", p.Judges)
 	}
 	// Without a declared time on every cell, the time waits for the pilot.
@@ -306,5 +308,169 @@ func TestThePlanDigestChangesWithWhatTheRunSpends(t *testing.T) {
 	}
 	if again, _ := plan(t, decl, usd25); again.Digest != a.Digest {
 		t.Fatal("the same plan built twice has two digests")
+	}
+}
+
+// A matcher and a proposer are planned as cells of their own, outside the
+// copies: each answers once a check task, so its cost is reckoned on that, and
+// the check's judges say who proposes a verdict and what joins the findings no
+// exact key joins. Adding either changes the plan's digest (spec step 9).
+func TestAMatcherAndAProposerArePlannedAsTheChecksJudges(t *testing.T) {
+	builders := `{"id":"host-big","route":"host"}`
+	bare, err := plan(t, planDecl(builders, ``, ``), ResolvedCap{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(p Plan) JudgeNeed {
+		for _, j := range p.Judges {
+			if j.Kind == KindCheck {
+				return j
+			}
+		}
+		t.Fatalf("judges = %+v; want the check's", p.Judges)
+		return JudgeNeed{}
+	}
+	// With no matcher, the leftovers are stated as unmatched rows, and with
+	// no proposer no verdict is proposed.
+	if j := check(bare); j.Count != 1 || !strings.Contains(j.Who, "no verdict proposed") || !strings.Contains(j.Who, "stay unmatched") ||
+		!strings.Contains(j.Note, "not estimable") {
+		t.Fatalf("the check's judges with none declared = %+v", j)
+	}
+	matched, err := plan(t, planDecl(builders, ``, `
+  "matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/model", "cost_per_copy": {"amount": 0.25, "unit": "usd"}},`), usd25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A proposer on the host builder's own route would judge its own copies.
+	if _, err := plan(t, planDecl(builders, ``, `
+  "proposer": {"id": "propose-host", "route": "host"},`), ResolvedCap{}); err == nil || !strings.Contains(err.Error(), "builder cell host-big") {
+		t.Fatalf("a proposer on the builder's route = %v; want it refused", err)
+	}
+	proposed, err := plan(t, planDecl(builders, ``, `
+  "matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/model", "cost_per_copy": {"amount": 0.25, "unit": "usd"}},
+  "proposer": {"id": "propose-local", "route": "proposer=runner:opencode@local/qwen"},
+  "load_cap": 4,`), usd25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := check(matched); j.Count != 1 || !strings.Contains(j.Who, "the matcher cell match-or") || strings.Contains(j.Note, "not estimable") {
+		t.Fatalf("the check's judges with a matcher = %+v", j)
+	}
+	if j := check(proposed); j.Count != 2 || !strings.Contains(j.Who, "the proposer cell propose-local") {
+		t.Fatalf("the check's judges with a proposer = %+v", j)
+	}
+	// A judge on a runner route waits for a launcher, and the plan says so
+	// before consent, naming each such judge.
+	for _, c := range []struct {
+		j    JudgeNeed
+		want []string
+	}{{check(matched), []string{"match-or is a runner cell"}}, {check(proposed), []string{"match-or is a runner cell", "propose-local is a runner cell"}}} {
+		for _, w := range c.want {
+			if !strings.Contains(c.j.Note, w) || !strings.Contains(c.j.Note, "waits for a launcher") {
+				t.Errorf("the judges note = %q; want it to say %s and waits for a launcher", c.j.Note, w)
+			}
+		}
+	}
+	if j := check(bare); strings.Contains(j.Note, "launcher") {
+		t.Errorf("the judges note with no judge declared = %q; want no wait named", j.Note)
+	}
+	roles := map[string]Role{}
+	for _, c := range proposed.Cells {
+		roles[c.Cell] = c.Role
+	}
+	if roles["match-or"] != RoleMatcher || roles["propose-local"] != RoleProposer {
+		t.Fatalf("cells = %+v; want the matcher and the proposer planned", proposed.Cells)
+	}
+	// The judges make no copy: the copies are the host builder's alone, and
+	// the matcher's cost is its one answer on the one check task.
+	if proposed.Copies.MaxTotal != 30 || len(proposed.Copies.MaxByCell) != 1 {
+		t.Fatalf("copies = %+v; want the builder's 30 alone", proposed.Copies)
+	}
+	for _, c := range matched.Cost {
+		if c.Source == SourceOpenRouter && (c.Expected == nil || c.Expected.Amount != 0.25) {
+			t.Fatalf("the matcher's cost = %+v; want 0.25 usd, one answer on one check", c)
+		}
+	}
+	if bare.Digest == matched.Digest || matched.Digest == proposed.Digest {
+		t.Fatalf("digests %s, %s, %s: want each judge added to change the plan's", bare.Digest, matched.Digest, proposed.Digest)
+	}
+}
+
+// The judges note asks the person to check the judges' routes wherever a
+// judge is declared, on the check task's judges and once, and says nothing of
+// it where no judge is: a plan with neither cell carries the sentence nowhere
+// (spec step 9).
+func TestThePlanAsksToCheckTheJudgesRoutesOnlyWhereAJudgeIsDeclared(t *testing.T) {
+	const sentence = "a judge is held apart from the builders by its model's name read with its provider, carrier, variant tag and date set aside, so check that the judges' routes above name other models than the builders'"
+	builders := `{"id":"host-big","route":"host"}`
+	matcher := `
+  "matcher": {"id": "match-or", "route": "matcher=runner:opencode@openrouter/vendor/model", "cost_per_copy": {"amount": 0.25, "unit": "usd"}},`
+	proposer := `
+  "proposer": {"id": "propose-local", "route": "proposer=runner:opencode@local/qwen"},
+  "load_cap": 4,`
+	for _, c := range []struct {
+		name, extra string
+		cap         ResolvedCap
+		want        int
+	}{
+		{"no judge", ``, ResolvedCap{}, 0},
+		{"a matcher", matcher, usd25, 1},
+		{"a proposer", proposer, ResolvedCap{}, 1},
+		{"a matcher and a proposer", matcher + proposer, usd25, 1},
+	} {
+		p, err := plan(t, planDecl(builders, ``, c.extra), c.cap)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		var all bytes.Buffer
+		enc := json.NewEncoder(&all)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(p); err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(all.String(), sentence); n != c.want {
+			t.Errorf("%s: the plan carries the judges sentence %d times; want %d", c.name, n, c.want)
+		}
+		for _, j := range p.Judges {
+			if n, want := strings.Count(j.Note, sentence), map[bool]int{true: c.want, false: 0}[j.Kind == KindCheck]; n != want {
+				t.Errorf("%s: the %s task's judges note carries the sentence %d times; want %d: %q", c.name, j.Kind, n, want, j.Note)
+			}
+		}
+	}
+}
+
+// A code task's hidden tests are shown on the plan with the line the person
+// consents to: abcd will run each copy's code with that command, in an export
+// of the copy, never in its clone (spec step 9; decision 9).
+func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
+	builders := `{"id":"host-big","route":"host"}`
+	bare, err := plan(t, planDecl(builders, ``, ``), ResolvedCap{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare.HiddenTests != nil {
+		t.Fatalf("hidden tests = %+v; want none where no task names any", bare.HiddenTests)
+	}
+	decl := strings.Replace(string(planDecl(builders, ``, ``)), `"intent": "itd-2610161733316518"}`,
+		`"intent": "itd-2610161733316518", "hidden_tests": "/work/hidden/feature-a", "test_command": ["go", "test", "-run", "Test Hidden", "One\u00a0Two", "g\u043e", "a`+"`"+`b", "./..."]}`, 1)
+	p, err := plan(t, []byte(decl), ResolvedCap{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.HiddenTests) != 1 {
+		t.Fatalf("hidden tests = %+v; want the code task's", p.HiddenTests)
+	}
+	h := p.HiddenTests[0]
+	// Every word holding a space, a Unicode one among them, is quoted, and so
+	// is the folder; the line says no hidden test is run by this build.
+	// A letter outside ASCII is shown as its escape, and a backtick never
+	// ends the command's fence.
+	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" \"g\\u043e\" \"a\\x60b\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone; " +
+		"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report"
+	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 8 || h.Consent != want {
+		t.Fatalf("hidden tests = %+v\nwant consent %q", h, want)
+	}
+	if p.Digest == bare.Digest {
+		t.Fatal("naming hidden tests did not change the plan's digest")
 	}
 }
