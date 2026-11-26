@@ -31,7 +31,10 @@ import (
 //       checkout tracks: origin/HEAD, a remote-tracking ref and the
 //       conventional names the resolver falls back to are all local
 //       guesses a lane's agent can move or a pushed branch can stand in for
-//       (gitutil.TrackedDefaultBranch). Where the act's fetch did not bring
+//       (gitutil.TrackedDefaultBranch). An origin that answers but names no
+//       branch with a commit as its default (none of its own, a detached
+//       HEAD) has no file for the figure, and the ten applies, said in the
+//       note. Where the act's fetch did not bring
 //       that commit, it fetches the branch origin named. Where origin cannot
 //       be asked, or the commit still is not here (the branch moved while it
 //       was read), the act is refused as a failed fetch is, and is to be run
@@ -140,13 +143,21 @@ func maxLive(root, ref, home string) (liveLimit, string, error) {
 // resolution after its fetch, "" for none, is only compared with it), then
 // the machine's lowering. Where origin cannot be asked, or the commit it names
 // cannot be brought here, it refuses with a *FetchError, as the act's own
-// fetch does: no figure is read and none is assumed.
+// fetch does: no figure is read and none is assumed. Where origin answers but
+// names no branch with a commit as its default (it holds no commits, or its
+// HEAD is detached or points outside refs/heads/), it has no file for the
+// figure: the ten applies, lowered by the machine alone, and the note says
+// so.
 func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 	lim, note := bundledLimit(), ""
 	if root != "" {
-		branch, tip, err := originHead(root)
+		branch, tip, none, err := originHead(root)
 		if err != nil {
 			return liveLimit{}, "", err
+		}
+		if none != "" {
+			note = fmt.Sprintf("%s, so it has no repository figure for %s and %s applies", none, MaxLiveKey, lim.describe())
+			return machineAfter(home, lim, note)
 		}
 		name := Remote + "/" + branch
 		if !commitHere(root, tip) {
@@ -164,6 +175,12 @@ func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 		}
 		note = joinNote(note, rnote)
 	}
+	return machineAfter(home, lim, note)
+}
+
+// machineAfter is an act's lim lowered by the machine, with note joined to
+// the machine's own.
+func machineAfter(home string, lim liveLimit, note string) (liveLimit, string, error) {
 	lim, mnote, err := machineMaxLive(home, lim, true)
 	if err != nil {
 		return liveLimit{}, "", err
@@ -184,23 +201,25 @@ func orNone(s string) string {
 }
 
 // originHead asks origin which branch is its default and at which commit
-// (git ls-remote --symref origin HEAD), as landing.ReadFetchedFacilitator
-// does: the branch, a valid ref name under refs/heads/, and the tip, a full
-// object name, or a *FetchError when origin cannot be asked or names neither.
-func originHead(root string) (branch, tip string, err error) {
-	gap := func(reason string, cause error) error {
-		return &FetchError{Reason: reason, cause: cause, what: "which branch is its default, for " + MaxLiveKey + ",", outcome: gapOutcome}
-	}
+// (git ls-remote --symref, as landing.ReadFetchedFacilitator does): the
+// branch, a valid ref name under refs/heads/, and the tip, a full object name.
+// Where origin answers but names no such branch with a commit (none of its
+// own, a detached HEAD, a HEAD outside refs/heads/), none says what it named
+// instead and branch and tip are "". Only an origin that cannot be asked is a
+// *FetchError.
+func originHead(root string) (branch, tip, none string, err error) {
 	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
 	trace(args...)
 	out, err := gitutil.Net(root, args...)
 	if err != nil {
 		r := redacted(err)
-		return "", "", gap(r.text, r.notRun)
+		return "", "", "", &FetchError{Reason: r.text, cause: r.notRun, what: "which branch is its default, for " + MaxLiveKey + ",", outcome: gapOutcome}
 	}
+	symref := false
 	for _, line := range strings.Split(out, "\n") {
 		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
 			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				symref = true
 				branch, _ = strings.CutPrefix(target, "refs/heads/")
 				if branch == target {
 					branch = ""
@@ -210,13 +229,18 @@ func originHead(root string) (branch, tip string, err error) {
 			tip = sha
 		}
 	}
-	if branch == "" || branch == "HEAD" || !gitutil.IsFullSHA(tip) {
-		return "", "", gap(Remote+" did not name a branch under refs/heads/ as its default, and that branch's tip", nil)
+	switch {
+	case !gitutil.IsFullSHA(tip):
+		return "", "", Remote + " holds no commit at its HEAD", nil
+	case !symref:
+		return "", "", Remote + "'s HEAD is detached, naming no default branch", nil
+	case branch == "" || branch == "HEAD":
+		return "", "", Remote + "'s HEAD names no branch under refs/heads/", nil
 	}
 	if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
-		return "", "", gap(Remote+"'s HEAD names a branch whose name is not a valid ref", nil)
+		return "", "", Remote + "'s HEAD names a branch whose name is not a valid ref", nil
 	}
-	return termsafe.Sanitize(branch), tip, nil
+	return termsafe.Sanitize(branch), tip, "", nil
 }
 
 // fetchTip brings origin's default branch, which origin named at tip, into

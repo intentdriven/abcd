@@ -419,7 +419,10 @@ asked, or the commit still is not in the checkout (the branch moved while it
 was read), the act is refused as an unreachable origin is, to be run again: no
 figure is read and none is assumed, since the ten could be more than the
 repository allows, and a commit that never reached origin never sets the
-ceiling. The drain's wait at the cap reads the figure the same way. The
+ceiling. An origin that answers but names no branch with a commit as its
+default (it holds none, or its HEAD is detached) has no file for the figure:
+the ten applies, lowered by the machine alone, and the note says so. The
+drain's wait at the cap reads the figure the same way. The
 ceiling row of `abcd peers` asks no network and reads the figure as the
 checkout last fetched it; the act decides. A view in a checkout with no default branch of origin reads
 no repository figure and says so. The person's own `~/.abcd.noindex/config.json` may then lower the

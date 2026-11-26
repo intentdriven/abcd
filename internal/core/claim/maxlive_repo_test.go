@@ -482,3 +482,39 @@ func limitAt(dir, home string) (int, string, string, error) {
 	lim, note, err := maxLive(dir, originDefault(dir), home)
 	return lim.N, lim.Layer, note, err
 }
+
+// TestAnEmptyOriginHasNoRepositoryFigure: an origin that answers but holds no
+// commit has no file to set the ceiling, so an act takes the ten, lowered by
+// the machine alone, and says so; it never refuses as if origin could not be
+// asked, which a retry could not cure.
+func TestAnEmptyOriginHasNoRepositoryFigure(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	empty := filepath.Join(t.TempDir(), "empty.git")
+	gittest.InitBare(t, empty)
+	p.git("remote", "set-url", "origin", empty)
+	lim, note, err := actMaxLive(p.dir, originDefault(p.dir), p.home)
+	if err != nil || lim.N != MaxLive || lim.Layer != LimitBundled || !strings.Contains(note, "holds no commit at its HEAD") {
+		t.Fatalf("with an empty origin: %+v, %q, %v; want the ten, saying origin holds no commit", lim, note, err)
+	}
+	writeConfig(t, p.home, `{"reservation": {"max_live": 3}}`)
+	if lim, _, err := actMaxLive(p.dir, originDefault(p.dir), p.home); err != nil || lim.N != 3 || lim.Layer != LimitMachine {
+		t.Fatalf("with an empty origin and the machine at 3: %+v, %v; want this machine's 3", lim, err)
+	}
+}
+
+// TestADetachedHeadOnOriginHasNoRepositoryFigure: an origin whose HEAD is
+// detached names no default branch, so the 4 its main sets is no figure an
+// act reads: the act takes the ten and admits a fifth, and the note says
+// origin's HEAD is detached.
+func TestADetachedHeadOnOriginHasNoRepositoryFigure(t *testing.T) {
+	w := newWorld(t)
+	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	runGit(t, w.bare, "update-ref", "--no-deref", "HEAD", strings.TrimSpace(runGit(t, w.bare, "rev-parse", "refs/heads/main")))
+	lim, note, err := actMaxLive(p.dir, originDefault(p.dir), p.home)
+	if err != nil || lim.N != MaxLive || lim.Layer != LimitBundled || !strings.Contains(note, "HEAD is detached") {
+		t.Fatalf("with origin's HEAD detached: %+v, %q, %v; want the ten, saying origin's HEAD is detached", lim, note, err)
+	}
+	reserveN(t, p, 5)
+}

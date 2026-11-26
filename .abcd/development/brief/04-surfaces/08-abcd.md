@@ -375,8 +375,9 @@ withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
 `not_ended`, each once for each tip, `not_ended_claimed` (true when that
 holder is a holder id that is not the reader's), and `failures`, a comment not
 posted as sent among them, iss-2610222014550692), `ceiling` (the reader's own
-live reservations against this machine's `reservation.max_live`, counted by
-copy, with its warning from four fifths of the limit, present only when the
+live reservations against their ceiling, the repository's
+`reservation.max_live` at origin's default branch, ten where it sets none,
+which this machine's own figure may only lower, counted by copy, with its warning from four fifths of the limit, present only when the
 reader's identity is known without the network and the limit is one a
 reservation would not be refused on; `commands/peers.md` lists its fields,
 iss-2610231004140527) and `view`
