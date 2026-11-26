@@ -18,6 +18,8 @@ func TestAnAssignmentAfterAKeywordIsCarried(t *testing.T) {
 		{`G=echo; until G=git; do :; done; $G push --force origin main`, VerdictBlock, "git-push-force"},
 		{`G=echo; time G=git; $G push --force origin main`, VerdictBlock, "git-push-force"},
 		{`G=echo; repeat 1 G=git; $G push --force origin main`, VerdictBlock, "git-push-force"},
+		{`G=echo; time -p G=git; $G push --force origin main`, VerdictBlock, "git-push-force"},
+		{`G=echo; time -p -- G=git; $G push --force origin main`, VerdictBlock, "git-push-force"},
 		// A command's output assigned after a keyword is carried as output,
 		// as it is standing alone.
 		{`P=echo; if true; then P=$(echo pkill); fi; $P node`, VerdictBlock, "program-name-unknown"},

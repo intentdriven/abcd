@@ -863,7 +863,8 @@ func lookupShape(tok string, feeds []feed) (string, bool) {
 var assignmentKeywords = map[string]bool{"while": true, "until": true, "time": true}
 
 // assignmentStart is the index of the first word of tokens past the keywords
-// that open it (quietKeywords, assignmentKeywords, and zsh's `repeat N`).
+// that open it (quietKeywords, assignmentKeywords with time's -p and --, and
+// zsh's `repeat N`).
 func assignmentStart(tokens []string) int {
 	from := 0
 	for from < len(tokens) {
@@ -872,6 +873,9 @@ func assignmentStart(tokens []string) int {
 			from++
 		case t == "repeat" && from+1 < len(tokens):
 			from += 2
+		case (t == "-p" || t == "--") && from > 0 && (tokens[from-1] == "time" || tokens[from-1] == "-p"):
+			// time's POSIX option, and the end of its options.
+			from++
 		default:
 			return from
 		}

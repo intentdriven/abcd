@@ -28,6 +28,7 @@ var wordReaders = map[string]string{
 	"stageRunsWhatItWrites": "exempt: reads the word commandSites places as the program through whereItRuns",
 	"addsAWorktree":         "isUnknown on the words it decides by, after a program commandSites places",
 	"FileAtCommit":          "exempt: reads git's listing of a commit, not a word of the line",
+	"assignmentStart":       "exempt: steps only words of fixed text (the opening keywords, and time's -p and --) ahead of an assignment; a word no line fixes ends the step",
 	// unknown.go: the rule and the walks that apply it.
 	"unknownFlagCouldBe":   "the rule itself",
 	"flagCouldBe":          "the rule itself",
