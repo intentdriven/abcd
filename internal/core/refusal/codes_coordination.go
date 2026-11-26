@@ -97,9 +97,11 @@ func init() {
 		Entry{
 			Code:    ReserveUnreachableOrigin,
 			Summary: "origin could not be read or written, so the reservations cannot be judged",
-			Explanation: "Reservations live on the remote named origin. The fetch of the reservations, or\n" +
-				"the push of this act, failed; the refusal quotes git's reason. Check that origin\n" +
-				"is reachable and that you may push to it, then run the act again.",
+			Explanation: "Reservations live on the remote named origin. The fetch of the reservations, the\n" +
+				"question to origin of which commit its default branch stands at (where the\n" +
+				"ceiling is read), or the push of this act, failed; the refusal quotes git's\n" +
+				"reason. Check that origin is reachable and that you may push to it, then run the\n" +
+				"act again.",
 			Next:     NoNext,
 			RaisedBy: []string{"abcd reserve"},
 		},

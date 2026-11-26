@@ -265,8 +265,9 @@ The `reservation.max_live` key, one person's ceiling on live reservations, 1
 to 100 and 10 by default, runs the other way (itd-2611251809580662 decisions 3
 and 8, refining dcn-2611222342270127 for this key alone): the repository's
 `.abcd/config.json` sets it, read as stored at the commit origin itself names
-as its default branch's tip when an act adds a reservation (the ten where
-origin cannot be asked or that commit is not in the checkout), and as last
+as its default branch's tip when an act adds a reservation (an act refused,
+to be run again, where origin cannot be asked or that commit cannot be
+fetched), and as last
 fetched by a view that only shows it, never from a working tree or
 another branch, and `~/.abcd.noindex/config.json` may lower it on that machine
 and never raise it, a higher figure there ignored and named. A checkout with no
@@ -275,8 +276,8 @@ repository's file the `reservation` namespace takes `max_live` and
 `fork_origin`; `reservation.github_username` is refused there, naming the file
 and the commit. A repository value out of range or an unknown key refuses an
 act that adds a reservation, naming the file at the branch; a machine file that
-cannot be read is read past, the figure so far applying, which the refusal at
-the cap says. Neither refuses a release or a renewal
+is there but cannot be read refuses it too, naming the file, and one that is
+not there reads as none. Neither refuses a release or a renewal
 (`internal/core/claim/maxlive.go`).
 
 The `drain.bundle_max` key is read through the same reader, and a repository

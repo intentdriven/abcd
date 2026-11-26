@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,8 +13,8 @@ import (
 
 // The repository sets one person's ceiling (itd-2611251809580662 decisions 3
 // and 8, spc-2611251810508418 step 1): reservation.max_live in
-// .abcd/config.json at the commit origin's default branch stood at when the
-// checkout last fetched it, read as stored and never from a working tree,
+// .abcd/config.json at the commit origin names as its default branch's tip
+// (as last fetched, for a view), read as stored and never from a working tree,
 // replaces the bundled ten; a machine's own figure may lower it on that
 // machine and is ignored, and named, above it.
 
@@ -313,40 +314,118 @@ func TestAnUnpushedCommitNeverRaisesTheCeiling(t *testing.T) {
 	}
 }
 
-// TestAFetchGapLeansToTheTen: origin's main has moved to a commit setting
-// 50 this checkout cannot fetch (its tracked default names a ref origin
-// lacks, holding an unpushed 100), so the act reads no repository figure and
-// the ten applies, saying why: neither 50 nor 100 raises it.
-func TestAFetchGapLeansToTheTen(t *testing.T) {
+// onGit runs do before each git this package runs whose arguments are
+// exactly args, for the rest of the test.
+func onGit(t *testing.T, do func(), args ...string) {
+	t.Helper()
+	traceGit = func(got []string) {
+		if slices.Equal(got, args) {
+			do()
+		}
+	}
+	t.Cleanup(func() { traceGit = nil })
+}
+
+// askOrigin and fetchMainTip are the git the act runs to ask origin for its
+// default branch and to fetch that branch's tip when its own fetch did not
+// bring it.
+var (
+	askOrigin    = []string{"ls-remote", "--symref", Remote, "HEAD"}
+	fetchMainTip = []string{"fetch", "--no-tags", Remote, "+refs/heads/main:refs/remotes/" + Remote + "/main"}
+)
+
+// TestAMergeBetweenTheFetchAndTheQuestionIsFetched: a change setting 4
+// that lands on origin's main after the act's fetch and before it asks origin
+// for its default names a tip the fetch did not bring; the act fetches it and
+// judges by 4, so a person holding four is refused the fifth rather than
+// admitted under the ten.
+func TestAMergeBetweenTheFetchAndTheQuestionIsFetched(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
-	w.ceilingOnMain(`{"reservation": {"max_live": 50}}`)
-	p.ghostDefault(`{"reservation": {"max_live": 100}}`)
-	reserveN(t, p, MaxLive)
-	_, err := p.reserve("iss-11", "f11.go")
+	reserveN(t, p, 4)
+	onGit(t, func() {
+		traceGit = nil
+		w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
+	}, askOrigin...)
+	_, err := p.reserve("iss-5", "f5.go")
 	var capped *CapError
-	if !errors.As(err, &capped) || capped.Limit != MaxLive || capped.LimitLayer != LimitBundled ||
-		!strings.Contains(capped.Note, "is not in this checkout") {
-		t.Fatalf("the eleventh across a fetch gap = %v; want the ten, saying origin's tip is not here", err)
+	if !errors.As(err, &capped) || capped.Limit != 4 || capped.LimitLayer != LimitRepository || w.remoteTip("iss-5") != "" {
+		t.Fatalf("the fifth with 4 landing mid-act = %v; want the cap of 4, nothing pushed", err)
 	}
 }
 
-// TestAnOriginThatCannotBeAskedLeansToTheTen: where origin cannot say which
-// branch is its default, the act reads no repository figure, even the 4 its
-// origin/main tracks here, and the ten applies, lowered by the machine
-// alone.
-func TestAnOriginThatCannotBeAskedLeansToTheTen(t *testing.T) {
+// TestATipThatCannotBeBroughtHereRefusesTheAct: where origin's main moves
+// again while the act fetches the tip origin named (a merge, then a force
+// push that takes it back), that commit is never in the checkout; the act
+// reads no figure and assumes none, so it is refused as a failed fetch is,
+// saying to run it again, and nothing is pushed. A renewal and a release
+// read no ceiling and go ahead.
+func TestATipThatCannotBeBroughtHereRefusesTheAct(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
+	reserveN(t, p, 1)
+	traceGit = func(got []string) {
+		switch {
+		case slices.Equal(got, askOrigin):
+			w.ceilingOnMain(`{"reservation": {"max_live": 50}}`)
+		case slices.Equal(got, fetchMainTip):
+			w.seed.Git("push", "-q", "-f", "origin", "HEAD~1:main")
+		}
+	}
+	t.Cleanup(func() { traceGit = nil })
+	_, err := p.reserve("iss-2", "f2.go")
+	traceGit = nil
+	var fe *FetchError
+	if !errors.As(err, &fe) || !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "moved while it was read") ||
+		!strings.HasSuffix(err.Error(), "nothing was pushed; run it again once origin answers") || w.remoteTip("iss-2") != "" {
+		t.Fatalf("a new reservation with origin's tip out of reach = %v; want it refused as a failed fetch, to run again, nothing pushed", err)
+	}
+	if res, err := p.reserve("iss-1", "f1.go"); err != nil || res.Act != ActRenewed {
+		t.Fatalf("a renewal = %+v, %v; want it renewed", res, err)
+	}
+	if _, err := p.do(Request{Record: "iss-1", Release: true}); err != nil {
+		t.Fatalf("a release: %v", err)
+	}
+}
+
+// TestAnOriginThatCannotBeAskedRefusesTheAct: where origin cannot say which
+// branch is its default (it stops answering after the act's fetch), the act
+// reads no repository figure and assumes none, not even the 4 its origin/main
+// tracks here nor the machine's 3: it is refused as a failed fetch is, saying
+// to run it again, and nothing is pushed. A renewal and a release never ask.
+func TestAnOriginThatCannotBeAskedRefusesTheAct(t *testing.T) {
 	w := newWorld(t)
 	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
 	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
-	p.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
-	lim, note, err := actMaxLive(p.dir, originDefault(p.dir), p.home)
-	if err != nil || lim.N != MaxLive || lim.Layer != LimitBundled || !strings.Contains(note, "could not say which branch is its default") {
-		t.Fatalf("with origin unanswering: %+v, %q, %v; want the ten, saying origin could not be asked", lim, note, err)
-	}
+	reserveN(t, p, 1)
 	writeConfig(t, p.home, `{"reservation": {"max_live": 3}}`)
-	if lim, _, err := actMaxLive(p.dir, originDefault(p.dir), p.home); err != nil || lim.N != 3 || lim.Layer != LimitMachine {
-		t.Fatalf("with origin unanswering and the machine at 3: %+v, %v; want this machine's 3", lim, err)
+	url := strings.TrimSpace(p.git("remote", "get-url", "origin"))
+	gone := filepath.Join(t.TempDir(), "gone.git")
+	asked := 0
+	traceGit = func(got []string) {
+		if slices.Equal(got, askOrigin) {
+			asked++
+			p.git("remote", "set-url", "origin", gone)
+		} else {
+			p.git("remote", "set-url", "origin", url)
+		}
+	}
+	t.Cleanup(func() { traceGit = nil })
+	_, err := p.reserve("iss-2", "f2.go")
+	var fe *FetchError
+	if !errors.As(err, &fe) || !strings.Contains(err.Error(), "could not read which branch is its default, for "+MaxLiveKey) ||
+		!strings.HasSuffix(err.Error(), "nothing was pushed; run it again once origin answers") || asked != 1 {
+		t.Fatalf("a new reservation with origin unanswering = %v (asked %d); want it refused as a failed fetch, to run again", err, asked)
+	}
+	p.git("remote", "set-url", "origin", url)
+	if w.remoteTip("iss-2") != "" {
+		t.Fatal("a reservation reached origin with no ceiling read")
+	}
+	if res, err := p.reserve("iss-1", "f1.go"); err != nil || res.Act != ActRenewed {
+		t.Fatalf("a renewal = %+v, %v; want it renewed without asking", res, err)
+	}
+	if _, err := p.do(Request{Record: "iss-1", Release: true}); err != nil || asked != 1 {
+		t.Fatalf("a release: %v (asked %d); want it made without asking", err, asked)
 	}
 }
 

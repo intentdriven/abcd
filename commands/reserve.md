@@ -520,8 +520,9 @@ abandoned, if the user agrees. The repository sets the cap with
 100), read at the commit origin itself names as its default branch's tip,
 asked of origin when the reservation is made, and never from a working tree,
 another branch or a name this checkout tracks, so every computer of one person
-reads the same number (where origin cannot be asked, or that commit was not
-fetched, ten applies and the refusal says why); changing it is a reviewed
+reads the same number (where origin cannot be asked, or that commit cannot be
+fetched, the reservation is refused as an unreachable origin is, and is to be
+run again: no figure is assumed); changing it is a reviewed
 change to that file. The user's own `~/.abcd.noindex/config.json` may lower it
 on their computer and never raise it: a higher figure there is ignored and
 named. The refusal names which of the two set the cap. A value outside that

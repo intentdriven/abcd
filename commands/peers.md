@@ -139,8 +139,9 @@ payload adds:
   Relay the warning, and before reserving more, ask which holds can be
   released. `note`, when present, says what was read past or ignored: no
   default branch of origin to read the repository's figure at, a machine
-  figure above the repository's, a machine configuration that could not be
-  read (the figure so far then applies), or why the worktrees could not be
+  figure above the repository's, a machine configuration that cannot be
+  read (the figure so far is shown, and a new reservation is refused until
+  the file reads), or why the worktrees could not be
   listed (their holds then count as `elsewhere`). The text form prints the
   layer beside the number: `your holds: <holder> 7 of 10 (repository) (this
   copy 2, ...)`. Absent when the reader's login cannot be named without the

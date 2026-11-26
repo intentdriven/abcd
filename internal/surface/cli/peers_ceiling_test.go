@@ -102,11 +102,16 @@ func TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling(t *testing.T) {
 }
 
 // TestPeersTextSaysWhyTheCeilingIsTheDefault: a machine configuration that
-// does not read leaves the cap at its default, and the text form says so
-// beside the holds, as --json does in the ceiling's note, so a reader never
-// takes the default for a limit someone set.
+// does not read shows the cap so far, and the text form says beside the holds
+// that an act adding a reservation refuses until the file reads, as --json
+// does in the ceiling's note, so a reader never takes the default for a limit
+// someone set; the act itself is refused, naming the file.
 func TestPeersTextSaysWhyTheCeilingIsTheDefault(t *testing.T) {
 	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	if code, out, errOut := reserveRun(t, p, "reserve", "iss-1", "--footprint", "iss-1.go"); code != 0 {
+		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
+	}
 	cfg := abcdhome.Path(w.home, "config.json")
 	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
 		t.Fatal(err)
@@ -114,18 +119,18 @@ func TestPeersTextSaysWhyTheCeilingIsTheDefault(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte(`{"reservation": `), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := w.clone(t, "p", octoMail)
-	if code, out, errOut := reserveRun(t, p, "reserve", "iss-1", "--footprint", "iss-1.go"); code != 0 {
-		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
-	}
 	code, text, _ := reserveRun(t, p, "peers")
 	if code != 0 {
 		t.Fatalf("peers: exit %d\n%s", code, text)
 	}
-	for _, want := range []string{"your holds: " + heldBy(t, p) + " 1 of 10 (bundled)", "note: the machine configuration could not be read"} {
+	for _, want := range []string{"your holds: " + heldBy(t, p) + " 1 of 10 (bundled)",
+		"cannot be read for reservation.max_live", "an act that adds a reservation refuses until it can"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing lacks %q:\n%s", want, text)
 		}
+	}
+	if code, out, errOut := reserveRun(t, p, "reserve", "iss-2", "--footprint", "iss-2.go"); code != 2 || !strings.Contains(errOut, "config.json cannot be read for reservation.max_live") {
+		t.Errorf("a second reservation: exit %d\n%s%s; want it refused naming the file", code, out, errOut)
 	}
 }
 

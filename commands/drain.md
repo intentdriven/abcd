@@ -971,8 +971,9 @@ what it did in `next`:
 - **It waits at the cap and on held work.** When the user holds their cap of
   live reservations (ten unless the repository's `reservation.max_live` in
   `.abcd/config.json` at origin's default branch sets another, from 1 to 100,
-  or their computer's `~/.abcd.noindex/config.json` lowers it), counted in the move's view
-  before any reservation or judgement, or when every eligible issue left is
+  or their computer's `~/.abcd.noindex/config.json` lowers it, read where
+  origin itself says its default branch is, as a reservation reads it),
+  counted in the move's view before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
   `held`), and names what it waits on: at the cap, the reservations and the

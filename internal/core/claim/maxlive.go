@@ -1,11 +1,12 @@
 package claim
 
 import (
-	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -30,16 +31,17 @@ import (
 //       checkout tracks: origin/HEAD, a remote-tracking ref and the
 //       conventional names the resolver falls back to are all local
 //       guesses a lane's agent can move or a pushed branch can stand in for
-//       (gitutil.TrackedDefaultBranch). Where origin cannot be asked, or the
-//       commit it names is not in this checkout (the act's fetch did not
-//       bring it), no repository figure is read: the ten applies, and the
-//       note says why. The figure is lowered there, never refused: a
-//       network gap is no misreading of the file, and a commit that never
-//       reached origin never raises anything.
-//     - A view that only shows or compares the figure (the ceiling row of
-//       abcd peers, the drain's wait at the cap, MaxLiveFor) asks no
-//       network and reads it at origin's default branch as this checkout
-//       last fetched it. The act that adds the reservation decides.
+//       (gitutil.TrackedDefaultBranch). Where the act's fetch did not bring
+//       that commit, it fetches the branch origin named. Where origin cannot
+//       be asked, or the commit still is not here (the branch moved while it
+//       was read), the act is refused as a failed fetch is, and is to be run
+//       again: no figure is read and none is assumed, since the ten could
+//       be more than the repository allows, and a commit that never reached
+//       origin never sets anything.
+//     - A view that only shows the figure (the ceiling row of abcd peers)
+//       asks no network and reads it at origin's default branch as this
+//       checkout last fetched it. The act that adds the reservation decides,
+//       and the drain's wait at the cap reads as the act does (MaxLiveFor).
 //     A checkout that names no default branch of origin reads no repository
 //     figure in a view, and the note says so.
 //  3. reservation.max_live in ~/.abcd.noindex/config.json, the machine layer
@@ -67,13 +69,15 @@ import (
 // in either file never stops a release or the renewal of a live reservation.
 // (An unknown key in the machine's file still stops every act of a person
 // whose username is read from that file: the holder's reader claims the same
-// namespace, holder.go.) A machine config.json that cannot be read at all
-// (writable by others, not valid JSON) is read past instead, as is a HOME
-// inside a git working tree that is not the account's own
-// (layered.MachineRoots): neither is a file the person can be shown to have
-// written, and reading past it can only leave the figure higher than the
-// machine meant, never higher than the repository's, so the figure so far
-// applies and the note says why.
+// namespace, holder.go.) A machine config.json that is there but cannot be
+// read as the person's own (not a regular file, writable by others, not valid
+// JSON) refuses an adding act the same way, naming the file, since reading
+// past it could leave the figure above what the machine set; a view shows the
+// figure so far and says so. A file that is not there, a home that cannot be
+// searched, and a HOME inside a git working tree that is not the account's own
+// (layered.MachineRoots) read as no machine file: none holds a file the person
+// can be shown to have written, and a refusal there would let a HOME a
+// checkout chose stop the act.
 
 // MaxLiveKey is the configuration key.
 const MaxLiveKey = holderNamespace + ".max_live"
@@ -123,7 +127,7 @@ func maxLive(root, ref, home string) (liveLimit, string, error) {
 	if err != nil {
 		return liveLimit{}, "", err
 	}
-	lim, mnote, err := machineMaxLive(home, lim)
+	lim, mnote, err := machineMaxLive(home, lim, false)
 	if err != nil {
 		return liveLimit{}, "", err
 	}
@@ -134,19 +138,22 @@ func maxLive(root, ref, home string) (liveLimit, string, error) {
 // the repository's figure at the commit origin itself names as its default
 // branch's tip, never at a name this checkout tracks (tracked, the act's own
 // resolution after its fetch, "" for none, is only compared with it), then
-// the machine's lowering.
+// the machine's lowering. Where origin cannot be asked, or the commit it names
+// cannot be brought here, it refuses with a *FetchError, as the act's own
+// fetch does: no figure is read and none is assumed.
 func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 	lim, note := bundledLimit(), ""
-	branch, tip, err := originHead(root)
-	switch {
-	case err != nil:
-		note = fmt.Sprintf("%s could not say which branch is its default (%s), so no repository figure for %s is read and %s applies",
-			Remote, err, MaxLiveKey, lim.describe())
-	case !commitHere(root, tip):
-		note = fmt.Sprintf("the commit %s names as the tip of %s/%s, %s, is not in this checkout, so no repository figure for %s is read and %s applies",
-			Remote, Remote, branch, tip[:12], MaxLiveKey, lim.describe())
-	default:
+	if root != "" {
+		branch, tip, err := originHead(root)
+		if err != nil {
+			return liveLimit{}, "", err
+		}
 		name := Remote + "/" + branch
+		if !commitHere(root, tip) {
+			if err := fetchTip(root, branch, tip); err != nil {
+				return liveLimit{}, "", err
+			}
+		}
 		if tracked != "refs/remotes/"+name {
 			note = fmt.Sprintf("this checkout tracks %s as %s's default branch, but %s names %s, so the figure is read at the tip %s names",
 				orNone(termsafe.Sanitize(gitutil.ShortRef(tracked))), Remote, Remote, name, Remote)
@@ -157,12 +164,16 @@ func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 		}
 		note = joinNote(note, rnote)
 	}
-	lim, mnote, err := machineMaxLive(home, lim)
+	lim, mnote, err := machineMaxLive(home, lim, true)
 	if err != nil {
 		return liveLimit{}, "", err
 	}
 	return lim, joinNote(note, mnote), nil
 }
+
+// gapOutcome ends a refusal of the ceiling's read from origin: the act is
+// safe to run again as it stands.
+const gapOutcome = nothingPushed + "; run it again once " + Remote + " answers"
 
 // orNone is s, or "none" when it is "".
 func orNone(s string) string {
@@ -174,31 +185,58 @@ func orNone(s string) string {
 
 // originHead asks origin which branch is its default and at which commit
 // (git ls-remote --symref origin HEAD), as landing.ReadFetchedFacilitator
-// does: the branch, which is a valid ref name, and the tip, a full object
-// name, or an error when origin names neither.
+// does: the branch, a valid ref name under refs/heads/, and the tip, a full
+// object name, or a *FetchError when origin cannot be asked or names neither.
 func originHead(root string) (branch, tip string, err error) {
+	gap := func(reason string, cause error) error {
+		return &FetchError{Reason: reason, cause: cause, what: "which branch is its default, for " + MaxLiveKey + ",", outcome: gapOutcome}
+	}
 	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
 	trace(args...)
 	out, err := gitutil.Net(root, args...)
 	if err != nil {
-		return "", "", redacted(err).err()
+		r := redacted(err)
+		return "", "", gap(r.text, r.notRun)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
 			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
 				branch, _ = strings.CutPrefix(target, "refs/heads/")
+				if branch == target {
+					branch = ""
+				}
 			}
 		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
 			tip = sha
 		}
 	}
 	if branch == "" || branch == "HEAD" || !gitutil.IsFullSHA(tip) {
-		return "", "", errors.New(Remote + " did not name a default branch and its tip")
+		return "", "", gap(Remote+" did not name a branch under refs/heads/ as its default, and that branch's tip", nil)
 	}
 	if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
-		return "", "", errors.New(Remote + "'s HEAD names a branch whose name is not a valid ref")
+		return "", "", gap(Remote+"'s HEAD names a branch whose name is not a valid ref", nil)
 	}
 	return termsafe.Sanitize(branch), tip, nil
+}
+
+// fetchTip brings origin's default branch, which origin named at tip, into
+// this checkout when the act's own fetch did not (it fetched the branch this
+// checkout tracks, or the branch moved since): a *FetchError when the fetch
+// fails or still does not bring tip (the branch moved again while it was
+// read).
+func fetchTip(root, branch, tip string) error {
+	what := MaxLiveKey + " at " + Remote + "/" + branch
+	args := []string{"fetch", "--no-tags", Remote, "+refs/heads/" + branch + ":refs/remotes/" + Remote + "/" + branch}
+	trace(args...)
+	if _, err := gitutil.Net(root, args...); err != nil {
+		r := redacted(err)
+		return &FetchError{Reason: r.text, cause: r.notRun, what: what, outcome: gapOutcome}
+	}
+	if !commitHere(root, tip) {
+		return &FetchError{Reason: fmt.Sprintf("%s named %s as the branch's tip, and the fetch did not bring it (the branch moved while it was read)", Remote, tip[:12]),
+			what: what, outcome: gapOutcome}
+	}
+	return nil
 }
 
 // commitHere reports whether the commit named tip is in this checkout's
@@ -263,8 +301,14 @@ func repoMaxLiveAt(root, tip, name string) (liveLimit, string, error) {
 }
 
 // machineMaxLive is lim lowered by this machine's own figure, never raised:
-// a higher figure is ignored and named in the note.
-func machineMaxLive(home string, lim liveLimit) (liveLimit, string, error) {
+// a higher figure is ignored and named in the note. A machine file that is
+// there but cannot be read as the person's own (not a regular file, writable
+// by others, not valid JSON) refuses an act (act) naming the file, since
+// reading past it could leave the figure above what the machine set; a view
+// shows the figure so far and says the act will refuse. A file that is not
+// there, a home that cannot be searched, and a HOME that is not this
+// account's own read as no file.
+func machineMaxLive(home string, lim liveLimit, act bool) (liveLimit, string, error) {
 	if home == "" {
 		return lim, "", nil
 	}
@@ -273,10 +317,17 @@ func machineMaxLive(home string, lim liveLimit) (liveLimit, string, error) {
 		return lim, fmt.Sprintf("HOME lies inside a git working tree and is not this account's home, so %s is not read for %s and %s applies",
 			layered.Config.MachineOrigin(), MaxLiveKey, lim.describe()), nil
 	}
+	if _, err := os.Lstat(abcdhome.Path(roots.Home, layered.Config.MachineRel)); err != nil {
+		return lim, "", nil
+	}
 	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
-		return lim, fmt.Sprintf("the machine configuration could not be read for %s (%s), so %s applies",
-			MaxLiveKey, redacted(err), lim.describe()), nil
+		if act {
+			return liveLimit{}, "", refuse("%s cannot be read for %s, which may lower the ceiling on this machine (%s); fix or remove the file; %s",
+				layered.Config.MachineOrigin(), MaxLiveKey, redacted(err), nothingPushed)
+		}
+		return lim, fmt.Sprintf("%s cannot be read for %s (%s), so an act that adds a reservation refuses until it can; %s is shown",
+			layered.Config.MachineOrigin(), MaxLiveKey, redacted(err), lim.describe()), nil
 	}
 	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
 		return liveLimit{}, "", refuse("%s; %s", redacted(err), nothingPushed)
@@ -304,11 +355,13 @@ func checkMaxLive(n int) error {
 }
 
 // MaxLiveFor is the cap of the person whose home o names (o.Home, else the
-// process's own) in the checkout at root, as an act that adds a reservation
-// judges it: a caller that counts from a view it already holds (the drain's
-// wait) compares with this. A setting the act would refuse is refused here the
-// same way.
+// process's own) in the checkout at root, read as an act that adds a
+// reservation reads it (actMaxLive): at the commit origin names, asking it, so
+// a caller that counts from a view it already holds (the drain's wait) never
+// stops at a figure a branch this checkout merely tracks sets. Whatever the
+// act would refuse, origin unanswering among it, is refused here the same way,
+// and such a caller leaves the count to the act.
 func MaxLiveFor(root string, o Options) (int, error) {
-	lim, _, err := maxLive(root, originDefault(root), o.home())
+	lim, _, err := actMaxLive(root, originDefault(root), o.home())
 	return lim.N, err
 }

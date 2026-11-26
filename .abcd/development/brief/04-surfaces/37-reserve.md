@@ -413,13 +413,15 @@ itself which branch is its default and at which commit (`git ls-remote
 --symref`), after its fetch, and reads the figure at that commit, never at a
 name this checkout tracks: `origin/HEAD`, a remote-tracking ref and the
 conventional names the resolver falls back to are local guesses a lane's agent
-can move or a pushed branch can stand in for. Where origin cannot be asked, or
-the commit it names is not in the checkout, no repository figure is read and
-the ten applies, lowered by the machine alone and said in the note: a commit
-that never reached origin never raises the ceiling, and a network gap lowers
-it rather than refusing. The ceiling row of `abcd peers` and the drain's wait
-at the cap ask no network and read the figure as the checkout last fetched it;
-the act decides. A view in a checkout with no default branch of origin reads
+can move or a pushed branch can stand in for. Where the act's fetch did not
+bring that commit it fetches the branch origin named; where origin cannot be
+asked, or the commit still is not in the checkout (the branch moved while it
+was read), the act is refused as an unreachable origin is, to be run again: no
+figure is read and none is assumed, since the ten could be more than the
+repository allows, and a commit that never reached origin never sets the
+ceiling. The drain's wait at the cap reads the figure the same way. The
+ceiling row of `abcd peers` asks no network and reads the figure as the
+checkout last fetched it; the act decides. A view in a checkout with no default branch of origin reads
 no repository figure and says so. The person's own `~/.abcd.noindex/config.json` may then lower the
 ceiling on that machine and never raise it: a higher figure there is ignored
 and named in the note `abcd peers` and the refusal at the cap carry, and a
@@ -435,9 +437,12 @@ live reservation. The holder's reader (`reservation.github_username`) reads the
 same file first for every person whose git email is not a GitHub no-reply
 address, so an unknown key under `reservation`, or a file that cannot be read,
 stops every act of such a person, a username from their token included. For
-anyone else a `config.json` that cannot be read at all (writable by others,
-not valid JSON) is read past, the figure so far applies (the repository's, or
-ten where it sets none), and the refusal at the cap says why. The refusal names the layer that set the cap and where it is changed:
+anyone else a `config.json` that is there but cannot be read as theirs (not a
+regular file, writable by others, not valid JSON) refuses an act that adds a
+reservation, naming the file, since reading past it could leave the figure
+above what the machine set; `abcd peers` shows the figure so far and says so.
+A file that is not there, a home that cannot be searched, and a `HOME` that is
+not the account's own read as no file. The refusal names the layer that set the cap and where it is changed:
 the repository's file through a reviewed change, and the machine's file, which
 may only lower it; it never offers raising the machine's figure.
 
