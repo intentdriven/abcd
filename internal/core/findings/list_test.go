@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
@@ -52,7 +54,7 @@ var bg = context.Background()
 
 // put1 puts one entry.
 func put1(s Store, e Entry) (Entry, error) {
-	got, err := s.Put(bg, e)
+	got, _, err := s.Put(bg, e)
 	if len(got) == 1 {
 		return got[0], err
 	}
@@ -926,7 +928,7 @@ func TestAScanThatDegradesPartWayWithholdsForTheRestOfTheCall(t *testing.T) {
 	prev := newRedactor
 	newRedactor = func(context.Context, string) (textRedactor, error) { return failing{&calls}, nil }
 	t.Cleanup(func() { newRedactor = prev })
-	got, err := s.Put(bg, entry(KindUntested, "s1", "first"), entry(KindUntested, "s1", "second"))
+	got, _, err := s.Put(bg, entry(KindUntested, "s1", "first"), entry(KindUntested, "s1", "second"))
 	if err != nil || len(got) != 2 {
 		t.Fatalf("Put: %v", err)
 	}
@@ -1029,8 +1031,11 @@ func TestStrayFilesCountAgainstTheBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if v, err := s.ReadWithin(2); !errors.Is(err, ErrTooManyFiles) {
-		t.Fatalf("a read within 2 files of 53 = %d open, %v; want ErrTooManyFiles", len(v.Open), err)
+	if v, err := s.ReadWithin(10); !errors.Is(err, ErrTooManyFiles) {
+		t.Fatalf("a read within 10 files of 53 = %d open, %v; want ErrTooManyFiles", len(v.Open), err)
+	}
+	if v, err := s.ReadWithin(53); err != nil || len(v.Open) != 3 {
+		t.Fatalf("a read within 53 files of 53 = %d open, %v; want all three", len(v.Open), err)
 	}
 }
 
@@ -1054,10 +1059,10 @@ func TestAnEntryPastItsFileIsWithheldOrRefusedWhole(t *testing.T) {
 	for _, f := range []*string{&huge.Session, &huge.Agent, &huge.AgentType, &huge.Run, &huge.Lane, &huge.Position, &huge.Head} {
 		*f = strings.Repeat(`"`, maxIDBytes)
 	}
-	// Every field at its bound in ASCII still fits withheld (4,091 bytes); a
-	// path of bytes that are not UTF-8 encodes six to one, and does not.
-	huge.Checkout, huge.Place = strings.Repeat(`\`, maxPathBytes), strings.Repeat("\xff", maxPathBytes)
-	_, err := s.Put(bg, entry(KindUntested, "s9", "a fine one"), huge)
+	// Every field at its bound, each byte escaped to two, does not fit with
+	// room kept for a settlement, even withheld.
+	huge.Checkout, huge.Place = strings.Repeat(`\`, maxPathBytes), strings.Repeat(`\`, maxPathBytes)
+	_, _, err := s.Put(bg, entry(KindUntested, "s9", "a fine one"), huge)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("an entry past its file even withheld = %v; want ErrTooLarge", err)
 	}
@@ -1095,9 +1100,9 @@ func TestAReasonNoScanClearsIsWithheld(t *testing.T) {
 	cheapRedactor(t)
 	done, cancel := context.WithCancel(bg)
 	cancel()
-	got, err := s.Put(done, entry(KindUntested, "s1", "past the deadline"))
-	if err != nil || len(got) != 1 || got[0].Withheld != WithheldScan || got[0].Text != "" {
-		t.Fatalf("a put past its caller's deadline = %+v, %v; want the text withheld", got, err)
+	got, _, err := s.Put(done, entry(KindUntested, "s1", "past the deadline"))
+	if err != nil || len(got) != 1 || got[0].Withheld != WithheldDeadline || got[0].Text != "" {
+		t.Fatalf("a put past its caller's deadline = %+v, %v; want the text withheld for the deadline", got, err)
 	}
 }
 
@@ -1198,5 +1203,323 @@ func TestAReopenRacingASettleLosesNeither(t *testing.T) {
 		for _, sub := range []string{"open", "settled"} {
 			_ = os.RemoveAll(storeDir(home, sub))
 		}
+	}
+}
+
+// lockStore takes the root's lock as another process would, until the test
+// ends.
+func lockStore(t *testing.T, home string) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(abcdhome.Path(home, "findings", testRoot), ".lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+}
+
+// lockFree reports whether the root's lock could be taken now.
+func lockFree(t *testing.T, home string) bool {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(abcdhome.Path(home, "findings", testRoot), ".lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return false
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return true
+}
+
+// TestAPutWaitsNoLongerThanItsCaller is review round 3's MUST: a hook's put
+// with its own deadline does not wait out the lock's longer one.
+func TestAPutWaitsNoLongerThanItsCaller(t *testing.T) {
+	s, home := newTestStore(t)
+	cheapRedactor(t)
+	mustPut(t, s, entry(KindUntested, "s1", "makes the store"))
+	lockStore(t, home)
+	ctx, cancel := context.WithTimeout(bg, 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, _, err := s.Put(ctx, entry(KindUntested, "s1", "a hook's put"))
+	if took := time.Since(start); !errors.Is(err, ErrLockContention) || took > time.Second {
+		t.Fatalf("a put with a 100 ms deadline under a held lock = %v after %v; want the lock refusal at once", err, took)
+	}
+}
+
+// askAndLook is an answerer that looks at the lock and may act while it is
+// asked.
+type askAndLook struct {
+	t    *testing.T
+	home string
+	free *bool
+	do   func()
+}
+
+func (a askAndLook) Answer(Act, string) (Answer, error) {
+	*a.free = lockFree(a.t, a.home)
+	if a.do != nil {
+		a.do()
+	}
+	return Answer{Holds: true, State: "open"}, nil
+}
+
+// lookingRedactor reports, through free, whether the lock was free while it
+// redacted.
+type lookingRedactor struct {
+	t    *testing.T
+	home string
+	free *bool
+}
+
+func (l lookingRedactor) Redact(text string) (string, error) {
+	*l.free = lockFree(l.t, l.home)
+	return text, nil
+}
+
+// TestASettleAsksAndScansBeforeItLocks is the first ruled departure: git and
+// the scan run with the lock free, and what they answered is checked again
+// under it.
+func TestASettleAsksAndScansBeforeItLocks(t *testing.T) {
+	s, home := newTestStore(t)
+	cheapRedactor(t)
+	e := mustPut(t, s, entry(KindUntested, "s1", "one"))
+	var askedFree bool
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &askedFree}, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if !askedFree {
+		t.Error("the record was asked about with the root's lock held")
+	}
+
+	r := mustPut(t, s, entry(KindUntested, "s1", "two"))
+	var scannedFree bool
+	prev := newRedactor
+	newRedactor = func(context.Context, string) (textRedactor, error) {
+		return lookingRedactor{t: t, home: home, free: &scannedFree}, nil
+	}
+	_, err := s.Settle(bg, SettleRequest{Handles: []string{r.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0})
+	newRedactor = prev
+	if err != nil || !scannedFree {
+		t.Errorf("the reason was scanned with the lock held (free %v, %v)", scannedFree, err)
+	}
+
+	// Settled by another while this one asked: the check under the lock sees it.
+	q := mustPut(t, s, entry(KindUntested, "s1", "three"))
+	var free bool
+	other := func() {
+		if _, err := s.Settle(bg, SettleRequest{Handles: []string{q.Handle()}, Act: ActRefuted, Reason: "first", At: t0}); err != nil {
+			t.Errorf("the other settle: %v", err)
+		}
+	}
+	_, err = s.Settle(bg, SettleRequest{Handles: []string{q.Handle()}, Act: ActCaptured, Record: "iss-1", Records: askAndLook{t: t, home: home, free: &free, do: other}, At: t0})
+	if !errors.Is(err, ErrNoEntry) {
+		t.Fatalf("a settle whose entry was settled while it asked = %v; want ErrNoEntry", err)
+	}
+	last, _, _ := s.SettledView(10)
+	for _, l := range last {
+		if l.Name == q.Name && l.Settled.Act != ActRefuted {
+			t.Errorf("the first settle was overwritten: %+v", l.Settled)
+		}
+	}
+}
+
+// TestAPathIsMadeValidAndSafeBeforeItIsCut is the second ruled departure.
+func TestAPathIsMadeValidAndSafeBeforeItIsCut(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := entry(KindUntested, "s1", "one")
+	e.Checkout, e.Place = "/wt\xff\x1b[2J", "/p\xfe\x9b1m"
+	got := mustPut(t, s, e)
+	for _, p := range []string{got.Checkout, got.Place} {
+		if !utf8.ValidString(p) || strings.ContainsAny(p, "\x1b\u009b") {
+			t.Errorf("a path was stored as %q; want it valid UTF-8 with its controls masked", p)
+		}
+	}
+}
+
+// TestAReasonForACutCheckoutIsWithheld is round 3's first SHOULD.
+func TestAReasonForACutCheckoutIsWithheld(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := entry(KindUntested, "s1", "one")
+	e.Checkout = "/" + strings.Repeat("c", maxPathBytes+40)
+	got := mustPut(t, s, e)
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActRefuted, Reason: "ran it", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	last, _, _ := s.SettledView(5)
+	if len(last) != 1 || !last[0].Settled.ReasonWithheld || last[0].Settled.Reason != "" {
+		t.Fatalf("a reason for an entry whose checkout was cut settled as %+v; want it withheld", last)
+	}
+}
+
+// causing is a redactor whose scan fails with a cause of its own.
+type causing struct{}
+
+func (causing) Redact(string) (string, error) {
+	return "", fmt.Errorf("%w: per-repo scanner config is not valid JSON\x1b[2J", capture.ErrScannerUnavailable)
+}
+
+// TestAWithheldTextSaysWhy is round 3's second SHOULD.
+func TestAWithheldTextSaysWhy(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	done, cancel := context.WithCancel(bg)
+	cancel()
+	got, _, err := s.Put(done, entry(KindUntested, "s1", "late"))
+	if err != nil || len(got) != 1 || got[0].Withheld != WithheldDeadline || strings.Contains(got[0].WithheldLine(), "configuration") {
+		t.Fatalf("a put past its deadline = %+v (%q), %v; want withheld for the deadline, not the configuration", got, firstLine(got), err)
+	}
+	prev := newRedactor
+	newRedactor = func(context.Context, string) (textRedactor, error) { return causing{}, nil }
+	defer func() { newRedactor = prev }()
+	w := mustPut(t, s, entry(KindUntested, "s1", "no scan"))
+	if !strings.Contains(w.WithheldWhy, "not valid JSON") || strings.ContainsRune(w.WithheldWhy, 0x1b) || !strings.Contains(w.WithheldLine(), "not valid JSON") {
+		t.Fatalf("a withheld entry carries why %q and line %q; want the scanner's cause, sanitised", w.WithheldWhy, w.WithheldLine())
+	}
+}
+
+func firstLine(es []Entry) string {
+	if len(es) == 0 {
+		return ""
+	}
+	return es[0].WithheldLine()
+}
+
+// TestAWithheldRePutKeepsWhatWasCleared is round 3's third and fourth SHOULD.
+func TestAWithheldRePutKeepsWhatWasCleared(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	gate := entry(KindCheck, "s1", "TestX fails at the lock")
+	gate.Place, gate.Head = "/wt", "cafe"
+	mustPut(t, s, gate)
+	read := entry(KindUntested, "s1", "a finding read")
+	read.Agent, read.Position = "a1", "transcript:7"
+
+	prev := newRedactor
+	newRedactor = func(context.Context, string) (textRedactor, error) { return nil, capture.ErrScannerUnavailable }
+	mustPut(t, s, gate)
+	w := mustPut(t, s, read)
+	newRedactor = prev
+
+	v := mustRead(t, s)
+	for _, e := range v.Open {
+		if e.Head == "cafe" && (e.Text != gate.Text || e.Withheld != "") {
+			t.Errorf("a withheld re-put of a gate entry left it as %q (%q); want the text it held", e.Text, e.Withheld)
+		}
+	}
+	c := mustPut(t, s, read)
+	v = mustRead(t, s)
+	for _, e := range v.Open {
+		if e.Name == w.Name {
+			t.Errorf("the withheld entry at %s stood beside its cleared reading %s", read.Position, c.Handle())
+		}
+	}
+	if len(v.Open) != 2 {
+		t.Errorf("the open list holds %d entries; want the gate entry and the cleared reading", len(v.Open))
+	}
+}
+
+// TestAnEntryLeavesRoomToBeSettled is round 3's fifth SHOULD.
+func TestAnEntryLeavesRoomToBeSettled(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := entry(KindLine, "", strings.Repeat("a", 400))
+	for _, f := range []*string{&e.Session, &e.Agent, &e.AgentType, &e.Run, &e.Lane} {
+		*f = strings.Repeat(`"`, maxIDBytes)
+	}
+	e.Checkout, e.Place = strings.Repeat(`\`, maxPathBytes), strings.Repeat(`\`, maxPathBytes)
+	got := mustPut(t, s, e)
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{got.Handle()}, Act: ActNotAFinding, Reason: "said in passing", At: t0}); err != nil {
+		t.Fatalf("an entry put near its bound could not be settled: %v", err)
+	}
+	e2 := e
+	e2.Text = strings.Repeat("b", 400)
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{mustPut(t, s, e2).Handle()}, Act: ActSettled, Record: strings.Repeat(`"`, maxIDBytes), Records: holding{}, At: t0}); err != nil {
+		t.Fatalf("settling one by the largest record: %v", err)
+	}
+}
+
+// TestWhatARefusalAndAnEntryCarryIsSafe is round 3's sixth SHOULD.
+func TestWhatARefusalAndAnEntryCarryIsSafe(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	e := mustPut(t, s, entry(KindUntested, "s1", "one"))
+	_, err := s.Settle(bg, SettleRequest{Handles: []string{e.Handle()}, Act: ActCaptured, Record: "iss-1", Records: stated{"resolved\x1b[2J"}, At: t0})
+	if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
+		t.Fatalf("a refusal carries the record's state as %v; want it sanitised", err)
+	}
+}
+
+type stated struct{ state string }
+
+func (s stated) Answer(Act, string) (Answer, error) { return Answer{State: s.state}, nil }
+
+// TestAnUnsafeLockIsNamed is round 3's eighth SHOULD.
+func TestAnUnsafeLockIsNamed(t *testing.T) {
+	for name, plantLock := range map[string]func(string) error{
+		"a link":      func(p string) error { return os.Symlink(filepath.Join(filepath.Dir(p), "elsewhere"), p) },
+		"a directory": func(p string) error { return os.Mkdir(p, 0o700) },
+		"a fifo":      func(p string) error { return syscall.Mkfifo(p, 0o600) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, home := newTestStore(t)
+			cheapRedactor(t)
+			mustPut(t, s, entry(KindUntested, "s1", "makes the store"))
+			lock := filepath.Join(abcdhome.Path(home, "findings", testRoot), ".lock")
+			if err := os.Remove(lock); err != nil {
+				t.Fatal(err)
+			}
+			if err := plantLock(lock); err != nil {
+				t.Fatal(err)
+			}
+			_, _, err := s.Put(bg, entry(KindUntested, "s1", "two"))
+			want := abcdhome.Display("findings", testRoot)
+			if !errors.Is(err, fsutil.ErrLockPathUnsafe) || !strings.Contains(fmt.Sprint(err), want) || strings.Contains(fmt.Sprint(err), home) {
+				t.Fatalf("a put under %s at the lock = %v; want the unsafe lock refused, naming %s", name, err, want)
+			}
+		})
+	}
+}
+
+// TestAPutSweepsWhatACutShortWriteLeft is round 3's ninth SHOULD.
+func TestAPutSweepsWhatACutShortWriteLeft(t *testing.T) {
+	s, home := newTestStore(t)
+	cheapRedactor(t)
+	twin := fmt.Sprintf("%064x", 7)
+	plant(t, s, "open", twin, `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z"}`)
+	plant(t, s, "settled", twin, `{"schema_version":1,"kind":"untested","text":"x","at":"2026-11-25T12:00:00Z","settled":{"act":"refuted","reason":"r","at":"2026-11-25T12:00:00Z"}}`)
+	stray := filepath.Join(storeDir(home, "open"), ".abcd-tmp-0001")
+	if err := os.WriteFile(stray, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustPut(t, s, entry(KindUntested, "s1", "one"))
+	for _, left := range filesIn(t, storeDir(home, "open")) {
+		if left == twin+".json" || strings.HasPrefix(left, ".abcd-tmp-") {
+			t.Errorf("a put left %s in open/", left)
+		}
+	}
+}
+
+// TestASettledFileThisBuildCannotReadDoesNotFailTheBatch is round 3's tenth
+// SHOULD.
+func TestASettledFileThisBuildCannotReadDoesNotFailTheBatch(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	gate := entry(KindCheck, "s1", "TestX fails")
+	gate.Place, gate.Head = "/wt", "cafe"
+	name, _ := nameOf(gate, "", false)
+	plant(t, s, "settled", name, `{"schema_version":9,"kind":"check"}`)
+	got, bad, err := s.Put(bg, gate, entry(KindUntested, "s1", "the rest"))
+	if err != nil || len(bad) != 1 || bad[0].Handle != handleOf(name) {
+		t.Fatalf("a batch naming a newer settled file = %d put, %+v unreadable, %v; want it named and the rest put", len(got), bad, err)
+	}
+	if v := mustRead(t, s); len(v.Open) != 1 || v.Open[0].Text != "the rest" {
+		t.Fatalf("the list after the batch is %+v; want the rest alone", v.Open)
 	}
 }

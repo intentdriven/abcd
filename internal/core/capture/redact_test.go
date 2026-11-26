@@ -233,3 +233,30 @@ func TestTheTextRedactorReportsAScanThatDegrades(t *testing.T) {
 		t.Fatalf("NewTextRedactor with a configured augmenter not installed = %v; want ErrScannerUnavailable", err)
 	}
 }
+
+// TestTheTextRedactorReScansWhatItRedacted holds Redact to the scanner's
+// two-stage contract: what survives redaction (here, an occurrence the
+// augmenter did not report) is not handed back as cleared.
+func TestTheTextRedactorReScansWhatItRedacted(t *testing.T) {
+	repo := t.TempDir()
+	firstOnly := &augmenttest.Func{F: func(text, file string) ([]scanner.Finding, error) {
+		all := augmenttest.Locate(text, file, augmenttest.Value, augmenttest.Kind)
+		if len(all) > 1 {
+			all = all[:1]
+		}
+		return all, nil
+	}}
+	orig := newContextScanner
+	t.Cleanup(func() { newContextScanner = orig })
+	newContextScanner = func(ctx context.Context, root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(ctx, root, scanner.WithAugmenter(firstOnly))
+	}
+	r, err := NewTextRedactor(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := "once " + augmenttest.Value + " and twice " + augmenttest.Value
+	if out, err := r.Redact(in); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("Redact left %q with %v; want the text refused, a span surviving", out, err)
+	}
+}

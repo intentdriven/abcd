@@ -196,8 +196,18 @@ func (r *TextRedactor) Redact(text string) (string, error) {
 	if unavailable, reason := r.sc.Unavailable(); unavailable {
 		return "", fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
 	}
-	if len(findings) > 0 {
-		text, _ = scanner.Redact(text, findings)
+	if len(findings) == 0 {
+		return text, nil
 	}
-	return text, nil
+	// Redact is the first stage; what survives it (a native span the
+	// rewrite missed, an augmented value at an occurrence the augmenter did
+	// not report) is not cleared, so the text is refused, as the memory
+	// store refuses it.
+	out, _ := scanner.Redact(text, findings)
+	resid := scanner.BlockingResidual(r.sc.ScanTextNative(out, "issue"))
+	resid = append(resid, scanner.UnsealedAugmented(out, findings)...)
+	if len(resid) > 0 {
+		return "", fmt.Errorf("%w: redaction left %d span(s) unresolved", ErrScannerUnavailable, len(resid))
+	}
+	return out, nil
 }
