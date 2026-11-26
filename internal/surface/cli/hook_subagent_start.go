@@ -39,6 +39,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
@@ -58,6 +59,10 @@ func newSubagentStartCommand() *cobra.Command {
 	}
 }
 
+// errSubagentStartSpent is the work finding the hook's bound spent; the hook,
+// which holds the bound, says how long it was.
+var errSubagentStartSpent = errors.New("the bound was spent")
+
 // subagentStartAnswer is what the work beside the bound came to: the stdout
 // document (empty for silence), the diagnostics to write beside it, or the
 // failure.
@@ -70,7 +75,10 @@ type subagentStartAnswer struct {
 
 // runHookSubagentStart is the hook. Only this goroutine writes to the host.
 func runHookSubagentStart(cmd *cobra.Command, _ []string) (err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), subagentStartBound)
+	// The bound is read once, here: the work below may outlive this call, and
+	// reads none of the hook's settings once it has started.
+	bound := subagentStartBound
+	ctx, cancel := context.WithTimeout(context.Background(), bound)
 	defer cancel()
 	var in hookInput
 	defer func() {
@@ -111,10 +119,12 @@ func runHookSubagentStart(cmd *cobra.Command, _ []string) (err error) {
 		if !looksManaged(orProcessDir(in.Cwd)) {
 			return nil
 		}
-		return subagentStartFailed(cmd, in, fmt.Errorf("it did not finish within %s", subagentStartBound))
+		return subagentStartFailed(cmd, in, fmt.Errorf("it did not finish within %s", bound))
 	}
 	in = a.in
 	switch {
+	case errors.Is(a.err, errSubagentStartSpent):
+		return subagentStartFailed(cmd, in, fmt.Errorf("it did not finish within %s", bound))
 	case a.err != nil:
 		return subagentStartFailed(cmd, in, a.err)
 	case len(a.out) == 0:
@@ -148,7 +158,7 @@ func subagentStartFailed(cmd *cobra.Command, in hookInput, why error) error {
 		counted = "; the failure was not counted"
 	}
 	diagnosticLine(cmd.ErrOrStderr(), "abcd: this sub-agent was not told where the conventions and the rules are (%s)%s", scrubPaths(why), counted)
-	return &exitError{Code: 1}
+	return exitWith(1, refusal.None, "")
 }
 
 func countSubagentStartFailure(in hookInput) error {
@@ -194,7 +204,7 @@ func subagentStartMessage(ctx context.Context, in hookInput, notes io.Writer) ([
 	// the answer is written and not after: a note that cannot be kept sends
 	// nothing, so every sub-agent that was told has one.
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("it did not finish within %s", subagentStartBound)
+		return nil, errSubagentStartSpent
 	}
 	if subagentKey(in.SessionID, in.AgentID) {
 		told := rules.SubagentRecord{File: c.File, Root: c.Root, By: rules.SubagentToldByStart}
