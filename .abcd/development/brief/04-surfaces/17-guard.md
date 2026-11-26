@@ -550,7 +550,8 @@ lands, and a shell line that makes a commit or sends one: `git commit`, `merge`,
 reads each command of the line after the guard's own tokenizer, steps the words
 the registry's walker steps before a command (assignment words, the reserved
 words `if`, `then`, `do`, `{` and `!`, `coproc`, `function NAME` and
-`repeat COUNT`) and git's global options with their values, and takes the
+`repeat COUNT`; a function in any other form is held by the guard as
+`function-form-unread`, and no act is read in it) and git's global options with their values, and takes the
 subcommand by position, so `git stash push` and `echo git commit` are no write. A
 word a substitution or a variable prints is allowed as a global option's value
 and after the subcommand; as the program, an option word or the subcommand it

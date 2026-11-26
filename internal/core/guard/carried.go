@@ -385,7 +385,7 @@ func carriedCopy(s segment) segment {
 	d.fieldSplit = copyMap(s.fieldSplit)
 	d.varLead = copyMap(s.varLead)
 	d.leadFrom = copyMap(s.leadFrom)
-	d.arrivals, d.walked, d.walkCapped = nil, false, false
+	d.arrivals, d.walked, d.walkCapped, d.functionUnread = nil, false, false, false
 	d.home, d.at = nil, 0
 	d.fromFixedOutput, d.valuesPlaced = true, true
 	return d

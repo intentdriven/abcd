@@ -756,6 +756,12 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// reading.
 	walkSegments(segs)
 	for _, s := range segs {
+		if s.functionUnread || s.functionQuoted {
+			signals = append(signals, functionFormSignal())
+			break
+		}
+	}
+	for _, s := range segs {
 		if s.walkCapped {
 			signals = append(signals, unknownSitesBlockSignal())
 			break

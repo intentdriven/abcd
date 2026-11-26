@@ -37,17 +37,7 @@ func RecordActs(command string) []string {
 // changes nothing read here (the message of `git commit -m "$(cat …)"`); as the
 // program, an option or the subcommand it fixes no act, and none is read.
 func recordActIn(toks []string) string {
-	for _, words := range commandWords(toks) {
-		if act := recordActOf(words); act != "" {
-			return act
-		}
-	}
-	return ""
-}
-
-// recordActOf is the held git subcommand of one reading of a command, its
-// tokens from the program on, or "".
-func recordActOf(toks []string) string {
+	toks = commandWords(toks)
 	if len(toks) == 0 || isUnknown(toks[0]) || path.Base(toks[0]) != "git" {
 		return ""
 	}

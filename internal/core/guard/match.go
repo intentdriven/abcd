@@ -1294,7 +1294,7 @@ func skipCoproc(tokens []string, pos int) int {
 	return pos
 }
 
-// skipFunction advances past the `function` keyword's NAMEs, from pos (the
+// skipFunction advances past the `function` keyword's NAME, from pos (the
 // token just after `function`), and returns the index where the function's
 // body begins. `function NAME { …; }` defines a function as `NAME() { …; }`
 // does, and the body runs when the line calls it (iss-2610090821313095): the
@@ -1303,39 +1303,82 @@ func skipCoproc(tokens []string, pos int) int {
 // tokenizer splits `function NAME() {` at the parentheses, which leaves
 // `function NAME` a segment of its own and the body a segment after it, so
 // stepping the NAME leaves that segment no command, as `NAME()` leaves none.
-// The NAME is any word: bash accepts a function name no identifier rule
-// covers (`function a-b {`), so it is never read as the body.
+// The NAME may be a word no identifier rule covers: bash accepts
+// `function a-b {`.
 //
-// zsh's keyword takes several NAMEs, each defined with the one body, and
-// options before them (`function -T f g { …; }`): where a `{` or a reserved
-// word follows the words after the keyword, every one of them is stepped. Where
-// none does, the one NAME is stepped, as bash takes it.
-func skipFunction(tokens []string, pos int) int {
-	for i := pos; i < len(tokens); i++ {
-		if reserved[tokens[i]] {
-			if i > pos {
-				return i
-			}
-			break
-		}
+// The guard reads the keyword in its ordinary form only
+// (dcn-2611260046000744): one plain NAME (plainFunctionName), then the end of
+// the segment, an unquoted `{`, or a compound command bash reads as the body
+// with no `{` after it in the segment. ok is false for every other form, the
+// several NAMEs and options zsh takes among them, and the caller holds the
+// command (functionFormSignal) rather than reading the shell's wider grammar.
+// lastBrace is the index of the segment's last `{` token, or -1, so a line of
+// keywords costs one pass.
+func skipFunction(tokens []string, pos, lastBrace int) (body int, ok bool) {
+	if pos >= len(tokens) || !plainFunctionName(tokens[pos]) {
+		return pos, false
 	}
-	return skipWord(tokens, pos)
+	next := pos + 1
+	if next == len(tokens) || tokens[next] == "{" || functionBodyWords[tokens[next]] && lastBrace < next {
+		return next, true
+	}
+	return pos, false
 }
 
-// functionBodies is every index the `function` keyword's body may begin at,
-// from pos (the token just after `function`). zsh takes every word before the
-// segment's `{` as a NAME, a reserved word among them (`function if g { …; }`),
-// and bash takes one NAME and a body that may itself hold a `{` (`function f
-// if cmd {; then …`), so both readings are walked: where skipFunction stops,
-// and just past the first `{`.
-func functionBodies(tokens []string, pos int) []int {
-	bodies := []int{skipFunction(tokens, pos)}
-	for i := pos; i < len(tokens); i++ {
+// functionBodyWords are the words that open a compound command bash takes as
+// a function's body without a `{`.
+var functionBodyWords = map[string]bool{"if": true, "while": true, "until": true, "for": true, "case": true, "select": true, "[[": true}
+
+// functionShellWords are the words a shell gives a meaning of its own, which
+// a plain function NAME is never.
+var functionShellWords = map[string]bool{
+	"fi": true, "done": true, "esac": true, "in": true, "for": true, "case": true, "select": true,
+	"function": true, "time": true, "coproc": true, "repeat": true, "[[": true, "]]": true,
+}
+
+// plainFunctionName reports whether name is the one plain NAME of the
+// keyword's ordinary form: a word the line fixes, no reserved or shell word,
+// no option, and no brace in it.
+func plainFunctionName(name string) bool {
+	return name != "" && !reserved[name] && !functionShellWords[name] && !isUnknown(name) &&
+		name[0] != '-' && !strings.ContainsAny(name, "{}")
+}
+
+// lastBraceIndex is the index of the last `{` among tokens, or -1.
+func lastBraceIndex(tokens []string) int {
+	for i := len(tokens) - 1; i >= 0; i-- {
 		if tokens[i] == "{" {
-			return append(bodies, i+1)
+			return i
 		}
 	}
-	return bodies
+	return -1
+}
+
+// functionQuoted reports whether a `function` keyword the line leaves
+// unquoted, at command position, takes a NAME the line quotes or escapes, or
+// has a quoted or escaped `{` after its NAME, where the tokens alone read an
+// opener (`function f '{' g { …; }`). bare holds the indices of the words the
+// tokenizer saw wholly unquoted among the keyword, its NAME and `{` (its
+// keywords record). The command is held (functionFormSignal).
+func functionQuoted(toks []string, bare map[int]bool) bool {
+	for i := 0; i < len(toks); {
+		switch t := toks[i]; {
+		case isAssignment(t) || reserved[t] || t == "time":
+			i++
+		case t == "coproc":
+			i = skipCoproc(toks, i+1)
+		case t == "repeat":
+			i = skipWord(toks, i+1)
+		case t == "function" && bare[i]:
+			if i+1 < len(toks) && !bare[i+1] || i+2 < len(toks) && toks[i+2] == "{" && !bare[i+2] {
+				return true
+			}
+			i += 2
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // skipWord advances past the one word at pos: zsh's `repeat COUNT command`, a

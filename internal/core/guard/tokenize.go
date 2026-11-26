@@ -29,6 +29,12 @@ type segment struct {
 	// say what the argv will be; the flag is how it says so, and Check turns it
 	// into a fail-closed block. A group within the cap is expanded instead.
 	braceGroup bool
+	// functionQuoted records a `function` keyword at command position whose
+	// NAME, or the `{` after it, the line quotes or escapes (functionQuoted),
+	// and functionUnread one the walk met in any form but the ordinary one
+	// (skipFunction). Check holds either (functionFormSignal).
+	functionQuoted bool
+	functionUnread bool
 	// heredocUnterminated records that this command opened a here-document
 	// whose delimiter line never came, so the tokenizer read the rest of the
 	// input as body without knowing whether it WAS body. bash runs such a line
@@ -620,7 +626,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		leadFrom map[int]leadSource
 		// keywords records, per token index of the command being built, a
 		// for, case, in or [[ the line leaves wholly unquoted, which
-		// bashParens and testsWords read.
+		// bashParens and testsWords read, and a `function`, the word after
+		// it or a `{`, which functionQuoted reads.
 		keywords map[int]bool
 		// parenNext rides with the segment the next flushSegment ends
 		// (segment.parenWord), and qualNext with it (segment.qualifierCode).
@@ -1068,7 +1075,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		markFieldSplit(1)
 		curFeeds, curVar, curSub, curSplit, curVarAt = nil, false, false, false, nil
 		bare := !curQuoted && tok == string(cur) && allStruct(curMask)
-		if bare && (parenKeywords[tok] || tok == "[[") {
+		// The `function` keyword, the word after it and a `{` are recorded
+		// too, for functionQuoted.
+		if bare && (parenKeywords[tok] || tok == "[[" || tok == "function" || tok == "{" || len(toks) > 0 && toks[len(toks)-1] == "function") {
 			if keywords == nil {
 				keywords = map[int]bool{}
 			}
@@ -1103,7 +1112,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				piped = feed{list: list, lo: pipeFrom, hi: len(segs)}
 			}
 			segs = append(segs, segment{
-				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
+				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), functionQuoted: functionQuoted(toks, keywords),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
 				ifsSplit: splits, fieldSplit: fieldSplits, varLead: leads, leadFrom: leadFrom, parenWord: parenNext, qualifierCode: qualNext, qualifierUnfixed: qualUnfixedNext, qualifierPositional: qualPositionalNext, redirects: curRedirs, afterAnd: andNext, end: pos,

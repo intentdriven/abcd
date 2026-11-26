@@ -1500,7 +1500,7 @@ func isWrapperAssignment(tok string) bool {
 // a flag and as a value flag. The walk visits each (position, mode, wrapper)
 // state once, so its cost is linear in the tokens whatever they hold.
 func commandArrivals(tokens []string) []arrival {
-	out, _ := walkToCommand(tokens)
+	out, _, _ := walkToCommand(tokens)
 	return out
 }
 
@@ -1512,8 +1512,9 @@ func commandArrivals(tokens []string) []arrival {
 const maxUnknownSites = 8
 
 // walkToCommand is commandArrivals, and whether it stopped at maxUnknownSites.
-func walkToCommand(tokens []string) (out []arrival, capped bool) {
+func walkToCommand(tokens []string) (out []arrival, capped, functionUnread bool) {
 	unknownSites := 0
+	lastBrace := lastBraceIndex(tokens)
 	type state struct {
 		pos     int
 		mode    int
@@ -1573,11 +1574,15 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				push(state{pos: skipCoproc(tokens, st.pos+1), noglob: st.noglob})
 				continue
 			}
-			// `function NAME…` and zsh's `repeat COUNT` each take words of
-			// their own before the command they run (functionBodies, skipWord).
+			// `function NAME` and zsh's `repeat COUNT` each take a word of
+			// their own before the command they run (skipFunction, skipWord).
+			// A function in any other form is walked no further: the command
+			// is held (functionFormSignal).
 			if tok == "function" {
-				for _, body := range functionBodies(tokens, st.pos+1) {
+				if body, ok := skipFunction(tokens, st.pos+1, lastBrace); ok {
 					push(state{pos: body, noglob: st.noglob})
+				} else {
+					functionUnread = true
 				}
 				continue
 			}
@@ -1687,7 +1692,29 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 		}
 		return !out[i].noglob && out[j].noglob
 	})
-	return out, capped
+	return out, capped, functionUnread
+}
+
+// functionFormEntryID is the reserved id a function written in a form the
+// guard does not read is held under (dcn-2611260046000744). No registry entry
+// may claim it.
+const functionFormEntryID = "function-form-unread"
+
+// familyFunction is the family functionFormSignal reports under.
+const familyFunction = "function definition"
+
+// functionFormSignal is the verdict on a command whose `function` keyword is
+// not in the form `function NAME { …; }` with one plain NAME
+// (segment.functionUnread, segment.functionQuoted). The guard does not read
+// the shell's wider function grammar, so the body it holds is unread.
+func functionFormSignal() payloadSignal {
+	return payloadSignal{
+		id:        functionFormEntryID,
+		verdict:   VerdictBlock,
+		family:    familyFunction,
+		reason:    "abcd reads a function written as name() { … } or function name { … } only.",
+		successor: "Write it that way, then run it.",
+	}
 }
 
 // unknownSitesBlockSignal is the fail-closed verdict for a segment whose walk
@@ -1740,7 +1767,7 @@ func arrivalsOf(s segment) []arrival {
 func walkSegments(segs []segment) {
 	for i := range segs {
 		if !segs[i].walked {
-			segs[i].arrivals, segs[i].walkCapped = walkToCommand(segs[i].tokens)
+			segs[i].arrivals, segs[i].walkCapped, segs[i].functionUnread = walkToCommand(segs[i].tokens)
 			segs[i].walked = true
 		}
 	}

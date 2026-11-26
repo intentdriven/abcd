@@ -54,7 +54,10 @@ either; a quote inside a here-document **body** is document text and is not one.
 Grammar a shell does run gets a verdict instead: a trailing backslash is read as
 bash reads it, and a here-document whose delimiter line never comes is a
 **block** (`heredoc-unterminated`), because the rest of the input may be commands
-the guard did not check.
+the guard did not check. A function is read in two forms, `name() { … }` and
+`function name { … }` with one plain name; the `function` keyword in any other
+form (several names, an option, a quoted name or brace) is a **block**
+(`function-form-unread`): write it in one of those forms, then run it.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
