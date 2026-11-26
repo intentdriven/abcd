@@ -354,6 +354,20 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // branch's readers (defaultTipRoots) read the tip. The error is the reader's
 // raw text, for the caller to mask.
 func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
+	line, found, err := committedModeLine(ctx, repoRoot, commit)
+	if err != nil || line != "" {
+		return line, found, err
+	}
+	return ModeHuman, found, nil
+}
+
+// committedModeLine is the facilitator.mode line as .abcd/config.json held it
+// at commit, read as CommittedMode reads it: the value it sets, "" where the
+// file sets none or the commit holds no file (found says which), and an error
+// where the value is not a mode or the file cannot be read. The merge gate
+// compares it at a pull request's merge base and head (modeLineChange), where
+// an explicit human removed is a change though both read human.
+func committedModeLine(ctx context.Context, repoRoot, commit string) (line string, found bool, err error) {
 	// Refused here, not left to layered: an empty RepoAt there means the
 	// working tree, so an empty name would read the working tree's mode as
 	// if a commit held it.
@@ -364,10 +378,7 @@ func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, f
 	if err != nil {
 		return "", false, err
 	}
-	if m := repoLayerMode(vals); m != "" {
-		return m, found, nil
-	}
-	return ModeHuman, found, nil
+	return repoLayerMode(vals), found, nil
 }
 
 // AutoAt reports whether the facilitator mode the merge gate reads at tip is auto.

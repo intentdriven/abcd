@@ -24,8 +24,10 @@ const resolverFile = "internal/core/landing/config.go"
 
 // modeLayersCallers are the functions that may decode the mode's layers: the
 // resolver's readers, the past commit's reader of the repository layer alone
-// (CommittedMode), and the kept reading's writer and reader.
-var modeLayersCallers = []string{"readModeContext", "CommittedMode", "AutoForSessions", "keepMode", "KeptMerging"}
+// (committedModeLine, which CommittedMode and the merge gate's check of a
+// pull request's mode line read through), and the kept reading's writer and
+// reader.
+var modeLayersCallers = []string{"readModeContext", "committedModeLine", "AutoForSessions", "keepMode", "KeptMerging"}
 
 // auditModeReaders walks the Go files under mod's internal and cmd folders,
 // tests aside, and names each place that reads facilitator.mode beside the

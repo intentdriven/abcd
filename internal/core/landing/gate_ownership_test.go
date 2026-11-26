@@ -1,0 +1,169 @@
+package landing
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+)
+
+// The two rulings of 2026-11-26 the merge gate holds (itd-2611252049031692,
+// adr-2611262044127943): a person's own global auto merges only the pull
+// requests their own account opened ("only your own"), and abcd never arms a
+// change to the repository's committed facilitator.mode line, in any mode.
+
+// globalAuto makes the fixture's home the account's own and sets the person's
+// global setting there to config.
+func globalAuto(t *testing.T, f *fixture, config string) {
+	t.Helper()
+	t.Setenv("HOME", f.home)
+	dir := abcdhome.Path(f.home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest: where the mode is auto by
+// the person's global setting, a reviewed pull request their own account
+// opened is armed; a colleague's, with no approval of its head, waits as for
+// human and says whose it is, and one an approval counts for is armed as
+// human arms it. An account the forge cannot name reads as not the author.
+// Where the repository enforces auto, a colleague's goes through as shipped.
+func TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest(t *testing.T) {
+	t.Run("your own", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.reviews = "[]"
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+	})
+	t.Run("a colleague's, unapproved", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.reviews, f.forge.viewer = "[]", "colleague-z"
+		f.reviewed(t)
+		s := landGate(t, f)
+		wantLeft(t, f, s, "opened by author-a, not by colleague-z")
+		if !strings.Contains(s.Note, "only a pull request your own account opened") {
+			t.Errorf("the note %q does not say why", s.Note)
+		}
+	})
+	t.Run("a colleague's, approved", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.viewer = "colleague-z"
+		wantArmed(t, f, landGate(t, f))
+	})
+	t.Run("an account the forge cannot name", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.reviews, f.forge.viewerErr = "[]", errors.New("gh: HTTP 502")
+		f.reviewed(t)
+		wantLeft(t, f, landGate(t, f), "which account abcd runs as")
+	})
+	t.Run("the repository enforces auto", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		f.forge.reviews, f.forge.viewer = "[]", "colleague-z"
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+		if f.forge.called("api", "graphql", "-f", "query="+ViewerQuery) != 0 {
+			t.Error("the gate asked who it runs as where the repository enforces auto")
+		}
+	})
+}
+
+// modeLineFixture is a fixture whose base commits .abcd/config.json as base
+// ("" for no file) and whose branch then writes it as branch ("-" removes it).
+func modeLineFixture(t *testing.T, base, branch string) *fixture {
+	t.Helper()
+	files := map[string]string{}
+	if base != "" {
+		files[".abcd/config.json"] = base
+	}
+	f := newFixtureFiles(t, queueRuleset, files)
+	if branch == "-" {
+		f.repo.Git("rm", "-q", ".abcd/config.json")
+	} else {
+		f.repo.Write(".abcd/config.json", branch)
+	}
+	f.repo.Commit("touch the config")
+	return f
+}
+
+// TestAChangeToTheCommittedModeLineIsNeverArmed: a pull request whose diff
+// adds, removes or alters facilitator.mode in .abcd/config.json, or leaves it
+// unreadable, is armed in no mode, whatever approvals and receipts it has, and
+// the note says the person merges it on the forge's page. A change to another
+// key of the file, and a branch whose base the default branch has moved past
+// on the line, are armed as before: the pull request's diff is read from the
+// branch's merge base with the default branch, not from the tip. A re-arm is
+// held to the same refusal.
+func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
+	const other = `{"facilitator":{"mode":"auto"},"land":{"push":true}}` + "\n"
+	for _, c := range []struct {
+		name, base, branch string
+		armed              bool
+	}{
+		{"enforced auto made human", autoConfig, humanConfig, false},
+		{"prevented auto made auto", humanConfig, autoConfig, false},
+		{"auto added", "", autoConfig, false},
+		{"the line removed", autoConfig, `{}` + "\n", false},
+		{"an explicit human removed", humanConfig, `{}` + "\n", false},
+		{"the file removed", autoConfig, "-", false},
+		{"left unreadable", autoConfig, `{"facilitator":{"mode":"robot"}}` + "\n", false},
+		{"another key changed", autoConfig, other, true},
+	} {
+		for _, approved := range []bool{true, false} {
+			name := c.name + ", unapproved"
+			if approved {
+				name = c.name + ", approved"
+			}
+			t.Run(name, func(t *testing.T) {
+				f := modeLineFixture(t, c.base, c.branch)
+				if !approved {
+					f.forge.reviews = "[]"
+				}
+				f.reviewed(t)
+				s := landGate(t, f)
+				switch {
+				case c.armed && (approved || c.base == autoConfig):
+					wantArmed(t, f, s)
+				case c.armed:
+					wantLeft(t, f, s, "waits for the technical facilitator's approval")
+				default:
+					wantLeft(t, f, s, "on the forge's page")
+					if !strings.Contains(s.Note, "facilitator.mode") {
+						t.Errorf("the note %q does not name the line", s.Note)
+					}
+				}
+			})
+		}
+	}
+	t.Run("the re-arm", func(t *testing.T) {
+		f := modeLineFixture(t, autoConfig, humanConfig)
+		f.forge.head = f.head()
+		f.reviewed(t)
+		ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+		arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head())
+		if err != nil || arm || !strings.Contains(why, "on the forge's page") {
+			t.Fatalf("arm %v, why %q, err %v: want no re-arm of a change to the mode line", arm, why, err)
+		}
+	})
+	t.Run("a branch behind a tip that moved the line", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		f.repo.Git("checkout", "-q", "main")
+		f.repo.Write(".abcd/config.json", humanConfig)
+		f.repo.Commit("main changes the mode line")
+		f.repo.Git("push", "-q", "origin", "main")
+		f.repo.Git("fetch", "-q", "origin")
+		f.repo.Git("checkout", "-q", "feat/x")
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+	})
+}

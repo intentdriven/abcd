@@ -20,6 +20,12 @@ package landing
 // about a branch checked out in one, the gate counts none at all, and the
 // reason says so. The table, in order:
 //
+//   - a pull request whose diff, read from its merge base with the default
+//     branch's tip to its head, changes the facilitator.mode line of
+//     .abcd/config.json (sets, alters or removes it, or leaves it
+//     unreadable) arms nothing in any mode, and one whose diff cannot be
+//     read for it arms nothing either: the person merges it on the forge's
+//     page (adr-2611262044127943);
 //   - an author whose permission cannot be read, or a custom role whose base
 //     cannot be read, is unverified: nothing is armed, whatever the approvals;
 //   - a contributor's pull request (Read or Triage, or no permission) arms
@@ -30,7 +36,12 @@ package landing
 //   - auto arms a maintainer's pull request only when a review receipt names
 //     its head, and otherwise names the commit with no recorded review pair. A
 //     delta's receipt names the head only while the delta stands (delta.go);
-//     one that does not stand says why, and that the head needs a full pair.
+//     one that does not stand says why, and that the head needs a full pair;
+//   - where auto is the person's own global setting rather than the
+//     repository's, it arms only a pull request the forge account abcd runs
+//     as opened ("only your own", ViewerQuery): anyone else's, or one where
+//     the forge cannot say which account that is, is judged as human judges
+//     it, waiting for an approval of its head or for its author to land it.
 //
 // An armed merge goes by the mirror's method: the merge queue's where one
 // gates the default branch, auto-merge (a merge commit) where none does. abcd
@@ -89,6 +100,90 @@ func permissionArgs(repo, login string) []string {
 // pullArgs reads pull request n: its author (user.login). Pinned in
 // ghcontract (pull-request).
 func pullArgs(repo, n string) []string { return []string{"api", "repos/" + repo + "/pulls/" + n} }
+
+// ViewerQuery asks the forge which account its client runs as, the one a
+// person's own global auto arms for ("only your own", adr-2611262044127943).
+const ViewerQuery = `query{viewer{login}}`
+
+// viewerArgs are the forge client's arguments for ViewerQuery.
+func viewerArgs() []string { return []string{"api", "graphql", "-f", "query=" + ViewerQuery} }
+
+// viewerAnswer is the forge's answer to ViewerQuery.
+type viewerAnswer struct {
+	Data struct {
+		Viewer *struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
+	} `json:"data"`
+}
+
+// readViewer says why pull request n, opened by author, is not known to be
+// one the account the forge client runs as opened: "" when it is, the two
+// logins compared as the forge compares them, without regard to case. unread
+// says the forge could not be asked, or its answer does not parse, which
+// counts as not the author's, so a failed read never arms.
+func readViewer(forge ForgeCall, n, author string) (notOwn string, unread bool) {
+	out, err := forge(viewerArgs()...)
+	if err != nil {
+		return "the forge could not say which account abcd runs as (" + forgeWhy(err) + "), so #" + n + " is not known to be your own", true
+	}
+	var a viewerAnswer
+	if json.Unmarshal([]byte(out), &a) != nil || a.Data.Viewer == nil || a.Data.Viewer.Login == "" {
+		return "the forge's answer naming which account abcd runs as does not parse, so #" + n + " is not known to be your own", true
+	}
+	if strings.EqualFold(a.Data.Viewer.Login, author) {
+		return "", false
+	}
+	return "#" + n + " was opened by " + loginText(author) + ", not by " + loginText(a.Data.Viewer.Login) + ", the account abcd runs as", false
+}
+
+// loginText is a forge login as a reason shows it: as it is where it is one
+// the forge could hold (ownerName, within maxLoginRunes).
+func loginText(login string) string {
+	if ownerName(login) && len(login) <= maxLoginRunes {
+		return login
+	}
+	return "an account the forge names in a form land does not show"
+}
+
+// modeLineChange says why the pull request whose head is head changes the
+// committed facilitator.mode line, read at its merge base with the default
+// branch's tip and at head (committedModeLine), "" when the line is the same
+// at both; unread says the diff could not be read for it, which arms nothing
+// either. The line is the person's own act to change: abcd never arms such a
+// merge in any mode, and the person merges it on the forge's page.
+func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
+	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
+	cannot := func(what string) (string, bool) {
+		return "whether this pull request changes the facilitator.mode line in .abcd/config.json cannot be judged (" + what + "), and " + never, true
+	}
+	if !gitutil.IsFullSHA(tip) || !gitutil.IsFullSHA(head) {
+		return cannot("the head or " + tipName + " is not a full object name")
+	}
+	base, err := gitutil.Run(root, "merge-base", tip, head)
+	if err != nil || !gitutil.IsFullSHA(base) {
+		return cannot("no merge base of " + short(head) + " and " + tipName + " can be read")
+	}
+	ctx := context.Background()
+	was, _, err := committedModeLine(ctx, root, base)
+	if err != nil {
+		return cannot("at the merge base " + short(base) + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	is, _, err := committedModeLine(ctx, root, head)
+	if err != nil {
+		return cannot("at the head " + short(head) + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	if was == is {
+		return "", false
+	}
+	unset := func(v string) string {
+		if v == "" {
+			return "unset"
+		}
+		return v
+	}
+	return "it changes the facilitator.mode line in .abcd/config.json (" + unset(was) + " at the merge base " + short(base) + ", " + unset(is) + " at the head " + short(head) + "), and " + never, false
+}
 
 // reviewsArgs reads pull request n's reviews, oldest first, a page of
 // maxReviews: each one's reviewer (user.login), state and the commit it
@@ -428,6 +523,17 @@ type gateFacts struct {
 	// a drive lane's worktree, "" for none; the reason ends with it, whatever
 	// the answer, so a person sees one was not counted.
 	reviewPassed string
+	// modeLine is why the pull request's diff changes the committed
+	// facilitator.mode line, or why that cannot be judged, "" when it does
+	// not (modeLineChange); modeLineUnread says the read failed.
+	modeLine       string
+	modeLineUnread bool
+	// notOwn is why, where auto is the person's own global setting, the pull
+	// request is not known to be one the account abcd runs as opened, ""
+	// when it is or the repository's own value decides (readViewer);
+	// viewerUnread says the forge could not be asked.
+	notOwn       string
+	viewerUnread bool
 	// fromLane says the gate was asked from a checkout that is a drive lane's
 	// worktree or lies inside one, or about a branch checked out in one
 	// (fromDriveLane), "" when it was not: it counted no review receipt or
@@ -453,30 +559,41 @@ func modeText(m Facilitator) string {
 // this file's doc. It is the one place that decision is made.
 func mergeGate(f gateFacts) gateDecision {
 	head := short(f.head)
+	// auto is the mode the gate judges by: a person's own global auto judges
+	// a pull request it does not know to be their own as human does.
+	auto := f.mode.Mode == ModeAuto && f.notOwn == ""
 	switch {
+	case f.modeLine != "":
+		return gateDecision{why: f.modeLine}
 	case f.role != RoleMaintainer && f.role != RoleContributor:
 		return gateDecision{why: "its author's role on the repository is unverified (" + f.roleWhy + "), so nothing is armed, whatever approvals it has"}
 	case f.role == RoleContributor && f.approvedBy == "":
 		return gateDecision{why: "its author is a contributor (" + f.roleWhy + "), so an approval of " + head + " by someone with write access is needed before anything is armed, in either facilitator mode: " + f.approvalWhy}
-	case f.mode.Mode != ModeAuto && f.approvedBy == "":
+	case f.notOwn != "" && f.approvedBy == "":
+		return gateDecision{why: modeText(f.mode) + ", and a person's own global auto arms only a pull request your own account opened: " + f.notOwn +
+			", so it waits for an approval of " + head + " (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator), or for its author to land it: " + f.approvalWhy}
+	case !auto && f.approvedBy == "":
 		return gateDecision{why: modeText(f.mode) + ", so it waits for the technical facilitator's approval of " + head +
 			" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): " + f.approvalWhy}
-	case f.mode.Mode == ModeAuto && f.reviewWhy != "" && f.reviewUnread:
+	case auto && f.reviewWhy != "" && f.reviewUnread:
 		return gateDecision{why: modeText(f.mode) + ", but the review receipts cannot be read (" + f.reviewWhy + "), so whether a review pair passed " + head + " is unknown and nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
+	case auto && f.reviewWhy != "":
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt for " + head + " stands (" + f.reviewWhy + "): the head needs a recorded review pair (abcd land --record-review), so nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.deltaWhy != "" && f.reviewUnread:
+	case auto && f.deltaWhy != "" && f.reviewUnread:
 		return gateDecision{why: modeText(f.mode) + ", but whether the delta review recorded for " + head + " stands cannot be judged (" + f.deltaWhy + "), so nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.deltaWhy != "":
+	case auto && f.deltaWhy != "":
 		return gateDecision{why: modeText(f.mode) + ", but the delta review recorded for " + head + " does not stand (" + f.deltaWhy + "), so it needs a full review pair (record it with abcd land --record-review), and nothing is armed"}
-	case f.mode.Mode == ModeAuto && !f.reviewed:
+	case auto && !f.reviewed:
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt names " + f.head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"}
 	}
 	why := modeText(f.mode)
+	if f.notOwn != "" {
+		why += ", judged as human since " + f.notOwn
+	}
 	if f.approvedBy != "" {
 		why += "; approved by " + f.approvedBy
 	}
-	if f.mode.Mode == ModeAuto {
+	if auto {
 		why += "; a review receipt names " + head
 		if f.reviewNote != "" {
 			why += " (" + f.reviewNote + ")"
@@ -553,17 +670,26 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head, fromLane: fromDriveLane(q.RepoRoot, q.From)}
+	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head)
+	if f.modeLine != "" {
+		return decided(f), nil
+	}
 	f.author, f.role, f.roleWhy = readAuthor(q.Forge, q.Repo, q.PR)
-	if f.role == RoleContributor || (f.role == RoleMaintainer && mode.Mode != ModeAuto) {
+	if mode.Mode == ModeAuto && mode.Layer != layered.Repo.String() && f.role != RoleUnverified {
+		f.notOwn, f.viewerUnread = readViewer(q.Forge, q.PR, f.author)
+	}
+	auto := mode.Mode == ModeAuto && f.notOwn == ""
+	if f.role == RoleContributor || (f.role == RoleMaintainer && !auto) {
 		f.approvedBy, f.approvalWhy, f.approvalPassed, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author, f.fromLane != "")
 	}
 	switch {
-	case mode.Mode == ModeAuto && f.fromLane != "":
+	case !auto:
+	case f.fromLane != "":
 		// The worktrees a lane lists are the lane's own, and a lane's
 		// worktree is the drive's, so no receipt is read: whether one stands
 		// is unknown, which is no refusal.
 		f.reviewWhy, f.reviewUnread = "none is read from a drive lane's worktree", true
-	case mode.Mode == ModeAuto:
+	default:
 		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
 		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
 		f.reviewPassed = proof.passed
@@ -583,6 +709,6 @@ func decided(f gateFacts) MergeDecision {
 		}
 	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
-		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread),
+		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread || f.modeLineUnread || f.viewerUnread),
 		Mode:   f.mode.Mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}
 }
