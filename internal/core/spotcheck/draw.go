@@ -47,7 +47,8 @@ func drawKeys(randomness []byte, seed, group string, keys []string, size int) []
 
 // population is a group's keys as a cycle keeps them: whole up to
 // maxListedKeys, and above it by the first and last key and the SHA-256 of
-// the sorted keys, one per line.
+// the sorted keys, one per line. Only a landing group reaches the second
+// form: a record group never takes more than maxListedKeys (windowRecords).
 func population(keys []string) Population {
 	sorted := slices.Clone(keys)
 	slices.Sort(sorted)

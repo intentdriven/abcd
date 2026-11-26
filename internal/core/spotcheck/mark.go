@@ -125,23 +125,47 @@ func writeMark(ctx context.Context, root string, m mark) error {
 	return fsutil.WriteFileAtomicInRoot(dir, markLeaf, data, abcdhome.FileMode)
 }
 
-// holdsMark is nil when tracking, origin's copy as last fetched ("" for
-// none), holds the mark's commit, and the refusal otherwise; nil too when
-// this machine keeps no mark.
-func holdsMark(ctx context.Context, root, tracking string) error {
+// errBehind is origin's copy as this checkout last fetched it standing
+// behind the mark: another checkout of the repository on this machine, which
+// shares the mark, read a later copy, or a push's own move of the tracking
+// ref did not take. It is answered by a fetch, never as a rewritten branch.
+var errBehind = errors.New("this checkout's copy of the spot-check's branch is behind the one this machine last verified, so it is fetched first")
+
+// holdsMark is nil when tracking, origin's copy ("" for none), holds the
+// mark's commit, and the refusal otherwise; nil too when this machine keeps
+// no mark. fetched says tracking is what origin answered just now: a copy
+// not fetched that holds no such commit, or that the mark's commit descends
+// from, is errBehind, since a fetch may bring it; once fetched, any copy
+// that does not hold it was deleted or rewritten on origin.
+func holdsMark(ctx context.Context, root, tracking string, fetched bool) error {
 	m, ok, err := readMark(ctx, root)
 	if err != nil || !ok {
 		return err
 	}
-	if tracking == "" {
-		return rewritten("the copy (" + m.Commit[:12] + ")")
-	}
 	if tracking == m.Commit {
 		return nil
 	}
-	held, err := isAncestor(ctx, root, m.Commit, tracking)
-	if err != nil || !held {
-		return rewritten("the copy (" + m.Commit[:12] + ")")
+	if tracking != "" {
+		if held, err := isAncestor(ctx, root, m.Commit, tracking); err == nil && held {
+			return nil
+		}
 	}
-	return nil
+	if !fetched && behind(ctx, root, m.Commit, tracking) {
+		return errBehind
+	}
+	return rewritten("the copy (" + m.Commit[:12] + ")")
+}
+
+// behind reports whether tracking, a copy not fetched just now, may only be
+// behind the mark's commit: there is no copy, the commit is not in this
+// checkout's object store, or the commit descends from the copy.
+func behind(ctx context.Context, root, commit, tracking string) bool {
+	if tracking == "" {
+		return true
+	}
+	if _, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", 256, "cat-file", "-e", commit+"^{commit}"); err != nil {
+		return ctx.Err() == nil
+	}
+	on, err := isAncestor(ctx, root, tracking, commit)
+	return err == nil && on
 }

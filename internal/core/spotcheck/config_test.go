@@ -1,6 +1,7 @@
 package spotcheck
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,14 +27,14 @@ func configRoots(t *testing.T, body string) layered.Roots {
 }
 
 func TestConfigDefaults(t *testing.T) {
-	c, err := readConfig(configRoots(t, ""))
+	c, err := readConfig(context.Background(), configRoots(t, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c != (Config{WindowDays: 7, WindowChanges: 0, PerGroup: 10}) {
 		t.Fatalf("the bundled configuration is %+v", c)
 	}
-	c, err = readConfig(configRoots(t, `{"spotcheck":{"window_days":3,"window_changes":50,"per_group":4}}`))
+	c, err = readConfig(context.Background(), configRoots(t, `{"spotcheck":{"window_days":3,"window_changes":50,"per_group":4}}`))
 	if err != nil || c != (Config{WindowDays: 3, WindowChanges: 50, PerGroup: 4}) {
 		t.Fatalf("readConfig = %+v, %v", c, err)
 	}
@@ -52,7 +53,7 @@ func TestPerGroupBounds(t *testing.T) {
 		`{"spotcheck":{"window_changes":100001}}`: "window_changes",
 		`{"spotcheck":{"per_groups":5}}`:          "per_groups",
 	} {
-		if _, err := readConfig(configRoots(t, body)); err == nil || !strings.Contains(err.Error(), key) {
+		if _, err := readConfig(context.Background(), configRoots(t, body)); err == nil || !strings.Contains(err.Error(), key) {
 			t.Errorf("%s: err %v; want a refusal naming %s", body, err, key)
 		}
 	}

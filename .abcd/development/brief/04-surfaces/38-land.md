@@ -472,7 +472,11 @@ checked against the pinned key, ten seconds in all), draws by HMAC over the
 round's randomness, and pushes the cycle over the tracking tip, tried once more
 after a refusal. Every cycle read back is verified the same way and set aside
 when it fails, and a branch that no longer holds this machine's high-water
-mark is refused
+mark is refused once a fetch confirms it (a copy only behind the mark, which
+another clone on the machine moved, is fetched first). A draw reads only the
+records no earlier cycle listed, and lists every record population whole, at
+most 1,000 keys a window, the rest waiting for the next, so a later draw knows
+each record already drawn from
 ([dcn-2611260013430233](../../../work/decisions/dcn-2611260013430233-the-technical-facilitator-under.md)).
 Only typed fields reach origin, and an observation that cannot draw writes
 nothing and leaves the landing proved. The branch takes no preflight receipt:

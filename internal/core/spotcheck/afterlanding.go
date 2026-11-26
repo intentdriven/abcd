@@ -69,6 +69,15 @@ func AfterLanding(parent context.Context, o Observed) string {
 		return "spot-check: " + err.Error() + "; nothing was drawn"
 	}
 	st, err := readWindow(ctx, o.Root, o.Now, tip)
+	if errors.Is(err, errBehind) {
+		// A copy behind the mark reaches the network for the one fetch that
+		// brings it up; a branch the fetch finds rewritten is refused there.
+		if _, err = fetchTracking(ctx, o.Root); err == nil {
+			st, err = readWindow(ctx, o.Root, o.Now, tip)
+		} else {
+			err = errors.New(redact(err))
+		}
+	}
 	if err != nil {
 		return "spot-check: " + err.Error() + "; nothing was drawn"
 	}
@@ -276,7 +285,8 @@ func setAside(st windowState) string {
 
 // makeCycle draws the cycle closing st's window at cl: the landings of the
 // window (from st.from exclusive to cl.commit), the records origin's copy
-// holds that no earlier verified cycle drew from, the size over the cycles
+// holds that no earlier verified cycle drew from (windowRecords, which reads
+// only those), the size over the cycles
 // before it, and an item file per drawn key; defaults says the bundled
 // defaults counted the window (windowConfig). pending are the typed records
 // this checkout carries in the same commit, read as origin's own.
@@ -297,30 +307,6 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st wi
 			return Cycle{}, nil, fmt.Errorf("the landings reader named %s, which is not a commit of the window", termsafe.Sanitize(r.Commit))
 		}
 	}
-	rec, _, err := read(ctx, o.Root, TrackingRef)
-	if err != nil {
-		return Cycle{}, nil, err
-	}
-	var hbs []namedHandBack
-	var ds []namedDecision
-	for i, h := range rec.HandBacks {
-		hbs = append(hbs, namedHandBack{name: rec.handBackNames[i], h: h})
-	}
-	for i, d := range rec.Decisions {
-		ds = append(ds, namedDecision{name: rec.decisionNames[i], d: d})
-	}
-	for _, f := range pending {
-		var one Records
-		if !readRecord(&one, f.folder, f.name, f.data) {
-			continue
-		}
-		for _, h := range one.HandBacks {
-			hbs = append(hbs, namedHandBack{name: f.name, h: h})
-		}
-		for _, d := range one.Decisions {
-			ds = append(ds, namedDecision{name: f.name, d: d})
-		}
-	}
 	seen := map[string]map[string]bool{}
 	for _, c := range st.cycles {
 		for _, g := range c.Groups {
@@ -331,6 +317,10 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st wi
 				seen[g.Group][k] = true
 			}
 		}
+	}
+	hbs, ds, err := windowRecords(ctx, o.Root, st.files, pending, seen)
+	if err != nil {
+		return Cycle{}, nil, err
 	}
 	groups, err := populations(rows, hbs, ds, seen)
 	if err != nil {
@@ -373,4 +363,115 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st wi
 		}
 	}
 	return c, items, nil
+}
+
+// maxFilesPerKey bounds the files of one record key a draw reads: records of
+// one key are one item, and its greatest names are the ones it copies.
+const maxFilesPerKey = 4
+
+// windowRecords are the hand-backs and decisions a window draws from: of the
+// records origin's copy holds (files, its listing) and those pending carries
+// with the cycle, the ones whose key no earlier verified cycle's population of
+// their group listed (seen). Only their files are read, so a draw reads what
+// arrived since the cycles before it, never the store's whole life. Within a
+// group the keys are taken in sorted order, at most maxListedKeys of them,
+// each by its maxFilesPerKey greatest names, and their files at most half of
+// maxReadFiles; a key beyond either bound waits for a later window, as a
+// record that reaches origin late does. So every record population is listed
+// whole, and the next draw knows each record already drawn from by its key.
+// A file whose name is not a record's is never read, and one whose content
+// does not read as its name gives is no record.
+func windowRecords(ctx context.Context, root string, files map[string]entry, pending []file, seen map[string]map[string]bool) ([]namedHandBack, []namedDecision, error) {
+	type src struct {
+		dir, name string
+		// data is the pending copy's content, nil for origin's file.
+		data []byte
+	}
+	byKey := map[string]map[string]map[string]src{}
+	add := func(dir, name string, data []byte) {
+		g, re := GroupDrainHandBacks, handBackNameRe
+		if dir == DecisionsDir {
+			g, re = GroupFacilitatorDecisions, decisionNameRe
+		}
+		k := recordKey(name)
+		if !re.MatchString(name) || seen[g][k] {
+			return
+		}
+		if byKey[g] == nil {
+			byKey[g] = map[string]map[string]src{}
+		}
+		if byKey[g][k] == nil {
+			byKey[g][k] = map[string]src{}
+		}
+		byKey[g][k][name] = src{dir: dir, name: name, data: data}
+	}
+	for p, e := range files {
+		dir, name, _ := strings.Cut(p, "/")
+		if (dir != HandBacksDir && dir != DecisionsDir) || strings.Contains(name, "/") || e.typ != "blob" || e.mode != "100644" || e.size > maxRecordBytes {
+			continue
+		}
+		add(dir, name, nil)
+	}
+	for _, f := range pending {
+		if f.folder == HandBacksDir || f.folder == DecisionsDir {
+			// A pending copy replaces origin's file of its name.
+			add(f.folder, f.name, f.data)
+		}
+	}
+	var take []src
+	var paths []string
+	for _, g := range []string{GroupDrainHandBacks, GroupFacilitatorDecisions} {
+		keys := make([]string, 0, len(byKey[g]))
+		for k := range byKey[g] {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		budget, used := max(maxReadFiles/2, 1), 0
+		for i, k := range keys {
+			if i == maxListedKeys {
+				break
+			}
+			names := make([]string, 0, len(byKey[g][k]))
+			for n := range byKey[g][k] {
+				names = append(names, n)
+			}
+			slices.Sort(names)
+			slices.Reverse(names)
+			names = names[:min(len(names), maxFilesPerKey)]
+			if i > 0 && used+len(names) > budget {
+				break
+			}
+			used += len(names)
+			for _, n := range names {
+				s := byKey[g][k][n]
+				take = append(take, s)
+				if s.data == nil {
+					paths = append(paths, s.dir+"/"+s.name)
+				}
+			}
+		}
+	}
+	blobs, err := readMany(ctx, root, files, paths)
+	if err != nil {
+		return nil, nil, err
+	}
+	var hbs []namedHandBack
+	var ds []namedDecision
+	for _, s := range take {
+		data := s.data
+		if data == nil {
+			data = blobs[s.dir+"/"+s.name]
+		}
+		var one Records
+		if data == nil || !readRecord(&one, s.dir, s.name, data) {
+			continue
+		}
+		for _, h := range one.HandBacks {
+			hbs = append(hbs, namedHandBack{name: s.name, h: h})
+		}
+		for _, d := range one.Decisions {
+			ds = append(ds, namedDecision{name: s.name, d: d})
+		}
+	}
+	return hbs, ds, nil
 }

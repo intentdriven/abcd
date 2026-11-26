@@ -7,6 +7,7 @@ package spotcheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -37,8 +38,8 @@ type Config struct {
 // readConfig resolves the spotcheck block. A misspelt key, and a value out
 // of its bounds or not a whole number, is refused naming its file and key,
 // never replaced by the default.
-func readConfig(r layered.Roots) (Config, error) {
-	s, err := layered.Load(layered.Config, r)
+func readConfig(ctx context.Context, r layered.Roots) (Config, error) {
+	s, err := layered.LoadContext(ctx, layered.Config, r)
 	if err != nil {
 		return Config{}, err
 	}
@@ -83,18 +84,43 @@ func between(lo, hi int, what string) func(int) error {
 // of its bounds, counts that window by the bundled defaults, and why says
 // why, "" when the block read: the window is still drawn, the same by every
 // reader, and the next window, starting at a later commit, reads the block
-// as that commit holds it. A commit this checkout does not hold is an error.
+// as that commit holds it. A commit this checkout does not hold is a
+// notHeldError.
+// A read that failed for a reason that says nothing of the file (a git that
+// did not answer, or ctx ended) is an error of its own and never the
+// defaults, since another reader, or this one again, would read the block.
 func windowConfig(ctx context.Context, root, commit string) (c Config, why string, err error) {
 	if _, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", 256, "rev-parse", "--verify", "--quiet", commit+"^{commit}", "--"); err != nil {
-		return Config{}, "", fmt.Errorf("the spot-check's window starts at %s, which this checkout does not hold", commit[:12])
+		if ctx.Err() != nil {
+			return Config{}, "", fmt.Errorf("the spot-check's window start %s was not read: %s", commit[:12], redact(ctx.Err()))
+		}
+		return Config{}, "", notHeldError{commit[:12]}
 	}
 	r, _ := layered.RootsFor(root)
-	c, err = readConfig(layered.Roots{Repo: r.Repo, RepoAt: commit, RepoAtName: commit[:12], RepoAtAsStored: true, HomeRefused: true})
-	if err != nil {
-		return Config{WindowDays: DefaultWindowDays, PerGroup: DefaultPerGroup}, redact(err), nil
+	c, err = readConfig(ctx, layered.Roots{Repo: r.Repo, RepoAt: commit, RepoAtName: commit[:12], RepoAtAsStored: true, HomeRefused: true})
+	var ue *layered.UnreadError
+	switch {
+	case err == nil:
+		return c, "", nil
+	case ctx.Err() != nil || errors.As(err, &ue) && ue.GitFailed():
+		return Config{}, "", fmt.Errorf("the spotcheck block at the window's start was not read (%s), so the window cannot be counted yet", redact(err))
 	}
-	return c, "", nil
+	return Config{WindowDays: DefaultWindowDays, PerGroup: DefaultPerGroup}, redact(err), nil
 }
+
+// notHeldError is a window's start this checkout does not hold, by its
+// short name.
+type notHeldError struct{ short string }
+
+func (e notHeldError) Error() string {
+	return "the spot-check's window starts at " + e.short + ", which this checkout does not hold"
+}
+
+// unreadError is a cycle whose check could not be made for a passing
+// reason: the read that refuses the observation, never a cycle set aside.
+type unreadError struct{ err error }
+
+func (e *unreadError) Error() string { return e.err.Error() }
 
 // defaultsNote is the note's tail for a window counted by the bundled
 // defaults because its block did not read (why), "" for none.

@@ -1303,9 +1303,9 @@ func fetchTracking(ctx context.Context, root string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return tracking, holdsMark(ctx, root, tracking)
+		return tracking, holdsMark(ctx, root, tracking, true)
 	}
-	if err := holdsMark(ctx, root, ""); err != nil {
+	if err := holdsMark(ctx, root, "", true); err != nil {
 		return "", err
 	}
 	if old, err := storeRef(ctx, root, TrackingRef); err == nil && old != "" {

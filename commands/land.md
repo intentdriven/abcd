@@ -356,7 +356,12 @@ unreachable, its signature wrong or another round than the one asked, the
 forge unread, the push refused twice) writes nothing, says why, and leaves the
 landing as proved; the next landing observed tries again. A store branch on
 origin that no longer holds what this machine last verified there, deleted or
-rewritten, is refused in one line, and nothing is written over it.
+rewritten, is refused in one line, and nothing is written over it; a copy this
+checkout has only not fetched since another checkout on the machine read the
+branch is fetched first, never refused. A draw reads only the records no
+earlier cycle listed, and takes at most 1,000 hand-backs and 1,000 decisions
+into one window, leaving the rest for the next, so no record is drawn from
+twice however long the branch grows.
 
 **What `human` holds against.** The gate assumes agents keep the rules: it
 stops an agent merging by mistake, not one set on getting round it. The

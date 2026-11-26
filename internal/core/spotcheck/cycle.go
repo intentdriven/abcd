@@ -61,8 +61,13 @@ func drawSeed(c Cycle) string {
 
 // maxListedKeys is the most keys a population lists whole: above it, the
 // cycle keeps the first and last key and the SHA-256 of the sorted keys, one
-// per line. Four groups listed whole stay within maxCycleBytes.
-const maxListedKeys = 1000
+// per line. Four groups listed whole stay within maxCycleBytes. Only a
+// landing group, whose members are its window's commits, is ever kept by its
+// hash: a record group takes at most this many keys into one window and
+// leaves the rest for the next (windowRecords), since a later draw knows the
+// records already drawn from only by the keys a cycle lists. A test lowers
+// it.
+var maxListedKeys = 1000
 
 // maxCycleBytes bounds one cycle file, on write and on read, as the pre-push
 // hook bounds it: a cycle lists its populations, so it is allowed more than a
@@ -201,6 +206,14 @@ type windowState struct {
 // written then, whatever its file says.
 const clockSkew = 5 * time.Minute
 
+// forgeLead is how far past its commit's child an opening may lie and still
+// be read. The writer opens at its own clock, and the forge commits the next
+// landing by its own: a writer's clock a few seconds ahead of the forge's,
+// with a landing inside those seconds, would otherwise set an honest opening
+// aside. It gives a writer those same few seconds of choice over the first
+// window's start, whose close lies in the future at a round nobody knows yet.
+const forgeLead = 10 * time.Second
+
 // errAhead is a cycle whose window this checkout's copy of the default
 // branch does not close yet: drawn, it may be, from a tip not fetched here.
 var errAhead = errors.New("its window does not close on this checkout's copy of the default branch")
@@ -209,7 +222,7 @@ var errAhead = errors.New("its window does not close on this checkout's copy of 
 // up to tip, as stored. Its moment is its writer's word, held to the line: no
 // later than now allows, no earlier than its commit was committed, and, once
 // that commit has its first-parent child on the line, no later than the
-// child was committed; an honest writer opens at the tip it read, between
+// child was committed, give or take forgeLead; an honest writer opens at the tip it read, between
 // the two. why is the bound an opening fails, "" when it holds: one that
 // fails is no window's start, and the next observer opens the window afresh
 // over it. An opening at a commit the line does not hold, or not on its
@@ -247,7 +260,7 @@ func verifyOpening(ctx context.Context, root, tip string, w WindowOpen, now time
 	if err != nil {
 		return false, "", errors.New("reading the spot-check's opening: git answered a line of an unexpected shape")
 	}
-	if w.At.After(time.Unix(secs, 0)) {
+	if w.At.After(time.Unix(secs, 0).Add(forgeLead)) {
 		return false, "it opens after its commit's child on the default branch was committed", nil
 	}
 	return true, "", nil
@@ -280,7 +293,7 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 	if err != nil {
 		return windowState{}, err
 	}
-	if err := holdsMark(ctx, root, tracking); err != nil || tracking == "" {
+	if err := holdsMark(ctx, root, tracking, false); err != nil || tracking == "" {
 		return windowState{}, err
 	}
 	m, marked, err := readMark(ctx, root)
@@ -331,6 +344,12 @@ func readWindow(ctx context.Context, root string, now time.Time, tip string) (wi
 		default:
 			err = verifyCycle(ctx, root, tip, c, id, st.from, st.fromTime, now)
 		}
+		var unread *unreadError
+		if errors.As(err, &unread) {
+			// A read that failed for a passing reason sets nothing aside:
+			// the whole observation refuses, and the next one reads again.
+			return windowState{}, unread.err
+		}
 		if errors.Is(err, errAhead) {
 			st.unverified = append(st.unverified, "cycle "+id+" on origin cannot be checked against this checkout's copy of the default branch yet, so it was set aside")
 			continue
@@ -379,8 +398,9 @@ func (st windowState) mark(commit string) mark {
 // signature that of the round its close fixes under the pinned key, its
 // sample size one the size rule gives, every landing it lists a commit of
 // the window, and each drawn list the one that round's randomness gives over
-// its population, keyed by the window alone (drawSeed). A population kept by
-// its hash alone is checked by its count. What it cannot check, which records
+// its population, keyed by the window alone (drawSeed). A record group's
+// population is listed, never kept by its hash (windowRecords); a landing
+// group's kept by its hash alone is checked by its count. What it cannot check, which records
 // a holder of push rights listed and why a size was halved, is the residual
 // adr-2611251806496719 names.
 func verifyCycle(ctx context.Context, root, tip string, c Cycle, id, from string, fromTime, now time.Time) error {
@@ -393,8 +413,12 @@ func verifyCycle(ctx context.Context, root, tip string, c Cycle, id, from string
 		return errors.New("it closes after now")
 	}
 	cfg, why, err := windowConfig(ctx, root, from)
-	if err != nil {
+	var notHeld notHeldError
+	switch {
+	case errors.As(err, &notHeld):
 		return errors.New("its window's start is not held here")
+	case err != nil:
+		return &unreadError{err}
 	}
 	if c.Window.Days != cfg.WindowDays || c.Window.Changes != cfg.WindowChanges || c.Sample.PerGroup != cfg.PerGroup || c.Window.Defaults != (why != "") {
 		return errors.New("its window is not the one the default branch configures")
@@ -435,6 +459,8 @@ func verifyCycle(ctx context.Context, root, tip string, c Cycle, id, from string
 		case (g.Group == GroupDrainLanded || g.Group == GroupAutomaticMerges) &&
 			slices.ContainsFunc(p.Keys, func(k string) bool { return !inWindow[k] }):
 			return fmt.Errorf("its %s population names a commit outside its window", g.Group)
+		case (g.Group == GroupDrainHandBacks || g.Group == GroupFacilitatorDecisions) && p.Count > maxListedKeys:
+			return fmt.Errorf("its %s population is not listed, so a later draw could not tell its records from new ones", g.Group)
 		case p.Count <= maxListedKeys && (len(p.Keys) != p.Count || !slices.IsSorted(p.Keys) || len(slices.Compact(slices.Clone(p.Keys))) != p.Count):
 			return fmt.Errorf("its %s population does not list its keys", g.Group)
 		case p.Count <= maxListedKeys && !slices.Equal(g.Drawn, drawKeys(randomness, drawSeed(c), g.Group, p.Keys, s.Size)):

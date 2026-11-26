@@ -177,7 +177,9 @@ func recordKey(name string) string {
 // key no earlier verified cycle's population of their group held (seen, by
 // group). Membership is by arrival on the store's branch, never by the time
 // a record names, so a record that reaches origin after its window was drawn
-// is drawn from in the next, and every record is in exactly one population.
+// is drawn from in the next, and every record is in exactly one population:
+// windowRecords leaves out what an earlier population listed, and lists no
+// more than maxListedKeys, so every record population stays listed.
 // A row whose approval was not read from the forge refuses them all. Within
 // a group, records of one key are one candidate, the record of the greatest
 // file name copied.
