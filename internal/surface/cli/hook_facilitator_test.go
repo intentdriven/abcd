@@ -145,11 +145,11 @@ func TestPromptRouterFacilitatorLineSaysWhoseItIs(t *testing.T) {
 	}
 }
 
-// TestGuardHookRefusesAFileToolWritingTheFacilitatorFiles: a file tool writing
-// the person's facilitator entries or the computer's settings file is denied,
-// through a symlinked parent and a "~/" path as well; the project's own
-// .abcd/config.json is not (itd-2611252049031692).
-func TestGuardHookRefusesAFileToolWritingTheFacilitatorFiles(t *testing.T) {
+// TestGuardHookRefusesAFileToolWritingTheFacilitatorSetting: a file tool
+// writing the person's global settings file is denied, through a symlinked
+// parent and a "~/" path as well; the project's own .abcd/config.json is not,
+// nor the per-project file nothing reads (itd-2611252049031692).
+func TestGuardHookRefusesAFileToolWritingTheFacilitatorSetting(t *testing.T) {
 	root := checklistCheckout(t)
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
@@ -168,10 +168,9 @@ func TestGuardHookRefusesAFileToolWritingTheFacilitatorFiles(t *testing.T) {
 	}
 	for _, tool := range fileWriteTools {
 		for _, p := range []string{
-			filepath.Join(homeDir, "facilitator.json"),
 			filepath.Join(homeDir, "config.json"),
-			filepath.Join(homeDir, "Facilitator.JSON"),
-			filepath.Join(link, "facilitator.json"),
+			filepath.Join(homeDir, "Config.JSON"),
+			filepath.Join(link, "config.json"),
 			"~/abcd-link/config.json",
 		} {
 			t.Run(tool+" "+p, func(t *testing.T) {
@@ -185,8 +184,9 @@ func TestGuardHookRefusesAFileToolWritingTheFacilitatorFiles(t *testing.T) {
 			})
 		}
 	}
-	p := filepath.Join(root, ".abcd", "config.json")
-	if stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook"); code != 0 || strings.Contains(stdout, "facilitator") {
-		t.Errorf("the project's own config is the project's to write: exit %d, %q, %q", code, stdout, stderr)
+	for _, p := range []string{filepath.Join(root, ".abcd", "config.json"), filepath.Join(homeDir, "facilitator.json")} {
+		if stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook"); code != 0 || strings.Contains(stdout, "facilitator") {
+			t.Errorf("a write of %s is not the facilitator's setting: exit %d, %q, %q", p, code, stdout, stderr)
+		}
 	}
 }
