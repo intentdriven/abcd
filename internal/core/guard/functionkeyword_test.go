@@ -338,3 +338,52 @@ func TestFunctionCallIsReadInOneShapeOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestFunctionNamesTheGuardCannotPlaceAreHeld: a `()` definition with more
+// than one name before it defines each in zsh, and zsh's function and alias
+// tables, `functions -c` and `functions -M` and the `-` modifier change which
+// command a name runs where the guard does not see it: each holds the line.
+func TestFunctionNamesTheGuardCannotPlaceAreHeld(t *testing.T) {
+	const held = "function-form-unread"
+	args := strings.TrimPrefix(hazardLine, "git ")
+	for _, line := range []string{
+		`f x() { git "$@"; }; f ` + args,
+		`f x () { git "$@"; }; x ` + args,
+		`f x() { :; }; echo hi`,
+		`functions[g]='git "$@"'; g ` + args,
+		`aliases[g]=git; g ` + args,
+		`galiases[G]=git; echo G`,
+		`saliases[sh]=git; echo x.sh`,
+		`dis_functions[g]=x; g`,
+		`functions -c f g; g ` + args,
+		`functions -M f; echo $(( f() ))`,
+		`- git ` + args,
+		`- echo hi`,
+		`(cd x); - git ` + args,
+		`echo $(- git ` + args + `)`,
+	} {
+		if d := readingOf(t, line); d.Verdict != VerdictBlock || !containsString(d.Matches, held) {
+			t.Errorf("Check(%q) = %q via %q, matches %v, want a block holding %q", line, d.Verdict, d.EntryID, d.Matches, held)
+		}
+	}
+	segs, err := tokenize(`f x() { :; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := segs[0].definesFunction; !containsString(got, "f") || !containsString(got, "x") {
+		t.Errorf("f x() defines %v, want both f and x", got)
+	}
+	for _, line := range []string{
+		`echo functions`,
+		`functions f`,
+		`git log -- x`,
+		`cat - < x`,
+		`if [[ "$n" =~ ^([a-z]+)- ]]; then echo x; fi`,
+		`(cd x) - y`,
+		`f() { echo "$1"; }; f x`,
+	} {
+		if d := readingOf(t, line); containsString(d.Matches, held) {
+			t.Errorf("Check(%q) holds %q, want it read", line, held)
+		}
+	}
+}

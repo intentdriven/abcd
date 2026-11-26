@@ -67,6 +67,7 @@ var wordReaders = map[string]string{
 	"plainFunctionName": "isUnknown on the NAME: a NAME nothing fixes is no ordinary form, and the command is held",
 	"argumentBody":      "exempt: reads the body of a `${…}` expansion the tokenizer hands it, never a command's word",
 	"functionBody":      "exempt: reads only `{`, `}`, reserved words and `function` to bound a body; each command in it is read by its own walk",
+	"namesRedefined":    "exempt: only adds a hold; an unknown program is read as any program by the walk itself (walkToCommand)",
 	"plainCallName":     "exempt: a function's name the line writes, read against the reserved words and the walk itself (walkToCommand)",
 	"simpleFunction":    "exempt: refuses any word nothing fixes, and reads the one program through arrivalsOf; a name or program it cannot place leaves the call held",
 	"spliceCall":        "exempt: refuses any word nothing fixes, and steps only the reserved words before a call arrivalsOf placed",

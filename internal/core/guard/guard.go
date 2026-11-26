@@ -787,7 +787,7 @@ func (r Registry) judgeCalls(command string, rc *readCtx, run *scriptRun, readCa
 	// reading.
 	walkSegments(segs)
 	for _, s := range segs {
-		if s.functionUnread || s.functionQuoted {
+		if s.functionUnread || s.functionQuoted || s.namesUnread || namesRedefined(s) {
 			signals = append(signals, functionFormSignal())
 			break
 		}

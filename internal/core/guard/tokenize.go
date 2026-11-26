@@ -35,6 +35,16 @@ type segment struct {
 	// (skipFunction). Check holds either (functionFormSignal).
 	functionQuoted bool
 	functionUnread bool
+	// namesUnread records a `()` definition of more than one name
+	// (`f x() { …; }`), which zsh reads as a definition of each: Check holds
+	// it (functionFormSignal), as it does a line that redefines a name where
+	// the guard does not see it (namesRedefined).
+	namesUnread bool
+	// afterGroup records a command whose words follow a group's `)` with no
+	// separator between (`length(l) - length(t)`, a `[[ … =~ (…)- ]]`
+	// pattern): no shell runs its first word as a program, so a `-` there
+	// is not zsh's modifier (namesRedefined).
+	afterGroup bool
 	// definesFunction holds the names of the functions a command defines, by
 	// `NAME()` or the `function` keyword, and argumentsUnread records a
 	// command that reads a function's arguments in a form whose value is not
@@ -620,6 +630,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it (segment.anonymousFunction), and closingSub records the flush
 		// of a substitution's last command, one level in (segment.nest).
 		braceOdd, anonNext, closingSub bool
+		// closedGroup records a plain group's `)` since the last flush, and
+		// rides with the next command as segment.afterGroup.
+		closedGroup bool
 		// segBegin is where the command being built began (segment.begin).
 		segBegin int
 		// curGlob rides with the WORD being built and globs with the segment:
@@ -1146,6 +1159,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		flushToken()
 		defParen := defNext
 		defNext = false
+		afterGroup := closedGroup
+		closedGroup = false
 		defer func() { argsUnread, braceOdd = false, false }()
 		nest := 0
 		for _, p := range parens {
@@ -1160,9 +1175,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			anonNext = true
 		}
 		if len(toks) > 0 {
-			quotedFn, definedFn := functionQuoted(toks, keywords)
-			if name := toks[len(toks)-1]; defParen && !strings.Contains(name, "=") && !containsString(definedFn, name) {
-				definedFn = append(definedFn, name)
+			quotedFn, definedFn, stop := functionQuoted(toks, keywords)
+			namesUnread := false
+			if defParen {
+				// zsh defines every word before `()` (`f x() { …; }`): each
+				// is counted, and the line is held (segment.namesUnread).
+				names := append(toks[min(stop, len(toks)):len(toks):len(toks)], toks[len(toks)-1])
+				for _, name := range names {
+					if !strings.Contains(name, "=") && !containsString(definedFn, name) {
+						definedFn = append(definedFn, name)
+					}
+				}
+				namesUnread = len(definedFn) > 1
 			}
 			anonymous := anonNext
 			anonNext = false
@@ -1175,7 +1199,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				piped = feed{list: list, lo: pipeFrom, hi: len(segs)}
 			}
 			segs = append(segs, segment{
-				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), functionQuoted: quotedFn, definesFunction: definedFn, argumentsUnread: argsUnread,
+				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), functionQuoted: quotedFn, definesFunction: definedFn, argumentsUnread: argsUnread, namesUnread: namesUnread, afterGroup: afterGroup,
 				nest: nest, braceOdd: braceOdd, anonymousFunction: anonymous, begin: segBegin,
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
@@ -2155,6 +2179,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					parens = parens[:n-1]
 					if top.kind == parenGroup && top.saved == nil {
 						pipeFrom = top.pipeFrom
+						closedGroup = true
 					}
 					if top.saved == nil {
 						groupIn = top.groupIn

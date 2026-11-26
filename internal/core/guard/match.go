@@ -1338,6 +1338,44 @@ var functionShellWords = map[string]bool{
 	"function": true, "time": true, "coproc": true, "repeat": true, "[[": true, "]]": true,
 }
 
+// zshNameTables are zsh's parameters that hold the shell's functions and
+// aliases: a word that assigns into one changes what a name runs.
+var zshNameTables = []string{"functions", "aliases", "galiases", "saliases", "dis_functions"}
+
+// namesRedefined reports whether s changes which command a name runs where
+// the guard does not see it: a word assigning into one of zsh's tables of
+// functions or aliases (`functions[NAME]=…`, `aliases[NAME]=…`, the table
+// whole), a `functions` command copying or defining one by option
+// (`functions -c`, `functions -M`), or zsh's `-` modifier as the program.
+// Check holds the line (functionFormSignal).
+func namesRedefined(s segment) bool {
+	for _, t := range s.tokens {
+		for _, table := range zshNameTables {
+			if rest, ok := strings.CutPrefix(t, table); ok && (strings.HasPrefix(rest, "[") || strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, "+=")) {
+				return true
+			}
+		}
+	}
+	for _, a := range arrivalsOf(s) {
+		switch s.tokens[a.idx] {
+		case "-":
+			if !s.afterGroup {
+				return true
+			}
+		case "functions":
+			for _, t := range s.tokens[a.idx+1:] {
+				if t == "--" {
+					break
+				}
+				if len(t) > 1 && (t[0] == '-' || t[0] == '+') && strings.ContainsAny(t[1:], "cM") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // plainFunctionName reports whether name is the one plain NAME of the
 // keyword's ordinary form: a word the line fixes, no reserved or shell word,
 // no option, and no brace in it.
@@ -1362,9 +1400,11 @@ func lastBraceIndex(tokens []string) int {
 // opener (`function f '{' g { …; }`). bare holds the indices of the words the
 // tokenizer saw wholly unquoted among the keyword, its NAME and `{` (its
 // keywords record). The command is held (functionFormSignal). defined is the
-// NAME of each such keyword at command position.
-func functionQuoted(toks []string, bare map[int]bool) (quoted bool, defined []string) {
-	for i := 0; i < len(toks); {
+// NAME of each such keyword at command position, and stop the index of the
+// first word past the words stepped before a command and those keywords.
+func functionQuoted(toks []string, bare map[int]bool) (quoted bool, defined []string, stop int) {
+	i := 0
+	for i < len(toks) {
 		switch t := toks[i]; {
 		case isAssignment(t) || reserved[t] || t == "time":
 			i++
@@ -1377,14 +1417,14 @@ func functionQuoted(toks []string, bare map[int]bool) (quoted bool, defined []st
 				defined = append(defined, toks[i+1])
 			}
 			if i+1 < len(toks) && !bare[i+1] || i+2 < len(toks) && toks[i+2] == "{" && !bare[i+2] {
-				return true, defined
+				return true, defined, i
 			}
 			i += 2
 		default:
-			return false, defined
+			return false, defined, i
 		}
 	}
-	return false, defined
+	return false, defined, len(toks)
 }
 
 // argumentName reports whether name, a parameter's name as a `$` or `${`

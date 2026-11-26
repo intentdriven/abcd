@@ -61,7 +61,13 @@ import (
 // (scripts/abcd.sh, scripts/pr-keep-current.sh, scripts/records-only.sh) call
 // a function of more than one command with words, and are held as
 // function-form-unread; scripts/check-wip-source-cases.sh is now held the
-// same way rather than blocked as the command its case runs.
+// same way rather than blocked as the command its case runs. Raised to 49
+// when a line that changes what a name runs where the guard does not see it
+// came to be held (namesRedefined, segment.namesUnread): seven prose lines
+// of the corpus read, as zsh reads them, as a `()` definition of several
+// names (`… and refuse() already …`, `… substr() past …`) or a command run
+// through zsh's `-` modifier (a backticked `- Generated with …` or `-`, a
+// `<file|->`, and a glob qualifier's code `-` in `version (a per-repo …)`).
 //
 // Warns raised to 33 when the away mode's stop check landed
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
@@ -77,7 +83,7 @@ import (
 // (hooks/subagent-start.sh, spc-2611251757228271): the same launcher, for the
 // same two warns.
 const (
-	maxSweepBlocks = 42
+	maxSweepBlocks = 49
 	maxSweepWarns  = 39
 )
 
