@@ -136,7 +136,10 @@ var homeSpellingsOf = fsutil.HomeSpellings
 // callerHomeSpellings is fsutil.HomeSpellings(home), each spelling in the
 // forms a store receives it in (receivedForms), or home alone where that
 // gives none (a relative or root-level home, swept as written, as it always
-// was).
+// was). A received form that ends in a separator or holds fewer segments than
+// its spelling names another folder — dropping the bytes of a last segment
+// that holds no valid one leaves "/home/", the parent of every account — and
+// is left out.
 func callerHomeSpellings(home string) []string {
 	spellingsMemo.Lock()
 	defer spellingsMemo.Unlock()
@@ -144,6 +147,9 @@ func callerHomeSpellings(home string) []string {
 		var sp []string
 		for _, s := range homeSpellingsOf(home) {
 			for _, f := range receivedForms(s) {
+				if f != s && (strings.HasSuffix(f, "/") || pathSegments(f) < pathSegments(s)) {
+					continue
+				}
 				if !slices.Contains(sp, f) {
 					sp = append(sp, f)
 				}
@@ -155,6 +161,17 @@ func callerHomeSpellings(home string) []string {
 		spellingsMemo.home, spellingsMemo.spellings = home, sp
 	}
 	return spellingsMemo.spellings
+}
+
+// pathSegments counts the non-empty segments of a slash-separated path.
+func pathSegments(p string) int {
+	n := 0
+	for _, seg := range strings.Split(p, "/") {
+		if seg != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // callerUserNames is the caller's username as the last segment of the cleaned
