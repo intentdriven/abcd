@@ -720,8 +720,11 @@ type MergeDecision struct {
 	// not read: a forge read that failed, or receipts it could not judge. It is
 	// no refusal of the head, so nothing is withdrawn on it.
 	Unread bool
-	// Mode is the facilitator mode the gate ran in (ModeAuto or ModeHuman),
-	// as it read it.
+	// Mode is the facilitator mode the gate judged by (ModeAuto or
+	// ModeHuman): the mode as it read it, but human for a pull request a
+	// person's own global auto does not know to be theirs, which is judged as
+	// human judges it, so the spot-check never keeps that decision as one
+	// abcd took alone.
 	Mode string
 	// AuthorCanWrite says the forge named the pull request's author as one
 	// who can write to the repository (RoleMaintainer); false for a
@@ -784,7 +787,11 @@ func decided(f gateFacts) MergeDecision {
 			d.why += "; " + note
 		}
 	}
+	mode := f.mode.Mode
+	if f.notOwn != "" {
+		mode = ModeHuman
+	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
 		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread || f.modeLineUnread || f.viewerUnread),
-		Mode:   f.mode.Mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}
+		Mode:   mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}
 }

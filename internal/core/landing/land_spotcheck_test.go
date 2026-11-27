@@ -262,6 +262,36 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 		{"auto, contributor, approved, armed", with(contributor(auto, true), func(f *gateFacts) { f.reviewed = true }),
 			MergeDecision{Arm: true, Method: "--merge", Why: autoText + "; approved by maintainer-b; a review receipt names " + h12 + plain, Mode: ModeAuto, ApprovalCounted: true}, false},
 	}
+	// A person's own global auto (itd-2611252049031692): a colleague's pull
+	// request is judged as human judges it, so its decision is human's and is
+	// not one abcd took alone, with or without an approval; their own is
+	// auto's. A pull request that changes the committed mode line is refused
+	// before the author is read, and is not recorded either.
+	global := Facilitator{Mode: ModeAuto, Layer: "machine", Origin: "~/.abcd.noindex/config.json"}
+	const (
+		globalText = "facilitator.mode is auto (machine layer, ~/.abcd.noindex/config.json)"
+		notOwn     = "#7 was opened by author-a, not by colleague-z, the account abcd runs as"
+	)
+	colleague := func(approved bool) gateFacts {
+		f := with(maintainer(global), func(f *gateFacts) { f.notOwn, f.approvalWhy = notOwn, "none found" })
+		if approved {
+			f.approvedBy, f.approvalWhy = "maintainer-b", ""
+		}
+		return f
+	}
+	rows = append(rows,
+		row{"global auto, a colleague's, no approval", colleague(false),
+			MergeDecision{Why: globalText + ", and a person's own global auto arms only a pull request your own account opened: " + notOwn +
+				", so it waits for an approval of " + h12 + " (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator), or for its author to land it: none found",
+				Mode: ModeHuman, AuthorCanWrite: true}, false},
+		row{"global auto, a colleague's, approved", colleague(true),
+			MergeDecision{Arm: true, Method: "--merge", Why: globalText + ", judged as human since " + notOwn + "; approved by maintainer-b" + plain,
+				Mode: ModeHuman, AuthorCanWrite: true, ApprovalCounted: true}, false},
+		row{"global auto, your own, armed", with(maintainer(global), func(f *gateFacts) { f.reviewed = true }),
+			MergeDecision{Arm: true, Method: "--merge", Why: globalText + "; a review receipt names " + h12 + plain, Mode: ModeAuto, AuthorCanWrite: true}, true},
+		row{"auto, the mode line changed", gateFacts{mode: auto, def: "main", head: head, modeLine: "it changes the facilitator.mode line"},
+			MergeDecision{Why: "it changes the facilitator.mode line", Mode: ModeAuto}, false},
+	)
 	// The five rows auto mode reaches after the approval, once for an author
 	// who can write and once for a contributor whose approval counted.
 	for _, r := range []struct {
