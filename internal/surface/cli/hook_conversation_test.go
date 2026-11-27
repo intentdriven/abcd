@@ -176,6 +176,9 @@ func TestPresentStopLeavesAnUnreadableStateAsItIs(t *testing.T) {
 // save fails is still shown with its line, the failure named, as it was
 // before the stop saved anything.
 func TestAllowedStopEmitsWhenTheStateCannotBeSaved(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 0500 does not deny root, so the state is saved and nothing fails")
+	}
 	ownHookBudgets(t, 10*time.Second)
 	root := awayCheckout(t)
 	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
