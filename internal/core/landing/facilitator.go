@@ -806,6 +806,12 @@ type MergeDecision struct {
 	// ApprovalCounted says a person's approval of the head counted in the
 	// answer: a forge review or a recorded approval the gate found standing.
 	ApprovalCounted bool
+	// ModeLayer is the configuration layer that declared the mode, as the
+	// gate read it ("default" when no file did).
+	ModeLayer string
+	// ReceiptNamedHead says a review receipt that stands named the head, as
+	// the gate read the receipts in auto mode; false in every other case.
+	ReceiptNamedHead bool
 }
 
 // ErrModeUnreadable wraps a facilitator.mode the gate could not read, whose
@@ -866,5 +872,6 @@ func decided(f gateFacts) MergeDecision {
 	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
 		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread || f.modeLineUnread || f.viewerUnread),
-		Mode:   mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != ""}
+		Mode:   mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != "",
+		ModeLayer: f.mode.Layer, ReceiptNamedHead: f.reviewed}
 }

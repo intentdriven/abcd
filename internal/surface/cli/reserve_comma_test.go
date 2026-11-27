@@ -13,7 +13,8 @@ import (
 // holds a comma, and exists, is reserved as written. A value with one path
 // and a stray comma is refused too, since it would be stored with the comma,
 // and the form the refusal names quotes each path for the shell, so a part
-// that reads as a flag or a second command is never offered as one.
+// that reads as a flag or a second command is never offered as one. A value
+// of commas alone names no path, and is refused saying so.
 func TestReserveRefusesACommaJoinedFootprint(t *testing.T) {
 	w := newReserveWorld(t)
 	p := w.clone(t, "p", octoMail)
@@ -37,7 +38,11 @@ func TestReserveRefusesACommaJoinedFootprint(t *testing.T) {
 	if code != 2 || !strings.Contains(stderr, "--footprint 'b --take-over'") {
 		t.Fatalf("a part that reads as a flag: exit %d, stdout %q, stderr %q; want it quoted in the form named", code, stdout, stderr)
 	}
-	for _, id := range []string{"iss-3", "iss-4"} {
+	code, stdout, stderr = reserveRun(t, p, "reserve", "iss-5", "--footprint", ", ,")
+	if code != 2 || !strings.Contains(stderr, "names no path, only commas") {
+		t.Fatalf("a value of commas alone: exit %d, stdout %q, stderr %q; want exit 2 saying it names no path", code, stdout, stderr)
+	}
+	for _, id := range []string{"iss-3", "iss-4", "iss-5"} {
 		if w.remoteTip(t, id) != "" {
 			t.Fatalf("the refused reserve of %s reached origin", id)
 		}

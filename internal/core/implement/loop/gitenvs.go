@@ -104,6 +104,9 @@ var driveGitCommands = []driveGitCommand{
 	// The ask of origin and other commands in the person's own environment,
 	// the hooks pinned off (core.hooksPath=/dev/null or every exec pin).
 	{"gitutil.NetContext", personEnv, false},
+	// NetContext's listing form, line by line: the spot-check's fetch
+	// confirms a branch origin lacks with it.
+	{"gitutil.NetEachContext", personEnv, false},
 	{"gitutil.NetAskContext", personEnv, false},
 	{"gitutil.RemoteHeadTip", personEnv, false},
 	{"gitutil.WorkingTreeCommand", personEnv, false},

@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -311,6 +312,9 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 	}
 	for _, c := range rows {
 		got := decided(c.f)
+		// The mode's layer and the receipt are the facts' own, carried as read
+		// (TestGateDecisionCarriesReceiptAndLayer holds them through the gate).
+		c.want.ModeLayer, c.want.ReceiptNamedHead = c.f.mode.Layer, c.f.reviewed
 		if got != c.want {
 			t.Errorf("%s: decided\n%+v\nwant\n%+v", c.name, got, c.want)
 		}
@@ -355,5 +359,99 @@ func TestAMaintainersApprovedPullRequestInAutoModeIsRecorded(t *testing.T) {
 	if len(recs) != 1 || recs[0].Head != f.head() || recs[0].Mode != ModeAuto ||
 		recs[0].AuthorCanWrite == nil || !*recs[0].AuthorCanWrite || recs[0].ApprovalCounted == nil || *recs[0].ApprovalCounted {
 		t.Fatalf("records: %+v", recs)
+	}
+}
+
+// The spot-check's observation of a landing is turned off for every test of
+// the package but the ones that count it: an observation reaches origin and
+// the beacon, which no other test here is about.
+var _ = func() bool {
+	observeLanding = func(context.Context, spotcheck.Observed) string { return "" }
+	return true
+}()
+
+// countObservations replaces the observation for the test with one that
+// counts and answers a note.
+func countObservations(t *testing.T) *[]spotcheck.Observed {
+	t.Helper()
+	var seen []spotcheck.Observed
+	saved := observeLanding
+	t.Cleanup(func() { observeLanding = saved })
+	observeLanding = func(_ context.Context, o spotcheck.Observed) string {
+		seen = append(seen, o)
+		return "spot-check: observed"
+	}
+	return &seen
+}
+
+// TestTheLandVerbObservesALanding: land re-run on a branch whose head is on
+// origin's default branch, or whose pull request merged it by a squash, is
+// one observation from the land site, and its note joins the landed step's;
+// a land that gates and arms observes nothing.
+func TestTheLandVerbObservesALanding(t *testing.T) {
+	for name, merge := range map[string]func(f *fixture){
+		"on the default branch": func(f *fixture) { f.repo.Git("push", "-q", "origin", "feat/x:main") },
+		"squashed": func(f *fixture) {
+			f.squashOntoMain()
+			f.forge.merged = mergedListing(f.head(), false)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			seen := countObservations(t)
+			f := newFixture(t, queueRuleset)
+			merge(f)
+			f.forge.prs = f.prFor(f.head())
+			res, err := f.land(f.options())
+			if err != nil || !res.Landed {
+				t.Fatalf("land = %+v, %v", res, err)
+			}
+			if len(*seen) != 1 || (*seen)[0].Site != spotcheck.SiteLand || (*seen)[0].Default != "main" {
+				t.Fatalf("observed %+v; want once from the land site", *seen)
+			}
+			if note := res.Steps[0].Note; !strings.HasSuffix(note, "; spot-check: observed") {
+				t.Fatalf("the landed step's note is %q", note)
+			}
+		})
+	}
+	seen := countObservations(t)
+	f := autoReviewed(t)
+	wantArmed(t, f, landGate(t, f))
+	if len(*seen) != 0 {
+		t.Fatalf("a land that armed observed %+v", *seen)
+	}
+}
+
+// TestGateDecisionCarriesReceiptAndLayer: the record of a decision abcd took
+// alone names, as fields the gate set, whether a review receipt named the
+// head and which layer declared the mode.
+func TestGateDecisionCarriesReceiptAndLayer(t *testing.T) {
+	f := autoReviewed(t)
+	var handed []MergeDecision
+	withRecorder(t, func(root, site, pr, head string, d MergeDecision) string {
+		handed = append(handed, d)
+		return RecordMergeGate(root, site, pr, head, d)
+	}, func() Step { return landGate(t, f) })
+	if len(handed) != 1 || !handed[0].ReceiptNamedHead || handed[0].ModeLayer != "repo" {
+		t.Fatalf("the gate decided %+v; want a receipt naming the head, the mode from the repo layer", handed)
+	}
+	recs := gateRecords(t, f)
+	if len(recs) != 1 || recs[0].ReceiptNamedHead == nil || !*recs[0].ReceiptNamedHead || recs[0].ModeLayer != "repo" {
+		t.Fatalf("the record is %+v", recs)
+	}
+}
+
+// TestRearmGateIsRecorded: the merge gate asked afresh at a re-arm, in auto
+// mode with no person's approval, is recorded from the rearm site.
+func TestRearmGateIsRecorded(t *testing.T) {
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	f.forge.head = f.head()
+	f.reviewed(t)
+	ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+	if arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head()); err != nil || !arm {
+		t.Fatalf("arm %v, why %q, err %v", arm, why, err)
+	}
+	recs := gateRecords(t, f)
+	if len(recs) != 1 || recs[0].Site != spotcheck.SiteRearm || recs[0].PR != 7 || recs[0].Head != f.head() || !recs[0].Arm {
+		t.Fatalf("the re-arm's record is %+v", recs)
 	}
 }

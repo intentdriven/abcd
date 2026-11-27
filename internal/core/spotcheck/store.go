@@ -121,6 +121,9 @@ const (
 const (
 	SiteLand = "land"
 	SiteLane = "lane"
+	// SiteRearm is the merge gate asked afresh when a release hold re-arms a
+	// withdrawn merge (landing's rearmGate).
+	SiteRearm = "rearm"
 )
 
 // Bounds.
@@ -146,6 +149,9 @@ const (
 	maxRecordBytes = 16 << 10
 	// maxListingBytes bounds one listing of the store's files.
 	maxListingBytes = 8 << 20
+	// maxPushFiles bounds the files one push adds or changes, as the pre-push
+	// hook bounds them.
+	maxPushFiles = 1000
 	// maxTries bounds the moves of the local copy one write makes when
 	// another writer of the checkout moved it first.
 	maxTries = 3
@@ -242,6 +248,13 @@ type Decision struct {
 	Mode            string `json:"mode,omitempty"`
 	AuthorCanWrite  *bool  `json:"author_can_write,omitempty"`
 	ApprovalCounted *bool  `json:"approval_counted,omitempty"`
+	// ModeLayer is the configuration layer that declared the mode (the
+	// repository, the machine or the bundled default), and ReceiptNamedHead
+	// whether a review receipt that stands named the head: both set by the
+	// gate as it decided, so a reader takes them as fields, never from the
+	// reason. A record written before the gate set them carries neither.
+	ModeLayer        string `json:"mode_layer,omitempty"`
+	ReceiptNamedHead *bool  `json:"receipt_named_head,omitempty"`
 }
 
 var (
@@ -384,7 +397,7 @@ func (d Decision) normalise() (Decision, error) {
 		d.Answer, d.AnswerKind, d.Model = cleanWord(d.Answer), cleanWord(d.AnswerKind), clean(d.Model)
 		d.Question, d.Rule, d.Reason = clean(d.Question), clean(d.Rule), clean(d.Reason)
 		d.Site, d.PR, d.Head, d.Arm, d.Method, d.Why, d.Unread = "", 0, "", false, "", "", false
-		d.Mode, d.AuthorCanWrite, d.ApprovalCounted = "", nil, nil
+		d.Mode, d.AuthorCanWrite, d.ApprovalCounted, d.ModeLayer, d.ReceiptNamedHead = "", nil, nil, "", nil
 	case KindMergeGate:
 		if d.PR <= 0 {
 			return Decision{}, errors.New("a merge-gate decision names no pull request")
@@ -392,11 +405,14 @@ func (d Decision) normalise() (Decision, error) {
 		if !shaRe.MatchString(d.Head) {
 			return Decision{}, errors.New("a merge-gate decision names no head commit")
 		}
-		if d.Site != SiteLand && d.Site != SiteLane {
+		if d.Site != SiteLand && d.Site != SiteLane && d.Site != SiteRearm {
 			return Decision{}, fmt.Errorf("a merge-gate decision names no site the store keeps (%s)", termsafe.Sanitize(echo(d.Site)))
 		}
-		d.Method, d.Why, d.Mode = clean(d.Method), clean(d.Why), cleanWord(d.Mode)
+		d.Method, d.Why, d.Mode, d.ModeLayer = clean(d.Method), clean(d.Why), cleanWord(d.Mode), cleanWord(d.ModeLayer)
 		d.AuthorCanWrite, d.ApprovalCounted = flag(d.AuthorCanWrite), flag(d.ApprovalCounted)
+		if d.ReceiptNamedHead != nil {
+			d.ReceiptNamedHead = flag(d.ReceiptNamedHead)
+		}
 		d.Issue, d.Question, d.Answer, d.AnswerKind, d.Model, d.Rule, d.Reason = "", "", "", "", "", "", ""
 	default:
 		return Decision{}, fmt.Errorf("a decision of kind %s is not one the store keeps", termsafe.Sanitize(echo(d.Kind)))
@@ -408,6 +424,32 @@ func (d Decision) normalise() (Decision, error) {
 func flag(b *bool) *bool {
 	v := b != nil && *b
 	return &v
+}
+
+// typed is h as it leaves the machine that wrote it: its typed fields alone
+// (dcn-2611131340596847, settled as typed fields only). The rule and the
+// reason the drain wrote stay on that machine's local copy; the drain's rule
+// record is kept only where it reads as one word, a record id.
+func (h HandBack) typed() HandBack {
+	h.Rule, h.Reason = "", ""
+	if !ruleWordRe.MatchString(h.DrainRule) {
+		h.DrainRule = ""
+	}
+	return h
+}
+
+// typed is d as it leaves the machine that wrote it: its typed fields alone.
+// The question put, the reason given and the gate's why stay on that
+// machine's local copy; the rule record, the model and the method are kept
+// only where each reads as one word.
+func (d Decision) typed() Decision {
+	d.Question, d.Reason, d.Why = "", "", ""
+	for _, f := range []*string{&d.Rule, &d.Model, &d.Method} {
+		if !ruleWordRe.MatchString(*f) {
+			*f = ""
+		}
+	}
+	return d
 }
 
 // echo is s cut for a refusal to name.
@@ -437,7 +479,12 @@ type file struct {
 	head         string
 }
 
-func (f file) path() string { return f.folder + "/" + f.name }
+func (f file) path() string {
+	if f.folder == "" {
+		return f.name
+	}
+	return f.folder + "/" + f.name
+}
 
 // named is the file name for a record of stem holding data: the stem, the
 // first hashLen hex digits of the SHA-256 of data, and .json.
@@ -477,7 +524,10 @@ func (d Decision) file() (file, error) {
 
 // encode is v as a record file holds it: indented JSON and a newline, within
 // maxRecordBytes.
-func encode(v any) ([]byte, error) {
+func encode(v any) ([]byte, error) { return encodeWithin(v, maxRecordBytes) }
+
+// encodeWithin is encode within limit bytes.
+func encodeWithin(v any, limit int) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
@@ -485,8 +535,8 @@ func encode(v any) ([]byte, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	if b.Len() > maxRecordBytes {
-		return nil, fmt.Errorf("the record is %d bytes, over the store's %d", b.Len(), maxRecordBytes)
+	if b.Len() > limit {
+		return nil, fmt.Errorf("the record is %d bytes, over the store's %d", b.Len(), limit)
 	}
 	return b.Bytes(), nil
 }
@@ -1049,6 +1099,9 @@ type Records struct {
 	HandBacks  []HandBack
 	Decisions  []Decision
 	Unreadable []string
+	// handBackNames and decisionNames are the file names each record is
+	// kept under, in the order of HandBacks and Decisions.
+	handBackNames, decisionNames []string
 }
 
 // read reads the store at ref (LocalRef or TrackingRef), all its files'
@@ -1095,8 +1148,13 @@ func read(ctx context.Context, root, ref string) (rec Records, ok bool, err erro
 	}
 	for i, data := range blobs {
 		dir, name, _ := strings.Cut(names[i], "/")
-		if !readRecord(&rec, dir, name, data) {
+		switch {
+		case !readRecord(&rec, dir, name, data):
 			rec.Unreadable = append(rec.Unreadable, termsafe.Sanitize(names[i]))
+		case dir == HandBacksDir:
+			rec.handBackNames = append(rec.handBackNames, name)
+		default:
+			rec.decisionNames = append(rec.decisionNames, name)
 		}
 	}
 	return rec, true, nil
@@ -1159,20 +1217,24 @@ type PushResult struct {
 var beforePush func(attempt int)
 
 // push carries the local copy's records to origin: a fetch of the branch,
-// the records origin lacks laid over its tip when another writer moved it,
-// and one plain push (claim.PushBranch), never forced. A push origin rejects
-// (a writer that pushed between the fetch and the push) is tried once more
-// after a fresh fetch; a second failure is an error, and every record stays
-// on the local copy for the next push. A fetch or a push whose git was not
-// run (a gitutil.NotRunError: the check gitutil.SetBeforeHookedGit set
-// refused it, or the read of core.sshCommand that decides its ssh command
-// failed) is not tried again: the error says the push was stopped and
-// carries the stop. The local copy is never moved: it
-// keeps only what this checkout wrote, whatever origin holds. A branch origin no longer holds
-// is no copy at all: its tracking ref is removed and the local copy pushed
-// whole. Nothing origin holds is removed, and only a file its name does not
-// give is replaced. A checkout whose local copy holds nothing origin lacks
-// pushes nothing.
+// the typed copy (typed) of every record the local copy holds that origin's
+// copy lacks committed over origin's tip, and one plain push
+// (claim.PushBranch), never forced. Only a file that reads as a record this
+// package writes is carried, and only its typed fields: a record's free text
+// never leaves the machine that wrote it, and a file the local copy holds
+// that does not read as a record is never sent. A push origin rejects (a
+// writer that pushed between the fetch and the push) is tried once more after
+// a fresh fetch; a second failure is an error, and every record stays on the
+// local copy for the next push. A fetch or a push whose git was not run (a
+// gitutil.NotRunError: the check gitutil.SetBeforeHookedGit set refused it,
+// or the read of core.sshCommand that decides its ssh command failed) is not
+// tried again: the error says the push was stopped and carries the stop. The
+// local copy is never moved: it keeps only what this checkout wrote, whatever
+// origin holds. A branch origin no longer holds is no copy at all: its
+// tracking ref is removed and the records pushed onto a new one. Nothing
+// origin holds is removed, and only a file its name does not give is
+// replaced. A checkout whose local copy holds nothing origin lacks pushes
+// nothing.
 func push(ctx context.Context, root string) (PushResult, error) {
 	if err := originPresent(ctx, root); err != nil {
 		return PushResult{}, err
@@ -1189,31 +1251,30 @@ func push(ctx context.Context, root string) (PushResult, error) {
 		if local == "" {
 			return PushResult{}, nil
 		}
-		found, err := claim.FetchBranch(ctx, root, BranchRef, TrackingRef)
-		if err != nil {
-			return PushResult{}, fmt.Errorf("the spot-check's record was not pushed: %w", stopped("push", err))
-		}
-		tracking := ""
-		if found {
-			if tracking, err = storeRef(ctx, root, TrackingRef); err != nil {
-				return PushResult{}, err
-			}
-		} else if old, err := storeRef(ctx, root, TrackingRef); err == nil && old != "" {
-			if _, err := storeGit(ctx, root, "", "", "update-ref", "-d", TrackingRef, old); err != nil {
-				return PushResult{}, err
-			}
-		}
-		res, err := layOver(ctx, root, local, tracking)
+		tracking, err := fetchTracking(ctx, root)
 		if err != nil {
 			return PushResult{}, err
 		}
-		if res.Commit == "" {
+		theirs, err := listFiles(ctx, root, tracking)
+		if err != nil {
+			return PushResult{}, err
+		}
+		todo, unreadable, err := outbound(ctx, root, theirs)
+		if err != nil {
+			return PushResult{}, err
+		}
+		// A backlog over one push's bound goes in turns, the rest with the
+		// next push.
+		todo = todo[:min(len(todo), maxPushFiles)]
+		res := PushResult{Pushed: len(todo), Unreadable: unreadable}
+		if len(todo) == 0 {
 			return res, nil
 		}
 		if beforePush != nil {
 			beforePush(attempt)
 		}
-		if err := claim.PushBranch(ctx, root, res.Commit, BranchRef); err != nil {
+		commit, err := pushOver(ctx, root, tracking, todo, fmt.Sprintf("spotcheck: %d record(s)", len(todo)))
+		if err != nil {
 			var nr *gitutil.NotRunError
 			if errors.As(err, &nr) {
 				return PushResult{}, fmt.Errorf("the spot-check's record was not pushed, and stays on this copy for the next push: %w", stopped("push", err))
@@ -1221,91 +1282,116 @@ func push(ctx context.Context, root string) (PushResult, error) {
 			last = err
 			continue
 		}
-		// The tracking copy follows what origin took, so the next push lays
-		// on it; a move refused here is put right by the next fetch.
-		_, _ = storeGit(ctx, root, "", "", "update-ref", TrackingRef, res.Commit)
+		res.Commit = commit
 		return res, nil
 	}
 	return PushResult{}, fmt.Errorf("the spot-check's record was not pushed after two tries, so every record stays on this copy for the next push: %w", last)
 }
 
-// layOver is the commit to push for the local copy and origin's (tracking,
-// "" for none) as just fetched: the local copy when origin holds none or its
-// tip is an ancestor of the local copy, a commit over origin's copy holding
-// every file the local copy has and it lacks, at any depth, when the two have
-// parted, and "" when origin holds every file already. A path both hold with
-// other content is settled by its name (nameMatches): the copy its name gives
-// is kept, and the other named in Unreadable. The local copy is not moved, so
-// it never holds another writer's files and its records stay on it whatever
-// the push does.
-func layOver(ctx context.Context, root, local, tracking string) (PushResult, error) {
-	mine, err := listFiles(ctx, root, local)
+// fetchTracking fetches the store's branch into its tracking ref and answers
+// the commit it names, "" when origin holds no such branch (a stale tracking
+// ref is then removed). A branch that no longer holds this machine's mark
+// (holdsMark), gone from origin or rewritten there, is refused: the tracking
+// ref of a gone branch is kept, and nothing is written over either.
+func fetchTracking(ctx context.Context, root string) (string, error) {
+	found, err := claim.FetchBranch(ctx, root, BranchRef, TrackingRef)
 	if err != nil {
-		return PushResult{}, err
+		return "", fmt.Errorf("the spot-check's branch was not fetched: %w", stopped("push", err))
 	}
-	theirs, err := listFiles(ctx, root, tracking)
-	if err != nil {
-		return PushResult{}, err
+	if found {
+		tracking, err := storeRef(ctx, root, TrackingRef)
+		if err != nil {
+			return "", err
+		}
+		return tracking, holdsMark(ctx, root, tracking, true)
 	}
-	var res PushResult
-	var adds []placed
-	var clash []string
-	for p, e := range mine {
-		t, held := theirs[p]
-		switch {
-		case !held:
-			res.Pushed++
-			adds = append(adds, placed{path: p, entry: e})
-		case t.sha != e.sha:
-			clash = append(clash, p)
+	if err := holdsMark(ctx, root, "", true); err != nil {
+		return "", err
+	}
+	if old, err := storeRef(ctx, root, TrackingRef); err == nil && old != "" {
+		if _, err := storeGit(ctx, root, "", "", "update-ref", "-d", TrackingRef, old); err != nil {
+			return "", err
 		}
 	}
-	slices.Sort(clash)
-	for _, p := range clash {
-		mineGood, theirsGood := false, false
-		e, t := mine[p], theirs[p]
-		if e.typ == "blob" && t.typ == "blob" && e.size <= maxRecordBytes && t.size <= maxRecordBytes {
-			blobs, err := readBlobs(ctx, root, []entry{e, t})
+	return "", nil
+}
+
+// outbound is the typed copy of every record the local copy holds that
+// origin's copy (theirs, its listing) lacks: a path origin holds with the
+// same content is held; one it holds with other content is named in
+// unreadable, and carried only when origin's file is not the content its
+// name gives. A file of the local copy that does not read as a record is
+// never among them.
+func outbound(ctx context.Context, root string, theirs map[string]entry) (todo []file, unreadable []string, err error) {
+	rec, ok, err := read(ctx, root, LocalRef)
+	if err != nil || !ok {
+		return nil, nil, err
+	}
+	var cands []file
+	for _, h := range rec.HandBacks {
+		if f, err := h.typed().file(); err == nil {
+			cands = append(cands, f)
+		}
+	}
+	for _, d := range rec.Decisions {
+		if f, err := d.typed().file(); err == nil {
+			cands = append(cands, f)
+		}
+	}
+	seen := map[string]bool{}
+	for _, f := range cands {
+		if seen[f.path()] {
+			continue
+		}
+		seen[f.path()] = true
+		t, held := theirs[f.path()]
+		if !held {
+			todo = append(todo, f)
+			continue
+		}
+		if t.typ == "blob" && t.sha == blobID(f.data, len(t.sha)) {
+			continue
+		}
+		unreadable = append(unreadable, termsafe.Sanitize(f.path()))
+		good := false
+		if t.typ == "blob" && t.size <= maxRecordBytes {
+			blobs, err := readBlobs(ctx, root, []entry{t})
 			if err != nil {
-				return PushResult{}, err
+				return nil, nil, err
 			}
-			name := p[strings.LastIndexByte(p, '/')+1:]
-			mineGood, theirsGood = nameMatches(name, blobs[0]), nameMatches(name, blobs[1])
+			good = nameMatches(f.name, blobs[0])
 		}
-		res.Unreadable = append(res.Unreadable, termsafe.Sanitize(p))
-		if mineGood && !theirsGood {
-			res.Pushed++
-			adds = append(adds, placed{path: p, entry: e})
+		if !good {
+			todo = append(todo, f)
 		}
 	}
-	if tracking == "" {
-		if res.Pushed > 0 {
-			res.Commit = local
-		}
-		return res, nil
+	slices.SortFunc(todo, func(a, b file) int { return strings.Compare(a.path(), b.path()) })
+	return todo, unreadable, nil
+}
+
+// pushOver commits files over origin's copy as last fetched (tracking, ""
+// for none), touching no HEAD, index or working tree, and pushes the commit
+// to origin's branch, plainly: origin takes it only as a fast-forward. On
+// success the tracking ref follows what origin took (a move refused there is
+// put right by the next fetch); a push that fails leaves nothing behind but
+// an unreferenced commit.
+func pushOver(ctx context.Context, root, tracking string, files []file, msg string) (string, error) {
+	if len(files) > maxPushFiles {
+		return "", fmt.Errorf("the push would carry %d files, over the %d one push of the spot-check's may", len(files), maxPushFiles)
 	}
-	if res.Pushed == 0 {
-		// Origin holds everything: nothing to push.
-		return res, nil
-	}
-	ahead, err := isAncestor(ctx, root, tracking, local)
+	tree, err := treeWith(ctx, root, tracking, files)
 	if err != nil {
-		return PushResult{}, err
+		return "", err
 	}
-	if ahead {
-		res.Commit = local
-		return res, nil
-	}
-	tree, err := treeOver(ctx, root, tracking, adds)
+	commit, err := commitTree(ctx, root, tree, tracking, msg)
 	if err != nil {
-		return PushResult{}, err
+		return "", err
 	}
-	commit, err := commitTree(ctx, root, tree, tracking, fmt.Sprintf("spotcheck: %d record(s) laid over %s's copy", res.Pushed, claim.Remote))
-	if err != nil {
-		return PushResult{}, err
+	if err := claim.PushBranch(ctx, root, commit, BranchRef); err != nil {
+		return "", err
 	}
-	res.Commit = commit
-	return res, nil
+	_, _ = storeGit(ctx, root, "", "", "update-ref", TrackingRef, commit)
+	return commit, nil
 }
 
 // placed is one file of the local copy at its path, for a lay-over.

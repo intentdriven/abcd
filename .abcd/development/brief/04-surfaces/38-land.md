@@ -478,6 +478,33 @@ with no approval, so abcd enforces this itself. Every forge read the gate
 makes is a GET, its fields pinned in `internal/ghcontract` after a live
 read-only call, and a forge answer that cannot be read counts for nothing.
 
+## The spot-check at a landing
+
+A re-run that finds the branch landed observes the landing for the spot-check
+(itd-2610301750162657, `internal/core/spotcheck`), and the `landed` step's note
+carries the observation's line. In `auto` mode the gate's decision abcd takes
+alone, and a re-arm the release hold makes, are each kept on the checkout's
+local copy of the store (`refs/abcd/spotcheck`), with the mode's layer and
+whether a review receipt named the head. While the window has not passed, the
+observation reads the store as last fetched and pushes only records origin's
+branch `abcd-spotcheck` lacks. Once it has passed it fetches the branch, takes
+the verified round of the drand quicknet beacon that the window's close fixes
+on the chain's pinned clock (asked by number once published, its signature
+checked against the pinned key, ten seconds in all), draws by HMAC over the
+round's randomness, and pushes the cycle over the tracking tip, tried once more
+after a refusal. Every cycle read back is verified the same way and set aside
+when it fails, and a branch that no longer holds this machine's high-water
+mark is refused once a fetch confirms it (a copy only behind the mark, which
+another clone on the machine moved, is fetched first). A draw reads only the
+records no earlier cycle listed, and lists every record population whole, at
+most 1,000 keys a window, the rest waiting for the next, so a later draw knows
+each record already drawn from
+([dcn-2611260013430233](../../../work/decisions/dcn-2611260013430233-the-technical-facilitator-under.md)).
+Only typed fields reach origin, and an observation that cannot draw writes
+nothing and leaves the landing proved. The branch takes no preflight receipt:
+the pre-push hook admits it by a row of its own
+([adr-2611251806496719](../../decisions/adrs/2611251806496719-the-spot-check-s-store-branch-is-pushed.md)).
+
 ## Trust boundaries
 
 - The remote is `origin` alone, and its every fetch and push URL must be the

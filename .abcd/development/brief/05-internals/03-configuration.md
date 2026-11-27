@@ -868,6 +868,42 @@ may run to in this repository: a whole number from 16 to 200, 40 by default
 - **What it does not bound.** An idea's slug in `ideate`, whose verdict record is not
   one of these families, keeps its own limit of 64, and a checklist item's id its own.
 
+### The spot-check keys
+
+The `spotcheck` block sets the spot-check's window and its sample
+(`internal/core/spotcheck/config.go`, itd-2610301750162657). A window is
+governed by the repository layer alone, as the default branch stores it at the
+commit the window starts at: a value only in the working tree, a change landed
+inside the window, or a machine's own layer sizes no draw, so every reader of a
+cycle checks it by the same values.
+
+```jsonc
+{
+  "spotcheck": {
+    "window_days": 7,                   // 1 to 90; bundled default 7
+    "window_changes": 0,                // 10 to 100000; 0 or absent is unset
+    "per_group": 10                     // 1 to 100; bundled default 10
+  }
+}
+```
+
+- **The first bound to pass closes the window.** A window spans everything since
+  the last cycle and closes as the default branch's first-parent line gives it:
+  `window_days` whole days after it began, once a commit was committed after
+  that moment, or, when set, at the `window_changes`-th commit, whichever comes
+  first on the line. The draw is made at the first landing observed after the
+  round that close fixes is published.
+- **`per_group` is the most a group draws.** The size halves, rounded up, after
+  three closed cycles in a row found nothing, and is whole again after a finding.
+- **A block that does not read counts its window by the defaults.** A value out
+  of bounds or not a whole number, a misspelt key under `spotcheck`, or a
+  `.abcd/config.json` that does not parse, at the commit a window starts at,
+  counts that window by the bundled defaults: every observation's note says so,
+  naming the file and the key, the window is still drawn, and its cycle records
+  `"defaults": true`, so every reader verifies it by the same values. A
+  corrected block takes effect from the next window, which starts at a later
+  commit.
+
 ### Staged config keys
 
 No shipped code reads any of the keys below. None appears in any repository's

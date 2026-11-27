@@ -3,6 +3,7 @@ module github.com/intentdriven/abcd
 go 1.27.4
 
 require (
+	github.com/cloudflare/circl v1.6.3
 	github.com/coder/websocket v1.8.15
 	github.com/minio/selfupdate v0.6.0
 	github.com/sigstore/sigstore-go v1.4.0
