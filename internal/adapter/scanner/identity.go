@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -316,13 +317,21 @@ func containsFold(list []string, v string) bool {
 
 // foldedAlternation compiles values into one case-insensitive literal
 // alternation. The (?i) is what every identity matcher already carried; the
-// alternation is what lets one matcher stand for every scope's value.
+// alternation is what lets one matcher stand for every scope's value. Each
+// value is matched in every form a text carries it in (receivedForms): both
+// Unicode normal forms, and for a value that is not valid UTF-8, the forms a
+// store receives it in, the raw bytes left out (literalAlternation). It is nil
+// when no form is left.
 func foldedAlternation(values []string) *regexp.Regexp {
-	quoted := make([]string, len(values))
-	for i, v := range values {
-		quoted[i] = regexp.QuoteMeta(v)
+	var forms []string
+	for _, v := range values {
+		for _, f := range receivedForms(v) {
+			if !slices.Contains(forms, f) {
+				forms = append(forms, f)
+			}
+		}
 	}
-	return regexp.MustCompile(`(?i)(?:` + strings.Join(quoted, `|`) + `)`)
+	return literalAlternation(forms)
 }
 
 // isPublicHandle reports whether a git user.name is the caller's public GitHub
@@ -658,7 +667,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 	if id.GitRemoteUsername != "" {
 		// GitHub usernames are case-insensitive; \b dropped for the same
 		// Unicode-boundary reason as real_name (see above).
-		m.github = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.GitRemoteUsername))
+		m.github = foldedAlternation([]string{id.GitRemoteUsername})
 	}
 	if id.HomeUser != "" {
 		// Case-insensitive, for the same reason homeSelf is (above): HomeUser is
@@ -670,9 +679,8 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// Both Unicode normal forms are matched: a non-ASCII login typed
 		// composed reaches a transcript decomposed as often as not. A name that
 		// is not valid UTF-8 is matched in the forms a store receives it in
-		// (receivedForms), its raw bytes left out (literalAlternation), and with
-		// none left there is no matcher.
-		m.localBare = literalAlternation(receivedForms(id.HomeUser))
+		// (foldedAlternation), and with none left there is no matcher.
+		m.localBare = foldedAlternation([]string{id.HomeUser})
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
