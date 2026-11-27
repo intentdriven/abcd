@@ -527,7 +527,7 @@ func (r Registry) forgeJudge(command, what, text string, add func(payloadSignal)
 			return
 		}
 		if err != nil {
-			add(forgeConfigSignal(command, what))
+			add(forgeConfigSignal(command, what, scanner.UnmatchableSetting(err)))
 		}
 	}
 	if whole && what != forgeTitle && forgeHoldsPR(command) {
@@ -566,8 +566,19 @@ func (r Registry) forgeMentions(command string, seen *forgeSeen, add func(payloa
 }
 
 // forgeConfigSignal is the warn for a text the guard could not judge because
-// the scanner's configuration does not load.
-func forgeConfigSignal(command, what string) payloadSignal {
+// the scanner's configuration does not load, or, where setting is not "",
+// because that identity setting's value is not valid UTF-8, which re-saving it
+// fixes and the configuration does not.
+func forgeConfigSignal(command, what, setting string) payloadSignal {
+	if setting != "" {
+		return payloadSignal{
+			id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
+			reason: "The guard could not judge the " + what + " this `" + command + "` hands the forge: " +
+				scanner.IdentityUnmatchableReason(setting) + ".",
+			successor: scanner.IdentityUnmatchableRemedy(setting) + ", or remove any session URL and tool attribution footer " +
+				"from the text yourself before posting.",
+		}
+	}
 	return payloadSignal{
 		id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
 		reason: "The guard could not judge the " + what + " this `" + command + "` hands the forge: the repository's scanner " +

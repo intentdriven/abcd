@@ -60,6 +60,9 @@ func openStoreRedactor(repoRoot string) (*storeRedactor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scanner init failed: %v", err)
 	}
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, fmt.Errorf("degraded scanner: %w", &scanner.IdentityUnmatchableError{Setting: setting})
+	}
 	if unavail, reason := sc.Unavailable(); unavail {
 		return nil, fmt.Errorf("degraded scanner: %s", reason)
 	}

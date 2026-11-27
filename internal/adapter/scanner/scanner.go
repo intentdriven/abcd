@@ -415,6 +415,28 @@ func IdentityUnmatchableReason(setting string) string {
 	return setting + " is not valid UTF-8, so the redactor cannot match it: re-save it as UTF-8 (the value is not shown)"
 }
 
+// IdentityUnmatchableRemedy words the fix for the cause IdentityUnmatchable
+// names, where a refusal would otherwise send the person to the pattern set's
+// configuration: the setting to re-save.
+func IdentityUnmatchableRemedy(setting string) string { return "re-save " + setting + " as UTF-8" }
+
+// IdentityUnmatchableError is a refusal on the cause IdentityUnmatchable
+// names, carrying the setting and never the value, so a caller that words the
+// fix apart from the error can name it (UnmatchableSetting).
+type IdentityUnmatchableError struct{ Setting string }
+
+func (e *IdentityUnmatchableError) Error() string { return IdentityUnmatchableReason(e.Setting) }
+
+// UnmatchableSetting is the setting an error's identity cause names, or ""
+// for an error with some other cause.
+func UnmatchableSetting(err error) string {
+	var ie *IdentityUnmatchableError
+	if errors.As(err, &ie) {
+		return ie.Setting
+	}
+	return ""
+}
+
 // mergeConfig layers a per-repo override onto the built-in defaults, enforcing
 // the severity floor on both bundled patterns and identity kinds.
 func (s *Scanner) mergeConfig(cfg Config) error {

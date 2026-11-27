@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -594,10 +595,14 @@ func Lint(req LintRequest) (LintResult, error) {
 		// is nonzero either way.
 		redactor, rerr := openStoreRedactor(root)
 		if rerr != nil {
+			fix := "Repair or remove the per-repo scanner override at .abcd/config/pii.json and re-run lint."
+			if setting := scanner.UnmatchableSetting(rerr); setting != "" {
+				fix = scanner.IdentityUnmatchableRemedy(setting) + ", then re-run lint."
+			}
 			findings = append(findings, Finding{
 				Code: "MR001", Severity: severityFor("MR001"), File: mem,
 				Message:    "secret scan unavailable (" + rerr.Error() + "): stored pages, the sources registry and kept originals were not checked for residue.",
-				Suggestion: "Repair or remove the per-repo scanner override at .abcd/config/pii.json and re-run lint.",
+				Suggestion: fix,
 			})
 		}
 		for _, p := range store.typedPages() {

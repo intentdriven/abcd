@@ -239,6 +239,11 @@ func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
 	}
+	// The identity cause is carried typed (scanner.UnmatchableSetting), so
+	// the caller can name the setting to re-save.
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, fmt.Errorf("%w: %w", ErrScannerUnavailable, &scanner.IdentityUnmatchableError{Setting: setting})
+	}
 	if unavailable, reason := sc.Unavailable(); unavailable {
 		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
 	}
