@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
@@ -232,7 +234,9 @@ func checkGeneratedIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig)
 // directory that does not exist is a refusal naming it, never an empty
 // listing: a moved or misnamed directory would otherwise empty the region and
 // the region would still equal its rendering, so the gate would stay green over
-// an index that lists nothing.
+// an index that lists nothing. Every value it writes into a line passes
+// indexText first, so the region it composes holds exactly the lines it
+// returns.
 func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
 	if st, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(spec.Dir))); err != nil {
 		if os.IsNotExist(err) {
@@ -258,6 +262,11 @@ func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
 			names = append(names, n)
 		}
 		sort.Strings(names)
+		for _, n := range names {
+			if err := indexText(spec.Dir, "an entry named", n); err != nil {
+				return nil, err
+			}
+		}
 		return renderNameList(names), nil
 	case indexRenderTitles:
 		recs, err := indexRecords(repoRoot, spec, dirEntryRe)
@@ -266,6 +275,9 @@ func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
 		}
 		out := make([]string, 0, len(recs))
 		for _, r := range recs {
+			if err := indexRecordText(spec.Dir, r, r.id, r.title); err != nil {
+				return nil, err
+			}
 			out = append(out, "- `"+r.id+"` — "+r.title)
 		}
 		return out, nil
@@ -289,12 +301,45 @@ func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
 			if len(notes) > 0 {
 				title += " (" + strings.Join(notes, "; ") + ")"
 			}
+			if err := indexRecordText(spec.Dir, r, r.id, r.file, title,
+				fmScalar(r.fields, "status"), fmScalar(r.fields, "date")); err != nil {
+				return nil, err
+			}
 			out = append(out, "| ["+r.id+"]("+r.file+") | "+tableCell(title)+" | "+
 				tableCell(fmScalar(r.fields, "status"))+" | "+tableCell(fmScalar(r.fields, "date"))+" |")
 		}
 		return out, nil
 	}
 	return nil, fmt.Errorf("unknown render %q", spec.Render)
+}
+
+// indexText refuses a value holding a control character before a renderer
+// writes it into a region. A line break in a directory entry's name would be
+// split into lines of its own on the next read, so the name could place a
+// closing marker inside the region, and a carriage return or other control
+// character changes what the line says. The value is named in quoted form,
+// which spells each control character as an escape.
+func indexText(dir, what, v string) error {
+	if strings.IndexFunc(v, unicode.IsControl) < 0 {
+		return nil
+	}
+	return fmt.Errorf("%s holds %s %s, which has a control character (a line break, carriage return or the like) "+
+		"that cannot stand in a generated region; rename it or edit the record so it holds plain text", dir, what, strconv.Quote(v))
+}
+
+// indexRecordText is indexText over every value one record lends a rendered
+// line, naming the record's file and, when it is the file name itself at
+// fault, that name alone.
+func indexRecordText(dir string, r indexRecord, values ...string) error {
+	if err := indexText(dir, "a file named", r.file); err != nil {
+		return err
+	}
+	for _, v := range values {
+		if err := indexText(dir, "in "+strconv.Quote(r.file)+" the value", v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // adrTitlePrefixRe is the `ADR-<N>: ` an ADR's H1 opens with; the table's ID

@@ -472,3 +472,58 @@ func TestRegeneratedIndexKeepsCRLF(t *testing.T) {
 		t.Fatalf("a stale CRLF region must regenerate with CRLF endings and the prose untouched; got %q, want %q", rw[0].Want, current)
 	}
 }
+
+// TestGeneratedIndexRefusesControlCharacters holds every value a renderer
+// writes into a region to one line of plain text. A directory entry whose name
+// holds a line break was written raw, so the next run split it into lines of
+// its own and could stand a marker on one: a name cannot hold the closing
+// marker's slash, but it can hold an opening marker, which the next run reads
+// as a second region for the id. A carriage return or another control
+// character left in a record's title or file name is the same hazard in the
+// other renderers. Both the generator and the drift check refuse, naming the
+// entry in quoted form, and neither writes it. The names are real files: the
+// filesystem takes a line break in a name.
+func TestGeneratedIndexRefusesControlCharacters(t *testing.T) {
+	forged := "a\n<!-- index: commands -->\nb"
+	cases := []struct {
+		name  string
+		spec  IndexSpec
+		setup func(t *testing.T, root string)
+		quote string
+	}{
+		{"names renderer, a line break in a file name", namesGenSpec(), func(t *testing.T, root string) {
+			writeFile(t, root, filepath.Join("commands", "ahoy.md"), "# ahoy\n")
+			writeFile(t, root, filepath.Join("commands", forged+".md"), "# forged\n")
+			writeFile(t, root, "surfaces.md", genDoc("commands", "`ahoy`.\n"))
+		}, `"a\n<!-- index: commands -->\nb"`},
+		{"adr table, a line break in a file name", adrGenSpec(), func(t *testing.T, root string) {
+			writeGenADR(t, root, "0001-one.md", "adr-1", "One decision", "accepted", "2026-05-04", "null", "null")
+			writeGenADR(t, root, "0002-"+forged+".md", "adr-2", "Two decision", "accepted", "2026-05-04", "null", "null")
+			writeFile(t, root, filepath.Join("adrs", "README.md"), genDoc("adr-index", ""))
+		}, `"0002-a\n<!-- index: commands -->\nb.md"`},
+		{"titles renderer, a carriage return in a title", draftsGenSpec(), func(t *testing.T, root string) {
+			writeFile(t, root, filepath.Join("drafts", "itd-1-x.md"), "# One\rtwo\n")
+			writeFile(t, root, "scope.md", genDoc("drafts-titles", ""))
+		}, `"One\rtwo"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			c.setup(t, root)
+			rw, err := RegenerateIndexes(root, indexCfg(c.spec))
+			if err == nil {
+				t.Fatalf("the generator must refuse a control character in an entry; got %+v", rw)
+			}
+			if !strings.Contains(err.Error(), c.quote) {
+				t.Errorf("the refusal must name the entry as %s; got %v", c.quote, err)
+			}
+			fs, err := Lint(indexCfg(c.spec), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := countRule(fs, "index_drift"); n != 1 || !messageContains(fs, c.quote) {
+				t.Fatalf("the drift check must refuse the same entry, naming it as %s; got %+v", c.quote, fs)
+			}
+		})
+	}
+}
