@@ -1142,7 +1142,8 @@ func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 		withheld bool
 	}
 	reasons := map[string]cleaned{}
-	if req.Act != ActPrivate {
+	// A record settle gives no reason, so there is none to clean or withhold.
+	if req.Act != ActPrivate && req.Reason != "" {
 		rs := newRedactors(ctx)
 		for _, l := range found {
 			key := reasonKey(l.e)
@@ -1204,7 +1205,7 @@ func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 				e.Kind, to = KindPrivate, dirPrivate
 			} else {
 				c, ok := reasons[reasonKey(e)]
-				if !ok {
+				if !ok && req.Reason != "" {
 					c = cleaned{withheld: true}
 				}
 				e.Settled = &Settlement{Act: req.Act, Record: id(req.Record), Reason: c.reason, ReasonWithheld: c.withheld, At: req.At}

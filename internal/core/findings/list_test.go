@@ -1854,3 +1854,29 @@ func TestAReasonIsKeptOnlyFromTheEntrysOwnCheckout(t *testing.T) {
 		}
 	}
 }
+
+// TestARecordSettleWithNoReasonWithholdsNone: a record settle gives no reason,
+// so none is withheld, wherever it is typed.
+func TestARecordSettleWithNoReasonWithholdsNone(t *testing.T) {
+	s, _ := newTestStore(t)
+	cheapRedactor(t)
+	there := entry(KindUntested, "s1", "put from there")
+	there.Checkout = "/there"
+	far := mustPut(t, s, there)
+	near := mustPut(t, s, entry(KindDoubt, "s1", "put from here"))
+	if _, err := s.Settle(bg, SettleRequest{Checkout: "/checkout", Handles: []string{far.Handle()}, Act: ActCaptured, Record: "iss-1", Records: holding{}, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Settle(bg, SettleRequest{Handles: []string{near.Handle()}, Act: ActSettled, Record: "dcn-1", Records: holding{}, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	last, _, err := s.SettledView(5)
+	if err != nil || len(last) != 2 {
+		t.Fatalf("SettledView = %+v, %v", last, err)
+	}
+	for _, l := range last {
+		if l.Settled == nil || l.Settled.Record == "" || l.Settled.ReasonWithheld {
+			t.Errorf("%s settled by a record as %+v; want no reason withheld", l.Handle(), l.Settled)
+		}
+	}
+}
