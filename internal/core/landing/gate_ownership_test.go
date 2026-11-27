@@ -236,6 +236,24 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
+	t.Run("more merge commits touch the file than the gate reads", func(t *testing.T) {
+		f := newFixtureFiles(t, rebaseRuleset, map[string]string{".abcd/config.json": autoConfig})
+		for i := range 65 {
+			f.repo.Git("checkout", "-q", "main")
+			f.repo.Write(".abcd/config.json", fmt.Sprintf(`{"facilitator":{"mode":"auto"},"land":{"round":%d}}`+"\n", i))
+			f.repo.Commit(fmt.Sprintf("main changes another key, round %d", i))
+			f.repo.Git("checkout", "-q", "feat/x")
+			f.repo.Git("merge", "-q", "--no-edit", "main")
+		}
+		pushMain(f)
+		tip := f.repo.Git("rev-parse", "origin/main")
+		d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+			Rule: MergeRule{Method: "REBASE"}, RuleRead: true,
+			Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+		if says := "more than 64 merge commits"; err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, says) {
+			t.Fatalf("decision %+v, %v: want nothing armed, unread, saying %q", d, err, says)
+		}
+	})
 	t.Run("the list of commits touching the file cannot be read", func(t *testing.T) {
 		f := newFixtureFiles(t, rebaseRuleset, map[string]string{".abcd/config.json": autoConfig})
 		f.repo.Write("middle.txt", "a commit in the middle\n")
