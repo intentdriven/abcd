@@ -47,6 +47,7 @@ func TestSourceNoCorpusSaysSoOnEveryVerb(t *testing.T) {
 	home, _ := sourceCheckout(t)
 	for _, args := range [][]string{
 		{"ledger", "--list"},
+		{"ledger"},
 		{"sync-banlist"},
 		{"cite-check", "-"},
 		{"declassify", "conf2026a"},
