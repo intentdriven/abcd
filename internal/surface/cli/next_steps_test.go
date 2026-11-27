@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -284,6 +285,14 @@ func runFixture(t *testing.T, entry surface.Next, hidden bool, args []string, ru
 // and the error its run returned.
 func runFixtureErr(t *testing.T, entry surface.Next, hidden bool, args []string, run func(cmd *cobra.Command, asJSON bool) error) (string, error) {
 	t.Helper()
+	var out bytes.Buffer
+	err := runFixtureTo(t, &out, entry, hidden, args, run)
+	return out.String(), err
+}
+
+// runFixtureTo is runFixtureErr with the fixture's stdout given.
+func runFixtureTo(t *testing.T, out io.Writer, entry surface.Next, hidden bool, args []string, run func(cmd *cobra.Command, asJSON bool) error) error {
+	t.Helper()
 	root := newRootCommand(func(path string) (surface.Next, bool) {
 		if path == "abcd fixture-next" {
 			return entry, true
@@ -299,12 +308,10 @@ func runFixtureErr(t *testing.T, entry surface.Next, hidden bool, args []string,
 		},
 	}
 	root.AddCommand(fixture)
-	var out bytes.Buffer
-	root.SetOut(&out)
+	root.SetOut(out)
 	root.SetErr(io.Discard)
 	root.SetArgs(append([]string{"fixture-next"}, args...))
-	err := root.Execute()
-	return out.String(), err
+	return root.Execute()
 }
 
 // fixtureWriter is a visible fixture command's stdout under --json as the
@@ -754,5 +761,32 @@ func installNextStepsCheck() (report func() bool) {
 			fmt.Fprintln(os.Stderr, "next steps check:", line)
 		}
 		return len(nextStepsViolations.lines) > 0
+	}
+}
+
+// failingStdout is a stdout that refuses every write, as a full disk does.
+type failingStdout struct{}
+
+func (failingStdout) Write([]byte) (int, error) { return 0, errors.New("no space left on device") }
+
+// TestADocumentThatCannotBeWrittenFailsTheRun: the held document is written
+// once the run has returned, and a write that fails there fails the run, as
+// it did when the document was written inside it; a run that already failed
+// keeps its own error.
+func TestADocumentThatCannotBeWrittenFailsTheRun(t *testing.T) {
+	v := newFixtureResult("")
+	emit := func(cmd *cobra.Command, asJSON bool) error {
+		return render(cmd.OutOrStdout(), asJSON, v, func(io.Writer) {})
+	}
+	if err := runFixtureTo(t, failingStdout{}, surface.Next{Steps: fixtureSteps}, false, []string{"--json"}, emit); err == nil {
+		t.Fatal("a result that could not be written left the run succeeding")
+	}
+	own := &exitError{Code: 2, Msg: "refused"}
+	err := runFixtureTo(t, failingStdout{}, surface.Next{Steps: fixtureSteps}, false, []string{"--json"}, func(cmd *cobra.Command, asJSON bool) error {
+		_ = emit(cmd, asJSON)
+		return own
+	})
+	if err != own {
+		t.Fatalf("a failed run's own error was replaced: %v", err)
 	}
 }

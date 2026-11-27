@@ -104,26 +104,30 @@ func installNextSteps(cmd *cobra.Command, asJSON bool, nextFor func(string) (sur
 	// it is taken off rather than wrapped a second time.
 	w := &nextStepsWriter{Writer: plainStdout(cmd.OutOrStdout()), path: cmd.CommandPath(), next: n, check: nextStepsCheck}
 	cmd.SetOut(w)
-	switch {
-	case cmd.RunE != nil:
-		run := cmd.RunE
-		cmd.RunE = func(c *cobra.Command, args []string) (err error) {
-			cmd.RunE = run
-			done := false
-			defer func() { w.finish(done && err == nil) }()
-			err = run(c, args)
-			done = true
-			return err
-		}
-	case cmd.Run != nil:
-		run := cmd.Run
-		cmd.Run = func(c *cobra.Command, args []string) {
-			cmd.Run = run
-			done := false
-			defer func() { w.finish(done) }()
-			run(c, args)
-			done = true
-		}
+	// A Run is taken in as a RunE for this run alone, which cobra prefers,
+	// so a document that cannot be written fails the run either way.
+	run, restore := cmd.RunE, cmd.RunE
+	if run == nil && cmd.Run != nil {
+		plain := cmd.Run
+		run = func(c *cobra.Command, args []string) error { plain(c, args); return nil }
+	}
+	if run == nil {
+		return
+	}
+	cmd.RunE = func(c *cobra.Command, args []string) (err error) {
+		cmd.RunE = restore
+		done := false
+		// The document is written here, after the run, so a write that
+		// fails fails the run, as it did inside it; a run that already
+		// failed keeps its own error.
+		defer func() {
+			if ferr := w.finish(done && err == nil); err == nil {
+				err = ferr
+			}
+		}()
+		err = run(c, args)
+		done = true
+		return err
 	}
 }
 
@@ -161,19 +165,24 @@ func (w *nextStepsWriter) release() error {
 }
 
 // finish is the run's end: the held document is written with the command's
-// next steps when the run succeeded and as it was when it did not. A write
-// that fails here has nowhere to be told; the run's own result stands.
-func (w *nextStepsWriter) finish(ok bool) {
+// next steps when the run succeeded and as it was when it did not. The
+// write's error is returned, for the run to fail with; a key that did not
+// reach the stream is not counted as written.
+func (w *nextStepsWriter) finish(ok bool) error {
 	if w.held != nil && ok {
 		if spliced, err := spliceNextSteps(w.held, w.next.Steps, w.heldStyle); err == nil {
 			w.spliced = !bytes.Equal(spliced, w.held)
 			w.held = spliced
 		}
 	}
-	_ = w.release()
+	err := w.release()
+	if err != nil {
+		w.spliced = false
+	}
 	if ok && w.check != nil && w.check.around != nil && w.raw.Len() > 0 {
 		w.check.around(w.path, w.raw.Bytes())
 	}
+	return err
 }
 
 // checkNextStepsExit is run's half of the test binary's check: the code a
