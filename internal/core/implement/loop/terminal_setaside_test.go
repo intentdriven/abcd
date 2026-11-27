@@ -616,27 +616,12 @@ func TestAStartLetsGoAnUnlistedRunItTookUpThatCannotMove(t *testing.T) {
 	w, run, home := stopLetGoAtBound(t)
 	stopLaterStart(t)
 	root := w.repo.Root()
-	opened, heldThen := false, claim.StateLive
-	for i := range w.stages {
-		inner, name := w.stages[i].Run, w.stages[i].Name
-		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
-			if c.State.Key == run.Key {
-				if name == StageLand {
-					return Outcome{}, refuse(string(StageLand), "", l.ID, "the landing cannot go on here", "see the reason")
-				}
-				return inner(c, l)
-			}
-			if !opened {
-				opened = true
-				heldThen = reservationOf(t, root, run.Key, w.clock.t).State
-			}
-			return inner(c, l)
-		}
-	}
+	seen := refuseLandOf(t, w, run.Key)
 	claimStart(t, w, home)
 	if !tookUpLine(w, run.RunID) {
 		t.Fatalf("premise: the start takes the run up:\n%s", w.said())
 	}
+	opened, heldThen := seen()
 	if !opened {
 		t.Fatalf("premise: the drain opens a lane:\n%s", w.said())
 	}
@@ -652,5 +637,168 @@ func TestAStartLetsGoAnUnlistedRunItTookUpThatCannotMove(t *testing.T) {
 	}
 	if !strings.Contains(w.said(), "which no drain lists, is still in progress") {
 		t.Fatalf("the let-go is not said:\n%s", w.said())
+	}
+}
+
+// refuseLandOf has the landing of key's run refuse, and reports the reservation of key
+// the first time a stage of any other run is reached, which is the drain's first lane.
+func refuseLandOf(t *testing.T, w *terminalWorld, key string) func() (bool, string) {
+	t.Helper()
+	root := w.repo.Root()
+	opened, heldThen := false, claim.StateLive
+	for i := range w.stages {
+		inner, name := w.stages[i].Run, w.stages[i].Name
+		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+			if c.State.Key == key {
+				if name == StageLand {
+					return Outcome{}, refuse(string(StageLand), "", l.ID, "the landing cannot go on here", "see the reason")
+				}
+				return inner(c, l)
+			}
+			if !opened {
+				opened = true
+				heldThen = reservationOf(t, root, key, w.clock.t).State
+			}
+			return inner(c, l)
+		}
+	}
+	return func() (bool, string) { return opened, heldThen }
+}
+
+// TestAStartLetsGoAStopMarkedUnlistedRunItTookOverThatCannotMove (iss-2611270555396370):
+// the run no drain lists stands under a settled signal's mark, so the start takes it over
+// (TakeRun) rather than taking it up, and its step is refused, so it comes back still in
+// progress. The start lets it go before the drain's first move opens a lane, as it does a
+// run it took up with no mark, and records it as let go, for a later start to take up.
+func TestAStartLetsGoAStopMarkedUnlistedRunItTookOverThatCannotMove(t *testing.T) {
+	w, run, home := claimReplaced(t)
+	if c := controlOf(t, w.repo.Root(), run.RunID); c.Stop == nil {
+		t.Fatalf("premise: a mark stands on the run")
+	}
+	seen := refuseLandOf(t, w, run.Key)
+	claimStart(t, w, home)
+	tookOver(t, w, run.RunID)
+	opened, heldThen := seen()
+	if !opened {
+		t.Fatalf("premise: the drain opens a lane:\n%s", w.said())
+	}
+	if heldThen == claim.StateLive {
+		t.Fatalf("the drive held the run it took over beside the lane the drain opened:\n%s", w.said())
+	}
+	after, err := ReadState(w.repo.Root(), run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _, _ := laneOutcome(after); outcome != DrainLaneInProgress || !letGoByDrive(after) {
+		t.Fatalf("the run is not left in progress and let go for a later start: %s\n%s", outcome, w.said())
+	}
+	if !strings.Contains(w.said(), "which no drain lists, is still in progress") {
+		t.Fatalf("the let-go is not said:\n%s", w.said())
+	}
+}
+
+// drainRunOf is the run of issue's lane in the checkout's drain, failing the test when no
+// lane lists it.
+func drainRunOf(t *testing.T, root, issue string) string {
+	t.Helper()
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == issue })
+	if i < 0 {
+		t.Fatalf("no lane of the drain lists %s: %+v", issue, st.Lanes)
+	}
+	return st.Lanes[i].RunID
+}
+
+// TestALaneALiveDriverTakesAfterItWasSetAsideKeepsItsRenewals: a lane set aside at the
+// landing's missing record has its hold left to lapse. Before its try a person takes its
+// run in another terminal, so the try is blocked at the claim and the lane is set aside
+// for that live driver. The note left before is taken off as it is, so the driver's
+// renewals keep the hold, as the drive says they do (dcn-2611270753395749).
+func TestALaneALiveDriverTakesAfterItWasSetAsideKeepsItsRenewals(t *testing.T) {
+	w := newTerminalWorld(t)
+	claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)
+	setAsideMinutes(t, w, 10)
+	recordGoneAtLand(t, w, eligibleIssue)
+	root := w.repo.Root()
+	o := w.options(t)
+	o.Until = w.clock.t.Add(3 * time.Hour)
+	first := noteAtSetAside(t, w, &o, eligibleIssue)
+	taken, seen, noted, worded := false, false, true, false
+	say := o.Say
+	o.Say = func(l string) {
+		say(l)
+		switch {
+		case !taken && strings.HasPrefix(l, "trying again the lanes set aside"):
+			taken = true
+			claimDriverIs(t, root, drainRunOf(t, root, eligibleIssue), claimOtherLogin)
+		case taken && !seen && strings.HasPrefix(l, "set aside ") && strings.Contains(l, eligibleIssue):
+			seen = true
+			noted = claim.LeftToLapse(root, eligibleIssue, tipOf(t, w.bare, eligibleIssue).commit)
+			worded = strings.Contains(l, "left to the driver that holds the run")
+		}
+	}
+	res, err := RunTerminal(context.Background(), root, o)
+	if err != nil {
+		t.Fatalf("the drive: %v\n%s", err, w.said())
+	}
+	if !first() || !taken || !seen || !worded {
+		t.Fatalf("premise: set aside left to lapse, then set aside for the live driver that took the run: %v %v %v %v\n%s", first(), taken, seen, worded, w.said())
+	}
+	if noted {
+		t.Fatalf("the note left before stands on a hold the drive says a live driver's renewals keep:\n%s", w.said())
+	}
+	if s := setAsideOf(t, w, res, drainRunOf(t, root, eligibleIssue)); s.LeftToLapse {
+		t.Fatalf("the end names the live driver's hold left to lapse: %+v", s)
+	}
+}
+
+// TestALaneTakenUpAgainIsNotNamedLeftToLapseAtAKill: a lane set aside, its hold left to
+// lapse, is tried again and taken up, which takes the note off, and the drive is killed in
+// its stage. The end names the hold's lapse without saying it was left to lapse: a renewal
+// in this copy keeps it again.
+func TestALaneTakenUpAgainIsNotNamedLeftToLapseAtAKill(t *testing.T) {
+	w := newTerminalWorld(t)
+	setAsideMinutes(t, w, 10)
+	recordGoneAtLand(t, w, eligibleIssue)
+	root := w.repo.Root()
+	o := w.options(t)
+	o.Until = w.clock.t.Add(3 * time.Hour)
+	first := noteAtSetAside(t, w, &o, eligibleIssue)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	tried, killed := false, false
+	say := o.Say
+	o.Say = func(l string) {
+		say(l)
+		if strings.HasPrefix(l, "trying again the lanes set aside") {
+			tried = true
+		}
+	}
+	for i := range w.stages {
+		run := w.stages[i].Run
+		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+			if tried && !killed && c.State.Key == eligibleIssue {
+				killed = true
+				cancel()
+			}
+			return run(c, l)
+		}
+	}
+	res, err := RunTerminal(ctx, root, o)
+	if err != nil {
+		t.Fatalf("the drive: %v\n%s", err, w.said())
+	}
+	if !first() || !killed || res.Ended != TerminalKilled || res.Issue != eligibleIssue || res.Lapses == nil {
+		t.Fatalf("premise: the lane set aside is taken up again and the drive killed in its stage, its hold live: %v %v %+v\n%s", first(), killed, res, w.said())
+	}
+	tip := tipOf(t, w.bare, eligibleIssue)
+	if tip.released || claim.LeftToLapse(root, eligibleIssue, tip.commit) {
+		t.Fatalf("premise: the take-up took the note off a live hold: %+v\n%s", tip, w.said())
+	}
+	if res.LeftToLapse {
+		t.Fatalf("the end names a hold taken up again as left to lapse: %+v\n%s", res, w.said())
 	}
 }

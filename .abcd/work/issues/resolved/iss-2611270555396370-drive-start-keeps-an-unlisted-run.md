@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/terminal.go"
 remedy: "In terminal.go, release the reservation of a run driveLane gives back still in progress when no drain lists it, or have the drain list a run the drive's start took up, so the in-work count sees it; add a test where the start takes up an unlisted run that then cannot move and the first move opens no second reserved lane."
-resolution: "A drive's start lets go a run no drain lists that it took up and that comes back from its lane still in progress (letGoTakenUp in terminal.go), releasing its reservation and recording the let-go for a later start, so the drain's first move never opens a lane beside a second reserved run it does not step; a run a live driver elsewhere holds, or one set aside, keeps its hold."
+resolution: "A drive's start lets go a run no drain lists that it took up, or took over from a settled stop's mark, and that comes back from its lane still in progress (letGoTakenUp in terminal.go, after both of takeEarlier's steps), releasing its reservation and recording the let-go for a later start, so the drain's first move never opens a lane beside a second reserved run it does not step; a run a live driver elsewhere holds, or one set aside, keeps its hold."
 impact: fix
 resolved_by:
   intent: "itd-2611141610197753"

@@ -2532,6 +2532,9 @@ func (t *terminal) takeEarlier(ctx context.Context) (string, error) {
 		if err != nil || ended != "" {
 			return ended, err
 		}
+		// A run taken over from its mark comes back still in progress as one taken up does,
+		// and no move steps it either (iss-2611270555396370).
+		t.letGoTakenUp(run.RunID)
 	}
 	return "", nil
 }
@@ -2824,8 +2827,16 @@ func (t *terminal) setLaneAside(s SetAsideLane, again bool) {
 		t.o.Drain.PassedLanes = append(t.o.Drain.PassedLanes, s.Run)
 	}
 	// A lane a live driver holds keeps its renewals, which are that driver's: only a hold
-	// no one is working is left to lapse.
-	s.LeftToLapse = !heldByLiveDriver(s.site) && t.leaveToLapse(s.Run)
+	// no one is working is left to lapse, and a note an earlier set-aside left on it is
+	// taken off (keepRenewing).
+	if heldByLiveDriver(s.site) {
+		if run, err := ReadState(t.repoRoot, s.Run); err == nil {
+			t.keepRenewing(run)
+		}
+		s.LeftToLapse = false
+	} else {
+		s.LeftToLapse = t.leaveToLapse(s.Run)
+	}
 	t.setAside = append(slices.DeleteFunc(t.setAside, func(o SetAsideLane) bool { return o.Run == s.Run }), s)
 	t.syncSetAside()
 	if again {
@@ -3046,11 +3057,7 @@ func (t *terminal) keptToLapse(run State) bool {
 // itd-2611141610197753 T6a).
 func (t *terminal) resumeKept(ctx context.Context, run State) (bool, string) {
 	ids := run.reservedIssues()
-	for _, id := range ids {
-		if err := claim.KeepRenewing(t.repoRoot, id); err != nil {
-			t.say("%s: what left its reservation to lapse could not be taken off: %s", termsafe.Sanitize(id), err.Error())
-		}
-	}
+	t.keepRenewing(run)
 	live := false
 	if snap, err := claim.View(t.repoRoot, t.now()); err == nil {
 		live = !slices.ContainsFunc(ids, func(id string) bool {
@@ -3063,6 +3070,22 @@ func (t *terminal) resumeKept(ctx context.Context, run State) (bool, string) {
 	}
 	err := reserveResumed(t.repoRoot, &StartResult{RunID: run.RunID}, t.takeUpOptions())
 	return t.tookUp(ctx, run, err)
+}
+
+// keepRenewing takes off every note that left a hold of run to lapse (claim.KeepRenewing),
+// so a renewal in this copy keeps the hold again, and the run is no longer counted as left
+// to lapse (lapsing) unless a note could not be taken off, which is said.
+func (t *terminal) keepRenewing(run State) {
+	kept := true
+	for _, id := range run.reservedIssues() {
+		if err := claim.KeepRenewing(t.repoRoot, id); err != nil {
+			kept = false
+			t.say("%s: what left its reservation to lapse could not be taken off: %s", termsafe.Sanitize(id), err.Error())
+		}
+	}
+	if kept {
+		delete(t.lapsing, run.RunID)
+	}
 }
 
 // notePassedOver says an issue needs a person, once.
