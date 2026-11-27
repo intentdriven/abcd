@@ -154,8 +154,8 @@ func TestDeleteProofJudgesARemoteBranchAtOriginsTip(t *testing.T) {
 	repo.Git("fetch", "-q", "origin")
 	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged}, remote("feat")), "holds work origin/main does not")
 
-	unreachable := func(string, string, string) (string, bool, error) { return "", false, errors.New("no route") }
-	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged, RemoteTip: unreachable}, remote("feat")), "could not be read")
+	unreachable := func(string, string, []string) (map[string]string, error) { return nil, errors.New("no route") }
+	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged, RemoteRefs: unreachable}, remote("feat")), "could not be read")
 }
 
 // TestDeleteProofJudgesAWorktreeRemoval pins the worktree's proof: a clean
@@ -378,9 +378,9 @@ func TestARemoteBranchProofRestsOnOriginBeingOneRepository(t *testing.T) {
 	branchWith(repo, "topic", "topic.txt")
 	repo.Git("push", "-q", other, "topic")
 	read := false
-	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteTip: func(dir, remote, branch string) (string, bool, error) {
+	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteRefs: func(dir, remote string, refs []string) (map[string]string, error) {
 		read = true
-		return lsRemoteTip(dir, remote, branch)
+		return lsRemoteRefs(dir, remote, refs)
 	}}
 	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "topic"}
 	proofRefused(t, prove(t, o, target), "origin is read from one repository and pushed to another")

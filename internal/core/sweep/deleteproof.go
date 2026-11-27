@@ -12,7 +12,7 @@ package sweep
 // no open pull request is on it, no worktree has it checked out, and it is
 // not one of abcd's own coordination branches (a reservation, or a status
 // branch). A remote branch is judged at the tip origin holds now, read with
-// a bounded ls-remote, since `git push --delete` deletes whatever that tip
+// a time-bounded ls-remote, since `git push --delete` deletes whatever that tip
 // is; a local one is judged offline, against origin's default branch as last
 // fetched, so a local cleanup needs no network. A worktree is safe to remove
 // when it holds no file git has not committed (ignored ones included: the
@@ -43,8 +43,8 @@ const (
 	proofNetLimit = 10 * time.Second
 	// proofProcessLimit bounds the process table's reading.
 	proofProcessLimit = 5 * time.Second
-	// proofListCap bounds the worktree listing, the ls-remote and the forge's
-	// listing.
+	// proofListCap bounds the worktree listing and the forge's listing. The
+	// ls-remote is read line by line instead (lsRemoteTipContext).
 	proofListCap = 1 << 20
 	// proofPRLimit is how many pull requests from the branch the forge is
 	// asked for.
@@ -64,9 +64,10 @@ type DeleteProofOptions struct {
 	// origin's, fails every remote branch's proof, which cannot show none
 	// open.
 	Forge store.GH
-	// RemoteTip reads the tip a remote holds for a branch now, and whether it
-	// holds the branch at all; nil is a bounded `git ls-remote`.
-	RemoteTip func(dir, remote, branch string) (tip string, found bool, err error)
+	// RemoteRefs reads which of refs, full ref names, a remote holds now, and
+	// the object each is at; nil is a time-bounded `git ls-remote`
+	// (lsRemoteRefs).
+	RemoteRefs func(dir, remote string, refs []string) (tips map[string]string, err error)
 	// Probe is what the liveness probe reads for a worktree removal; its
 	// Reservations and Runs are read from the repository when left zero.
 	Probe ProbeOptions
@@ -97,8 +98,8 @@ type proverPin struct {
 // NewDeleteProver returns the prover the shell guard's front doors attach to
 // the registry (guard.Registry.ProvingDeletes).
 func NewDeleteProver(o DeleteProofOptions) guard.DeleteProver {
-	if o.RemoteTip == nil {
-		o.RemoteTip = lsRemoteTip
+	if o.RemoteRefs == nil {
+		o.RemoteRefs = lsRemoteRefs
 	}
 	if o.Budget <= 0 {
 		o.Budget = proofBudget
@@ -259,19 +260,23 @@ func branchHazard(def string, wts []gitutil.Worktree, held gitutil.Held, branch 
 }
 
 // remoteBranch proves a branch delete on origin: at the tip origin holds
-// now, merged, with no open pull request. The refusals that read nothing of
+// now, merged, with no open pull request. The ref judged is the one of
+// origin's the push's destination names by git's rules (pushDestinations):
+// one branch, whose name the branch hazards are checked against too; a
+// destination naming a tag, a remote-tracking ref or more than one ref is not
+// proven, and one naming none removes nothing. The refusals that read nothing of
 // origin come first, a delete on another remote and the branch hazards, so
 // each names its own reason. Every answer after them, origin's tip read and
 // every answer that can prove the delete safe, rests on origin being one
 // repository matched to the forge (pinned), which is checked before them: a
 // push to an address the tip read does not reach would otherwise be proven
 // by what that read found, or did not find.
-func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, held gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
+func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, wtHeld gitutil.Held, t guard.DeleteTarget) guard.DeleteProof {
 	if t.Remote != claim.Remote {
 		return unproven("the delete is on the remote "+t.Remote+", and only a delete on "+claim.Remote+" can be proven",
 			"Delete it on "+claim.Remote+", or keep it.")
 	}
-	if pr, bad := branchHazard(def, wts, held, t.Branch); bad {
+	if pr, bad := branchHazard(def, wts, wtHeld, t.Branch); bad {
 		return pr
 	}
 	if p.o.Forge == nil {
@@ -282,14 +287,42 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, hel
 	if why != "" {
 		return unproven(why, "Run the delete where origin is one repository, fetched and pushed at the same one, on the forge gh is signed in to.")
 	}
-	tip, found, err := p.o.RemoteTip(root, t.Remote, t.Branch)
+	// The push deletes the ref of origin's its destination names by git's
+	// rules (pushDestinations), so origin is asked for every one of them.
+	dest := t.Ref
+	if dest == "" {
+		dest = t.Branch
+	}
+	names := pushDestinations(dest)
+	tips, err := p.o.RemoteRefs(root, t.Remote, names)
 	if err != nil {
 		return unproven("origin's tip of it could not be read ("+err.Error()+")",
 			"Run the delete again once origin answers here.")
 	}
-	if !found {
-		// Origin holds no such branch: the delete removes nothing.
+	var held []string
+	for _, n := range names {
+		if _, ok := tips[n]; ok {
+			held = append(held, n)
+		}
+	}
+	switch {
+	case len(held) == 0:
+		// Origin holds no ref the destination names: the delete removes
+		// nothing.
 		return guard.DeleteProof{Safe: true}
+	case len(held) > 1:
+		return unproven("origin holds more than one ref the push's "+dest+" names ("+strings.Join(held, ", ")+"), so which one it deletes is git's to settle",
+			"Name the branch in full (`git push origin --delete refs/heads/<branch>`), or keep it.")
+	case !strings.HasPrefix(held[0], "refs/heads/"):
+		return unproven("the push's "+dest+" names "+held[0]+" on origin, which is no branch",
+			"Delete it by its full name if that is meant, outside this proof, or keep it.")
+	}
+	tip := tips[held[0]]
+	if b := strings.TrimPrefix(held[0], "refs/heads/"); b != t.Branch {
+		if pr, bad := branchHazard(def, wts, wtHeld, b); bad {
+			return pr
+		}
+		t.Branch = b
 	}
 	if _, err := gitutil.Run(root, "cat-file", "-e", tip+"^{commit}"); err != nil {
 		return unproven("origin's tip of it, "+short(tip)+", is a commit this checkout has not fetched",
@@ -477,47 +510,87 @@ func openPullRequests(listing, branch string) ([]string, error) {
 	return open, nil
 }
 
-// lsRemoteTip is the default RemoteTip: a bounded `git ls-remote` of the one
-// branch. The guard's prover reaches it with no context of its own to pass
-// (guard.DeleteProver takes none), so it keeps its own deadline here, made
-// in the call that runs git.
-func lsRemoteTip(dir, remote, branch string) (string, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), proofNetLimit)
-	defer cancel()
-	ref := "refs/heads/" + branch
-	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
-	return remoteTipAnswer(out, ref, err)
+// pushDestinations are the refs of a remote a push's destination dest can
+// name, in git's order: git matches it against the remote's refs by the
+// rev-parse rules (git-rev-parse(1), SPECIFYING REVISIONS), so heads/x names
+// refs/heads/x, and x names refs/tags/x or refs/remotes/x as well as
+// refs/heads/x.
+func pushDestinations(dest string) []string {
+	return []string{
+		dest,
+		"refs/" + dest,
+		"refs/tags/" + dest,
+		"refs/heads/" + dest,
+		"refs/remotes/" + dest,
+		"refs/remotes/" + dest + "/HEAD",
+	}
 }
 
-// lsRemoteTipContext is lsRemoteTip bound to ctx as well as proofNetLimit:
-// the sweep's last check before it deletes a branch on origin asks with its
-// run's context.
+// lsRemoteRefs is the default RemoteRefs: one `git ls-remote` of the refs.
+// The guard's prover reaches it with no context of its own to pass
+// (guard.DeleteProver takes none), so it keeps its own deadline here, made
+// in the call that runs git. The listing is read line by line to its end
+// (gitutil.RunNetEachContext), and each ref is read from the line naming it
+// exactly (gitutil.RefListing): git lists, for each, every ref whose name
+// ends in its path too. A listing not read to its end is an error.
+func lsRemoteRefs(dir, remote string, refs []string) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), proofNetLimit)
+	defer cancel()
+	ls := make([]gitutil.RefListing, len(refs))
+	for i, r := range refs {
+		ls[i].Ref = r
+	}
+	args := append([]string{"ls-remote", "--", remote}, refs...)
+	err := gitutil.RunNetEachContext(ctx, dir, gitutil.RefLineMax, func(line string) {
+		for i := range ls {
+			ls[i].Line(line)
+		}
+	}, args...)
+	if err != nil {
+		return nil, errors.New(firstLine(gitutil.ScrubURLCredentials(err.Error())))
+	}
+	tips := map[string]string{}
+	for _, l := range ls {
+		tip, found, err := remoteTipAnswer(l, nil)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			tips[l.Ref] = tip
+		}
+	}
+	return tips, nil
+}
+
+// lsRemoteTipContext reads the tip origin holds for branch, and whether it
+// holds it, bound to ctx as well as proofNetLimit: the sweep's last check
+// before it deletes a branch on origin asks with its run's context. The
+// listing of refs/heads/<branch> is read line by line to its end
+// (gitutil.RunNetEachContext), and the tip from the line naming
+// refs/heads/<branch> exactly (gitutil.RefListing).
 func lsRemoteTipContext(ctx context.Context, dir, remote, branch string) (string, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, proofNetLimit)
 	defer cancel()
-	ref := "refs/heads/" + branch
-	out, err := gitutil.RunLimitedNetContext(ctx, dir, proofListCap, "ls-remote", "--", remote, ref)
-	return remoteTipAnswer(out, ref, err)
+	l := gitutil.RefListing{Ref: "refs/heads/" + branch}
+	err := gitutil.RunNetEachContext(ctx, dir, gitutil.RefLineMax, l.Line, "ls-remote", "--", remote, l.Ref)
+	return remoteTipAnswer(l, err)
 }
 
-// remoteTipAnswer reads one `git ls-remote <remote> <ref>`: the tip origin
-// holds for ref, whether it holds ref at all, or why it could not be asked.
-// origin's answer is scrubbed of the credentials a URL in it carries before
-// it is kept, and before the cut to its first line.
-func remoteTipAnswer(out, ref string, err error) (string, bool, error) {
+// remoteTipAnswer reads one `git ls-remote <remote> <ref>`, l its lines
+// naming ref: the tip origin holds for ref, whether it holds ref at all, or
+// why it could not be asked. The error is scrubbed of the credentials a URL
+// in it carries before it is kept, and before the cut to its first line.
+func remoteTipAnswer(l gitutil.RefListing, err error) (string, bool, error) {
 	if err != nil {
 		return "", false, errors.New(firstLine(gitutil.ScrubURLCredentials(err.Error())))
 	}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		sha, name, ok := strings.Cut(line, "\t")
-		if ok && name == ref {
-			if !gitutil.IsFullSHA(sha) {
-				return "", false, fmt.Errorf("its answer for %s is not an object name", ref)
-			}
-			return sha, true, nil
-		}
+	if l.Tips == 0 {
+		return "", false, nil
 	}
-	return "", false, nil
+	if !gitutil.IsFullSHA(l.Tip) {
+		return "", false, fmt.Errorf("its answer for %s is not an object name", l.Ref)
+	}
+	return l.Tip, true, nil
 }
 
 // displayRef names a default-branch ref the way a person reads it:
