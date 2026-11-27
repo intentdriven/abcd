@@ -715,7 +715,7 @@ func droppedReport(c Context, lane Lane, def string, rule landing.MergeRule, v q
 	// can neither close nor open a back-quoted command.
 	named := ""
 	if g.failed != "" {
-		named = "the failed check, as the forge names it, is \"" + forgeLabel(g.failed) + "\"; "
+		named = "the failed check, as the forge names it, is " + quotedLabel(g.failed) + "; "
 	}
 	remedy := named + "the forge names no failed run to re-run, so settle the failed check, then arm it again pinned to the pushed head " + rearm
 	if len(g.reruns) > 0 {
@@ -835,14 +835,14 @@ func failedGroupChecks(c Context, lane Lane, def string) groupChecks {
 			}
 			if len(failed) > 0 {
 				g.failed = namedChecks(failed)
-				g.clause = "the failed check " + at + ": " + g.failed
+				g.clause = "the failed check " + at + ": " + quotedLabel(g.failed)
 				return g
 			}
 		}
 	}
 	if len(failedRuns) > 0 {
 		g.failed = namedChecks(failedRuns)
-		g.clause = "the failed workflow " + at + ": " + g.failed
+		g.clause = "the failed workflow " + at + ": " + quotedLabel(g.failed)
 		return g
 	}
 	g.clause = "the forge names no failed check " + at
@@ -866,6 +866,11 @@ func checkName(name, conclusion string) string {
 func forgeLabel(s string) string {
 	return labelQuotes.Replace(termsafe.SanitizeLine(s))
 }
+
+// quotedLabel is forge text as forgeLabel leaves it, between double quotes:
+// the reason and the remedy both name the failed checks so, so a name reads
+// as the forge's and never as a clause of the loop's own sentence.
+func quotedLabel(s string) string { return `"` + forgeLabel(s) + `"` }
 
 // labelQuotes turns the quotes a remedy delimits by into a single quote.
 var labelQuotes = strings.NewReplacer("`", "'", `"`, "'")

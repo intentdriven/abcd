@@ -236,7 +236,7 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 	// The check runs unread: the failed workflow is named instead.
 	_ = os.Remove(filepath.Join(f.gh, "checkruns.json"))
 	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
-	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "the failed workflow on its last merge group "+group[:12]+": ci (failure)") {
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "the failed workflow on its last merge group "+group[:12]+`: "ci (failure)"`) {
 		t.Fatalf("without a failed check run, the failed workflow of the group is named: %s", r.Reason)
 	}
 

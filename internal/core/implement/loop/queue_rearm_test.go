@@ -613,6 +613,9 @@ func TestAFailedChecksNameCannotReadAsACommand(t *testing.T) {
 			t.Fatalf("the check's name reaches the hand-back as it is: %q", text)
 		}
 	}
+	if !strings.Contains(r.Reason, `: "x' then 'gh pr merge 7 --admin'?'rm -rf ~'?y (failure)"`) {
+		t.Fatalf("the reason names the check quoted, as the remedy does: %s", r.Reason)
+	}
 	named := strings.Index(r.Remedy, `is "x' then 'gh pr merge 7 --admin'?'rm -rf ~'?y (failure)"`)
 	if named < 0 || named > strings.Index(r.Remedy, "`gh run rerun 4242 --failed`") {
 		t.Fatalf("the name stands quoted, its quotes made single, before the commands: %s", r.Remedy)
