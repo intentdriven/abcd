@@ -55,9 +55,10 @@ func TestADriveEndedByAHeldChangeSaysWhatItLeftAndHowToReleaseIt(t *testing.T) {
 // run still in progress is renewed by a step or `abcd drain` run in this copy
 // as well as by a load-gate waiter, while a judgement's hold is renewed by the
 // waiter alone, so only the run's line names the commands. `abcd implement
-// status` is not named: it passes over a lane parked at its pull request
-// (renewsWhereItWaits), and the lanes named here include such a lane. A reservation that is not this copy's live one takes no
-// clause.
+// status` renews too (itd-2611141610197753 step 3), but passes over a lane parked
+// at its pull request (renewsWhereItWaits), and the lanes named here include such
+// a lane, so it is named with that limit. A reservation that is not this copy's
+// live one takes no clause.
 func TestALeftReservationNamesTheRenewersOfWhatHoldsIt(t *testing.T) {
 	at := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
 	live := claim.Reservation{Copy: claim.CopyThis, State: claim.StateLive, EffectiveExpiry: at}
@@ -68,8 +69,8 @@ func TestALeftReservationNamesTheRenewersOfWhatHoldsIt(t *testing.T) {
 			t.Errorf("a run's lapse does not name %q: %q", want, run)
 		}
 	}
-	if strings.Contains(run, "implement status") {
-		t.Errorf("a run's lapse names `abcd implement status`, which does not renew a lane parked at its pull request: %q", run)
+	if !strings.Contains(run, "an `abcd implement status` call in this copy for a lane short of its pull request") {
+		t.Errorf("a run's lapse does not name `abcd implement status` with its limit, which renews no lane parked at its pull request: %q", run)
 	}
 	if !strings.Contains(hold, unlessWaiterRenews) || strings.Contains(hold, "implement status") || strings.Contains(hold, "a step") {
 		t.Errorf("a judgement hold's lapse names the waiter alone: %q", hold)

@@ -1461,8 +1461,10 @@ func runFootprint(repoRoot, key, specID string, built []int, outcome string) ([]
 			if source != "" {
 				where = "this checkout's ledger, nor of " + source + " as last fetched,"
 			}
-			return nil, refuse(StageReservation, "", "", key+" is in no status folder of "+where+" so it names no found_at path to reserve it with; "+outcome,
+			rf := refuse(StageReservation, "", "", key+" is in no status folder of "+where+" so it names no found_at path to reserve it with; "+outcome,
 				"restore the issue's record, or remove the run's directory if the issue is gone for good")
+			rf.recordAbsent = true
+			return nil, rf
 		}
 		if fp, ok := issueFootprint(repoRoot, lr.Issues[i]); ok {
 			return fp, nil

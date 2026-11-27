@@ -359,7 +359,7 @@ const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 // (RenewRunsIn, renewsWhereItWaits) and a load-gate waiter does. A run handed
 // back, stopped or let go keeps unlessWaiterRenews, and a hold a drive left to
 // lapse keeps UnlessKeptTakenUp.
-const UnlessRunRenewed = "unless a step, `abcd drain` or `abcd implement status` run in this copy, or a load-gate waiter in this copy, renews it"
+const UnlessRunRenewed = "unless a step or `abcd drain` run in this copy, an `abcd implement status` call in this copy for a lane short of its pull request, or a load-gate waiter in this copy, renews it"
 
 // UnlessKeptTakenUp is the clause a lapse says of a hold a drive left to lapse
 // (claim.LeaveToLapse; itd-2611141610197753 step 3): the kept hold of a run

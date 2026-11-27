@@ -117,6 +117,15 @@ type Refusal struct {
 	// the run let it go: the caller drops the lane (dropMovedRun), since asking again
 	// meets the same record.
 	recordMoved bool
+	// recordAbsent marks runFootprint's refusal of an issue whose record is in no
+	// status folder of the checkout, nor of origin's default branch as last fetched,
+	// which the landing meets as it reserves the lane's whole found_at again
+	// (reserveOnLeavingLand). It names no lane, so the stuck bounds never count it, and
+	// a drive sets the lane aside at the stuck bound's minutes rather than wait on it
+	// without end (itd-2611141610197753 decision 8; terminal.blocked). It is told by
+	// this flag alone, never by its words: every other refusal that names no lane is
+	// the machine's, not the lane's, and sets nothing aside.
+	recordAbsent bool
 	// recordFinished marks a reservation refused because its record sits finished
 	// on origin's default branch as claim just fetched it (claim.ErrFinished), the
 	// one reservation refusal a build's resume goes past to close its merged lanes
