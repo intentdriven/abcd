@@ -20,12 +20,13 @@ package landing
 // about a branch checked out in one, the gate counts none at all, and the
 // reason says so. The table, in order:
 //
-//   - a pull request whose diff, read from its merge base with the default
-//     branch's tip to its head, changes the facilitator.mode line of
+//   - a pull request that changes the facilitator.mode line of
 //     .abcd/config.json (sets, alters or removes it, or leaves it
-//     unreadable) arms nothing in any mode, and one whose diff cannot be
-//     read for it arms nothing either: the person merges it on the forge's
-//     page (adr-2611262044127943);
+//     unreadable), read at its head against each of its merge bases with
+//     the default branch's tip and in the merge of its head into that tip
+//     against the tip (modeLineChange), arms nothing in any mode, and one
+//     where that cannot be read arms nothing either: the person merges it on
+//     the forge's page (adr-2611262044127943);
 //   - an author whose permission cannot be read, or a custom role whose base
 //     cannot be read, is unverified: nothing is armed, whatever the approvals;
 //   - a contributor's pull request (Read or Triage, or no permission) arms
@@ -56,6 +57,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -146,55 +148,117 @@ func loginText(login string) string {
 	return "an account the forge names in a form land does not show"
 }
 
-// modeLineTimeout bounds the gate's reads of a pull request's mode line: the
-// merge base and the file at it and at the head, all local reads.
+// modeLineTimeout bounds the gate's reads of a pull request's mode line: its
+// merge bases, the merge of its head into the tip, and the file at each, all
+// local reads.
 const modeLineTimeout = 15 * time.Second
 
-// maxMergeBaseBytes bounds git's answer naming a merge base: one object name
-// and its newline.
-const maxMergeBaseBytes = 128
+// maxMergeBaseBytes bounds git's answer naming the merge bases: a handful of
+// object names, each on its own line.
+const maxMergeBaseBytes = 4096
+
+// maxMergeTreeBytes bounds git's answer to the merge of the head into the
+// tip: the merged tree's object name and each conflicted path.
+const maxMergeTreeBytes = 1 << 20
+
+// modeLineRel is the file that holds the committed mode line.
+const modeLineRel = ".abcd/config.json"
 
 // modeLineChange says why the pull request whose head is head changes the
-// committed facilitator.mode line, read at its merge base with the default
-// branch's tip and at head (committedModeLine), "" when the line is the same
-// at both; unread says the diff could not be read for it, which arms nothing
-// either. The line is the person's own act to change: abcd never arms such a
-// merge in any mode, and the person merges it on the forge's page. Its git
-// questions share one deadline, modeLineTimeout, since a hook reaches the gate
-// (a re-arm); a git that does not answer in time is a diff not read.
+// committed facilitator.mode line, "" when it does not; unread says that
+// could not be judged, which arms nothing either. The line is the person's
+// own act to change: abcd never arms such a merge in any mode, and the person
+// merges it on the forge's page.
+//
+// What lands is the merge of head into the default branch's tip, so the line
+// is judged twice (committedModeLine reads each): at head against every merge
+// base of head and the tip, so a head that changes the line from any side it
+// was cut from is refused; and in the merge of head into the tip, as git
+// computes it from the object store as stored with every merge driver the
+// built-in one (as the loop's conflict check computes it), against the tip.
+// The second is what holds a head that reads as its base does while its
+// merge still moves the tip's line: a second merge base, a rename, or the
+// line wrapped under another key. A merge that conflicts in the file, or that
+// cannot be computed, is a diff not read. The tip can still move between the
+// arm and the merge, since the arming pins only the head.
+//
+// Its git questions share one deadline, modeLineTimeout, since a hook reaches
+// the gate (a re-arm); a git that does not answer in time is a diff not read.
 func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
 	cannot := func(what string) (string, bool) {
-		return "whether this pull request changes the facilitator.mode line in .abcd/config.json cannot be judged (" + what + "), and " + never, true
+		return "whether this pull request changes the facilitator.mode line in " + modeLineRel + " cannot be judged (" + what + "), and " + never, true
 	}
-	if !gitutil.IsFullSHA(tip) || !gitutil.IsFullSHA(head) {
-		return cannot("the head or " + tipName + " is not a full object name")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), modeLineTimeout)
-	defer cancel()
-	out, err := gitutil.RunCappedContext(ctx, root, maxMergeBaseBytes, "merge-base", tip, head)
-	base := strings.TrimSpace(out)
-	if err != nil || !gitutil.IsFullSHA(base) {
-		return cannot("no merge base of " + short(head) + " and " + tipName + " can be read")
-	}
-	was, _, err := committedModeLine(ctx, root, base)
-	if err != nil {
-		return cannot("at the merge base " + short(base) + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-	}
-	is, _, err := committedModeLine(ctx, root, head)
-	if err != nil {
-		return cannot("at the head " + short(head) + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-	}
-	if was == is {
-		return "", false
-	}
+	masked := func(err error) string { return termsafe.Sanitize(fsutil.RedactHome(err.Error())) }
 	unset := func(v string) string {
 		if v == "" {
 			return "unset"
 		}
 		return v
 	}
-	return "it changes the facilitator.mode line in .abcd/config.json (" + unset(was) + " at the merge base " + short(base) + ", " + unset(is) + " at the head " + short(head) + "), and " + never, false
+	if !gitutil.IsFullSHA(tip) || !gitutil.IsFullSHA(head) {
+		return cannot("the head or " + tipName + " is not a full object name")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), modeLineTimeout)
+	defer cancel()
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxMergeBaseBytes, "merge-base", "--all", tip, head)
+	bases := strings.Fields(string(out))
+	if err != nil || len(bases) == 0 || !allFullSHA(bases) {
+		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read")
+	}
+	is, _, err := committedModeLine(ctx, root, head)
+	if err != nil {
+		return cannot("at the head " + short(head) + ": " + masked(err))
+	}
+	for _, base := range bases {
+		was, _, err := committedModeLine(ctx, root, base)
+		if err != nil {
+			return cannot("at the merge base " + short(base) + ": " + masked(err))
+		}
+		if was != is {
+			return "it changes the facilitator.mode line in " + modeLineRel + " (" + unset(was) + " at the merge base " + short(base) + ", " + unset(is) + " at the head " + short(head) + "), and " + never, false
+		}
+	}
+	overrides, err := gitutil.MergeDriverOverridesContext(ctx, root)
+	if err != nil {
+		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
+	}
+	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriverContext(ctx),
+		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", tip, head)
+	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, args...)
+	if err != nil {
+		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
+	}
+	entries := strings.Split(string(raw), "\x00")
+	merged := entries[0]
+	if !gitutil.IsFullSHA(merged) {
+		return cannot("git named no merged tree for " + short(head) + " and " + tipName)
+	}
+	if conflicted && slices.Contains(entries[1:], modeLineRel) {
+		return cannot("the merge of " + short(head) + " into " + tipName + " conflicts in " + modeLineRel)
+	}
+	held, _, err := committedModeLine(ctx, root, tip)
+	if err != nil {
+		return cannot("at " + tipName + ": " + masked(err))
+	}
+	lands, _, err := committedModeLine(ctx, root, merged)
+	if err != nil {
+		return cannot("in the merge of " + short(head) + " into " + tipName + ": " + masked(err))
+	}
+	if held != lands {
+		return "its merge into " + tipName + " changes the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(lands) + " once merged), and " + never, false
+	}
+	return "", false
+}
+
+// allFullSHA reports whether every name is a full object name.
+func allFullSHA(names []string) bool {
+	for _, n := range names {
+		if !gitutil.IsFullSHA(n) {
+			return false
+		}
+	}
+	return true
 }
 
 // reviewsArgs reads pull request n's reviews, oldest first, a page of

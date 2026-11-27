@@ -2,6 +2,7 @@ package landing
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,6 +146,38 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 			})
 		}
 	}
+	// What lands is the merge of the head into the tip, so a head that reads
+	// as its merge base does is still refused where the merge moves the line
+	// the tip holds.
+	for _, c := range []struct {
+		name, says string
+		build      func(t *testing.T) *fixture
+	}{
+		{"a second merge base that moved the line", "at the merge base", secondBase},
+		{"a rename from before the line", "once merged", renamedFromBefore},
+		{"the line wrapped under another key", "once merged", wrappedLine},
+		{"a merge that conflicts in the file", "conflicts in .abcd/config.json", conflictedFile},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := c.build(t)
+			f.reviewed(t)
+			s := landGate(t, f)
+			wantLeft(t, f, s, "on the forge's page")
+			if !strings.Contains(s.Note, "facilitator.mode") || !strings.Contains(s.Note, c.says) {
+				t.Errorf("the note %q does not name the line and %q", s.Note, c.says)
+			}
+		})
+	}
+	t.Run("the re-arm of a second merge base", func(t *testing.T) {
+		f := secondBase(t)
+		f.forge.head = f.head()
+		f.reviewed(t)
+		ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+		arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head())
+		if err != nil || arm || !strings.Contains(why, "on the forge's page") {
+			t.Fatalf("arm %v, why %q, err %v: want no re-arm of a merge that moves the mode line", arm, why, err)
+		}
+	})
 	t.Run("the re-arm", func(t *testing.T) {
 		f := modeLineFixture(t, autoConfig, humanConfig)
 		f.forge.head = f.head()
@@ -166,4 +199,86 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
+}
+
+// pushMain pushes the fixture's main to origin and fetches it back.
+func pushMain(f *fixture) {
+	f.repo.Git("push", "-q", "origin", "main")
+	f.repo.Git("fetch", "-q", "origin")
+}
+
+// secondBase: the project commits auto; a branch x removes the line and is
+// merged by hand, with one commit landing on main between x's fork and its
+// merge. The head, cut from that commit, merges x keeping its own side, so
+// its file reads auto as one of its merge bases does, while the merge of the
+// head into the tip, which holds no line, restores auto.
+func secondBase(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Git("checkout", "-q", "-b", "x")
+	f.repo.Write(".abcd/config.json", `{}`+"\n")
+	f.repo.Commit("x removes the line")
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write("between.txt", "a commit between\n")
+	f.repo.Commit("between")
+	f.repo.Git("merge", "-q", "--no-ff", "-m", "merge x", "x")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "-B", "feat/x", "main~1")
+	f.repo.Git("merge", "-q", "-s", "ours", "-m", "take x, keep ours", "x")
+	f.repo.Write("feature.txt", "the change\n")
+	f.repo.Commit("the change")
+	return f
+}
+
+// renamedFromBefore: the file exists without the line, main then adds the
+// line, and the head, cut from before it, renames the file. Base and head
+// both read no line, while the merge carries main's change to the new path
+// and leaves the tip's line gone.
+func renamedFromBefore(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": "{\n  \"land\": {\n    \"push\": true\n  }\n}\n"})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", "{\n  \"land\": {\n    \"push\": true\n  },\n  \"facilitator\": {\n    \"mode\": \"auto\"\n  }\n}\n")
+	f.repo.Commit("main adds the line")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Git("mv", ".abcd/config.json", ".abcd/config.old.json")
+	f.repo.Commit("rename the config")
+	return f
+}
+
+// wrappedLine: the project commits auto and main changes it in place to
+// human; the head, cut from before, adds a new top-level auto and leaves the
+// old block where it was under another key. Base and head both read auto,
+// while the merge keeps the head's auto over the tip's human.
+func wrappedLine(t *testing.T) *fixture {
+	t.Helper()
+	const block = "  \"facilitator\": {\n    \"mode\": \"%s\"\n  }\n"
+	base := "{\n  \"land\": {\n    \"push\": true\n  },\n" + fmt.Sprintf(block, "auto") + "}\n"
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": base})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", "{\n  \"land\": {\n    \"push\": true\n  },\n"+fmt.Sprintf(block, "human")+"}\n")
+	f.repo.Commit("main makes it human")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Write(".abcd/config.json", "{\n  \"facilitator\": {\n    \"mode\": \"auto\"\n  },\n  \"wrapped\": {\n\n  \"land\": {\n    \"push\": true\n  },\n"+fmt.Sprintf(block, "auto")+"\n  }\n}\n")
+	f.repo.Commit("wrap the old block")
+	return f
+}
+
+// conflictedFile: the file is one line, and main and the head each change it
+// elsewhere than the mode, so the merge conflicts in the file while base and
+// head read the same mode.
+func conflictedFile(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": `{"facilitator":{"mode":"auto"},"land":{"push":true}}` + "\n"})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"},"land":{"push":false}}`+"\n")
+	f.repo.Commit("main turns the push off")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"},"land":{"push":true,"enqueue":true}}`+"\n")
+	f.repo.Commit("the head turns the queue on")
+	return f
 }
