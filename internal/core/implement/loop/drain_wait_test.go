@@ -63,7 +63,8 @@ func TestADrainAtTheCapWaitsAndNamesThePullRequests(t *testing.T) {
 	if st.NextEligibleAt != nil || !st.WindowStartedAt.Equal(*before.WindowStartedAt) {
 		t.Fatalf("the wait leaves the pace window as it was: %v %v", st.NextEligibleAt, st.WindowStartedAt)
 	}
-	for _, want := range []string{"10 live reservations", "#7", secondIssue, "wait for one of their pull requests to merge"} {
+	for _, want := range []string{"10 live reservations", "#7", secondIssue, "wait for one of their pull requests to merge",
+		"0 of 1 lane in work; you hold 10 of the 10 reservations abcd's default allows"} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("next names %q: %s", want, res.Next)
 		}
@@ -104,6 +105,9 @@ func TestADrainWaitsAtTheRepositorysCeiling(t *testing.T) {
 	}
 	if res.Start != nil || res.WaitingUntil == nil || st.Waiting != DrainWaitCap || !strings.Contains(res.Next, "4 live reservations") {
 		t.Fatalf("holding four under the repository's 4, the drain waits at the cap: %q, next %s", st.Waiting, res.Next)
+	}
+	if !strings.Contains(res.Next, "you hold 4 of the 4 reservations the repository allows") {
+		t.Fatalf("the wait names the person's holds against the repository's ceiling: %s", res.Next)
 	}
 }
 
@@ -167,5 +171,28 @@ func TestADrainWithOnlyHeldWorkLeftWaitsAndKeepsItsJudgements(t *testing.T) {
 	done := judge(t, repo, o, asked, JudgementYes, HandBackTrustRule, "the fix turns on a trust rule")
 	if !done.Complete || done.Stopped != DrainStoppedEmpty {
 		t.Fatalf("with nothing eligible left, held or not, the drain stops as empty: %+v", done)
+	}
+}
+
+// TestBothWaitSentencesNameBothCounts (itd-2611251809580662 step 2): the
+// sentence that names the lanes to drive and the wait at the cap each name
+// the lanes in work against the drain's limit and the person's holds against
+// the ceiling with the layer that set it, and name no ceiling where the
+// holder cannot be told.
+func TestBothWaitSentencesNameBothCounts(t *testing.T) {
+	h := &HeldCount{Live: 7, Limit: 10, Layer: claim.LimitRepository}
+	working := []inWorkLane{{lane: DrainLane{Issue: secondIssue, RunID: "run-1"}}}
+	drive := inHandNext(working, 1, h, stuckBounds{})
+	if !strings.Contains(drive, "1 of 1 lane in work; you hold 7 of the 10 reservations the repository allows") || !strings.Contains(drive, "--run run-1") {
+		t.Errorf("the drive-this-lane sentence names both counts: %s", drive)
+	}
+	capped := capWaitText([]string{eligibleIssue}, nil, countsPhrase(0, 2, &HeldCount{Live: 10, Limit: 10, Layer: claim.LimitMachine}))
+	if !strings.Contains(capped, "0 of 2 lanes in work; you hold 10 of the 10 reservations this machine allows") {
+		t.Errorf("the wait at the cap names both counts: %s", capped)
+	}
+	for _, s := range []string{inHandNext(working, 1, nil, stuckBounds{}), capWaitText([]string{eligibleIssue}, nil, countsPhrase(0, 1, nil))} {
+		if !strings.Contains(s, "lane in work") || strings.Contains(s, "you hold") {
+			t.Errorf("with no holder told, a sentence names the lanes in work and no ceiling: %s", s)
+		}
 	}
 }

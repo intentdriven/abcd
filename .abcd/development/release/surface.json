@@ -718,7 +718,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
+      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout.",
       "flags": [
         {
           "name": "blocked-by",
@@ -735,6 +735,13 @@
           "hidden": false
         },
         {
+          "name": "fixed",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "found-at",
           "shorthand": "",
           "type": "string",
@@ -743,6 +750,13 @@
         },
         {
           "name": "found-during",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "impact",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -960,6 +974,76 @@
       "flags": [
         {
           "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture owed",
+      "hidden": false,
+      "sentence": "List, put or settle the findings owed a capture: Writes only the findings list under ~/.abcd.noindex/; refuses an act the entry's kind does not take.",
+      "flags": [
+        {
+          "name": "captured",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "doubt",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "handed-up",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "not-a-finding",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "own",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "refuted",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "settled",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "untested",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1570,6 +1654,13 @@
           "name": "fix-rounds",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "in-work",
+          "shorthand": "",
+          "type": "int",
           "required": false,
           "hidden": false
         },

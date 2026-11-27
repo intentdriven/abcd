@@ -214,7 +214,7 @@ var entries = []Entry{
 			"where. An id of the reading ledger (rdi-N, adm-N, dsp-N, rfm-N) carries\n" +
 			"capture/unknown-reading-record instead.",
 		Next: "abcd capture list --all",
-		RaisedBy: []string{"abcd capture defer", "abcd capture link", "abcd capture promote",
+		RaisedBy: []string{"abcd capture defer", "abcd capture link", "abcd capture owed", "abcd capture promote",
 			"abcd capture remedy", "abcd capture resolve", "abcd capture wontfix"},
 	},
 	{
@@ -256,7 +256,7 @@ var entries = []Entry{
 		Next: explainCommand,
 		RaisedBy: []string{"abcd capture", "abcd capture admit", "abcd capture defer",
 			"abcd capture disposition", "abcd capture link", "abcd capture mentions",
-			"abcd capture reframe", "abcd capture remedy", "abcd capture resolve",
+			"abcd capture owed", "abcd capture reframe", "abcd capture remedy", "abcd capture resolve",
 			"abcd capture surprise"},
 	},
 	{

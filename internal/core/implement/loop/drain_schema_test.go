@@ -62,10 +62,75 @@ func storedDrainVersion(t *testing.T, path string) int {
 	return peek.SchemaVersion
 }
 
-func TestDrainSchemaVersionIsFour(t *testing.T) {
-	if DrainSchemaVersion != 4 || drainSchemaVersionUnbundled != 3 || drainSchemaVersionUnspent != 2 || drainSchemaVersionUnpinned != 1 {
-		t.Fatalf("DrainSchemaVersion = %d (%d, %d, %d), want 4 (3, 2, 1)", DrainSchemaVersion, drainSchemaVersionUnbundled,
-			drainSchemaVersionUnspent, drainSchemaVersionUnpinned)
+func TestDrainSchemaVersionIsFive(t *testing.T) {
+	if DrainSchemaVersion != 5 || drainSchemaVersionUnworked != 4 || drainSchemaVersionUnbundled != 3 || drainSchemaVersionUnspent != 2 || drainSchemaVersionUnpinned != 1 {
+		t.Fatalf("DrainSchemaVersion = %d (%d, %d, %d, %d), want 5 (4, 3, 2, 1)", DrainSchemaVersion, drainSchemaVersionUnworked,
+			drainSchemaVersionUnbundled, drainSchemaVersionUnspent, drainSchemaVersionUnpinned)
+	}
+}
+
+// TestAVersionFourDrainStateReadsAsOneLaneInWork: a version-4 file reads as a
+// drain that started with the bundled limit of one lane in work, its layer
+// recorded as bundled, and is written back at 5; version 5's own limit reads
+// back as written.
+func TestAVersionFourDrainStateReadsAsOneLaneInWork(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	root := repo.Root()
+	path := writeDrainAt(t, root, bundledDrain(), 4)
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-4 drain state reads: %v", err)
+	}
+	if st.SchemaVersion != 5 {
+		t.Errorf("a version-4 drain state is read at version %d, want 5", st.SchemaVersion)
+	}
+	if l := st.InWorkMax; l == nil || *l != bundledInWorkMax() {
+		t.Errorf("a version-4 drain started with the bundled limit of one lane in work: %+v", l)
+	}
+	if err := writeDrain(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if v := storedDrainVersion(t, path); v != 5 {
+		t.Errorf("the drain writes a version-4 state back at version %d, want 5", v)
+	}
+	worked := writtenDrain()
+	worked.InWorkMax = &PaceValue{Value: 3, Layer: "repo", Origin: ".abcd/config.json at origin/main"}
+	writeDrainAt(t, root, worked, 5)
+	if st, _, err = readDrain(root); err != nil || st.InWorkMax == nil || *st.InWorkMax != *worked.InWorkMax {
+		t.Errorf("version 5's limit reads back as written: %+v %v", st.InWorkMax, err)
+	}
+}
+
+// TestAnInWorkLimitTheDrainNeverWritesIsRefused: a version-4 file carrying
+// in_work_max, and a version-5 limit out of range or from the machine's
+// layer, are refused when the state is read.
+func TestAnInWorkLimitTheDrainNeverWritesIsRefused(t *testing.T) {
+	for name, c := range map[string]struct {
+		version int
+		limit   PaceValue
+		says    string
+	}{
+		"version 4 carrying it": {4, PaceValue{Value: 1, Layer: "bundled", Origin: "bundled"}, "schema version 4 but carries `in_work_max`"},
+		"a limit of 11":         {5, PaceValue{Value: 11, Layer: "flag", Origin: "--in-work 11"}, "a limit on lanes in work the drain never writes"},
+		"a limit of 0":          {5, PaceValue{Value: 0, Layer: "bundled", Origin: "bundled"}, "a limit on lanes in work the drain never writes"},
+		"the machine's layer":   {5, PaceValue{Value: 2, Layer: "machine", Origin: "config.json"}, "a limit on lanes in work the drain never writes"},
+		"ten under bundled":     {5, PaceValue{Value: 10, Layer: "bundled", Origin: "bundled"}, "a limit on lanes in work the drain never writes"},
+		"three under the drive": {5, PaceValue{Value: 3, Layer: "drive", Origin: driveInWorkOrigin}, "a limit on lanes in work the drain never writes"},
+		"a flag of another":     {5, PaceValue{Value: 4, Layer: "flag", Origin: "--in-work 2"}, "a limit on lanes in work the drain never writes"},
+		"a repository unnamed":  {5, PaceValue{Value: 2, Layer: "repo", Origin: ""}, "a limit on lanes in work the drain never writes"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			root := repo.Root()
+			st := writtenDrain()
+			limit := c.limit
+			st.InWorkMax = &limit
+			writeDrainAt(t, root, st, c.version)
+			_, _, err := readDrain(root)
+			if rf := mustRefusal(t, err); !strings.Contains(rf.Reason, c.says) {
+				t.Errorf("refused naming %q: %q", c.says, rf.Reason)
+			}
+		})
 	}
 }
 
@@ -184,17 +249,17 @@ func TestAVersionTwoDrainStateCarryingLocalReads(t *testing.T) {
 	}
 }
 
-// TestAVersionFiveDrainStateIsRefusedAsNewer: a version above 4 is a newer
+// TestAVersionSixDrainStateIsRefusedAsNewer: a version above 5 is a newer
 // abcd's, refused as that before any strict decode (iss-2610230223231843), as
-// releases that write 3 refuse a version-4 file.
-func TestAVersionFiveDrainStateIsRefusedAsNewer(t *testing.T) {
+// releases that write 4 refuse a version-5 file.
+func TestAVersionSixDrainStateIsRefusedAsNewer(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	root := repo.Root()
-	writeDrainAt(t, root, bundledDrain(), 5)
+	writeDrainAt(t, root, bundledDrain(), 6)
 	_, _, err := readDrain(root)
 	rf := mustRefusal(t, err)
-	if !strings.Contains(rf.Reason, "schema version 5, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 4") {
-		t.Errorf("a version-5 drain state is refused as a newer abcd's: %q", rf.Reason)
+	if !strings.Contains(rf.Reason, "schema version 6, which a newer abcd wrote") || !strings.Contains(rf.Reason, "reads version 5") {
+		t.Errorf("a version-6 drain state is refused as a newer abcd's: %q", rf.Reason)
 	}
 }
 
@@ -250,7 +315,7 @@ func TestVersionFoursBundleFieldsReadBack(t *testing.T) {
 
 // TestAVersionThreeDrainStateReadsWithTheBundledCap: a version-3 file reads as
 // a drain that started with the bundled cap, its layer recorded as bundled,
-// and is written back at 4.
+// and is written back at 5.
 func TestAVersionThreeDrainStateReadsWithTheBundledCap(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	root := repo.Root()
@@ -259,8 +324,8 @@ func TestAVersionThreeDrainStateReadsWithTheBundledCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a version-3 drain state reads: %v", err)
 	}
-	if st.SchemaVersion != 4 {
-		t.Errorf("a version-3 drain state is read at version %d, want 4", st.SchemaVersion)
+	if st.SchemaVersion != 5 {
+		t.Errorf("a version-3 drain state is read at version %d, want 5", st.SchemaVersion)
 	}
 	if b := st.BundleMax; b == nil || b.Value != 1 || b.Layer != "bundled" || b.Origin != "bundled" {
 		t.Errorf("a version-3 drain started with the bundled cap: %+v", b)
@@ -268,8 +333,8 @@ func TestAVersionThreeDrainStateReadsWithTheBundledCap(t *testing.T) {
 	if err := writeDrain(root, st); err != nil {
 		t.Fatal(err)
 	}
-	if v := storedDrainVersion(t, path); v != 4 {
-		t.Errorf("the drain writes a version-3 state back at version %d, want 4", v)
+	if v := storedDrainVersion(t, path); v != 5 {
+		t.Errorf("the drain writes a version-3 state back at version %d, want 5", v)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

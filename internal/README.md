@@ -93,6 +93,13 @@ plugin surface, and a future MCP server share one engine.
   over them. History importing either assembler to learn the grammar would pull
   the assemblers into the transcript store, so the grammar lives here and each of
   them imports it.
+- **`core/findings/`** — the list of findings a session and a landing are held
+  to (spc-2611252115253843): one bounded JSON file per finding under
+  `~/.abcd.noindex/findings/<root-sha>/`, in `open/`, `private/` or `settled/`,
+  each read and written through `fsutil`'s home declaration scope, its text
+  redacted by `core/capture`'s ledger redactor, and the record a settle names
+  judged on the default branch (`Records`). The readings that put an entry
+  there are the callers'.
 - **`core/session/`** — the brief session relay's engine
   (spc-2610141709430146): rooms, join codes, the member and guest roles, each
   room's update log held in memory only, guests' suggestions, the Yjs client

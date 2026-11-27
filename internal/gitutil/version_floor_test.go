@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,12 @@ func TestGitAtLeastNamesTheVersionInDigitsAlone(t *testing.T) {
 		restore()
 		if ok != c.ok || version != c.version {
 			t.Errorf("GitAtLeast(2, 29) under %q = %v, %q; want %v, %q", c.line, ok, version, c.ok, c.version)
+		}
+		restore = gitutil.SwapGitVersionForTest(func() (string, error) { return c.line, c.err })
+		ok, version, err := gitutil.GitAtLeastContext(context.Background(), 2, 29)
+		restore()
+		if ok != c.ok || version != c.version || err != nil {
+			t.Errorf("GitAtLeastContext(2, 29) under %q = %v, %q, %v; want %v, %q", c.line, ok, version, err, c.ok, c.version)
 		}
 	}
 }

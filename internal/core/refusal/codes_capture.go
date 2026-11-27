@@ -17,7 +17,7 @@ func init() {
 			Explanation: outsideCheckout,
 			Next:        NoNext,
 			RaisedBy: []string{"abcd capture", "abcd capture admit", "abcd capture defer", "abcd capture disposition",
-				"abcd capture link", "abcd capture list", "abcd capture mentions", "abcd capture migrate",
+				"abcd capture link", "abcd capture list", "abcd capture mentions", "abcd capture migrate", "abcd capture owed",
 				"abcd capture promote", "abcd capture reframe", "abcd capture remedy", "abcd capture resolve",
 				"abcd capture surprise", "abcd capture wontfix"},
 		},

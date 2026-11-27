@@ -1,10 +1,15 @@
 package capture
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/adapter/scanner/augmenttest"
 )
 
 // TestCaptureRedactsHomePathOnWrite is the regression for
@@ -155,5 +160,134 @@ func TestResolveRedactsTheNote(t *testing.T) {
 	}
 	if tr.Redacted == 0 {
 		t.Fatalf("Redacted = 0, want the home path in the note counted")
+	}
+}
+
+// TestTheTextRedactorIsTheLedgerRedactor holds the exported form a store
+// outside the ledger builds once and calls for each text (the findings list,
+// spc-2611252115253843): the same redactor, so a home path and a planted token
+// come back rewritten; and a scanner that cannot be made, or one that runs
+// degraded, is an error rather than text handed back as cleared, so the caller
+// can withhold the text instead.
+func TestTheTextRedactorIsTheLedgerRedactor(t *testing.T) {
+	repo := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	token := "ghp_" + strings.Repeat("A1", 18)
+	in := "the token " + token + " sat in " + filepath.Join(home, "notes.txt")
+	r, err := NewTextRedactor(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("NewTextRedactor: %v", err)
+	}
+	if out, err := r.Redact(in); err != nil || strings.Contains(out, token) || strings.Contains(out, home) {
+		t.Fatalf("Redact left the token or the home path in place: %q (%v)", out, err)
+	}
+
+	degraded := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(degraded, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(degraded, ".abcd", "config", "pii.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewTextRedactor(context.Background(), degraded); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("NewTextRedactor over a broken pii.json = %v; want ErrScannerUnavailable", err)
+	}
+
+	orig := newContextScanner
+	newContextScanner = func(context.Context, string) (*scanner.Scanner, error) { return nil, errors.New("no scanner") }
+	t.Cleanup(func() { newContextScanner = orig })
+	if _, err := NewTextRedactor(context.Background(), repo); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("NewTextRedactor with no scanner = %v; want ErrScannerUnavailable", err)
+	}
+}
+
+// TestTheTextRedactorReportsAScanThatDegrades holds the redactor to the
+// scanner's contract that Unavailable is asked after ScanText as well as
+// before: an augmenter whose run fails part way degrades the scanner during
+// the scan, and the text it handed back is not cleared. An augmenter the
+// repository configured whose tool is not installed is a scan that cannot run
+// whole either.
+func TestTheTextRedactorReportsAScanThatDegrades(t *testing.T) {
+	repo := t.TempDir()
+	a := &augmenttest.Func{F: func(string, string) ([]scanner.Finding, error) {
+		return nil, errors.New("the run timed out")
+	}}
+	orig := newContextScanner
+	t.Cleanup(func() { newContextScanner = orig })
+	newContextScanner = func(ctx context.Context, root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(ctx, root, scanner.WithAugmenter(a))
+	}
+	r, err := NewTextRedactor(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("NewTextRedactor before any scan: %v", err)
+	}
+	if out, err := r.Redact("a text the augmenter never cleared"); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("Redact under a scan that degraded = %q, %v; want ErrScannerUnavailable", out, err)
+	}
+
+	newContextScanner = func(ctx context.Context, root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(ctx, root, scanner.WithAugmenter(augmenttest.NotFound()))
+	}
+	if _, err := NewTextRedactor(context.Background(), repo); !errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("NewTextRedactor with a configured augmenter not installed = %v; want ErrScannerUnavailable", err)
+	}
+}
+
+// TestTheTextRedactorReScansWhatItRedacted holds Redact to the scanner's
+// two-stage contract: what survives redaction (here, an occurrence the
+// augmenter did not report) is not handed back as cleared.
+func TestTheTextRedactorReScansWhatItRedacted(t *testing.T) {
+	repo := t.TempDir()
+	firstOnly := &augmenttest.Func{F: func(text, file string) ([]scanner.Finding, error) {
+		all := augmenttest.Locate(text, file, augmenttest.Value, augmenttest.Kind)
+		if len(all) > 1 {
+			all = all[:1]
+		}
+		return all, nil
+	}}
+	orig := newContextScanner
+	t.Cleanup(func() { newContextScanner = orig })
+	newContextScanner = func(ctx context.Context, root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(ctx, root, scanner.WithAugmenter(firstOnly))
+	}
+	r, err := NewTextRedactor(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := "once " + augmenttest.Value + " and twice " + augmenttest.Value
+	if out, err := r.Redact(in); !errors.Is(err, ErrRedactionResidual) || errors.Is(err, ErrScannerUnavailable) {
+		t.Fatalf("Redact left %q with %v; want this text refused for its residual, the scanner still good", out, err)
+	}
+}
+
+// TestTheLedgerRedactorsReScanWhatTheyRedacted holds the issue ledger's two
+// redactors to scanner.Redact's contract: the caller re-scans the result and
+// fails closed if a span survived (an occurrence the augmenter did not
+// report, here).
+func TestTheLedgerRedactorsReScanWhatTheyRedacted(t *testing.T) {
+	repo := t.TempDir()
+	firstOnly := &augmenttest.Func{F: func(text, file string) ([]scanner.Finding, error) {
+		all := augmenttest.Locate(text, file, augmenttest.Value, augmenttest.Kind)
+		if len(all) > 1 {
+			all = all[:1]
+		}
+		return all, nil
+	}}
+	orig := newLedgerScanner
+	t.Cleanup(func() { newLedgerScanner = orig })
+	newLedgerScanner = func(root string) (*scanner.Scanner, error) {
+		return scanner.NewContext(context.Background(), root, scanner.WithAugmenter(firstOnly))
+	}
+	in := "once " + augmenttest.Value + " and twice " + augmenttest.Value
+	if out, _, _, err := redactLedgerText(repo, in); strings.Contains(out, augmenttest.Value) || !errors.Is(err, ErrRedactionResidual) {
+		t.Errorf("redactLedgerText handed back %q, %v; want the text refused, a span surviving", out, err)
+	}
+	r, err := newLedgerRedactor(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := r.redact(in); strings.Contains(out, augmenttest.Value) || !errors.Is(r.Err(), ErrRedactionResidual) {
+		t.Errorf("ledgerRedactor.redact handed back %q, %v; want the text refused, a span surviving", out, r.Err())
 	}
 }

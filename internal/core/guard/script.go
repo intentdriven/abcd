@@ -936,6 +936,9 @@ type writeTarget struct {
 	gen   [2]int
 	base  string
 	wrote bool
+	// dirLoose marks, beside a base, that the component before it is not
+	// fixed either (literalDirLoose, tokenDirLoose).
+	dirLoose bool
 	// tree marks a write that may place a whole tree of files, not one file:
 	// a moved, copied or linked source, an archive or a patch unpacked, a
 	// clone. Without in, the tree lands at path; with in, each name at its

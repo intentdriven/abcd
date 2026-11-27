@@ -203,10 +203,13 @@ func readKeptModeIn(dir *os.Root, home, common string) (keptMode, bool) {
 // own file as it stands, through the one precedence every reader uses
 // (resolveMode). It asks git nothing. A reading whose tip no longer stands
 // carries the time it was read. Under a refused home neither the computer's
-// file nor a kept reading can be read, and the mode is the one resolveMode
-// gives for that. The mode is not known, with no note, where there is no kept
-// reading to use (the file comment says when); and not known, with a note for
-// the front door's stderr, masked, where a file that declares it was refused.
+// file nor a kept reading can be read, and the resolver's answer turns on the
+// default branch, which the project may set to auto: the mode is not known,
+// and the row says the computer's file was not read; only a repository with no
+// commit, whose default branch can say nothing, takes the resolver's human
+// there. The mode is not known, with no note, where there is no kept reading
+// to use (the file comment says when); and not known, with a note for the
+// front door's stderr, masked, where a file that declares it was refused.
 func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) {
 	unknown := statusline.Merging{State: statusline.MergingUnknown}
 	r, _ := layered.HomeRoots()
@@ -214,17 +217,22 @@ func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) 
 	if err != nil {
 		return unknown, unreadNote(root, err)
 	}
-	if r.HomeRefused {
-		return resolveMode(vals, true).merging(), ""
-	}
 	common, ok := commonGitDir(root)
+	if r.HomeRefused {
+		if ok && noCommit(common) {
+			vals, in := inputFor(r, vals)
+			return resolveMode(vals, in).merging(), ""
+		}
+		return statusline.Merging{State: statusline.MergingUnknown, Whose: statusline.WhoseComputerUnread}, ""
+	}
 	if !ok {
 		return unknown, ""
 	}
 	k, ok := readKeptMode(r.Home, common)
 	if !ok {
 		if noCommit(common) {
-			return resolveMode(vals, false).merging(), ""
+			vals, in := inputFor(r, vals)
+			return resolveMode(vals, in).merging(), ""
 		}
 		return unknown, ""
 	}
@@ -235,7 +243,8 @@ func KeptMerging(ctx context.Context, root string) (statusline.Merging, string) 
 	case ModeHuman, ModeAuto:
 		vals = append([]layerValue[string]{{v: k.Committed, layer: layered.Repo.String(), origin: origin}}, vals...)
 	}
-	m := resolveMode(vals, false).merging()
+	vals, in := inputFor(r, vals)
+	m := resolveMode(vals, in).merging()
 	if ref, tip, ok := defaultIn(common); !ok || ref != k.Ref || tip != k.Tip {
 		m.Read = readTime(k.ReadAt.Local(), keptClock().Local())
 	}

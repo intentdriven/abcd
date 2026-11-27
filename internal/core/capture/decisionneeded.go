@@ -56,7 +56,7 @@ type DecisionNeededResult struct {
 func decisionQuestion(repoRoot, question string) (value string, redacted int, degraded string, err error) {
 	red, redacted, degraded, err := redactLedgerText(repoRoot, question)
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, degraded, err
 	}
 	folded := grounds.Fold(red)
 	if folded == "" {

@@ -75,7 +75,7 @@ var sentences = map[string]string{
 		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
-		"Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
+		"Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout.",
 	"abcd capture admit": "Admit one widening proposal into its run's candidate set: " +
 		"Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
@@ -88,6 +88,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses when no status flag is given.",
 	"abcd capture mentions": "List open issues that default-branch history names with no resolution behind them: " +
 		"Writes nothing; refuses outside a git checkout.",
+	"abcd capture owed": "List, put or settle the findings owed a capture: " +
+		"Writes only the findings list under " + abcdhome.Display() + "/; refuses an act the entry's kind does not take.",
 	"abcd capture migrate": "Rewrite retired promote back-links as related_intents and related_issues: " +
 		"Writes the records only with --apply; refuses outside a git checkout.",
 	"abcd capture remedy": "Write or replace the fix an open issue proposes: " +

@@ -4,12 +4,30 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/findings"
 )
 
 // refusal_raisers_capture_test.go — the probes for capture's and explain's
 // own codes (TestRaisedByIsWhatTheVerbsRaise).
 
-var _ = registerRaiserProbes("capture", captureRaiserProbes)
+var (
+	_ = registerRaiserProbes("capture", captureRaiserProbes)
+	_ = registerRaiserProbes("capture-owed", captureOwedRaiserProbes)
+)
+
+// captureOwedRaiserProbes builds a checkout with one commit and one entry on
+// its findings list, under a home of the probes' own, and returns the probes
+// of `capture owed`.
+func captureOwedRaiserProbes(t *testing.T) []raiserProbe {
+	repo := findingsRepo(t)
+	h := plantEntry(t, repo, findings.KindUntested, "a finding the probes leave on the list")
+	return []raiserProbe{
+		probe("capture/invalid-input", "capture", "owed", "f-00000000", "--refuted", "the parser keeps the line"),
+		probe("capture/invalid-input", "capture", "owed", h, "--own", "the base fails the same check"),
+		probe("capture/unknown-issue", "capture", "owed", h, "--captured", unknownIssueID),
+	}
+}
 
 // Ids no fixture writes, one per record kind a capture verb looks up.
 const (

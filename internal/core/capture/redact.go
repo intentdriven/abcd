@@ -1,6 +1,8 @@
 package capture
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -49,8 +51,28 @@ func redactLedgerText(repoRoot, text string) (redacted string, count int, degrad
 	if len(findings) == 0 {
 		return text, 0, degraded, nil
 	}
-	out, _ := scanner.Redact(text, findings)
+	out, err := redactVerified(sc, text, findings)
+	if err != nil {
+		return "", 0, degraded, err
+	}
 	return out, len(findings), degraded, nil
+}
+
+// ErrRedactionResidual is the refusal of a text whose redaction left a span
+// the verification still finds: nothing of it is written.
+var ErrRedactionResidual = errors.New("capture: redaction left a span unresolved")
+
+// redactVerified is scanner.Redact's two stages, as history and memory run
+// them: the rewrite, then the native re-scan of the result and the augmented
+// findings checked by their bytes; a survivor refuses the text.
+func redactVerified(sc *scanner.Scanner, text string, findings []scanner.Finding) (string, error) {
+	out, _ := scanner.Redact(text, findings)
+	resid := scanner.BlockingResidual(sc.ScanTextNative(out, "issue"))
+	resid = append(resid, scanner.UnsealedAugmented(out, findings)...)
+	if len(resid) > 0 {
+		return "", refused(fmt.Errorf("%w (%d span(s)); nothing written", ErrRedactionResidual, len(resid)))
+	}
+	return out, nil
 }
 
 // identityRefusal is the one cause the ledger refuses on rather than writes
@@ -104,14 +126,13 @@ func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
 		if err != nil {
 			return ""
 		}
-		out, n, deg, e := redactLedgerText(repoRoot, in)
-		if e != nil {
-			err = e
-			return ""
-		}
+		out, n, deg, rerr := redactLedgerText(repoRoot, in)
 		total += n
 		if deg != "" {
 			worst = deg
+		}
+		if rerr != nil && err == nil {
+			err = rerr
 		}
 		return out
 	}
@@ -141,6 +162,7 @@ func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
 type ledgerRedactor struct {
 	sc       *scanner.Scanner
 	degraded string
+	err      error
 }
 
 // newLedgerRedactor builds the batch redactor. An unusable scanner degrades
@@ -158,7 +180,9 @@ func newLedgerRedactor(repoRoot string) (*ledgerRedactor, error) {
 	return &ledgerRedactor{sc: sc}, nil
 }
 
-// redact sanitises one value and reports how many spans it rewrote.
+// redact sanitises one value and reports how many spans it rewrote. A value
+// whose redaction leaves a span the verification finds comes back empty, and
+// the batch's Err says so: its caller writes nothing.
 func (r *ledgerRedactor) redact(text string) (string, int) {
 	if r.sc == nil {
 		return text, 0
@@ -167,9 +191,18 @@ func (r *ledgerRedactor) redact(text string) (string, int) {
 	if len(findings) == 0 {
 		return text, 0
 	}
-	out, _ := scanner.Redact(text, findings)
+	out, err := redactVerified(r.sc, text, findings)
+	if err != nil {
+		if r.err == nil {
+			r.err = err
+		}
+		return "", 0
+	}
 	return out, len(findings)
 }
+
+// Err is the first refusal of the batch's redactions, or nil.
+func (r *ledgerRedactor) Err() error { return r.err }
 
 // Degraded is the loud-degrade note, or "" when the scanner ran with its full
 // pattern set. It is read after the batch's redactions (scanNote).
@@ -178,4 +211,59 @@ func (r *ledgerRedactor) Degraded() string {
 		return r.degraded
 	}
 	return scanNote(r.sc)
+}
+
+// ErrScannerUnavailable is NewTextRedactor's refusal when the ledger's
+// scanner cannot be made or runs degraded.
+var ErrScannerUnavailable = errors.New("capture: the ledger's scanner cannot be made")
+
+// newContextScanner is the seam NewTextRedactor builds its scanner through.
+var newContextScanner = func(ctx context.Context, repoRoot string) (*scanner.Scanner, error) {
+	return scanner.NewContext(ctx, repoRoot)
+}
+
+// TextRedactor is the ledger's redactor for a store outside the ledger that
+// keeps free text under the same rule (the findings list,
+// spc-2611252115253843), built once with the caller's context and used for
+// many texts.
+type TextRedactor struct{ sc *scanner.Scanner }
+
+// NewTextRedactor builds the redactor for repoRoot's patterns. Where
+// redactLedgerText writes the text and says the scan was weakened, this
+// refuses with ErrScannerUnavailable a scanner that cannot be made, one that
+// runs degraded (Scanner.Unavailable, a broken pii.json among the causes) and
+// one whose configured augmenter is not installed (AugmenterGap), because
+// its caller can withhold the text and lose nothing else.
+func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error) {
+	sc, err := newContextScanner(ctx, repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
+	}
+	if unavailable, reason := sc.Unavailable(); unavailable {
+		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
+	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, gap)
+	}
+	return &TextRedactor{sc: sc}, nil
+}
+
+// Redact is text with every span the scanner finds rewritten, or
+// ErrScannerUnavailable where the scan degraded during this text (an
+// augmenter's run failing degrades the scanner from that call on, so
+// Unavailable is asked after the scan as well as at construction).
+func (r *TextRedactor) Redact(text string) (string, error) {
+	findings := r.sc.ScanText(text, "issue")
+	if unavailable, reason := r.sc.Unavailable(); unavailable {
+		return "", fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
+	}
+	if len(findings) == 0 {
+		return text, nil
+	}
+	// Redact is the first stage; what survives it (a native span the
+	// rewrite missed, an augmented value at an occurrence the augmenter did
+	// not report) is not cleared, so this text is refused with
+	// ErrRedactionResidual, its own refusal: the scanner ran whole and is
+	// still good for the next text.
+	return redactVerified(r.sc, text, findings)
 }

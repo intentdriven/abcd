@@ -242,6 +242,9 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// Read after the redactions: an augmenter run that failed during them
 	// degrades the scanner, and the note has to say so.
 	result.Degraded = redactor.Degraded()
+	if err := redactor.Err(); err != nil {
+		return IngestReadingResult{}, err
+	}
 
 	runDir := filepath.Join(issuesRoot, issueschema.ReadingsDir, req.Run)
 	err = withLedgerLock(repoRoot, issuesRoot, func() error {
@@ -483,7 +486,7 @@ func redactDispositionRequest(repoRoot string, req DispositionRequest) (Disposit
 	}
 	req.Grounds = scrub(req.Grounds)
 	req.ExitCondition = scrub(req.ExitCondition)
-	return req, total, r.Degraded(), nil
+	return req, total, r.Degraded(), r.Err()
 }
 
 // dispositionPlaceholderID is a well-formed id the pre-flight validates with
