@@ -833,7 +833,7 @@ removals of the stop's files are refused as `implement-stop-store-write`, since 
 (`commands/implement.md`).
 
 **Nor setting the facilitator's mode.** It is the person's act, done by hand today, since no abcd verb sets it
-yet: a run of the planned `abcd facilitator auto|human` is refused as `abcd-facilitator-auto` and
+yet: a run of the verb itd-2611252049031692 plans, under abcd's name with `auto` or `human`, is refused as `abcd-facilitator-auto` and
 `abcd-facilitator-human`, and under other program names as `abcd-facilitator-auto-any-program` and
 `abcd-facilitator-human-any-program`. A shell line or a file tool that writes, moves or removes
 `~/.abcd.noindex/config.json` is refused as `facilitator-store-write`. Each says how the person sets
