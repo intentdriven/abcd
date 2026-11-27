@@ -832,6 +832,13 @@ other program names as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-f
 removals of the stop's files are refused as `implement-stop-store-write`, since removing a stop is lifting it
 (`commands/implement.md`).
 
+**Nor setting the facilitator's mode.** It is the person's act, done by hand today, since no abcd verb sets it
+yet: a run of the planned `abcd facilitator auto|human` is refused as `abcd-facilitator-auto` and
+`abcd-facilitator-human`, and under other program names as `abcd-facilitator-auto-any-program` and
+`abcd-facilitator-human-any-program`. A shell line or a file tool that writes, moves or removes
+`~/.abcd.noindex/config.json` is refused as `facilitator-store-write`. Each says how the person sets
+`facilitator.mode` by hand (`commands/land.md`).
+
 **Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
 `abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
 build, a `go run` of a file or an unnamed package after the line enters a directory named for abcd, or that
