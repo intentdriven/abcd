@@ -9,13 +9,16 @@ import (
 )
 
 // Setting the facilitator's mode is the person's act (itd-2611252049031692):
-// `abcd facilitator auto|human` writes the person's global setting, in the
-// settings file in abcd's home, which decides wherever a project commits no
-// mode; there is no setting of a person's for one project (the product
-// owner's ruling of 2026-11-26). Each act is refused through the registry
-// entry that names abcd, and under any other program name through a person's
-// act of its own (personacts.go). A shell line that writes, moves or removes
-// the file is refused here, and a file tool through FacilitatorStorePath.
+// their global setting is facilitator.mode in the settings file in abcd's
+// home, which decides wherever a project commits no mode, and which they edit
+// by hand today; there is no setting of a person's for one project (the
+// product thinker's ruling of 2026-11-26). The verb the intent plans to set
+// it, `abcd facilitator auto|human`, is not built; an agent's run of it is
+// refused ahead of it, through the registry entry that names abcd and under
+// any other program name through a person's act of its own (personacts.go),
+// and the refusal says how the person sets the mode today. A shell line that
+// writes, moves or removes the file is refused here, and a file tool through
+// FacilitatorStorePath.
 
 const (
 	// facilitatorAutoAnyEntryID and facilitatorHumanAnyEntryID are the reserved
@@ -37,10 +40,9 @@ const facilitatorSettingsFile = "config.json"
 
 // facilitatorStoreReason and facilitatorStoreSuccessor are what a refused write
 // of the file says, on a shell line and through a file tool alike.
-const (
-	facilitatorStoreReason    = "This writes, moves or removes the person's own settings file, whose facilitator.mode decides whose approval a merge waits on wherever a project commits no mode: a mode an agent writes there is one no person chose."
-	facilitatorStoreSuccessor = facilitatorSuccessor
-)
+const facilitatorStoreReason = "This writes, moves or removes the person's own settings file, whose facilitator.mode decides whose approval a merge waits on wherever a project commits no mode: a mode an agent writes there is one no person chose."
+
+var facilitatorStoreSuccessor = facilitatorSuccessor
 
 // FacilitatorStorePath reports whether p is the person's settings file,
 // directly in abcd's home folder, with case folded since the volume may fold
@@ -112,7 +114,11 @@ func facilitatorStoreUse(u pathUse, named, homeNamed bool) bool {
 
 // The setting's refusals, under abcd's name and any other, say one thing.
 const (
-	facilitatorAutoWhy   = "Setting the facilitator's mode to auto is the person's own act: under auto the merge gate lands a head no person approved, so an auto an agent sets hands it an approval no person gave."
-	facilitatorHumanWhy  = "Setting the facilitator's mode is the person's own act: the setting decides whose approval a merge waits on, so a mode an agent sets is one no person chose."
-	facilitatorSuccessor = "Leave this one to the person: tell them which mode you believe they should work under and why, and let them run `abcd facilitator auto` or `abcd facilitator human` from their own terminal; it sets their own mode wherever a project commits none."
+	facilitatorAutoWhy  = "Setting the facilitator's mode to auto is the person's own act: under auto the merge gate lands a head no person approved, so an auto an agent sets hands it an approval no person gave."
+	facilitatorHumanWhy = "Setting the facilitator's mode is the person's own act: the setting decides whose approval a merge waits on, so a mode an agent sets is one no person chose."
 )
+
+// facilitatorSuccessor is what each refusal of a setting tells the agent to do
+// instead: leave it to the person, and say how they set it today, since no
+// abcd verb sets it yet. The registry's own entries say the same words.
+var facilitatorSuccessor = "Leave this one to the person: tell them which mode you believe they should work under and why. No abcd command sets it yet; they set it by hand: their own mode, wherever a project commits none, is facilitator.mode (auto or human) in " + abcdhome.Display("config.json") + ", which they edit themselves, and a project's is facilitator.mode in its committed .abcd/config.json on the default branch, a change a person merges by hand on the forge's page."

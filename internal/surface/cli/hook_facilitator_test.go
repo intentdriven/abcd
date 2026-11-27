@@ -176,10 +176,13 @@ func TestGuardHookRefusesAFileToolWritingTheFacilitatorSetting(t *testing.T) {
 			t.Run(tool+" "+p, func(t *testing.T) {
 				stdout, stderr, code := runGuard(fileToolPayload(t, tool, root, p), "guard", "hook")
 				reason := mustDeny(t, stdout, stderr, code)
-				for _, want := range []string{tool, "abcd facilitator auto"} {
+				for _, want := range []string{tool, "facilitator.mode", "by hand"} {
 					if !strings.Contains(reason, want) {
 						t.Errorf("the deny must say %q; reason = %q", want, reason)
 					}
+				}
+				if strings.Contains(reason, "run `abcd facilitator") {
+					t.Errorf("the deny sends the person to a command that does not exist; reason = %q", reason)
 				}
 			})
 		}

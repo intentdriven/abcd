@@ -1376,7 +1376,7 @@
         "subcommand2": "auto"
       },
       "why": "Setting the facilitator's mode to auto is the person's own act: under auto the merge gate lands a head no person approved, so an auto an agent sets hands it an approval no person gave.",
-      "successor": "Leave this one to the person: tell them which mode you believe they should work under and why, and let them run `abcd facilitator auto` or `abcd facilitator human` from their own terminal; it sets their own mode wherever a project commits none.",
+      "successor": "Leave this one to the person: tell them which mode you believe they should work under and why. No abcd command sets it yet; they set it by hand: their own mode, wherever a project commits none, is facilitator.mode (auto or human) in ~/.abcd.noindex/config.json, which they edit themselves, and a project's is facilitator.mode in its committed .abcd/config.json on the default branch, a change a person merges by hand on the forge's page.",
       "fixtures": {
         "known_bad": [
           "abcd facilitator auto",
@@ -1397,7 +1397,7 @@
         "subcommand2": "human"
       },
       "why": "Setting the facilitator's mode is the person's own act: the setting decides whose approval a merge waits on, so a mode an agent sets is one no person chose.",
-      "successor": "Leave this one to the person: tell them which mode you believe they should work under and why, and let them run `abcd facilitator auto` or `abcd facilitator human` from their own terminal; it sets their own mode wherever a project commits none.",
+      "successor": "Leave this one to the person: tell them which mode you believe they should work under and why. No abcd command sets it yet; they set it by hand: their own mode, wherever a project commits none, is facilitator.mode (auto or human) in ~/.abcd.noindex/config.json, which they edit themselves, and a project's is facilitator.mode in its committed .abcd/config.json on the default branch, a change a person merges by hand on the forge's page.",
       "fixtures": {
         "known_bad": [
           "abcd facilitator human",

@@ -918,6 +918,41 @@ func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
 	}
 }
 
+// TestTheFacilitatorRefusalsSayHowThePersonSetsItToday: no abcd verb sets the
+// mode yet (itd-2611252049031692 plans one), so each refusal of a setting
+// says how the person sets it today, by hand: facilitator.mode in their own
+// global settings file, or in the repository's committed .abcd/config.json on
+// the default branch, a change a person merges on the forge's page. None
+// sends them to run a command that does not exist.
+func TestTheFacilitatorRefusalsSayHowThePersonSetsItToday(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, cmd := range []string{
+		`abcd facilitator auto`,
+		`abcd facilitator human`,
+		`scripts/abcd.sh facilitator auto`,
+		`bin/abcd-darwin-arm64 facilitator human`,
+		`cp x.json ` + homeDir + `/config.json`,
+	} {
+		d, err := reg.Check(cmd)
+		if err != nil || d.Verdict != VerdictBlock {
+			t.Fatalf("Check(%q) = %+v, %v; want a block", cmd, d, err)
+		}
+		said := d.Why + " " + d.Reason + " " + d.Successor
+		for _, want := range []string{"facilitator.mode", abcdhome.Display("config.json"), ".abcd/config.json", "default branch", "by hand", "forge's page"} {
+			if !strings.Contains(said, want) {
+				t.Errorf("Check(%q) does not say %q: %q", cmd, want, said)
+			}
+		}
+		for _, verb := range []string{"run `abcd facilitator", "abcd facilitator auto`", "abcd facilitator human`"} {
+			if strings.Contains(said, verb) {
+				t.Errorf("Check(%q) sends the person to a command that does not exist (%q): %q", cmd, verb, said)
+			}
+		}
+	}
+}
+
 // TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite: a file tool is held
 // to the same file a shell line is, by any spelling the volume resolves.
 func TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
