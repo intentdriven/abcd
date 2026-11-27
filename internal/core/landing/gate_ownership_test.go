@@ -61,6 +61,20 @@ func TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest(t *testing.T) {
 		f.forge.viewer = "colleague-z"
 		wantArmed(t, f, landGate(t, f))
 	})
+	t.Run("your own, its login in another case", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.reviews, f.forge.viewer = "[]", "Author-A"
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+	})
+	t.Run("an account answer that does not parse", func(t *testing.T) {
+		f := newFixture(t, queueRuleset)
+		globalAuto(t, f, autoConfig)
+		f.forge.reviews, f.forge.viewerAnswer = "[]", `{"data":{"viewer":null}}`
+		f.reviewed(t)
+		wantLeft(t, f, landGate(t, f), "naming which account abcd runs as does not parse")
+	})
 	t.Run("an account the forge cannot name", func(t *testing.T) {
 		f := newFixture(t, queueRuleset)
 		globalAuto(t, f, autoConfig)
@@ -176,6 +190,16 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head())
 		if err != nil || arm || !strings.Contains(why, "on the forge's page") {
 			t.Fatalf("arm %v, why %q, err %v: want no re-arm of a merge that moves the mode line", arm, why, err)
+		}
+	})
+	t.Run("a head the checkout does not hold", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		tip := f.repo.Git("rev-parse", "origin/main")
+		absent := strings.Repeat("ab", 20)
+		d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+			Repo: "o/r", PR: "7", Head: absent, Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+		if err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, "the merge bases of "+absent[:12]+" and origin/main cannot be read (") {
+			t.Fatalf("decision %+v, %v: want nothing armed, unread, naming the merge bases and why", d, err)
 		}
 	})
 	t.Run("the re-arm", func(t *testing.T) {

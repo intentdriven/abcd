@@ -609,13 +609,37 @@ func TestTheMergeGateMarksAnAnswerItCouldNotRead(t *testing.T) {
 		{"a reviewer's permission fails", humanConfig, func(f *fixture) {
 			f.forge.roles = map[string]string{"author-a": `{"permission":"write","role_name":"write"}`, "maintainer-b": "!gh: HTTP 502"}
 		}, true},
+		// A person's own global auto, where the forge cannot say which
+		// account abcd runs as (the project commits no mode here).
+		{"the account read fails", "", func(f *fixture) {
+			globalAuto(f.t, f, autoConfig)
+			f.forge.reviews, f.forge.viewerErr = "[]", errors.New("gh: HTTP 502")
+		}, true},
+		{"a colleague's, no approval", "", func(f *fixture) {
+			globalAuto(f.t, f, autoConfig)
+			f.forge.reviews, f.forge.viewer = "[]", "colleague-z"
+		}, false},
+		// The committed mode line: a change is a refusal, a line that cannot
+		// be read is not.
+		{"the mode line changed", autoConfig, func(f *fixture) {
+			f.repo.Write(".abcd/config.json", humanConfig)
+			f.repo.Commit("the head makes it human")
+		}, false},
+		{"the mode line cannot be read", autoConfig, func(f *fixture) {
+			f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"robot"}}`+"\n")
+			f.repo.Commit("the head leaves it unreadable")
+		}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.config})
-			f.forge.head = f.head()
+			files := map[string]string{}
+			if c.config != "" {
+				files[".abcd/config.json"] = c.config
+			}
+			f := newFixtureFiles(t, queueRuleset, files)
 			if c.set != nil {
 				c.set(f)
 			}
+			f.forge.head = f.head()
 			tip, err := gitutil.Run(f.repo.Root(), "rev-parse", "origin/main")
 			if err != nil {
 				t.Fatal(err)

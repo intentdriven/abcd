@@ -203,8 +203,11 @@ func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	defer cancel()
 	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxMergeBaseBytes, "merge-base", "--all", tip, head)
 	bases := strings.Fields(string(out))
-	if err != nil || len(bases) == 0 || !allFullSHA(bases) {
-		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read")
+	switch {
+	case err != nil:
+		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read (" + clip(masked(err)) + ")")
+	case len(bases) == 0 || !allFullSHA(bases):
+		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read (git named none)")
 	}
 	is, _, err := committedModeLine(ctx, root, head)
 	if err != nil {

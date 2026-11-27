@@ -122,6 +122,8 @@ type fakeForge struct {
 	// the account's own); viewerErr fails that read.
 	viewer    string
 	viewerErr error
+	// viewerAnswer, when set, is the whole answer to ViewerQuery.
+	viewerAnswer string
 	// depends answers the dependency check's read of pull request N
 	// (dependsQuery) with depends[N], a whole answer; a number it lacks is
 	// answered open into main, created at dependsCreated, with an empty body;
@@ -301,6 +303,9 @@ func (f *fakeForge) viewerAnswered(args []string) (string, error) {
 	}
 	if f.viewerErr != nil {
 		return "", f.viewerErr
+	}
+	if f.viewerAnswer != "" {
+		return f.viewerAnswer, nil
 	}
 	login := f.viewer
 	if login == "" {
