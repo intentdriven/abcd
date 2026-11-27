@@ -33,7 +33,9 @@ iss-2611270714040589 taught fsutil.RedactHome every spelling a path carries the 
 2. A linked home whose target's last segment is not the username. With HOME `<tmp>/Users/alice` a link to `<tmp>/Volumes/Data/u1042`, the text naming the resolved `/private<tmp>/Volumes/Data/u1042/notes/a.md`: RedactHome gives `~/notes/a.md`; the sweep and RedactRefusal return it whole, and the identity detector has no username in it to find.
 3. The layout around a redacted username, for a home outside /Users and /home. With HOME `/srv//people/alice`, the text `open /srv/people/alice/notes/a.md: denied`: RedactHome gives `open ~/notes/a.md: denied`; the sweep returns it whole, and RedactRefusal gives `open /srv/people/[redacted-user]/notes/a.md: denied`, so the layout around the username (`/srv/people/`) survives. With the same HOME and the text written as HOME is, all three give `~/notes/a.md`.
 
-The shared table test this record's remedy asks for should carry these three rows beside the 2026-09-29 ones.
+4. The reverse: a clean HOME, with the text spelling the home uncleanly. With HOME `/Users/alice`, the text `open /Users//alice/notes/a.md: denied`: RedactHome and the sweep both return it whole, and RedactRefusal gives `open /Users//[redacted-user]/notes/a.md: denied`; left so on purpose (dcn-2611270959355624), since matching every spelling a text can give would mean normalising the text.
+
+The shared table test this record's remedy asks for should carry these four rows beside the 2026-09-29 ones.
 
 ## Remedy grounds (2026-09-29)
 
