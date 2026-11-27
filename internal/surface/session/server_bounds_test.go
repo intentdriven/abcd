@@ -227,9 +227,14 @@ func TestTheCloseGraceBoundsTheCloseHandshake(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	t.Cleanup(func() { _ = ws.CloseNow() })
+	// The bound sits well clear of both ends: a starved race lane can stall
+	// the end by a second or more past the grace on a correct tree, and the
+	// defect this guards shows as the library's five-second handshake wait.
+	// Anything under four seconds is the grace doing its work.
+	const failAt = 4 * time.Second
 	select {
 	case took := <-ended:
-		if took > grace+time.Second {
+		if took >= failAt {
 			t.Fatalf("the closed connection took %v to end; its close grace is %v", took, grace)
 		}
 	case <-time.After(20 * time.Second):
