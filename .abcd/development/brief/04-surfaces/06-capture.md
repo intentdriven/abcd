@@ -31,6 +31,7 @@ binary.
 | `list` | — | shipped |
 | `mentions` | — | shipped |
 | `migrate` | — | shipped |
+| `owed` | — | shipped |
 | `promote` | — | shipped |
 | `reframe` | — | shipped |
 | `remedy` | — | shipped |
@@ -333,6 +334,47 @@ use only: it names the release that already carried the work, so the record
 stays out of the current cut. The commit a resolution names already exists, so a
 fix and its resolution are two commits in one change: the fix, then the move to
 `resolved/` carrying the `Resolves:` trailer.
+
+**A finding the change at hand fixes** is filed and resolved in one command
+(itd-2611251831138387, criterion 9): the fast path, given what fixed the
+finding and the product impact a resolved record requires, which has no
+default. Every check a capture and a resolve make is made first, and the record
+is written straight into `resolved/` under the one ledger lock, so a refusal
+writes nothing and the change's `Resolves:` trailer is accepted by RS001, the
+record entering `resolved/` in that change. A fix outside what the lane has
+reserved is not made there: the finding is captured and left open, as the
+ISSUES rules domain says.
+
+**The findings owed a capture** are a list abcd keeps under its own home, not in
+the ledger (itd-2611251831138387, spc-2611252115253843): one file for each
+finding under `~/.abcd.noindex/findings/<root-sha>/`, in `open/`, `private/` or
+`settled/`, so the list outlives the worktree it was met in and is never
+dropped by age or by a new session. Bare, the owed listing shows the open
+entries of the whole repository for the account, this checkout's first, a
+hundred at most and then the count, and writes nothing; it also lists the last
+fifty settled, each with its act and the reason, test or run given. It puts one
+entry from standard input (untested, in doubt, handed up, or private) for the
+checkout and the session of the environment, its text redacted as a capture's
+is. Handles (`f-` and eight characters) and one clearing act settle entries as
+the kind table allows: a capture and a settlement are answered by the records,
+the default branch deciding (an open issue holds a capture, and so does one
+this checkout holds open or resolved that the default branch lacks; an open
+issue, a wontfix, an ADR or a decision holds a settlement); a refutation, a run
+on the base and a "not a finding" keep the test, the run or the reason they are
+given, when settled from the checkout the entry was put from (from any other,
+the act is kept and the reason withheld); and an entry can be moved to the private list. A private entry's text is
+shown only to the person: where standard input and output are a terminal, no
+agent host's session marker is set and no stage runs; everywhere else, and
+always in the JSON form, the count alone, settled private entries included,
+whose handle and reason are not shown either; and only such a caller settles
+one. That test keeps a cooperating agent from printing or clearing a private
+finding by mistake. It is not a wall: an agent of the same account can read the
+list's files, or open a terminal of its own, as the guard's own limit is stated
+(adr-42). A text is read before the call's clock starts, so the clock bounds
+git, the scan and the lock and never a person typing. The verb writes
+only under abcd's home, so it never refuses a main checkout two sessions share.
+The readings that put an entry on the list without the verb, the hold at a
+session's stop, and the landing's refusal are the spec's later steps.
 
 **Deferring** writes the release cut's waiver onto an open record
 (iss-2609181223260994): `deferred_after` naming the anchor tag, `deferral_reason`
@@ -648,14 +690,16 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture remedy`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture owed`, `abcd capture promote`, `abcd capture reframe`, `abcd capture remedy`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
 | `--blocked-by` | string |
 | `--category` | string |
+| `--fixed` | string |
 | `--found-at` | string |
 | `--found-during` | string |
+| `--impact` | string |
 | `--lapsed-at` | string |
 | `--production-mode` | string |
 | `--remedy` | string |
@@ -729,6 +773,22 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--apply` | bool |
+
+### `abcd capture owed`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--captured` | string |
+| `--doubt` | bool |
+| `--handed-up` | bool |
+| `--not-a-finding` | string |
+| `--own` | string |
+| `--private` | bool |
+| `--refuted` | string |
+| `--settled` | string |
+| `--untested` | bool |
 
 ### `abcd capture promote`
 

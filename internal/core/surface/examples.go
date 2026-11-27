@@ -57,6 +57,7 @@ var examples = map[string]string{
 	"abcd capture list":        "abcd capture list --open",
 	"abcd capture mentions":    "abcd capture mentions",
 	"abcd capture migrate":     "abcd capture migrate",
+	"abcd capture owed":        "abcd capture owed",
 	"abcd capture promote":     "abcd capture promote iss-2609010000000001",
 	"abcd capture reframe":     `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`,
 	"abcd capture remedy":      `abcd capture remedy iss-2609010000000001 "make the map before the first write"`,

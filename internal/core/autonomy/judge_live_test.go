@@ -2,6 +2,7 @@ package autonomy
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -235,18 +236,28 @@ func TestLiveWorkWithoutAWakeNamesIt(t *testing.T) {
 }
 
 // TestLiveWorkCutShortLeavesTheState: a reading the deadline cut short is
-// allowed as today, the session's state left as it was, whatever live work
-// it found before the cut. It pins behaviour Judge had before live work
-// existed (it returns on Incomplete before reading Live), so it was not
-// watched fail: it holds that the live-work change did not alter that.
+// allowed as today, the session's state left as it was but for the wakes'
+// prompts (iss-2611260602137306), whatever live work it found before the cut.
+// It pins behaviour Judge had before live work existed (it returns on
+// Incomplete before reading Live), so it was not watched fail: it holds that
+// the live-work change did not alter that.
 func TestLiveWorkCutShortLeavesTheState(t *testing.T) {
 	now := at(t, "2026-10-18 21:01")
 	owed := owedOf(running(unpushedBr, now))
 	owed.Incomplete = true
 	owed.Notes = []string{"the check ran out of its time budget before reading the whole test runs"}
-	v := judgeAt(t, awayRec(now, false), owed, StopInput{SessionCrons: crons("*/10 * * * *")}, SessionState{Wakes: 2}, now)
-	if v.Block || v.Save || v.Stop == nil || v.Stop.Kind != StopCheckIncomplete {
-		t.Fatalf("a cut-short reading: %+v, want allowed, nothing saved, the stop recorded", v)
+	in := StopInput{SessionCrons: crons("*/10 * * * *")}
+	v := judgeAt(t, awayRec(now, false), owed, in, SessionState{Wakes: 2}, now)
+	if v.Block || v.Stop == nil || v.Stop.Kind != StopCheckIncomplete {
+		t.Fatalf("a cut-short reading: %+v, want allowed, the stop recorded", v)
+	}
+	want, _ := KeepWakes(SessionState{Wakes: 2}, in.SessionCrons, now)
+	if v.State.Wakes != 2 || v.State.State != "" || v.State.Fingerprint != "" || !slices.Equal(v.State.CronPrompts, want.CronPrompts) {
+		t.Errorf("a cut-short reading moved the state past the wakes: %+v", v.State)
+	}
+	// With the wakes already known, nothing is saved.
+	if v := judgeAt(t, awayRec(now, false), owed, in, want, now); v.Save {
+		t.Errorf("a cut-short reading with nothing new saved the state: %+v", v.State)
 	}
 }
 

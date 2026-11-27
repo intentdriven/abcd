@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
+	"github.com/intentdriven/abcd/internal/core/findings"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/launch/reland"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -69,6 +70,59 @@ type boardOutput struct {
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
 	Status *statusblock.Block `json:"status,omitempty"`
+	// Findings counts the repository's list of findings under abcd's home
+	// (itd-2611251831138387, criterion 10), omitted while it holds none. It
+	// carries counts alone, never an entry's text.
+	Findings *boardFindingsLine `json:"findings,omitempty"`
+}
+
+// boardFindingsLine is the board's count of the findings list.
+type boardFindingsLine struct {
+	Open    int  `json:"open"`
+	Private int  `json:"private"`
+	Newer   int  `json:"newer,omitempty"`
+	Full    bool `json:"full,omitempty"`
+}
+
+// boardFindings counts the list of the repository cwd is in, or nil where it
+// holds nothing or there is no repository with a commit to key it; a list
+// that cannot be read is said on stderr and drawn as no line. It reads the
+// list as a hook does, and writes nothing.
+func boardFindings(cwd string, stderr io.Writer) *boardFindingsLine {
+	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
+	if err != nil {
+		return nil
+	}
+	s, ok, err := owedStoreFor(context.Background(), root)
+	if err == nil && ok {
+		var v findings.View
+		if v, err = s.Read(); err == nil {
+			if len(v.Open)+len(v.Private)+len(v.Newer) == 0 {
+				return nil
+			}
+			return &boardFindingsLine{Open: len(v.Open), Private: len(v.Private), Newer: len(v.Newer), Full: v.Full}
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd: the findings list is not counted — %s; `abcd capture owed` names the same refusal\n",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	return nil
+}
+
+// findingsRow is the board's line for the list, or nil for none.
+func findingsRow(f *boardFindingsLine) *board.Row {
+	if f == nil {
+		return nil
+	}
+	text := fmt.Sprintf("%d owed, %d private", f.Open, f.Private)
+	if f.Newer > 0 {
+		text += fmt.Sprintf(", %d a newer abcd's", f.Newer)
+	}
+	if f.Full {
+		text += ", the list is full"
+	}
+	return &board.Row{Label: "findings", Text: text + " — `abcd capture owed`"}
 }
 
 // boardStatusline is the board's view of the row: the state the badge

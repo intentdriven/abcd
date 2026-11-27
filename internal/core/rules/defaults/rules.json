@@ -41,7 +41,9 @@
       "aliases": ["found a bug", "track this"],
       "rules": [
         "Capture issues to the ledger via `abcd capture`; folder membership is the status signal.",
-        "Never fix ahead of an armed detector — record the finding first."
+        "Never fix ahead of an armed detector — record the finding first.",
+        "A fault is a finding, and is captured, when it was there before the change began (the base shows it; the tools, the records and the process as they stood then are part of that), or when the change will land with it still there; a fault the change itself made and removes before it lands is building, a test that fails on the way among them, and is never captured or listed; in doubt, it is captured.",
+        "A confirmed finding fixed in the change at hand is captured and resolved in that change; a fix outside what the lane has reserved is not made there: the finding is captured and left open."
       ]
     },
     "INTENTS": {

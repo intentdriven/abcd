@@ -47,6 +47,7 @@ func intentRaiserProbes(t *testing.T) []raiserProbe {
 		probe("spec/outside-checkout", "spec", "close", "spc-1").from(outside),
 		probe("capture/outside-checkout", "capture", "the parser drops the last line", "--remedy", cliTestRemedy).from(outside),
 		probe("capture/outside-checkout", "capture", "list", "--all").from(outside),
+		probe("capture/outside-checkout", "capture", "owed").from(outside),
 		probe("usage/unknown-command", "intent", "lnk", "itd-10").from(inDir(repo)),
 		probe("usage/unknown-command", "intent", "zzz"),
 		probe("usage/missing-argument", "intent", ""),

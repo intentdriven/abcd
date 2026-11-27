@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -115,8 +117,8 @@ func isQuestionTool(name string) bool {
 // home) is loud and holds abcd's question to the defaults: one NOT CHECKED
 // line names the file, and a question the defaults admit runs at exit 1.
 // Another tool's question runs unchecked whatever either file says.
-func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage, outer error) error {
-	reads := questionState(cmd, cwd)
+func questionGate(cmd *cobra.Command, cwd, sessionID string, raw json.RawMessage, outer error) error {
+	reads := questionState(cmd, cwd, sessionID)
 	if reads.state.Away {
 		return denyCall(awayQuestionRefusal())
 	}
@@ -157,9 +159,9 @@ type questionReads struct {
 // it and then question.Decide, so the two read the same state the same way.
 // It writes nothing; a store it cannot read is named in the state, never
 // fatal.
-func questionState(cmd *cobra.Command, cwd string) questionReads {
+func questionState(cmd *cobra.Command, cwd, sessionID string) questionReads {
 	r := questionReads{mode: mode.Managed}
-	r.state.Away, r.state.AwayErr = awayAtQuestion(cwd)
+	r.state.Away, r.state.AwayErr = awayAtQuestion(cwd, sessionID)
 	r.state.Verbs = verbsOf(cmd.Root())
 	questionLimitsAt(cwd, &r.state)
 	root, rerr := mode.Root(cwd)
@@ -194,21 +196,49 @@ func questionState(cmd *cobra.Command, cwd string) questionReads {
 // cwd (spc-2610180914469489, "The question reroute"). It fails open: outside
 // a checkout, in a repository with no root commit, or with no home, nobody is
 // away and nothing is said; a record or lock the store refuses reads as not
-// away, and is returned for the one line the gate writes.
-func awayAtQuestion(cwd string) (away bool, unread error) {
+// away, and is returned for the one line the gate writes. A session the
+// person is talking to reads as present inside its conversation window
+// (iss-2611260602137306): the hook names its session from the payload, and the
+// verb from the host's environment (hostSessionIDEnv); with none named, no
+// window is read.
+func awayAtQuestion(cwd, sessionID string) (away bool, unread error) {
 	root, err := mode.Root(cwd)
 	if err != nil {
 		return false, nil
 	}
-	_, holds, err := autonomy.AwayAt(root, autonomy.Options{})
+	rec, holds, err := autonomy.AwayAt(root, autonomy.Options{})
 	if err != nil {
 		if errors.Is(err, autonomy.ErrUnsafe) {
 			return false, err
 		}
 		return false, nil
 	}
+	if holds && conversingAt(rec, cwd, sessionID) {
+		return false, nil
+	}
 	return holds, nil
 }
+
+// conversingAt reports whether the person is talking to the session the
+// question comes from: that session's window under rec, read from its start
+// copy as the prompt hook wrote it. No session named, or a state that cannot
+// be read, reads as no window, so the question stays routed as away.
+func conversingAt(rec *autonomy.Record, cwd, sessionID string) bool {
+	if !autonomy.ValidSessionID(sessionID) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), questionConversationBudget)
+	defer cancel()
+	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
+	if err != nil {
+		return false
+	}
+	st, err := autonomy.LoadSession(ctx, copyRoot, sessionID)
+	return err == nil && st.Conversing(rec, time.Now())
+}
+
+// questionConversationBudget bounds the window's read at a question.
+const questionConversationBudget = 2 * time.Second
 
 // awayQuestionRefusal is the one reason every question gets while the person
 // is away, whatever its chip and whoever wrote it (dcn-2610180937177502): a

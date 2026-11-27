@@ -1,0 +1,6 @@
+---
+id: dcn-2611260613242267
+slug: while-the-person-is-away-a-prompt-they
+date: 2026-11-26
+---
+2026-11-26 — While the person is away, a prompt they type opens a 15-minute window in which that session reads them as present at the stop check and at the question check (iss-2611260602137306, the person's pick of option A on 2026-11-26). A prompt counts as the person's unless it matches a wake prompt the session's stop checks have seen, present or away (kept hashed, newest 32; a session whose stop lists more wakes than that, or a wake whose prompt is a slash command (dcn-2611262236204687), has no prompt counted as the person's; a stop the check allows before reading the wakes keeps none), or opens with one of the host's own envelopes (task-notification, cross-session message, usage-limit resumption, continued-session summary); the host's UserPromptSubmit payload names no origin (code.claude.com/docs/en/hooks), so these are the documented fields that tell them apart. The window is read only under the away record it was opened under. A stop inside it with work owed needs a wake (dcn-2611262057069959). abcd guard question reads the window of the session the host's environment names, and none when it names none. Reverse by removing the Conversing check from autonomy.Judge and awayAtQuestion and the NotePrompt call from the prompt router.
