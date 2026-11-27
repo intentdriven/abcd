@@ -390,41 +390,36 @@ func pushRemovals(segs []segment) (why string, named bool) {
 
 // gitSubcommandAt is where git's subcommand may stand in args, the words after
 // git: past its own options, each of gitValueOptions with the word after it.
-// An option or a word the line does not fix may take the next word, so the
-// word after it is a place too.
+// A word before the subcommand that the line does not fix may be any option
+// with any number of values, or the subcommand itself, so from it on every
+// word is a place.
 func gitSubcommandAt(args []string) []int {
-	var at []int
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case isUnknown(a):
+			at := make([]int, 0, len(args)-i)
+			for k := i; k < len(args); k++ {
+				at = append(at, k)
+			}
+			return at
 		case gitValueOptions[a] || a == "--attr-source" || a == "--shallow-file":
 			i++
 		case strings.HasPrefix(a, "-"):
-			if isUnknown(a) && i+1 < len(args) {
-				at = append(at, i+1)
-			}
-		case isUnknown(a):
-			at = append(at, i)
-			if i+1 < len(args) {
-				at = append(at, i+1)
-			}
-			return at
 		default:
-			return append(at, i)
+			return []int{i}
 		}
 	}
-	return at
+	return nil
 }
 
-// mayRemove reports whether a word of a push's arguments, before any `--`,
-// spells --prune or --mirror, or is one the line does not fix that may print
-// either: glued to a substitution (`"$(x)"--prune`), cut by one
-// (`--pru"$(x)"ne`) or ending in one (`--pr$(x)`).
+// mayRemove reports whether a word of a push's arguments spells --prune or
+// --mirror, or is one the line does not fix that may print either: glued to a
+// substitution (`"$(x)"--prune`), cut by one (`--pru"$(x)"ne`) or ending in
+// one (`--pr$(x)`). A `--` does not end the reading here: it may be an
+// option's value (`--repo --`), and pushDeletes reads which it is.
 func mayRemove(args []string) bool {
 	for _, a := range args {
-		if a == "--" {
-			return false
-		}
 		if o := pushRemovalOption(knownText(a)); o == "--prune" || o == "--mirror" {
 			return true
 		}

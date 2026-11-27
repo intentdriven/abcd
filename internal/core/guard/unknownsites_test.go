@@ -83,7 +83,7 @@ var wordReaders = map[string]string{
 	"deletesIn":         "isUnknown on the -C value and the subcommand, and mayDelete refuses an unknown word",
 	"pushDeletes":       "isUnknown on every word before it is read",
 	"pushRemovals":      "reads the subcommand at the places gitSubcommandAt finds; a git site comes from sitesNamed, and the push is read by pushDeletes",
-	"gitSubcommandAt":   "isUnknown: a word or option the line does not fix makes the word after it a place too",
+	"gitSubcommandAt":   "isUnknown: from a word the line does not fix on, every word is a place",
 	"mayRemove":         "knownText and flagCouldBe: a word the line does not fix is read as every option it may print",
 	"pushRemovalOption": "exempt: reads a fixed word, or mayRemove's reading of one with its substitutions taken as empty; it approves no word",
 	"branchDeletes":     "isUnknown on every word before it is read",

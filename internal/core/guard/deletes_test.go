@@ -313,6 +313,11 @@ func TestGuardRefusesAPushThatPrunesOrMirrors(t *testing.T) {
 		`printf 'a\n' | xargs git push --pr$(printf une) origin 'refs/heads/*:refs/heads/*'`,
 		`cd /tmp/x && git push --prune origin 'refs/heads/*:refs/heads/*'`,
 		`git -C "$wt" push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --repo -- --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push -o -- --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"-c a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -c"$(true)" a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"-C . push --prune origin 'refs/heads/*:refs/heads/*'`,
 	} {
 		p := &recordingProver{proof: DeleteProof{Safe: true}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
@@ -330,7 +335,9 @@ func TestGuardRefusesAPushThatPrunesOrMirrors(t *testing.T) {
 		if d.EntryID == deleteEntryID && (!strings.Contains(d.Message, "every target spelled out") || !strings.Contains(d.Message, "`abcd sweep`")) {
 			t.Errorf("%q: the refusal does not name the safe form: %s", line, d.Message)
 		}
-		if mirror := strings.Contains(line, "mir"); mirror == d.AllowableOnce || mirror != (d.EntryID == "git-push-mirror") {
+		// Where the delete refusal speaks for the line, a person may allow it
+		// once; any other blocker (git-push-mirror, a force) passes no allow.
+		if mirror := strings.Contains(line, "mir"); mirror != (d.EntryID == "git-push-mirror") || d.AllowableOnce != (d.EntryID == deleteEntryID) {
 			t.Errorf("%q: refused under %q, allowable once %v", line, d.EntryID, d.AllowableOnce)
 		}
 	}
