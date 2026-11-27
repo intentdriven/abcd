@@ -13,3 +13,5 @@ remedy: "Judge each check by its newest run per name and workflow (the latest st
 ---
 
 While the person is away, the stop hook reports a pull request as failing its checks after the failed check was rerun and passed. The forge's status rollup keeps both runs of a check, the superseded failure and the newer success, and the hook reads the failure. It then tells the session to fix checks that already pass, and every reply after that carries the false item. Seen on 27/11: an attribution check failed on a pull-request body, the body was edited, the rerun passed, and the hook went on naming the pull request as failing.
+
+Rerunning the failed run until it passes clears the false item, which shows the hook reads every run in the rollup rather than the newest one.
