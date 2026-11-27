@@ -338,6 +338,10 @@ func (l *copyLauncher) launch(ctx context.Context, run string, only *TrialKey, c
 // account, so 0711 would not do: it keeps the owner's read.
 const listingDenied fs.FileMode = 0o300
 
+// cloneLstated is called once removeClone has read what dir is, before it
+// opens it: a test replaces it to swap the clone in that window.
+var cloneLstated = func(dir string) {}
+
 // runFolders is run's folder in the hand-off store and in the clone store,
 // which a launch closes to listing while its copies run.
 func runFolders(home, rootSHA, run string) []string {
@@ -431,10 +435,12 @@ func denyListing(dirs ...string) (func() error, error) {
 
 // removeClone deletes the copy's clone dir. Its run's folder may be closed to
 // listing (denyListing), and os.RemoveAll opens the folder that holds what it
-// deletes, so the clone's entries are deleted from inside the clone, which
-// stays readable, and the emptied clone is then removed from its folder by
-// name, which owner write and traverse allow. A clone that is not a real
-// directory is removed as it is, never followed.
+// deletes, so the clone is opened once as a root, held to be the folder its
+// path named when it was read (a link swapped into its place is refused), and
+// its entries are deleted through that root, so no entry is found again by its
+// path; the emptied clone is then removed from its folder by name, which owner
+// write and traverse allow. A clone that is not a real directory is removed as
+// it is, never followed.
 func removeClone(dir string) error {
 	fi, err := os.Lstat(dir)
 	switch {
@@ -445,13 +451,29 @@ func removeClone(dir string) error {
 	case !fi.IsDir():
 		return os.Remove(dir)
 	}
-	ents, err := os.ReadDir(dir)
+	cloneLstated(dir)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if at, err := root.Stat("."); err != nil {
+		return err
+	} else if !os.SameFile(fi, at) {
+		return fmt.Errorf("the clone %s was replaced while it was deleted, so nothing in it was deleted", filepath.Base(dir))
+	}
+	f, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	ents, err := f.ReadDir(-1)
+	f.Close()
 	if err != nil {
 		return err
 	}
 	var errs []error
 	for _, e := range ents {
-		errs = append(errs, os.RemoveAll(filepath.Join(dir, e.Name())))
+		errs = append(errs, root.RemoveAll(e.Name()))
 	}
 	if err := errors.Join(errs...); err != nil {
 		return err

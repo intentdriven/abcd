@@ -1078,3 +1078,63 @@ func TestACloneIsDeletedFromAFolderClosedToListing(t *testing.T) {
 		t.Fatalf("the run's folder holds %v (%v); want nothing", ents, err)
 	}
 }
+
+// TestACloneSwappedForALinkLeavesTheTargetUntouched: a clone replaced by a
+// link to another folder after removeClone read what it was, by a process of
+// the same account that can write the run's folder, is refused, and the
+// folder the link names keeps every entry.
+func TestACloneSwappedForALinkLeavesTheTargetUntouched(t *testing.T) {
+	run := filepath.Join(t.TempDir(), "run")
+	clone := filepath.Join(run, "copy_a")
+	if err := os.MkdirAll(filepath.Join(clone, "widget"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, "keep.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(t.TempDir(), "moved")
+	old := cloneLstated
+	t.Cleanup(func() { cloneLstated = old })
+	cloneLstated = func(dir string) {
+		if err := os.Rename(dir, moved); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := removeClone(clone); err == nil {
+		t.Errorf("removeClone of a clone swapped for a link returned no error")
+	}
+	if _, err := os.Stat(filepath.Join(target, "keep.txt")); err != nil {
+		t.Fatalf("the folder the link names lost its entry: %v", err)
+	}
+}
+
+// TestALaunchedCopysPatternIsJudgedAsItRan: a copy its launch made ran while
+// the run's folders were closed to listing, so a pattern of its transcript
+// that climbs into them matched nothing there, as the check finds; the launch
+// judges it so, and the copy stays among the rates.
+func TestALaunchedCopysPatternIsJudgedAsItRan(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the superuser lists a folder whatever its mode")
+	}
+	r, home, m, rec, _ := checkLab(t)
+	key := TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 1}
+	clone := awaitRunner(t, r, home, m, rec, key, KindCode)
+	awaitRunner(t, r, home, m, rec, TrialKey{Task: "feature-a", Cell: "or-cheap", Repeat: 2}, KindCode)
+	f := &fakeCell{answer: madeReceipt, transcript: func(req runner.Request) string {
+		return "read " + req.Brief + "\ncd " + clone + " && ls ../*.md\n"
+	}}
+	if _, err := launchOne(t, testLauncher(r, home, m, f.dispatch), rec, key); err != nil {
+		t.Fatal(err)
+	}
+	h := handOffNow(t, r, m, rec, key)
+	if h.Trial == nil || h.Trial.Compliance == nil {
+		t.Fatalf("the hand-off keeps no checked trial: %+v", h)
+	}
+	if got := ruleOf(t, *h.Trial.Compliance, RuleOwnCopyOnly); got.State != StateKept {
+		t.Fatalf("a launched copy's ls ../*.md: own_copy_only %s (%s); want kept", got.State, got.Detail)
+	}
+}
