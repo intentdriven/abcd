@@ -42,6 +42,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -788,6 +789,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// (spotcheckRecords).
 		if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
 			res.Next = joinNext(res.Next, note)
+		}
+		// The spot-check observes origin's default branch as this move
+		// fetched it, the third observing site (spc-2610301925429250
+		// approach 3); its note is the move's to read, and nothing of the
+		// move waits on it. A move that could not read origin observes
+		// nothing.
+		if origin != nil {
+			def := strings.TrimPrefix(origin.Ref, claim.Remote+"/")
+			if sc := observeLanding(ctxOr(d.Context), spotcheck.Observed{Root: repoRoot, Default: def, Site: spotcheck.SiteDrain}); sc != "" {
+				res.Next = joinNext(res.Next, sc)
+			}
 		}
 		// The lanes in progress take a new pace only once the move has
 		// written it, so a move refused before here takes none.

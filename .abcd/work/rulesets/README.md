@@ -61,6 +61,21 @@ in the tree rather than only a web console.
   second guard is abcd's own reader, built in step 3 of spc-2610150728396006
   (C11): a status commit whose tree is not the empty tree is shown as
   doubtful, with that reason, and never rendered.
+- `spotcheck-protection.json` — deletion and force-push protection for
+  `refs/heads/abcd-spotcheck`, the spot-check's store (itd-2610301750162657,
+  adr-2611251806496719). **No bypass actors**, and no creation rule, since the
+  first draw creates the branch. Cycles, items and judgements are added as
+  fast-forwards and the branch is kept for ever, so neither a deletion nor a
+  forced push has a use; the committed pre-push hook refuses both only for a
+  push made through the hooks. It must stand before the first draw on any
+  machine. It cannot tell an agent from the person when both push with one
+  credential, so it guards against removal and rewriting, never against an
+  addition; abcd's reader verifies every cycle it reads, and each machine's
+  mark refuses a branch that no longer holds what it last verified. Not yet
+  applied: the person applies it with
+  `gh api -X POST repos/intentdriven/abcd/rulesets --input
+  .abcd/work/rulesets/spotcheck-protection.json`, then refreshes the mirror
+  from the live ruleset as below and adds its id to the list there.
 - `no-history-rewriting.json` — force-push protection on every branch except
   `dependabot/**` and the merge queue's own `gh-readonly-queue/**`
   (iss-2611040337038931), so the forge refuses a forced push the hooks never

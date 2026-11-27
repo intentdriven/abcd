@@ -1,0 +1,6 @@
+---
+id: dcn-2611262132038983
+slug: defer-bounding-the-spot-check-s-outbound
+date: 2026-11-26
+---
+2026-11-26 — Defer bounding the spot-check's outbound read of the local copy (itd-2610301750162657). outbound, which every observation and every push of the spot-check runs, reads the whole local refs/abcd/spotcheck through the store's 4,096-record bound, and the copy grows by about 60 records a day across this checkout's worktrees, so at the current rate it reaches the bound in about eight weeks. Grounds for deferring: it fails closed, since over the bound outbound refuses and the observation writes nothing and says so, so no cycle is drawn over a partial read and no clean cycle is counted; it stops only the checkout whose local copy is over the bound, and every record stays on that copy to be carried once the read is bounded; and the fix needs a design, because the typed copy carried to origin is named by its own content hash and so differs from the local file's name, and what origin already holds cannot be told from the two listings alone. The technical facilitator ruled it deferred under facilitator.mode auto, with its issue captured at major and carried past v0.17.1. Reverse by bounding outbound in this branch before it lands.
