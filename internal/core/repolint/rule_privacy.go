@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -440,11 +442,15 @@ func isPersonaHomeSegment(seg string) bool {
 		return false
 	}
 	home := scanner.CallerHome()
+	// The user is the last segment of the home cleaned, so a HOME written
+	// with a trailing dot segment or a doubled slash still names its user,
+	// compared in one Unicode normal form (iss-2609290055092630).
+	home = strings.TrimRight(filepath.ToSlash(filepath.Clean(home)), "/")
 	i := strings.LastIndexAny(home, `/\`)
 	if i < 0 {
 		return true
 	}
-	return !strings.EqualFold(home[i+1:], seg)
+	return !strings.EqualFold(norm.NFC.String(home[i+1:]), norm.NFC.String(seg))
 }
 
 // reachedNameViaTraversal reports whether a NAME-BEARING path segment follows the

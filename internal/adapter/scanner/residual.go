@@ -1,8 +1,13 @@
 package scanner
 
 import (
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -68,11 +73,96 @@ func BlockingResidual(findings []Finding) []Finding {
 // so "\/Users\/me", its \u002f form, a second JSON layer and "%2FUsers%2Fme" abcd-lint:allow
 // are swept with the escape's own bytes, exactly as the literal home is
 // (iss-2609261659041553).
+//
+// The home itself is read in every spelling a path carries it in, the list
+// fsutil.HomeSpellings gives RedactHome too: as written, cleaned,
+// symlink-resolved (a linked home's target need not be named after the user,
+// so the detector has no name to find there), the macOS data-volume firmlink,
+// and both Unicode normal forms (iss-2609290055092630). Each spelling is
+// searched once across the text, and the spans they find are unioned, so two
+// spellings that start at one byte rewrite the longer of the two, once. A
+// spelling ending in a dot segment ("/Users/me/.") must be followed by a abcd-lint:allow
+// separator or a byte that cannot continue a path, so "/Users/me/._x" keeps abcd-lint:allow
+// its separator as the cleaned spelling gives it ("~/._x").
 func SweepCallerHome(text, home string) string {
 	if home == "" {
 		return text
 	}
-	return replaceSpans(text, backstopSpans(text, home, true, homeSweepable), "~")
+	return replaceSpans(text, callerHomeSpans(text, home), "~")
+}
+
+// callerHomeSpans is the sorted, disjoint spans of text at which home stands
+// as a path, in any of its spellings (callerHomeSpellings).
+func callerHomeSpans(text, home string) []span {
+	spellings := callerHomeSpellings(home)
+	var out []span
+	for _, sp := range spellings {
+		accept := homeSweepable
+		if fsutil.EndsInDotSegment(sp) {
+			accept = dotSegmentHomeSweepable
+		}
+		out = append(out, backstopSpans(text, sp, true, accept)...)
+	}
+	if len(spellings) == 1 {
+		return out
+	}
+	return disjointSpans(out)
+}
+
+// dotSegmentHomeSweepable is homeSweepable for a spelling whose last segment
+// is "." or "..": its dot is a whole segment, so it stands as a path only
+// where a separator or a byte that cannot continue a path segment follows it.
+func dotSegmentHomeSweepable(text string, at, end int, urls urlSet) bool {
+	if end < len(text) && text[end] != '/' && isPathSegmentByte(text[end]) {
+		return false
+	}
+	return homeSweepable(text, at, end, urls)
+}
+
+// spellingsMemo keeps the last home's spellings: resolving them stats the
+// filesystem, and a store's residue check sweeps one home line by line.
+var spellingsMemo struct {
+	sync.Mutex
+	home      string
+	spellings []string
+}
+
+// callerHomeSpellings is fsutil.HomeSpellings(home), or home alone where that
+// gives none (a relative or root-level home, swept as written, as it always
+// was).
+func callerHomeSpellings(home string) []string {
+	spellingsMemo.Lock()
+	defer spellingsMemo.Unlock()
+	if spellingsMemo.spellings == nil || spellingsMemo.home != home {
+		sp := fsutil.HomeSpellings(home)
+		if len(sp) == 0 {
+			sp = []string{home}
+		}
+		spellingsMemo.home, spellingsMemo.spellings = home, sp
+	}
+	return spellingsMemo.spellings
+}
+
+// callerUserNames is the caller's username as the last segment of the cleaned
+// home, so a HOME written "/Users/me/." still names "me", in both Unicode abcd-lint:allow
+// normal forms.
+func callerUserNames(home string) []string {
+	user := home
+	if filepath.IsAbs(home) {
+		user = filepath.Base(filepath.Clean(home))
+	} else if i := strings.LastIndex(home, "/"); i >= 0 {
+		user = home[i+1:]
+	}
+	if user == "" || user == "." || user == "/" {
+		return nil
+	}
+	names := []string{user}
+	for _, f := range []string{norm.NFC.String(user), norm.NFD.String(user)} {
+		if !slices.Contains(names, f) {
+			names = append(names, f)
+		}
+	}
+	return names
 }
 
 // backstopSpans returns, sorted and disjoint, the byte spans of text at which
@@ -289,11 +379,7 @@ func SurvivingCallerHome(text, home string) (string, []Finding) {
 	if home == "" {
 		return text, nil
 	}
-	user := home
-	if i := strings.LastIndex(home, "/"); i >= 0 {
-		user = home[i+1:]
-	}
-	if user != "" {
+	for _, user := range callerUserNames(home) {
 		for _, prefix := range []string{"/Users/", "/home/"} {
 			text = sweepUserSegment(text, prefix+user, prefix+redactionReplacement(Finding{Kind: kindLocalUser}))
 		}

@@ -333,7 +333,7 @@ func scanRoots(s string, roots []string, repl string, fold bool) (string, int) {
 		for k, root := range roots {
 			if !searched[k] || (next[k] >= 0 && next[k] < from) {
 				n := 0
-				next[k], n = nextRoot(s, root, from, fold, endsInDotSegment(root))
+				next[k], n = nextRoot(s, root, from, fold, EndsInDotSegment(root))
 				searched[k] = true
 				scanned += n
 			}
@@ -386,8 +386,10 @@ func nextRoot(s, root string, from int, fold, strict bool) (int, int) {
 	return -1, max(len(s)-start, 0)
 }
 
-// endsInDotSegment reports whether root's last segment is "." or "..".
-func endsInDotSegment(root string) bool {
+// EndsInDotSegment reports whether root's last segment is "." or "..": such a
+// spelling of a directory is its prefix only where a separator, or a byte that
+// cannot continue a path segment, follows it (nextRoot).
+func EndsInDotSegment(root string) bool {
 	sep := string(os.PathSeparator)
 	return strings.HasSuffix(root, sep+".") || strings.HasSuffix(root, sep+"..")
 }
@@ -459,46 +461,18 @@ var dataVolumeFirmlink = runtime.GOOS == "darwin"
 
 // RedactHomeAt is RedactHome for homes the caller names rather than the
 // process's own: each home in s is replaced with "~" in every spelling a path
-// can carry it in — as given (less a trailing separator, which is no part of
-// the name and would swallow the one after it), cleaned, and symlink-resolved
-// from both of those (a ".." after a link climbs from the link's target, which
-// the cleaned spelling does not name); on macOS, a home under /Users also as
-// /System/Volumes/Data/Users/…, the firmlink into the data volume; and each of
-// those in both Unicode normal forms, NFC and NFD, since the filesystem may hand
-// back a name in the form it was not typed in. The spellings are matched in a
-// single pass, the longest first where two start at the same byte, so a span is
-// redacted once and a shorter spelling never strands a longer one's tail ("~/x"
-// for "/h/./x" under a HOME of "/h/."). The boundary and case rules are
+// can carry it in (HomeSpellings). The spellings are matched in a single pass,
+// the longest first where two start at the same byte, so a span is redacted
+// once and a shorter spelling never strands a longer one's tail ("~/x" for
+// "/h/./x" under a HOME of "/h/."). The boundary and case rules are
 // RedactRoot's, save that a spelling ending in a dot segment must be followed by
-// a separator or a byte that cannot continue a path (nextRoot). An empty,
-// relative or root-level home ("/", "//", "/.") is skipped in every spelling.
+// a separator or a byte that cannot continue a path (nextRoot).
 func RedactHomeAt(s string, homes ...string) string {
 	var roots []string
-	add := func(root string) {
-		if len(root) > 1 && filepath.IsAbs(root) && !slices.Contains(roots, root) {
-			roots = append(roots, root)
-		}
-	}
 	for _, home := range homes {
-		clean := filepath.Clean(home)
-		if !filepath.IsAbs(clean) || len(clean) <= 1 {
-			continue // empty, relative or root-level in every spelling
-		}
-		spellings := []string{strings.TrimRight(home, string(os.PathSeparator)), clean}
-		for _, p := range []string{home, clean} {
-			if real, err := filepath.EvalSymlinks(p); err == nil {
-				spellings = append(spellings, real)
-			}
-		}
-		for _, sp := range spellings {
-			forms := []string{sp}
-			if dataVolumeFirmlink && strings.HasPrefix(sp, "/Users/") {
-				forms = append(forms, "/System/Volumes/Data"+sp)
-			}
-			for _, f := range forms {
-				add(f)
-				add(norm.NFC.String(f))
-				add(norm.NFD.String(f))
+		for _, sp := range HomeSpellings(home) {
+			if !slices.Contains(roots, sp) {
+				roots = append(roots, sp)
 			}
 		}
 	}
@@ -506,6 +480,47 @@ func RedactHomeAt(s string, homes ...string) string {
 		return s
 	}
 	return replaceRoots(s, roots, "~", caseFoldingFS())
+}
+
+// HomeSpellings is every spelling a path can carry home in, without
+// duplicates: as given (less a trailing separator, which is no part of the name
+// and would swallow the one after it), cleaned, and symlink-resolved from both
+// of those (a ".." after a link climbs from the link's target, which the
+// cleaned spelling does not name); on macOS, a home under /Users also as
+// /System/Volumes/Data/Users/…, the firmlink into the data volume; and each of
+// those in both Unicode normal forms, NFC and NFD, since the filesystem may hand
+// back a name in the form it was not typed in. It is the one list RedactHome
+// and the scanner's literal home sweep both read (iss-2609290055092630). An
+// empty, relative or root-level home ("/", "//", "/.") has none.
+func HomeSpellings(home string) []string {
+	clean := filepath.Clean(home)
+	if !filepath.IsAbs(clean) || len(clean) <= 1 {
+		return nil // empty, relative or root-level in every spelling
+	}
+	var out []string
+	add := func(sp string) {
+		if len(sp) > 1 && filepath.IsAbs(sp) && !slices.Contains(out, sp) {
+			out = append(out, sp)
+		}
+	}
+	spellings := []string{strings.TrimRight(home, string(os.PathSeparator)), clean}
+	for _, p := range []string{home, clean} {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			spellings = append(spellings, real)
+		}
+	}
+	for _, sp := range spellings {
+		forms := []string{sp}
+		if dataVolumeFirmlink && strings.HasPrefix(sp, "/Users/") {
+			forms = append(forms, "/System/Volumes/Data"+sp)
+		}
+		for _, f := range forms {
+			add(f)
+			add(norm.NFC.String(f))
+			add(norm.NFD.String(f))
+		}
+	}
+	return out
 }
 
 // DisplayPath is the one statement of how a surface prints a directory it names

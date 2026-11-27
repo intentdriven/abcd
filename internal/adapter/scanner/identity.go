@@ -169,8 +169,10 @@ func probeIdentity(ctx context.Context, repoRoot string) Identity {
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
-		if i := strings.LastIndex(id.HomePath, "/"); i >= 0 {
-			id.HomeUser = id.HomePath[i+1:]
+		// The user is the last segment of the home cleaned, so a HOME written
+		// "/Users/me/." still names "me" (iss-2609290055092630). abcd-lint:allow
+		if names := callerUserNames(home); len(names) > 0 && strings.Contains(home, "/") {
+			id.HomeUser = names[0]
 		}
 	}
 	return id
@@ -615,7 +617,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// cased spelling of the caller's own home path resolves to the SAME directory,
 		// so a case variant must still trip the hard_fail home_path_self gate — matching
 		// the (?i) already applied to the email/name/github matchers below.
-		m.homeSelf = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomePath))
+		m.homeSelf = homeSelfPattern(id.HomePath)
 	}
 	var emails []string
 	for _, e := range identityValues(id.GitUserEmail, id.OtherGitUserEmails) {
@@ -869,7 +871,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
-			stands := homeSweepable(line, loc[0], loc[1], urls)
+			stands := homeSelfSweepable(line, loc[0], loc[1], urls)
 			if m.bytes {
 				// A raw blob has no path syntax on either side of the
 				// literal, so neither half of the anchor applies: the
@@ -1441,11 +1443,47 @@ func isHomeSegmentByte(b byte) bool {
 func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 	scanMeter.charge(stageIdentity, len(matched))
 	for _, loc := range homeSelf.FindAllStringIndex(matched, -1) {
+		if fsutil.EndsInDotSegment(matched[loc[0]:loc[1]]) && loc[1] < len(matched) &&
+			matched[loc[1]] != '/' && isPathSegmentByte(matched[loc[1]]) {
+			continue
+		}
 		if homeStandsAsPath(matched, loc[0], loc[1]) {
 			return true
 		}
 	}
 	return false
+}
+
+// homeSelfPattern matches the caller's home in every spelling the literal
+// sweep reads (callerHomeSpellings), case-insensitively. The alternatives are
+// tried longest first, so at one byte the longer spelling wins, save that a
+// spelling ending in a dot segment comes after every other: it stands as a path
+// in fewer places (homeSelfSweepable), and where the cleaned spelling also
+// starts there, the cleaned one is the match that stands. RE2 keeps the match
+// linear in the line, whatever the number of spellings.
+func homeSelfPattern(home string) *regexp.Regexp {
+	spellings := append([]string(nil), callerHomeSpellings(home)...)
+	sort.SliceStable(spellings, func(i, j int) bool {
+		di, dj := fsutil.EndsInDotSegment(spellings[i]), fsutil.EndsInDotSegment(spellings[j])
+		if di != dj {
+			return !di
+		}
+		return len(spellings[i]) > len(spellings[j])
+	})
+	quoted := make([]string, len(spellings))
+	for i, sp := range spellings {
+		quoted[i] = regexp.QuoteMeta(sp)
+	}
+	return regexp.MustCompile(`(?i)(?:` + strings.Join(quoted, "|") + `)`)
+}
+
+// homeSelfSweepable is homeSweepable for a home_path_self match, with a
+// spelling that ends in a dot segment held to dotSegmentHomeSweepable.
+func homeSelfSweepable(line string, at, end int, urls urlSet) bool {
+	if fsutil.EndsInDotSegment(line[at:end]) {
+		return dotSegmentHomeSweepable(line, at, end, urls)
+	}
+	return homeSweepable(line, at, end, urls)
 }
 
 // localSuppressionSpans returns spans where a local-username match is not a
@@ -1461,7 +1499,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls urlSet) []span
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
-			if !homeSweepable(line, loc[0], loc[1], urls) {
+			if !homeSelfSweepable(line, loc[0], loc[1], urls) {
 				continue // not reported as the home, so it must not suppress the username either
 			}
 			spans = append(spans, span{loc[0], loc[1]})
