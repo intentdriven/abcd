@@ -147,11 +147,13 @@ func callerHomeSpellings(home string) []string {
 // home, so a HOME written "/Users/me/." still names "me", in both Unicode abcd-lint:allow
 // normal forms.
 func callerUserNames(home string) []string {
-	user := home
+	name := home
 	if filepath.IsAbs(home) {
-		user = filepath.Base(filepath.Clean(home))
-	} else if i := strings.LastIndex(home, "/"); i >= 0 {
-		user = home[i+1:]
+		name = filepath.Clean(home)
+	}
+	user := name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		user = name[i+1:]
 	}
 	if user == "" || user == "." || user == "/" {
 		return nil
