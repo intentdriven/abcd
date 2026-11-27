@@ -178,8 +178,8 @@ var nextSteps = map[string]Next{
 		step("abcd capture migrate --apply", "after a practice run, to rewrite what it listed"),
 	),
 	"abcd capture owed": steps(
-		step("abcd capture \"<text>\" --remedy \"<fix>\"", "for an owed finding not yet on the ledger"),
-		step("abcd capture owed <handle> --captured <iss-N>", "once its issue is filed, to settle the entry"),
+		step("abcd capture \"<text>\" --remedy \"<fix>\"", "for an owed finding not yet on the ledger and not a private one, which stays off the public ledger"),
+		step("abcd capture owed <handle> --captured <iss-N>", "once its issue is filed, to settle the entry (a private one only the person settles)"),
 	),
 	"abcd capture promote": steps(
 		step("abcd intent plan <itd-N>", "to plan the draft the promotion filed"),

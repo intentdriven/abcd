@@ -362,11 +362,11 @@
       "next": [
         {
           "command": "abcd capture \"<text>\" --remedy \"<fix>\"",
-          "when": "for an owed finding not yet on the ledger"
+          "when": "for an owed finding not yet on the ledger and not a private one, which stays off the public ledger"
         },
         {
           "command": "abcd capture owed <handle> --captured <iss-N>",
-          "when": "once its issue is filed, to settle the entry"
+          "when": "once its issue is filed, to settle the entry (a private one only the person settles)"
         }
       ]
     },

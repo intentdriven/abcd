@@ -978,8 +978,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd capture owed [<handle>...] [--captured <iss-N> | --settled <record> | --refuted <test> | --own <run> | --not-a-finding <reason> | --private] | owed --untested|--doubt|--handed-up|--private - | owed --settled [flags]`
   - An example call is `abcd capture owed`.
   - What usually follows:
-    - `abcd capture "<text>" --remedy "<fix>"`, for an owed finding not yet on the ledger.
-    - `abcd capture owed <handle> --captured <iss-N>`, once its issue is filed, to settle the entry.
+    - `abcd capture "<text>" --remedy "<fix>"`, for an owed finding not yet on the ledger and not a private one, which stays off the public ledger.
+    - `abcd capture owed <handle> --captured <iss-N>`, once its issue is filed, to settle the entry (a private one only the person settles).
 - `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
   - An example call is `abcd capture promote iss-2609010000000001`.
   - What usually follows:
