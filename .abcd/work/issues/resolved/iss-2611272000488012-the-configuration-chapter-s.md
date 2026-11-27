@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md"
 remedy: "Add ANSWERING to the example's active list in name order and change the count after it to fifteen."
+resolution: "The example's active list now carries ANSWERING in name order and the count after it reads fifteen: the fourteen bundled domains plus the example's WIDGETS."
+impact: internal
 ---
 
 The configuration chapter's prompt-router JSON example lists the active rules domains without ANSWERING and says the set names all fourteen, where the bundled fourteen plus the example's WIDGETS make fifteen; this settles the edit dcn-2611262047162623 deferred.
