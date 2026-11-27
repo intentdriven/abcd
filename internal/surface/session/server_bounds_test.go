@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +187,57 @@ func TestAReplayHasATimeBound(t *testing.T) {
 	}
 	if live, counted := f.srv.livePeers(), f.srv.Relay().Stats().Connections; live != 1 || counted != 1 {
 		t.Fatalf("after the bounded replay: %d sockets served, %d counted; want the host alone", live, counted)
+	}
+}
+
+// TestTheCloseGraceBoundsTheCloseHandshake: a connection the relay closed
+// whose close was written but never answered ends within its close grace,
+// not when the WebSocket library's own five-second handshake wait runs out.
+// The page here reads nothing, and no read is in progress on the relay's side
+// when the close is written, as when a connection's read loop is still
+// handling the message before: the handshake wait then holds the
+// connection's read lock, and only tearing the socket down ends it.
+func TestTheCloseGraceBoundsTheCloseHandshake(t *testing.T) {
+	const grace = 300 * time.Millisecond
+	ended := make(chan time.Duration, 1)
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		p := newPeer(cancel, preRoomQueue, 1<<20)
+		p.grace = grace
+		ws, err := p.accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		done := make(chan struct{})
+		go func() { p.writeLoop(ctx); close(done) }()
+		start := time.Now()
+		p.Close(false, "bye")
+		<-done
+		_ = ws.CloseNow()
+		p.stopGrace()
+		ended <- time.Since(start)
+	}))
+	t.Cleanup(hs.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.CloseNow() })
+	// The bound sits well clear of both ends: a starved race lane can stall
+	// the end by a second or more past the grace on a correct tree, and the
+	// defect this guards shows as the library's five-second handshake wait.
+	// Anything under four seconds is the grace doing its work.
+	const failAt = 4 * time.Second
+	select {
+	case took := <-ended:
+		if took >= failAt {
+			t.Fatalf("the closed connection took %v to end; its close grace is %v", took, grace)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the closed connection never ended")
 	}
 }
