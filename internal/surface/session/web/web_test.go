@@ -1038,6 +1038,19 @@ func TestAListedRelayIsHeldToTheRepositorysAppByItsText(t *testing.T) {
 	if !strings.Contains(functionBody(t, js, "renderStart"), `standing === "foreign"`) {
 		t.Error("the start screen does not say a relay is not answering as the project's own")
 	}
+	// A listed relay that did not answer is said so, with Try again, which
+	// asks it again.
+	const unanswered = `sessionUnreachable: "The page could not reach this project's live session. It may still be starting, which can take a minute. Try again in a moment."`
+	if !strings.Contains(js, unanswered) || !strings.Contains(functionBody(t, js, "standingRefusal"), `if (standing === "unanswered") return WORDS.sessionUnreachable;`) {
+		t.Error("the page has no plain words for a listed relay that did not answer")
+	}
+	render := functionBody(t, js, "renderStart")
+	if !strings.Contains(render, `standing === "unanswered"`) || !strings.Contains(render, `ui.retry.hidden = anchor.state !== "unavailable" && standing !== "unanswered";`) {
+		t.Errorf("the start screen offers no Try again for a listed relay that did not answer:\n%s", render)
+	}
+	if !strings.Contains(functionBody(t, js, "recheckRelayList"), "await checkRelayApp();") {
+		t.Error("Try again does not ask the relay again")
+	}
 }
 
 // Sign-in goes through a GitHub App alone, whose user token reaches only the

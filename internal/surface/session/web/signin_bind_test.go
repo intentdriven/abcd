@@ -36,7 +36,9 @@ function updateFragment() {}
 function framed() { return false; }
 function readStartForm() {}
 function askTrust(action) { toasts.push("askTrust:" + action); }
-function recheckRelayList() {}
+let linkRelay = "";
+let rechecking = false;
+async function refreshSignIn() {}
 function startDeviceSignIn() { toasts.push("device"); }
 function takeRejoin() { return false; }
 // listSeen, when set, is what the repository's list shows a token; else the
@@ -64,8 +66,13 @@ const rejoinToken = "";
 function proceed() {}
 let anchor = { state: "listed", relays: [] };
 let config = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: "https://github.com/login/oauth/authorize", flow: "web" };
+// configAnswer, when set, is how the relay's /config fails instead: an HTTP
+// status, or "throw" for a request that never reaches it.
+let configAnswer = null;
 globalThis.fetch = async (url, init) => {
   requests.push({ url, body: init && init.body ? JSON.parse(init.body) : null });
+  if (url.endsWith("/config") && configAnswer === "throw") throw new Error("unreachable");
+  if (url.endsWith("/config") && typeof configAnswer === "number") return { ok: false, status: configAnswer, json: async () => ({}) };
   if (url.endsWith("/config")) return { ok: true, status: 200, json: async () => config };
   return { ok: true, status: 200, json: async () => ({ access_token: "ghu_x" }) };
 };
@@ -81,7 +88,7 @@ globalThis.fetch = async (url, init) => {
 		"recall", "remember", "stashSignIn", "takeSignIn", "trustedRelays", "keepTrusted", "liveConfirmations", "confirmedRelays", "confirmRelay", "forgetRelay",
 		"pageURL", "relayOrigin", "normalizeCode", "b64url", "randomText", "isLoopbackOrigin", "relayConfig",
 		"appRequired", "appStanding", "relayAnswersAs", "checkRelayApp",
-		"relayStanding", "relayCleared", "relayTokenCleared", "standingRefusal", "relayClearedFor",
+		"relayStanding", "relayCleared", "relayTokenCleared", "standingRefusal", "relayClearedFor", "chooseRelay", "recheckRelayList",
 		"startSignIn", "finishSignIn", "presentHeldToken", "connectSignedIn", "afterOpen",
 	} {
 		if regexp.MustCompile(`(?m)^(?:async )?function ` + fn + `\(`).MatchString(js) {
@@ -298,9 +305,8 @@ console.log(JSON.stringify(out));
 // repository's own: its /config names the client id .abcd/relay/github-app.json
 // records beside the list, and offers GitHub's web flow, or the page signs
 // nobody in through it, sends it no token and opens no session on it
-// (spc-2610230609005313 step 4). A relay the list names is the one a stranger
-// cannot pick, but the list alone says nothing of who runs the service
-// answering at that address; the app file ties it to the team's own app.
+// (spc-2610230609005313 step 4). The app file holds a listed relay to the
+// team's own app and to GitHub's web flow.
 
 // appRelay is the relay the app-check tests hold to the app file.
 const appRelay = "https://brief-relay.onrender.com"
@@ -596,5 +602,84 @@ const out = {};
 	check, give := strings.Index(present, "await checkRelayApp();"), strings.Index(present, "githubToken = heldToken;")
 	if check < 0 || give < 0 || check > give {
 		t.Errorf("presentHeldToken gives the token before the app check:\n%s", present)
+	}
+}
+
+// A listed relay whose /config does not answer, by a status other than 200
+// or a request that never reaches it, gets nothing, and the page says it
+// could not reach the session and offers to ask again: the start screen's
+// Try again asks the relay again, and once it answers as the repository's
+// app the page uses it.
+func TestAListedRelayThatDoesNotAnswerCanBeAskedAgain(t *testing.T) {
+	script := appProbe(t, `
+  for (const [name, failing] of [["status", 503], ["thrown", "throw"]]) {
+    sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0;
+    heldToken = ""; githubToken = ""; tokenRelay = ""; assigned = ""; listSeen = null;
+    relayApp = { relay: "", clientID: "", state: "" }; appCheck = null;
+    anchor = listedWith(theApp); config = ours; configAnswer = failing;
+    session.relay = RELAY;
+    await checkRelayApp();
+    const r = { standing: relayStanding(RELAY) };
+    await startSignIn();
+    r.signIn = assigned !== "";
+    r.join = relayClearedFor("join");
+    // Let a re-ask the refusal started settle while the relay still fails.
+    await new Promise((done) => setTimeout(done, 20));
+    r.sent = sent.length + requests.filter((q) => !q.url.endsWith("/config")).length;
+    r.toasts = toasts.slice();
+    // The relay answers now; Try again asks it again.
+    configAnswer = null;
+    await recheckRelayList();
+    r.after = relayStanding(RELAY);
+    out[name] = r;
+  }
+`)
+	var out map[string]struct {
+		Standing, After string
+		SignIn, Join    bool
+		Sent            int
+		Toasts          []string
+	}
+	runPage(t, script, &out)
+	for _, name := range []string{"status", "thrown"} {
+		r := out[name]
+		if r.Standing != "unanswered" || r.SignIn || r.Join || r.Sent != 0 {
+			t.Errorf("%s: %+v, want the relay unanswered and nothing sent to it", name, r)
+		}
+		said := false
+		for _, s := range r.Toasts {
+			said = said || s == "sessionUnreachable"
+		}
+		if !said {
+			t.Errorf("%s: the page said %v, want that the session could not be reached", name, r.Toasts)
+		}
+		if r.After != "listed" {
+			t.Errorf("%s: after the relay answered, Try again left it %q, want listed", name, r.After)
+		}
+	}
+}
+
+// startSignIn signs in with the repository's own app alone: a relay that
+// answered as that app at the check and names another client id by the
+// time the person signs in gets no sign-in.
+func TestASignInUsesOnlyTheRepositorysClientID(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0; assigned = "";
+  relayApp = { relay: "", clientID: "", state: "" }; appCheck = null;
+  anchor = listedWith(theApp); config = ours; session.relay = RELAY;
+  await checkRelayApp();
+  config = Object.assign({}, ours, { client_id: "Iv1.someoneelse" });
+  await startSignIn();
+  out.changed = { standing: relayStanding(RELAY), signIn: assigned !== "", toasts: toasts.slice() };
+  config = ours; toasts.length = 0; assigned = "";
+  await startSignIn();
+  out.same = { standing: relayStanding(RELAY), signIn: assigned !== "", toasts: toasts.slice() };
+`), &out)
+	if c := out["changed"]; c.SignIn || len(c.Toasts) != 1 || c.Toasts[0] != "notOurs" {
+		t.Errorf("a relay naming another client id at sign-in: %+v, want no sign-in and the page saying so", c)
+	}
+	if c := out["same"]; !c.SignIn {
+		t.Errorf("the repository's own client id: %+v, want the sign-in started", c)
 	}
 }

@@ -46,6 +46,7 @@ const WORDS = Object.freeze({
   privateNoLink: "This page could not find a live session for this project. If your team runs one, ask the host for the invite link. If not, ask your technical facilitator to set live sessions up.",
   notOurLink: "This invite link does not lead to this project's own live session, so the page will not open it. Ask the host for a new link.",
   notOurs: "This project's live session is not answering as the project's own, so the page will not use it. Ask your technical facilitator.",
+  sessionUnreachable: "The page could not reach this project's live session. It may still be starting, which can take a minute. Try again in a moment.",
   cannotCheck: "The page could not reach GitHub to check this project's settings. Try again in a moment.",
   tryAgain: "Try again",
   pageFor: "This page is for",
@@ -1488,7 +1489,7 @@ async function presentHeldToken(checked) {
   await checkRelayApp();
   if (!heldToken || relay !== session.relay) { heldToken = ""; return; }
   const standing = relayStanding(relay);
-  if (standing === "refused" || standing === "unavailable" || standing === "foreign") {
+  if (standing === "refused" || standing === "unavailable" || standing === "foreign" || standing === "unanswered") {
     if (standing === "refused") forgetRelay(relay);
     heldToken = "";
     toast(standingRefusal(standing));
@@ -1644,13 +1645,13 @@ function relayStanding(relay) {
   return confirmedRelays().includes(relay) ? "confirmed" : "unconfirmed";
 }
 
-// The app check (spc-2610230609005313 step 4). The list says which addresses
-// are the project's relays; it says nothing of who answers at one. Where the
-// repository records its GitHub App beside the list, a listed relay must name
-// that app's client id and offer GitHub's web flow at /config, or the page
-// signs nobody in through it, gives it no token and opens no session on it.
-// relayApp is the last answer: the relay and the client id it was held to,
-// and "ours", "foreign", or "unanswered" (asked again on the next look).
+// The app check (spc-2610230609005313 step 4). Where the repository records
+// its GitHub App beside the list, a listed relay must name that app's client
+// id and offer GitHub's web flow at /config, or the page signs nobody in
+// through it, gives it no token and opens no session on it. It catches a
+// relay set up with another app or another flow. relayApp is the last
+// answer: the relay and the client id it was held to, and "ours", "foreign",
+// or "unanswered", which the start screen's Try again asks again.
 let relayApp = { relay: "", clientID: "", state: "" };
 let appCheck = null;
 
@@ -1660,14 +1661,16 @@ function appRequired() {
 }
 
 // appStanding is a listed relay's standing under the app check: "listed",
-// "foreign" (it answered as another app, or the file names none), or
-// "checking" until it has answered.
+// "foreign" (it answered as another app, or the file names none),
+// "unanswered" (its /config failed, and Try again asks again), or
+// "checking" until it has been asked.
 function appStanding(relay) {
   if (!appRequired()) return "listed";
   if (!anchor.app.clientID) return "foreign";
   if (relayApp.relay !== relay || relayApp.clientID !== anchor.app.clientID) return "checking";
   if (relayApp.state === "ours") return "listed";
-  return relayApp.state === "foreign" ? "foreign" : "checking";
+  if (relayApp.state === "foreign") return "foreign";
+  return relayApp.state === "unanswered" ? "unanswered" : "checking";
 }
 
 // relayAnswersAs asks the relay's /config whether it answers as the app
@@ -1723,20 +1726,24 @@ function relayTokenCleared() {
 function standingRefusal(standing) {
   if (standing === "checking") return WORDS.checking;
   if (standing === "foreign") return WORDS.notOurs;
+  if (standing === "unanswered") return WORDS.sessionUnreachable;
   if (standing === "unavailable") return WORDS.cannotCheck;
   if (standing === "refused") return WORDS.notOurLink;
   return WORDS.notSetUp;
 }
 
-// recheckRelayList reads the relay list again after GitHub did not answer,
-// so the person can try again without reloading.
+// recheckRelayList is Try again: it reads the relay list again after GitHub
+// did not answer, and asks a listed relay whose /config did not answer
+// again, so the person can try again without reloading.
 let rechecking = false;
 async function recheckRelayList() {
-  if (rechecking || anchor.state !== "unavailable") return;
+  if (rechecking || (anchor.state !== "unavailable" && relayStanding(session.relay) !== "unanswered")) return;
   rechecking = true;
   try {
-    const seen = await readRelayList("");
-    if (anchor.state === "unavailable") anchor = seen;
+    if (anchor.state === "unavailable") {
+      const seen = await readRelayList("");
+      if (anchor.state === "unavailable") anchor = seen;
+    }
     if (!session.relay) session.relay = chooseRelay(linkRelay);
     await checkRelayApp();
   } finally {
@@ -1756,7 +1763,7 @@ function relayClearedFor(action) {
   else {
     heldToken = "";
     toast(standingRefusal(standing));
-    if (standing === "unavailable") recheckRelayList();
+    if (standing === "unavailable" || standing === "unanswered") recheckRelayList();
     if (standing === "checking" && appRequired()) checkRelayApp().then(renderAll);
   }
   renderAll();
@@ -3728,12 +3735,12 @@ function renderStart() {
   let notice = "";
   if (!session.relay) {
     notice = { checking: WORDS.checking, unavailable: WORDS.cannotCheck, unknown: WORDS.privateNoLink }[anchor.state] || WORDS.notSetUp;
-  } else if (standing === "refused" || standing === "unavailable" || standing === "checking" || standing === "foreign") {
+  } else if (standing === "refused" || standing === "unavailable" || standing === "checking" || standing === "foreign" || standing === "unanswered") {
     notice = standingRefusal(standing);
   }
   ui.notice.textContent = notice;
   ui.noticeCard.hidden = !notice;
-  ui.retry.hidden = anchor.state !== "unavailable";
+  ui.retry.hidden = anchor.state !== "unavailable" && standing !== "unanswered";
   const notSetUp = notice === WORDS.notSetUp;
   ui.askCard.hidden = !notSetUp;
   ui.askMessage.textContent = say(WORDS.askMessage, { slug: route.slug, page: pageURL() });
