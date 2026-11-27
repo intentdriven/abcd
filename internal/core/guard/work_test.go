@@ -41,10 +41,12 @@ const linearWorkBar = 6.0
 // substitutions at the walk's bound followed by plain words measured 40.0
 // once the five branch- and worktree-deletion entries of iss-2610241239492159
 // took theirs, about 62 once the twenty history-rewrite entries took theirs, and
-// about 64 once the two entries of the stop took theirs. The bar sits at 72,
+// about 64 once the two entries of the stop took theirs, about 70 once the
+// update with a tag took one, and 72.0 once the two entries for setting the
+// facilitator's mode took theirs (itd-2611252049031692). The bar sits at 76,
 // which keeps those shapes under it with room for a few more entries and stays
 // below the hundred a dropped bound costs.
-const workPerByteBar = 72.0
+const workPerByteBar = 76.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes

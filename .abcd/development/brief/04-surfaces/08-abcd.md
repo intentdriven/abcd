@@ -171,14 +171,15 @@ default branch's committed `.abcd/config.json` and the machine layer declare
 it, never the checkout's working tree. The board reads the default branch at
 the tip this checkout last fetched and asks the network nothing, where the gate
 fetches it first, so after the mode changes on origin the two can disagree
-until the next fetch. A `human` from any layer wins, and a refused home reads as `human`.
+until the next fetch. The committed value decides, the person's own global
+setting only where it commits none, and a refused home reads as `human`.
 Under `human` the line says the gate merges once the technical facilitator
 approves the head; under `auto`, that it merges autonomously once a review pair
 has passed the head. The product view draws a line of its own above the
-version (`facilitator: human (not set, the bundled default): merges once the
-technical facilitator approves`, `facilitator: auto (the project's, set in
-.abcd/config.json at origin/main): merges autonomously, once a review pair
-passes`); the facilitator view draws the same as a row after the status block,
+version (`facilitator: human (left to each contributor: not set, the bundled
+default): merges once the technical facilitator approves`, `facilitator: auto
+(the project enforces it, set in .abcd/config.json at origin/main): merges
+autonomously, once a review pair passes`); the facilitator view draws the same as a row after the status block,
 said of the head. The label is `facilitator:` (iss-2610262034286775), never a
 bare `mode`. A contributor's pull request needs an approval of its
 head in either mode; the command page says so, and the line does not. The JSON

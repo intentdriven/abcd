@@ -251,7 +251,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	}
 	// So is the merge gate: a queue entry and a toggle both make the arming
 	// again, and neither is made at a head the gate would not arm now.
-	d, err := askMergeGate(c, *lane, def, rule)
+	d, err := askMergeGate(c, *lane, def)
 	if r, ok := AsRefusal(err); ok && r.modeUnread {
 		return nil, "; it is armed and CLEAN outside the merge queue, and facilitator.mode could not be read at " + Remote + "/" + def + ", so its arming is left as it is and the loop neither queues nor toggles it", nil
 	}

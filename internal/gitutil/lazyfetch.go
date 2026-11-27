@@ -194,6 +194,21 @@ func GitAtLeast(major, minor int) (bool, string) {
 	return ok, m[1] + "." + m[2]
 }
 
+// GitAtLeastContext is GitAtLeast for a caller on a deadline
+// (atLeastContext): ctx's error when it ends before the probe answers, and
+// nothing is kept.
+func GitAtLeastContext(ctx context.Context, major, minor int) (bool, string, error) {
+	ok, raw, err := gitVersion.atLeastContext(ctx, major, minor)
+	if err != nil {
+		return false, "", err
+	}
+	m := gitVersionRe.FindStringSubmatch(raw)
+	if m == nil {
+		return false, "", nil
+	}
+	return ok, m[1] + "." + m[2], nil
+}
+
 // gitVersionRe reads major and minor from `git version 2.39.5 (Apple Git-154)`
 // or `git version 2.45.1.windows.1`.
 var gitVersionRe = regexp.MustCompile(`^git version (\d+)\.(\d+)`)

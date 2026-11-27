@@ -864,3 +864,119 @@ func TestAQuietCommandSetsNoNameThroughAnother(t *testing.T) {
 		}
 	}
 }
+
+// TestSettingTheFacilitatorIsThePersonsAct: setting the facilitator's mode,
+// which writes the person's global setting in abcd's home, is the person's
+// act under any program name, and a shell write, move or removal of that
+// settings file is refused (itd-2611252049031692 step 3). Showing the mode,
+// `abcd mode facilitator`, naming the command in passing, reading the file,
+// the project's own .abcd/config.json, and the per-project file nothing reads
+// any more (ruled out on 2026-11-26) are not.
+func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, c := range []struct{ cmd, entry string }{
+		{`abcd facilitator auto`, "abcd-facilitator-auto"},
+		{`abcd facilitator human`, "abcd-facilitator-human"},
+		{`abcd --json facilitator human`, "abcd-facilitator-human"},
+		{`go run ./cmd/abcd facilitator auto`, "abcd-facilitator-auto"},
+		{`scripts/abcd.sh facilitator auto`, facilitatorAutoAnyEntryID},
+		{`bin/abcd-darwin-arm64 facilitator human`, facilitatorHumanAnyEntryID},
+		{`bash -- scripts/abcd.sh facilitator auto`, facilitatorAutoAnyEntryID},
+		{`mv /tmp/x ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`cp x.json ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`tee ` + homeDir + `/config.json < x.json`, facilitatorStoreEntryID},
+		{`sed -i '' s/human/auto/ ` + homeDir + `/config.json`, facilitatorStoreEntryID},
+		{`cd ` + homeDir + ` && rm config.json`, facilitatorStoreEntryID},
+		{`rm ` + homeDir + `/c*.json`, facilitatorStoreEntryID},
+		{`rm ` + homeDir + `/conf*`, facilitatorStoreEntryID},
+		{`echo x > ` + upperHomeDir + `/Config.json`, facilitatorStoreEntryID},
+		{`cp x.json "$(echo ` + homeDir + `/config.json)"`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); cp x.json "$d/config.json"`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); cat x.json > "$d"/config.json`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); mv x.json "$d/config.json"`, facilitatorStoreEntryID},
+		{`H=$(realpath ` + homeDir + `); cp x.json "$H/config.json"`, facilitatorStoreEntryID},
+	} {
+		d, err := reg.Check(c.cmd)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			t.Errorf("Check(%q) = %q via %q, %v; want a block via %q", c.cmd, d.Verdict, d.EntryID, err, c.entry)
+		}
+	}
+	for _, cmd := range []string{
+		`abcd facilitator`,
+		`abcd facilitator --json`,
+		`scripts/abcd.sh facilitator`,
+		`abcd mode facilitator`,
+		`scripts/abcd.sh mode facilitator`,
+		`abcd capture "an agent ran abcd facilitator auto"`,
+		`grep facilitator ` + homeDir + `/config.json`,
+		`cat ` + homeDir + `/config.json`,
+		`echo '{}' > ` + homeDir + `/facilitator.json`,
+		`rm ` + homeDir + `/facilitator.json`,
+		`echo '{}' > .abcd/config.json`,
+		`printf x >> ` + homeDir + `/trusted-roots`,
+		`git -C ` + homeDir + `/worktrees/r/x show HEAD:.abcd/config.json > "$OUT"`,
+		`git -C ` + homeDir + `/worktrees/r/x show HEAD:.abcd/config.json > "$WT/.abcd/config.json"`,
+		`wt=` + homeDir + `/worktrees/r/x; cp x.json "$WT"/.abcd/config.json`,
+		`cd ` + homeDir + `/worktrees/r/x && jq . config.json > "$OUT"`,
+	} {
+		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
+	}
+}
+
+// TestTheFacilitatorRefusalsSayHowThePersonSetsItToday: no abcd verb sets the
+// mode yet (itd-2611252049031692 plans one), so each refusal of a setting
+// says how the person sets it today, by hand: facilitator.mode in their own
+// global settings file, or in the repository's committed .abcd/config.json on
+// the default branch, a change a person merges on the forge's page. None
+// sends them to run a command that does not exist.
+func TestTheFacilitatorRefusalsSayHowThePersonSetsItToday(t *testing.T) {
+	files := NewFiles(t.TempDir())
+	files.home = t.TempDir()
+	reg := Defaults().ReadingFrom(files)
+	for _, cmd := range []string{
+		`abcd facilitator auto`,
+		`abcd facilitator human`,
+		`scripts/abcd.sh facilitator auto`,
+		`bin/abcd-darwin-arm64 facilitator human`,
+		`cp x.json ` + homeDir + `/config.json`,
+	} {
+		d, err := reg.Check(cmd)
+		if err != nil || d.Verdict != VerdictBlock {
+			t.Fatalf("Check(%q) = %+v, %v; want a block", cmd, d, err)
+		}
+		said := d.Why + " " + d.Reason + " " + d.Successor
+		for _, want := range []string{"facilitator.mode", abcdhome.Display("config.json"), ".abcd/config.json", "default branch", "by hand", "forge's page"} {
+			if !strings.Contains(said, want) {
+				t.Errorf("Check(%q) does not say %q: %q", cmd, want, said)
+			}
+		}
+		for _, verb := range []string{"run `abcd facilitator", "abcd facilitator auto`", "abcd facilitator human`"} {
+			if strings.Contains(said, verb) {
+				t.Errorf("Check(%q) sends the person to a command that does not exist (%q): %q", cmd, verb, said)
+			}
+		}
+	}
+}
+
+// TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite: a file tool is held
+// to the same file a shell line is, by any spelling the volume resolves.
+func TestFacilitatorStorePathNamesWhatTheFileToolsMayNotWrite(t *testing.T) {
+	for p, want := range map[string]bool{
+		abcdhome.Path("/home/x", "facilitator.json"):                  false,
+		abcdhome.Path("/home/x", "config.json"):                       true,
+		abcdhome.Path("/home/x", "CONFIG.JSON"):                       true,
+		"/home/x/" + strings.ToUpper(abcdhome.Rel()) + "/Config.json": true,
+		"/home/x/" + abcdhome.Rel("sub") + "/../config.json":          true,
+		"/home/x/project/.abcd/config.json":                           false,
+		abcdhome.Path("/home/x", "rules.json"):                        false,
+		abcdhome.Path("/home/x", "worktrees/a/config.json"):           false,
+	} {
+		if got := FacilitatorStorePath(p); got != want {
+			t.Errorf("FacilitatorStorePath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

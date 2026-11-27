@@ -4942,8 +4942,9 @@ yes to it. The run then hands off every pilot copy, each in its own clone of the
 frozen commit made under a random alias in the clone store outside every
 checkout; a clone bound for a provider passes the launch bundle's secret scan
 first, and a hit refuses the cell. A host cell's copy is the host's to make in
-its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,
-since abcd does not launch a runner in a clone yet and nothing stands in for it.
+its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits
+for `abcd lab matrix launch`, which starts the cell's runner in its clone, and
+nothing stands in for the runner.
 
 Refused, exit 2, with nothing written: a declaration that does not parse, a
 cell route the runner rung or this machine's runner configuration refuses, a
@@ -5078,6 +5079,48 @@ verdicts are locked, and an answer for a runner cell. A halted lab exits 1.
 
 ```
 abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3
+```
+
+##### `abcd lab matrix launch`
+
+Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.
+
+**Usage:** `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]`
+
+abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]
+
+Launch, in the foreground, the copies of a consented run that wait for their
+cell's runner, at most as many at once as the run's declared concurrency; with a
+key, that one copy alone. Each copy's runner is started in its own clone, in the
+runners' cell mode, on the blind brief a host cell's copy is made from, with the
+cell's route for this launch alone. Nothing stands in for the runner: one that
+fails, refuses or answers unparsably is the cell's failure, never handed to the
+host; a provider down before the copy began is tried again on the same pin and
+recorded as not started, never scored. A provider-bound clone passes the secret
+scan again first. The brief and the receipt sit in the hand-off store, outside
+the clone, the clone store and the lab's state. A made copy is checked for
+compliance and written as its trial through the secret screen, as a host copy's
+hand-back is; a made code copy waits for its hidden tests' result, handed back
+with `abcd lab matrix copy --receipt`. A metered copy whose declared cost the
+spending cap's remainder does not cover is left waiting and named.
+
+An interrupt, a termination or a hangup stops the launch: every runner at work
+is killed with its process group, and each copy it was making is left
+interrupted, which is the run's error and never the copy's score; such a copy is
+not launched again. A launch killed outright leaves its copies interrupted too,
+once its run's launch lock is free.
+
+Refused, exit 2, with nothing launched: a key that is not one, a copy the run
+did not hand off, a host cell's copy, a refused cell's, one already launched,
+and a cell whose route, source or pin on this machine is not the one the run
+recorded. A launch stopped part-way exits 2 and says what it wrote. One launch
+per run runs at a time: a second, while one holds the run's launch lock, is
+refused at exit 3, naming who holds it. A halted lab exits 1.
+
+**Example:**
+
+```
+abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b
 ```
 
 ##### `abcd lab matrix report`
@@ -5365,8 +5408,12 @@ credentials, so run it only on a branch whose content you trust.
      create` command naming it with --body-file, and stops; it never opens one.
 
 The merge gate reads facilitator.mode from the default branch's committed
-.abcd/config.json and ~/.abcd.noindex/config.json (human from either wins;
-human by default), never from the branch being landed. A pull request whose
+.abcd/config.json, which decides, and only where it commits none from
+~/.abcd.noindex/config.json (human with neither), never from the branch
+being landed. A pull request that changes the committed line is armed in no
+mode; you merge it on the forge's page. Under your own auto (none committed),
+only a pull request your forge account opened is armed without an approval.
+A pull request whose
 author has Read or Triage permission, or none, is armed only once an approval of
 its head counts, in either mode. An approval counts when it is the latest review
 by someone with Write, Maintain or Admin permission, approves the head commit

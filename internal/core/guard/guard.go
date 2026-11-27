@@ -609,6 +609,9 @@ func (r Registry) check(command string) (Decision, error) {
 	if sig, ok := r.stopStoreSignal(command, rc, v); ok {
 		v.signals = append(v.signals, sig)
 	}
+	if sig, ok := r.facilitatorStoreSignal(command, rc, v); ok {
+		v.signals = append(v.signals, sig)
+	}
 	d := r.decide(v)
 	d.AllowableOnce = d.Verdict == VerdictBlock && onlyDeleteBlocks(v)
 	if rc != nil {

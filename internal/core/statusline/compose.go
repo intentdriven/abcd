@@ -139,7 +139,8 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 // Merging is what a composition knows of the repository's facilitator.mode.
 type Merging struct {
 	State MergingState `json:"state"`
-	// Whose is whose setting decides the mode; "" with no mode.
+	// Whose is whose setting decides the mode; "" with no mode, but for
+	// WhoseComputerUnread, which says why there is none.
 	Whose MergingWhose `json:"whose,omitempty"`
 	// Read is when the reading was made, as the row says it, where the
 	// default branch is known to have moved since, or cannot be told not to
@@ -163,8 +164,9 @@ const (
 
 // MergingWhose is whose setting decides the mode, as the resolver's layer
 // says: the default branch's committed file (the project's), the computer's
-// file, neither, or the computer's file that could not be read because abcd
-// refused the home, where the resolver's own answer stands.
+// file (the person's global setting), neither, the computer's file that could
+// not be read because abcd refused the home, where the resolver's own answer
+// stands, or a HOME that is not the person's own.
 type MergingWhose string
 
 const (
@@ -172,6 +174,10 @@ const (
 	WhoseComputer       MergingWhose = "computer"
 	WhoseUnset          MergingWhose = "unset"
 	WhoseComputerUnread MergingWhose = "computer-unread"
+	// WhoseNotYourHome is a HOME that is not this account's own, where no
+	// setting of the person's is read on purpose and the project leaves the
+	// mode to each.
+	WhoseNotYourHome MergingWhose = "not-your-home"
 )
 
 // MergingMode reads facilitator.mode for the repository at root as the status

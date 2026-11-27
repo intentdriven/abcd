@@ -112,6 +112,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.WorkingTreeCommand", personEnv, false},
 	{"gitutil.WorkingTreeCommandContext", personEnv, false},
 	{"gitutil.GitAtLeast", personEnv, false},
+	{"gitutil.GitAtLeastContext", personEnv, false},
 	{"claim.personalGitContext", personEnv, false},
 	{"scanner.configListing", personEnv, false},
 	// The lane's add, commit, merge and reset, and the other commands that
@@ -121,6 +122,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.RunCommitCommandBounded", stageEnv, true},
 	{"gitutil.RunCommitCommandBoundedAsStored", stageEnv, true},
 	{"gitutil.BuiltinMergeDriver", stageEnv, false},
+	{"gitutil.BuiltinMergeDriverContext", stageEnv, false},
 	// The comparison of the drive's own preflight checkout with the head,
 	// in the environment that checkout was made in, the hooks pinned off.
 	{"gitutil.RunWithIndexAsCheckedOut", stageEnv, false},
@@ -154,6 +156,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.ListWorktrees", isolatedEnv, false},
 	{"gitutil.ListWorktreesContext", isolatedEnv, false},
 	{"gitutil.MergeDriverOverrides", isolatedEnv, false},
+	{"gitutil.MergeDriverOverridesContext", isolatedEnv, false},
 	{"gitutil.RepoConfig", isolatedEnv, false},
 	{"gitutil.ResolveCommit", isolatedEnv, false},
 	{"gitutil.RevParseAbsPath", isolatedEnv, false},

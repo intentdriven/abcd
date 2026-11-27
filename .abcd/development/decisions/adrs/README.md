@@ -256,4 +256,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2611251746369732](2611251746369732-a-machine-is-published-on-the-shared.md) | A machine is published on the shared remote only as a chosen label, a state word, times and counts | proposed | 2026-11-25 |
 | [adr-2611251806496719](2611251806496719-the-spot-check-s-store-branch-is-pushed.md) | The spot-check's store branch is pushed without a preflight receipt | accepted | 2026-11-25 |
 | [adr-2611251808065076](2611251808065076-abcd-asks-for-its-newest-release-on-a.md) | abcd asks for its newest release on a standing yes | accepted | 2026-11-25 |
+| [adr-2611262044127943](2611262044127943-the-project-s-committed-facilitator-mode.md) | The project's committed facilitator mode decides, then the person's global setting, and nothing else | accepted | 2026-11-26 |
 <!-- /index -->

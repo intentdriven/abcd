@@ -74,9 +74,9 @@ func TestLiveMergingIsHumanOrNotKnownOtherwise(t *testing.T) {
 			repo.Write(".abcd/config.json", autoConfig)
 			return root
 		},
-		"human in the machine layer": func(t *testing.T) string {
-			_, root := mergingRepo(t, autoConfig)
-			writeMachineConfig(t, humanConfig)
+		"human committed over auto in the machine layer": func(t *testing.T) string {
+			_, root := mergingRepo(t, humanConfig)
+			writeMachineConfig(t, autoConfig)
 			return root
 		},
 		"a default branch that cannot be told": func(t *testing.T) string {

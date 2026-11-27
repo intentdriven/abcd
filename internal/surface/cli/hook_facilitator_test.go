@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // hook_facilitator_test.go — iss-2611211700231699: while the technical
@@ -101,5 +103,93 @@ func TestPromptRouterNoFacilitatorLineUnlessAuto(t *testing.T) {
 				t.Errorf("the facilitator line was sent:\n%s", out.Context)
 			}
 		})
+	}
+}
+
+// TestPromptRouterFacilitatorLineSaysWhoseItIs (itd-2611252049031692
+// criterion 20): the line is sent under the resolved auto and not under the
+// resolved human, and says whose setting it is. The project's committed value
+// stands above the computer's file, so a project's auto over the computer's
+// human sends it, and a project's human over the computer's auto does not.
+func TestPromptRouterFacilitatorLineSaysWhoseItIs(t *testing.T) {
+	const auto, human = `{"facilitator": {"mode": "auto"}}`, `{"facilitator": {"mode": "human"}}`
+	for _, c := range []struct {
+		name, committed, machine, whose string
+	}{
+		{"the project's auto over the computer's human", auto, human, "(facilitator.mode: the project enforces auto over this computer's human)"},
+		{"the project's auto", auto, "", "(facilitator.mode: the project enforces auto)"},
+		{"the computer's auto where the project leaves it to each", "", auto, "(facilitator.mode: left to each contributor, and this computer's file sets auto)"},
+		{"the project's human over the computer's auto", human, auto, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := mergingCheckout(t, c.committed)
+			if c.machine != "" {
+				writeMachineConfig(t, c.machine)
+			}
+			ownHookBudgets(t, 10*time.Second)
+			so, stderr, err := runSplit(t, awayPromptPayload("f4", root, "hello"), "hook", "prompt-router")
+			if err != nil {
+				t.Fatalf("prompt-router: %v\n%s", err, stderr)
+			}
+			out := decodePromptHook(t, so)
+			if c.whose == "" {
+				if hasFacilitatorLine(out.Context) {
+					t.Errorf("the facilitator line was sent under the project's human:\n%s", out.Context)
+				}
+				return
+			}
+			if !hasFacilitatorLine(out.Context) || !strings.Contains(out.Context, "on auto "+c.whose) {
+				t.Errorf("the facilitator line misses whose it is, %q:\n%s", c.whose, out.Context)
+			}
+		})
+	}
+}
+
+// TestGuardHookRefusesAFileToolWritingTheFacilitatorSetting: a file tool
+// writing the person's global settings file is denied, through a symlinked
+// parent and a "~/" path as well; the project's own .abcd/config.json is not,
+// nor the per-project file nothing reads (itd-2611252049031692).
+func TestGuardHookRefusesAFileToolWritingTheFacilitatorSetting(t *testing.T) {
+	root := checklistCheckout(t)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Fatalf("the checkout fixture sets no home directory: %v", err)
+	}
+	homeDir := filepath.Join(t.TempDir(), abcdhome.Rel())
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(homeDir, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(homeDir, filepath.Join(home, "abcd-link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range fileWriteTools {
+		for _, p := range []string{
+			filepath.Join(homeDir, "config.json"),
+			filepath.Join(homeDir, "Config.JSON"),
+			filepath.Join(link, "config.json"),
+			"~/abcd-link/config.json",
+		} {
+			t.Run(tool+" "+p, func(t *testing.T) {
+				stdout, stderr, code := runGuard(fileToolPayload(t, tool, root, p), "guard", "hook")
+				reason := mustDeny(t, stdout, stderr, code)
+				for _, want := range []string{tool, "facilitator.mode", "by hand"} {
+					if !strings.Contains(reason, want) {
+						t.Errorf("the deny must say %q; reason = %q", want, reason)
+					}
+				}
+				if strings.Contains(reason, "run `abcd facilitator") {
+					t.Errorf("the deny sends the person to a command that does not exist; reason = %q", reason)
+				}
+			})
+		}
+	}
+	for _, p := range []string{filepath.Join(root, ".abcd", "config.json"), filepath.Join(homeDir, "facilitator.json")} {
+		if stdout, stderr, code := runGuard(fileToolPayload(t, "Write", root, p), "guard", "hook"); code != 0 || strings.Contains(stdout, "facilitator") {
+			t.Errorf("a write of %s is not the facilitator's setting: exit %d, %q, %q", p, code, stdout, stderr)
+		}
 	}
 }

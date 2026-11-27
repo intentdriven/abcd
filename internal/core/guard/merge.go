@@ -72,8 +72,10 @@ const (
 	mergeSuccessor = "Leave the merge to the technical facilitator: say the pull request is ready for their approval. Once they approve its head (a forge review, or `abcd land --approve` run by them), `abcd land` arms it."
 )
 
-// modeSetting names the setting that allows the merge commands.
-var modeSetting = "facilitator.mode: auto in the default branch's committed .abcd/config.json, with no facilitator.mode: human in " + abcdhome.Display("config.json")
+// modeSetting names the setting that allows the merge commands: the
+// repository's committed value decides, and only where it commits none does
+// the person's own global setting (adr-2611262044127943).
+var modeSetting = "facilitator.mode: auto in the default branch's committed .abcd/config.json, or, where it commits none, in " + abcdhome.Display("config.json")
 
 // MergeMode reports whether the repository's facilitator mode is human, and
 // how it reads ("facilitator.mode is human (repo layer, …)"), for the
