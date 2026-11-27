@@ -210,13 +210,15 @@ const modeLineRel = ".abcd/config.json"
 //
 // A rebase lands something else: the head's commits replayed one at a time
 // onto the tip, and which commits a forge's rebase replays, and in what
-// order, is not something abcd can read. So where the queue rebases, and
-// where the method is not known (known false, as on a re-arm, which reads no
-// rule), a head with any commit in tip..head that touches the file is left to
-// the person whatever the reads above say: refused under a rebase, and not
-// read where the method is not known. A merge commit or a squash, and no
-// merge queue (a merge commit), land the merge's tree, so the reads above
-// are the whole of it (dcn-2611270345293001).
+// order, is not something abcd can read. Only a ruleset mirror that names a
+// merge queue merging or squashing (known, the mirror read, and method MERGE
+// or SQUASH) says the merge's tree is what lands, and there the reads above
+// are the whole of it. Anywhere else a head with a commit in tip..head that
+// touches the file (touchingCommit) is left to the person whatever the reads
+// above say: refused where the mirror names a queue that rebases, and an
+// answer not read where it names none, there is none, or it is not read (a
+// re-arm), since the forge may still gate the branch with a queue the mirror
+// does not name (dcn-2611270500324630).
 //
 // Its git questions share one deadline, modeLineTimeout, since a hook reaches
 // the gate (a re-arm); a git that does not answer in time is a diff not read.
@@ -284,23 +286,71 @@ func modeLineChange(root, tip, tipName, head, method string, known bool) (why st
 	if held != lands {
 		return "its merge into " + tipName + " changes the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(lands) + " once merged), and " + never, false
 	}
-	if known && method != "REBASE" {
+	if known && (method == "MERGE" || method == "SQUASH") {
 		return "", false
 	}
-	out, err = gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
-		"rev-list", "--full-history", "--max-count=1", tip+".."+head, "--", modeLineRel)
-	switch touched := strings.TrimSpace(string(out)); {
+	touched, err := touchingCommit(ctx, root, tip, head)
+	switch {
 	case err != nil:
 		return cannot("which of its commits touch " + modeLineRel + " cannot be read (" + clip(masked(err)) + ")")
-	case touched != "" && !gitutil.IsFullSHA(touched):
-		return cannot("which of its commits touch " + modeLineRel + " cannot be read (git named no commit)")
 	case touched == "":
 		return "", false
-	case !known:
-		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the merge method is not known here, so whether it lands by a rebase, whose replay abcd does not judge, is not known either")
-	default:
+	case known && method == "REBASE":
 		return "it lands by rebase, and its commit " + short(touched) + " touches " + modeLineRel + ", whose replay onto " + tipName + " abcd does not judge, and " + never, false
+	case known:
+		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the ruleset mirror at " + tipName + " names no merge queue that merges or squashes, so whether the forge lands it by a rebase, whose replay abcd does not judge, is not known")
+	default:
+		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the merge method is not known here, so whether it lands by a rebase, whose replay abcd does not judge, is not known either")
 	}
+}
+
+// maxTouchMerges bounds the merge commits of a head that touch the mode
+// line's file against some parent that touchingCommit reads one by one; a
+// head with more is a diff not read.
+const maxTouchMerges = 64
+
+// touchingCommit names a commit of tip..head that touches the mode line's
+// file, "" when none does. A commit that is no merge touches it when it
+// changes the file against its parent. A merge commit touches it only when
+// its file is none of its parents' (a combined diff names the path), since a
+// merge that takes one side's file, as merging the default branch's own
+// change of it does, carries no change that is not in a commit of its own:
+// one the tip holds, or one of tip..head, read by the first question.
+func touchingCommit(ctx context.Context, root, tip, head string) (string, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
+		"rev-list", "--no-merges", "--full-history", "--max-count=1", tip+".."+head, "--", modeLineRel)
+	if err != nil {
+		return "", err
+	}
+	if c := strings.TrimSpace(string(out)); c != "" {
+		if !gitutil.IsFullSHA(c) {
+			return "", errors.New("git named no commit")
+		}
+		return c, nil
+	}
+	out, err = gitutil.RunCappedBytesAsStoredContext(ctx, root, "", (maxTouchMerges+1)*41,
+		"rev-list", "--merges", "--full-history", "--max-count="+strconv.Itoa(maxTouchMerges+1), tip+".."+head, "--", modeLineRel)
+	if err != nil {
+		return "", err
+	}
+	merges := strings.Fields(string(out))
+	switch {
+	case len(merges) > maxTouchMerges:
+		return "", errors.New("more than " + strconv.Itoa(maxTouchMerges) + " merge commits touch it against a parent")
+	case !allFullSHA(merges):
+		return "", errors.New("git named no commit")
+	}
+	for _, m := range merges {
+		names, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
+			"diff-tree", "--cc", "--name-only", "-z", "--no-commit-id", m, "--", modeLineRel)
+		if err != nil {
+			return "", err
+		}
+		if slices.Contains(strings.Split(string(names), "\x00"), modeLineRel) {
+			return m, nil
+		}
+	}
+	return "", nil
 }
 
 // mergedTree is the tree git's merge of ours and theirs writes into the

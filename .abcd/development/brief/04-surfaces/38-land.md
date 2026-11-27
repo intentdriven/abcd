@@ -423,15 +423,18 @@ The decision, in order:
    read at its head against each of its merge bases with the default branch's
    tip, and in the merge of its head into that tip, which git computes from
    the object store as stored with the built-in merge driver, against the
-   tip; and, where the merge queue rebases, a pull request with any commit
-   between its merge base and its head that touches `.abcd/config.json`,
-   since abcd does not judge what a rebase replays: nothing is armed in any
-   mode, whatever the approvals and receipts, and the note says the person
-   merges it on the forge's page. Where that cannot be read, a merge that
-   conflicts in the file included, and where the method is not known (a
-   re-arm reads none) for a pull request with such a commit, nothing is armed
-   either, and nor on a git older than 2.38, which computes the merge and
-   which the note names (adr-2611262044127943, dcn-2611270345293001).
+   tip; and, where the ruleset mirror at that tip names a merge queue that
+   rebases, a pull request with any commit between the tip and its head that
+   touches `.abcd/config.json` (a merge commit counting only where its file
+   is none of its parents'), since abcd does not judge what a rebase
+   replays: nothing is armed in any mode, whatever the approvals and
+   receipts, and the note says the person merges it on the forge's page.
+   Where that cannot be read, a merge that conflicts in the file included,
+   and, for a pull request with such a commit, wherever the mirror does not
+   name a queue that merges or squashes (it names none, there is none, or a
+   re-arm reads none), nothing is armed either, and nor on a git older than
+   2.38, which computes the merge and which the note names
+   (adr-2611262044127943, dcn-2611270500324630).
 2. An unverified author: nothing is armed, whatever the approvals, and the
    note says the role is unverified.
 3. A contributor's pull request, in either mode: nothing is armed until an

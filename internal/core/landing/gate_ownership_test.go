@@ -184,9 +184,12 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		})
 	}
 	// A rebase lands the head's commits replayed onto the tip, and abcd does
-	// not judge that replay: where the queue rebases, or the method is not
-	// known (a re-arm), a head with any commit that touches the file is left
-	// to the person, whatever the reads at the head and in the merge say.
+	// not judge that replay: unless the ruleset mirror names a merge queue
+	// that merges or squashes, so where it names one that rebases, where it
+	// names none or there is none, and where it is not read (a re-arm), a head
+	// with any commit that touches the file is left to the person, whatever
+	// the reads at the head and in the merge say. A merge commit whose file
+	// is one of its parents' touches nothing.
 	rebaseRuleset := strings.Replace(queueRuleset, `"MERGE"`, `"REBASE"`, 1)
 	const touches = "touches .abcd/config.json"
 	for _, c := range []struct {
@@ -197,6 +200,7 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		{"a rebase of a head whose last commit is already upstream", alreadyUpstream},
 		{"a rebase of a head that holds a merge commit", mergedSides},
 		{"a rebase of a head that changes another key of the file", otherKeyChanged},
+		{"a rebase of a head that merges an evil merge", evilMerge},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := c.build(t, rebaseRuleset)
@@ -208,15 +212,47 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 			}
 		})
 	}
+	for _, c := range []struct{ name, ruleset string }{
+		{"a mirror that names no merge queue", noQueueRuleset},
+		{"no ruleset mirror", ""},
+	} {
+		t.Run(c.name+", a head that sets the file aside and back", func(t *testing.T) {
+			f := replayRestores(t, c.ruleset)
+			f.reviewed(t)
+			s := landGate(t, f)
+			wantLeft(t, f, s, "on the forge's page")
+			if !strings.Contains(s.Note, touches) || !strings.Contains(s.Note, "names no merge queue that merges or squashes") {
+				t.Errorf("the note %q does not say a commit %s and the mirror names no such queue", s.Note, touches)
+			}
+		})
+	}
 	t.Run("a rebase of a head that leaves the file alone", func(t *testing.T) {
 		f := newFixtureFiles(t, rebaseRuleset, map[string]string{".abcd/config.json": autoConfig})
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
-	t.Run("no merge queue, a head that changes another key of the file", func(t *testing.T) {
-		f := otherKeyChanged(t, noQueueRuleset)
+	t.Run("a rebase of a head that merged the default branch's change of the file", func(t *testing.T) {
+		f := mergedMainsChange(t, rebaseRuleset, false)
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
+	})
+	t.Run("the list of commits touching the file cannot be read", func(t *testing.T) {
+		f := newFixtureFiles(t, rebaseRuleset, map[string]string{".abcd/config.json": autoConfig})
+		f.repo.Write("middle.txt", "a commit in the middle\n")
+		f.repo.Commit("the middle")
+		f.repo.Write("last.txt", "the last commit\n")
+		f.repo.Commit("the last")
+		tree := f.repo.Git("rev-parse", "HEAD~1^{tree}")
+		if err := os.Remove(filepath.Join(f.repo.Root(), ".git", "objects", tree[:2], tree[2:])); err != nil {
+			t.Fatal(err)
+		}
+		tip := f.repo.Git("rev-parse", "origin/main")
+		d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+			Rule: MergeRule{Method: "REBASE"}, RuleRead: true,
+			Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+		if says := "which of its commits touch .abcd/config.json cannot be read ("; err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, says) {
+			t.Fatalf("decision %+v, %v: want nothing armed, unread, saying %q", d, err, says)
+		}
 	})
 	t.Run("the same commits merged", func(t *testing.T) {
 		f := replayRestores(t, queueRuleset)
@@ -417,6 +453,30 @@ func mergedSides(t *testing.T, ruleset string) *fixture {
 	f.repo.Commit("add another file")
 	return f
 }
+
+// mergedMainsChange: the project commits auto, main changes another key of
+// the file, and the head, which never touches it, merges main. With evil,
+// the merge also changes the file to what neither parent holds.
+func mergedMainsChange(t *testing.T, ruleset string, evil bool) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, ruleset, map[string]string{".abcd/config.json": autoConfig})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"},"land":{"push":true}}`+"\n")
+	f.repo.Commit("main turns the push on")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	if !evil {
+		f.repo.Git("merge", "-q", "--no-edit", "origin/main")
+		return f
+	}
+	f.repo.Git("merge", "-q", "--no-commit", "origin/main")
+	f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"},"land":{"push":false}}`+"\n")
+	f.repo.Commit("merge main, turning the push off")
+	return f
+}
+
+// evilMerge is mergedMainsChange with a merge that changes the file.
+func evilMerge(t *testing.T, ruleset string) *fixture { return mergedMainsChange(t, ruleset, true) }
 
 // otherKeyChanged: the head changes another key of the file and leaves the
 // mode line as it is.

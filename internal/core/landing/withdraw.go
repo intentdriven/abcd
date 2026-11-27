@@ -406,9 +406,10 @@ func splitRepo(nameWithOwner string) (owner, name string, ok bool) {
 // that arms without landing a branch (the release hold's re-arm and admission):
 // the mode at the default branch as last fetched, the author's role, the
 // approvals and the receipts, in any worktree of root but a drive lane's
-// (insideDriveLane). The rule is left empty
-// since it decides only the method, which the arming already carries. An answer
-// the gate could not read is an error, never a refusal.
+// (insideDriveLane). No rule is read: the arming already carries its method,
+// and with the method not known a head with a commit touching
+// .abcd/config.json is an answer not read (modeLineChange). An answer the
+// gate could not read is an error, never a refusal.
 func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error) {
 	def := trackedDefault(root)
 	if def == "" {
