@@ -202,14 +202,14 @@ func TestTheProjectsValueIsReadAsStored(t *testing.T) {
 			}
 			repo.Git("replace", repo.Git("rev-parse", tip+":.abcd/config.json"), repo.Git("hash-object", "-w", p))
 		}, "repo"},
-		{"over the tip's tree, which holds no file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
+		{"over the tip's tree, which holds no config file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
 			repo.Write(".abcd/config.json", autoConfig)
 			repo.Commit("auto")
 			other := repo.Git("rev-parse", "HEAD^{tree}")
 			repo.Git("reset", "-q", "--hard", tip)
 			repo.Git("replace", "-f", repo.Git("rev-parse", tip+"^{tree}"), other)
 		}, "bundled"},
-		{"over the tip itself, which holds no file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
+		{"over the tip itself, which holds no config file", "", func(t *testing.T, repo *gittest.Repo, tip string) {
 			repo.Write(".abcd/config.json", autoConfig)
 			repo.Commit("auto")
 			other := repo.Git("rev-parse", "HEAD")
@@ -219,7 +219,16 @@ func TestTheProjectsValueIsReadAsStored(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo, root := mergingRepo(t, c.project)
+			// The tip holds a file, so its tree is never the empty tree: from
+			// git 2.55 that tree is served from git's in-memory object source
+			// by its own name, never through a replace ref, so a replacement
+			// over it would not present auto, and the case would read nothing.
+			repo.Write("README.md", "a file, so the tip's tree is not the empty tree\n")
+			repo.Commit("a file")
 			tip := repo.Git("rev-parse", "HEAD")
+			if tree := repo.Git("rev-parse", tip+"^{tree}"); tree == repo.Git("hash-object", "-t", "tree", "/dev/null") {
+				t.Fatalf("the tip's tree is the empty tree %s", tree)
+			}
 			c.replace(t, repo, tip)
 			if got := repo.Git("cat-file", "-p", tip+":.abcd/config.json"); !strings.Contains(got, ModeAuto) {
 				t.Fatalf("the fixture's replace ref does not present auto: %q", got)
