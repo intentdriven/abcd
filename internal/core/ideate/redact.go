@@ -97,6 +97,11 @@ func newRecordRedactor(repoRoot string) (*recordRedactor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ideate: refusing to write a verdict record with an unavailable scanner: %w", err)
 	}
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, fmt.Errorf("ideate: refusing to write a verdict record: %s — "+
+			"nothing was written; once it is re-saved, re-run with the same verdict payload",
+			scanner.IdentityUnmatchableReason(setting))
+	}
 	if unavail, reason := sc.Unavailable(); unavail {
 		return nil, fmt.Errorf("ideate: refusing to write a verdict record with a degraded scanner: %s — "+
 			"nothing was written; repair .abcd/config/pii.json and re-run with the same verdict payload", reason)

@@ -326,6 +326,10 @@ func scanOutbound(checkout, label, text string, otherHome bool) (*textFinding, e
 	if err != nil {
 		return nil, refuse(label+" could not be checked: the scanner could not be built", "settle the scanner's configuration, then run it again")
 	}
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, refuse(label+" could not be checked: "+scanner.IdentityUnmatchableReason(setting),
+			"re-save "+setting+" as UTF-8, then run it again")
+	}
 	if degraded, _ := sc.Unavailable(); degraded {
 		return nil, refuse(label+" could not be checked: the scanner's configuration is degraded", "settle .abcd/config/pii.json, then run it again")
 	}
