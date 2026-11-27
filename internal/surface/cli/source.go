@@ -506,17 +506,19 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 					fmt.Fprintf(w, "abcd library ledger — line %d cites line %d publicly (%s), committed in the corpus\n", res.Line, flip, res.Record.SourceKey)
 				})
 			}
-			// The bare form has nothing to append, so it is told where the read
-			// is rather than handed the first field Append finds missing
-			// (iss-2611040712366155).
-			if !slices.ContainsFunc([]string{"decision", "claim", "source", "locator", "influence", "used-in", "corrects"},
-				cmd.Flags().Changed) {
-				return &exitError{Code: 2, Msg: "abcd library ledger: nothing to append — nothing written; " +
-					"--list prints the ledger, and an append names --decision, --claim, --source and --influence"}
-			}
 			res, err := source.Append(source.AppendRequest{Corpus: dir, Repo: r, DecisionRef: decision, Claim: claim,
 				SourceKey: key, Locator: locator, Influence: influence, UsedIn: usedIn, Corrects: corrects, Now: time.Now()})
 			if err != nil {
+				// The bare form had nothing to append, so the record's refusal is
+				// swapped for where the read is, rather than the first field
+				// Append found missing (iss-2611040712366155). Every other
+				// refusal, the absent corpus's exit 3 among them, stands.
+				bare := !slices.ContainsFunc([]string{"decision", "claim", "source", "locator", "influence", "used-in", "corrects"},
+					cmd.Flags().Changed)
+				if bare && errors.Is(err, source.ErrInvalidLedger) {
+					return &exitError{Code: 2, Msg: "abcd library ledger: nothing to append — nothing written; " +
+						"--list prints the ledger, and an append names --decision, --claim, --source and --influence"}
+				}
 				return sourceError("ledger", dir, err)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
