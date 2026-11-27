@@ -3482,6 +3482,12 @@
       ]
     },
     {
+      "path": "abcd lab matrix launch",
+      "hidden": false,
+      "sentence": "Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.",
+      "flags": []
+    },
+    {
       "path": "abcd lab matrix report",
       "hidden": false,
       "sentence": "Print a recorded matrix run's report, its limitations and suggested improvements: Writes nothing; refuses a run the lab never recorded.",
