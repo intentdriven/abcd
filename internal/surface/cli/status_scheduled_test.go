@@ -455,10 +455,14 @@ func TestThePromptHookStartsARefreshWhenOneIsDue(t *testing.T) {
 	}
 }
 
+// refreshUnstampedLine is how the prompt's STATUS block says a due refresh's stamp
+// could not be kept.
+const refreshUnstampedLine = "the background refresh of the scheduled run could not be started: its stamp could not be kept"
+
 // TestAStampThatCannotBeKeptIsSaidOnThePrompt: a store that cannot be written,
 // as from a full disk or a changed mode, starts no refresh, and the prompt it
-// failed on says so on stderr rather than leave a kept green silent for days
-// (iss-2611051719396028).
+// failed on says so in its STATUS block, which the agent reads, and on stderr,
+// the operator's diagnostic (iss-2611051719396028).
 func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
 	ownHookBudgets(t, 10*time.Second)
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
@@ -490,6 +494,53 @@ func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
 	}
 	if strings.Contains(stderr, w.home) {
 		t.Fatalf("the hook's stderr names the home unredacted:\n%s", stderr)
+	}
+	if !strings.Contains(out, refreshUnstampedLine) {
+		t.Fatalf("the hook's text:\n%s\nwant its STATUS block to carry %q", out, refreshUnstampedLine)
+	}
+}
+
+// TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent: a green kept and gone past due,
+// whose refresh cannot be stamped, says nothing of its own for up to 48 hours,
+// since no stamp is newer than the answer for the read to call a refresh that kept
+// nothing. So the prompt's STATUS block says the stamp could not be kept, with the
+// home redacted, and starts no refresh (iss-2611051719396028).
+func TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	spawned := spawnsRefreshes(t)
+	standInForge(t, runListing("success", time.Now().Add(-time.Hour)), false)
+	if code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh"); code != 0 {
+		t.Fatalf("the refresh: exit %d, %s", code, stderr)
+	}
+	home := os.Getenv("HOME")
+	ageKeptAnswer(t, home, 2*time.Hour)
+	// A folder where the stamp goes: the answer still reads, and no stamp can be kept.
+	answers, err := filepath.Glob(abcdhome.Path(home, "scheduled-runs", "*", "*.json"))
+	if err != nil || len(answers) != 1 {
+		t.Fatalf("the kept answers: %v, %v; want one", answers, err)
+	}
+	if err := os.MkdirAll(strings.TrimSuffix(answers[0], ".json")+".attempt", 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	out, stderr := runHook(t, hookInputJSON(t, "s-sched", pat, "hello"), "hook", "prompt-router")
+	if spawned.count() != 0 {
+		t.Fatalf("an unstamped refresh was started %d times; want none", spawned.count())
+	}
+	if !strings.Contains(out, claim.NotesHeading) || !strings.Contains(out, refreshUnstampedLine) {
+		t.Fatalf("the prompt:\n%s\nwant a STATUS block carrying %q", out, refreshUnstampedLine)
+	}
+	if strings.Contains(out, home) {
+		t.Fatalf("the prompt names the home unredacted:\n%s", out)
+	}
+	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
+		t.Fatalf("the hook's stderr:\n%s\nwant the operator's line too", stderr)
 	}
 }
 

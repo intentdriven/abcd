@@ -415,7 +415,8 @@ var hookBudget = time.Second
 // (claim.PromptNotes). A read that could not be made is named on stderr, and
 // its block says the status is unavailable. The caller marks the block shown
 // once it has written it. A refresh the block says is due is started here, in
-// the background, and never waited for.
+// the background, and never waited for; one whose stamp cannot be kept is said in
+// the block (startDueRefresh).
 func routerStatus(cmd *cobra.Command, root, session string, rootCommit func() (string, error), deadline time.Time) claim.Notes {
 	if root == "" {
 		return claim.Notes{}
@@ -429,7 +430,7 @@ func routerStatus(cmd *cobra.Command, root, session string, rootCommit func() (s
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	if n.RefreshDue {
-		startDueRefresh(cmd, n, root, now, deadline)
+		n = startDueRefresh(cmd, n, root, now, deadline)
 	}
 	return n
 }

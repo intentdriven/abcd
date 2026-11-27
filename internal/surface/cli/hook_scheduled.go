@@ -58,23 +58,42 @@ var spawnScheduledRefresh = func(dir string) error {
 }
 
 // startDueRefresh starts the refresh the block n asked for, when the hook's deadline
-// leaves room: stamped first, so a refresh that cannot be stamped is not started on
-// every prompt. A stamp that cannot be kept, from a full disk or a changed mode, is
-// said on the prompt it failed on, since otherwise a kept green would stay silent
-// until the answer aged out (iss-2611051719396028).
-func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) {
+// leaves room, and answers the block to show: stamped first, so a refresh that
+// cannot be stamped is not started on every prompt. A stamp that cannot be kept,
+// from a full disk or a changed mode, adds a line to the block itself, since the
+// hook's stderr reaches only the host's debug log and a kept green past due would
+// otherwise say nothing for up to 48 hours: no stamp newer than the answer is kept
+// for the read to call a refresh that kept nothing (iss-2611051719396028). The
+// stderr line stays, for the operator. A store that stays unwritable shows the line
+// on every due prompt, since no stamp starts the cooldown.
+func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) claim.Notes {
 	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) {
-		return
+		return n
 	}
 	if err := n.StampRefresh(now); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n",
-			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-		return
+		why := termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n", why)
+		n.Text = withStatusLine(n.Text, termsafe.Sanitize("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+why+"), so no kept answer is renewed; `abcd status` asks now"))
+		return n
 	}
 	if err := spawnScheduledRefresh(root); err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run could not be started (%s)\n",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
+	return n
+}
+
+// withStatusLine is the STATUS block text with line added: as a block of its own
+// when there is none, among the block's lines when it ends as a rendered block
+// does, and after it otherwise.
+func withStatusLine(text, line string) string {
+	switch {
+	case text == "":
+		return claim.NotesHeading + "\n\n" + line + "\n"
+	case strings.HasSuffix(text, "\n"+claim.GrantsNothing+"\n"):
+		return strings.TrimSuffix(text, claim.GrantsNothing+"\n") + "- " + line + "\n" + claim.GrantsNothing + "\n"
+	}
+	return strings.TrimRight(text, "\n") + "\n\n" + line + "\n"
 }
 
 func newScheduledRefreshCommand() *cobra.Command {

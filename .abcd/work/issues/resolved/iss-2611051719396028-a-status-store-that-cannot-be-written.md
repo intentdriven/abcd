@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/hook_scheduled.go"
 remedy: "Say that the stamp failed on the prompt it failed on."
-resolution: "A due refresh whose stamp cannot be kept now says so on the prompt's stderr instead of starting nothing in silence."
+resolution: "A due refresh whose stamp cannot be kept now says so in the prompt's STATUS block, and on stderr for the operator, instead of starting nothing in silence."
 impact: fix
 ---
 
