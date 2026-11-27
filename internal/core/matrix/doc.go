@@ -29,7 +29,15 @@
 //     passed through the launch bundle's scan first; and one local inference
 //     server at a time, as an owned process group. The build loop's trial
 //     mode (loop.Options.Trial) runs a copy's stages taking no reservation
-//     and landing nothing.
+//     and landing nothing; no step calls it (step 11, dcn-2611251746554510).
+//   - the launch (launch.go; step 11): a runner cell's copy made by the
+//     cell's runner dispatched directly in its clone, in the runners' cell
+//     mode, on the blind brief a host cell's copy is made from, each launch
+//     one owned process group killed whole on a stop, at most the run's
+//     declared concurrency at once, a metered copy only while the spending
+//     cap's remainder covers it, the brief and the receipt in a hand-off
+//     store of their own, and the copy's trial written through the same
+//     compliance check and secret screen as a host copy's.
 //   - the code task's judging (hidden.go, compliance.go; step 4): the hidden
 //     tests kept read-only beside the copies and never in one, a copy refused
 //     whose clone holds one; and the compliance check every copy passes

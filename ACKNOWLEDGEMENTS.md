@@ -502,6 +502,17 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   clean read rules out, and each finding turned into a person's change to the
   rule. The evidence is
   `.abcd/development/research/notes/2026-10-30-spot-check-unattended-changes-sota.md`.
+- **drand and its quicknet chain (the League of Entropy,
+  <https://drand.love>) and CIRCL (Cloudflare, BSD-3-Clause,
+  <https://github.com/cloudflare/circl>)** — the public randomness the
+  spot-check draws by, and the library it checks each round with
+  (`internal/core/spotcheck/beacon.go`, itd-2610301750162657): one round of
+  the quicknet chain is fetched over HTTPS, its BLS signature verified against
+  the chain's pinned public key through CIRCL's `sign/bls`, and the round's
+  randomness keys the draw, so no agent can choose which items a person
+  reads. CIRCL is named here rather than in `go.mod` alone because the intent
+  adopted it by name
+  (`.abcd/development/research/notes/2026-10-31-drand-beacon-verification-sota.md`).
 - **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
   ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
   static-analysis lessons of Google (Sadowski et al., "Lessons from Building

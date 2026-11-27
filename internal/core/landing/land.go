@@ -350,7 +350,7 @@ func Land(cwd string, o Options) (Result, error) {
 		return res, fmt.Errorf("placing %s on %s: %w", short(head), tracking, err)
 	case on:
 		res.Landed = true
-		res.add("land", StatusLanded, short(head)+" is already on "+Remote+"/"+def+", so "+branch+" has landed: nothing was gated, pushed or queued", "")
+		res.add("land", StatusLanded, short(head)+" is already on "+Remote+"/"+def+", so "+branch+" has landed: nothing was gated, pushed or queued"+observed(dir, def), "")
 		return res, nil
 	}
 	// A squash or rebase merge puts another commit on the default branch, so
@@ -369,7 +369,7 @@ func Land(cwd string, o Options) (Result, error) {
 			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	case pr > 0:
 		res.Landed, res.PR, res.PRURL = true, pr, prURL
-		res.add("land", StatusLanded, fmt.Sprintf("pull request #%d merged %s into %s (by a squash or rebase, so the commit itself is not on %s/%s), so %s has landed: nothing was gated, pushed or queued", pr, short(head), def, Remote, def, branch), "")
+		res.add("land", StatusLanded, fmt.Sprintf("pull request #%d merged %s into %s (by a squash or rebase, so the commit itself is not on %s/%s), so %s has landed: nothing was gated, pushed or queued", pr, short(head), def, Remote, def, branch)+observed(dir, def), "")
 		return res, nil
 	}
 	if err := gate(&res, o, dir, head); err != nil {
@@ -1446,7 +1446,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// checkout (dcn-2610230058333177), the author's role, the approvals of
 	// the head, and in auto a review receipt naming it.
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+		Rule: rule, RuleRead: true, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
 	if err == nil {
 		// The spot-check's record of the decision, made from the decision
 		// alone: a record that cannot be written changes nothing but the
@@ -1812,6 +1812,21 @@ func shellQuote(s string) string {
 	return shellquote.Single(s)
 }
 
+// observeLanding is spotcheck.AfterLanding, the seam a test counts the
+// observations through.
+var observeLanding = spotcheck.AfterLanding
+
+// observed is the spot-check's note on a landing land has just proved, the
+// branch's head on origin's default branch def as just fetched, set after
+// "; ", or "" when it has nothing to say. Whatever it says, the landing
+// stands as proved.
+func observed(dir, def string) string {
+	if note := observeLanding(context.Background(), spotcheck.Observed{Root: dir, Default: def, Site: spotcheck.SiteLand}); note != "" {
+		return "; " + note
+	}
+	return ""
+}
+
 // recordGate is RecordMergeGate, the seam a test turns the record off
 // through to compare what land does without it.
 var recordGate = RecordMergeGate
@@ -1837,10 +1852,10 @@ func RecordMergeGate(root, site, pr, head string, d MergeDecision) string {
 	n, _ := strconv.Atoi(pr)
 	ctx, cancel := context.WithTimeout(context.Background(), spotcheck.WriteTimeout)
 	defer cancel()
-	canWrite, counted := d.AuthorCanWrite, d.ApprovalCounted
+	canWrite, counted, receipt := d.AuthorCanWrite, d.ApprovalCounted, d.ReceiptNamedHead
 	w := spotcheck.Write(ctx, root, spotcheck.Batch{Decisions: []spotcheck.Decision{{Kind: spotcheck.KindMergeGate, At: time.Now(),
 		Holder: spotcheck.Holder(), Site: site, PR: n, Head: head, Arm: d.Arm, Method: d.Method, Why: d.Why, Unread: d.Unread,
-		Mode: d.Mode, AuthorCanWrite: &canWrite, ApprovalCounted: &counted}}})
+		Mode: d.Mode, AuthorCanWrite: &canWrite, ApprovalCounted: &counted, ModeLayer: d.ModeLayer, ReceiptNamedHead: &receipt}}})
 	switch {
 	case errors.Is(w.Err, spotcheck.ErrNoOrigin):
 		return ""

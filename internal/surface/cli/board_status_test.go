@@ -276,30 +276,36 @@ func facilitatorBlock(b *statusblock.Block) string {
 // which no window width breaks.
 func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	root := managedCheckout(t)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: unreadable (the repository has no default branch to read facilitator.mode at)") {
-		t.Fatalf("with no default branch the board does not say the mode is unreadable:\n%s", text)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head") {
+		t.Fatalf("with no commit the board does not ask the computer's file alone:\n%s", text)
 	}
 	commitConfig(t, root, "")
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from the bundled default)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head") {
 		t.Fatalf("with no layer the board does not say the bundled human's approval merges:\n%s", text)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "merges: once the technical facilitator approves (the bundled default)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves") {
 		t.Fatalf("the product view does not say the bundled human's approval merges:\n%s", text)
 	}
 	commitConfig(t, root, `{"facilitator":{"mode":"human"}}`+"\n")
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from .abcd/config.json at main)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (the project prevents auto, set in .abcd/config.json at main): merges once the technical facilitator approves the head") {
 		t.Fatalf("an uncommitted auto decided the board, not main's human, as the gate reads it:\n%s", text)
 	}
 	assertBoardFacilitator(t, "human", ".abcd/config.json at main")
 	commitConfig(t, root, `{"facilitator":{"mode":"auto"}}`+"\n")
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: autonomously, once a review pair passes the head (facilitator.mode auto, from .abcd/config.json at main)") {
-		t.Fatalf("main's auto is not said as autonomous merging, with its file:\n%s", text)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head") {
+		t.Fatalf("main's auto is not named with its file and outcome:\n%s", text)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "merges: autonomously, once a review pair passes (set in .abcd/config.json at main)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes") {
 		t.Fatalf("the product view does not say main's auto merges autonomously:\n%s", text)
+	}
+	assertBoardFacilitator(t, "auto", ".abcd/config.json at main")
+	// The project's auto stands above the computer's human (dcn-2611252132144530).
+	writeMachineConfig(t, `{"facilitator":{"mode":"human"}}`+"\n")
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head") {
+		t.Fatalf("the computer's human decided the board over main's auto:\n%s", text)
 	}
 	assertBoardFacilitator(t, "auto", ".abcd/config.json at main")
 }
@@ -322,7 +328,7 @@ func assertBoardFacilitator(t *testing.T, mode, origin string) {
 }
 
 // TestBoardSaysAnUnreadableModeIsUnreadable: a key the reader refuses is
-// drawn as unreadable, masked, and carried in --json as the error alone: no
+// drawn as not read, masked, and carried in --json as the error alone: no
 // mode, layer or origin key, so a consumer testing for a mode finds none. The
 // hostile bytes are in the key, which the refusal names as written, so the
 // mask is what keeps them off the terminal.
@@ -330,8 +336,8 @@ func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	root := managedCheckout(t)
 	commitConfig(t, root, "{\"facilitator\":{\"\\u001b[31mmode\":\"auto\"}}\n")
 	text := string(runCLI(t, "--view", "facilitator"))
-	if !strings.Contains(text, "  merges:     unreadable (") || strings.ContainsRune(text, '\x1b') {
-		t.Fatalf("an unreadable mode is not drawn as unreadable and masked:\n%q", text)
+	if !strings.Contains(text, "  facilitator: not read (") || strings.ContainsRune(text, '\x1b') {
+		t.Fatalf("an unreadable mode is not drawn as not read and masked:\n%q", text)
 	}
 	var got struct {
 		Facilitator map[string]any `json:"facilitator"`
@@ -362,7 +368,7 @@ func TestBoardNamesARefusedHomeThatDecidedWhoMerges(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: once the technical facilitator approves the head (facilitator.mode human, from a refused home)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves the head") {
 		t.Fatalf("a refused home is not named as what decided who merges:\n%s", text)
 	}
 	var got struct {
@@ -394,8 +400,8 @@ func TestBoardOmitsWhoMergesOutsideAManagedCheckout(t *testing.T) {
 	repo := t.TempDir()
 	gitInitAt(t, repo)
 	t.Chdir(repo)
-	if text := string(runCLI(t, "--view", "facilitator")); strings.Contains(text, "merges:") {
-		t.Fatalf("an unmanaged checkout drew a merges line:\n%s", text)
+	if text := string(runCLI(t, "--view", "facilitator")); strings.Contains(text, "facilitator:") {
+		t.Fatalf("an unmanaged checkout drew a facilitator line:\n%s", text)
 	}
 	var got map[string]json.RawMessage
 	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {

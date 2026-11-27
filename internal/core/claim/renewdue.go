@@ -58,7 +58,8 @@ type Renewal struct {
 // release subject is left alone: its hold is a release cut's, kept by the
 // cut. Only a reservation whose tip is the commit this copy itself last
 // pushed for it (pushedHere) is renewed; any other tip is left as it is, and
-// answered with errNotPushedHere.
+// answered with errNotPushedHere. A tip a drive left to lapse (LeaveToLapse)
+// is left as it is too, and answered with nothing: it is no one's work.
 // Each pass holds the copy's renewal lock (renewLockRel); a copy whose lock
 // cannot be laid renews unlocked rather than not at all.
 // The error is a view that could not be read, or ErrRenewalBusy; each
@@ -103,6 +104,11 @@ func renewDue(root string, o Options) ([]Renewal, error) {
 		}
 		if pushedHere(root, r.Record) != r.Commit {
 			out = append(out, Renewal{Record: r.Record, Err: errNotPushedHere})
+			continue
+		}
+		// A hold a drive left to lapse at this tip is no one's work now, so a
+		// renewal that reads no run leaves it to its lease (LeaveToLapse).
+		if LeftToLapse(root, r.Record, r.Commit) {
 			continue
 		}
 		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: RenewalTerm(r)}, o)
@@ -156,6 +162,12 @@ func notePushed(root, id, sha string) {
 // pushedHere is the commit this copy last pushed for id (notePushed), "" when
 // none is kept or the note cannot be read.
 func pushedHere(root, id string) string {
+	return readCommitNote(root, pushedRelDir, id)
+}
+
+// readCommitNote is the full commit id the note dir/id in root's state holds,
+// "" when there is none, it cannot be read, or it holds anything else.
+func readCommitNote(root, dir, id string) string {
 	if _, err := reservableID(id); err != nil {
 		return ""
 	}
@@ -164,7 +176,7 @@ func pushedHere(root, id string) string {
 		return ""
 	}
 	defer r.Close()
-	data, err := localtier.ReadInRoot(r, pushedRelDir+"/"+id, 128)
+	data, err := localtier.ReadInRoot(r, dir+"/"+id, 128)
 	if err != nil {
 		return ""
 	}
@@ -172,4 +184,59 @@ func pushedHere(root, id string) string {
 		return sha
 	}
 	return ""
+}
+
+// lapseRelDir keeps, per record, the reservation commit a drive left to lapse
+// in this copy (LeaveToLapse).
+const lapseRelDir = stateRelDir + "/lapse"
+
+// LeaveToLapse records that this copy leaves id's reservation, whose tip is
+// commit, to lapse at its lease (itd-2611141610197753 step 3): a drive keeps
+// the hold of a lane it is not working, one whose stop could not be applied or
+// one it set aside, so no peer takes the issue while that is unsure, and no
+// renewal that reads no driver keeps it alive past its lease. RenewDue, and the
+// implement loop's renewals of a run (an `abcd implement status` call, a
+// load-gate waiter, a drive's waits and a drain's move), leave such a hold
+// alone. The record names the tip alone, so any reservation pushed for id since,
+// a take-up's or a step's, ends it with nothing to undo. A note that cannot be
+// written is the error, and leaves the hold renewed as before.
+func LeaveToLapse(root, id, commit string) error {
+	if _, err := reservableID(id); err != nil {
+		return err
+	}
+	if !gitutil.IsFullSHA(commit) {
+		return fmt.Errorf("%q is not a full commit id", commit)
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := mkStateDir(r, lapseRelDir); err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomicInRoot(r, lapseRelDir+"/"+id, []byte(commit+"\n"), stateMode)
+}
+
+// LeftToLapse reports whether this copy left id's reservation to lapse at the
+// tip commit (LeaveToLapse). A note that cannot be read is none.
+func LeftToLapse(root, id, commit string) bool {
+	return commit != "" && readCommitNote(root, lapseRelDir, id) == commit
+}
+
+// KeepRenewing undoes LeaveToLapse for id: the drive that left it takes the
+// lane up again. A note already gone is no error.
+func KeepRenewing(root, id string) error {
+	if _, err := reservableID(id); err != nil {
+		return err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := r.Remove(lapseRelDir + "/" + id); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }

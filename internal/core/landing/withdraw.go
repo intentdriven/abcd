@@ -16,6 +16,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -195,18 +196,31 @@ func dequeue(forge ForgeCall, id string) error {
 }
 
 // RemoteTip is the commit origin's branch is at, asked of origin itself, or ""
-// when origin has no such branch.
+// when origin has no such branch. git lists every branch whose name ends in
+// the branch's path as well (refs/heads/x/refs/heads/<branch>), so only the
+// line naming the branch exactly is read (gitutil.RefListing). git is the
+// caller's runner; nil reads the listing line by line through
+// gitutil.NetEach, as does a runner that refuses it as past its bound
+// (gitutil.OutputCapError).
 func RemoteTip(git GitFunc, dir, branch string) (string, error) {
-	out, err := git(dir, "ls-remote", Remote, "refs/heads/"+branch)
+	args := []string{"ls-remote", Remote, "refs/heads/" + branch}
+	l := gitutil.RefListing{Ref: "refs/heads/" + branch}
+	var err error
+	if git != nil {
+		var out string
+		if out, err = git(dir, args...); err == nil {
+			l.Read(out)
+		}
+	}
+	var capped *gitutil.OutputCapError
+	if git == nil || errors.As(err, &capped) {
+		l = gitutil.RefListing{Ref: "refs/heads/" + branch}
+		err = gitutil.NetEach(dir, gitutil.RefLineMax, l.Line, args...)
+	}
 	if err != nil {
 		return "", err
 	}
-	for _, l := range strings.Split(out, "\n") {
-		if f := strings.Fields(l); len(f) == 2 && f[1] == "refs/heads/"+branch {
-			return f[0], nil
-		}
-	}
-	return "", nil
+	return l.Tip, nil
 }
 
 // withdrawBeforePush is the step before the push. An arming at the head the push
@@ -333,8 +347,12 @@ func gateAtLocalHead(res *Result, o Options, dir, tracking, nameWithOwner, n str
 	if err != nil || !gitutil.IsFullSHA(tip) {
 		return "", Remote + "/" + res.Default + " cannot be read"
 	}
+	// The merge rule at the same tip, as the enqueue that follows reads it,
+	// so the gate here does not take off an arming that one makes again; a
+	// mirror that cannot be read leaves the method not known.
+	rule, ruleErr := ReadMergeRule(dir, tip, res.Default, Remote+"/"+res.Default)
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
+		Rule: rule, RuleRead: ruleErr == nil, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
 	switch {
 	case err != nil:
 		return "", fsutil.RedactHome(err.Error())
@@ -388,9 +406,10 @@ func splitRepo(nameWithOwner string) (owner, name string, ok bool) {
 // that arms without landing a branch (the release hold's re-arm and admission):
 // the mode at the default branch as last fetched, the author's role, the
 // approvals and the receipts, in any worktree of root but a drive lane's
-// (insideDriveLane). The rule is left empty
-// since it decides only the method, which the arming already carries. An answer
-// the gate could not read is an error, never a refusal.
+// (insideDriveLane). No rule is read: the arming already carries its method,
+// and with the method not known a head with a commit touching
+// .abcd/config.json is an answer not read (modeLineChange). An answer the
+// gate could not read is an error, never a refusal.
 func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error) {
 	def := trackedDefault(root)
 	if def == "" {
@@ -406,10 +425,14 @@ func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error)
 	if err != nil {
 		return false, "", err
 	}
-	if d.Unread {
-		return false, "", errors.New(d.Why)
+	why := d.Why
+	if note := recordGate(root, spotcheck.SiteRearm, pr, head, d); note != "" {
+		why += "; " + note
 	}
-	return d.Arm, d.Why, nil
+	if d.Unread {
+		return false, "", errors.New(why)
+	}
+	return d.Arm, why, nil
 }
 
 // The release hold's arming is held to the merge gate here: claim cannot import

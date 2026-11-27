@@ -1,11 +1,13 @@
 package landing
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/spotcheck"
 )
 
@@ -262,6 +264,34 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 		{"auto, contributor, approved, armed", with(contributor(auto, true), func(f *gateFacts) { f.reviewed = true }),
 			MergeDecision{Arm: true, Method: "--merge", Why: autoText + "; approved by maintainer-b; a review receipt names " + h12 + plain, Mode: ModeAuto, ApprovalCounted: true}, false},
 	}
+	// A person's own global auto (itd-2611252049031692): a colleague's pull
+	// request is judged as human judges it, so its decision is human's and is
+	// not one abcd took alone, with or without an approval; their own is
+	// auto's. A pull request that changes the committed mode line is refused
+	// before the author is read, and is not recorded either.
+	global := Facilitator{Mode: ModeAuto, Layer: "machine", Origin: abcdhome.Display("config.json")}
+	globalText := "facilitator.mode is auto (machine layer, " + abcdhome.Display("config.json") + ")"
+	const notOwn = "#7 was opened by author-a, not by colleague-z, the account abcd runs as"
+	colleague := func(approved bool) gateFacts {
+		f := with(maintainer(global), func(f *gateFacts) { f.notOwn, f.approvalWhy = notOwn, "none found" })
+		if approved {
+			f.approvedBy, f.approvalWhy = "maintainer-b", ""
+		}
+		return f
+	}
+	rows = append(rows,
+		row{"global auto, a colleague's, no approval", colleague(false),
+			MergeDecision{Why: globalText + ", and a person's own global auto arms only a pull request your own account opened: " + notOwn +
+				", so it waits for an approval of " + h12 + " (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator), or for its author to land it: none found",
+				Mode: ModeHuman, AuthorCanWrite: true}, false},
+		row{"global auto, a colleague's, approved", colleague(true),
+			MergeDecision{Arm: true, Method: "--merge", Why: globalText + ", judged as human since " + notOwn + "; approved by maintainer-b" + plain,
+				Mode: ModeHuman, AuthorCanWrite: true, ApprovalCounted: true}, false},
+		row{"global auto, your own, armed", with(maintainer(global), func(f *gateFacts) { f.reviewed = true }),
+			MergeDecision{Arm: true, Method: "--merge", Why: globalText + "; a review receipt names " + h12 + plain, Mode: ModeAuto, AuthorCanWrite: true}, true},
+		row{"auto, the mode line changed", gateFacts{mode: auto, def: "main", head: head, modeLine: "it changes the facilitator.mode line"},
+			MergeDecision{Why: "it changes the facilitator.mode line", Mode: ModeAuto}, false},
+	)
 	// The five rows auto mode reaches after the approval, once for an author
 	// who can write and once for a contributor whose approval counted.
 	for _, r := range []struct {
@@ -282,6 +312,9 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 	}
 	for _, c := range rows {
 		got := decided(c.f)
+		// The mode's layer and the receipt are the facts' own, carried as read
+		// (TestGateDecisionCarriesReceiptAndLayer holds them through the gate).
+		c.want.ModeLayer, c.want.ReceiptNamedHead = c.f.mode.Layer, c.f.reviewed
 		if got != c.want {
 			t.Errorf("%s: decided\n%+v\nwant\n%+v", c.name, got, c.want)
 		}
@@ -326,5 +359,99 @@ func TestAMaintainersApprovedPullRequestInAutoModeIsRecorded(t *testing.T) {
 	if len(recs) != 1 || recs[0].Head != f.head() || recs[0].Mode != ModeAuto ||
 		recs[0].AuthorCanWrite == nil || !*recs[0].AuthorCanWrite || recs[0].ApprovalCounted == nil || *recs[0].ApprovalCounted {
 		t.Fatalf("records: %+v", recs)
+	}
+}
+
+// The spot-check's observation of a landing is turned off for every test of
+// the package but the ones that count it: an observation reaches origin and
+// the beacon, which no other test here is about.
+var _ = func() bool {
+	observeLanding = func(context.Context, spotcheck.Observed) string { return "" }
+	return true
+}()
+
+// countObservations replaces the observation for the test with one that
+// counts and answers a note.
+func countObservations(t *testing.T) *[]spotcheck.Observed {
+	t.Helper()
+	var seen []spotcheck.Observed
+	saved := observeLanding
+	t.Cleanup(func() { observeLanding = saved })
+	observeLanding = func(_ context.Context, o spotcheck.Observed) string {
+		seen = append(seen, o)
+		return "spot-check: observed"
+	}
+	return &seen
+}
+
+// TestTheLandVerbObservesALanding: land re-run on a branch whose head is on
+// origin's default branch, or whose pull request merged it by a squash, is
+// one observation from the land site, and its note joins the landed step's;
+// a land that gates and arms observes nothing.
+func TestTheLandVerbObservesALanding(t *testing.T) {
+	for name, merge := range map[string]func(f *fixture){
+		"on the default branch": func(f *fixture) { f.repo.Git("push", "-q", "origin", "feat/x:main") },
+		"squashed": func(f *fixture) {
+			f.squashOntoMain()
+			f.forge.merged = mergedListing(f.head(), false)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			seen := countObservations(t)
+			f := newFixture(t, queueRuleset)
+			merge(f)
+			f.forge.prs = f.prFor(f.head())
+			res, err := f.land(f.options())
+			if err != nil || !res.Landed {
+				t.Fatalf("land = %+v, %v", res, err)
+			}
+			if len(*seen) != 1 || (*seen)[0].Site != spotcheck.SiteLand || (*seen)[0].Default != "main" {
+				t.Fatalf("observed %+v; want once from the land site", *seen)
+			}
+			if note := res.Steps[0].Note; !strings.HasSuffix(note, "; spot-check: observed") {
+				t.Fatalf("the landed step's note is %q", note)
+			}
+		})
+	}
+	seen := countObservations(t)
+	f := autoReviewed(t)
+	wantArmed(t, f, landGate(t, f))
+	if len(*seen) != 0 {
+		t.Fatalf("a land that armed observed %+v", *seen)
+	}
+}
+
+// TestGateDecisionCarriesReceiptAndLayer: the record of a decision abcd took
+// alone names, as fields the gate set, whether a review receipt named the
+// head and which layer declared the mode.
+func TestGateDecisionCarriesReceiptAndLayer(t *testing.T) {
+	f := autoReviewed(t)
+	var handed []MergeDecision
+	withRecorder(t, func(root, site, pr, head string, d MergeDecision) string {
+		handed = append(handed, d)
+		return RecordMergeGate(root, site, pr, head, d)
+	}, func() Step { return landGate(t, f) })
+	if len(handed) != 1 || !handed[0].ReceiptNamedHead || handed[0].ModeLayer != "repo" {
+		t.Fatalf("the gate decided %+v; want a receipt naming the head, the mode from the repo layer", handed)
+	}
+	recs := gateRecords(t, f)
+	if len(recs) != 1 || recs[0].ReceiptNamedHead == nil || !*recs[0].ReceiptNamedHead || recs[0].ModeLayer != "repo" {
+		t.Fatalf("the record is %+v", recs)
+	}
+}
+
+// TestRearmGateIsRecorded: the merge gate asked afresh at a re-arm, in auto
+// mode with no person's approval, is recorded from the rearm site.
+func TestRearmGateIsRecorded(t *testing.T) {
+	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+	f.forge.head = f.head()
+	f.reviewed(t)
+	ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+	if arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head()); err != nil || !arm {
+		t.Fatalf("arm %v, why %q, err %v", arm, why, err)
+	}
+	recs := gateRecords(t, f)
+	if len(recs) != 1 || recs[0].Site != spotcheck.SiteRearm || recs[0].PR != 7 || recs[0].Head != f.head() || !recs[0].Arm {
+		t.Fatalf("the re-arm's record is %+v", recs)
 	}
 }

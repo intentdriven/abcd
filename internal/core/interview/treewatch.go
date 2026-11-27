@@ -1150,8 +1150,10 @@ const maxRemoteListing = 4 << 20
 // matched by segment after the remote's name and in any case; every row the
 // hook adds for a host connector's prefix ends in that segment
 // (scripts/cloud/connector.sh's WIP_PREFIX_RE), so the segment covers them.
+// The spot-check's row names one branch, abcd-spotcheck, with no slash, and
+// is matched here as the hook matches it, as a segment's beginning.
 // TestTheReceiptlessPrefixesMirrorThePrePushHook holds the two to one list.
-var receiptlessPrefixes = []string{"abcd-reserved/", "abcd-status/"}
+var receiptlessPrefixes = []string{"abcd-reserved/", "abcd-status/", "abcd-spotcheck"}
 
 // wipSegment is the segment receiptless_tracking treats as receipt-less
 // wherever it stands.

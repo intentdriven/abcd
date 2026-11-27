@@ -163,28 +163,31 @@ banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
-**The merges line** (itd-2610150602547271, spc-2610161609350616): in a
-repository abcd manages, the board says what the merge gate does with a ready
-pull request, read through the gate's own resolver: `facilitator.mode` as the
+**The facilitator line** (itd-2610150602547271, spc-2610161609350616,
+iss-2610262034286775): in a repository abcd manages, the board names
+`facilitator.mode`, whose setting decides it, and what the merge gate does with
+a ready pull request in it, read through the gate's own resolver: `facilitator.mode` as the
 default branch's committed `.abcd/config.json` and the machine layer declare
 it, never the checkout's working tree. The board reads the default branch at
 the tip this checkout last fetched and asks the network nothing, where the gate
 fetches it first, so after the mode changes on origin the two can disagree
-until the next fetch. A `human` from any layer wins, and a refused home reads as `human`.
+until the next fetch. The committed value decides, the person's own global
+setting only where it commits none, and a refused home reads as `human`.
 Under `human` the line says the gate merges once the technical facilitator
 approves the head; under `auto`, that it merges autonomously once a review pair
 has passed the head. The product view draws a line of its own above the
-version (`merges: once the technical facilitator approves (the bundled
-default)`, `merges: autonomously, once a review pair passes (set in
-.abcd/config.json at origin/main)`); the facilitator view draws a `merges:` row after
-the status block that also names the key and the mode as configured (`merges:
-once the technical facilitator approves the head (facilitator.mode human, from
-the bundled default)`). A contributor's pull request needs an approval of its
+version (`facilitator: human (left to each contributor: not set, the bundled
+default): merges once the technical facilitator approves`, `facilitator: auto
+(the project enforces it, set in .abcd/config.json at origin/main): merges
+autonomously, once a review pair passes`); the facilitator view draws the same as a row after the status block,
+said of the head. The label is `facilitator:` (iss-2610262034286775), never a
+bare `mode`. A contributor's pull request needs an approval of its
 head in either mode; the command page says so, and the line does not. The JSON
 carries a `facilitator` object (`key`, `mode`, `layer`, `origin`, and
-`home_refused` when a refused home decided it). A read the resolver refuses, or
-a repository with no default branch to read the mode at, is drawn as
-unreadable, and carried as `key` and `error` alone; every part is masked before
+`home_refused` when a refused home decided it). A repository with no commit
+reads the machine layer alone. A read the resolver refuses, or a repository
+with commits and no default branch to read the mode at, is drawn as `not read`
+with the refusal in brackets, and carried as `key` and `error` alone; every part is masked before
 it is drawn, since the refusal can quote a key a configuration file wrote. In
 an unmanaged repository the line is absent and the field omitted. It is not
 `abcd mode`'s `facilitator` state, which is whose answer the loop is waiting on.
@@ -193,9 +196,29 @@ an unmanaged repository the line is absent and the field omitted. It is not
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd-managed`,
 `waiting on the technical facilitator`, `waiting on the product thinker`), then
-the repository, the branch, the `autonomous merging` element (key `merging`)
-while the repository's `facilitator.mode` is `auto`, and the record's counts;
-[`26-mode.md`](26-mode.md) says how that element is read and when it drops. The state behind the badge is what `abcd mode` stores at
+the repository, the branch, the `facilitator:` element (key `merging`) naming
+the repository's `facilitator.mode` in both values and whose setting decides it
+(`facilitator: auto (project)`, `facilitator: human (computer)`,
+`facilitator: human (not set)`), and the record's counts;
+[`26-mode.md`](26-mode.md) says how that element is read. The
+board reads the mode as it draws; the host's row shows it as last read, which is
+the default branch as of the last fetch (iss-2610302057380175): on each prompt
+the prompt hook keeps what that branch's file said, with the ref and the tip it
+was read at and the time, in one owner-only file per repository under
+`~/.abcd.noindex/facilitator-mode/`, which its worktrees share. A refresh reads
+that file, the ref files that say whether the tip still stands, and the machine
+layer as it is now, and asks git nothing for the mode. A tip that moved leaves
+the kept mode named, with the time it was read (`facilitator: auto (project,
+read 14:02)`, with the date on another day), until a later read replaces it. A
+kept reading that is missing, malformed, another repository's, or in a file
+another account could read or change is `facilitator: not read`, never `auto`
+and never `human`, and so is the mode of a repository with commits and no
+default branch to key one on; with no commit at all, the machine layer alone is
+asked. Under a refused home the row names the resolver's `human` and that the
+computer's file could not be read. `facilitator.mode` is not the state
+`abcd mode` keeps. It is for the row to show: the merge gate, `abcd land`,
+the guard, the prompt line and the board each take their own reading and never
+open it. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
@@ -375,8 +398,9 @@ withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
 `not_ended`, each once for each tip, `not_ended_claimed` (true when that
 holder is a holder id that is not the reader's), and `failures`, a comment not
 posted as sent among them, iss-2610222014550692), `ceiling` (the reader's own
-live reservations against this machine's `reservation.max_live`, counted by
-copy, with its warning from four fifths of the limit, present only when the
+live reservations against their ceiling, the repository's
+`reservation.max_live` at origin's default branch, ten where it sets none,
+which this machine's own figure may only lower, counted by copy, with its warning from four fifths of the limit, present only when the
 reader's identity is known without the network and the limit is one a
 reservation would not be refused on; `commands/peers.md` lists its fields,
 iss-2610231004140527) and `view`
@@ -398,6 +422,16 @@ the JSON an `inbox` object with `reports` and `senders`. It is the same count th
 session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
 and it is absent when nothing waits. An inbox that cannot be counted has no row:
 one line on stderr names the refusal instead.
+
+**The findings row** (itd-2611251831138387, criterion 10) counts the list of
+findings abcd keeps for the repository under its own home: when the list holds
+an entry, the facilitator's view carries a `findings:` line giving the count
+owed, the count private and the verb that lists them, and the JSON a `findings`
+object with `open` and `private`, and `newer` and `full` where they apply. It carries counts
+alone, never an entry's text, and it is absent when the list holds nothing, as
+it is in a repository with no commit to key the list on. A list that cannot be
+read has no row: one line on stderr names the refusal instead. The board reads
+the list as a hook does and writes nothing.
 
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository

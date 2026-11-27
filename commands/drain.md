@@ -1,7 +1,7 @@
 ---
 name: drain
 description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
-argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]"
+argument-hint: "[--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]"
 block: agents
 user-invocable: false
 ---
@@ -37,7 +37,8 @@ it any other way. `abcd drain --drive` is the person's own form of the verb, typ
 in a plain terminal with no host session; it refuses inside an agent's own session.
 
 It runs on a subscription alone, on one separate login: a directory under
-`~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
+`~/.abcd.noindex/profiles/` that `abcd start` makes (`/abcd:start`), or the person by
+hand, and that the person logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
 `settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
 harness's own attribution, off, and nothing else. A harness update during the run
@@ -99,7 +100,9 @@ issue, and their preflights queue at the one load gate. One that moves to a new 
 ends the other, as the drive's release section says.
 
 A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
-profile. No abcd command starts one, and a drive that starts later on that directory
+profile. `abcd start`, the person's to type (`/abcd:start`), starts one; its settings are
+handed over at the start, so the directory's files are not written. A drive that starts
+later on that directory
 rewrites its `settings.json` and stops at anything a session left there that a launch
 would load.
 
@@ -154,6 +157,15 @@ passed lane another session finishes still counts as in progress, so it keeps th
 until a later drive routes it. A later drive comes to the lane again, where its own claim and
 the same judge decide whether it may take it up. The drive keeps the lanes it passed over in
 its own memory, not in the run or the drain's state.
+
+**A lane it sets aside.** A lane that waits as long as `pace.stuck_minutes` on what the drive
+cannot end (a live driver it may not take, a take-up refused, the landing's issue record gone)
+is set aside and the drive goes on with its other lanes. It is tried again once no other lane is
+in progress, then once an hour; with only such lanes left the drive waits, ending at its bound
+or after eight hours with nothing moving. Its reservation is left to lapse at its lease, with no
+waiter or `abcd implement status` renewing it, except where a live driver holds the run, whose
+renewals keep it. The end names each lane set aside with its wait and reason, and `--json`
+carries `set_aside` and `left_to_lapse`.
 
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
@@ -456,6 +468,45 @@ chance allows. When git's
 identity names no holder, the copy's key alone tells copies apart. The
 payload's `order` states the rule. Every other open issue follows, by id.
 
+## Lanes in work
+
+A lane is in work from the move that opens it until its pull request is armed
+or left open, or it is handed back. A lane whose pull request is queued keeps
+its reservation until the merge, counting against `reservation.max_live`, and
+leaves the lanes in work. A lane that owes only the withdrawal of its pull
+request's arming is not counted either, and is still settled before another
+lane opens. A bundle's lane counts once, whatever its members.
+
+`drain.in_work_max` is the most lanes one drain holds in work: a whole number
+from 1 to 10, and 1 by default, so a drain works one lane at a time unless the
+repository or the run says otherwise. A drain reads it once, when it begins:
+`--in-work <n>` first, then the repository's `.abcd/config.json` at the commit
+`origin` itself names as its default branch's tip, as the object store holds
+it and never from a working tree or another branch, then the default. The
+machine's `~/.abcd.noindex/config.json` does not hold it, and one there is
+refused naming the file: a computer that wants fewer lanes starts fewer
+drains. A repository value of 0, 11 or anything not a whole number refuses
+the drain's start, naming the file at the branch. An `origin` that cannot be
+asked which branch is its default, or names none, leaves the default of 1,
+and `next` says why. The drain keeps the limit with its layer and origin
+(`in_work_max` in its state) for its whole life, whatever the files say
+later; `--in-work` naming another while it runs is refused, and `--drive`
+refuses it. A drive holds one lane in work whatever the limit, since it
+drives one lane until its pull request is queued or it is handed back: a
+drain a drive begins reads no figure and keeps `drive` as its limit's layer,
+and a drain begun with more that a drive takes up holds one from the drive's
+first move on, for the rest of its life, `next` saying the limit it narrowed.
+
+Below the limit, a move goes on past the lanes in work to ask or open the
+next one, and `next` names each lane in work beside it. At the limit, or with
+nothing more it may open, the move names the lanes to drive and neither stops
+nor waits. That sentence, and the wait at the cap, name both counts, for
+example "1 of 1 lane in work; you hold 7 of the 10 reservations the
+repository allows": the person's holds are named only when the move's view of
+the reservations can tell them. The summary's `lanes:` line names the lanes
+in work, the limit's layer and the holds; `--json` carries `in_work`
+(`count`, `limit`, `layer`, `origin`) and `held` (`live`, `limit`, `layer`).
+
 ## Bundles
 
 `drain.bundle_max` is the most issues one lane may take: a whole number from 1
@@ -479,9 +530,28 @@ root or with no `found_at` path takes no members, and its lane opens alone.
 
 Under a cap above 1, the dry run prints, under each eligible issue that would
 lead, the members its next lane would take, and says that the judgements, the
-reservations and `reservation.max_live` may make a bundle smaller. The drain
-does not yet open a lane with members: it opens one issue's lane at a time,
-whatever the cap.
+reservations and `reservation.max_live` may make a bundle smaller.
+
+Under a cap above 1, a move whose judgement answers no on an issue that may
+lead does not open its lane at once. That move and the ones after it take each
+member in turn as the drain takes an issue: passing over one that is held,
+skipped, lapsed or already run, reserving it and asking its judgement. A no
+adds it to the bundle, and a yes hands it back alone. Every hold is kept and
+renewed across the moves. The lane opens with the lead and its members once
+no member is left, the cap is reached, or the next reservation would reach
+`reservation.max_live`. A bundle whose start is refused for a reason that is
+not its reservation's releases its holds, passes its lead over for the rest of
+the move and of a drive, and returns its members to the eligible issues, which
+the move goes on to; a lead another holds counts as held work the drain waits
+on. A lead whose found_at moved ends the move, and the next one forms the
+bundle again on its new path. A stop, an elapsed pace window and an origin that
+does not answer keep the bundle forming; a drain that ends, or a drive that
+lets go, releases every forming hold with no tombstone. A member the lane's
+receipt hands back alone is routed as a lane's hand-back of its kind, a pull
+request closed unmerged hands back every issue the lane still holds as
+`closed`, and a merged one finishes every member. `abcd build <member-id>` in
+the copy that holds the bundle resumes the bundle's run and names its lead.
+With the default of 1, every lane takes one issue.
 
 ## Loosened floors
 
@@ -950,9 +1020,11 @@ what it did in `next`:
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
-  live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
-  before any reservation or judgement, or when every eligible issue left is
+  live reservations (ten unless the repository's `reservation.max_live` in
+  `.abcd/config.json` at origin's default branch sets another, from 1 to 100,
+  or their computer's `~/.abcd.noindex/config.json` lowers it, read at the
+  branch origin last named as its default to a reservation made here),
+  counted in the move's view before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
   `held`), and names what it waits on: at the cap, the reservations and the
@@ -981,8 +1053,9 @@ configuration resolves when it opens. Given while the drain runs, they are
 taken: each number named replaces the one the drain runs on, `pace` shows the
 new pace, `next` says the drain took it, the next lane opens on it, and the
 lane in progress takes it from its next stage. A move that is refused takes
-none of it, in the drain or in a lane, and says so; give it again. `--max` is set when a drain
-begins; naming another while it runs is refused.
+none of it, in the drain or in a lane, and says so; give it again. `--max` and
+`--in-work` are set when a drain begins; naming another while it runs is
+refused.
 
 An issue the drain handed back is passed over only while its record stands on
 `origin`'s default branch: once a person changes that record there, the drain
@@ -1087,7 +1160,11 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
 `handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
 take-over, or `taken-over`, the same lane once that happened and its run is the
-person's to drive, and `pr`); `lane` is the one in progress; `start` is
+person's to drive, `pr`, and `bundle`, the members a lane took beside its
+issue, its lead, absent for a lane of one issue, which the text form names on
+the lane's line); `forming` is the bundle the drain is forming (`lead` and the
+`members` judged so far), absent when none forms, which the text form names on
+a `forming:` line; `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
@@ -1130,6 +1207,11 @@ the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
 hand-back's, and a lane's that opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
+
+A move that read origin's default branch then observes it for the spot-check,
+as `abcd land` observes a landing (`commands/land.md`, "The spot-check at a
+landing"): the observation's line joins `next`, and nothing of the move waits on
+it or changes with it. A move that could not read origin observes nothing.
 
 Each move also keeps the spot-check's record of what the drain decided with no
 person involved: every hand-back it routed and every judgement a routed model
@@ -1187,10 +1269,12 @@ a flagged decision: those are a person's.
   past the size cap) refuses. Every one of these
   exits 2 with nothing written, on the dry run and the bare verb alike.
 - The run refuses (exit 2, nothing written) a checkout without the local tier,
-  a negative `--max`, and a `--max` other than the one a drain in progress
-  began with; a drain state it cannot read as its own is refused,
+  a negative `--max`, a `--max` or `--in-work` other than the one a drain in
+  progress began with, an `--in-work` outside 1 to 10 (with `--drive` too),
+  a repository `drain.in_work_max` outside 1 to 10 and a machine one at all;
+  a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
-  retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
+  retry. `--dry-run` refuses `--max`, `--in-work`, `--pace`, `--sub-agents`,
   `--fix-rounds`, `--judgement`, `--take-over`, `--skip`, `--reason` and
   `--unskip`.
 - The run refuses (exit 2, nothing written) a `--skip` or `--unskip` target
@@ -1228,7 +1312,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 **Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain drain` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
-- `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+- `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
   - The example calls are these:
     - `abcd drain --drive`
     - `abcd drain --drive --yes --max 3`

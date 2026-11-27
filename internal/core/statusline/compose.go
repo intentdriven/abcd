@@ -77,13 +77,7 @@ const RecordRelDir = ".abcd/development"
 // switched off in a repository that has no record. The settings are copied
 // before any switch is thrown, so the caller's own Settings are never mutated.
 //
-// Compose asks git with no deadline of its own; ComposeContext is the same
-// composition with git bounded by ctx, which is what the status verb calls.
-func Compose(root string, p Payload, set Settings) (Result, error) {
-	return ComposeContext(context.Background(), root, p, set)
-}
-
-// ComposeContext is Compose with every git question bounded by ctx. A git that
+// Every git question is bounded by ctx. A git that
 // has not answered when ctx ends is killed and its element drops, exactly as
 // it drops when git will not answer at all, so a slow branch costs the row its
 // branch and nothing else: the badge, the repository and the counts still
@@ -91,7 +85,11 @@ func Compose(root string, p Payload, set Settings) (Result, error) {
 // only once git says it tracks none of it, and one git cannot be asked about
 // in time is an error, so the row blanks rather than badge a parked stop as
 // managed.
-func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (Result, error) {
+//
+// read is the merging element's reader: the board reads facilitator.mode
+// live, as its own line does, where the status verb reads the kept reading
+// (ComposeContext, through MergingMode); nil reads nothing.
+func Compose(ctx context.Context, root string, p Payload, set Settings, read func(context.Context, string) (Merging, string)) (Result, error) {
 	state, err := mode.ReadAtContext(ctx, root)
 	if err != nil {
 		return Result{}, err
@@ -104,13 +102,11 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 
 	set = clone(set)
 	var notes []string
-	if set.Enabled(KeyMerging) {
-		if read := MergingMode; read != nil {
-			auto, note := read(ctx, root)
-			in.AutonomousMerging = auto
-			if note != "" {
-				notes = append(notes, note)
-			}
+	if set.Enabled(KeyMerging) && read != nil {
+		m, note := read(ctx, root)
+		in.Merging = m
+		if note != "" {
+			notes = append(notes, note)
 		}
 	}
 	if fsutil.IsRealDir(filepath.Join(root, filepath.FromSlash(RecordRelDir))) {
@@ -134,20 +130,68 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 	return Result{State: state, Row: renderRow(in, set), Notes: notes}, nil
 }
 
-// MergingMode reads whether merging is autonomous for the repository at root:
-// auto true when its facilitator.mode is auto as the merge gate reads it, and
-// a note, masked, for the front door's stderr when the mode could not be read
-// (the element then drops). Its git questions run under ctx, the row's git
-// share.
+// ComposeContext is Compose with the status verb's reader, the kept reading
+// MergingMode names.
+func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (Result, error) {
+	return Compose(ctx, root, p, set, MergingMode)
+}
+
+// Merging is what a composition knows of the repository's facilitator.mode.
+type Merging struct {
+	State MergingState `json:"state"`
+	// Whose is whose setting decides the mode; "" with no mode, but for
+	// WhoseComputerUnread, which says why there is none.
+	Whose MergingWhose `json:"whose,omitempty"`
+	// Read is when the reading was made, as the row says it, where the
+	// default branch is known to have moved since, or cannot be told not to
+	// have; "" for a reading that still stands.
+	Read string `json:"read,omitempty"`
+}
+
+// MergingState is the mode, or why there is none.
+type MergingState string
+
+const (
+	// MergingUnasked: the composition had no reader, or the element is
+	// switched off, so nothing was read and nothing is said.
+	MergingUnasked MergingState = ""
+	// MergingUnknown: a reader was asked and does not know the mode. It is
+	// never drawn as either mode.
+	MergingUnknown MergingState = "unknown"
+	MergingHuman   MergingState = "human"
+	MergingAuto    MergingState = "auto"
+)
+
+// MergingWhose is whose setting decides the mode, as the resolver's layer
+// says: the default branch's committed file (the project's), the computer's
+// file (the person's global setting), neither, the computer's file that could
+// not be read because abcd refused the home, where the resolver's own answer
+// stands, or a HOME that is not the person's own.
+type MergingWhose string
+
+const (
+	WhoseProject        MergingWhose = "project"
+	WhoseComputer       MergingWhose = "computer"
+	WhoseUnset          MergingWhose = "unset"
+	WhoseComputerUnread MergingWhose = "computer-unread"
+	// WhoseNotYourHome is a HOME that is not this account's own, where no
+	// setting of the person's is read on purpose and the project leaves the
+	// mode to each.
+	WhoseNotYourHome MergingWhose = "not-your-home"
+)
+
+// MergingMode reads facilitator.mode for the repository at root as the status
+// line's row shows it, and a note, masked, for the front door's stderr when a
+// file that declares it was refused. The row calls it inside its git share, so
+// it must ask git nothing.
 //
-// It is set by the front door (internal/surface/cli, to
-// landing.AutonomousMerging) rather than called here, because this package
-// cannot import landing: landing reaches ahoy (through embargo, capture and
-// site), and ahoy reads this package, so the import would close a cycle — the
-// same reason MANAGED is the caller's decision. While it is nil the merging
-// element drops silently, with no note: a composition with no reader has
-// nothing it failed to read.
-var MergingMode func(ctx context.Context, root string) (auto bool, note string)
+// It is set by the front door (internal/surface/cli, to landing.KeptMerging)
+// rather than called here, because this package cannot import landing: landing
+// reaches ahoy (through embargo, capture and site), and ahoy reads this
+// package, so the import would close a cycle — the same reason MANAGED is the
+// caller's decision. While it is nil the merging element drops silently, with
+// no note: a composition with no reader has nothing it failed to read.
+var MergingMode func(ctx context.Context, root string) (Merging, string)
 
 // branch is the checkout's branch name, the short sha when HEAD is detached,
 // or "" when git will not answer — in which case the element drops, the same

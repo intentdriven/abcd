@@ -85,6 +85,20 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"any program its known text allows, so an unknown name with any operand\n" +
 			"reads as `pkill` too; a block that fires only on such a name is reported\n" +
 			"as program-name-unknown, and the way past is to spell the program's name.\n" +
+			"A command whose program is a substitution's output the guard does not\n" +
+			"read, alone or through a variable the line set from one (`$(date)`,\n" +
+			"`P=$(cat f); $P make`), is refused under program-name-unknown, since\n" +
+			"which program runs is unchecked. The output read is a document printed\n" +
+			"as exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
+			"blanks, and the path a lookup of one fixed name prints (`command -v go`,\n" +
+			"`which go`, `type -P go`, `whence -p go`, alone or `|| true`), on a line\n" +
+			"that defines no function of that name or of the lookup's, no alias, and\n" +
+			"runs no eval or source. A value placed unquoted where the shell splits it\n" +
+			"(`P='git prune'; $P`) is read as the words it splits into, and a line that\n" +
+			"gives IFS a value other than blanks holds every such word.\n" +
+			"A parameter expansion (`$VAR`, `${VAR:-git}`) is read by the same rule,\n" +
+			"as the program's name, as a flag (`--$VAR`) and in a string handed to a\n" +
+			"shell, and a value the line assigns before it uses it is read in place.\n" +
 			"Text beside one in the same word is also read as bash\n" +
 			"leaves it when the output is empty. One nested more than eight\n" +
 			"double-quoted substitutions deep, holding a case command, or more than\n" +
@@ -109,15 +123,22 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"names IFS an unquoted one is blocked (ifs-split-unread), because the\n" +
 			"guard splits on the default IFS only. Two `sh -c` or `eval` layers are\n" +
 			"followed; a payload nested deeper is blocked.\n" +
+			"A call of a function the line defines is read with its words in one\n" +
+			"shape only, a body of one command reading them as `\"$@\"`, `$@`,\n" +
+			"`\"$1\"`, `$1` or `${1}`; any other call, with words, of a function\n" +
+			"that reads them is blocked (function-form-unread), and so is a line\n" +
+			"that names one of zsh's `functions[`, `aliases[` … tables anywhere on\n" +
+			"the line, runs `functions -c` or `-M`, defines several names with one\n" +
+			"`()`, or runs a command through the `-` modifier.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
 			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
 			"An unquoted brace group IS\n" +
 			"expanded as bash expands it, and one past 4096 words is blocked. What an\n" +
 			"allow still does not see is a hazard that never reaches command position at\n" +
-			"all: a word that is wholly a `$(…)` standing where a flag would be (read as\n" +
-			"an operand, the way a commit message or a branch is spelled), a delete\n" +
-			"target printed whole by one (`rm -rf $(echo /)`, read by its known text\n" +
+			"all: a word that is wholly a `$(…)` or a variable standing where a flag\n" +
+			"would be (read as an operand, the way a commit message or a branch is\n" +
+			"spelled), a delete target printed whole by one (`rm -rf $(echo /)`, read by its known text\n" +
 			"the way `rm -rf $(find …)` names its targets every day), one launched\n" +
 			"through a known\n" +
 			"wrapper carrying a value-taking flag the guard does not name (`sudo -u bob\n" +
@@ -125,24 +146,19 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"only the warn, not the entry that names it),\n" +
 			"one whose API path an entry names by its ROOT segment but the host serves\n" +
 			"under a prefix (a GitHub Enterprise Server install mounts the same endpoints\n" +
-			"under `/api/v3/`; the api.github.com URL form IS read), a parameter\n" +
-			"expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it\n" +
-			"stands — as the program's name, as a flag (`--$VAR`), or inside an\n" +
-			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
-			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
-			"because the guard sees the variable, not what the shell expands it to,\n" +
+			"under `/api/v3/`; the api.github.com URL form IS read), what a variable\n" +
+			"the line did not assign carries in from an earlier command (a pid list, a\n" +
+			"stream path, shell text run through `eval`, or `pkill` or `killall` as the\n" +
+			"program's whole name, `$P make`),\n" +
 			"an IFS the shell already holds when the line starts or gains during the\n" +
 			"line through a name the guard does not read (every line is read from the\n" +
 			"default IFS),\n" +
-			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
+			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`;\n" +
+			"an execute-a-string payload IS read, `sh -c` and `env -S`, and one the guard\n" +
+			"cannot read is warned or, for `env -S`, blocked) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +
-			"a lone substitution standing as the whole command (`$(cat msg.txt)`,\n" +
-			"`$(date)`), which can be any program but matches no entry with no\n" +
-			"operand after it, and so a document printed that way through any shape\n" +
-			"but exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
-			"blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command\n" +
-			"beside it, a backslash-newline in it, a `${…}` around it),\n" +
+
 			"or a dangerous form no entry describes. Coverage is what the registry\n" +
 			"names.\n\n" +
 			"The candidate comes from --command, or from stdin when the flag is absent.\n" +
@@ -261,9 +277,23 @@ func newGuardHookCommand() *cobra.Command {
 			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
 			"which git ignores) are written silently. A file call naming no path, a\n" +
 			"relative path with no absolute session directory, or a count that cannot\n" +
-			"be made, lets the write run and warns loudly. A call through\n" +
-			"any other tool never reaches the guard: a command a tool from another\n" +
-			"extension runs is neither checked nor warned about. That is the guard's\n" +
+			"be made, lets the write run and warns loudly.\n\n" +
+			"A sub-agent's write is held until the sub-agent has read the conventions\n" +
+			"file at its checkout root, AGENTS.md or else CLAUDE.md, in a repository abcd\n" +
+			"manages whose rules are on. A write is a call of one of the file-writing\n" +
+			"tools, or a shell line naming git commit, merge, rebase, cherry-pick,\n" +
+			"revert, am, pull or push, in a conditional, a loop or a function body\n" +
+			"too; a git command run through a wrapper (time, env, sudo, sh -c, a\n" +
+			"script, an alias) is not seen. The host's payload names the sub-agent, and the\n" +
+			"sub-agent's own transcript is read once: a call in it that names the file\n" +
+			"and writes nothing is a reading, and one that names the brief of a build's\n" +
+			"lane stands for it. Without one the write is refused with the host's deny,\n" +
+			"whose reason names the file, where abcd looked for it and the read to make.\n" +
+			"The session's own calls, abcd's cold-reading agents and a drive's stage are\n" +
+			"never held, and what cannot be judged is not held: with no reading, its stop\n" +
+			"says so.\n\n" +
+			"A call through any other tool never reaches the guard: a command a tool from\n" +
+			"another extension runs is neither checked nor warned about. That is the guard's\n" +
 			"standing scope, not a degradation, and the guard: line of abcd ahoy does\n" +
 			"not report it.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
@@ -293,7 +323,9 @@ func newGuardHookCommand() *cobra.Command {
 			"drafts a question to fit. The hook never\n" +
 			"rewrites a question. A number header names no person, so the agent sets\n" +
 			"`abcd mode` to the person before asking, and the product thinker's register\n" +
-			"rule follows that mode. In a checkout abcd manages, an admitted question is\n" +
+			"rule (no record number, no command, and no word below their knowledge floor\n" +
+			"that the question does not introduce) follows that mode. In a checkout abcd\n" +
+			"manages, an admitted question is\n" +
 			"never refused on the mode: an older-form header sets `abcd mode` from its\n" +
 			"role (Product to product-thinker, Tech and Setup to facilitator), a number\n" +
 			"header leaves the mode as set, and the question is marked open in the local\n" +
@@ -403,11 +435,16 @@ func guardHookDecide(cmd *cobra.Command) error {
 		if guardGitStalls(in.Cwd) {
 			return questionFailOpen(cmd.ErrOrStderr(), "%s", errors.New(guardGitTimeout("the session directory")))
 		}
-		return questionGate(cmd, in.Cwd, in.ToolInput.Questions, toolInputKeysCollide(raw))
+		return questionGate(cmd, in.Cwd, in.SessionID, in.ToolInput.Questions, toolInputKeysCollide(raw))
 	}
 	// A file the host's own tools write is judged by the occupancy of the
 	// working tree it lands in, not the registry (iss-2610280051498465).
+	// A sub-agent's is held first, until it has read the conventions
+	// (spc-2611251757228271).
 	if isFileWriteTool(in.ToolName) {
+		if err := subagentHold(in, orProcessDir(in.Cwd)); err != nil {
+			return err
+		}
 		return fileWriteGate(cmd, in.ToolName, in.Cwd, in.ToolInput.FilePath, in.ToolInput.NotebookPath)
 	}
 	// The manifest scopes this hook to the shell, question and file-writing
@@ -423,12 +460,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 
 	// The payload names the session's working directory; fall back to the
 	// process cwd only when it does not, exactly as the other hooks do.
-	cwd := in.Cwd
-	if cwd == "" {
-		if wd, err := os.Getwd(); err == nil {
-			cwd = wd
-		}
-	}
+	cwd := orProcessDir(in.Cwd)
 	// The repository roots are asked first, git bound to the hook's git
 	// deadline: every later git call reads the configuration this call
 	// reads, so a git that cannot answer here is told in seconds, not at the
@@ -447,6 +479,14 @@ func guardHookDecide(cmd *cobra.Command) error {
 		}
 	}
 	cancel()
+	// A sub-agent's commit, or the sending of one, is held until it has read
+	// the conventions (spc-2611251757228271). Only a sub-agent's command that
+	// names one of the held git commands asks.
+	if in.AgentID != "" && len(guard.RecordActs(candidate)) > 0 {
+		if err := subagentHold(in, cwd); err != nil {
+			return err
+		}
+	}
 	// The away mode's created-branch recorder runs before the registry
 	// loads and refuses nothing, so the registry's state never decides
 	// whether a branch the session cuts is seen as its own
@@ -665,7 +705,14 @@ type guardHookInput struct {
 	SessionID string `json:"session_id"`
 	Cwd       string `json:"cwd"`
 	ToolName  string `json:"tool_name"`
-	ToolInput struct {
+	// AgentID and AgentType name the sub-agent the call is made inside, and are
+	// absent from the session's own calls; TranscriptPath is the session's
+	// transcript, beside which its sub-agents' are kept. The hold on a
+	// sub-agent's writes reads them (guard_subagent.go).
+	AgentID        looseString `json:"agent_id"`
+	AgentType      looseString `json:"agent_type"`
+	TranscriptPath looseString `json:"transcript_path"`
+	ToolInput      struct {
 		Command string `json:"command"`
 		// Workdir is the per-call working directory a host's shell tool may
 		// carry beside the command (opencode's bash tool names it `workdir`).

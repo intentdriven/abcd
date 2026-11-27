@@ -30,6 +30,7 @@ the verb encodes is the discipline record
 | `matrix judge` | — | shipped |
 | `matrix report` | — | shipped |
 | `matrix rerun` | — | shipped |
+| `matrix launch` | — | shipped |
 
 ## A model matrix run
 
@@ -58,16 +59,18 @@ result as the host ran them, and its trial says abcd neither placed nor ran
 them: it marks that result, the model served, the harness version and the
 times as the host's own word, and says it carries no call receipts. A writing
 copy's document is kept only once its trial passes the secret screen, so a
-hand-back the screen refuses can be made again. A runner cell's copy waits: abcd does not launch a runner in a clone yet,
-and the host never stands in for one, since its answer would measure the wrong
-model. A copy handed back is checked for compliance under one overall deadline
+hand-back the screen refuses can be made again. A runner cell's copy waits for
+its launch, and the cell's runner makes the copy in its clone from the same
+blind brief (dcn-2611251746554510); the host never stands in for its runner,
+since its answer would measure the wrong model. A copy handed back is checked for compliance under one overall deadline
 before its trial is written, a check copy's findings are recorded and its trial
 written before its clone is deleted, and every trial, review request and
 judging packet passes the secret screen. The report accounts for every copy
 handed off that holds no trial: one the host never handed back, one waiting for
-its runner, a refused cell's, and one the run's start never reached are each
-shown and kept out of every rate. A review or a judging is drawn once, so it
-waits until every copy of its task handed to the host is back. A code task's
+its runner, one launched and not yet written, a refused cell's, and one the
+run's start never reached are each shown and kept out of every rate. A review
+or a judging is drawn once, so it waits until every copy of its task handed to
+the host is back and every one launched is written. A code task's
 copies are then reviewed through blinded requests, each assembled from the
 frozen tree and the copy's clone read as data under an opaque label, whose
 answers are scored before they are recorded. A writing task's judging packet is
@@ -81,6 +84,63 @@ maker withheld, and its finding is keyed on the line as located, so two lines
 that differ only in the model they name are never matched as one finding. A
 check copy's own words are scrubbed before they are made one line, so a name
 broken across lines is withheld from them too.
+
+A runner cell's copies are launched in the foreground, at most as many at once
+as the run declares (spc-2610161949559050 step 11). Each
+copy's runner is started directly in its clone in the runners' cell mode, on
+the same blind brief a host cell's copy is made from, so within a task the
+cells differ only by model and harness. Nothing stands in for the runner: one
+that fails, refuses or answers unparsably is the cell's failure, never handed
+to the host, and a provider down before the copy began is tried again on the
+same pin and recorded as not started, never scored. Before its runner starts, a
+cell's route and pin are read again and held to the ones the person consented
+to, a provider-bound clone passes the secret scan again, and a metered copy
+waits while the spending cap's remainder, less what the copies in flight may
+spend, does not cover its declared cost. The remainder is reckoned from the
+run's records, so a copy an earlier launch made and left without a trial still
+counts, at its reported cost or else its declared one; a copy whose cost is
+neither stops every further metered launch. The brief and the copy's answer sit in
+a third store, outside the clone, the clone store and the lab's state, one
+folder per copy under its alias, and a copy whose transcript names another
+copy's folder there read outside its copy, by its absolute path or by a climb
+from the copy's own folder. A climb is read as the shell reads it, quoted
+parts and escaped characters literal, and a backtick that closes a code span
+ends the path it follows. A path pattern, as the shell expands it,
+that matches outside the copy is a read outside where no folder of the clone is
+deep enough for its climb to stay inside it, or where it names another copy's
+folder as written; otherwise it leaves the copy unexamined, since the scan
+cannot tell the folder the pattern ran in, so an honest copy that listed a
+parent folder of its clone is set apart from the rates, never counted as
+blinded, with one that read its sibling. A folder the check cannot list is not
+one that holds nothing: a pattern that meets one leaves the copy unexamined,
+short of the run's own folders for a copy its launch ran while it held them
+closed. A substitution or an extended pattern is judged by its literal prefix,
+kept where that matches nothing outside the copy and never kept where it does,
+and a chmod or chflags of a climb is judged by what the climb reaches, as any
+climb is, a climb that reaches outside the copy leaving it unexamined where
+the copy may have run in a folder of its clone. No transcript scan sees every
+read, and a bare climb that recurses (grep -r . ..) is kept by it: while a
+launch's copies run, the run's folders in the hand-off store and the clone
+store are closed to listing, their owner keeping only the right to pass
+through and make entries, so a copy that keeps their modes cannot find its
+siblings' folders by listing, though the same account can change them, and
+one that names a sibling's folder as written reads broken. Their modes are
+given back however the launch ends; a launch killed outright gives none back,
+and the next launch of the run, or a hand-back that finds no launch at work,
+gives them back before it reads anything. A host's copy runs whenever the host
+makes it, with the run's folders open unless a launch is at work.
+A pattern is matched when the copy is judged, so a sibling check copy's deleted
+clone is not seen; answers in the hand-off store are. A copy is launched once, and a run by one launch at
+a time, which holds the run's lock; a second is refused while it runs. Each
+runner is one process group, killed whole when the launch is stopped,
+terminated or hung up; a stop is the run's error, never the copy's score, and a
+copy it cut short is not launched again. A launch killed outright leaves no end
+to its copies' launches, and once its lock is free they read as interrupted, so
+no review or judging waits for them. A made copy passes the same compliance check and secret screen as a host
+copy's hand-back, its served side the runner's own receipt rather than the
+host's word; a made code copy waits for its hidden tests' result. Runner
+launches are proven against a fake runner only so far, and the report says so
+among its limitations.
 
 A recorded run's report is read from its records in the lab and writes nothing
 (spc-2610161949559050 step 8). A code task gives each builder's pass rate on
@@ -103,6 +163,42 @@ copy's length; below three judges it gives each judge's ranking and the
 good-enough counts only. Guests and the host's own self-blinded rankings are
 reported apart. Every report lists the run's limitations and the improvements
 it suggests for the next run.
+
+A check task is judged in two phases (spc-2610161949559050 step 9). The run
+first joins its copies' findings by their exact keys; a copy the compliance
+check set apart, or one never started, is in no comparison. Where the
+declaration names a matcher cell, the findings no key joins go to it alone, each
+under an opaque id with nothing of the copy, cell or model that raised it, and
+its answer is read as untrusted input, refused whole when any part of it fails;
+with no matcher those findings stay rows of their own and its agreement is not
+estimable. The person then judges each distinct finding alone, shuffled, under
+a code, with no model named and no verdict proposed, and their verdicts lock
+once. Only then is the second phase shown: each finding a row and each model a
+column, the verdict the proposer cell proposes where one is declared, each
+model's precision, unique valid findings, recall and overlap, and the matcher's
+agreement on a sample of its pairs the person labels, reported from ten
+labelled pairs up. The matcher and the proposer are cells the person declares,
+on their own routes and never on a builder's route or model, and each is
+optional: nothing is chosen for the person. The model is compared by its name
+with what carriers add to one model set aside: the provider prefix, a known
+carrier's dotted region and vendor (`us.anthropic.`) and, behind it, the
+carrier's revision tail (`-v1:0`), a routing variant such as `:free` or
+`:latest`, a context suffix such as `[1m]`, a date or `@` stamp, a trailing
+`-latest`, case, spaces, and a dot or a dash between version digits.
+A size or quantisation tag (`:7b`), a model's own dotted name (`aya.expanse`)
+and the version number itself still tell two models apart, a host builder is
+compared by the model its copies were served, and the plan's judges note asks the person to check the
+routes shown, since a name read this way can still miss one model sold under
+two names.
+One on a runner route waits for a launcher abcd does not have yet, and the host
+never answers for it: the plan's judges line says so, and the judging stops at
+that cell's stage saying so. Nothing of a check is filed or
+written where the release gates read. A code task may name its hidden tests, a
+folder outside the checkout, and the command that runs them; the printed plan
+shows both, the folder quoted and each word of the command quoted where it
+holds anything but plain printable text, with the line the person consents to:
+that abcd will run each copy's code with that command, and that until it runs
+hidden tests itself a code copy's result is the host's report, as above.
 
 A model run is re-runnable, not reproducible. A re-run starts from a recorded
 run, named by its id in the lab or by a run's folder carried from elsewhere,
@@ -276,7 +372,7 @@ Flags: none.
 
 ### `abcd lab matrix`
 
-Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
+Sub-verbs: `abcd lab matrix copy`, `abcd lab matrix judge`, `abcd lab matrix launch`, `abcd lab matrix report`, `abcd lab matrix rerun`, `abcd lab matrix review`.
 
 | Flag | Type |
 |---|---|
@@ -303,7 +399,17 @@ Sub-verbs: none.
 | `--good` | string |
 | `--host` | string |
 | `--judges` | string |
+| `--labels` | string |
+| `--matcher` | string |
+| `--proposals` | string |
+| `--table` | bool |
 | `--verdicts` | string |
+
+### `abcd lab matrix launch`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd lab matrix report`
 

@@ -121,22 +121,42 @@ payload adds:
   held, and from five minutes after the lapse any copy reserves the release
   again, to resume the cut or, followed by `--release`, to withdraw it. Tell
   the user no merge waits on it (iss-2610241104098581).
-- `ceiling`: the reader's own live reservations against this computer's
-  `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
+- `ceiling`: the reader's own live reservations against their ceiling:
+  `holder`, `live`, `limit`, `limit_layer` (`repository` when the
+  repository's `reservation.max_live` at origin's default branch set it,
+  `machine` when this computer's own figure lowered it, `bundled` for the ten
+  when neither did), `limit_origin` (that file, the repository's as
+  `.abcd/config.json at origin/<branch>`), and where they were made
   from: `this_copy`, `siblings` (each worktree of this repository here by
   `name`, with as many parent folders as tell it apart where two share a
   name, and its `live`)
   and `elsewhere` (every copy not found among those worktrees: another clone
   on this computer or another, a removed worktree, or another account pushing
   as the same login). From four fifths of the limit `warn` is true and
-  `warning` says so: every session and account on one login counts toward one
-  total, and another account's own ceiling cannot be read from here, so it may
-  already be held at it. Relay the warning, and before reserving more, ask
-  which holds can be released. `note`, when present, says why the machine's
-  configuration was read past (the default limit then applies) or why the
-  worktrees could not be listed (their holds then count as `elsewhere`).
-  Absent when the reader's login cannot be named without the network, or
-  `reservation.max_live` holds a value a reservation would be refused on.
+  `warning` says so, naming the ceiling by its layer: every session and
+  account on one login counts toward one total, and another computer of the
+  user's may lower the ceiling for itself, which cannot be read from here.
+  Relay the warning, and before reserving more, ask which holds can be
+  released. `note`, when present, says what was read past or ignored: no
+  default branch of origin to read the repository's figure at, a machine
+  figure above the repository's, a machine configuration that cannot be
+  read (the figure so far is shown, and a new reservation is refused until
+  the file reads), or why the worktrees could not be
+  listed (their holds then count as `elsewhere`). The text form prints the
+  layer beside the number: `your holds: <holder> 7 of 10 (repository) (this
+  copy 2, ...)`. Absent when the reader's login cannot be named without the
+  network, or a `reservation.max_live` holds a value a reservation would be
+  refused on.
+- `drain_in_work`: while a drain is in progress in this checkout, its lanes
+  in work against the limit it began with: `count`, `limit`, and the `layer`
+  (`repo` for the repository's `drain.in_work_max` at origin's default
+  branch, `flag` for `--in-work`, `bundled` for the default of one, `drive`
+  for the one a drive holds) and
+  `origin` that set it, read from the drain's state alone. A lane whose pull
+  request is queued is not in work, though its reservation counts in
+  `ceiling`. The text form prints it under the ceiling's row: `this drain: 1
+  of 1 lane in work (default)`. Absent with no drain in progress, or a drain
+  state that cannot be read (the drain's own move names that refusal).
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,

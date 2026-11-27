@@ -771,6 +771,11 @@ started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an
 intent's run keeps its reservation through a hand-back. A run holding no reservation
 is neither renewed nor tombstoned, and its own reservation is not fenced.
+Once a lane's landing is proved, the step observes it for the spot-check
+(itd-2610301750162657), as `abcd land` does at a landed re-run
+([`38-land.md`](38-land.md)), and the landing's note carries the
+observation's line; a draw that cannot be made writes nothing and never undoes
+the landing.
 
 The land fence also reads the release hold (itd-2609151838312703 C7,
 spc-2610150728396006 step 4). Every run's fence, one holding a reservation or
@@ -792,7 +797,7 @@ nothing, since a hold it cannot see may be there; a checkout with no remote
 named origin has no reservations and is not held.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
-drain opens for each eligible issue) has one lane. Its brief is the issue's
+drain opens for each eligible issue it takes alone) has one lane. Its brief is the issue's
 record with its remedy as the work; its receipt must declare the issue fixed,
 and the landing resolves it with the commit the receipt names. A receipt may
 also declare fixed another capture the lane fixed on the way, which the
@@ -804,6 +809,20 @@ reason and, for a design finding or a second package, the home: the receipt
 verb then discards the lane's worktree and branch, records the discarded head,
 and ends the lane before its validators, and the drain routes the hand-back by
 kind ([`35-drain.md`](35-drain.md)).
+
+A run the drain opens for a bundle is keyed by its lead and carries its
+members beside it, in the run state's `bundle`, each with its footprint and the
+hold the drain reserved it on (spc-2611201455051897). It still has one lane,
+one branch and one pull request. Its brief renders each member's record and
+remedy, its receipt must declare each issue fixed or hand it back alone in
+`handbacks`, and the landing resolves each with the commit the receipt names
+for it; a lane handed back whole hands back every issue it still carries.
+Every reservation act of the run, its renewal, fences, stop and release, reads
+each issue it carries. `abcd build <member-id>` in the copy that holds the
+bundle resumes the run that carries the member and names its lead, rather than
+opening a second run on it; in another copy the member's reservation is
+another's and the start is refused. A member handed back alone is no longer
+carried, so a build of it opens its own run.
 
 ## The stop and the take-over
 

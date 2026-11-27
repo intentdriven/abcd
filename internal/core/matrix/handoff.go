@@ -13,12 +13,14 @@ package matrix
 // findings (recordCheckCopy), writes its trial record through the secret
 // screen (writeTrial), and only then deletes a check copy's clone.
 //
-// A copy on a runner cell is handed off and waits for a launcher: nothing in
-// this step starts a runner in a copy's clone, and nothing stands in for one,
-// since an answer from any other model would measure the wrong one (decision
-// 4). So the host is never taken at its word for a runner cell's copy, and
-// the report counts it as awaiting its runner, in no rate, until a launcher
-// makes it. dcn-2611211433133728 records what is left.
+// A copy on a runner cell is handed off and waits for its launch (launch.go,
+// step 11): `lab matrix launch` starts the cell's runner in the copy's clone,
+// and nothing stands in for it, since an answer from any other model would
+// measure the wrong one (decision 4). So the host is never taken at its word
+// for a runner cell's copy, and the report counts it as awaiting its runner,
+// in no rate, until its launch makes it. A launched code copy waits for its
+// hidden tests' result, which the host hands back alone (scoreLaunched) until
+// abcd runs them itself (step 10).
 //
 // Every copy handed off is accounted for (readHandOffs): the report shows each
 // one that holds no trial, and a review or a judging, drawn once, waits while
@@ -31,6 +33,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +62,19 @@ const (
 	// HandOffRefused: the cell's clone failed the launch bundle's secret scan,
 	// so the copy is never sent to its provider; its clone is removed.
 	HandOffRefused HandOffState = "refused"
+	// HandOffLaunching: a runner cell's copy whose launch has begun and not
+	// ended: its runner is at work, or the launch stopped before it could say
+	// so.
+	HandOffLaunching HandOffState = "launching"
+	// HandOffLaunched: a runner cell's copy its launch ended: its trial is
+	// written, or, for a code copy its runner made, kept in the hand-off
+	// (HandOff.Trial) until its hidden tests' result is handed back.
+	HandOffLaunched HandOffState = "launched"
+	// HandOffInterrupted: a runner cell's copy whose launch was stopped
+	// before the copy was made. That is the run's error, never the copy's
+	// score, and the copy is not launched again: its clone holds whatever the
+	// runner left.
+	HandOffInterrupted HandOffState = "interrupted"
 )
 
 // HandOff is one copy's hand-off as the run's state records it. It is the
@@ -80,11 +96,28 @@ type HandOff struct {
 	// written: a snapshot of a repository with nothing under the gates' roots
 	// is {} and still a snapshot, and only a code or writing copy's is null.
 	Gates gateSnapshot `json:"gates"`
+	// Trial is a launched code copy's trial as its launch made it, its
+	// compliance checked, awaiting only its hidden tests' result; nil for
+	// every other copy.
+	Trial *TrialRecord `json:"trial,omitempty"`
 }
 
 // handOffRel is copy key's hand-off in its run's directory.
 func handOffRel(run string, key TrialKey) string {
 	return run + "/copies/" + key.Task + "/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + ".json"
+}
+
+// The stages of a copy's launch, each recorded once beside its hand-off: the
+// lab's records are written once and never replaced, so a launch never writes
+// over the hand-off it starts from.
+const (
+	launchBegun = "launching"
+	launchEnded = "ended"
+)
+
+// launchRel is the record of copy key's launch at stage in run's state.
+func launchRel(run string, key TrialKey, stage string) string {
+	return run + "/launches/" + key.Task + "/" + key.Cell + "/" + strconv.Itoa(key.Repeat) + "." + stage + ".json"
 }
 
 // writingRel is a writing copy's text in its run's directory.
@@ -143,10 +176,10 @@ func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, 
 		State: HandOffWaiting, Clone: clone, Brief: copyBrief(task)}
 	if pin.Source != SourceHost {
 		h.State = HandOffAwaitingRunner
-		h.Reason = "abcd does not launch a runner in a copy's clone yet, and nothing stands in for the cell's runner, so the copy waits for a launcher"
+		h.Reason = "the copy waits for its launch (abcd lab matrix launch), which starts the cell's runner in its clone; nothing stands in for the runner"
 	}
 	if err := admitClone(l.RepoRoot, clone, pin); err != nil {
-		if rerr := os.RemoveAll(clone); rerr != nil {
+		if rerr := removeClone(clone); rerr != nil {
 			return HandOff{}, errors.Join(err, rerr)
 		}
 		h.State, h.Clone, h.Reason = HandOffRefused, "", termsafe.SanitizeLine(err.Error())
@@ -213,7 +246,105 @@ func readHandOff(proc stateReader, run string, key TrialKey) (HandOff, error) {
 	if err := jsonstrict.Decode(raw, &h); err != nil || h.SchemaVersion != HandOffSchema || h.Run != run || h.Key != key {
 		return HandOff{}, fmt.Errorf("copy %s's hand-off does not read as its own", key)
 	}
-	return h, nil
+	if h.State != HandOffAwaitingRunner {
+		return h, nil
+	}
+	return launchOverlay(proc, run, h), nil
+}
+
+// launchOverlay is runner cell's copy h as its launch left it: the stage it
+// ended at, else the one it began. A launch that began and recorded no end
+// that reads (none, or one torn by a kill mid-write) is still at work while a
+// launch of the run holds the run's lock, and otherwise is gone: the copy
+// reads as interrupted, saying why, and the rest of the run reads as it is.
+// The end is read once more after the lock is found free, since a launch
+// writes its last end record and then lets go of the lock: a reader between
+// the two reads the end it wrote, never an interrupted copy.
+func launchOverlay(proc stateReader, run string, h HandOff) HandOff {
+	ended, endTorn := readLaunchStage(proc, run, h, launchEnded)
+	if ended != nil {
+		return *ended
+	}
+	begun, begunTorn := readLaunchStage(proc, run, h, launchBegun)
+	if begun == nil && !endTorn && !begunTorn {
+		return h
+	}
+	at := h
+	if begun != nil {
+		at = *begun
+	}
+	if launchHeld(proc, run) {
+		at.State = HandOffLaunching
+		if begun == nil {
+			at.Reason = "its launch began and is still at work"
+		}
+		return at
+	}
+	if ended, endTorn = readLaunchStage(proc, run, h, launchEnded); ended != nil {
+		return *ended
+	}
+	var torn []string
+	if endTorn {
+		torn = append(torn, launchRel(run, h.Key, launchEnded))
+	}
+	if begunTorn {
+		torn = append(torn, launchRel(run, h.Key, launchBegun))
+	}
+	at.State = HandOffInterrupted
+	if len(torn) > 0 {
+		at.Reason = "its launch record " + strings.Join(torn, " and ") + " does not read (written in part when its launch was cut off), " +
+			"so the copy is read as interrupted and is not launched again"
+	} else {
+		at.Reason = "its launch began and left no record of how it ended (the launch was killed, or its machine lost), " +
+			"so the copy is read as interrupted and is not launched again"
+	}
+	return at
+}
+
+// readLaunchStage is copy h's launch record at stage, nil where it is not
+// written, and torn where it is written and does not read as its own.
+func readLaunchStage(proc stateReader, run string, h HandOff, stage string) (*HandOff, bool) {
+	raw, err := proc.ReadState(launchRel(run, h.Key, stage))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false
+	}
+	var l HandOff
+	if err == nil {
+		err = jsonstrict.Decode(raw, &l)
+	}
+	if err != nil || l.SchemaVersion != HandOffSchema || l.Run != run || l.Key != h.Key ||
+		l.Kind != h.Kind || l.Source != h.Source || launchStage(l.State) != stage {
+		return nil, true
+	}
+	return &l, false
+}
+
+// launchHeld reports whether a launch of run holds the run's launch lock now.
+// A run read from anything but its lab (a carried run's folder) has no live
+// launch on this machine; one whose lock cannot be judged is held to be at
+// work, which keeps its copies where they are.
+func launchHeld(proc stateReader, run string) bool {
+	e, ok := proc.(interface{ Entry() lab.Entry })
+	if !ok {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return true
+	}
+	return runLockHeld(launchLockPath(handoffStore(home, e.Entry().RootSHA), run))
+}
+
+// launchStage is the stage of a launch whose copy is left at state, "" for a
+// state no launch leaves.
+func launchStage(state HandOffState) string {
+	switch state {
+	case HandOffLaunching:
+		return launchBegun
+	case HandOffLaunched, HandOffInterrupted, HandOffRefused:
+		return launchEnded
+	}
+	return ""
 }
 
 // readHandOffs is every copy hand-off of run, each read as its own, in key
@@ -265,10 +396,11 @@ func readHandOffs(proc stateReader, run string) ([]HandOff, error) {
 }
 
 // awaitHost refuses a draw of task's what (its review, its judging) while a
-// copy of task is handed to the host and not handed back: a draw is made
-// once, so a copy handed back after it could never join it. A runner cell's
-// copy, which nothing makes yet, and a refused cell's, which never starts, do
-// not hold a draw; the report names both.
+// copy of task is handed to the host and not handed back, or launched and not
+// yet written as its trial: a draw is made once, so a copy that came back
+// after it could never join it. A runner cell's copy not yet launched, an
+// interrupted launch's, and a refused cell's, none of which comes back by
+// itself, do not hold a draw; the report names each.
 func awaitHost(proc stateReader, run, task, what string) error {
 	handed, err := readHandOffs(proc, run)
 	if err != nil {
@@ -276,7 +408,7 @@ func awaitHost(proc stateReader, run, task, what string) error {
 	}
 	var out []string
 	for _, h := range handed {
-		if h.Key.Task != task || h.State != HandOffWaiting {
+		if h.Key.Task != task || h.State != HandOffWaiting && h.State != HandOffLaunching && h.State != HandOffLaunched {
 			continue
 		}
 		if _, err := proc.ReadState(run + "/" + h.Key.rel()); err == nil {
@@ -289,7 +421,7 @@ func awaitHost(proc stateReader, run, task, what string) error {
 	if len(out) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%d copies of %s are handed to the host and not handed back (%s); %s is drawn once, from every copy, so it waits for them: hand each back, a failed one with its reason",
+	return fmt.Errorf("%d copies of %s are handed to the host and not handed back, or launched and not yet done (%s); %s is drawn once, from every copy, so it waits for them: hand each back, a failed one with its reason",
 		len(out), task, strings.Join(out, ", "), what)
 }
 
@@ -424,8 +556,10 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	}
 	switch h.State {
 	case HandOffWaiting:
-	case HandOffAwaitingRunner:
-		return TrialRecord{}, fmt.Errorf("copy %s is its cell's runner's to make, and abcd does not launch it yet; the host never makes it, since its answer would measure the wrong model", key)
+	case HandOffAwaitingRunner, HandOffLaunching, HandOffInterrupted:
+		return TrialRecord{}, fmt.Errorf("copy %s is its cell's runner's to make, with abcd lab matrix launch; the host never makes it, since its answer would measure the wrong model", key)
+	case HandOffLaunched:
+		return scoreLaunched(repoRoot, labID, h, rc, back)
 	default:
 		return TrialRecord{}, fmt.Errorf("copy %s's cell was refused (%s), so there is no copy to hand back", key, h.Reason)
 	}
@@ -477,9 +611,16 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		}
 		t.Status, t.Reason = StatusPassed, "the copy was made; its findings are judged in the run's two-phase comparison, never by its trial"
 	}
+	// A launch killed outright left the run's folders closed to listing; they
+	// are opened again where no launch holds the run, before the check lists
+	// them, and while one does the check reads them as unlistable.
+	if err := reopenIdle(home, rec.RootSHA, run); err != nil {
+		return TrialRecord{}, fmt.Errorf("the run's folders, left closed to listing by a launch that was killed, could not be opened again: %w", err)
+	}
 	store := cloneStore(home, rec.RootSHA)
 	c, err := checkCompliance(complianceInputs{RepoRoot: repoRoot, Store: store, Run: run, Key: key, Alias: alias,
-		Frozen: rec.FrozenCommit, Source: pin.Source, Transcript: back.Transcript, State: labStore(home, rec.RootSHA)})
+		Frozen: rec.FrozenCommit, Source: pin.Source, Transcript: back.Transcript, State: labStore(home, rec.RootSHA),
+		Handoff: handoffStore(home, rec.RootSHA)})
 	if err != nil {
 		return TrialRecord{}, err
 	}
@@ -545,7 +686,7 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		if err := writeTrial(repoRoot, labID, t); err != nil {
 			return TrialRecord{}, lostTrialWrite(repoRoot, labID, run, key, err)
 		}
-		if err := os.RemoveAll(clone); err != nil {
+		if err := removeClone(clone); err != nil {
 			return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 		}
 		return t, nil
@@ -572,7 +713,7 @@ func leftoverClone(home string, rec RunRecord, h HandOff, alias string, key Tria
 	if err := jsonstrict.Decode(written, &t); err != nil || t.Key != key || t.Run != rec.RunID {
 		return TrialRecord{}, fmt.Errorf("copy %s's trial does not read as its own, so its clone at %s is kept", key, clone)
 	}
-	if err := os.RemoveAll(clone); err != nil {
+	if err := removeClone(clone); err != nil {
 		return TrialRecord{}, afterWrite(fmt.Errorf("copy %s's trial is written, and its clone at %s could not be deleted: %w; hand the copy back again to delete it", key, clone, err))
 	}
 	return t, nil

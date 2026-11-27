@@ -1,0 +1,6 @@
+---
+id: dcn-2611260133464103
+slug: the-guard-bounds-the-readings-it-makes
+date: 2026-11-26
+---
+2026-11-26 — The guard bounds the readings it makes with the values a line assigns put in place: past each command's first reading, 1024 readings plus one for every 8 bytes of text the line and its scripts hold, and 64 KiB of words plus 16 bytes per byte of that text; past either, the line is held as unread. Measured on the bounded build: four names of two 40-byte values each, used together in one word, hold the line from 31 commands (910 bytes), and two names of eight such values from 15 commands (914 bytes), so a long safe line of that shape is held. A word using one name is read with every value the name holds, up to 1024 values; a value spelled as one the name already holds (each `d=$(mktemp -d)` of a script's cases) is that one value, fed by the commands of both, so repeated assignments cost one reading per use. Grounds: every combination of values is one more reading to judge, and the bound keeps the cost of a line linear in its text. To reverse: raise carriedBaseReadings, carriedBaseBytes, carriedBytesPerReading or carriedBytesPerByte in internal/core/guard/carried.go, and measure with TestCarriedValuesCostWhatTheLineHolds and the cost shapes before landing it.

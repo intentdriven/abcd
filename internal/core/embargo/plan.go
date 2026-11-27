@@ -20,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
@@ -169,7 +170,8 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // outbound scan passes. Each that fails a step is left out with the reason.
 func planFor(s Store, st *State, home, release string, now time.Time) (PublicationPlan, error) {
 	if st.Repo == "" {
-		return PublicationPlan{}, refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
+		return PublicationPlan{}, refusal.Wrap(refusal.EmbargoMissingStore,
+			refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again"))
 	}
 	if release != "" && !isReleaseTag(release) {
 		return PublicationPlan{}, refuse("--release is not a release tag of the form vMAJOR.MINOR.PATCH", "name the release tag, for example v0.9.0")

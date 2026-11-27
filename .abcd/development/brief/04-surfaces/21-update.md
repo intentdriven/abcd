@@ -79,7 +79,10 @@ never constructs the updater that swaps a binary.
 The verb's one argument is an optional release tag, and the check is a flag.
 A lowercase word that is not a release tag (every release tag starts with `v`
 and a digit) is a mistyped sub-verb, refused as an unknown command with exit 2
-before anything is resolved or fetched.
+before anything is resolved or fetched. Naming a release is the person's act:
+the shell guard refuses an agent an update with a tag
+([`17-guard.md`](17-guard.md)), and leaves the bare form, the check and the news
+to it.
 
 - **News** is the moment after an abcd update
   (itd-2610161617096084, itd-2610161616086564). Bare, it prints what the agent

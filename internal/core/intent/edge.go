@@ -84,7 +84,7 @@ func Edge(repoRoot string, req EdgeRequest) (EdgeResult, error) {
 	// subject is reported as the fault rather than a target.
 	it, ok := corpus.Lookup(req.ID)
 	if !ok {
-		return EdgeResult{}, fmt.Errorf("intent: %s not found in any bucket (nothing written)", req.ID)
+		return EdgeResult{}, unknownIntent("intent: %s not found in any bucket (nothing written)", req.ID)
 	}
 	ops := []*edgeOp{
 		{key: BlockedByKey, addFlag: "--blocked-by", removeFlag: "--unblock"},
@@ -172,7 +172,7 @@ func validateEdgeTargets(corpus Corpus, verb, flag, subject string, ids []string
 		}
 		target, ok := corpus.Lookup(dep)
 		if !ok {
-			return nil, fmt.Errorf("%s: %s %s not found in the intent store, in any bucket (nothing written)", verb, flag, dep)
+			return nil, unknownIntent("%s: %s %s not found in the intent store, in any bucket (nothing written)", verb, flag, dep)
 		}
 		if !containsSameID(out, target.ID) {
 			out = append(out, target.ID)

@@ -3,6 +3,8 @@ package matrix
 import (
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -161,5 +163,32 @@ func TestTheJudgingPacketPassesTheSecretScreen(t *testing.T) {
 	defer proc.Close()
 	if _, err := proc.ReadState(judgingRel(rec.RunID, "doc-page", "packet.json")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a refused packet was written: %v", err)
+	}
+}
+
+// TestADrawReadsTheCopiesFromTheRunsRecords: review, judging and the report
+// read a run's copies from its records, never by listing the run's folders,
+// which a launch closes to listing while its copies run.
+func TestADrawReadsTheCopiesFromTheRunsRecords(t *testing.T) {
+	r, home, m, rec := reportLab(t)
+	for _, dir := range []string{filepath.Join(handoffStore(home, rec.RootSHA), rec.RunID), filepath.Join(cloneStore(home, rec.RootSHA), rec.RunID)} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, 0o300); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	}
+	handOffIn(t, r, m, rec, TrialKey{"feature-a", "host-big", 4}, KindCode, HandOffWaiting, "")
+	handOffIn(t, r, m, rec, TrialKey{"doc-page", "host-big", 2}, KindWriting, HandOffWaiting, "")
+	if _, err := ReviewRequests(r.Root(), home, m.ID, rec.RunID, "feature-a"); err == nil || !strings.Contains(err.Error(), "feature-a/host-big/4") {
+		t.Fatalf("ReviewRequests with the run's folders closed = %v; want the copy out named from the records", err)
+	}
+	if _, _, err := DrawWriting(r.Root(), home, m.ID, rec.RunID, "doc-page", "good", "bad", 1); err == nil || !strings.Contains(err.Error(), "doc-page/host-big/2") {
+		t.Fatalf("DrawWriting with the run's folders closed = %v; want the copy out named from the records", err)
+	}
+	if _, err := BuildReport(r.Root(), m.ID, rec.RunID); err != nil {
+		t.Fatalf("BuildReport with the run's folders closed: %v", err)
 	}
 }

@@ -3,7 +3,7 @@
   "commands": [
     {
       "path": "abcd guard",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.",
       "usage": "abcd guard [flags]",
       "flags": [],
       "inputs": [],
@@ -85,7 +85,7 @@
     },
     {
       "path": "abcd guard hook",
-      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+      "sentence": "Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.",
       "usage": "abcd guard hook [flags]",
       "flags": [],
       "inputs": [],

@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/github"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -215,7 +216,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"tier; exit 2 outside a git checkout or with an operand.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return &exitError{Code: 2, Msg: "abcd status: takes no operand; it lists everyone's status (nothing read)"}
+				return refused(2, refusal.UsageExtraArgument, "abcd status: takes no operand; it lists everyone's status (nothing read)")
 			}
 			return nil
 		},
@@ -226,7 +227,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			}
 			root, err := gitutil.CheckoutRoot(cwd, statusStore)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd status: " + err.Error() + " (nothing read)"}
+				return refused(2, refusal.StatusOutsideCheckout, "abcd status: "+err.Error()+" (nothing read)")
 			}
 			now := time.Now().UTC().Truncate(time.Second)
 			o := claim.Options{Now: func() time.Time { return now }}
@@ -266,7 +267,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			noteHolderIDRefused(cmd.ErrOrStderr(), "abcd status", out.HolderIDRefused)
 			if failed != "" {
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd status: "+failed)
-				return &exitError{Code: 1}
+				return exitWith(1, refusal.None, "")
 			}
 			return nil
 		},

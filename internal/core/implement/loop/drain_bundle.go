@@ -34,8 +34,9 @@ const BundledBundleMax = 1
 // one reviewable pull request.
 const maxBundleMax = 10
 
-// The configuration key the cap claims, under the `drain` namespace of
-// .abcd/config.json and ~/.abcd.noindex/config.json.
+// The configuration key the cap reads, under the `drain` namespace of
+// .abcd/config.json and ~/.abcd.noindex/config.json; the namespace's every
+// key is drainKeys (drain_inwork.go).
 const (
 	drainNamespace = "drain"
 	keyBundleMax   = "bundle_max"
@@ -66,12 +67,21 @@ func bundledBundleMax() PaceValue {
 // namespace, so a misspelt key is refused naming the file it sits in rather
 // than letting the default apply unannounced, and a value outside 1 to 10 in
 // any layer is refused naming its origin, never replaced by another layer.
+//
+// The person's ceiling, reservation.max_live, runs the other way: the
+// repository sets it at origin's default branch and a machine may only lower
+// it (claim's maxlive.go, itd-2611251809580662 decision 3). That decision
+// refines dcn-2611222342270127 for the ceiling alone; this cap keeps the
+// record's rule.
 func resolveBundleMax(roots layered.Roots) (PaceValue, string, error) {
 	s, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
-	if err := s.Claim(drainNamespace, keyBundleMax); err != nil {
+	// The namespace is claimed with every key it holds, the lanes-in-work
+	// limit's among them (drain_inwork.go), so a file setting that one is
+	// not refused here as a misspelt key.
+	if err := s.Claim(drainNamespace, drainKeys...); err != nil {
 		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
 	key := drainNamespace + "." + keyBundleMax
@@ -258,4 +268,15 @@ func planArea(repoRoot string, plan capture.DrainPlan) func(id string) string {
 		}
 		return issueArea(repoRoot, iss)
 	}
+}
+
+// ReadDrainForming is the bundle the drain in progress is forming, its lead
+// and the members judged so far, as the front door's summary names it after a
+// move (step 4); nil when no drain is in progress or none forms.
+func ReadDrainForming(repoRoot string) (*DrainForming, error) {
+	st, live, err := readDrain(repoRoot)
+	if err != nil || !live {
+		return nil, err
+	}
+	return st.Forming, nil
 }

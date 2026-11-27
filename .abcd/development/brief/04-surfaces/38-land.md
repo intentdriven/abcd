@@ -299,9 +299,11 @@ Its inputs:
   the default branch's committed file at the tip just fetched, beside
   `~/.abcd.noindex/config.json`, never from the branch being landed, so a
   branch that commits `auto`, or deletes the default branch's `human`, does
-  not decide its own gate (dcn-2610230058333177). `human` from either file
-  wins. A value that is neither is refused, naming the file, its text masked
-  for the terminal, and nothing is armed.
+  not decide its own gate (dcn-2610230058333177). The repository's committed
+  value decides; only where it commits none does the person's own global
+  setting, and with neither it is `human` (adr-2611262044127943). A value that
+  is neither is refused, naming the file, its text masked for the terminal,
+  and nothing is armed.
 - **Who the author is.** One seam reads the pull request author's
   permission on the repository from the forge (`role_name`): Write, Maintain
   and Admin are write access; Read and Triage, a 404 or no role make a
@@ -416,21 +418,44 @@ Its inputs:
 
 The decision, in order:
 
-1. An unverified author: nothing is armed, whatever the approvals, and the
+1. A pull request that changes the committed `facilitator.mode` line of
+   `.abcd/config.json` (sets, alters or removes it, or leaves it unreadable),
+   read at its head against each of its merge bases with the default branch's
+   tip, and in the merge of its head into that tip, which git computes from
+   the object store as stored with the built-in merge driver, against the
+   tip; and, where the ruleset mirror at that tip names a merge queue that
+   rebases, a pull request with any commit between the tip and its head that
+   touches `.abcd/config.json` (a merge commit counting only where its file
+   is none of its parents'), since abcd does not judge what a rebase
+   replays: nothing is armed in any mode, whatever the approvals and
+   receipts, and the note says the person merges it on the forge's page.
+   Where that cannot be read, a merge that conflicts in the file included,
+   and, for a pull request with such a commit, wherever the mirror does not
+   name a queue that merges or squashes (it names none, there is none, or a
+   re-arm reads none), nothing is armed either, and nor on a git older than
+   2.38, which computes the merge and which the note names
+   (adr-2611262044127943, dcn-2611270500324630).
+2. An unverified author: nothing is armed, whatever the approvals, and the
    note says the role is unverified.
-2. A contributor's pull request, in either mode: nothing is armed until an
+3. A contributor's pull request, in either mode: nothing is armed until an
    approval of its head counts, and the note says an approval by someone with
    write access is needed. Once one counts, the mode decides as for an author
    with write access.
-3. `human`: the pull request of an author with write access is armed only
+4. `human`: the pull request of an author with write access is armed only
    once an approval of its head counts; until then the note says it waits for
    the technical facilitator's approval. The product thinker never approves a merge: their
    part is to try the outcome and judge it.
-4. `auto`: the pull request of an author with write access is armed with no
+5. `auto`: the pull request of an author with write access is armed with no
    one asked, but only when a review receipt names its head, a delta's only
    while its delta stands; otherwise the note names the commit with no recorded
    review pair, or says why the delta does not stand. Automated merging is never unreviewed
    merging: the reviews are automated, not skipped.
+6. Where `auto` is the person's own global setting, not the repository's: only a
+   pull request the forge account abcd runs as opened (`query{viewer{login}}`,
+   compared without regard to case) is judged as in 5. Anyone else's, or one
+   where the forge cannot say which account that is, is judged as in 4: it
+   waits for an approval of its head, or for its author to land it, and the
+   note says whose it is ("only your own", the product thinker, 2026-11-26).
 
 `human` holds against an agent merging by mistake, not against one set on
 getting round it, and the verb says so wherever it describes the mode. The
@@ -444,8 +469,8 @@ person's.
 abcd's own repository commits `"facilitator": {"mode": "auto"}`: its pull
 requests are opened by people with write access, so each is armed once a
 review receipt names its head, the build loop's own from a pair that read it, and a contributor's still waits for an approval
-by someone with write access. A machine that sets `human` in `~/.abcd.noindex/config.json` holds every one
-of them for the technical facilitator's approval.
+by someone with write access. A person's own `human` in `~/.abcd.noindex/config.json`
+does not hold them: the committed value decides over it.
 
 An armed pull request goes by the ruleset mirror's method: into the merge
 queue where one gates the default branch, and otherwise as the forge's
@@ -455,6 +480,33 @@ forge, and changes none of its settings: the forge lets a pull request merge
 with no approval, so abcd enforces this itself. Every forge read the gate
 makes is a GET, its fields pinned in `internal/ghcontract` after a live
 read-only call, and a forge answer that cannot be read counts for nothing.
+
+## The spot-check at a landing
+
+A re-run that finds the branch landed observes the landing for the spot-check
+(itd-2610301750162657, `internal/core/spotcheck`), and the `landed` step's note
+carries the observation's line. In `auto` mode the gate's decision abcd takes
+alone, and a re-arm the release hold makes, are each kept on the checkout's
+local copy of the store (`refs/abcd/spotcheck`), with the mode's layer and
+whether a review receipt named the head. While the window has not passed, the
+observation reads the store as last fetched and pushes only records origin's
+branch `abcd-spotcheck` lacks. Once it has passed it fetches the branch, takes
+the verified round of the drand quicknet beacon that the window's close fixes
+on the chain's pinned clock (asked by number once published, its signature
+checked against the pinned key, ten seconds in all), draws by HMAC over the
+round's randomness, and pushes the cycle over the tracking tip, tried once more
+after a refusal. Every cycle read back is verified the same way and set aside
+when it fails, and a branch that no longer holds this machine's high-water
+mark is refused once a fetch confirms it (a copy only behind the mark, which
+another clone on the machine moved, is fetched first). A draw reads only the
+records no earlier cycle listed, and lists every record population whole, at
+most 1,000 keys a window, the rest waiting for the next, so a later draw knows
+each record already drawn from
+([dcn-2611260013430233](../../../work/decisions/dcn-2611260013430233-the-technical-facilitator-under.md)).
+Only typed fields reach origin, and an observation that cannot draw writes
+nothing and leaves the landing proved. The branch takes no preflight receipt:
+the pre-push hook admits it by a row of its own
+([adr-2611251806496719](../../decisions/adrs/2611251806496719-the-spot-check-s-store-branch-is-pushed.md)).
 
 ## Trust boundaries
 

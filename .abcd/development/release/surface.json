@@ -718,7 +718,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
+      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout.",
       "flags": [
         {
           "name": "blocked-by",
@@ -735,6 +735,13 @@
           "hidden": false
         },
         {
+          "name": "fixed",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "found-at",
           "shorthand": "",
           "type": "string",
@@ -743,6 +750,13 @@
         },
         {
           "name": "found-during",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "impact",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -960,6 +974,76 @@
       "flags": [
         {
           "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture owed",
+      "hidden": false,
+      "sentence": "List, put or settle the findings owed a capture: Writes only the findings list under ~/.abcd.noindex/; refuses an act the entry's kind does not take.",
+      "flags": [
+        {
+          "name": "captured",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "doubt",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "handed-up",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "not-a-finding",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "own",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "refuted",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "settled",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "untested",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1574,6 +1658,13 @@
           "hidden": false
         },
         {
+          "name": "in-work",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "judgement",
           "shorthand": "",
           "type": "string",
@@ -1860,7 +1951,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard and an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1959,7 +2050,7 @@
       "path": "abcd guard hook",
       "hidden": false,
       "block": "agents",
-      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
+      "sentence": "Judge a host's pre-tool-use call: Writes branch records, a question's mode and a sub-agent's facts; refuses a hazard, a badly built question or a held write.",
       "flags": []
     },
     {
@@ -2227,6 +2318,11 @@
     },
     {
       "path": "abcd hook stop-failure",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook subagent-start",
       "hidden": false,
       "flags": []
     },
@@ -3318,7 +3414,7 @@
     {
       "path": "abcd lab matrix judge",
       "hidden": false,
-      "sentence": "Draw a writing task's judging packet, or record a judging session's verdicts: Writes the packet once; refuses a verdict file that does not validate.",
+      "sentence": "Draw a writing or check task's judging packet, or record its verdicts: Writes the packet once; refuses a verdict file that does not validate.",
       "flags": [
         {
           "name": "bad",
@@ -3349,6 +3445,34 @@
           "hidden": false
         },
         {
+          "name": "labels",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "matcher",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "proposals",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "table",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "verdicts",
           "shorthand": "",
           "type": "string",
@@ -3356,6 +3480,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd lab matrix launch",
+      "hidden": false,
+      "sentence": "Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.",
+      "flags": []
     },
     {
       "path": "abcd lab matrix report",
@@ -4652,6 +4782,13 @@
           "hidden": false
         },
         {
+          "name": "own-origin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "owner",
           "shorthand": "",
           "type": "stringArray",
@@ -4873,6 +5010,29 @@
         },
         {
           "name": "remainder",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd start",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Start a session on abcd alone, making its separate login where none exists: Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.",
+      "flags": [
+        {
+          "name": "permission-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "profile",
           "shorthand": "",
           "type": "string",
           "required": false,

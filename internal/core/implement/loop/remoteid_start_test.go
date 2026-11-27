@@ -101,6 +101,43 @@ func TestADriveStartSaysWhichDifferenceItMet(t *testing.T) {
 	})
 }
 
+// peerPushes has a second clone of bare push a commit that leaves the hooks
+// as they are, which repo has not fetched: origin moved since its last
+// fetch, as a peer's merge moves it. It returns origin's new tip.
+func peerPushes(t *testing.T, repo *gittest.Repo, bare string) string {
+	t.Helper()
+	other := filepath.Join(t.TempDir(), "other")
+	repo.Git("clone", "-q", bare, other)
+	peer := gittest.OpenRepo(t, other)
+	peer.Write("notes.txt", "merged elsewhere\n")
+	peer.Commit("merged elsewhere")
+	peer.Git("push", "-q", "origin", "main")
+	return peer.Git("rev-parse", "main")
+}
+
+// TestADriveStartFetchesATipOriginMovedTo (iss-2611251741261124): a drive
+// started, or taken up again by the process a new release re-executes, on a
+// checkout whose origin moved since its last fetch fetches origin's default
+// branch once and starts, its hooks compared with the tip it fetched. Watched
+// failing: both refused, the tip not held.
+func TestADriveStartFetchesATipOriginMovedTo(t *testing.T) {
+	for name, resumed := range map[string]bool{"a drive's start": false, "a drive a new release re-executes": true} {
+		t.Run(name, func(t *testing.T) {
+			repo, bare, _ := hookedOrigin(t)
+			moved := peerPushes(t, repo, bare)
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			tm := newTerminal(repo.Root(), TerminalOptions{Stages: DefaultStages(), Say: func(string) {}, Resumed: resumed})
+			if _, err := tm.run(ctx); err != nil || tm.o.Options.remote == nil {
+				t.Fatalf("the drive fetches origin's tip and starts: %v", err)
+			}
+			if got := repo.Git("rev-parse", "refs/remotes/origin/main"); got != moved {
+				t.Fatalf("origin's main is fetched to its tip %s: %s", moved, got)
+			}
+		})
+	}
+}
+
 // TestADriveStartWaitsOnAnOriginItCannotReach: an origin the start cannot
 // reach for a network reason is waited on as a lane's ask of origin is, and
 // asked again; the start is not refused. Watched failing: the start was

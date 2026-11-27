@@ -22,9 +22,10 @@ and this page states the floor in full.
 The [product thinker](../core/product-thinker.md) knows the product, its users, what done looks
 like, and the ordinary vocabulary of using software: a file, a folder, a name, a version, an
 account, a link, a permission someone grants. They are not assumed to know version control (a
-checkout, a branch, a merge, a commit, a worktree), a shell, file ownership and permission bits,
-continuous integration or a merge queue, a hook, an environment variable, a checksum, a symbolic
-link, or the record ids.
+checkout, a branch, a merge, a commit, a worktree, a repository, a pull request, a rebase, git,
+a push, the origin, a diff), a shell, file ownership and permission bits, continuous integration
+or a merge queue, a hook, an environment variable, a checksum, a symbolic link, or the record
+ids.
 
 The [technical facilitator](../core/technical-facilitator.md) knows all of that as well, so
 explaining it to them is padding, and leaving the ids out of their answer withholds the handle
@@ -34,6 +35,46 @@ A concept below the product thinker's floor that cannot be avoided is introduced
 in product terms before it is used, without naming the tool that implements it: a lock is one
 person holding the pen, a checksum is a fingerprint saying two copies are identical. A question
 that fails this is rewritten, not annotated.
+
+## Words below the product thinker's floor
+
+The words the paragraph on the product thinker names, one to a row, each in the singular, with
+the other ways it is written and the plain words to use instead. The other written forms are the
+same word to a reader who knows it, its past tense, a clipping or a negation (merged, a repo,
+uncommitted), so a sentence introducing the word introduces them; a negation carries its own
+plain words, in brackets after it. A short form is an initialism or a coinage (CI, a PR, a
+symlink), which a reader does not link to the word unless told, so it is introduced on its own,
+or named in the sentence introducing the word. abcd's question check refuses each one in a
+question to the product thinker, joined to another word by a hyphen ("auto-merge",
+"pre-commit") included, unless the question introduces it in one sentence before its first use.
+The check holds the same list (`internal/core/question/floor.go`), and a test holds the two
+equal: a word is added to or taken from both, and from the paragraph, in one change.
+
+| Word | Also written | Short form | Plain words |
+|---|---|---|---|
+| version control | none | none | the kept history of every change |
+| checkout | none | none | the project's folder of work |
+| branch | none | none | a separate line of work |
+| merge | merged, merging, unmerged (not yet added to the project) | none | adding finished work to the project |
+| commit | committed, committing, uncommitted (not yet saved) | none | a saved change |
+| worktree | none | none | a second folder of the project's work |
+| repository | repo | none | the project's files and their history |
+| pull request | none | PR | a request to add finished work |
+| rebase | rebased, rebasing | none | moving work onto the newest version |
+| git | none | none | the program that keeps the project's history |
+| push | pushed, pushing | none | sending saved changes to the shared copy |
+| origin | none | none | the shared copy of the project |
+| diff | none | none | the lines a change alters |
+| shell | none | none | the window where commands are typed |
+| file ownership | none | none | which account a file belongs to |
+| permission bit | none | none | who may open or change a file |
+| continuous integration | none | CI | the automatic checks |
+| merge queue | none | none | the line finished work waits in before it is added |
+| hook | none | none | a step that runs by itself at a set moment |
+| environment variable | none | none | a setting a program reads when it starts |
+| checksum | none | none | a fingerprint saying two copies are identical |
+| symbolic link | none | symlink | a file that stands for another file |
+| record id | none | none | the record's title |
 
 ## When to use
 

@@ -59,6 +59,7 @@
     ".abcd/development/brief/04-surfaces/32-scribe.md",
     ".abcd/development/brief/04-surfaces/37-session.md",
     ".abcd/development/brief/04-surfaces/22-site.md",
+    ".abcd/development/brief/04-surfaces/43-start.md",
     ".abcd/development/brief/04-surfaces/39-status.md",
     ".abcd/development/brief/04-surfaces/40-sweep.md",
     ".abcd/development/brief/04-surfaces/21-update.md",
@@ -109,6 +110,7 @@
     "scribe",
     "session",
     "site",
+    "start",
     "status",
     "sweep",
     "update"

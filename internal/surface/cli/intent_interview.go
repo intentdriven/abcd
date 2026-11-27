@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/interview"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -97,10 +98,10 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			"--answers, by ordinal (Q1, Q2, ...). The plan act stays the product thinker's: `abcd intent plan`.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				return &exitError{Code: 2, Msg: "abcd intent interview: one intent is expected — abcd intent interview <itd-N>"}
+				return exitWith(2, argCountCode(len(args), 1), "abcd intent interview: one intent is expected — abcd intent interview <itd-N>")
 			}
 			if !recordid.ValidIntentID(args[0]) {
-				return &exitError{Code: 2, Msg: "abcd intent interview: the argument is not an intent id (itd-N) (it is not repeated here; nothing was run)"}
+				return refused(2, refusal.IntentUnknownIntent, "abcd intent interview: the argument is not an intent id (itd-N) (it is not repeated here; nothing was run)")
 			}
 			return nil
 		},
@@ -115,15 +116,15 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			id := args[0]
 			corpus, err := intent.Load(repoRoot)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent interview: " + termsafe.Sanitize(scrubPaths(err)) + " (nothing was run)"}
+				return refused(2, refusal.IntentInvalidRequest, "abcd intent interview: "+termsafe.Sanitize(scrubPaths(err))+" (nothing was run)")
 			}
 			it, ok := corpus.Lookup(id)
 			if !ok {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent interview: %s is not in any folder of the intent store (nothing was run)", id)}
+				return refused(2, refusal.IntentUnknownIntent, fmt.Sprintf("abcd intent interview: %s is not in any folder of the intent store (nothing was run)", id))
 			}
 			if it.Bucket != intent.BucketDrafts && it.Bucket != intent.BucketPlanned {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent interview: %s is %s; the planning interview runs on a draft or a planned intent (nothing was run)",
-					id, termsafe.Sanitize(it.Bucket))}
+				return refused(2, refusal.IntentInvalidRequest, fmt.Sprintf("abcd intent interview: %s is %s; the planning interview runs on a draft or a planned intent (nothing was run)",
+					id, termsafe.Sanitize(it.Bucket)))
 			}
 			seed := planningSeed{Intent: id, Path: it.Path, Bucket: it.Bucket}
 			brief := path.Join(intent.PlanningBriefsRelDir, id+".md")
@@ -160,7 +161,7 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				var fin *finishError
 				if errors.As(err, &fin) {
-					return &exitError{Code: 1, Msg: "abcd intent interview: " + termsafe.Sanitize(fin.err.Error())}
+					return exitWith(1, refusal.None, "abcd intent interview: "+termsafe.Sanitize(fin.err.Error()))
 				}
 				var ee *exitError
 				if *asJSON && errors.As(err, &ee) && slices.ContainsFunc(res.Changed, func(p string) bool { return !slices.Contains(w.MayChange, p) }) {
@@ -168,12 +169,12 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 					if rerr := render(cmd.OutOrStdout(), true, ref, nil); rerr != nil {
 						return rerr
 					}
-					return &exitError{Code: ee.Code}
+					return exitWith(ee.Code, ee.ref, "")
 				}
 				return err
 			}
 			if outcome == nil {
-				return &exitError{Code: 1, Msg: "abcd intent interview: the interview ended without an outcome"}
+				return exitWith(1, refusal.None, "abcd intent interview: the interview ended without an outcome")
 			}
 			// abcd's validation after the role's edits is the gate the host
 			// path has: the readiness report on the record as it now stands,
@@ -182,7 +183,7 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			// (iss-2610111759340919).
 			ready, err := intent.ReadyWithQuestions(repoRoot, id)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent interview: the record no longer reads after the interview: " + termsafe.Sanitize(scrubPaths(err))}
+				return refused(2, refusal.IntentInvalidRequest, "abcd intent interview: the record no longer reads after the interview: "+termsafe.Sanitize(scrubPaths(err)))
 			}
 			out := planningInterviewResult{Intent: id, Path: ready.Path, Summary: outcome.Summary, ChangedPaths: res.Changed, Record: recordRel, Ready: ready}
 			if out.ChangedPaths == nil {

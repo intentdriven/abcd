@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
+	"github.com/intentdriven/abcd/internal/core/findings"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/launch/reland"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -68,6 +70,59 @@ type boardOutput struct {
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
 	Status *statusblock.Block `json:"status,omitempty"`
+	// Findings counts the repository's list of findings under abcd's home
+	// (itd-2611251831138387, criterion 10), omitted while it holds none. It
+	// carries counts alone, never an entry's text.
+	Findings *boardFindingsLine `json:"findings,omitempty"`
+}
+
+// boardFindingsLine is the board's count of the findings list.
+type boardFindingsLine struct {
+	Open    int  `json:"open"`
+	Private int  `json:"private"`
+	Newer   int  `json:"newer,omitempty"`
+	Full    bool `json:"full,omitempty"`
+}
+
+// boardFindings counts the list of the repository cwd is in, or nil where it
+// holds nothing or there is no repository with a commit to key it; a list
+// that cannot be read is said on stderr and drawn as no line. It reads the
+// list as a hook does, and writes nothing.
+func boardFindings(cwd string, stderr io.Writer) *boardFindingsLine {
+	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
+	if err != nil {
+		return nil
+	}
+	s, ok, err := owedStoreFor(context.Background(), root)
+	if err == nil && ok {
+		var v findings.View
+		if v, err = s.Read(); err == nil {
+			if len(v.Open)+len(v.Private)+len(v.Newer) == 0 {
+				return nil
+			}
+			return &boardFindingsLine{Open: len(v.Open), Private: len(v.Private), Newer: len(v.Newer), Full: v.Full}
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd: the findings list is not counted — %s; `abcd capture owed` names the same refusal\n",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	return nil
+}
+
+// findingsRow is the board's line for the list, or nil for none.
+func findingsRow(f *boardFindingsLine) *board.Row {
+	if f == nil {
+		return nil
+	}
+	text := fmt.Sprintf("%d owed, %d private", f.Open, f.Private)
+	if f.Newer > 0 {
+		text += fmt.Sprintf(", %d a newer abcd's", f.Newer)
+	}
+	if f.Full {
+		text += ", the list is full"
+	}
+	return &board.Row{Label: "findings", Text: text + " — `abcd capture owed`"}
 }
 
 // boardStatusline is the board's view of the row: the state the badge
@@ -93,10 +148,11 @@ type boardFacilitator struct {
 
 // readBoardFacilitator reads facilitator.mode for a managed checkout, nil
 // elsewhere, through the merge gate's own resolver
-// (landing.ReadDefaultFacilitator): the default branch's committed
+// (landing.ShownFacilitator): the default branch's committed
 // .abcd/config.json beside the machine layer, never the checkout's working
-// tree, so the board says what the gate does. A repository with no default
-// branch yet is drawn as unreadable, with the reason. The machine layer's
+// tree, so the board says what the gate does; a repository with no commit
+// asks the machine layer alone. One whose default branch cannot be told is
+// drawn as not read, with the reason. The machine layer's
 // notes are not printed here: a refused home's is the note layered.RootsFor
 // writes for cwd, which the oracle member (boardOracle) already prints on
 // every board run. A refusal is masked with the home redacted, since it can
@@ -106,7 +162,7 @@ func readBoardFacilitator(cwd string) *boardFacilitator {
 	if err != nil || !ahoy.Managed(root) {
 		return nil
 	}
-	f, err := landing.ReadDefaultFacilitator(cwd)
+	f, err := landing.ShownFacilitator(cwd)
 	if err != nil {
 		return &boardFacilitator{Key: landing.KeyFacilitatorMode, Error: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
@@ -145,7 +201,7 @@ func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 		fmt.Fprintln(stderr, noteLine(n))
 	}
 	set.Disabled = false
-	res, err := statusline.Compose(root, statusline.Payload{}, set)
+	res, err := statusline.Compose(context.Background(), root, statusline.Payload{}, set, landing.LiveMerging)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the presence line is omitted — %s\n", termsafe.Sanitize(err.Error()))
 		return nil

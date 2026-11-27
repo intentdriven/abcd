@@ -69,7 +69,10 @@ func Defer(req DeferRequest) (DeferResult, error) {
 	if !reShippedIn.MatchString(req.After) {
 		return DeferResult{}, refused(fmt.Errorf("defer: --after %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.After))
 	}
-	redReason, redacted, degraded := redactLedgerText(repoRoot, req.Reason)
+	redReason, redacted, degraded, err := redactLedgerText(repoRoot, req.Reason)
+	if err != nil {
+		return DeferResult{}, err
+	}
 	reason := grounds.Fold(redReason)
 	if reason == "" {
 		return DeferResult{}, refused(fmt.Errorf("defer: the reason is empty — a deferral with no stated reason records nothing; nothing written"))

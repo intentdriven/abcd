@@ -1141,6 +1141,15 @@ over each of the run's lanes' own diff.
    landing's note, and a tombstone origin refuses is named there and never
    undoes the landing. The branch removal touches only the lane's
    `build/<run>-<lane>`, never the reservation branch.
+   Once the landing is proved, the step observes it for the spot-check, as
+   `abcd land` does at a landed re-run (`commands/land.md`, "The spot-check at
+   a landing"), and the landing's note carries what the observation did; a
+   draw that cannot be made writes nothing and never undoes the landing. In
+   `auto` mode the merge gate's decision abcd takes alone at the arming is kept
+   for the spot-check on this checkout's local copy of its record, made from the
+   decision as given; a record that cannot be written leaves the decision
+   standing, its reason saying so, and a parked lane asking the gate again over
+   the same head keeps one record.
 
 A conflicting pull request that is refused names what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in
@@ -1261,8 +1270,8 @@ releases it or its lease runs out. No step and no run renewal renews it, but a
 load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`,
 which preflight's race stage uses) renews, while it waits and while its command
 runs, each live reservation that is not a release, is half through its lease,
-and whose tip is the commit this copy last pushed; that renewal, which reads no
-run, never revives one that has lapsed or been released, so the lease can run past the time the answer
+and whose tip is the commit this copy last pushed and no drive left to lapse; that
+renewal, which reads no run, never revives one that has lapsed or been released, so the lease can run past the time the answer
 gives; an answer whose lease has already lapsed says so, and that nothing
 revives it. A fetch or push that
 fails, and a release the reservation's tip refuses for a reason of its own (a
@@ -1738,9 +1747,11 @@ setting while a drive runs (a new credential helper, an editor, an include)
 ends it too. Look at the change and start it again. When a drive ends that way
 it releases nothing, since releasing is a push: it names each reservation it
 leaves and when its lease lapses, unless a step or `abcd drain` run in this
-copy, or a load-gate waiter in this copy, renews it for a lane's run still in
-progress (`abcd implement status` passes over a lane parked at its pull
-request), and a load-gate waiter alone for the hold a judgement took; once the setting is as it should be you release one
+copy, an `abcd implement status` call in this copy for a lane short of its pull
+request, or a load-gate waiter in this copy, renews it for a lane's run still in
+progress, a drive's start or a step that takes the run up alone for a lane whose
+hold a drive left to lapse, and a load-gate waiter alone for the hold a judgement
+took; once the setting is as it should be you release one
 with `abcd reserve <id> --release`, or start the drive again, which takes the
 run up. What changes
 between a comparison and git's own run of the command is not seen.

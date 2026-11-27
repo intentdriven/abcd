@@ -40,15 +40,22 @@ func (s State) issueHandedBack() bool {
 }
 
 // superseded reports whether runs[i], in runs oldest first, is an issue run
-// whose lane was handed back and that a newer run of the same issue has
-// followed: the issue was re-admitted, and the newer run is the issue's. It
-// is not one in progress for any verb that looks for one.
+// whose lane was handed back and that a newer run carrying its lead or any of
+// its members has followed (covers): the issue was re-admitted, alone or in a
+// bundle, and the newer run is the issue's. It is not one in progress for any
+// verb that looks for one, so a build of any issue it carried never resumes
+// it. A newer run keyed by the same issue follows it as before, whatever that
+// run now carries.
 func superseded(runs []State, i int) bool {
 	if !runs[i].issueHandedBack() {
 		return false
 	}
+	ids := []string{runs[i].Key}
+	for _, m := range runs[i].Bundle {
+		ids = append(ids, m.Issue)
+	}
 	for _, later := range runs[i+1:] {
-		if recordid.SameID(later.Key, runs[i].Key) {
+		if recordid.SameID(later.Key, runs[i].Key) || slices.ContainsFunc(ids, later.covers) {
 			return true
 		}
 	}
@@ -94,17 +101,22 @@ func (st DrainState) lastHandBack(issue string) *DrainRoute {
 }
 
 // taken reports whether the drain has issue in hand: a lane it opened that
-// was not handed back, or a hand-back whose record has not changed on origin
-// since it was routed. A route that kept no blob (no origin, or a record
-// origin held in no one file) is never re-admitted, nor is one whose record
-// origin now holds in no one file.
+// was not handed back, as its issue or a member of its bundle, a bundle it is
+// forming, or a hand-back whose record has not changed on origin since it was
+// routed. A member handed back alone is the lane's no longer: it is judged by
+// its route, as an issue whose lane was handed back is. A route that kept no
+// blob (no origin, or a record origin held in no one file) is never
+// re-admitted, nor is one whose record origin now holds in no one file.
 func (st DrainState) taken(issue string, blobs *originBlobs) bool {
+	if st.Forming.has(issue) {
+		return true
+	}
 	handedBack := false
 	for _, l := range st.Lanes {
-		if l.Issue != issue {
+		if !laneCarries(l, issue) {
 			continue
 		}
-		if l.Outcome != DrainLaneHandedBack {
+		if l.Outcome != DrainLaneHandedBack && !st.handedBackAloneIn(l, issue) {
 			return true
 		}
 		handedBack = true

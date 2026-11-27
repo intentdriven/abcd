@@ -47,7 +47,11 @@ Run, naming every repository-relative path the work will change, once per path:
 ```
 
 The record is an issue (`iss-N`) or an intent (`itd-N`). The footprint is
-required. Name files, not directories: a directory holds off every other
+required, one path per `--footprint`: a value holding a comma that names no
+path in the checkout, whether it joins two paths or ends one with a stray
+comma, is refused (exit 2, nothing pushed) with the repeated-flag form spelled
+out, each path quoted, because it would otherwise be stored as one path that no
+overlap check matches. Name files, not directories: a directory holds off every other
 reservation of any file inside it, so a lane holding a whole package keeps
 every unrelated lane that touches one file of it waiting. A footprint path
 naming a directory git tracks is still reserved, exit 0, and warns on stderr,
@@ -515,11 +519,23 @@ renewing one that has lapsed counts as a new one. The refusal advises waiting
 for one of the user's pull requests to merge, which ends its reservation: most
 of them are usually lanes whose pull requests wait on a merge, and releasing
 one would free an issue whose work is done. Release one only when its work is
-abandoned, if the user agrees. A person who runs many sessions at once raises
-the cap with `reservation.max_live` in their own `~/.abcd.noindex/config.json`
-(a whole number from 1 to 100), never in a repository's `.abcd/config.json`,
-which is not read for it; a value outside that range, or a misspelt key beside
-it, is refused naming the file.
+abandoned, if the user agrees. The repository sets the cap with
+`reservation.max_live` in its `.abcd/config.json` (a whole number from 1 to
+100), read at the commit origin itself names as its default branch's tip,
+asked of origin when the reservation is made, and never from a working tree,
+another branch or a name this checkout tracks, so every computer of one person
+reads the same number (where origin cannot be asked, or that commit cannot be
+fetched, the reservation is refused as an unreachable origin is, and is to be
+run again: no figure is assumed); changing it is a reviewed
+change to that file. The user's own `~/.abcd.noindex/config.json` may lower it
+on their computer and never raise it: a higher figure there is ignored and
+named. The refusal names which of the two set the cap. A value outside that
+range in either file, a misspelt key beside it, or
+`reservation.github_username` in the repository's file (a person's username is
+never the repository's to say) refuses a new reservation naming the file, and
+the repository's at its branch; the cap is read for no release or renewal, but
+an unknown key under `reservation` in the user's own file still stops every act
+of a person whose username is read from that file, a release included.
 
 **Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
 whether each URL origin pushes to is a fork; a renewal and a release never ask,

@@ -9,7 +9,7 @@ import (
 
 // TestBoardChapterNamesTheMergingElement holds the board chapter's list of the
 // row to the row itself: the presence line's paragraph names the merging
-// element, by its words and its key, and points at the mode chapter that
+// element, by its label and its key, and points at the mode chapter that
 // describes it (iss-2611040554051652).
 func TestBoardChapterNamesTheMergingElement(t *testing.T) {
 	path := filepath.Join("..", "..", "..", ".abcd", "development", "brief", "04-surfaces", "08-abcd.md")
@@ -25,7 +25,7 @@ func TestBoardChapterNamesTheMergingElement(t *testing.T) {
 	para, _, _ := strings.Cut(rest, "\n\n")
 	para = strings.Join(strings.Fields(para), " ")
 	for _, want := range []string{
-		"`" + MergingText + "`",
+		"`" + MergingLabel,
 		"`" + string(KeyMerging) + "`",
 		"26-mode.md",
 	} {
@@ -34,7 +34,7 @@ func TestBoardChapterNamesTheMergingElement(t *testing.T) {
 		}
 	}
 	branch := strings.Index(para, "the branch")
-	merging := strings.Index(para, "`"+MergingText+"`")
+	merging := strings.Index(para, "`"+MergingLabel)
 	counts := strings.Index(para, "the record's counts")
 	if branch < 0 || counts < 0 || (merging >= 0 && (merging <= branch || merging >= counts)) {
 		t.Errorf("the paragraph does not list the merging element between the branch and the record's counts")

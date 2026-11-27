@@ -36,7 +36,7 @@ func tallQuestion() hostQuestion {
 		"A part letter marks a question split into parts.",
 		"The label is never bold and never coloured.",
 		"It is the same in every window the host draws.",
-		"It is read by the hook before the question is shown.",
+		"It is read by abcd before the question is shown.",
 	}
 	q.Question = strings.Join(more, "\n") + "\n\n" + q.Question
 	return q

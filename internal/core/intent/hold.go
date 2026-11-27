@@ -112,7 +112,7 @@ func Hold(repoRoot, intentID, reason string) (HoldResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return HoldResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return HoldResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if err := refuseTerminalBucket(it, "hold"); err != nil {
 		return HoldResult{}, err
@@ -183,7 +183,7 @@ func Unhold(repoRoot, intentID string) (UnholdResult, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return UnholdResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return UnholdResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if err := refuseTerminalBucket(it, "unhold"); err != nil {
 		return UnholdResult{}, err

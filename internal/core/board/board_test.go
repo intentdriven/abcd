@@ -332,17 +332,21 @@ func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
 	}
 }
 
-// TestTheBoardSaysWhoMerges pins the line saying what the merge gate does in
-// the mode it reads (spc-2610161609350616), and the layer that set it: worded
-// by outcome, never as a bare mode, so it does not read as abcd mode's
-// waiting-on state. human merges once the technical facilitator approves the
-// head; auto merges autonomously once a review pair has passed it. The product
-// view draws it as a line of its own above the version; the facilitator view
-// as a labelled row after the status block, so it wraps as every row does.
+// TestTheBoardSaysWhoMerges pins the facilitator: line (iss-2610262034286775,
+// itd-2611252117557299): the mode, whose setting it is (the project enforces
+// auto, prevents it, or leaves it to each contributor) and where it was set,
+// and what the merge gate does with a ready pull request in it. human merges
+// once the technical facilitator approves; auto merges autonomously once a
+// review pair has passed. The product view draws it as a line of its own above
+// the version; the facilitator view as a row after the status block, said of
+// the head, so it wraps as every row does.
 func TestTheBoardSaysWhoMerges(t *testing.T) {
 	person := &Merges{Mode: "human", Layer: "bundled", Origin: "bundled"}
 	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json at main"}
+	repoHuman := &Merges{Mode: "human", Layer: "repo", Origin: ".abcd/config.json at main"}
 	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	machineAuto := &Merges{Mode: "auto", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	notYourHome := &Merges{Mode: "human", Layer: "home", Origin: "HOME is not the home the account database names for this account"}
 	refusedHome := &Merges{Mode: "human", Layer: "machine", Origin: "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide human cannot be read; run abcd with your own HOME", HomeRefused: true}
 	for _, c := range []struct {
 		name string
@@ -351,15 +355,18 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		form Form
 		want string
 	}{
-		{"bundled, facilitator view", person, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from the bundled default)"},
-		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     autonomously, once a review pair passes the head (facilitator.mode auto, from .abcd/config.json at main)"},
-		{"machine human, facilitator view", machine, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from " + abcdhome.Display("config.json") + ")"},
-		{"bundled, product view", person, Product, Text, "merges: once the technical facilitator approves (the bundled default)"},
-		{"repo auto, product view", repoAuto, Product, Text, "merges: autonomously, once a review pair passes (set in .abcd/config.json at main)"},
-		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: autonomously, once a review pair passes (set in .abcd/config.json at main)"},
-		{"machine human, product view", machine, Product, Text, "merges: once the technical facilitator approves (set in " + abcdhome.Display("config.json") + ")"},
-		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from a refused home)"},
-		{"refused home, product view", refusedHome, Product, Text, "merges: once the technical facilitator approves (the home directory was refused, so a machine-wide setting cannot be read)"},
+		{"bundled, facilitator view", person, Facilitator, Text, "  facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head"},
+		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head"},
+		{"machine human, facilitator view", machine, Facilitator, Text, "  facilitator: human (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves the head"},
+		{"repo human, facilitator view", repoHuman, Facilitator, Text, "  facilitator: human (the project prevents auto, set in .abcd/config.json at main): merges once the technical facilitator approves the head"},
+		{"machine auto, facilitator view", machineAuto, Facilitator, Text, "  facilitator: auto (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges autonomously, once a review pair passes the head"},
+		{"another HOME, facilitator view", notYourHome, Facilitator, Text, "  facilitator: human (left to each contributor: HOME is not your account's own, so no setting of yours is read here): merges once the technical facilitator approves the head"},
+		{"bundled, product view", person, Product, Text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves"},
+		{"repo auto, product view", repoAuto, Product, Text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
+		{"repo auto, markdown", repoAuto, Product, Markdown, "- facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes"},
+		{"machine human, product view", machine, Product, Text, "facilitator: human (left to each contributor: this computer's, set in " + abcdhome.Display("config.json") + "): merges once the technical facilitator approves"},
+		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves the head"},
+		{"refused home, product view", refusedHome, Product, Text, "facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 200, Rung: Mono})
@@ -370,7 +377,7 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 	}
 	t.Run("no line without a reading", func(t *testing.T) {
 		for _, l := range Render(Input{Status: fixture(2, 0), Version: ver}, Frame{View: Facilitator, Form: Text, Width: 120, Rung: Mono}) {
-			if strings.Contains(l, "merges:") {
+			if strings.Contains(l, "facilitator:") || strings.Contains(l, "merges:") {
 				t.Fatalf("a board handed no reading drew %q", l)
 			}
 		}
@@ -378,14 +385,14 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 }
 
 // TestTheProductViewWrapsTheMergesLine: at a narrow window the product
-// view's merges line wraps at spaces with a hanging indent, as a facilitator
+// view's facilitator: line wraps at spaces with a hanging indent, as a facilitator
 // row does, so no line runs past the window and no word is cut.
 func TestTheProductViewWrapsTheMergesLine(t *testing.T) {
 	m := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json at origin/main, the default branch as just fetched from the repository"}
 	lines := Render(Input{Status: fixture(2, 0), Merges: m, Version: ver}, Frame{View: Product, Form: Text, Width: 80, Rung: Mono})
 	var merges []string
 	for i, l := range lines {
-		if strings.HasPrefix(l, "merges: ") {
+		if strings.HasPrefix(l, "facilitator: ") {
 			merges = lines[i : len(lines)-1]
 			break
 		}
@@ -406,7 +413,7 @@ func TestTheProductViewWrapsTheMergesLine(t *testing.T) {
 	}
 }
 
-// TestAnUnreadableModeIsSaidAndMasked: a refused read is drawn as such,
+// TestAnUnreadableModeIsSaidAndMasked: a refused read is drawn as not read,
 // masked like every other line, since the refusal can quote a key a
 // configuration file wrote (the layered reader returns its raw bytes).
 func TestAnUnreadableModeIsSaidAndMasked(t *testing.T) {
@@ -416,7 +423,7 @@ func TestAnUnreadableModeIsSaidAndMasked(t *testing.T) {
 	if strings.ContainsRune(got, '\x1b') {
 		t.Fatalf("the refusal reached the board raw: %q", got)
 	}
-	if !strings.HasPrefix(got, "  merges:     unreadable (") {
-		t.Fatalf("line = %q; want it to say the mode is unreadable", got)
+	if !strings.HasPrefix(got, "  facilitator: not read (") {
+		t.Fatalf("line = %q; want it to say the mode was not read", got)
 	}
 }

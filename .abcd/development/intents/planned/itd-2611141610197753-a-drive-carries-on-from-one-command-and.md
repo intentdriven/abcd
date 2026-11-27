@@ -90,8 +90,8 @@ We expect a person to stop asking whether the drive is working, because the loop
 
 ## Acceptance Criteria
 
-- **Given** a run that was taken over from a terminal, **when** `abcd drain --drive` is typed in that terminal, **then** the drive takes the run and its lanes go on, with nothing else typed.
-  - Evidence: lab-261114145658-67e1f9b, F-3 and F-8.
+- **Given** a run that was taken over from a terminal, **when** `abcd drain --drive` is typed in that terminal and the take-over claim's conditions hold there (nothing but shells runs beneath the recorded driver besides the drive, and every session marker can be read), **then** the drive takes the run and its lanes go on, with nothing else typed. **Given** the same run where a live pipe or helper runs in that terminal beside the drive, or a session marker cannot be read, **then** the drive leaves that run waiting and names the act that frees it (end the process, close the terminal, or repair or remove the marker file); the take-over is not widened to take it (decision 10).
+  - Evidence: lab-261114145658-67e1f9b, F-3 and F-8; the claim's conditions as pull request #1544 put them on the default branch.
 - **Given** a drive that was interrupted, whether or not its stop settled and whether or not abcd was rebuilt since, **when** `abcd drain --drive` is typed again, **then** the drive carries on with every lane its drain still lists that the interrupt left, lanes parked on a pull request included, and its output names no other command for them. **Given** a run an interrupt parked that the drain no longer lists, **then** the drive takes it up too, because at its start it takes every interrupted run in the checkout and not only those its drain's state lists (decision 2).
   - Evidence: lab-261114145658-67e1f9b, F-4, F-8 and F-15.
 - **Given** a run whose recorded driver is alive and is not the starting drive's own terminal (another terminal, or a host session), **when** the drive starts, **then** it does not take the run, says who holds it, and goes on to other work. **Given** a run a person's own stop halted, **then** the drive does not take it while the stop stands and names it, and once the person has lifted the stop the next start takes it up (decision 1).
@@ -106,14 +106,14 @@ We expect a person to stop asking whether the drive is working, because the loop
   - Evidence: lab-261114145658-67e1f9b, F-11 and F-17.
 - **Given** a wait with no named end, **when** it has lasted the stuck bound's minutes with no lane moving, **then** the line says `stalled` and its `since` is when anything last moved, whatever reasons the waits gave in between. A wait with a named end, which is the pace window's next eligible time or a rate limit's named reset, is never `stalled` before that end. An outage's next try, a look at origin, a limit that names no reset and a look-again time are not ends, so an outage reads `stalled` once it has lasted the bound. The one look-again time that is an end is the hourly retry of set-aside lanes while every lane left is set aside: a drive waiting on it reads `waiting` and never `stalled` (decisions 3, 6 and 9).
   - Evidence: lab-261114145658-67e1f9b, F-11.
-- **Given** lanes handed back one after another for the same reason, **when** the count reaches the bound, **then** the line says `stalled` and names the reason, instead of `working`. The drive then keeps opening lanes (decision 7). The count that makes the line read `stalled` is the run's to propose, with its reasons, when the step is planned, so this criterion cannot be written more exactly until then.
+- **Given** lane hand-backs one after another that share one key (the hand-back's kind, the stage the lane was at and the check of its last logged refusal), **when** three come in a row, the figure read from `pace.stuck_refusals`, **then** the line says `stalled`, since the first hand-back of the run, and names the count, the stage and the kind, instead of `working`. The drive then keeps opening lanes (decision 7). A hand-back at the judgement, by the rule or at a reservation neither counts towards the run nor clears it; a lane that reaches its pull request, or a lane hand-back with another key, clears it (decision 11).
   - Evidence: lab-261114145658-67e1f9b, F-11 (events 1 and 2 of the incident note).
 - **Given** an interrupt, **when** the drive ends, **then** every lane it held either carries the stop's mark or keeps its reservation, whatever schema version the run's file states.
   - Evidence: lab-261114145658-67e1f9b, F-16.
 
 ## Open Questions
 
-All resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7, 8 and 9).
+All resolved by the product thinker on 2026-11-15 (decisions 4, 5, 7, 8 and 9). The spec's open note on the take-over claim's conditions was answered on 2026-11-25 (decision 10).
 
 ## Decisions
 
@@ -143,7 +143,7 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
 4. **A set-aside lane's reservation is left to lapse** (product thinker, 2026-11-15; formerly open question 1).
    - Question (DQ-4): "What becomes of a set-aside lane's reservation?"
    - Answer: it is left to lapse. There is no push, and the issue stays hidden from other sessions until the lease lapses, at most two hours.
-   - What it needs: itd-2610222215485265 must be amended. Its press release says the drive never leaves an issue held while it waits for someone who is not coming, and its mechanism is shown wrong if a drive ends with an issue still reserved. Both are to say that a set-aside lane's reservation may stand until its lease lapses. That intent is not edited here; the amendment is filed as iss-2611150635298371.
+   - What it needs: itd-2610222215485265 must be amended. Its press release says the drive never leaves an issue held while it waits for someone who is not coming, and its mechanism is shown wrong if a drive ends with an issue still reserved. Both are to say that a set-aside lane's reservation may stand until its lease lapses. That intent is not edited here; the amendment is filed as iss-2611150635298371, and was made on 2026-11-25 as that intent's decision 12.
 5. **A set-aside lane gets another try in the same drive, after the other lanes are done** (product thinker, 2026-11-15; formerly open question 2).
    - Question (DQ-5): "Does a set-aside lane get another try in the same drive?"
    - Answer: yes, once the other lanes are done. A block that clears in a minute need not wait for a restart.
@@ -159,7 +159,7 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
    - Decided by the run for owner review. It was not put to the product thinker, because the record leaves one defensible answer.
 7. **When the drive is stalled on lanes handed back one after another for one reason, it keeps opening lanes** (product thinker, 2026-11-15; formerly the second and third parts of DQ-7).
    - Question: "What counts as stalled when lanes are handed back one after another, and what does the drive do when it is?"
-   - Answer: the drive keeps opening lanes. The count that makes `stalled` is the run's to propose, with its reasons, when the step is planned.
+   - Answer: the drive keeps opening lanes. The count that makes `stalled` was the run's to propose, with its reasons, when the step was planned; it is decision 11.
    - What it costs: agent runs spent on lanes that will fail, and each lane handed back as stuck leaves a mark, a worktree and a branch that a person clears by command, which the first scope condition counts against the design.
 8. **A lane whose landing cannot find its record is set aside** (product thinker, 2026-11-15; formerly open question 4).
    - Question: "Is a lane whose landing cannot find its record handed back as stuck, or set aside?"
@@ -169,6 +169,16 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
    - Answer: the drive keeps waiting. It tries the set-aside lanes again every hour until its end time (`--until`, or its other end conditions), and the line reads `waiting`, not `stopped`. It does not read `stalled` while those hourly retries are its named next try.
    - Reconciling with the stall criterion: that criterion says a look-again time is not a named end, and the stall rule by time of decision 6 treats only the pace window's next eligible time and a rate limit's named reset as ends. This decision makes the hourly retry of set-aside lanes a named end, so a drive waiting on it reads `waiting` and not `stalled`. The planning step must reconcile the two, and says in the stall rule which look-again times are ends.
    - What it costs, which the product thinker accepted: a drive process stays running, mostly idle, until its end time. A lane whose block still stands is tried again every hour and set aside again.
+
+10. **The first criterion is narrowed to the take-over claim's conditions** (product thinker, 2026-11-25; formerly the spec's open note).
+    - Question: the first criterion promised that a drive typed in the terminal a run was taken over from takes the run with nothing else typed, while the claim pull request #1544 put on the default branch takes such a run only when nothing but shells runs beneath the recorded driver besides the drive and every session marker can be read. Is the criterion narrowed to the claim's conditions, or is the claim widened?
+    - Answer: the criterion is narrowed. A live pipe or helper in the old terminal, or a session marker that cannot be read, leaves that run waiting, and the refusal names the act that frees it. The take-over is not widened.
+    - What it costs: in those cases the run waits for the person, while step 3 of the spec sets its lane aside at the bound so other lanes open. The press release's single command stands for the runs an interrupt left and for a take-over run whose terminal meets the claim's conditions.
+
+11. **The hand-back stall count is three in a row with one key, read from `pace.stuck_refusals`** (technical facilitator, 2026-11-25, on delegation; decision 7 left the count to the run to propose).
+    - Answer: three lane hand-backs in a row that share one key, the hand-back's kind, the lane's stage and the check of its last logged refusal, make the line read `stalled`. The reason's text is not in the key, since it carries run ids, counts and minutes. Hand-backs at the judgement, by the rule or at a reservation neither count nor clear the run, because they are the drain working; a lane that reaches its pull request clears it, and so does a lane hand-back with another key.
+    - Why three, and why that key: in the incident note's first event eleven of twenty stuck lanes failed one way over about two days, and at three the line turns after about fifteen agent runs; at two, neighbouring issues failing one check is common, and at five two more lanes fail first. Three identical refusals already make a lane stuck (`pace.stuck_refusals`), and three identical hand-backs making the drive stalled is the same idea one level up, so no new setting is added.
+    - What it costs: a person who raises `pace.stuck_refusals` for flaky lanes also makes the line slower to turn. A false `stalled` costs one look, since the drive carries on.
 
 ## Typed Links
 

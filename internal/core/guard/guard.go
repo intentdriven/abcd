@@ -132,6 +132,9 @@ type Pattern struct {
 	// ShapeForgeRefPath is a forge API path to a git ref (`…/git/refs/…`), or a
 	// word a substitution helps to
 	// write that can still be one (forgeRefPathCouldBe).
+	//
+	// ShapeReleaseTag is a release tag, or a word that can still be one
+	// (releaseTagCouldBe), standing as the first operand after the subcommand.
 	ArgShapes []string `json:"arg_shapes,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —
@@ -606,6 +609,9 @@ func (r Registry) check(command string) (Decision, error) {
 	if sig, ok := r.stopStoreSignal(command, rc, v); ok {
 		v.signals = append(v.signals, sig)
 	}
+	if sig, ok := r.facilitatorStoreSignal(command, rc, v); ok {
+		v.signals = append(v.signals, sig)
+	}
 	d := r.decide(v)
 	d.AllowableOnce = d.Verdict == VerdictBlock && onlyDeleteBlocks(v)
 	if rc != nil {
@@ -630,6 +636,12 @@ type verdicts struct {
 // judged without Tier 2. rc is the check's file reading, nil when the
 // registry reads no file.
 func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, error) {
+	return r.judgeCalls(command, rc, run, true)
+}
+
+// judgeCalls is judge; readCalls false judges a reading of a call
+// (functionCallReadings) without reading its line's calls again.
+func (r Registry) judgeCalls(command string, rc *readCtx, run *scriptRun, readCalls bool) (verdicts, error) {
 	// No argv word can hold a NUL, and bash drops one from its input; the byte
 	// is the tokenizer's mark for a substitution's output (unknown.go), so the
 	// line's own are removed before a word is read.
@@ -650,8 +662,33 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// never inside a per-entry callee (that path went quadratic). Every entry then
 	// sees the payload segments for free, and any payload the guard cannot read
 	// raises a synthetic (entry-less) signal folded in by severity below.
+	// The line's own commands, before the payloads are read, are what a
+	// call of a function it defines is read from (functionCallReadings).
+	own := append([]segment(nil), segs...)
 	segs, signals := expandPayloads(segs, depth)
 	walkSegments(segs)
+	// A call of a function the line defines is read with the call's words
+	// in its arguments' place where the function is of the one shape read
+	// (functionCallReadings): the line, the call replaced by the command it
+	// makes, is judged as a line of its own, and what it finds is the line's.
+	// A script the line runs is read as it stands, and a payload's own
+	// functions are held where their calls read their arguments: none is
+	// called at a command position of the line's text.
+	var calls []verdicts
+	callsHeld := false
+	if run == nil && readCalls {
+		lines, hold := functionCallReadings(command, own)
+		_, inPayload := functionCallReadings(command, segs)
+		callsHeld = hold || inPayload
+		for _, l := range lines {
+			v, err := r.judgeCalls(l, rc, nil, false)
+			if err != nil {
+				callsHeld = true
+				break
+			}
+			calls = append(calls, v)
+		}
+	}
 
 	// A script the line points a shell at is read and judged now, while each
 	// segment still stands where the payload expansion put it: the reading
@@ -686,7 +723,8 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// merge rule (merge.go): the merge commands while facilitator.mode is
 	// human, and an approving review on the forge in any mode. The acts come
 	// first, so a line holding both names the act.
-	signals = append(signals, personActSignals(segs)...)
+	fixed := newFixedReader(command, segs)
+	signals = append(signals, personActSignals(fixed, segs)...)
 	signals = append(signals, r.mergeSignals(segs)...)
 
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
@@ -755,11 +793,26 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// than it follows is refused, like a substitution the tokenizer stopped
 	// reading.
 	walkSegments(segs)
+	if namesTableText(command) {
+		signals = append(signals, functionFormSignal())
+	} else {
+		for _, s := range segs {
+			if s.functionUnread || s.functionQuoted || s.namesUnread || namesRedefined(s) {
+				signals = append(signals, functionFormSignal())
+				break
+			}
+		}
+	}
 	for _, s := range segs {
 		if s.walkCapped {
 			signals = append(signals, unknownSitesBlockSignal())
 			break
 		}
+	}
+	// A call held unread comes after the line's other signals, so a refusal
+	// that names what it found speaks for the line first.
+	if callsHeld {
+		signals = append(signals, functionArgumentsSignal())
 	}
 
 	// Tier 1: the registry match at command position. matchedSeg records WHICH
@@ -771,7 +824,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	// (matchSegmentNamed) is kept apart: it is in Matches, but the verdict
 	// speaks for the substitution unless an entry fired on a name the line
 	// spells.
+	//
+	// An act only the person takes is read once more with the words an xargs or
+	// a find supplies (supplied.go).
 	var blockers, warns, unnamedBlockers, unnamedWarns []string
+	supplied := make([][]segment, len(segs))
+	for i, s := range segs {
+		supplied[i] = suppliedReadings(s)
+	}
 	hitSeg := map[string]int{}
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
@@ -800,7 +860,12 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 		}
 		for i, s := range segs {
 			segHit, segNamed := matchSegmentEnv(p, s, exported != nil && exported[i])
-			if !segHit {
+			if !segNamed && len(supplied[i]) > 0 && readsSupplied(id) {
+				if h, n := suppliedMatch(p, supplied[i]); h {
+					segHit, segNamed = true, n
+				}
+			}
+			if !segHit || !segNamed && readsFixedProgram(id) && fixed.program(i) {
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {
@@ -841,8 +906,44 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	if run == nil {
 		signals = append(signals, r.speculate(segs, matchedSeg, ids)...)
 	}
-	return verdicts{segs: segs, blockers: blockers, unnamedBlockers: unnamedBlockers,
-		warns: warns, unnamedWarns: unnamedWarns, hitSeg: hitSeg, signals: signals}, nil
+	v := verdicts{segs: segs, blockers: blockers, unnamedBlockers: unnamedBlockers,
+		warns: warns, unnamedWarns: unnamedWarns, hitSeg: hitSeg, signals: signals}
+	for _, c := range calls {
+		v.merge(c)
+	}
+	return v, nil
+}
+
+// merge folds what a reading of one of the line's calls found into v: its
+// entries, each first hit at the reading's own segment, and its signals, each
+// once.
+func (v *verdicts) merge(c verdicts) {
+	add := func(to *[]string, ids []string) {
+		for _, id := range ids {
+			if !containsString(*to, id) {
+				*to = append(*to, id)
+			}
+		}
+	}
+	for id, i := range c.hitSeg {
+		if _, ok := v.hitSeg[id]; !ok {
+			v.hitSeg[id] = len(v.segs) + i
+		}
+	}
+	v.segs = append(v.segs, c.segs...)
+	add(&v.blockers, c.blockers)
+	add(&v.unnamedBlockers, c.unnamedBlockers)
+	add(&v.warns, c.warns)
+	add(&v.unnamedWarns, c.unnamedWarns)
+	for _, sig := range c.signals {
+		seen := false
+		for _, have := range v.signals {
+			seen = seen || have.entryID() == sig.entryID() && have.reason == sig.reason
+		}
+		if !seen {
+			v.signals = append(v.signals, sig)
+		}
+	}
 }
 
 // decide merges what a reading found into the one decision a front door
@@ -852,13 +953,19 @@ func (r Registry) decide(v verdicts) Decision {
 
 	// The first synthetic block and warn (id order is not meaningful for the
 	// entry-less verdicts, so the first encountered wins its pool).
+	// A signal marked last wins only a pool no other signal reaches.
 	var synBlock, synWarn *payloadSignal
-	for i := range signals {
-		switch {
-		case signals[i].verdict == VerdictBlock && synBlock == nil:
-			synBlock = &signals[i]
-		case signals[i].verdict == VerdictWarn && synWarn == nil:
-			synWarn = &signals[i]
+	for _, last := range []bool{false, true} {
+		for i := range signals {
+			if signals[i].last != last {
+				continue
+			}
+			switch {
+			case signals[i].verdict == VerdictBlock && synBlock == nil:
+				synBlock = &signals[i]
+			case signals[i].verdict == VerdictWarn && synWarn == nil:
+				synWarn = &signals[i]
+			}
 		}
 	}
 

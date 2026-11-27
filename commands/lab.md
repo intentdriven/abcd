@@ -137,11 +137,15 @@ the run may make), `cost` (the expected cost by source at the most copies,
 reckoned only from each cell's declared `cost_per_copy`; a metered source with a
 cell that declared none says `not estimated; bounded by your cap`), `spend_cap`
 and where it came from, `load_cap` and `cores`, `time` (a bound when every cell
-declares `minutes_per_copy`, otherwise known after the pilot), `judges`, and the
-`digest` naming exactly this plan, with `approve_with`, the command that starts
-it. Building it makes no network call and fetches no price. Show the person the
+declares `minutes_per_copy`, otherwise known after the pilot), `judges` (each
+with its `note`), `hidden_tests` (each code task's `folder`, its test `command`
+word by word, and the `consent` line the person agrees to), and the `digest`
+naming exactly this plan, with `approve_with`, the command that starts it.
+Building it makes no network call and fetches no price. Show the person the
 whole plan in plain words: the copies, what it may spend against the cap, the
-load, the time and the judges.
+load, the time and the judges, and each code task's hidden-tests folder and
+command with its consent line, word for word. The digest covers them, so never
+pass `--approve` for a plan whose hidden tests the person has not seen.
 
 **Only after the person has seen that plan and said yes to it**, record the run
 with the digest it carried:
@@ -160,9 +164,9 @@ on this machine). A
 clone bound for a provider passes the launch bundle's secret scan first, over
 its checked-out tree and the frozen commit's own message, author and committer,
 and a hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
-make, below. A runner cell's copy is `awaiting_runner`: abcd does not launch a
-runner in a clone yet, and nothing stands in for it, so never make it yourself
-and tell the person plainly that those cells wait. Refused, exit 2, with nothing
+make, below. A runner cell's copy is `awaiting_runner`: it is launched with
+`lab matrix launch`, below, and nothing stands in for its runner, so never make
+it yourself. Refused, exit 2, with nothing
 written: a metered cell with no spending
 cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
 person's own machine configuration, never the repository's), a local cell with
@@ -206,6 +210,43 @@ document is kept, says so instead.
 Hand back every host copy you were handed, a failed one with its reason: a copy
 never handed back is in no rate, and the report names it.
 
+**Launch the runner cells' copies** once the product thinker has said yes to
+the run, under a `Product` chip, telling them it may spend against the cap. Tell them too, before they say yes,
+what the plan's `not_sandboxed` says: the runner and each copy's code run as
+this account on this machine and are not sandboxed. The launch runs in the foreground
+for as long as its copies take, which can be hours: when a host's command time
+limit would cut it short, ask the technical facilitator, under a `Tech` chip,
+to run it in a plain terminal.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix launch --json <lab-id> <run-id> [<task>/<cell>/<repeat>]
+```
+
+It launches every `awaiting_runner` copy, at most as many at once as the run
+declares, or with a key that copy alone. Each copy's runner is started in its
+clone, in the runners' cell mode, on the copy's blind brief, which sits with
+its answer in the hand-off store outside the clone; nothing stands in for the
+runner, and a provider down before the copy began is tried again on the same
+pin. `copies` lists each copy's `key`, `state` (`launched`, `interrupted`, or
+`refused` when the secret scan, run again first, refuses its clone; a copy left
+`awaiting_runner` names why, as when the spending cap's remainder does not cover
+it), `status` (its trial's, where one is written) and `reason`. A made code copy
+is `launched` with no status: run its task's hidden tests against its clone
+yourself, through the load gate, outside the clone, and hand back its result
+alone with `lab matrix copy --receipt` and a receipt of `{"schema_version": 1,
+"outcome": "made", "score": {"passed": <n>, "total": <n>}}`. An interrupt, a
+termination or a hangup kills every runner at work with its process group and
+leaves its copy `interrupted`: the run's error, never the copy's score, and it
+is not launched again; a launch killed outright leaves its copies read as
+`interrupted` once nothing holds the run. What the copies earlier launches
+made may spend counts against the cap until their scores are handed back.
+Refused, exit 2, with nothing launched: a host cell's copy, a refused cell's,
+one already launched, a key the run did not hand off, and a cell whose route,
+source or pin on this machine is not the one the run recorded. One launch per
+run runs at a time: a second is refused at exit 3, naming who holds the run,
+so wait for that one to end. A launch stopped part-way exits 2 and says what it
+wrote.
+
 **Review a code task's copies**, once every copy of it handed to you is back:
 the review is drawn once, so it is refused while one is out.
 
@@ -243,6 +284,64 @@ refusal draws nothing. It is what the person's judging session shows; hand the s
 back with `--verdicts <file>` (and `--host <login>` when the host judged too,
 whose rankings are reported apart).
 
+**Judge a check task** in two phases, once every copy of it handed to you is
+back:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task>
+```
+
+It joins the copies' findings by their exact keys and shows the judging's
+`stage`, its `copies` (a copy the compliance check set apart is in none),
+`leftovers` (the findings no exact key joins) and the declaration's `matcher`
+and `proposer` cells. With no matcher declared, the leftovers stay rows of their
+own and the `packet` is drawn at once. With one, the verb first draws the
+`matcher_request` about the leftovers alone (`awaiting_matcher`): hand it, and
+nothing else, to a fresh sub-agent for a host matcher cell, save its one JSON
+answer, `{"schema_version": 1, "same": [["<id>", "<id>"]]}`, and record it:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --matcher <file>
+```
+
+The answer is refused whole, with nothing recorded, when it names a finding it
+was not shown; once taken, its pairs are joined, a `sample` of pairs is drawn
+for the person to label, in an order that says nothing of which pairs the
+matcher joined, and the `packet` is drawn. A matcher or proposer cell marked
+`awaiting_runner` waits for a launcher this build does not have: the judging
+stops at `awaiting_matcher` or `awaiting_proposer` with `waiting` saying so.
+Never answer for it yourself, and tell the person it waits. Where `waiting` says
+the draw of the packet was interrupted, run the verb with no flag: it draws the
+packet from what the draw recorded. The packet shows each distinct finding under a `code`,
+shuffled, with no model, cell, run or path named and no verdict proposed. Show
+it to the person and record their verdict on every code, locked, with
+`--verdicts <file>`: `{"schema_version": 1, "packet": "<packet_digest>",
+"locked": true, "verdicts": [{"code": "<code>", "valid": true}]}`. The verdicts
+lock once. Then build the second phase:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix judge --json <lab-id> <run-id> <check-task> --table [--proposals <file>] [--labels <file>]
+```
+
+`--proposals` is the proposer cell's verdicts on the same packet, from a fresh
+sub-agent shown the packet alone: `{"schema_version": 1, "packet":
+"<packet_digest>", "proposed": [{"code": "<code>", "valid": true, "reason":
+"<one line>"}]}`. It is required when the declaration names a host proposer and
+refused when it names none, and its reasons pass the secret screen before the
+table is written. `--labels` is the person's labels on the sample,
+`{"schema_version": 1, "labels": [{"a": "<id>", "b": "<id>", "same": true}]}`.
+The table gives each finding's row, each model's `scores` (precision, unique
+valid findings, recall) and the `overlap`; `matcher` gives its agreement, or
+`not_estimable` saying why: no matcher declared, none asked, or fewer than ten
+pairs labelled. Asked again with no flag, the verb shows the judging as it
+stands. Refused, exit 2, with no record written: a task with a copy handed to you
+and not back, a matcher, verdict, proposal or label file that does not
+validate, a second matcher answer, verdict file or table, a table before the
+verdicts are locked, an answer for a runner cell, and a matcher or proposer
+the run's record does not pin. A run that cannot be read is refused as it is,
+whatever the task. Nothing of a check is
+filed or written where the release gates read.
+
 **Read a recorded run's report**, which writes nothing:
 
 ```bash
@@ -268,9 +367,11 @@ why), `good_enough` and each copy's length; with fewer than three judges,
 the table the person's locked verdicts unlocked, null until then. `drift`, on a
 re-run, lists every field that drifted from the first run with both values.
 `unreturned` lists every copy handed off that holds no trial, by task, cell
-and `state` (`not_handed_back`, `awaiting_runner`, `refused`, or
-`never_handed_off` when the run's start stopped before it), with its
-`repeats`; each code cell counts them too, and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
+and `state` (`not_handed_back`, `awaiting_runner`, `launching`,
+`awaiting_score` for a launched code copy waiting for its hidden tests' result,
+`interrupted`, `refused`, or `never_handed_off` when the run's start stopped
+before it), with its `repeats`; each code cell counts them too (`launched` for
+the three launch states), and none is in any rate. Show the person the rows and read them `limitations` and `improvements` in
 plain words: a comparison that is not ranked is not a result either way.
 
 **Re-run a recorded run** from its own declaration, by its id in the lab or a
@@ -321,6 +422,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1`.
 - `abcd lab matrix judge <lab-id> <run-id> <task> [flags]`
   - An example call is `abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3`.
+- `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]`
+  - An example call is `abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab matrix report <lab-id> <run-id> [flags]`
   - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
 - `abcd lab matrix rerun <lab-id> <run-id|run-folder> [flags]`

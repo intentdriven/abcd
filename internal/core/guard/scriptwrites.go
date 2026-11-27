@@ -34,7 +34,7 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 			}
 		}
 		if !r.target.ok {
-			out = append(out, unplacedWrite(r.target.base))
+			out = append(out, unplacedWriteIn(r.target.base, r.target.dirLoose))
 			continue
 		}
 		out = append(out, writeAt(rc, st, r.target.text, r.target.tilde))
@@ -47,6 +47,12 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 // name.
 func unplacedWrite(base string) writeTarget {
 	return writeTarget{base: base, wrote: true}
+}
+
+// unplacedWriteIn is unplacedWrite with dirLoose: the component before base
+// is not fixed either.
+func unplacedWriteIn(base string, dirLoose bool) writeTarget {
+	return writeTarget{base: base, dirLoose: dirLoose, wrote: true}
 }
 
 // writeAt is a write to word, resolved as the shell opens it. Where the line
@@ -218,7 +224,7 @@ func (w writerArgs) goBuildTarget() []writeTarget {
 // the found file's directory, which the line does not fix.
 func findRuns(rc *readCtx, s segment, st *shellState, from int) []writeTarget {
 	var out []writeTarget
-	for _, run := range findActions(s, from) {
+	for _, run := range findActions(s, from, false) {
 		in := st
 		if run.elsewhere {
 			in = st.unresolved()
@@ -235,31 +241,58 @@ type findAction struct {
 	elsewhere bool
 }
 
-// findActions is what a find whose arguments start at from runs.
-func findActions(s segment, from int) []findAction {
+// findActions is what a find whose arguments start at from runs. Between two
+// terminators it reads at most maxUnknownSites words no line fixes as an action,
+// so its cost is linear in the words. several reads a `{}` as the words it can
+// stand for (placeholderWords): every path found, before a `+`, and in a word
+// holding a blank, text a shell splits.
+func findActions(s segment, from int, several bool) []findAction {
 	var out []findAction
+	unknown := 0
 	for i := from; i < len(s.tokens); i++ {
 		action := s.tokens[i]
+		if action == ";" {
+			unknown = 0
+		}
 		// An unknown word may be -exec (unknown.go), so what follows it is
-		// read as the command find runs.
-		if action != "-exec" && action != "-execdir" && action != "-ok" && action != "-okdir" && !isUnknown(action) {
+		// read as the command find runs, and may be none, so the words after
+		// it are read for an action of their own too.
+		open := isUnknown(action)
+		if action != "-exec" && action != "-execdir" && action != "-ok" && action != "-okdir" && !open {
 			continue
+		}
+		if open {
+			if unknown++; unknown > maxUnknownSites {
+				continue
+			}
 		}
 		end := i + 1
 		for end < len(s.tokens) && s.tokens[end] != ";" && (s.tokens[end] != "+" || s.tokens[end-1] != "{}") {
 			end++
 		}
 		if end > i+1 {
+			plus := several && end < len(s.tokens) && s.tokens[end] == "+"
 			toks := make([]string, 0, end-i-1)
+			globbed := s.globSlice(i+1, end)
 			for _, t := range s.tokens[i+1 : end] {
-				toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
+				if !several {
+					toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
+					continue
+				}
+				toks = append(toks, placeholderWords(t, "{}", plus)...)
+			}
+			if len(toks) != end-i-1 {
+				globbed = nil
 			}
 			out = append(out, findAction{
-				seg:       segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)},
-				elsewhere: action == "-execdir" || action == "-okdir" || isUnknown(action),
+				seg:       segment{tokens: toks, chain: s.chain, globbed: globbed},
+				elsewhere: action == "-execdir" || action == "-okdir" || open,
 			})
 		}
-		i = end
+		if !open {
+			i = end
+			unknown = 0
+		}
 	}
 	return out
 }
@@ -276,7 +309,7 @@ func (w writerArgs) at(i int) writeTarget {
 	tok, ok := fixedToken(w.s, i)
 	if !ok {
 		if i >= 0 && i < len(w.s.tokens) && !w.s.globAt(i) {
-			return unplacedWrite(tokenBase(w.s.tokens[i]))
+			return unplacedWriteIn(tokenBase(w.s.tokens[i]), tokenDirLoose(w.s.tokens[i]))
 		}
 		return unplacedWrite("")
 	}
@@ -306,6 +339,20 @@ func tokenBase(tok string) string {
 		return ""
 	}
 	return rest
+}
+
+// tokenDirLoose reports whether the component before tok's last one holds
+// a value the line does not fix, or is empty, "." or "..": the token's form
+// of literalDirLoose. A token with no slash, or whose slash is its first
+// byte, is not.
+func tokenDirLoose(tok string) bool {
+	i := strings.LastIndexByte(tok, '/')
+	if i <= 0 {
+		return false
+	}
+	dir := tok[:i]
+	dir = dir[strings.LastIndexByte(dir, '/')+1:]
+	return dir == "" || dir == "." || dir == ".." || isUnknown(dir) || strings.ContainsRune(dir, varMark)
 }
 
 // operands is the operand indexes after w.from, stepping options; an option

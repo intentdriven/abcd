@@ -12,7 +12,9 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -66,13 +68,19 @@ type reservationsBlock struct {
 	// Settled is each ended release whose withdrawals of this person's the
 	// listing re-armed or skipped after its fetch (`abcd peers` only).
 	Settled []claim.Settle `json:"settled,omitempty"`
-	// Ceiling is the reader's live reservations against this machine's cap,
+	// Ceiling is the reader's live reservations against their ceiling, the
+	// repository's unless this machine lowers it, with the layer that set it,
 	// by copy, with its warning (iss-2610231004140527); absent when the
 	// reader's login cannot be named or the cap cannot be read.
-	Ceiling          *ceilingRow     `json:"ceiling,omitempty"`
-	View             reservationView `json:"view"`
-	FetchError       string          `json:"fetch_error,omitempty"`
-	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
+	Ceiling *ceilingRow `json:"ceiling,omitempty"`
+	// DrainInWork is this checkout's drain in progress, its lanes in work
+	// against the limit it began with and the layer that set it, read from
+	// the drain's state (loop.DrainInWork); absent with no drain in
+	// progress.
+	DrainInWork      *loop.LanesInWork `json:"drain_in_work,omitempty"`
+	View             reservationView   `json:"view"`
+	FetchError       string            `json:"fetch_error,omitempty"`
+	DerivedUnchecked string            `json:"derived_unchecked,omitempty"`
 	// HolderIDsRefused is the class of the refusal of the declared ids'
 	// file when the guarded read refused it, so the listing read none of its
 	// ids as the reader's (claim.HolderIDsRefusedLine); stderr says so too.
@@ -214,9 +222,14 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"this repository on this machine that made one (by its folder's name, with\n" +
 			"parent folders added only where two would otherwise read alike),\n" +
 			"each person's count of live reservations, the reader's own counted by copy\n" +
-			"(this copy, each such worktree, elsewhere) against this machine's\n" +
-			"reservation.max_live with a warning from four fifths of it, since every\n" +
-			"session and account on the same login counts toward the same total, and a\n" +
+			"(this copy, each such worktree, elsewhere) against the ceiling, named by\n" +
+			"the layer that set it: reservation.max_live in the repository's\n" +
+			".abcd/config.json at origin's default branch, which this machine's own\n" +
+			"figure may only lower, ten when neither sets it; with a warning from four\n" +
+			"fifths of it, since every session and account on the same login counts\n" +
+			"toward the same total; under it, while a drain is in progress here, its lanes in\n" +
+			"work against the limit it began with and the layer that set it (drain_in_work),\n" +
+			"and a\n" +
 			"line for each release being cut (a live\n" +
 			"rel-vX.Y.Z reservation, which holds every other session's merge until its\n" +
 			"tag is on origin). Then each holder's hand-backs of the last day, from the\n" +
@@ -267,7 +280,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			}
 			root, err := gitutil.CheckoutRoot(cwd, peersStore)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd peers: " + err.Error() + " (nothing read)"}
+				return refused(2, refusal.PeersOutsideCheckout, "abcd peers: "+err.Error()+" (nothing read)")
 			}
 			rep, err := peers.Read(root)
 			if err != nil {
@@ -284,7 +297,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if failed != "" {
 				// The last view is rendered; the failure is named and exits 1.
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd peers: "+failed)
-				return &exitError{Code: 1}
+				return exitWith(1, refusal.None, "")
 			}
 			return nil
 		},
@@ -439,8 +452,11 @@ func (e *peerHeldError) Unwrap() error { return e.err }
 // peerHeldRefusal is consulted on a verb's not-found path, and only there, so a
 // healthy lookup pays nothing: when this checkout does not hold id and a live
 // peer does, it returns the refusal naming each holder's branch, path and
-// folder; otherwise it returns err unchanged. The prefix is the verb's own.
-func peerHeldRefusal(cwd, prefix, id string, err error) error {
+// folder; otherwise it returns err unchanged. The prefix is the verb's own, and
+// so is ref, the code a refusal it rewrites carries (the code err carried
+// when ref is refusal.None); a core error it rewrites becomes a
+// peerHeldError, which the verb's own mapping codes.
+func peerHeldRefusal(cwd, prefix, id string, ref refusal.Code, err error) error {
 	root, rerr := gitutil.CheckoutRoot(cwd, peersStore)
 	if rerr != nil {
 		return err
@@ -477,7 +493,10 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 		prefix, id, strings.Join(holders, "; "))
 	var ee *exitError
 	if errors.As(err, &ee) {
-		return &exitError{Code: ee.Code, Msg: msg}
+		if ref == refusal.None {
+			ref = ee.ref
+		}
+		return exitWith(ee.Code, ref, msg)
 	}
 	return &peerHeldError{msg: msg, err: err}
 }
@@ -559,7 +578,14 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 			c.Siblings[i].Name = termsafe.Sanitize(c.Siblings[i].Name)
 		}
 		c.Note = termsafe.Sanitize(fsutil.RedactHome(c.Note))
+		c.LimitOrigin = termsafe.Sanitize(fsutil.RedactHome(c.LimitOrigin))
 		out.Ceiling = &ceilingRow{Ceiling: c, Warning: c.Warning()}
+	}
+	// The drain's row is read from its state alone; a state that cannot be
+	// read leaves the row out, as the drain's own move names the refusal.
+	if iw, err := loop.DrainInWork(root); err == nil && iw != nil {
+		iw.Origin = termsafe.Sanitize(fsutil.RedactHome(iw.Origin))
+		out.DrainInWork = iw
 	}
 	for _, r := range snap.Reservations {
 		row := reservationRow{Record: r.Record, Holder: r.Holder, Copy: r.Copy, Footprint: make([]string, 0, len(r.Footprint)),
@@ -724,7 +750,7 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 			parts = append(parts, fmt.Sprintf("%q %d", s.Name, s.Live))
 		}
 		parts = append(parts, fmt.Sprintf("elsewhere %d", c.Elsewhere))
-		fmt.Fprintf(w, "  your holds: %s %d of %d (%s)\n", c.Holder, c.Live, c.Limit, strings.Join(parts, ", "))
+		fmt.Fprintf(w, "  your holds: %s %d of %d (%s) (%s)\n", c.Holder, c.Live, c.Limit, c.LimitLayer, strings.Join(parts, ", "))
 		if c.Warning != "" {
 			fmt.Fprintf(w, "  warning: %s\n", c.Warning)
 		}
@@ -734,6 +760,9 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 		if c.Note != "" {
 			fmt.Fprintf(w, "  note: %s\n", c.Note)
 		}
+	}
+	if iw := out.DrainInWork; iw != nil {
+		fmt.Fprintf(w, "  this drain: %s\n", inWorkLine(*iw, nil))
 	}
 	for _, h := range out.HandBacksByHolder {
 		fmt.Fprintf(w, "  handed back by %s in the last day:\n", h.Holder)

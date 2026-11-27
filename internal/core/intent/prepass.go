@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/dryrun"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -179,7 +180,7 @@ func AssemblePrepass(repoRoot, intentID string) (PrepassInput, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return PrepassInput{}, errors.New("intent prepass: no intent in any bucket has the id the first argument names (it is not repeated here); `abcd intent` renders the store, and the pre-pass runs on a draft it lists")
+		return PrepassInput{}, refusal.Wrap(refusal.IntentUnknownIntent, errors.New("intent prepass: no intent in any bucket has the id the first argument names (it is not repeated here); `abcd intent` renders the store, and the pre-pass runs on a draft it lists"))
 	}
 	if it.Bucket != BucketDrafts {
 		return PrepassInput{}, fmt.Errorf("intent prepass: %s is on %s/; the pre-pass prepares the interview of a draft, and only a record on drafts/ has one to come: run it on a draft `abcd intent` lists", it.ID, it.Bucket)

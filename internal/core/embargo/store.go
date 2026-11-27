@@ -17,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -301,7 +302,10 @@ func openExisting(home, repoRoot string) (Store, State, error) {
 	}
 	loc, err := locate(home, top)
 	if isNoFreePlace(err) || (err == nil && !loc.Registered) {
-		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
+		// The one refusal an intake cures, so its code names the intake
+		// (embargo/missing-store); every other names no next step.
+		return Store{}, State{}, refusal.Wrap(refusal.EmbargoMissingStore,
+			refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first"))
 	}
 	if err != nil {
 		return Store{}, State{}, err

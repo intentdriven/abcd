@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -174,7 +175,11 @@ const (
 // origin that decided it. Layer is "bundled" (Origin "bundled") when no layer
 // declares the key; otherwise Origin names the file that set it
 // (".abcd/config.json", or the machine file in its tilde form), or, for a
-// refused home, why the machine layer could not be read.
+// refused home, why the machine layer could not be read. Layer "repo" is the
+// project's committed value, which enforces auto or prevents it; any other
+// layer is a project that leaves the mode to each contributor, where the
+// person's global setting (the machine layer, this computer's file in their
+// own home) decides.
 type Facilitator struct {
 	Key    string `json:"key"`
 	Mode   string `json:"mode"`
@@ -183,6 +188,36 @@ type Facilitator struct {
 	// HomeRefused says a refused home decided the mode (human), so Origin is
 	// the reason, not a file.
 	HomeRefused bool `json:"home_refused,omitempty"`
+	// Over is the computer's own value where the project's stands above it
+	// and they differ, "" otherwise: the project enforces auto over this
+	// computer's human, or prevents it over this computer's auto.
+	Over string `json:"over,omitempty"`
+}
+
+// Says is whose the mode is, in the ruling's words (dcn-2611252132144530):
+// the project enforces auto, the project prevents it, or the project leaves
+// it to each contributor, with what decided it then. The gate's reason, the
+// guard's reason, the prompt line and the board say it so.
+func (f Facilitator) Says() string {
+	var s string
+	switch {
+	case f.Layer == layered.Repo.String() && f.Mode == ModeAuto:
+		s = "the project enforces auto"
+	case f.Layer == layered.Repo.String():
+		s = "the project prevents auto"
+	case f.Layer == foreignHomeLayer:
+		return "left to each contributor, and HOME is not your account's own, so no setting of yours is read here"
+	case f.HomeRefused:
+		return "left to each contributor, and this computer's file could not be read"
+	case f.Layer == layered.Machine.String():
+		return "left to each contributor, and this computer's file sets " + f.Mode
+	default:
+		return "left to each contributor, and set nowhere"
+	}
+	if f.Over != "" {
+		s += " over this computer's " + f.Over
+	}
+	return s
 }
 
 // checkMode accepts the two modes, exactly as spelt.
@@ -197,44 +232,97 @@ func checkMode(m string) error {
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
 //
-// The precedence is land's switches' (readSwitches), not the reader's
-// ordinary one: human from any layer wins, so a person can take the role back
-// for every repository on their machine and no repository's file takes it from
-// them. Every layer that holds the key is decoded and checked, so a value other
-// than human or auto is refused in whichever layer it sits. With no human
-// anywhere, the highest layer that says auto decides; with no layer at all,
-// the bundled default human does. A home RootsFor refused hides the machine
-// layer, and with it any machine-wide human, so the mode reads as human.
+// The precedence is the product thinker's rulings of 2026-11-25
+// (dcn-2611252132144530) and 2026-11-26: two places decide. The project's
+// committed value is above a person's own, so a project enforces auto or
+// prevents it; with no value it leaves the mode to each contributor, whose
+// global setting, the computer's file in their own home, decides
+// (personmode.go). There is no setting of a person's for one project. Every
+// layer that holds the key is decoded and checked, so a value other than human
+// or auto is refused in whichever layer it sits. With neither layer, the
+// bundled default human decides. A home RootsFor refused hides the machine
+// layer, so where the project has no value the mode reads as human and says
+// why; where it has one, that value stands.
 func readMode(r layered.Roots) (Facilitator, error) {
 	return readModeContext(context.Background(), r)
 }
 
-// readModeContext is readMode with the git questions of a repository layer
-// read at a commit bounded by ctx (layered.LoadContext).
+// readModeContext reads the layers r names and resolves them, with the git
+// questions bounded by ctx (layered.LoadContext).
 func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) {
+	vals, _, err := modeLayers(ctx, r)
+	if err != nil {
+		return Facilitator{}, err
+	}
+	vals, in := inputFor(r, vals)
+	return resolveMode(vals, in), nil
+}
+
+// modeLayers loads r's layers, claims the facilitator namespace and decodes
+// facilitator.mode in every layer that holds it, highest first; a value that
+// is neither mode, and a misspelt key, are refused. repoFile says whether the
+// repository layer's file is there at all.
+func modeLayers(ctx context.Context, r layered.Roots) (vals []layerValue[string], repoFile bool, err error) {
 	s, err := layered.LoadContext(ctx, layered.Config, r)
 	if err != nil {
-		return Facilitator{}, err
+		return nil, false, err
 	}
 	if err := s.Claim("facilitator", "mode"); err != nil {
-		return Facilitator{}, err
+		return nil, false, err
 	}
-	vals, err := decodeLayers([]stack{{s: s}}, KeyFacilitatorMode, checkMode, "human or auto")
+	vals, err = decodeLayers([]stack{{s: s}}, KeyFacilitatorMode, checkMode, "human or auto")
 	if err != nil {
-		return Facilitator{}, err
+		return nil, false, err
 	}
+	return vals, s.Present(layered.Repo), nil
+}
+
+// repoLayerMode is the repository layer's value among vals, "" when that
+// layer does not set the key.
+func repoLayerMode(vals []layerValue[string]) string {
 	for _, v := range vals {
-		if v.v == ModeHuman {
-			return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: v.layer, Origin: v.origin}, nil
+		if v.layer == layered.Repo.String() {
+			return v.v
 		}
 	}
-	if r.HomeRefused {
-		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman), HomeRefused: true}, nil
+	return ""
+}
+
+// resolveMode is facilitator.mode's one precedence (readMode) over the layers'
+// decoded values, highest first: every reader of the mode, the row's kept
+// reading among them, answers through it (resolver_audit_test.go holds every
+// other reader to it). The repository layer's value decides first, with the
+// computer's own value it stands above where they differ; with none, the
+// highest other layer's, which is the person's global setting; with neither,
+// a home whose computer's file is not read reads human and says why, and else
+// the bundled human does.
+func resolveMode(vals []layerValue[string], in modeInput) Facilitator {
+	var project, other *layerValue[string]
+	for i := range vals {
+		switch {
+		case vals[i].layer == layered.Repo.String():
+			if project == nil {
+				project = &vals[i]
+			}
+		case other == nil:
+			other = &vals[i]
+		}
 	}
-	if len(vals) > 0 {
-		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil
+	switch {
+	case project != nil:
+		f := Facilitator{Key: KeyFacilitatorMode, Mode: project.v, Layer: project.layer, Origin: project.origin}
+		if other != nil && other.v != project.v {
+			f.Over = other.v
+		}
+		return f
+	case other != nil:
+		return Facilitator{Key: KeyFacilitatorMode, Mode: other.v, Layer: other.layer, Origin: other.origin}
+	case in.foreign:
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: foreignHomeLayer, Origin: in.homeOff}
+	case in.homeOff != "":
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: in.homeOff, HomeRefused: true}
 	}
-	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
+	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}
 }
 
 // readFacilitatorAt resolves facilitator.mode as the merge gate reads it: the
@@ -243,10 +331,12 @@ func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) 
 // store of the repository at repoRoot, beside r's machine layer, never the
 // checkout of the branch being landed (dcn-2610230058333177). So a branch that
 // commits auto, or deletes the default branch's human, does not decide the
-// gate for itself. r's Repo is replaced; its Home and HomeRefused are kept.
-// The error is the reader's raw text, for the caller to mask.
+// gate for itself. The tip's trees and the file's blob are read as stored
+// (layered.Roots.RepoAtAsStored), so no replace ref stands one in for
+// another. r's Repo is replaced; its Home and HomeRefused are kept. The
+// error is the reader's raw text, for the caller to mask.
 func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
-	r.Repo, r.RepoAt, r.RepoAtName = repoRoot, tip, name
+	r.Repo, r.RepoAt, r.RepoAtName, r.RepoAtAsStored = repoRoot, tip, name, true
 	return readMode(r)
 }
 
@@ -260,33 +350,35 @@ func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // Its git questions are bound to ctx and read the commit's trees and the
 // file's blob as stored (layered.Roots.RepoAtAsStored: no replace ref stands
 // one in for another), as the landings reader, its one caller, reads the rest
-// of history; the merge gate's own read (readFacilitatorAt) is unchanged. The
-// error is the reader's raw text, for the caller to mask.
+// of history, and as the merge gate (readFacilitatorAt) and the default
+// branch's readers (defaultTipRoots) read the tip. The error is the reader's
+// raw text, for the caller to mask.
 func CommittedMode(ctx context.Context, repoRoot, commit string) (mode string, found bool, err error) {
+	line, found, err := committedModeLine(ctx, repoRoot, commit)
+	if err != nil || line != "" {
+		return line, found, err
+	}
+	return ModeHuman, found, nil
+}
+
+// committedModeLine is the facilitator.mode line as .abcd/config.json held it
+// at commit, read as CommittedMode reads it: the value it sets, "" where the
+// file sets none or the commit holds no file (found says which), and an error
+// where the value is not a mode or the file cannot be read. The merge gate
+// compares it at a pull request's merge base and head (modeLineChange), where
+// an explicit human removed is a change though both read human.
+func committedModeLine(ctx context.Context, repoRoot, commit string) (line string, found bool, err error) {
 	// Refused here, not left to layered: an empty RepoAt there means the
 	// working tree, so an empty name would read the working tree's mode as
 	// if a commit held it.
 	if !gitutil.IsFullSHA(commit) {
 		return "", false, fmt.Errorf("%s is not a commit's full object name", clip(commit))
 	}
-	s, err := layered.LoadContext(ctx, layered.Config, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), RepoAtAsStored: true, HomeRefused: true})
+	vals, found, err := modeLayers(ctx, layered.Roots{Repo: repoRoot, RepoAt: commit, RepoAtName: short(commit), RepoAtAsStored: true, HomeRefused: true})
 	if err != nil {
 		return "", false, err
 	}
-	if err := s.Claim("facilitator", "mode"); err != nil {
-		return "", false, err
-	}
-	vals, err := decodeLayers([]stack{{s: s}}, KeyFacilitatorMode, checkMode, "human or auto")
-	if err != nil {
-		return "", false, err
-	}
-	found = s.Present(layered.Repo)
-	for _, v := range vals {
-		if v.layer == layered.Repo.String() {
-			return v.v, found, nil
-		}
-	}
-	return ModeHuman, found, nil
+	return repoLayerMode(vals), found, nil
 }
 
 // AutoAt reports whether the facilitator mode the merge gate reads at tip is auto.
@@ -295,23 +387,12 @@ func AutoAt(r layered.Roots, repoRoot, tip, name string) bool {
 	return err == nil && m.Mode == ModeAuto
 }
 
-// ReadDefaultFacilitator resolves facilitator.mode for the repository holding
-// cwd as the merge gate does (readFacilitatorAt), at the tip of the default
-// branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
-// caller's home (layered.HomeRoots, as RootsFor resolves it). The board reads
-// the mode through it; the shell guard reads ReadFetchedFacilitator. A repository with no default branch to read is
-// an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
-// as human.
-func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
-	return readDefaultFacilitatorContext(context.Background(), cwd)
-}
-
 // FetchedReadTimeout bounds ReadFetchedFacilitator as a whole: the shell
 // guard asks it inside a host's hook, which may give up on a slow hook and
 // run the command anyway, so a slow origin must end the read first, as human.
 const FetchedReadTimeout = 15 * time.Second
 
-// ReadFetchedFacilitator is ReadDefaultFacilitator for a caller that judges
+// ReadFetchedFacilitator is readDefaultFacilitatorContext for a caller that judges
 // an act by the mode and so must not take it from refs an agent can move
 // (`git remote set-head`, `git update-ref` on a remote-tracking ref): the
 // shell guard, deciding a merge command. It asks Remote which branch is its
@@ -354,20 +435,15 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 	} else if other != "" {
 		return Facilitator{}, fresh("the forge client would act on the remote "+other+" here, not on "+Remote, nil)
 	}
-	out, err := gitutil.NetContext(ctx, root, "ls-remote", "--symref", Remote, "HEAD")
-	if err != nil {
+	// The listing also names every branch whose name ends in /HEAD, however
+	// many origin holds, so it is read line by line and only the lines whose
+	// ref is HEAD itself are kept (gitutil.RefListing).
+	head := gitutil.RefListing{Ref: "HEAD"}
+	if err := gitutil.NetEachContext(ctx, root, gitutil.RefLineMax, head.Line, "ls-remote", "--symref", Remote, "HEAD"); err != nil {
 		return Facilitator{}, fresh(Remote+" could not say which branch is its default", err)
 	}
-	def, tip := "", ""
-	for _, line := range strings.Split(out, "\n") {
-		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
-			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
-				def, _ = strings.CutPrefix(target, "refs/heads/")
-			}
-		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
-			tip = sha
-		}
-	}
+	def, _ := strings.CutPrefix(head.Target, "refs/heads/")
+	tip := head.Tip
 	if def == "" || def == "HEAD" || !gitutil.IsFullSHA(tip) {
 		return Facilitator{}, fresh(Remote+" did not name a default branch and its tip", nil)
 	}
@@ -421,45 +497,66 @@ func forgeRemote(ctx context.Context, root string) (string, error) {
 	return "", nil
 }
 
-// ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with
+// ErrNoDefaultBranch is readDefaultFacilitatorContext's answer for a repository with
 // no default branch to read facilitator.mode at: one with no commit yet, say.
 // It is not a refusal of anything a file declares, so a caller that only
 // shows the mode (the status line) may stay quiet over it.
 var ErrNoDefaultBranch = errors.New("the repository has no default branch to read " + KeyFacilitatorMode + " at")
 
-// readDefaultFacilitatorContext is ReadDefaultFacilitator with every git
-// question bounded by ctx: a git still running when ctx ends is killed and the
-// read fails with ctx's error wrapped, never with ErrNoDefaultBranch. It asks
+// readDefaultFacilitatorContext resolves facilitator.mode for the repository
+// holding cwd as the merge gate does (readFacilitatorAt), at the tip of the
+// default branch git tracks for it (gitutil.DefaultRef), with the machine layer
+// of the caller's home (layered.HomeRoots, as RootsFor resolves it). The board
+// shows the mode through it (ShownFacilitator); the shell guard reads
+// ReadFetchedFacilitator. A repository with no default branch to read is an
+// error (ErrNoDefaultBranch): a caller that cannot read the mode takes it as
+// human. Every git question is bounded by ctx: a git still running when ctx
+// ends is killed and the read fails with ctx's error wrapped, never with
+// ErrNoDefaultBranch. It asks
 // the network nothing: the default branch is the one last fetched, and its
-// configuration is read from the local object store. The status line reads
-// the mode through it, inside its own deadline.
+// configuration is read from the local object store. The board and the prompt
+// hook read the mode through it; the status line's row reads what the hook
+// kept of it (KeptMerging).
 func readDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator, error) {
-	r, _ := layered.HomeRoots()
+	r, _, err := defaultTipRoots(ctx, cwd)
+	if err != nil {
+		return Facilitator{}, err
+	}
+	return readModeContext(ctx, r)
+}
+
+// defaultTipRoots is the Roots readDefaultFacilitatorContext reads the mode
+// at, and the full name of the ref whose tip it names: the default branch git
+// tracks for the repository holding cwd, with the machine layer of the
+// caller's home.
+func defaultTipRoots(ctx context.Context, cwd string) (r layered.Roots, ref string, err error) {
+	r, _ = layered.HomeRoots()
 	root, err := gitutil.ToplevelContext(ctx, cwd)
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return Facilitator{}, deadlineErr(ctxErr)
+		return layered.Roots{}, "", deadlineErr(ctxErr)
 	}
 	if errors.Is(err, gitutil.ErrGitTimedOut) {
-		return Facilitator{}, deadlineErr(err)
+		return layered.Roots{}, "", deadlineErr(err)
 	}
 	if err != nil {
-		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
+		return layered.Roots{}, "", fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
 	}
-	ref := gitutil.DefaultRefContext(ctx, root)
+	ref = gitutil.DefaultRefContext(ctx, root)
 	var tip string
 	if ref != "" {
 		tip, err = gitutil.RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 		tip = strings.TrimSpace(tip)
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		return Facilitator{}, deadlineErr(ctxErr)
+		return layered.Roots{}, "", deadlineErr(ctxErr)
 	}
 	if ref == "" || err != nil || !gitutil.IsFullSHA(tip) {
-		return Facilitator{}, ErrNoDefaultBranch
+		return layered.Roots{}, "", ErrNoDefaultBranch
 	}
-	name := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), "refs/heads/")
-	r.Repo, r.RepoAt, r.RepoAtName = root, tip, name
-	return readModeContext(ctx, r)
+	// As stored, as the merge gate reads it: the prompt line and the board
+	// say what the gate will do.
+	r.Repo, r.RepoAt, r.RepoAtName, r.RepoAtAsStored = root, tip, gitutil.ShortRef(ref), true
+	return r, ref, nil
 }
 
 // deadlineErr is the read's error when git did not answer before ctx ended.
@@ -468,59 +565,97 @@ func deadlineErr(err error) error {
 }
 
 // AutoSessionLine is the one line the prompt hook gives a session on every
-// prompt while facilitator.mode is auto (iss-2611211700231699), beside the
-// away block and whether or not the person is away: what the setting means
-// for a session, as the person ruled it (dcn-2611070734169709). It grants
+// prompt while the resolved facilitator.mode is auto (iss-2611211700231699),
+// beside the away block and whether or not the person is away: what the
+// setting means for a session, as the person ruled it (dcn-2611070734169709),
+// and whose setting it is (Says). It is "" for any other reading. It grants
 // nothing an act did not already have: the question gate, the stop check and
 // the guard's acts reserved to the person are unchanged.
-const AutoSessionLine = "The technical facilitator is on auto (" + KeyFacilitatorMode + ", as the default branch and this machine set it): a technical question is decided and recorded with `abcd decide`, not asked, and finished work does not wait for a person to read it. An act a command page reserves to the person is still the person's: it waits for them and holds back nothing else, so carry on with the rest of the work."
-
-// AutoForSessions reports whether facilitator.mode is auto as the status line
-// reads it (readDefaultFacilitatorContext): the default branch's committed
-// .abcd/config.json as last fetched and the machine layer, never the working
-// tree's copy, its git questions bounded by ctx and none of them asking the
-// network, so a hook can ask it on every prompt. A repository with no
-// default branch yet reads as not auto, with no error. The error is the
-// reader's raw text, for the caller to mask; a caller takes it as human.
-func AutoForSessions(ctx context.Context, root string) (bool, error) {
-	f, err := readDefaultFacilitatorContext(ctx, root)
-	switch {
-	case errors.Is(err, ErrNoDefaultBranch):
-		return false, nil
-	case err != nil:
-		return false, err
+func AutoSessionLine(f Facilitator) string {
+	if f.Mode != ModeAuto {
+		return ""
 	}
-	return f.Mode == ModeAuto, nil
+	return "The technical facilitator is on auto (" + KeyFacilitatorMode + ": " + f.Says() + "): a technical question is decided and recorded with `abcd decide`, not asked, and finished work does not wait for a person to read it. An act a command page reserves to the person is still the person's: it waits for them and holds back nothing else, so carry on with the rest of the work."
 }
 
-// AutonomousMerging is the status line's merging element, read: it reports
-// whether the repository's facilitator.mode is auto, read through the merge
-// gate's own resolver (readDefaultFacilitatorContext): the default branch's
-// committed .abcd/config.json and the machine layer, never the working tree's
-// copy, so an auto written only in the working tree changes neither the row
-// nor the gate. The row reads the default branch as last fetched while the
-// gate fetches first, so after the mode changes on origin the two can differ
-// until the next fetch. Its git questions are bounded by ctx, the row's git
-// share, and ask the network nothing. A repository with no default branch yet says nothing and notes
-// nothing: there is nothing to merge into. Any other failure drops the element
-// and returns the note saying why, masked, for the front door's stderr.
+// AutoForSessions is facilitator.mode as the board reads it
+// (readDefaultFacilitatorContext), the reading itself so the prompt line can
+// say whose it is: the default branch's committed .abcd/config.json as last
+// fetched and the machine layer, never the working tree's copy, its git
+// questions bounded by ctx and none of them asking the network, so a hook can
+// ask it on every prompt. A repository with no default branch yet reads as
+// the zero Facilitator, which is not auto, with no error. The error is the
+// reader's raw text, for the caller to mask; a caller takes it as human.
 //
-// It lives here rather than in core/statusline because statusline cannot
-// import this package: landing reaches ahoy (through embargo, capture and
-// site), and ahoy reads statusline, so the import would close a cycle. The
-// front door hands it to statusline as statusline.MergingMode.
-func AutonomousMerging(ctx context.Context, root string) (bool, string) {
-	f, err := readDefaultFacilitatorContext(ctx, root)
+// It is also what keeps the reading the status line's row shows (keepMode):
+// the prompt hook has the second that the row does not, and asks git this
+// anyway. The kept reading never answers it.
+func AutoForSessions(ctx context.Context, root string) (Facilitator, error) {
+	r, ref, err := defaultTipRoots(ctx, root)
 	switch {
 	case errors.Is(err, ErrNoDefaultBranch):
-		return false, ""
+		return Facilitator{}, nil
 	case err != nil:
-		msg := fsutil.RedactHome(err.Error())
-		if root != "" {
-			msg = strings.ReplaceAll(msg, root, ".")
-		}
-		return false, "statusline: DROPPED the merging element — " + KeyFacilitatorMode +
-			" could not be read (" + termsafe.CleanProseLine(msg, 300) + ")"
+		return Facilitator{}, err
 	}
-	return f.Mode == ModeAuto, ""
+	vals, _, err := modeLayers(ctx, r)
+	keepMode(ctx, r, ref, vals, err)
+	if err != nil {
+		return Facilitator{}, err
+	}
+	vals, in := inputFor(r, vals)
+	return resolveMode(vals, in), nil
+}
+
+// LiveMerging is the presence line's merging element on the board, read: the
+// repository's facilitator.mode through the resolver the merge gate reads with
+// (shownFacilitator), as the board's own line reads it, its git questions
+// bounded by ctx and asking the network nothing. A default branch that cannot
+// be told is not known and notes nothing; any other failure is not known, with
+// the note saying why, masked, for the front door's stderr. The status line's
+// row reads KeptMerging instead.
+func LiveMerging(ctx context.Context, root string) (statusline.Merging, string) {
+	f, err := shownFacilitator(ctx, root)
+	switch {
+	case errors.Is(err, ErrNoDefaultBranch):
+		return statusline.Merging{State: statusline.MergingUnknown}, ""
+	case err != nil:
+		return statusline.Merging{State: statusline.MergingUnknown}, unreadNote(root, err)
+	}
+	return f.merging(), ""
+}
+
+// unreadNote says on the front door's stderr why the mode was not read, with
+// the home and the checkout's own path masked; the element itself says
+// `facilitator: not read`.
+func unreadNote(root string, err error) string {
+	msg := fsutil.RedactHome(err.Error())
+	if root != "" {
+		msg = strings.ReplaceAll(msg, root, ".")
+	}
+	return "statusline: " + KeyFacilitatorMode + " was not read (" + termsafe.CleanProseLine(msg, 300) + ")"
+}
+
+// merging is the mode in the row's own type, with whose setting it is. The
+// row's package cannot import this one: landing reaches ahoy (through embargo,
+// capture and site), and ahoy reads statusline, so the front door hands the
+// readers over.
+func (f Facilitator) merging() statusline.Merging {
+	m := statusline.Merging{State: statusline.MergingHuman}
+	if f.Mode == ModeAuto {
+		m.State = statusline.MergingAuto
+	}
+	switch {
+	case f.HomeRefused:
+		m.Whose = statusline.WhoseComputerUnread
+	case f.Layer == foreignHomeLayer:
+		m.Whose = statusline.WhoseNotYourHome
+	case f.Layer == layered.Repo.String():
+		m.Whose = statusline.WhoseProject
+	case f.Layer == layered.Machine.String():
+		m.Whose = statusline.WhoseComputer
+	default:
+		m.Whose = statusline.WhoseUnset
+	}
+	return m
 }

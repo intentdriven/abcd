@@ -169,11 +169,18 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	}
 
 	seedEmbargo(t)
+	// A finding is a refusal: the result document, then the refusal's
+	// envelope with its code and no message, which repeats nothing found.
 	code, out, _ = runEmbargo(t, "fixes "+surfaceGHSA+"\n", "embargo", "check", "--file", "-", "--json")
+	dec := json.NewDecoder(strings.NewReader(out))
 	var res embargo.CheckResult
-	if err := json.Unmarshal([]byte(out), &res); err != nil || code != 2 || len(res.Findings) != 1 ||
+	var env errorEnvelope
+	if err := dec.Decode(&res); err != nil || code != 2 || len(res.Findings) != 1 ||
 		res.Findings[0].Kind != embargo.KindAdvisoryID || strings.Contains(out, "xxxx") {
 		t.Fatalf("check finding: exit %d, %v, %s", code, err, out)
+	}
+	if err := dec.Decode(&env); err != nil || env.Code != "embargo/embargoed-text" || env.Error != "" || dec.More() {
+		t.Fatalf("check finding's refusal: %v, %+v, %s", err, env, out)
 	}
 	code, out, _ = runEmbargo(t, "fixes "+surfaceGHSA+"\n", "embargo", "check", "--file", "-")
 	if code != 2 || !strings.Contains(out, "REFUSED, 1 finding") || strings.Contains(out, "xxxx") {

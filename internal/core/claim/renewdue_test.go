@@ -286,3 +286,55 @@ func TestARenewalBehindAStuckPassSaysSo(t *testing.T) {
 		t.Fatalf("RenewDue = %+v, %v; want nothing renewed and ErrRenewalBusy", got, err)
 	}
 }
+
+// TestRenewDueLeavesAHoldLeftToLapse: a hold a drive left to lapse at its tip
+// (LeaveToLapse) is no one's work, so the waiter's renewal leaves it to its
+// lease, pushing nothing, while it renews this copy's other holds as before.
+// A reservation pushed for it since, a take-up's, ends the note, and so does
+// KeepRenewing.
+func TestRenewDueLeavesAHoldLeftToLapse(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	for _, r := range []struct{ id, fp string }{{"iss-5", "a.go"}, {"iss-6", "b.go"}} {
+		if _, err := p.reserve(r.id, r.fp); err != nil {
+			t.Fatalf("%s reserves: %v", r.id, err)
+		}
+	}
+	kept := w.remoteTip("iss-5")
+	if err := LeaveToLapse(p.dir, "iss-5", kept); err != nil {
+		t.Fatal(err)
+	}
+	if !LeftToLapse(p.dir, "iss-5", kept) || LeftToLapse(p.dir, "iss-6", w.remoteTip("iss-6")) {
+		t.Fatal("premise: iss-5 alone reads as left to lapse at its tip")
+	}
+
+	w.set(t0.Add(61 * time.Minute))
+	got, err := RenewDue(p.dir, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Record != "iss-6" || got[0].Err != nil {
+		t.Fatalf("renewals %+v; want iss-6 alone", got)
+	}
+	if w.remoteTip("iss-5") != kept {
+		t.Fatal("the hold left to lapse was renewed")
+	}
+
+	// A take-up reserves again from this copy: the new tip is no tip the note
+	// names, so the renewal is due as for any hold.
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if LeftToLapse(p.dir, "iss-5", w.remoteTip("iss-5")) {
+		t.Fatal("a reservation pushed since still reads as left to lapse")
+	}
+	if err := KeepRenewing(p.dir, "iss-5"); err != nil {
+		t.Fatal(err)
+	}
+	if LeftToLapse(p.dir, "iss-5", kept) {
+		t.Fatal("KeepRenewing left the note standing")
+	}
+	if err := KeepRenewing(p.dir, "iss-5"); err != nil {
+		t.Fatalf("a note already gone is no error: %v", err)
+	}
+}

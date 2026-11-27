@@ -112,6 +112,9 @@ var helpPlacements = map[string]helpPlacement{
 	"ahoy":      {group: groupSetUp},
 	"dashboard": {group: groupSetUp},
 	"session":   {group: groupSetUp},
+	// start is a person's verb and theirs alone: it refuses off a terminal, and
+	// its first run sets up the account's profile (itd-2611251725203320).
+	"start": {group: groupSetUp},
 	// sweep is a person's verb under set-up, beside ahoy, whose worktree
 	// prune it calls (itd-2610222214476887): the person asked for one verb
 	// that clears what a repository has left lying around.

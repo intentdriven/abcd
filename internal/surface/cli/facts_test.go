@@ -22,6 +22,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/reading"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	coresession "github.com/intentdriven/abcd/internal/core/session"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/core/source"
@@ -169,6 +170,8 @@ func closedSets() map[[2]string][]string {
 		{"abcd library declassify", "permission"}:   source.Permissions,
 		{"abcd library ledger", "influence"}:        source.Influences,
 
+		{"abcd start", "permission-mode"}: runner.SessionPermissionModes(),
+
 		{"abcd", "view"}:   boardViews,
 		{"abcd", "format"}: boardForms,
 
@@ -184,6 +187,7 @@ func closedSets() map[[2]string][]string {
 		{"abcd reflect interview", "answered-in"}:   interview.AnsweredInPlaces(),
 		{"abcd banlist add", "severity"}:            banlist.Severities(),
 		{"abcd capture disposition", "state"}:       issueschema.DispositionStates,
+		{"abcd capture", "impact"}:                  changelog.ImpactNames(),
 		{"abcd capture resolve", "impact"}:          changelog.ImpactNames(),
 		{"abcd intent", "impact"}:                   changelog.IntentImpactNames(),
 		{"abcd intent plan", "impact"}:              changelog.IntentImpactNames(),

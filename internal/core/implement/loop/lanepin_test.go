@@ -8,6 +8,7 @@ package loop
 // changed in the lane, or standing there other than the commit's, is refused.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -297,10 +298,28 @@ func TestALaneWhoseHooksAreNotItsCommitsIsRefusedAsItOpens(t *testing.T) {
 	}
 }
 
+// TestALaneFetchesATipOriginMovedTo (iss-2611251741261124): a lane opened
+// after origin moved since the checkout's last fetch (a lane opening between
+// a move's fetch and its own ask of origin) fetches origin's default branch
+// once and opens on the tip origin reports. Watched failing: the stage
+// refused, the tip not held.
+func TestALaneFetchesATipOriginMovedTo(t *testing.T) {
+	repo, bare, _ := hookedOrigin(t)
+	moved := peerPushes(t, repo, bare)
+	runID, path, err := openHookedLane(t, repo)
+	if err != nil {
+		t.Fatalf("the lane fetches origin's tip and opens: %v", err)
+	}
+	if l := laneAt(t, repo, runID); l.BaseSHA != moved || l.Worktree != path {
+		t.Fatalf("the lane is cut from origin's tip %s: %+v", moved, l)
+	}
+}
+
 // TestALaneCannotChooseWhatItOpensOn: a default branch here that the remote
 // never had (its tracking refs gone, so the local main is read) is refused
-// before the worktree is made; so is a tip the remote reports that was never
-// fetched here, which nothing here can show the default branch descends to.
+// before the worktree is made; so is a tip the remote reports that is still
+// not here once the stage has fetched, which nothing here can show the
+// default branch descends to.
 func TestALaneCannotChooseWhatItOpensOn(t *testing.T) {
 	for name, tc := range map[string]struct {
 		move func(t *testing.T, repo *gittest.Repo, bare string)
@@ -314,14 +333,15 @@ func TestALaneCannotChooseWhatItOpensOn(t *testing.T) {
 			},
 			want: "not the remote's",
 		},
-		"a tip never fetched here": {
+		// The stage fetches once (iss-2611251741261124); a tip still not
+		// held after it is refused.
+		"a tip still not held once fetched": {
 			move: func(t *testing.T, repo *gittest.Repo, bare string) {
-				other := filepath.Join(t.TempDir(), "other")
-				repo.Git("clone", "-q", bare, other)
-				peer := gittest.OpenRepo(t, other)
-				peer.Write("notes.txt", "merged elsewhere\n")
-				peer.Commit("merged elsewhere")
-				peer.Git("push", "-q", "origin", "main")
+				was := remoteHeadTip
+				t.Cleanup(func() { remoteHeadTip = was })
+				remoteHeadTip = func(context.Context, func(context.Context, string, ...string) (string, error), string, string) (string, string, error) {
+					return "main", strings.Repeat("1", 40), nil
+				}
 			},
 			want: "does not hold yet",
 		},

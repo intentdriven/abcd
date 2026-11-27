@@ -410,6 +410,12 @@ func sh(script, pidFile string) []string {
 	return []string{"sh", "-c", script}
 }
 
+// wrotePid reports whether pidFile holds a whole line, the pid sh wrote.
+func wrotePid(pidFile string) bool {
+	raw, err := os.ReadFile(pidFile)
+	return err == nil && strings.HasSuffix(string(raw), "\n")
+}
+
 // gone waits a moment for the process whose pid pidFile holds to be gone.
 func gone(t *testing.T, pidFile string) {
 	t.Helper()
@@ -536,10 +542,11 @@ func TestAnInterruptStopsEverything(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
+		// The shell creates each file before it writes the pid into it, so
+		// the interrupt waits for the pid itself: one sent between the two
+		// left gone an empty file to read.
 		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-			_, a := os.Stat(commandPid)
-			_, b := os.Stat(auditPid)
-			if a == nil && b == nil {
+			if wrotePid(commandPid) && wrotePid(auditPid) {
 				return
 			}
 		}

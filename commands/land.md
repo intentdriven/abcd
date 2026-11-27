@@ -296,8 +296,10 @@ before arming. It reads `facilitator.mode` from the default branch's committed
 `.abcd/config.json` (as just fetched) and `~/.abcd.noindex/config.json`, never
 from the branch being landed, so a branch cannot choose its own gate. The
 value is `human` (a person facilitates; every fresh install's default) or
-`auto` (abcd does), and `human` from either file wins. A value that is neither
-is refused with exit 2, naming the file, and nothing is armed.
+`auto` (abcd does). The repository's committed value decides; only where it
+commits none does your own global setting, and with neither it is `human`. A
+value that is neither is refused with exit 2, naming the file, and nothing is
+armed.
 
 The pull request's author is read from the forge, with their permission on
 the repository. Write, Maintain and Admin are write access; Read and Triage,
@@ -307,6 +309,22 @@ someone with write access, approves the head commit itself (an earlier commit's 
 for nothing) and is not the author's own, or when the technical facilitator
 recorded it with `--approve` (below). Then:
 
+- **A pull request that changes the committed mode line** is armed in no
+  mode, whatever approvals and receipts it has: one whose head sets, alters
+  or removes `facilitator.mode` in `.abcd/config.json`, or leaves it
+  unreadable, against any of its merge bases with the default branch, or
+  whose merge into the default branch would leave that branch's line
+  changed. Unless the ruleset mirror at the default branch names a merge
+  queue that merges or squashes, so is one with any commit that touches
+  `.abcd/config.json` at all, since abcd does not judge what a rebase
+  replays and the forge may rebase through a queue the mirror does not name.
+  A merge commit that takes one of its parents' file, as merging the default
+  branch does, does not count; one that makes a file of its own does. The
+  note says you merge it on the forge's page. One where that cannot be read,
+  a merge that conflicts in the file included, is not armed either, nor, on
+  a re-arm, which does not read the mirror, one with a commit that touches
+  the file, nor any on a git older than 2.38, which computes the merge: the
+  note names the version it needs.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.
@@ -323,10 +341,51 @@ recorded it with `--approve` (below). Then:
   then the note names the commit that has no recorded review pair. A delta
   review's receipt names the head only while its delta stands, and when it does
   not the note says why and that the head needs a full pair.
+- **Your own global `auto`** (the repository commits no mode) arms only a pull
+  request the forge account abcd runs as opened. Anyone else's is judged as
+  `human` judges it: it waits for an approval of its head, or for its author to
+  land it, and the note says whose it is. Where the forge cannot say which
+  account abcd runs as, nothing is armed without an approval. Where the
+  repository commits `auto`, a colleague's pull request is armed as above.
 
 abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the
 shell guard refuses an agent's own `gh pr merge` while the mode is `human`.
+
+In `auto` mode, a decision abcd takes alone (an author with write access and no
+person's approval counted) is kept for the spot-check on this checkout's local
+copy of its record, made from the decision as the gate gave it; a re-arm the
+release hold makes is kept the same way. A record that cannot be written leaves
+the decision standing, its reason saying the record was not written, and the gate
+asked again over the same head with the same answer keeps one record.
+
+## The spot-check at a landing
+
+When a re-run finds the branch landed, land observes the landing for the
+spot-check (itd-2610301750162657), and the `landed` step's note carries what it
+did. While the window (`spotcheck.window_days`, seven days by default) has not
+passed, it pushes only the records this checkout holds that the store branch
+`abcd-spotcheck` on origin lacks, and asks nothing when it holds none. Once the
+window has passed, it fetches the store branch and the one round of the drand
+public randomness beacon that the window's close fixes, checks the round's
+signature itself, draws up to `spotcheck.per_group` items from each group of
+the work decided with no person involved, and pushes the drawn items to the
+branch. The window's close is read from the default branch's history, so the
+draw is the same whoever makes it and whenever; until its round is published
+the note says the window is not yet drawable. Every cycle already on the
+branch is verified as it is read, and one that does not verify is named and
+its window drawn again. Only typed fields reach origin: a record's free text
+stays on the machine that wrote it. A draw that cannot be made (the beacon
+unreachable, its signature wrong or another round than the one asked, the
+forge unread, the push refused twice) writes nothing, says why, and leaves the
+landing as proved; the next landing observed tries again. A store branch on
+origin that no longer holds what this machine last verified there, deleted or
+rewritten, is refused in one line, and nothing is written over it; a copy this
+checkout has only not fetched since another checkout on the machine read the
+branch is fetched first, never refused. A draw reads only the records no
+earlier cycle listed, and takes at most 1,000 hand-backs and 1,000 decisions
+into one window, leaving the rest for the next, so no record is drawn from
+twice however long the branch grows.
 
 **What `human` holds against.** The gate assumes agents keep the rules: it
 stops an agent merging by mistake, not one set on getting round it. The

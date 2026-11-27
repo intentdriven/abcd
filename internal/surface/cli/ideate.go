@@ -24,6 +24,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -51,7 +52,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 		Use: "record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run]",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				return &exitError{Code: 2, Msg: "ideate record: <idea-slug> is required"}
+				return exitWith(2, argCountCode(len(args), 1), "ideate record: <idea-slug> is required")
 			}
 			return nil
 		},
@@ -69,12 +70,12 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			// carry evidence; there is no evidence-only verdict an idea could have,
 			// and inventing one would be the binary doing the judging.
 			if verdictJSON == "" {
-				return &exitError{Code: 2, Msg: "ideate record: --verdict-json <file|-> is required; " +
-					"the three legs are host work, and the binary records only what they produced"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "ideate record: --verdict-json <file|-> is required; "+
+					"the three legs are host work, and the binary records only what they produced")
 			}
 			raw, err := readIdeatePayload(cmd, verdictJSON)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
+				return refused(2, refusal.IdeateInvalidVerdict, "ideate record: "+scrubPaths(err))
 			}
 			// The clock is read HERE, at the front door, and passed in: the date lands
 			// in a durable filename and a durable log line, so the core takes it as an
@@ -84,13 +85,13 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 				// makes, made here, and the writes reported rather than made.
 				plan, err := ideate.PlanRecord(repoRoot, args[0], store, raw, time.Now())
 				if err != nil {
-					return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
+					return refused(2, refusal.IdeateInvalidVerdict, "ideate record: "+scrubPaths(err))
 				}
 				return renderDryRun(cmd.OutOrStdout(), *asJSON, "abcd ideate record", plan.Result, plan.Plan, nil)
 			}
 			res, err := ideate.Record(repoRoot, args[0], store, raw, time.Now())
 			if err != nil {
-				return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
+				return refused(2, refusal.IdeateInvalidVerdict, "ideate record: "+scrubPaths(err))
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprint(w, renderIdeateResult(res))
@@ -141,7 +142,7 @@ func ideateStoreRoot(cmd *cobra.Command) (string, error) {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, "the research store")
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "ideate record: " + err.Error() + " (nothing written)"}
+		return "", refused(2, refusal.IdeateOutsideCheckout, "ideate record: "+err.Error()+" (nothing written)")
 	}
 	for _, note := range strayStoreNotes(cwd, root, ideate.ResearchRelDir, "research store") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "ideate record: %s\n", termsafe.Sanitize(note))
@@ -160,8 +161,8 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 	var vis ideate.Visibility
 	switch {
 	case private && public:
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: --private and --public are exclusive; " +
-			"pass --public only on the person's word, and neither flag for a private verdict (nothing written)"}
+		return ideate.Store{}, refused(2, refusal.UsageFlagConflict, "ideate record: --private and --public are exclusive; "+
+			"pass --public only on the person's word, and neither flag for a private verdict (nothing written)")
 	case public:
 		vis = ideate.VisibilityPublic
 	default:
@@ -173,22 +174,22 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 	// that cannot say whether the checkout is shallow refuses too.
 	if err := gitutil.RequireFullHistory(repoRoot); err != nil {
 		if errors.Is(err, gitutil.ErrShallowCheckout) {
-			return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this checkout is shallow, and a verdict is filed under " +
-				"the repository's root commit, which a shallow clone does not hold; fetch the full history (git fetch --unshallow), " +
-				"then record (nothing written)"}
+			return ideate.Store{}, refused(2, refusal.IdeateShallowCheckout, "ideate record: this checkout is shallow, and a verdict is filed under "+
+				"the repository's root commit, which a shallow clone does not hold; fetch the full history (git fetch --unshallow), "+
+				"then record (nothing written)")
 		}
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: whether this checkout is shallow could not be read (" +
-			scrubPaths(err) + "), and a verdict is filed under the repository's root commit, which a shallow clone does not hold " +
-			"(nothing written)"}
+		return ideate.Store{}, refused(2, refusal.IdeateShallowCheckout, "ideate record: whether this checkout is shallow could not be read ("+
+			scrubPaths(err)+"), and a verdict is filed under the repository's root commit, which a shallow clone does not hold "+
+			"(nothing written)")
 	}
 	sha, err := gitutil.RootCommit(repoRoot)
 	if err != nil {
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this repository's root commit could not be read (" +
-			scrubPaths(err) + "), and a verdict is filed under it (nothing written)"}
+		return ideate.Store{}, refused(2, refusal.IdeateMissingRootCommit, "ideate record: this repository's root commit could not be read ("+
+			scrubPaths(err)+"), and a verdict is filed under it (nothing written)")
 	}
 	if sha == "" {
-		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this repository has no commit yet, " +
-			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)"}
+		return ideate.Store{}, refused(2, refusal.IdeateMissingRootCommit, "ideate record: this repository has no commit yet, "+
+			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)")
 	}
 	store := ideate.Store{Visibility: vis, RootSHA: sha}
 	// The corpus a `source:<key>` is resolved against is the person's default

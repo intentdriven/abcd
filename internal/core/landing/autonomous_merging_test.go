@@ -8,17 +8,17 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// The status line's merging element, read (itd-2610150602547271,
-// spc-2610161609350616 step 7). While the repository's facilitator.mode is
-// auto, AutonomousMerging says merging is autonomous; under human, or where the
-// mode cannot be read, it says nothing. The mode is read as the merge gate
-// reads it: the default branch's committed .abcd/config.json and the machine
-// layer, never the working tree's copy. How the row places the element, and
+// The board's merging element, read live (itd-2610150602547271,
+// spc-2610161609350616 step 7). LiveMerging answers auto or human as the merge
+// gate resolves facilitator.mode (the default branch's committed
+// .abcd/config.json and the machine layer, never the working tree's copy), and
+// not known where the mode cannot be read. How the row places the element, and
 // that its switch stops the read, is core/statusline's to prove, with a fake
-// reader (statusline.MergingMode); what is proved here is the reading.
+// reader; the status line's own reading, kept, is keptmode_test.go's.
 
 // mergingRepo is a checkout whose default branch, main, commits config as its
 // .abcd/config.json ("" commits none), with HOME sandboxed so the machine
@@ -48,18 +48,18 @@ func writeMachineConfig(t *testing.T, config string) {
 	}
 }
 
-func TestAutonomousMergingIsReadAsAutoFromTheDefaultBranch(t *testing.T) {
+func TestLiveMergingIsReadAsAutoFromTheDefaultBranch(t *testing.T) {
 	_, root := mergingRepo(t, autoConfig)
-	auto, note := AutonomousMerging(context.Background(), root)
-	if !auto {
-		t.Error("auto committed on the default branch did not read as autonomous merging")
+	m, note := LiveMerging(context.Background(), root)
+	if m.State != statusline.MergingAuto {
+		t.Errorf("auto committed on the default branch read as %q", m)
 	}
 	if note != "" {
 		t.Errorf("note = %q, want none", note)
 	}
 }
 
-func TestAutonomousMergingSaysNothingOtherwise(t *testing.T) {
+func TestLiveMergingIsHumanOrNotKnownOtherwise(t *testing.T) {
 	cases := map[string]func(t *testing.T) string{
 		"human committed": func(t *testing.T) string {
 			_, root := mergingRepo(t, humanConfig)
@@ -74,12 +74,17 @@ func TestAutonomousMergingSaysNothingOtherwise(t *testing.T) {
 			repo.Write(".abcd/config.json", autoConfig)
 			return root
 		},
-		"human in the machine layer": func(t *testing.T) string {
-			_, root := mergingRepo(t, autoConfig)
-			writeMachineConfig(t, humanConfig)
+		"human committed over auto in the machine layer": func(t *testing.T) string {
+			_, root := mergingRepo(t, humanConfig)
+			writeMachineConfig(t, autoConfig)
 			return root
 		},
-		"no default branch yet": func(t *testing.T) string {
+		"a default branch that cannot be told": func(t *testing.T) string {
+			repo, root := mergingRepo(t, autoConfig)
+			repo.Git("branch", "-m", "side")
+			return root
+		},
+		"no commit yet": func(t *testing.T) string {
 			t.Setenv("HOME", t.TempDir())
 			repo := gittest.NewRepo(t)
 			repo.Write(".abcd/config.json", autoConfig)
@@ -89,9 +94,13 @@ func TestAutonomousMergingSaysNothingOtherwise(t *testing.T) {
 	for name, setup := range cases {
 		t.Run(name, func(t *testing.T) {
 			root := setup(t)
-			auto, note := AutonomousMerging(context.Background(), root)
-			if auto {
-				t.Error("read as autonomous merging")
+			m, note := LiveMerging(context.Background(), root)
+			want := statusline.MergingHuman
+			if strings.Contains(name, "cannot be told") {
+				want = statusline.MergingUnknown
+			}
+			if m.State != want {
+				t.Errorf("read as %q, want %q", m.State, want)
 			}
 			if note != "" {
 				t.Errorf("note = %q, want none", note)
@@ -108,12 +117,12 @@ func TestAnUnreadableModeDropsTheMergingElementAndSaysSo(t *testing.T) {
 	for name, config := range cases {
 		t.Run(name, func(t *testing.T) {
 			_, root := mergingRepo(t, config)
-			auto, note := AutonomousMerging(context.Background(), root)
-			if auto {
-				t.Error("read as autonomous merging over a mode that does not read")
+			m, note := LiveMerging(context.Background(), root)
+			if m.State != statusline.MergingUnknown {
+				t.Errorf("a mode that does not read read as %q", m)
 			}
-			if !strings.Contains(note, "DROPPED the merging element") || !strings.Contains(note, "facilitator.mode") {
-				t.Fatalf("note = %q, want one dropping the merging element over facilitator.mode", note)
+			if !strings.Contains(note, "facilitator.mode was not read") || !strings.Contains(note, "facilitator.mode") {
+				t.Fatalf("note = %q, want one saying facilitator.mode was not read", note)
 			}
 			if strings.ContainsRune(note, 0x1b) {
 				t.Errorf("the note carries a raw escape byte: %q", note)
@@ -125,18 +134,18 @@ func TestAnUnreadableModeDropsTheMergingElementAndSaysSo(t *testing.T) {
 	}
 }
 
-// TestTheMergingElementDropsWhenGitRunsOut: the mode is read with git's
-// questions bounded by the row's own deadline; with that time spent the
-// element drops and says why.
-func TestTheMergingElementDropsWhenGitRunsOut(t *testing.T) {
+// TestTheMergingElementIsNotReadWhenGitRunsOut: the mode is read with git's
+// questions bounded by the board's own deadline; with that time spent the
+// mode is not read and the note says why.
+func TestTheMergingElementIsNotReadWhenGitRunsOut(t *testing.T) {
 	_, root := mergingRepo(t, autoConfig)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	auto, note := AutonomousMerging(ctx, root)
-	if auto {
-		t.Error("read as autonomous merging with git's time spent")
+	m, note := LiveMerging(ctx, root)
+	if m.State != statusline.MergingUnknown {
+		t.Errorf("with git's time spent the mode read as %q", m)
 	}
-	if !strings.Contains(note, "DROPPED the merging element") {
-		t.Errorf("note = %q, want the drop named", note)
+	if !strings.Contains(note, "facilitator.mode was not read") {
+		t.Errorf("note = %q, want the unread mode named", note)
 	}
 }

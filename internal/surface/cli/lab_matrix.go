@@ -2,11 +2,13 @@ package cli
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core"
@@ -25,6 +27,22 @@ const maxDeclarationFile = 256 << 10
 type labMatrixView struct {
 	matrix.Plan
 	ApproveWith string `json:"approve_with"`
+}
+
+// notSandboxed is what the person is told before they say yes to a plan
+// (dcn-2611251934117439): a copy's runner and its code are bounded in their
+// environment, working folder and lifetime, and in nothing else.
+const notSandboxed = "the runners and each copy's code, its hidden tests included, run as this account on this machine " +
+	"and are not sandboxed: only their environment, their working folder and how long they run are bounded"
+
+// MarshalJSON is the view with what the person is told of the sandbox, as
+// not_sandboxed, so every plan shown carries it.
+func (v labMatrixView) MarshalJSON() ([]byte, error) {
+	type plain labMatrixView
+	return json.Marshal(struct {
+		plain
+		NotSandboxed string `json:"not_sandboxed"`
+	}{plain(v), notSandboxed})
 }
 
 // labMatrixStarted is a consented run: its record is written and every pilot
@@ -61,7 +79,7 @@ func startedView(rec matrix.RunRecord, plan matrix.Plan, l *matrix.Launcher, wha
 		counts[h.State]++
 	}
 	out.Note = fmt.Sprintf("%s is written in the lab and its %d pilot copies are handed off, each in its own clone: %d for the host to make and hand back "+
-		"with `abcd lab matrix copy`, %d awaiting a runner abcd does not launch yet, %d refused by the secret scan",
+		"with `abcd lab matrix copy`, %d awaiting their runner, which `abcd lab matrix launch` starts, %d refused by the secret scan",
 		what, len(l.Handed), counts[matrix.HandOffWaiting], counts[matrix.HandOffAwaitingRunner], counts[matrix.HandOffRefused])
 	return out
 }
@@ -95,8 +113,9 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			"frozen commit made under a random alias in the clone store outside every\n" +
 			"checkout; a clone bound for a provider passes the launch bundle's secret scan\n" +
 			"first, and a hit refuses the cell. A host cell's copy is the host's to make in\n" +
-			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,\n" +
-			"since abcd does not launch a runner in a clone yet and nothing stands in for it.\n\n" +
+			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits\n" +
+			"for `abcd lab matrix launch`, which starts the cell's runner in its clone, and\n" +
+			"nothing stands in for the runner.\n\n" +
 			"Refused, exit 2, with nothing written: a declaration that does not parse, a\n" +
 			"cell route the runner rung or this machine's runner configuration refuses, a\n" +
 			"cell on a runner that names no model, a model its provider does not list, an\n" +
@@ -144,7 +163,7 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&approve, "approve", "", "the digest of the plan the person saw and said yes to; records the run")
 	cmd.AddCommand(newLabMatrixReportCommand(asJSON), newLabMatrixRerunCommand(asJSON), newLabMatrixCopyCommand(asJSON),
-		newLabMatrixReviewCommand(asJSON), newLabMatrixJudgeCommand(asJSON))
+		newLabMatrixReviewCommand(asJSON), newLabMatrixJudgeCommand(asJSON), newLabMatrixLaunchCommand(asJSON))
 	return cmd
 }
 
@@ -161,6 +180,16 @@ func matrixFailure(err error) error {
 		return &exitError{Code: 2, Msg: msg}
 	}
 	return &exitError{Code: 2, Msg: msg + "; nothing was written"}
+}
+
+// matrixHeld is a launch refused because another launch of its run holds it:
+// exit 3, the message masked and with no home path, nothing launched. It is
+// the peer-held refusal, which stays uncoded with this package's other holds
+// until the record verbs' step names it once for all of them
+// (dcn-2611222121290312), so it is built here, beside matrixFailure, in a file
+// the migration has yet to reach.
+func matrixHeld(verb string, err error) error {
+	return &exitError{Code: 3, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was launched"}
 }
 
 // onOff names a switch.
@@ -223,8 +252,23 @@ func renderMatrixPlan(w io.Writer, v labMatrixView) {
 		fmt.Fprintf(w, "  time:        %s\n", v.Time.Note)
 	}
 	for _, j := range v.Judges {
-		fmt.Fprintf(w, "  judges:      %s (%s): %d, %s\n", termsafe.Sanitize(j.Task), j.Kind, j.Count, j.Who)
+		fmt.Fprintf(w, "  judges:      %s (%s): %d, %s\n", termsafe.Sanitize(j.Task), j.Kind, j.Count, termsafe.SanitizeLine(j.Who))
+		if j.Note != "" {
+			fmt.Fprintf(w, "               %s\n", termsafe.SanitizeLine(j.Note))
+		}
 	}
+	// The digest covers each code task's hidden tests, so the person reads
+	// them, every word of the command, before the line that consents to them.
+	for _, h := range v.HiddenTests {
+		words := make([]string, len(h.Command))
+		for i, word := range h.Command {
+			words[i] = termsafe.SanitizeLine(strconv.QuoteToASCII(word))
+		}
+		fmt.Fprintf(w, "  hidden tests: %s, from %s\n", termsafe.Sanitize(h.Task), termsafe.SanitizeLine(strconv.QuoteToASCII(h.Folder)))
+		fmt.Fprintf(w, "    command:   %s\n", strings.Join(words, " "))
+		fmt.Fprintf(w, "    consent:   %s\n", termsafe.SanitizeLine(h.Consent))
+	}
+	fmt.Fprintf(w, "  sandbox:     none: %s\n", notSandboxed)
 	fmt.Fprintf(w, "  digest:      %s\n", v.Digest)
 	fmt.Fprintf(w, "  to start it: %s\n", strings.TrimSpace(termsafe.Sanitize(v.ApproveWith)))
 }
