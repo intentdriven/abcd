@@ -137,11 +137,13 @@ func hideRootDrawing(svg string) string {
 }
 
 // rootAriaHidden reports the value of the aria-hidden a root start tag
-// declares, if it declares one; a namespaced attribute of that local name is
-// another attribute in the emitted page, so it is not this one.
+// declares, if it declares one. The name is matched with an ASCII case fold, as
+// a browser lowercases an attribute name, so aria-HIDDEN is this attribute; a
+// namespaced attribute of that local name is another attribute in the emitted
+// page, so it is not.
 func rootAriaHidden(root xml.StartElement) (string, bool) {
 	for _, a := range root.Attr {
-		if a.Name.Space == "" && a.Name.Local == "aria-hidden" {
+		if a.Name.Space == "" && asciiLower(a.Name.Local) == "aria-hidden" {
 			return a.Value, true
 		}
 	}
@@ -334,6 +336,10 @@ func checkInlinableSVG(svg, rel string) error {
 			if !svgElements[name] {
 				return bad("uses <%s>, which is not one of the drawing elements", name)
 			}
+			if a, ok := repeatedAttr(t); ok {
+				return bad("sets %s twice on <%s>; a browser keeps the first and drops the rest, so the drawing would say one thing to this check and another to the page",
+					clip(attrSpelling(a)), name)
+			}
 			for _, a := range t.Attr {
 				if err := checkSVGAttr(a, name, bad); err != nil {
 					return err
@@ -346,11 +352,41 @@ func checkInlinableSVG(svg, rel string) error {
 			if !sawRoot {
 				sawRoot = true
 				if v, declared := rootAriaHidden(t); declared && v != "true" {
-					return bad("declares aria-hidden=%q on its root; the page names the picture from its alt and hides the drawing, so drop the attribute or write aria-hidden=\"true\"", v)
+					return bad("declares aria-hidden=%q on its root; the page names the picture from its alt and hides the drawing, so drop the attribute or write aria-hidden=\"true\"", clip(v))
 				}
 			}
 		}
 	}
+}
+
+// repeatedAttr returns the first attribute of a start element whose name an
+// earlier one already took. The XML decoder admits a repeat; the page's reader
+// refuses one, and a browser keeps the first and drops the rest. Names are
+// compared as a browser compares them, with an ASCII case fold, within their
+// namespace.
+func repeatedAttr(se xml.StartElement) (xml.Attr, bool) {
+	seen := make(map[xml.Name]bool, len(se.Attr))
+	for _, a := range se.Attr {
+		key := xml.Name{Space: a.Name.Space, Local: asciiLower(a.Name.Local)}
+		if seen[key] {
+			return a, true
+		}
+		seen[key] = true
+	}
+	return xml.Attr{}, false
+}
+
+// attrSpelling is an attribute's name as a reader would write it: the decoder
+// resolves a prefix to its namespace, so the two prefixes a drawing declares
+// are put back.
+func attrSpelling(a xml.Attr) string {
+	switch {
+	case a.Name.Space == "xmlns":
+		return "xmlns:" + a.Name.Local
+	case strings.Contains(a.Name.Space, "xlink"):
+		return "xlink:" + a.Name.Local
+	}
+	return a.Name.Local
 }
 
 // checkSVGAttr holds one attribute to the allowlist rules.
