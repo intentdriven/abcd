@@ -251,6 +251,9 @@ func TestARecordThatDoesNotReadTakesNoPlaceInAWindow(t *testing.T) {
 	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, "3 record file(s)") {
 		t.Fatalf("the draw over records that do not read said %q", note)
 	}
+	if strings.Contains(note, "places") {
+		t.Fatalf("a window whose places were filled says some were left open: %q", note)
+	}
 	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
 		t.Fatalf("the window took %v; want the records that read, %v", got, want)
 	}
@@ -343,5 +346,33 @@ func TestAGroupThatListsNoRecordWithinItsReadBoundIsNotDrawn(t *testing.T) {
 	}
 	if c.originTip() != tip {
 		t.Fatal("a refused draw moved origin's branch")
+	}
+}
+
+// TestANoteSaysHowManyPlacesAGroupLeftOpen: a group whose read bound is spent
+// on files that do not read, before its window's places are filled, is drawn
+// from the records that read, and the note says how many places it drew from
+// of how many its window has, beside the count of files that did not read.
+func TestANoteSaysHowManyPlacesAGroupLeftOpen(t *testing.T) {
+	savedKeys, savedFiles := maxListedKeys, maxReadFiles
+	maxListedKeys, maxReadFiles = 3, 4
+	t.Cleanup(func() { maxListedKeys, maxReadFiles = savedKeys, savedFiles })
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	c.plantUnread(w0.Add(time.Minute), "iss-60")
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.plantUnread(w0.Add(2*time.Hour), "iss-80", "iss-81", "iss-82")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, GroupDrainHandBacks+" drew from 1 of 3 places") || !strings.Contains(note, "1 record file(s)") {
+		t.Fatalf("the draw over a group that left places open said %q", note)
+	}
+	if strings.Contains(note, GroupFacilitatorDecisions) {
+		t.Fatalf("the note names a group whose read bound held: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want the record that read, %v", got, want)
 	}
 }

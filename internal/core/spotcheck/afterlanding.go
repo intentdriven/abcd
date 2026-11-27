@@ -231,7 +231,7 @@ func draw(ctx context.Context, o Observed, tip string) string {
 			}
 			beacon = &b
 		}
-		c, items, unread, err := makeCycle(ctx, o, cfg, why != "", st, cl, *beacon, pending)
+		c, items, read, err := makeCycle(ctx, o, cfg, why != "", st, cl, *beacon, pending)
 		if err != nil {
 			return "spot-check: " + err.Error() + "; nothing was drawn"
 		}
@@ -252,7 +252,7 @@ func draw(ctx context.Context, o Observed, tip string) string {
 		for _, g := range c.Groups {
 			drawn += len(g.Drawn)
 		}
-		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + unreadNote(unread) + defaultsNote(why) + setAside(st) + note
+		return fmt.Sprintf("spot-check: drew cycle %s (round %d of the beacon): %d item(s) for review", c.ID, beacon.Round, drawn) + read.note() + defaultsNote(why) + setAside(st) + note
 	}
 	return "spot-check: the push to " + Branch + " was refused twice (" + redact(last) + "); nothing was drawn, and the next landing tries again"
 }
@@ -290,21 +290,21 @@ func setAside(st windowState) string {
 // before it, and an item file per drawn key; defaults says the bundled
 // defaults counted the window (windowConfig). pending are the typed records
 // this checkout carries in the same commit, read as origin's own.
-func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st windowState, cl closing, b Beacon, pending []file) (Cycle, []file, int, error) {
+func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st windowState, cl closing, b Beacon, pending []file) (Cycle, []file, recordsRead, error) {
 	reader := registeredReader()
 	if reader == nil {
-		return Cycle{}, nil, 0, errNoReader
+		return Cycle{}, nil, recordsRead{}, errNoReader
 	}
 	var rows []LandingRow
 	if st.from != cl.commit {
 		var err error
 		if rows, err = reader(ctx, o.Root, st.from, cl.commit); err != nil {
-			return Cycle{}, nil, 0, fmt.Errorf("the window's landings cannot be read: %s", redact(err))
+			return Cycle{}, nil, recordsRead{}, fmt.Errorf("the window's landings cannot be read: %s", redact(err))
 		}
 	}
 	for _, r := range rows {
 		if !slices.Contains(cl.commits, r.Commit) {
-			return Cycle{}, nil, 0, fmt.Errorf("the landings reader named %s, which is not a commit of the window", termsafe.Sanitize(r.Commit))
+			return Cycle{}, nil, recordsRead{}, fmt.Errorf("the landings reader named %s, which is not a commit of the window", termsafe.Sanitize(r.Commit))
 		}
 	}
 	seen := map[string]map[string]bool{}
@@ -318,22 +318,22 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st wi
 			}
 		}
 	}
-	hbs, ds, unread, err := windowRecords(ctx, o.Root, st.files, pending, seen)
+	hbs, ds, read, err := windowRecords(ctx, o.Root, st.files, pending, seen)
 	if err != nil {
-		return Cycle{}, nil, 0, err
+		return Cycle{}, nil, recordsRead{}, err
 	}
 	groups, err := populations(rows, hbs, ds, seen)
 	if err != nil {
-		return Cycle{}, nil, 0, err
+		return Cycle{}, nil, recordsRead{}, err
 	}
 	tallies, err := tallyCycles(ctx, o.Root, st)
 	if err != nil {
-		return Cycle{}, nil, 0, err
+		return Cycle{}, nil, recordsRead{}, err
 	}
 	size, why, counted := sampleSize(cfg.PerGroup, tallies)
 	randomness, err := hex.DecodeString(b.Randomness)
 	if err != nil || len(randomness) != 32 {
-		return Cycle{}, nil, 0, errors.New("the beacon's randomness does not read")
+		return Cycle{}, nil, recordsRead{}, errors.New("the beacon's randomness does not read")
 	}
 	c := Cycle{SchemaVersion: SchemaVersion, ID: cycleID(cl.at, cl.commit), FromCommit: st.from, ToCommit: cl.commit,
 		FromTime: st.fromTime, ToTime: cl.at, ClosedBy: cl.by, Window: CycleWindow{Days: cfg.WindowDays, Changes: cfg.WindowChanges, Commits: len(cl.commits), Defaults: defaults},
@@ -357,12 +357,12 @@ func makeCycle(ctx context.Context, o Observed, cfg Config, defaults bool, st wi
 				Landing: cd.landing, HandBack: cd.handBack, Decision: cd.decision}
 			f, err := encodeFile(ItemsDir+"/"+c.ID, itemStem(n, g, k)+".json", it)
 			if err != nil {
-				return Cycle{}, nil, 0, fmt.Errorf("item %s of the cycle cannot be kept: %w", strconv.Itoa(n), err)
+				return Cycle{}, nil, recordsRead{}, fmt.Errorf("item %s of the cycle cannot be kept: %w", strconv.Itoa(n), err)
 			}
 			items = append(items, f)
 		}
 	}
-	return c, items, unread, nil
+	return c, items, read, nil
 }
 
 // maxFilesPerKey bounds the files of one record key a draw reads: records of
@@ -378,13 +378,15 @@ const maxFilesPerKey = 4
 // greatest names, until maxListedKeys of them read as records or half of
 // maxReadFiles files are read; a key none of whose files reads takes no
 // place, and a key beyond either bound waits for a later window, as a record
-// that reaches origin late does. unread counts the files that did not read
-// as records; a group whose read bound is spent before any of its records
-// read, with some file unread, refuses the draw, naming the count. So every record population is listed
+// that reaches origin late does. The tally counts the files that did not
+// read as records and names each group whose read bound was spent before its
+// places were filled, with the places it filled of those its window has; a
+// group whose read bound is spent before any of its records read, with some
+// file unread, refuses the draw, naming the count. So every record population is listed
 // whole, and the next draw knows each record already drawn from by its key.
 // A file whose name is not a record's is never read, and one whose content
 // does not read as its name gives is no record.
-func windowRecords(ctx context.Context, root string, files map[string]entry, pending []file, seen map[string]map[string]bool) ([]namedHandBack, []namedDecision, int, error) {
+func windowRecords(ctx context.Context, root string, files map[string]entry, pending []file, seen map[string]map[string]bool) ([]namedHandBack, []namedDecision, recordsRead, error) {
 	type src struct {
 		dir, name string
 		// data is the pending copy's content, nil for origin's file.
@@ -423,7 +425,7 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 	}
 	var hbs []namedHandBack
 	var ds []namedDecision
-	unread := 0
+	var tally recordsRead
 	for _, g := range []string{GroupDrainHandBacks, GroupFacilitatorDecisions} {
 		keys := make([]string, 0, len(byKey[g]))
 		for k := range byKey[g] {
@@ -467,7 +469,7 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 			}
 			blobs, err := readMany(ctx, root, files, paths)
 			if err != nil {
-				return nil, nil, 0, err
+				return nil, nil, recordsRead{}, err
 			}
 			for _, kf := range batch {
 				read := false
@@ -495,23 +497,47 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 				}
 			}
 		}
-		unread += missed
+		tally.unread += missed
 		if spent && listed == 0 && missed > 0 {
 			// The group's whole read bound went on files that are not
 			// records: the window is not drawn with that group empty while
 			// records may read beyond them. A group that listed some is
 			// drawn from those, and the note counts the rest.
-			return nil, nil, unread, fmt.Errorf("the spot-check's %s listed none of its records within its read of %d files, and %d record file(s) on origin did not read as records", g, budget, missed)
+			return nil, nil, tally, fmt.Errorf("the spot-check's %s listed none of its records within its read of %d files, and %d record file(s) on origin did not read as records", g, budget, missed)
+		}
+		if spent {
+			tally.open = append(tally.open, openPlaces{group: g, listed: listed, places: min(maxListedKeys, len(keys)), budget: budget})
 		}
 	}
-	return hbs, ds, unread, nil
+	return hbs, ds, tally, nil
 }
 
-// unreadNote is the note's tail counting the record files on origin that
+// recordsRead is what a window's read of its record groups leaves for the
+// note: the files that did not read as records, and each group whose read
+// bound ran out before its window's places were filled.
+type recordsRead struct {
+	unread int
+	open   []openPlaces
+}
+
+// openPlaces is a group drawn from listed of the places its window has
+// (places, the keys it held up to maxListedKeys), the rest left open when
+// its read of budget files ran out.
+type openPlaces struct {
+	group                  string
+	listed, places, budget int
+}
+
+// note is the note's tail: for each group that left places open, how many
+// it drew from of how many, and the count of record files on origin that
 // did not read as records and so took no place in the window, "" for none.
-func unreadNote(n int) string {
-	if n == 0 {
-		return ""
+func (r recordsRead) note() string {
+	var b strings.Builder
+	for _, o := range r.open {
+		fmt.Fprintf(&b, "; %s drew from %d of %d places, the rest left open when its read of %d files ran out", o.group, o.listed, o.places, o.budget)
 	}
-	return fmt.Sprintf("; %d record file(s) on origin did not read as records and took no place in the window", n)
+	if r.unread > 0 {
+		fmt.Fprintf(&b, "; %d record file(s) on origin did not read as records and took no place in the window", r.unread)
+	}
+	return b.String()
 }
