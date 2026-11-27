@@ -650,7 +650,7 @@ type identityMatchers struct {
 	name         *regexp.Regexp // every scope's user.name that is not a public handle
 	github       *regexp.Regexp
 	localBare    *regexp.Regexp
-	localEncoded string // path-encoded username (dots->hyphens); boundary checked in Go
+	localEncoded []string // path-encoded username (dots->hyphens) in both normal forms; boundary checked in Go
 	// localGeneric says the account name identifies no person — a role or
 	// image default ("dev", "runner", "root") or a one- or two-rune name — so
 	// the bare word is ordinary vocabulary and only an occurrence where an
@@ -719,17 +719,18 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
 		//
-		// Both Unicode normal forms are matched: a non-ASCII login typed
-		// composed reaches a transcript decomposed as often as not. A name that
-		// is not valid UTF-8 is matched in the forms a store receives it in
-		// (foldedAlternation), and with none left there is no matcher.
+		// Both Unicode normal forms are matched, the bare login and its
+		// path-encoded form alike: a non-ASCII login typed composed reaches a
+		// transcript decomposed as often as not. A name that is not valid UTF-8
+		// has no matcher, and the scanner refuses every store write while it is
+		// set (identityNotUTF8).
 		m.localBare = foldedAlternation([]string{id.HomeUser})
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
 		}
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
-			m.localEncoded = enc
+			m.localEncoded = normalForms(enc)
 		}
 	}
 	return m
@@ -1070,8 +1071,8 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			emit(loc)
 		}
-		if m.localEncoded != "" {
-			for _, loc := range encodedMatches(line, m.localEncoded) {
+		for _, enc := range m.localEncoded {
+			for _, loc := range encodedMatches(line, enc) {
 				emit(loc)
 			}
 		}
