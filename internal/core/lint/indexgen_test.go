@@ -439,3 +439,36 @@ func TestGeneratedIndexRegionAdviceFitsTheCase(t *testing.T) {
 		})
 	}
 }
+
+// TestRegeneratedIndexKeepsCRLF holds the generator to the document's own line
+// endings (iss-2610150749065106). It read a CRLF register normalised to LF and
+// wrote the whole file back as LF, so a regeneration rewrote every line outside
+// the markers too, and the lint step normalises as well, so the churn was
+// silent. A current CRLF region must regenerate to the committed bytes exactly,
+// and a stale one must change only the region, its new lines ending as the
+// document's do.
+func TestRegeneratedIndexKeepsCRLF(t *testing.T) {
+	crlf := func(s string) string { return strings.ReplaceAll(s, "\n", "\r\n") }
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join("commands", "ahoy.md"), "# ahoy\n")
+	writeFile(t, root, filepath.Join("commands", "build.md"), "# build\n")
+
+	current := crlf(genDoc("commands", "`ahoy`, `build`.\n"))
+	writeFile(t, root, "surfaces.md", current)
+	rw, err := RegenerateIndexes(root, indexCfg(namesGenSpec()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rw) != 1 || rw[0].Want != current {
+		t.Fatalf("a current CRLF region must regenerate to the committed bytes; got %q, want %q", rw[0].Want, current)
+	}
+
+	writeFile(t, root, "surfaces.md", crlf(genDoc("commands", "`ahoy`.\n")))
+	rw, err = RegenerateIndexes(root, indexCfg(namesGenSpec()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rw) != 1 || rw[0].Want != current {
+		t.Fatalf("a stale CRLF region must regenerate with CRLF endings and the prose untouched; got %q, want %q", rw[0].Want, current)
+	}
+}

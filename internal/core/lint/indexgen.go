@@ -74,8 +74,7 @@ func RegenerateIndexes(repoRoot string, cfg Config) ([]IndexRewrite, error) {
 			if err != nil {
 				return nil, fmt.Errorf("index %s: reading %s: %w", spec.ID, spec.Doc, err)
 			}
-			text := strings.ReplaceAll(string(data), "\r\n", "\n")
-			rw = &IndexRewrite{Doc: spec.Doc, Committed: string(data), Want: text}
+			rw = &IndexRewrite{Doc: spec.Doc, Committed: string(data), Want: string(data)}
 			docs[spec.Doc] = rw
 			order = append(order, spec.Doc)
 		}
@@ -83,13 +82,29 @@ func RegenerateIndexes(repoRoot string, cfg Config) ([]IndexRewrite, error) {
 		if err != nil {
 			return nil, fmt.Errorf("index %s in %s: %w", spec.ID, spec.Doc, err)
 		}
+		// The region is located on the lines with their carriage returns
+		// trimmed, as the drift check reads them, but spliced into the
+		// document's own lines, so every byte outside the region keeps its
+		// ending and the region's new lines take the opening marker's
+		// (iss-2610150749065106). Trimming one trailing CR per line keeps
+		// the indices of the two slices aligned.
 		lines := strings.Split(rw.Want, "\n")
-		open, end, err := generatedRegion(lines, spec.ID)
+		bare := make([]string, len(lines))
+		for k, l := range lines {
+			bare[k] = strings.TrimSuffix(l, "\r")
+		}
+		open, end, err := generatedRegion(bare, spec.ID)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", spec.Doc, err)
 		}
+		cr := ""
+		if strings.HasSuffix(lines[open], "\r") {
+			cr = "\r"
+		}
 		out := append([]string{}, lines[:open+1]...)
-		out = append(out, body...)
+		for _, b := range body {
+			out = append(out, b+cr)
+		}
 		out = append(out, lines[end:]...)
 		rw.Want = strings.Join(out, "\n")
 	}
