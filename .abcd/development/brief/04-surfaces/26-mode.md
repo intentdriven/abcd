@@ -111,8 +111,10 @@ one of the session's wakes, as every stop the check reads, present or away,
 has kept them, or opens as one of the host's own prompts does (a background
 task's report, another session's message, a usage-limit resumption, a
 continued session's summary); in a session holding more wakes than its state
-keeps, or a wake whose prompt is a slash command, which reaches the prompt hook
-expanded (dcn-2611262236204687), no prompt is. A stop the check allows before
+keeps, or a wake whose prompt the host turns into other text when it fires (a
+slash command, expanded, or a loop's sentinel opening `<<`, resolved to the
+loop's instructions; dcn-2611262236204687), no prompt is, until a stop lists
+the session's wakes without one. A stop the check allows before
 reading its wakes keeps none, so a wake made in that turn reads as the
 person's once, at its first firing. The window is read only under the record it was opened under, so a
 prompt typed under one record opens nothing under the next. Every other

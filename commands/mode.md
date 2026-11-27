@@ -165,8 +165,11 @@ state it cannot read, a payload it cannot read, or a turn the host ends on an
 error) keeps nothing, so a wake made in that turn reads as the person's at its
 first firing and opens one window, whose own turn's end then keeps it. A
 session holding more wakes than its state keeps (32), or a wake whose prompt
-is a slash command, which reaches the prompt hook expanded rather than as it
-was set, has no prompt open its window. A prompt typed under
+the host turns into other text when it fires (a slash command, expanded, or a
+loop's sentinel such as `<<autonomous-loop>>`, resolved to the loop's
+instructions), has no prompt open its window; a stop listing an empty set of
+wakes clears that, and one whose payload carries no wakes leaves it. A prompt
+typed under
 one away record opens nothing under the next. Every other session stays away,
 and once the 15 minutes pass the checks hold again in that session at its next
 turn's end: answer the person, then carry on with the owed work. Anything
