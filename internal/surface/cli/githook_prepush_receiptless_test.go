@@ -49,21 +49,24 @@ func receiptlessRows(t *testing.T, hook string) [][]string {
 }
 
 // TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck: every
-// row names a prefix ending in a slash, a shape check the hook defines, a
-// ruling record that exists, and the act that ends a ref there, or "never" for
-// a branch kept for ever; the rows are the reservation prefix and the status
-// prefix (adr-2610150729333337), both checked by the reservation's shape.
+// row names a prefix ending in a slash, or one branch exactly, a shape check
+// the hook defines, a ruling record that exists, and the act that ends a ref
+// there, or "never" for a branch kept for ever; the rows are the reservation
+// prefix and the status prefix (adr-2610150729333337), both checked by the
+// reservation's shape, and the spot-check's store branch
+// (adr-2611251806496719), checked by its own.
 func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testing.T) {
 	root, hook := committedHook(t)
 	rows := receiptlessRows(t, hook)
-	if len(rows) != 2 || len(rows[0]) != 4 || rows[0][0] != "abcd-reserved/" ||
-		len(rows[1]) != 4 || strings.Join(rows[1], "|") != "abcd-status/|reservation_shape|adr-2610150729333337|never" {
-		t.Fatalf("the receipt-less table is %q; want the reservation row, then the status row, each in four fields", rows)
+	if len(rows) != 3 || len(rows[0]) != 4 || rows[0][0] != "abcd-reserved/" ||
+		len(rows[1]) != 4 || strings.Join(rows[1], "|") != "abcd-status/|reservation_shape|adr-2610150729333337|never" ||
+		len(rows[2]) != 4 || strings.Join(rows[2], "|") != "abcd-spotcheck|spotcheck_shape|adr-2611251806496719|never" {
+		t.Fatalf("the receipt-less table is %q; want the reservation row, the status row, then the spot-check row, each in four fields", rows)
 	}
 	for _, row := range rows {
 		prefix, shape, ruling := row[0], row[1], row[2]
-		if !strings.HasSuffix(prefix, "/") || strings.ContainsAny(prefix, "*?[ ") {
-			t.Errorf("prefix %q is not a plain branch prefix ending in a slash", prefix)
+		if strings.ContainsAny(prefix, "*?[ ") || (!strings.HasSuffix(prefix, "/") && prefix != "abcd-spotcheck") {
+			t.Errorf("prefix %q is not a plain branch prefix ending in a slash, nor the one branch the store is", prefix)
 		}
 		if shape == "" || !regexp.MustCompile(`(?m)^`+regexp.QuoteMeta(shape)+`\(\) \{`).MatchString(hook) {
 			t.Errorf("prefix %q names the shape check %q, which the hook does not define", prefix, shape)
