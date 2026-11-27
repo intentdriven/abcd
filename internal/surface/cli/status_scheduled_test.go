@@ -3,15 +3,18 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
@@ -492,12 +495,34 @@ func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
 	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
 		t.Fatalf("the hook's stderr:\n%s\nwant it to say the refresh was not started", stderr)
 	}
+	// The error names the store's folder by its full path, so the redaction is tested.
+	if !strings.Contains(stderr, "~/.abcd.noindex/scheduled-runs") {
+		t.Fatalf("the hook's stderr:\n%s\nwant the full, home-redacted reason", stderr)
+	}
 	if strings.Contains(stderr, w.home) {
 		t.Fatalf("the hook's stderr names the home unredacted:\n%s", stderr)
 	}
-	if !strings.Contains(out, refreshUnstampedLine) {
+	line := statusLineWith(out, refreshUnstampedLine)
+	if line == "" {
 		t.Fatalf("the hook's text:\n%s\nwant its STATUS block to carry %q", out, refreshUnstampedLine)
 	}
+	if strings.Contains(line, w.home) {
+		t.Fatalf("the block's line names the home unredacted: %q", line)
+	}
+	// The block says the class in fixed words, never the OS's or fsutil's own.
+	if !strings.Contains(line, "something that is not a folder stands in the store's path") || strings.Contains(line, "fsutil") || strings.Contains(line, "scheduled-runs") {
+		t.Fatalf("the block's line %q: want the class in fixed words and no OS error", line)
+	}
+}
+
+// statusLineWith is the line of out that carries want, "" when none does.
+func statusLineWith(out, want string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, want) {
+			return l
+		}
+	}
+	return ""
 }
 
 // TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent: a green kept and gone past due,
@@ -536,11 +561,11 @@ func TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent(t *testing.T) {
 	if !strings.Contains(out, claim.NotesHeading) || !strings.Contains(out, refreshUnstampedLine) {
 		t.Fatalf("the prompt:\n%s\nwant a STATUS block carrying %q", out, refreshUnstampedLine)
 	}
-	if strings.Contains(out, home) {
-		t.Fatalf("the prompt names the home unredacted:\n%s", out)
-	}
 	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
 		t.Fatalf("the hook's stderr:\n%s\nwant the operator's line too", stderr)
+	}
+	if line := statusLineWith(out, refreshUnstampedLine); !strings.Contains(line, "the store could not be written") || strings.Contains(line, ".attempt") {
+		t.Fatalf("the block's line %q: want the fallback class in fixed words and no OS error", line)
 	}
 }
 
@@ -674,5 +699,32 @@ func TestThePromptDoesNotWalkHistoryAgainForTheStore(t *testing.T) {
 	stamps, err := filepath.Glob(abcdhome.Path(w.home, "scheduled-runs", handed, "*.attempt"))
 	if err != nil || len(stamps) != 1 {
 		t.Fatalf("the stamp is not under the root commit the prompt looked up: %v, %v", stamps, err)
+	}
+}
+
+// TestAnUnkeptStampIsSaidInFixedWords: the block's reason is chosen by the error's
+// class and never carries the error's text, a refusal fsutil wrote for a person
+// included.
+func TestAnUnkeptStampIsSaidInFixedWords(t *testing.T) {
+	inPath := func(err error) error { return &os.PathError{Op: "open", Path: "/home/pat/.abcd.noindex/x", Err: err} }
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{&fsutil.HomeScopeLinkError{Link: "~/.abcd.noindex/scheduled-runs"}, "a link in the store's path is refused"},
+		{&fsutil.HomeScopeExposedError{Dir: "~/.abcd.noindex/scheduled-runs", Perm: 0o777}, "a folder of the store is open to another account"},
+		{inPath(syscall.ENOSPC), "the disk is full"},
+		{inPath(fsutil.ErrNotRealDir), "something that is not a folder stands in the store's path"},
+		{inPath(syscall.EACCES), "the store cannot be written by this account"},
+		{inPath(syscall.EROFS), "the store cannot be written by this account"},
+		{errors.New("run chmod 700 on it"), "the store could not be written"},
+	} {
+		got := unstampedWords(c.err)
+		if got != c.want {
+			t.Errorf("unstampedWords(%v) = %q; want %q", c.err, got, c.want)
+		}
+		if strings.Contains(got, "/home/pat") || strings.Contains(got, "chmod") {
+			t.Errorf("unstampedWords(%v) = %q carries the error's text", c.err, got)
+		}
 	}
 }

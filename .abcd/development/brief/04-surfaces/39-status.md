@@ -96,7 +96,7 @@ missing, names another workflow or does not read back. An answer that only aged 
 an idle night says nothing, since saying so each morning would teach people to skip the
 line: the first prompt starts the refresh and the next carries what it found. The age is
 of the last successful ask and not of the run, so a nightly's start slipping by hours moves
-nothing. Each stale answer has one line per session. The age is of the asking, so a fresh answer that the last verdict failed a
+nothing. Each stale answer has one line per session. A due refresh whose stamp cannot be kept, from a full disk, a changed mode, or a link or a folder another account can write in the store's path, starts nothing and adds one line to the block, where a green would otherwise say nothing for up to two days: the background refresh could not be started and its stamp could not be kept, with the reason in fixed words chosen by its class and never the error's own text, which goes to stderr, home-redacted, for the operator. No stamp starts the cooldown, so that line repeats on every due prompt while the store stays unwritable (iss-2611051719396028). The age is of the asking, so a fresh answer that the last verdict failed a
 week ago is still named, with its age. A failure to ask (no `gh`, no login, an origin on
 another forge, no answer inside the five seconds) is said by the verb in one line,
 changes no exit, and leaves what was kept as it was.
@@ -212,7 +212,7 @@ needs the local tier that keeps what was shown, so a checkout without one, a bar
 announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the
-command that lists them all (C18). Each line is shown once, kept by commit or by what it says, and the
+command that lists them all (C18). Each line is shown once, kept by commit or by what it says, save the line that a due refresh's stamp could not be kept, which repeats on every due prompt while the store stays unwritable, and the
 block is dated by the last stamped fetch ("as of the last fetch 4 minutes
 ago", C12) and ends with the line that an announcement grants nothing (C6). It
 reads only the local tier and touches no network, and the read runs under a

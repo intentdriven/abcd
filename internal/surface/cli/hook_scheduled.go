@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,7 +75,7 @@ func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadli
 	if err := n.StampRefresh(now); err != nil {
 		why := termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n", why)
-		n.Text = withStatusLine(n.Text, termsafe.Sanitize("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+why+"), so no kept answer is renewed; `abcd status` asks now"))
+		n.Text = withStatusLine(n.Text, termsafe.SanitizeLine(termsafe.Sanitize("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+unstampedWords(err)+"), so no kept answer is renewed; `abcd status` asks now")))
 		return n
 	}
 	if err := spawnScheduledRefresh(root); err != nil {
@@ -81,6 +83,29 @@ func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadli
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	return n
+}
+
+// unstampedWords is why a stamp could not be kept, in fixed words chosen by the
+// error's class. The block an agent reads never carries the error's own text,
+// which can be a refusal written for a person (a command to run, a link to
+// replace) and may stand in a block with no line saying it is not an instruction;
+// stderr carries the full reason, home-redacted.
+func unstampedWords(err error) string {
+	var link *fsutil.HomeScopeLinkError
+	var exposed *fsutil.HomeScopeExposedError
+	switch {
+	case errors.As(err, &link):
+		return "a link in the store's path is refused"
+	case errors.As(err, &exposed):
+		return "a folder of the store is open to another account"
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return "the disk is full"
+	case errors.Is(err, fsutil.ErrNotRealDir):
+		return "something that is not a folder stands in the store's path"
+	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EROFS):
+		return "the store cannot be written by this account"
+	}
+	return "the store could not be written"
 }
 
 // withStatusLine is the STATUS block text with line added: as a block of its own
