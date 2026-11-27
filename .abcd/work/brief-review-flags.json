@@ -380,7 +380,7 @@
     {
       "chapter": "35-drain.md",
       "sentence": "and is named in `next`; an open one is renewed and named as waiting; one",
-      "replacement": "and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one",
+      "replacement": "and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is armed again where the merge queue itself removed it ([`34-build.md`](34-build.md)), and otherwise read as `dropped`, naming the failed check, and still renewed; one",
       "evidence": "internal/core/implement/loop/drain_finish.go:302",
       "commit": "5dbb0fb0972171435f3be443ef60697f043e14d7",
       "applied": "2026-11-04T01:37:49Z"
