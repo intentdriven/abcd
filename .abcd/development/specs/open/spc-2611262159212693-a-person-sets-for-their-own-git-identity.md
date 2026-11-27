@@ -22,10 +22,13 @@ it (`TestAChangeToTheCommittedModeLineIsNeverArmed`,
 `TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest` in
 `internal/core/landing`).
 
-Of those two rulings, what is left is two things (steps 1 and 2), and the intent's command that sets the mode is not built either (step 3). First, the gate refuses such a pull request, but
-an arming of abcd's own that already stands at its head is left in place, as
-every refusal of the gate leaves it today; the intent's criterion asks that it
-be taken back off. Second, the same two rules on the commands themselves. The shell
+Of those two rulings, what is left is two things (steps 1 and 2), and the intent's command that sets the mode is not built either (step 3). First, the gate refuses such a pull request,
+and on that definite refusal at the local head `abcd land` takes this
+account's arming off and the loop's queue path disables it, as for every
+definite refusal of the gate; not yet taken off are an arming where the gate's
+answer is one it could not read, one another account made, one on a path that
+never asks the gate about a standing arming, and one whose default branch
+moved after the arm. Second, the same two rules on the commands themselves. The shell
 guard's merge rule (`internal/core/guard/merge.go`) judges `gh pr merge`, the
 GraphQL merge mutations and the REST merge route by the mode alone, so under
 `auto` an agent's own `gh pr merge --auto` of a pull request that changes the
@@ -64,14 +67,18 @@ built the gate's half (the decision that planned this spec).
      for each form, and hold the work-per-byte bar (`work_test.go`).
    - Then say in invariant 28 that the guard holds both rules, not the gate
      alone.
-2. abcd takes its own arming back off a pull request that changes the mode line
+2. abcd's own standing arming of a pull request that changes the mode line
    - packages: internal/core/landing, commands/land.md, .abcd/development/brief
    - tests: internal/core/landing
-   - Where the gate refuses a pull request for changing the committed
-     `facilitator.mode` line and this account's arming or queue entry stands at
-     its head, `abcd land`, the build loop and a re-arm take it off
-     (`withdrawOwn`, as the dependency check does) and say so; an arming
-     another account made is left and named.
+   - On the gate's definite refusal at the local head, `abcd land` already
+     takes this account's arming off (`withdraw.go`) and the loop's queue path
+     disables it, as for every definite refusal; hold that for the mode line
+     with a test. An arming another account made is left and named.
+   - An answer the gate could not read (a line it cannot read, a head this
+     checkout does not hold) is no refusal and withdraws nothing, so a release
+     hold's re-arm of a head the checkout does not hold stays withdrawn and
+     says the merge bases cannot be read. Fetch the head before the gate is
+     asked, or say so where the re-arm is described.
    - The arming pins the head (`--match-head-commit`) but not the tip, so the
      default branch can move between the arm and the merge and change what
      the merge leaves on the line. Withdraw an arming whose merge, judged
@@ -90,3 +97,11 @@ built the gate's half (the decision that planned this spec).
      no flag that chooses where, and refuses `auto` with no terminal of the
      person's own.
    - Then point the guard's refusals of a setting at it, in the same change.
+4. The intent's other criteria this spec has not yet planned
+   - packages: internal/core/landing, internal/core/spotcheck, internal/surface/cli
+   - tests: internal/core/landing, internal/core/spotcheck, internal/surface/cli
+   - The past landings' `unrecorded` row, for a merge whose first parent
+     committed no mode and of which this checkout keeps no record.
+   - The reason the spot-check keeps, cut to the mode.
+   - Before the intent ships, read its criteria against this spec again: the
+     steps here are what is known to be left, not an audit of every criterion.

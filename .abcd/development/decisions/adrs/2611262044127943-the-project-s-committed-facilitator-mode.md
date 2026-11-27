@@ -134,8 +134,9 @@ Ruled by the product thinker, 2026-11-26 ("yes, both go").
   `facilitator.mode` line is armed in no mode, and the person merges it on the
   forge's page (dcn-2611262202306256). The shell guard does not yet hold
   either rule for a merge command an agent types, and an arming of abcd's own
-  that already stands at such a head is not yet taken back off; both are
-  spc-2611262159212693.
+  at such a head is taken off on a definite refusal at the local head but not
+  where the gate's answer is one it could not read, nor when the default
+  branch moves after the arm; both are spc-2611262159212693.
 - The verb itd-2611252049031692 plans, `abcd facilitator auto|human`, is to
   write only `~/.abcd.noindex/config.json` and take no flag that chooses where.
   It is not built: until it is, a person sets `facilitator.mode` in that file
