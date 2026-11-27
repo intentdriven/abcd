@@ -33,15 +33,24 @@ func TestGitIdentityIsMatchedInBothNormalForms(t *testing.T) {
 	}
 }
 
-// A git config value that is not valid UTF-8 cannot be held in a pattern; the
-// scan leaves it out instead of panicking, and the scanner refuses every store
+// A git config value or account name that is not valid UTF-8 cannot be held in
+// a pattern; the scan leaves it out instead of panicking, matches no guessed
+// form of it (a replaced or dropped byte), and the scanner refuses every store
 // write while it is set (TestIdentityValueThatIsNotUTF8MakesTheScannerUnavailable).
 func TestGitIdentityThatIsNotUTF8DoesNotPanicTheScan(t *testing.T) {
-	id := Identity{GitUserName: "Jos\xe9 Nunez", GitUserEmail: "jos\xe9@example.com", GitRemoteUsername: "jos\xe9-dev"}
+	id := Identity{GitUserName: "Jos\xe9 Nunez", GitUserEmail: "jos\xe9@example.com", GitRemoteUsername: "jos\xe9-dev",
+		HomePath: "/srv/people/jo.s\xe9", HomeUser: "jo.s\xe9"}
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("ScanText panicked on a git identity that is not UTF-8: %v", r)
 		}
 	}()
 	kinds("by Jos\xe9 Nunez, mail jos\xe9@example.com, github.com/jos\xe9-dev", id)
+	got := kinds("by Jos\uFFFD Nunez or Jos Nunez, mail jos\uFFFD@example.com or jos@example.com, "+
+		"github.com/jos\uFFFD-dev or github.com/jos-dev, signed jo.s\uFFFD, jo.s, jo-s\uFFFD or jo-s", id)
+	for _, k := range []string{kindRealName, kindRealEmail, kindGithubUser, kindLocalUser} {
+		if got[k] {
+			t.Errorf("%s matched a guessed form of a value that is not UTF-8", k)
+		}
+	}
 }
