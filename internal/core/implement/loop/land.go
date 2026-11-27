@@ -2878,7 +2878,7 @@ func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (lan
 	roots, _ := layered.RootsFor(c.RepoRoot)
 	unrecorded := recordOwnReview(c, lane, roots, tip, Remote+"/"+def)
 	d, err := landing.DecideMerge(landing.MergeQuery{RepoRoot: c.RepoRoot, Roots: roots, Tip: tip, TipName: Remote + "/" + def, Default: def,
-		Rule: rule, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
+		Rule: rule, RuleRead: true, Repo: "{owner}/{repo}", PR: strconv.Itoa(lane.PR), Head: lane.Landing.Pushed, Forge: gateForge(c, lane)})
 	if err == nil {
 		// The spot-check's record of the decision, made from the decision
 		// alone: a record that cannot be written changes nothing but the

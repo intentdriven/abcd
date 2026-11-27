@@ -183,55 +183,73 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 			}
 		})
 	}
-	// A rebase lands the head's commits replayed one at a time onto the tip,
-	// so where the queue rebases, or the method is not known (a re-arm), the
-	// line is read in that replay as well.
+	// A rebase lands the head's commits replayed onto the tip, and abcd does
+	// not judge that replay: where the queue rebases, or the method is not
+	// known (a re-arm), a head with any commit that touches the file is left
+	// to the person, whatever the reads at the head and in the merge say.
 	rebaseRuleset := strings.Replace(queueRuleset, `"MERGE"`, `"REBASE"`, 1)
-	t.Run("a rebase whose replay restores the line", func(t *testing.T) {
-		f := replayRestores(t, rebaseRuleset)
+	const touches = "touches .abcd/config.json"
+	for _, c := range []struct {
+		name  string
+		build func(*testing.T, string) *fixture
+	}{
+		{"a rebase of a head that sets the file aside and back", replayRestores},
+		{"a rebase of a head whose last commit is already upstream", alreadyUpstream},
+		{"a rebase of a head that holds a merge commit", mergedSides},
+		{"a rebase of a head that changes another key of the file", otherKeyChanged},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := c.build(t, rebaseRuleset)
+			f.reviewed(t)
+			s := landGate(t, f)
+			wantLeft(t, f, s, "on the forge's page")
+			if !strings.Contains(s.Note, touches) {
+				t.Errorf("the note %q does not say a commit %s", s.Note, touches)
+			}
+		})
+	}
+	t.Run("a rebase of a head that leaves the file alone", func(t *testing.T) {
+		f := newFixtureFiles(t, rebaseRuleset, map[string]string{".abcd/config.json": autoConfig})
 		f.reviewed(t)
-		s := landGate(t, f)
-		wantLeft(t, f, s, "on the forge's page")
-		if !strings.Contains(s.Note, "facilitator.mode") || !strings.Contains(s.Note, "once replayed") {
-			t.Errorf("the note %q does not name the line and its replay", s.Note)
-		}
+		wantArmed(t, f, landGate(t, f))
 	})
 	t.Run("the same commits merged", func(t *testing.T) {
 		f := replayRestores(t, queueRuleset)
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
-	t.Run("the re-arm of a replay that restores the line", func(t *testing.T) {
+	t.Run("the re-arm of a head that touches the file", func(t *testing.T) {
 		f := replayRestores(t, queueRuleset)
 		f.forge.head = f.head()
 		f.reviewed(t)
 		ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
 		arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head())
-		if err != nil || arm || !strings.Contains(why, "once replayed") {
-			t.Fatalf("arm %v, why %q, err %v: want no re-arm, whose method is not known, of a replay that moves the mode line", arm, why, err)
+		if arm || err == nil || !strings.Contains(err.Error(), touches) {
+			t.Fatalf("arm %v, why %q, err %v: want no re-arm, whose method is not known, of a head with a commit that %s", arm, why, err, touches)
 		}
 	})
-	// The merge is computed with git 2.38's merge-tree --write-tree, and the
-	// replay with git 2.45's, which first takes trees beside --merge-base: on
-	// an older git nothing is armed, and the answer names the floor.
-	for _, c := range []struct {
-		name, method, below, says string
-	}{
-		{"a git too old to compute the merge", "MERGE", "2.38", "needs git 2.38 or later, and this git is 2.37"},
-		{"a git too old to compute the replay", "REBASE", "2.45", "needs git 2.45 or later, and this git is 2.44"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
-			oldGit(t, c.below)
-			tip := f.repo.Git("rev-parse", "origin/main")
-			d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
-				Rule: MergeRule{Method: c.method},
-				Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
-			if err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, c.says) {
-				t.Fatalf("decision %+v, %v: want nothing armed, unread, saying %q", d, err, c.says)
-			}
-		})
-	}
+	t.Run("the re-arm of a head that leaves the file alone", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		f.forge.head = f.head()
+		f.reviewed(t)
+		ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+		if arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head()); !arm || err != nil {
+			t.Fatalf("arm %v, why %q, err %v: want the re-arm", arm, why, err)
+		}
+	})
+	// The merge is computed with git 2.38's merge-tree --write-tree: on an
+	// older git nothing is armed, and the answer names the floor.
+	t.Run("a git too old to compute the merge", func(t *testing.T) {
+		f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+		oldGit(t, "2.38")
+		tip := f.repo.Git("rev-parse", "origin/main")
+		d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+			Rule: MergeRule{Method: "MERGE"}, RuleRead: true,
+			Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+		if says := "needs git 2.38 or later, and this git is 2.37"; err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, says) {
+			t.Fatalf("decision %+v, %v: want nothing armed, unread, saying %q", d, err, says)
+		}
+	})
 	t.Run("the re-arm of a second merge base", func(t *testing.T) {
 		f := secondBase(t)
 		f.forge.head = f.head()
@@ -339,6 +357,69 @@ func replayRestores(t *testing.T, ruleset string) *fixture {
 	f.repo.Commit("set the config aside")
 	f.repo.Write(".abcd/config.json", fmt.Sprintf(block, "auto"))
 	f.repo.Commit("add the config back")
+	return f
+}
+
+// modeBlock is a multi-line .abcd/config.json committing mode.
+func modeBlock(mode string) string {
+	return "{\n  \"land\": {\n    \"push\": true\n  },\n  \"facilitator\": {\n    \"mode\": \"" + mode + "\"\n  }\n}\n"
+}
+
+// alreadyUpstream: the project commits human; main makes it auto and then
+// human again. The head, cut from before, sets the file aside, adds it back
+// reading auto, and then makes it human with main's own last patch. Base,
+// head and merge all read human; a rebase that skips the commit already
+// upstream lands auto.
+func alreadyUpstream(t *testing.T, ruleset string) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, ruleset, map[string]string{".abcd/config.json": modeBlock("human")})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", modeBlock("auto"))
+	f.repo.Commit("main makes it auto")
+	f.repo.Write(".abcd/config.json", modeBlock("human"))
+	f.repo.Commit("main makes it human again")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Git("mv", ".abcd/config.json", ".abcd/config.old.json")
+	f.repo.Commit("set the config aside")
+	f.repo.Write(".abcd/config.json", modeBlock("auto"))
+	f.repo.Commit("add it back reading auto")
+	f.repo.Write(".abcd/config.json", modeBlock("human"))
+	f.repo.Commit("make it human")
+	return f
+}
+
+// mergedSides: the project commits human, and the default branch stays
+// there. A side branch makes the file auto and human again; the head makes
+// it auto, merges the side branch keeping the side's tree, and adds another
+// file. Base, head and merge all read human; a replay that orders the
+// commits otherwise than git does lands auto.
+func mergedSides(t *testing.T, ruleset string) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, ruleset, map[string]string{".abcd/config.json": modeBlock("human")})
+	f.repo.Git("checkout", "-q", "-b", "y", "main")
+	f.repo.Write(".abcd/config.json", modeBlock("auto"))
+	f.repo.Commit("y makes it auto")
+	f.repo.Write(".abcd/config.json", modeBlock("human"))
+	f.repo.Commit("y makes it human")
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Write(".abcd/config.json", modeBlock("auto"))
+	f.repo.Commit("x makes it auto")
+	f.repo.Git("merge", "-q", "-s", "ours", "--no-commit", "y")
+	f.repo.Git("read-tree", "-u", "--reset", "y")
+	f.repo.Commit("merge y, keeping its tree")
+	f.repo.Write("other.txt", "another file\n")
+	f.repo.Commit("add another file")
+	return f
+}
+
+// otherKeyChanged: the head changes another key of the file and leaves the
+// mode line as it is.
+func otherKeyChanged(t *testing.T, ruleset string) *fixture {
+	t.Helper()
+	f := newFixtureFiles(t, ruleset, map[string]string{".abcd/config.json": autoConfig})
+	f.repo.Write(".abcd/config.json", `{"facilitator":{"mode":"auto"},"land":{"push":true}}`+"\n")
+	f.repo.Commit("turn the push on")
 	return f
 }
 

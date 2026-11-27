@@ -314,13 +314,13 @@ recorded it with `--approve` (below). Then:
   or removes `facilitator.mode` in `.abcd/config.json`, or leaves it
   unreadable, against any of its merge bases with the default branch, or
   whose merge into the default branch would leave that branch's line
-  changed, or, unless the queue merges or squashes, whose commits replayed
-  onto the default branch, as a rebase lands them, would. The note says you
-  merge it on the forge's page. One where that
+  changed. Where the queue rebases, so is one with any commit that touches
+  `.abcd/config.json` at all, since abcd does not judge what a rebase
+  replays. The note says you merge it on the forge's page. One where that
   cannot be read, a merge that conflicts in the file included, is not armed
-  either, and nor is any on a git older than 2.38, which computes the merge,
-  or, where the queue rebases, older than 2.45, which computes the replay: the
-  note names the version it needs.
+  either, nor, on a re-arm, which does not know the method, one with a commit
+  that touches the file, nor any on a git older than 2.38, which computes the
+  merge: the note names the version it needs.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.

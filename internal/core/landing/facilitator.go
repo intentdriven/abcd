@@ -23,10 +23,10 @@ package landing
 //   - a pull request that changes the facilitator.mode line of
 //     .abcd/config.json (sets, alters or removes it, or leaves it
 //     unreadable), read at its head against each of its merge bases with
-//     the default branch's tip, in the merge of its head into that tip
-//     against the tip, and, unless the queue merges or squashes, in its
-//     commits replayed onto that tip (modeLineChange), arms nothing in any
-//     mode, and one
+//     the default branch's tip and in the merge of its head into that tip
+//     against the tip, or, where the queue rebases or the method is not
+//     known, that has a commit touching the file (modeLineChange), arms
+//     nothing in any mode, and one
 //     where that cannot be read arms nothing either: the person merges it on
 //     the forge's page (adr-2611262044127943);
 //   - an author whose permission cannot be read, or a custom role whose base
@@ -164,24 +164,16 @@ const maxMergeBaseBytes = 4096
 // tip: the merged tree's object name and each conflicted path.
 const maxMergeTreeBytes = 1 << 20
 
-// maxReplayCommits bounds the commits a rebase would replay that the gate
-// reads; a pull request with more is a diff not read.
-const maxReplayCommits = 256
-
-// maxReplayListBytes bounds git's list of those commits, each with its
-// parent: two object names to a line.
-const maxReplayListBytes = (maxReplayCommits + 1) * 2 * 41
+// maxTouchBytes bounds git's answer naming a commit that touches the mode
+// line's file: one object name.
+const maxTouchBytes = 4096
 
 // The git the gate's reads need: merge-tree --write-tree, which computes the
-// merge, is git 2.38's, and its taking trees as the two sides beside
-// --merge-base, which the replay steps on, is git 2.45's.
-const (
-	mergeTreeFloorMajor, mergeTreeFloorMinor = 2, 38
-	replayFloorMajor, replayFloorMinor       = 2, 45
-)
+// merge, is git 2.38's.
+const mergeTreeFloorMajor, mergeTreeFloorMinor = 2, 38
 
-// gitAtLeast is the version check the floors are read through; a test
-// answers as an older git.
+// gitAtLeast is the version check the floor is read through; a test answers
+// as an older git.
 var gitAtLeast = gitutil.GitAtLeastContext
 
 // belowFloor says, when the git on PATH is older than major.minor, that what
@@ -217,17 +209,18 @@ const modeLineRel = ".abcd/config.json"
 // arm and the merge, since the arming pins only the head.
 //
 // A rebase lands something else: the head's commits replayed one at a time
-// onto the tip. So unless method (the merge queue's, as the ruleset mirror
-// names it) is MERGE or SQUASH, whose tree is the merge's, the line is judged
-// a third time, in that replay against the tip (replayedTree): where the queue
-// rebases, and where the method is not known, as on a re-arm, which reads no
-// rule. A head that renames the file aside and adds it back reads as its base
-// does and merges to the tip's line, while its replay carries the tip's file
-// aside and lands the base's.
+// onto the tip, and which commits a forge's rebase replays, and in what
+// order, is not something abcd can read. So where the queue rebases, and
+// where the method is not known (known false, as on a re-arm, which reads no
+// rule), a head with any commit in tip..head that touches the file is left to
+// the person whatever the reads above say: refused under a rebase, and not
+// read where the method is not known. A merge commit or a squash, and no
+// merge queue (a merge commit), land the merge's tree, so the reads above
+// are the whole of it (dcn-2611270345293001).
 //
 // Its git questions share one deadline, modeLineTimeout, since a hook reaches
 // the gate (a re-arm); a git that does not answer in time is a diff not read.
-func modeLineChange(root, tip, tipName, head, method string) (why string, unread bool) {
+func modeLineChange(root, tip, tipName, head, method string, known bool) (why string, unread bool) {
 	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
 	cannot := func(what string) (string, bool) {
 		return "whether this pull request changes the facilitator.mode line in " + modeLineRel + " cannot be judged (" + what + "), and " + never, true
@@ -273,7 +266,7 @@ func modeLineChange(root, tip, tipName, head, method string) (why string, unread
 		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
 	}
 	overrides = append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriverContext(ctx))
-	merged, inFile, err := mergedTree(ctx, root, overrides, tip, head, "")
+	merged, inFile, err := mergedTree(ctx, root, overrides, tip, head)
 	switch {
 	case err != nil:
 		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
@@ -291,38 +284,33 @@ func modeLineChange(root, tip, tipName, head, method string) (why string, unread
 	if held != lands {
 		return "its merge into " + tipName + " changes the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(lands) + " once merged), and " + never, false
 	}
-	if method == "MERGE" || method == "SQUASH" {
+	if known && method != "REBASE" {
 		return "", false
 	}
-	if old := belowFloor(ctx, "the replay of "+short(head)+"'s commits onto "+tipName+", as a rebase lands them,", replayFloorMajor, replayFloorMinor); old != "" {
-		return cannot(old)
+	out, err = gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
+		"rev-list", "--full-history", "--max-count=1", tip+".."+head, "--", modeLineRel)
+	switch touched := strings.TrimSpace(string(out)); {
+	case err != nil:
+		return cannot("which of its commits touch " + modeLineRel + " cannot be read (" + clip(masked(err)) + ")")
+	case touched != "" && !gitutil.IsFullSHA(touched):
+		return cannot("which of its commits touch " + modeLineRel + " cannot be read (git named no commit)")
+	case touched == "":
+		return "", false
+	case !known:
+		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the merge method is not known here, so whether it lands by a rebase, whose replay abcd does not judge, is not known either")
+	default:
+		return "it lands by rebase, and its commit " + short(touched) + " touches " + modeLineRel + ", whose replay onto " + tipName + " abcd does not judge, and " + never, false
 	}
-	replayed, what := replayedTree(ctx, root, overrides, tip, head)
-	if what != "" {
-		return cannot("the replay of " + short(head) + "'s commits onto " + tipName + ", as a rebase lands them, " + clip(termsafe.Sanitize(fsutil.RedactHome(what))))
-	}
-	rebased, _, err := committedModeLine(ctx, root, replayed)
-	if err != nil {
-		return cannot("in the replay of " + short(head) + "'s commits onto " + tipName + ": " + masked(err))
-	}
-	if held != rebased {
-		return "its commits replayed onto " + tipName + ", as a rebase lands them, change the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(rebased) + " once replayed), and " + never, false
-	}
-	return "", false
 }
 
-// mergedTree is the tree git's merge of ours and theirs writes into the object
-// store as stored, under overrides (every merge driver the built-in one),
-// with base as the merge base when it is not "" and the merge bases of the
-// two commits otherwise; inFile says the merge conflicts in the mode line's
-// file. A merge conflicting elsewhere still names its tree, which holds the
-// file as merged.
-func mergedTree(ctx context.Context, root string, overrides []string, ours, theirs, base string) (tree string, inFile bool, err error) {
-	args := append(slices.Clone(overrides), "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z")
-	if base != "" {
-		args = append(args, "--merge-base="+base)
-	}
-	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, append(args, ours, theirs)...)
+// mergedTree is the tree git's merge of ours and theirs writes into the
+// object store as stored, under overrides (every merge driver the built-in
+// one); inFile says the merge conflicts in the mode line's file. A merge
+// conflicting elsewhere still names its tree, which holds the file as
+// merged.
+func mergedTree(ctx context.Context, root string, overrides []string, ours, theirs string) (tree string, inFile bool, err error) {
+	args := append(slices.Clone(overrides), "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", ours, theirs)
+	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, args...)
 	if err != nil {
 		return "", false, err
 	}
@@ -331,48 +319,6 @@ func mergedTree(ctx context.Context, root string, overrides []string, ours, thei
 		return "", false, errors.New("git named no merged tree")
 	}
 	return entries[0], conflicted && slices.Contains(entries[1:], modeLineRel), nil
-}
-
-// replayedTree is the tree the head's commits land as when a rebase replays
-// them onto tip: each commit of tip..head that is no merge, oldest first as
-// git's own rebase orders them, merged onto the tree so far with its parent
-// as the merge base, as a cherry-pick computes it. what says why it cannot
-// be said ("" when it can): a list git cannot give, more than
-// maxReplayCommits commits, a parentless commit, or a step that cannot be
-// computed or conflicts in the file. A head tip already holds replays nothing
-// and lands tip's own tree.
-func replayedTree(ctx context.Context, root string, overrides []string, tip, head string) (tree, what string) {
-	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxReplayListBytes,
-		"rev-list", "--reverse", "--topo-order", "--no-merges", "--parents", "--max-count="+strconv.Itoa(maxReplayCommits+1), tip+".."+head)
-	if err != nil {
-		return "", "cannot be listed (" + err.Error() + ")"
-	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 1 && lines[0] == "" {
-		lines = nil
-	}
-	if len(lines) > maxReplayCommits {
-		return "", "is more than " + strconv.Itoa(maxReplayCommits) + " commits"
-	}
-	tree = tip
-	for _, line := range lines {
-		ids := strings.Fields(line)
-		switch {
-		case len(ids) == 1 && gitutil.IsFullSHA(ids[0]):
-			return "", "starts at " + short(ids[0]) + ", which has no parent"
-		case len(ids) != 2 || !allFullSHA(ids):
-			return "", "cannot be listed (git named no commit and parent)"
-		}
-		next, inFile, err := mergedTree(ctx, root, overrides, tree, ids[0], ids[1])
-		switch {
-		case err != nil:
-			return "", "cannot be computed at " + short(ids[0]) + " (" + err.Error() + ")"
-		case inFile:
-			return "", "conflicts in " + modeLineRel + " at " + short(ids[0])
-		}
-		tree = next
-	}
-	return tree, ""
 }
 
 // allFullSHA reports whether every name is a full object name.
@@ -822,8 +768,11 @@ type MergeQuery struct {
 	// Tip is the default branch's tip as just fetched, and TipName how it is
 	// named ("origin/main"); Default is the branch's name.
 	Tip, TipName, Default string
-	// Rule is the ruleset mirror's merge rule at Tip.
-	Rule MergeRule
+	// Rule is the ruleset mirror's merge rule at Tip, and RuleRead says it
+	// was read: a caller that reads no rule (a re-arm) leaves it false, and
+	// the merge method is then not known.
+	Rule     MergeRule
+	RuleRead bool
 	// Repo is the repository as the forge names it ("owner/name"), or gh's
 	// "{owner}/{repo}" for the checkout's own.
 	Repo string
@@ -873,7 +822,7 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head, fromLane: fromDriveLane(q.RepoRoot, q.From)}
-	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head, q.Rule.Method)
+	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head, q.Rule.Method, q.RuleRead)
 	if f.modeLine != "" {
 		return decided(f), nil
 	}
