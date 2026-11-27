@@ -3556,8 +3556,11 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		return
 	}
 	type left struct {
-		id, runID              string
-		run, forming, unlisted bool
+		id, runID string
+		// renewers is the clause of a lane's run still in progress (runRenewers), and
+		// empty for a judgement's or a forming bundle's hold.
+		renewers          string
+		forming, unlisted bool
 	}
 	var ids []left
 	for _, runID := range t.heldInProgress(st) {
@@ -3575,7 +3578,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			continue
 		}
 		for _, id := range run.reservedIssues() {
-			ids = append(ids, left{id: id, runID: runID, run: true, unlisted: !drainLists(st, runID)})
+			ids = append(ids, left{id: id, runID: runID, renewers: runRenewers(run), unlisted: !drainLists(st, runID)})
 		}
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
@@ -3600,7 +3603,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			again = "step the run on with `abcd implement step --run " + termsafe.Sanitize(l.runID) + "`"
 		}
 		t.say("%s: its reservation was not released and %s; once what the drive holds is as it should be, release it with `abcd reserve %s --release`, or %s",
-			termsafe.Sanitize(l.id), lapse(r, read, l.run, l.forming), termsafe.Sanitize(l.id), again)
+			termsafe.Sanitize(l.id), lapse(r, read, l.renewers, l.forming), termsafe.Sanitize(l.id), again)
 	}
 }
 
@@ -3643,7 +3646,7 @@ func (t *terminal) unstoppedRun(runID string) bool {
 // that could not be applied to it, with when its lease lapses, what frees the run, and the
 // release a person makes by hand. The hold is left to lapse (leaveToLapse, lapsing), so no
 // renewal that reads no driver keeps it (UnlessKeptTakenUp); one a live driver elsewhere
-// holds keeps that driver's renewals (keepUnstopped, UnlessRunRenewed). A run the drain lists (listed) is
+// holds keeps that driver's renewals (keepUnstopped, runRenewers). A run the drain lists (listed) is
 // read as reserved by the next start until then; one no drain lists is taken up by a
 // drive's next start once its driver is gone (letGoUnlisted), and the step that claims it
 // is named too. It reads only.
@@ -3667,7 +3670,7 @@ func (t *terminal) sayKept(run State, listed, lapsing bool, now time.Time) {
 		key := termsafe.Sanitize(id)
 		unless := UnlessKeptTakenUp
 		if !lapsing {
-			unless = UnlessRunRenewed
+			unless = runRenewers(run)
 		}
 		t.say("%s: its reservation is kept, since the stop could not be applied to run %s, and %s; %s; `abcd reserve %s --release` releases it by hand",
 			key, runID, lapsesUnless(r, read, unless), on, key)
@@ -3699,22 +3702,24 @@ const unlessFormingRenewed = "unless an `abcd drain` move in this copy, or a loa
 
 // lapse is heldLapse, with a forming bundle's hold (forming) named with the
 // renewers it has.
-func lapse(r claim.Reservation, read, run, forming bool) string {
+func lapse(r claim.Reservation, read bool, renewers string, forming bool) string {
 	if forming {
 		return lapsesUnless(r, read, unlessFormingRenewed)
 	}
-	return heldLapse(r, read, run)
+	return heldLapse(r, read, renewers)
 }
 
 // heldLapse says when a reservation leftHeld names lapses. Only a live
 // reservation this copy's last push takes can be renewed here, so only its
 // lapse takes a clause; read is false when the view could not be read. A
-// lane's run still in progress (run) is renewed by a step or `abcd drain` run
-// in this copy as well as by a load-gate waiter (UnlessRunRenewed); a
-// judgement's hold by the waiter alone (claim.RenewDue).
-func heldLapse(r claim.Reservation, read, run bool) string {
-	if run {
-		return lapsesUnless(r, read, UnlessRunRenewed)
+// lane's run still in progress takes renewers, the clause runRenewers reads
+// from where the run stands: a step or `abcd drain` run in this copy and a
+// load-gate waiter renew it, and an `abcd implement status` call does too
+// only for a lane short of its pull request. A judgement's hold (renewers
+// empty) is renewed by the waiter alone (claim.RenewDue).
+func heldLapse(r claim.Reservation, read bool, renewers string) string {
+	if renewers != "" {
+		return lapsesUnless(r, read, renewers)
 	}
 	return lapsesUnless(r, read, unlessWaiterRenews)
 }

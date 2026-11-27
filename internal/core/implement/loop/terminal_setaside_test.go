@@ -548,7 +548,8 @@ func TestAKeptHoldALiveDriverWorksKeepsItsRenewals(t *testing.T) {
 	if kept.released || claim.LeftToLapse(root, run.Key, kept.commit) {
 		t.Fatalf("the hold a live driver works is released, or left to lapse: %+v\n%s", kept, w.said())
 	}
-	if !strings.Contains(w.said(), UnlessRunRenewed) {
+	// The run is short of its pull request, so the kept line names the status call with its limit.
+	if !strings.Contains(w.said(), unlessShortRunRenewed) {
 		t.Fatalf("the kept line does not name the renewers:\n%s", w.said())
 	}
 	renewed := false

@@ -1112,7 +1112,10 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 			fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 		}
 		if res.Lapses != nil {
-			// A hold left to lapse, its stop not applied, is renewed by no waiter.
+			// A hold left to lapse, its stop not applied, is renewed by no waiter. The
+			// line reads no run, and a kill can leave its lane parked at its pull
+			// request, which `abcd implement status` passes over, so the call is not
+			// named (loop.UnlessRunRenewed).
 			unless := loop.UnlessRunRenewed
 			if res.LeftToLapse {
 				unless = loop.UnlessKeptTakenUp

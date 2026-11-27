@@ -354,12 +354,33 @@ const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 // UnlessRunRenewed is the clause a lapse says of a live reservation this
 // copy's last push takes and a lane's run still in progress holds: a step or
 // `abcd drain` run in this copy renews it (advanceWith; renewInProgress, or
-// for a lane parked at its pull request renewParkedDue), as an `abcd
-// implement status` call does for a lane short of its pull request
-// (RenewRunsIn, renewsWhereItWaits) and a load-gate waiter does. A run handed
-// back, stopped or let go keeps unlessWaiterRenews, and a hold a drive left to
-// lapse keeps UnlessKeptTakenUp.
-const UnlessRunRenewed = "unless a step or `abcd drain` run in this copy, an `abcd implement status` call in this copy for a lane short of its pull request, or a load-gate waiter in this copy, renews it"
+// for a lane parked at its pull request renewParkedDue), as a load-gate waiter
+// does. `abcd implement status` is not named: its renewal (RenewRunsIn)
+// passes over a lane parked at its pull request (renewsWhereItWaits), and a
+// lane named here may be one. A line that reads the run and finds its lane
+// short of its pull request says unlessShortRunRenewed instead (runRenewers).
+// A run handed back, stopped or let go keeps unlessWaiterRenews, and a hold a
+// drive left to lapse keeps UnlessKeptTakenUp.
+const UnlessRunRenewed = "unless a step or `abcd drain` run in this copy, or a load-gate waiter in this copy, renews it"
+
+// unlessShortRunRenewed is UnlessRunRenewed for a run read where it stands
+// and found short of its pull request (renewsWhereItWaits): an `abcd
+// implement status` call in this copy renews it too (RenewRunsIn;
+// itd-2611141610197753 step 3), and the clause keeps that call's limit, since
+// a step may yet take the lane to its pull request, where the call passes
+// over it.
+const unlessShortRunRenewed = "unless a step or `abcd drain` run in this copy, an `abcd implement status` call in this copy for a lane short of its pull request, or a load-gate waiter in this copy, renews it"
+
+// runRenewers is the clause a lapse says of run, a lane's run still in
+// progress read where it stands: unlessShortRunRenewed where an `abcd
+// implement status` call renews it (renewsWhereItWaits), and UnlessRunRenewed
+// for any other, a lane parked at its pull request among them.
+func runRenewers(run State) string {
+	if renewsWhereItWaits(run) {
+		return unlessShortRunRenewed
+	}
+	return UnlessRunRenewed
+}
 
 // UnlessKeptTakenUp is the clause a lapse says of a hold a drive left to lapse
 // (claim.LeaveToLapse; itd-2611141610197753 step 3): the kept hold of a run
