@@ -25,6 +25,7 @@
 package session
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -529,15 +530,12 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	}()
 	// The origin was judged above against the relay's own allowlist, which
 	// the library's same-host rule would widen.
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	ws, err := p.accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		conn.Leave()
 		return
 	}
 	ws.SetReadLimit(int64(s.relay.Limits().MaxMessageBytes))
-	p.mu.Lock()
-	p.ws = ws
-	p.mu.Unlock()
 	expire := time.AfterFunc(s.relay.Limits().AdmitWithin, conn.Expire)
 	defer expire.Stop()
 	done := make(chan struct{})
@@ -581,7 +579,11 @@ type outFrame struct {
 // connection takes them, and is charged no bytes: its entries are the
 // session's own, held whether or not they wait here.
 type peer struct {
-	ws       *websocket.Conn
+	ws *websocket.Conn
+	// raw is the connection under ws, which abort closes: the WebSocket's
+	// own close waits up to five seconds for a page to answer it, and
+	// nothing the relay can cancel ends that wait.
+	raw      net.Conn
 	cancel   context.CancelFunc
 	wake     chan struct{} // holds one token while items wait
 	mu       sync.Mutex
@@ -688,16 +690,52 @@ func (p *peer) Close(policy bool, reason string) {
 }
 
 // abort tears the connection down at once: the context its reads and writes
-// run under ends, and so does the socket.
+// run under ends, and so does the socket under it, even while the WebSocket's
+// close handshake waits for an answer the page never sends.
 func (p *peer) abort() {
 	p.cancel()
 	p.mu.Lock()
-	ws := p.ws
+	ws, raw := p.ws, p.raw
 	p.mu.Unlock()
+	if raw != nil {
+		_ = raw.Close()
+	}
 	if ws != nil {
 		_ = ws.CloseNow()
 	}
 }
+
+// accept upgrades the request to the peer's WebSocket, keeping the
+// connection it is hijacked from for abort.
+func (p *peer) accept(w http.ResponseWriter, r *http.Request, opts *websocket.AcceptOptions) (*websocket.Conn, error) {
+	ws, err := websocket.Accept(&hijackKeeper{ResponseWriter: w, p: p}, r, opts)
+	if err != nil {
+		return nil, err
+	}
+	p.mu.Lock()
+	p.ws = ws
+	p.mu.Unlock()
+	return ws, nil
+}
+
+// hijackKeeper hands the WebSocket library the hijacked connection and
+// files it on the peer as it does.
+type hijackKeeper struct {
+	http.ResponseWriter
+	p *peer
+}
+
+func (h *hijackKeeper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	raw, brw, err := http.NewResponseController(h.ResponseWriter).Hijack()
+	if err == nil {
+		h.p.mu.Lock()
+		h.p.raw = raw
+		h.p.mu.Unlock()
+	}
+	return raw, brw, err
+}
+
+func (h *hijackKeeper) Unwrap() http.ResponseWriter { return h.ResponseWriter }
 
 // stopGrace stops the close grace's timer once the connection has ended.
 func (p *peer) stopGrace() {
