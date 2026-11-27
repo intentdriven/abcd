@@ -2,6 +2,7 @@ package spotcheck
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -251,6 +252,9 @@ func TestARecordThatDoesNotReadTakesNoPlaceInAWindow(t *testing.T) {
 	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, "3 record file(s)") {
 		t.Fatalf("the draw over records that do not read said %q", note)
 	}
+	if strings.Contains(note, "places") {
+		t.Fatalf("a window whose places were filled says some were left open: %q", note)
+	}
 	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
 		t.Fatalf("the window took %v; want the records that read, %v", got, want)
 	}
@@ -343,5 +347,134 @@ func TestAGroupThatListsNoRecordWithinItsReadBoundIsNotDrawn(t *testing.T) {
 	}
 	if c.originTip() != tip {
 		t.Fatal("a refused draw moved origin's branch")
+	}
+}
+
+// TestANoteSaysHowManyPlacesAGroupLeftOpen: a group whose read bound is spent
+// on files that do not read, before its window's places are filled, is drawn
+// from the records that read, and the note says how many places it drew from
+// of how many its window has, beside the count of files that did not read.
+func TestANoteSaysHowManyPlacesAGroupLeftOpen(t *testing.T) {
+	savedKeys, savedFiles := maxListedKeys, maxReadFiles
+	maxListedKeys, maxReadFiles = 3, 4
+	t.Cleanup(func() { maxListedKeys, maxReadFiles = savedKeys, savedFiles })
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	c.plantUnread(w0.Add(time.Minute), "iss-60")
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.plantUnread(w0.Add(2*time.Hour), "iss-80", "iss-81", "iss-82")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, GroupDrainHandBacks+" drew from 1 of 3 places; its read bound of 2 files ran out with 3 key(s) not read") || !strings.Contains(note, "1 record file(s)") {
+		t.Fatalf("the draw over a group that left places open said %q", note)
+	}
+	if strings.Contains(note, GroupFacilitatorDecisions) {
+		t.Fatalf("the note names a group whose read bound held: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want the record that read, %v", got, want)
+	}
+}
+
+// TestANoteSaysAKeyTookNoPlaceWhenItsReadFilesAllFailed: a key whose files
+// are read by its greatest names only, none of which reads as a record while
+// more of its files are left unread, takes no place in the window, and the
+// note says so by group and count beside the files that did not read.
+func TestANoteSaysAKeyTookNoPlaceWhenItsReadFilesAllFailed(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	key := c.plantHandBacks(w0.Add(time.Minute), "iss-60")[0]
+	files := map[string]string{}
+	for i := range maxFilesPerKey {
+		files[HandBacksDir+"/"+key+"-"+fmt.Sprintf("fffffffffffffff%x", i)+".json"] = "{}\n"
+	}
+	c.plant(files)
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	line := fmt.Sprintf("in %s, 1 key(s) took no place: none of the %d files read of each is a record, and each has more files not read", GroupDrainHandBacks, maxFilesPerKey)
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, line) || !strings.Contains(note, fmt.Sprintf("%d record file(s)", maxFilesPerKey)) {
+		t.Fatalf("the draw over a key whose read files all failed said %q", note)
+	}
+	if strings.Contains(note, "places") {
+		t.Fatalf("a group whose read bound held says it ran out: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want %v", got, want)
+	}
+}
+
+// TestANoteCountsARecordEntryThatIsNoPlainFile: an executable file under a
+// record's name is never read and takes no place in the window, and the
+// note counts it by group.
+func TestANoteCountsARecordEntryThatIsNoPlainFile(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	f, err := handBack("iss-60", w0.Add(time.Minute)).typed().file()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.plant(map[string]string{f.path(): string(f.data)})
+	ctx := context.Background()
+	sha, err := storeGit(ctx, c.r.Root(), "", string(f.data), "hash-object", "-w", "--stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tip := c.originTip()
+	tree, err := treeOver(ctx, c.r.Root(), tip, []placed{{path: f.path(), entry: entry{mode: "100755", typ: "blob", sha: sha}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := commitTree(ctx, c.r.Root(), tree, tip, "another writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.r.Git("push", "-q", "origin", commit+":"+BranchRef)
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	line := "in " + GroupDrainHandBacks + ", 1 entry(s) under a record's name were not read: each is a folder, a link, an executable file, a submodule or over a record's size"
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, line) {
+		t.Fatalf("the draw over a record entry that is an executable file said %q", note)
+	}
+	if strings.Contains(note, GroupFacilitatorDecisions) {
+		t.Fatalf("the note names a group with no such entry: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want %v", got, want)
+	}
+}
+
+// TestANoteCountsAFolderUnderARecordsName: a folder under a record's name,
+// however many files it holds, is never read and takes no place in the
+// window, and the note counts it once by group.
+func TestANoteCountsAFolderUnderARecordsName(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	f, err := handBack("iss-60", w0.Add(time.Minute)).typed().file()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.plant(map[string]string{f.path() + "/" + f.name: string(f.data), f.path() + "/x": string(f.data)})
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	line := "in " + GroupDrainHandBacks + ", 1 entry(s) under a record's name were not read: each is a folder, a link, an executable file, a submodule or over a record's size"
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, line) {
+		t.Fatalf("the draw over a folder under a record's name said %q", note)
+	}
+	if strings.Contains(note, GroupFacilitatorDecisions) {
+		t.Fatalf("the note names a group with no such entry: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want %v", got, want)
 	}
 }
