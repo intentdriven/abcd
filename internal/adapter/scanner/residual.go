@@ -159,7 +159,8 @@ func callerHomeSpellings(home string) []string {
 
 // callerUserNames is the caller's username as the last segment of the cleaned
 // home, so a HOME written "/Users/me/." still names "me", in both Unicode abcd-lint:allow
-// normal forms.
+// normal forms. A name that is not valid UTF-8 is refused by the scanner
+// (identityNotUTF8), never matched in a guessed form.
 func callerUserNames(home string) []string {
 	name := home
 	if filepath.IsAbs(home) {
@@ -172,15 +173,15 @@ func callerUserNames(home string) []string {
 	if user == "" || user == "." || user == "/" {
 		return nil
 	}
-	return receivedForms(user)
+	return normalForms(user)
 }
 
-// receivedForms is s in every form a text can carry it in: as given, and in
-// both Unicode normal forms; and, where s is not valid UTF-8, in the forms a
-// store receives it in, since no store is handed the raw bytes — each invalid
-// byte replaced by U+FFFD (as a JSON encoder writes it), each run of them
-// replaced by one (strings.ToValidUTF8), and the invalid bytes dropped (as
-// the history reader clips a scalar) — each in both normal forms too.
+// receivedForms is a home spelling s in every form a text can carry it in: as
+// given, and in both Unicode normal forms; and, where s is not valid UTF-8, in
+// the forms a store receives it in, since no store is handed the raw bytes —
+// each invalid byte replaced by U+FFFD (as a JSON encoder writes it), each run
+// of them replaced by one (strings.ToValidUTF8), and the invalid bytes dropped
+// (as the history reader clips a scalar) — each in both normal forms too.
 func receivedForms(s string) []string {
 	bases := []string{s}
 	if !utf8.ValidString(s) {

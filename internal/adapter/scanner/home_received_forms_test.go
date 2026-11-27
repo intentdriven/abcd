@@ -23,17 +23,3 @@ func TestHomeSpellingIsMatchedInTheFormsAStoreReceives(t *testing.T) {
 		}
 	}
 }
-
-// An account name that is not valid UTF-8 is matched as a store receives it.
-func TestAccountNameIsMatchedInTheFormsAStoreReceives(t *testing.T) {
-	id := Identity{HomePath: "/srv/people/donn\xe9es", HomeUser: "donn\xe9es"}
-	for _, text := range []string{"signed by donn�es today", "signed by donnes today"} {
-		var found bool
-		for _, f := range ScanText(text, id, nil, DefaultIdentitySeverities(), "f") {
-			found = found || f.Kind == kindLocalUser
-		}
-		if !found {
-			t.Errorf("account name not found in %+q", text)
-		}
-	}
-}

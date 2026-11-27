@@ -167,6 +167,12 @@ func probeIdentity(ctx context.Context, repoRoot string) Identity {
 	}
 	if remote = strings.TrimSpace(remote); remote != "" {
 		id.GitRemoteUsername = parseGitHubRemote(remote)
+		// An owner that is not valid UTF-8 fails the strict parse; it is kept
+		// as written so identityNotUTF8 refuses it rather than the owner going
+		// unmatched.
+		if m := githubOwnerRawRe.FindStringSubmatch(remote); id.GitRemoteUsername == "" && m != nil && !utf8.ValidString(m[1]) {
+			id.GitRemoteUsername = m[1]
+		}
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
@@ -315,17 +321,51 @@ func containsFold(list []string, v string) bool {
 	return false
 }
 
+// identityNotUTF8 names the setting that holds an identity value that is not
+// valid UTF-8, as a refusal reason that says to re-save it, or is "" when every
+// value is valid. The reason never carries the value.
+func identityNotUTF8(id Identity) string {
+	allValid := func(vs []string) bool {
+		for _, v := range vs {
+			if !utf8.ValidString(v) {
+				return false
+			}
+		}
+		return true
+	}
+	var setting string
+	switch {
+	case !utf8.ValidString(id.GitUserName):
+		setting = "git config user.name"
+	case !allValid(id.OtherGitUserNames):
+		setting = "a git user.name, author.name or committer.name value in another config scope, " +
+			"or GIT_AUTHOR_NAME or GIT_COMMITTER_NAME"
+	case !utf8.ValidString(id.GitUserEmail):
+		setting = "git config user.email"
+	case !allValid(id.OtherGitUserEmails):
+		setting = "a git user.email, author.email or committer.email value in another config scope, " +
+			"or GIT_AUTHOR_EMAIL or GIT_COMMITTER_EMAIL"
+	case !utf8.ValidString(id.GitRemoteUsername):
+		setting = "the owner in git config remote.origin.url"
+	case !utf8.ValidString(id.HomeUser):
+		setting = "the home folder's name"
+	default:
+		return ""
+	}
+	return setting + " is not valid UTF-8, so the redactor cannot match it and refuses the write: " +
+		"re-save it as UTF-8 (the value is not shown)"
+}
+
 // foldedAlternation compiles values into one case-insensitive literal
 // alternation. The (?i) is what every identity matcher already carried; the
 // alternation is what lets one matcher stand for every scope's value. Each
-// value is matched in every form a text carries it in (receivedForms): both
-// Unicode normal forms, and for a value that is not valid UTF-8, the forms a
-// store receives it in, the raw bytes left out (literalAlternation). It is nil
-// when no form is left.
+// value is matched in both Unicode normal forms. A value that is not valid
+// UTF-8 is left out (literalAlternation), and the scanner refuses every store
+// write while one is set (identityNotUTF8). It is nil when no form is left.
 func foldedAlternation(values []string) *regexp.Regexp {
 	var forms []string
 	for _, v := range values {
-		for _, f := range receivedForms(v) {
+		for _, f := range normalForms(v) {
 			if !slices.Contains(forms, f) {
 				forms = append(forms, f)
 			}
@@ -369,6 +409,9 @@ var (
 	// on the host: git stores the remote verbatim, so a hand-typed GitHub.com
 	// must still resolve the handle, or github_username redaction never arms.
 	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]*)`)
+	// githubOwnerRawRe takes the owner segment whatever its bytes, for the
+	// probe's UTF-8 check alone.
+	githubOwnerRawRe = regexp.MustCompile(`(?i)github\.com[:/]([^/]+)/`)
 	// Generic home path. Both boundaries are Go predicates: a leading RE2 \b is
 	// wrong here — it is an ASCII word boundary that requires a WORD character
 	// immediately before the '/', which never holds at line start or after a

@@ -374,9 +374,16 @@ func newBase(ctx context.Context, repoRoot string) *Scanner {
 // An augmenter that fails a run, or hands back a report the scanner cannot
 // place, degrades the scanner from that call on, so a caller that wired one
 // consults this after ScanText as well as before.
+//
+// An identity value that is not valid UTF-8 (identityNotUTF8) leaves the
+// scanner unavailable too: no pattern holds its raw bytes and no store is
+// handed them, so it is refused rather than matched in a guessed form.
 func (s *Scanner) Unavailable() (bool, string) {
 	if s.unavailable {
 		return true, s.unavailReason
+	}
+	if why := identityNotUTF8(s.identity); why != "" {
+		return true, why
 	}
 	if why := s.augDegraded(); why != "" {
 		return true, why
