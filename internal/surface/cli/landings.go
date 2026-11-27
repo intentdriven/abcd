@@ -237,8 +237,7 @@ func landingsRender(w io.Writer, asJSON bool, v any, text func(io.Writer)) error
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(append(landingsJSONEscape(b), '\n'))
-	return err
+	return writeDocument(w, append(landingsJSONEscape(b), '\n'), docOne, renderStyle)
 }
 
 // landingsJSONEscape is b, valid UTF-8 as encoding/json writes it, with each

@@ -95,15 +95,22 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain identity` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain identity` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd identity [flags]`
   - An example call is `abcd identity`.
+  - What usually follows:
+    - `abcd identity init`, when the repository records no identity block yet.
+    - `abcd identity render`, to see the corrections for every drifted surface.
 - `abcd identity init [flags]`
   - An example call is `abcd identity init --title "Example Widgets" --tagline "Widgets that explain themselves"`.
+  - What usually follows:
+    - `abcd lint identity`, to see every surface held to the block.
 - `abcd identity render [flags]`
   - An example call is `abcd identity render`.
+  - What usually follows:
+    - `abcd lint identity`, once the corrections are applied, to confirm nothing drifts.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd agents",
@@ -20,7 +20,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd agents --all"
+      "example": "abcd agents --all",
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the lanes those agents are working"
+        }
+      ]
     }
   ]
 }

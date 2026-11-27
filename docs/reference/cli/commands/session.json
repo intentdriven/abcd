@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd session",
@@ -14,6 +14,16 @@
         "serve",
         "setup",
         "start"
+      ],
+      "next": [
+        {
+          "command": "abcd session setup",
+          "when": "to set up live brief sessions"
+        },
+        {
+          "command": "abcd session start",
+          "when": "to start a live brief session on this computer"
+        }
       ]
     },
     {
@@ -35,7 +45,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd session blueprint"
+      "example": "abcd session blueprint",
+      "next": [
+        {
+          "command": "abcd session page",
+          "when": "to write the brief session's static page beside the relay"
+        }
+      ]
     },
     {
       "path": "abcd session page",
@@ -53,7 +69,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd session page --out brief-page"
+      "example": "abcd session page --out brief-page",
+      "no_next": "the page is written for hosting; nothing usually follows"
     },
     {
       "path": "abcd session serve",
@@ -91,7 +108,9 @@
         }
       ],
       "inputs": [],
-      "example": "abcd session serve"
+      "example": "abcd session serve",
+      "no_next": "the relay runs in the foreground until stopped; nothing usually follows",
+      "streaming": true
     },
     {
       "path": "abcd session setup",
@@ -117,7 +136,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd session setup --where local"
+      "example": "abcd session setup --where local",
+      "next": [
+        {
+          "command": "abcd session start",
+          "when": "to start a live brief session"
+        }
+      ]
     },
     {
       "path": "abcd session start",
@@ -135,7 +160,9 @@
         }
       ],
       "inputs": [],
-      "example": "abcd session start"
+      "example": "abcd session start",
+      "no_next": "the session runs on this computer; its link is shared with the team",
+      "streaming": true
     }
   ]
 }

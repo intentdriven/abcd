@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd intent",
@@ -45,6 +45,16 @@
         "reclassify",
         "target",
         "unhold"
+      ],
+      "next": [
+        {
+          "command": "abcd intent plan <itd-N>",
+          "when": "to plan the draft"
+        },
+        {
+          "command": "abcd intent hold <itd-N> --reason \"<text>\"",
+          "when": "when the draft must wait on a ruling"
+        }
       ]
     },
     {
@@ -84,6 +94,12 @@
       "example": "abcd intent audit itd-2609010000000001",
       "subcommands": [
         "ingest"
+      ],
+      "next": [
+        {
+          "command": "abcd intent audit ingest --verdict-json <path>",
+          "when": "once the host has run the audit and composed its verdict"
+        }
       ]
     },
     {
@@ -120,7 +136,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd intent audit ingest --verdict-json verdict.json"
+      "example": "abcd intent audit ingest --verdict-json verdict.json",
+      "next": [
+        {
+          "command": "abcd intent condition <itd-N>",
+          "when": "to disposition the shipped intent's scope conditions"
+        }
+      ]
     },
     {
       "path": "abcd intent condition",
@@ -151,7 +173,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent condition itd-2609010000000001"
+      "example": "abcd intent condition itd-2609010000000001",
+      "next": [
+        {
+          "command": "abcd intent condition <itd-N>",
+          "when": "to disposition the next condition"
+        }
+      ]
     },
     {
       "path": "abcd intent consistency",
@@ -179,6 +207,12 @@
       "example": "abcd intent consistency",
       "subcommands": [
         "ingest"
+      ],
+      "next": [
+        {
+          "command": "abcd intent consistency ingest --findings-json <path>",
+          "when": "once the host has returned its findings"
+        }
       ]
     },
     {
@@ -215,7 +249,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd intent consistency ingest --findings-json findings.json"
+      "example": "abcd intent consistency ingest --findings-json findings.json",
+      "next": [
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the captures the findings filed"
+        }
+      ]
     },
     {
       "path": "abcd intent edge",
@@ -240,7 +280,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002"
+      "example": "abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002",
+      "next": [
+        {
+          "command": "abcd intent ready <itd-N>",
+          "when": "to see whether the intent is ready with its new edges"
+        }
+      ]
     },
     {
       "path": "abcd intent hold",
@@ -253,7 +299,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent hold itd-2609010000000001 --reason \"waiting on the product thinker's ruling on scope\""
+      "example": "abcd intent hold itd-2609010000000001 --reason \"waiting on the product thinker's ruling on scope\"",
+      "next": [
+        {
+          "command": "abcd intent unhold <itd-N>",
+          "when": "once the ruling the hold waits on is made"
+        }
+      ]
     },
     {
       "path": "abcd intent interview",
@@ -281,7 +333,13 @@
           "name": "interview answers"
         }
       ],
-      "example": "abcd intent interview itd-2609010000000001"
+      "example": "abcd intent interview itd-2609010000000001",
+      "next": [
+        {
+          "command": "abcd intent ready <itd-N>",
+          "when": "to see whether the intent is ready once the interview is answered"
+        }
+      ]
     },
     {
       "path": "abcd intent link",
@@ -289,7 +347,13 @@
       "usage": "abcd intent link <itd-N> <spc-N> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd intent link itd-2609010000000001 spc-2609010000000002"
+      "example": "abcd intent link itd-2609010000000001 spc-2609010000000002",
+      "next": [
+        {
+          "command": "abcd intent ready <itd-N>",
+          "when": "to see whether the intent is ready to implement"
+        }
+      ]
     },
     {
       "path": "abcd intent plan",
@@ -324,7 +388,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent plan itd-2609010000000001"
+      "example": "abcd intent plan itd-2609010000000001",
+      "next": [
+        {
+          "command": "abcd intent interview <itd-N>",
+          "when": "to run the intent's planning interview"
+        },
+        {
+          "command": "abcd intent ready <itd-N>",
+          "when": "to see whether the planned intent is ready"
+        }
+      ]
     },
     {
       "path": "abcd intent prepass",
@@ -349,7 +423,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd intent prepass itd-2609010000000001 --json"
+      "example": "abcd intent prepass itd-2609010000000001 --json",
+      "next": [
+        {
+          "command": "abcd intent plan <itd-N>",
+          "when": "once the planning brief is written"
+        }
+      ]
     },
     {
       "path": "abcd intent ready",
@@ -362,7 +442,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent ready itd-2609010000000001"
+      "example": "abcd intent ready itd-2609010000000001",
+      "next": [
+        {
+          "command": "abcd build <itd-N>",
+          "when": "when it reports the intent ready"
+        }
+      ]
     },
     {
       "path": "abcd intent reclassify",
@@ -392,7 +478,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason \"absorbed by the later intent\""
+      "example": "abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason \"absorbed by the later intent\"",
+      "next": [
+        {
+          "command": "abcd intent",
+          "when": "to see the intent store with the change"
+        }
+      ]
     },
     {
       "path": "abcd intent target",
@@ -400,7 +492,13 @@
       "usage": "abcd intent target <itd-N> <vX.Y.Z|next> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd intent target itd-2609010000000001 v0.11.0"
+      "example": "abcd intent target itd-2609010000000001 v0.11.0",
+      "next": [
+        {
+          "command": "abcd intent ready <itd-N>",
+          "when": "to see whether the intent is ready for its release"
+        }
+      ]
     },
     {
       "path": "abcd intent unhold",
@@ -408,7 +506,13 @@
       "usage": "abcd intent unhold <itd-N> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd intent unhold itd-2609010000000001"
+      "example": "abcd intent unhold itd-2609010000000001",
+      "next": [
+        {
+          "command": "abcd intent plan <itd-N>",
+          "when": "to plan the intent the hold kept back"
+        }
+      ]
     }
   ]
 }

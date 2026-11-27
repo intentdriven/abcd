@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd ahoy",
@@ -34,6 +34,16 @@
         "shared-folder",
         "uninstall",
         "worktree"
+      ],
+      "next": [
+        {
+          "command": "abcd ahoy install",
+          "when": "when it lists an install gap"
+        },
+        {
+          "command": "abcd ahoy doctor",
+          "when": "to see every gap, user-scope state included"
+        }
       ]
     },
     {
@@ -94,7 +104,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none"
+      "example": "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
+      "next": [
+        {
+          "command": "abcd ahoy credential",
+          "when": "to list the credentials abcd now reads"
+        },
+        {
+          "command": "abcd ahoy doctor",
+          "when": "to check nothing else is missing"
+        }
+      ]
     },
     {
       "path": "abcd ahoy credential",
@@ -124,7 +144,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy credential"
+      "example": "abcd ahoy credential",
+      "next": [
+        {
+          "command": "abcd ahoy connect <provider>",
+          "when": "to configure the provider the credential is for"
+        }
+      ]
     },
     {
       "path": "abcd ahoy doctor",
@@ -132,7 +158,13 @@
       "usage": "abcd ahoy doctor [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd ahoy doctor"
+      "example": "abcd ahoy doctor",
+      "next": [
+        {
+          "command": "abcd ahoy install",
+          "when": "when it reports a gap install can apply"
+        }
+      ]
     },
     {
       "path": "abcd ahoy install",
@@ -267,7 +299,17 @@
           "name": "interview answers"
         }
       ],
-      "example": "abcd ahoy install"
+      "example": "abcd ahoy install",
+      "next": [
+        {
+          "command": "abcd ahoy doctor",
+          "when": "to confirm no gap is left"
+        },
+        {
+          "command": "abcd",
+          "when": "to read the board of the repository just set up"
+        }
+      ]
     },
     {
       "path": "abcd ahoy remote",
@@ -278,6 +320,12 @@
       "example": "abcd ahoy remote",
       "subcommands": [
         "apply"
+      ],
+      "next": [
+        {
+          "command": "abcd ahoy remote apply",
+          "when": "when a GitHub setting differs from the baseline"
+        }
       ]
     },
     {
@@ -291,7 +339,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy remote apply"
+      "example": "abcd ahoy remote apply",
+      "next": [
+        {
+          "command": "abcd ahoy remote",
+          "when": "to confirm no setting differs any more"
+        }
+      ]
     },
     {
       "path": "abcd ahoy shared-folder",
@@ -304,7 +358,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy shared-folder /Users/Shared"
+      "example": "abcd ahoy shared-folder /Users/Shared",
+      "next": [
+        {
+          "command": "abcd implement stop",
+          "when": "only when the person says yes, and run by them from their own account, to stop the unattended runs of every account that chose the folder"
+        }
+      ]
     },
     {
       "path": "abcd ahoy uninstall",
@@ -317,7 +377,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy uninstall"
+      "example": "abcd ahoy uninstall",
+      "no_next": "abcd is gone from the repository, so no abcd command usually follows"
     },
     {
       "path": "abcd ahoy worktree",
@@ -331,6 +392,16 @@
         "list",
         "prune",
         "trim-cache"
+      ],
+      "next": [
+        {
+          "command": "abcd ahoy worktree add <name>",
+          "when": "to start a second session's work in a worktree of its own"
+        },
+        {
+          "command": "abcd ahoy worktree prune --dry-run",
+          "when": "to see which merged, clean worktrees can be reclaimed"
+        }
       ]
     },
     {
@@ -344,7 +415,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy worktree add example-lane"
+      "example": "abcd ahoy worktree add example-lane",
+      "next": [
+        {
+          "command": "abcd reserve <record-id> --footprint <path>",
+          "when": "before working a record in the new worktree"
+        }
+      ]
     },
     {
       "path": "abcd ahoy worktree list",
@@ -357,7 +434,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy worktree list"
+      "example": "abcd ahoy worktree list",
+      "next": [
+        {
+          "command": "abcd ahoy worktree prune --dry-run",
+          "when": "to see which merged, clean worktrees can be reclaimed"
+        }
+      ]
     },
     {
       "path": "abcd ahoy worktree prune",
@@ -374,7 +457,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy worktree prune --dry-run"
+      "example": "abcd ahoy worktree prune --dry-run",
+      "next": [
+        {
+          "command": "abcd ahoy worktree prune",
+          "when": "after a --dry-run, to reclaim what it listed"
+        },
+        {
+          "command": "abcd ahoy worktree list",
+          "when": "to see the worktrees left"
+        }
+      ]
     },
     {
       "path": "abcd ahoy worktree trim-cache",
@@ -387,7 +480,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd ahoy worktree trim-cache --dry-run"
+      "example": "abcd ahoy worktree trim-cache --dry-run",
+      "next": [
+        {
+          "command": "abcd ahoy worktree trim-cache",
+          "when": "after a --dry-run, to delete what it listed"
+        }
+      ]
     }
   ]
 }

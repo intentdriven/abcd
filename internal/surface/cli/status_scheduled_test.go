@@ -3,15 +3,18 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
@@ -455,6 +458,118 @@ func TestThePromptHookStartsARefreshWhenOneIsDue(t *testing.T) {
 	}
 }
 
+// refreshUnstampedLine is how the prompt's STATUS block says a due refresh's stamp
+// could not be kept.
+const refreshUnstampedLine = "the background refresh of the scheduled run could not be started: its stamp could not be kept"
+
+// TestAStampThatCannotBeKeptIsSaidOnThePrompt: a store that cannot be written,
+// as from a full disk or a changed mode, starts no refresh, and the prompt it
+// failed on says so in its STATUS block, which the agent reads, and on stderr,
+// the operator's diagnostic (iss-2611051719396028).
+func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	standInForge(t, runListing("failure", time.Now()), false)
+	spawned := spawnsRefreshes(t)
+	t.Setenv("HOME", w.home)
+	// A file where the store's folder goes: no stamp can be kept under it.
+	store := abcdhome.Path(w.home, "scheduled-runs")
+	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, stderr := runHook(t, hookInputJSON(t, "s-sched", pat, "hello there"), "hook", "prompt-router")
+	if !strings.Contains(out, "is unknown") {
+		t.Fatalf("the hook's text:\n%s\nwant it to say the state is unknown", out)
+	}
+	if spawned.count() != 0 {
+		t.Fatalf("an unstamped refresh was started %d times; want none", spawned.count())
+	}
+	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
+		t.Fatalf("the hook's stderr:\n%s\nwant it to say the refresh was not started", stderr)
+	}
+	// The error names the store's folder by its full path, so the redaction is tested.
+	if !strings.Contains(stderr, abcdhome.Display("scheduled-runs")) {
+		t.Fatalf("the hook's stderr:\n%s\nwant the full, home-redacted reason", stderr)
+	}
+	if strings.Contains(stderr, w.home) {
+		t.Fatalf("the hook's stderr names the home unredacted:\n%s", stderr)
+	}
+	line := statusLineWith(out, refreshUnstampedLine)
+	if line == "" {
+		t.Fatalf("the hook's text:\n%s\nwant its STATUS block to carry %q", out, refreshUnstampedLine)
+	}
+	if strings.Contains(line, w.home) {
+		t.Fatalf("the block's line names the home unredacted: %q", line)
+	}
+	// The block says the class in fixed words, never the OS's or fsutil's own.
+	if !strings.Contains(line, "something that is not a folder stands in the store's path") || strings.Contains(line, "fsutil") || strings.Contains(line, "scheduled-runs") {
+		t.Fatalf("the block's line %q: want the class in fixed words and no OS error", line)
+	}
+}
+
+// statusLineWith is the line of out that carries want, "" when none does.
+func statusLineWith(out, want string) string {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, want) {
+			return l
+		}
+	}
+	return ""
+}
+
+// TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent: a green kept and gone past due,
+// whose refresh cannot be stamped, says nothing of its own for up to 48 hours,
+// since no stamp is newer than the answer for the read to call a refresh that kept
+// nothing. So the prompt's STATUS block says the stamp could not be kept, in fixed
+// words that carry no path, the home-redacted reason going to stderr alone, and
+// starts no refresh (iss-2611051719396028).
+func TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	askGitHubFrom(t)
+	spawned := spawnsRefreshes(t)
+	standInForge(t, runListing("success", time.Now().Add(-time.Hour)), false)
+	if code, _, stderr := reserveRun(t, pat, "hook", "scheduled-refresh"); code != 0 {
+		t.Fatalf("the refresh: exit %d, %s", code, stderr)
+	}
+	home := os.Getenv("HOME")
+	ageKeptAnswer(t, home, 2*time.Hour)
+	// A folder where the stamp goes: the answer still reads, and no stamp can be kept.
+	answers, err := filepath.Glob(abcdhome.Path(home, "scheduled-runs", "*", "*.json"))
+	if err != nil || len(answers) != 1 {
+		t.Fatalf("the kept answers: %v, %v; want one", answers, err)
+	}
+	if err := os.MkdirAll(strings.TrimSuffix(answers[0], ".json")+".attempt", 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	out, stderr := runHook(t, hookInputJSON(t, "s-sched", pat, "hello"), "hook", "prompt-router")
+	if spawned.count() != 0 {
+		t.Fatalf("an unstamped refresh was started %d times; want none", spawned.count())
+	}
+	if !strings.Contains(out, claim.NotesHeading) || !strings.Contains(out, refreshUnstampedLine) {
+		t.Fatalf("the prompt:\n%s\nwant a STATUS block carrying %q", out, refreshUnstampedLine)
+	}
+	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
+		t.Fatalf("the hook's stderr:\n%s\nwant the operator's line too", stderr)
+	}
+	if line := statusLineWith(out, refreshUnstampedLine); !strings.Contains(line, "the store could not be written") || strings.Contains(line, ".attempt") {
+		t.Fatalf("the block's line %q: want the fallback class in fixed words and no OS error", line)
+	}
+}
+
 // TestTheRefreshVerbTellsASessionThatNeverRanStatus: what the prompt starts in
 // the background keeps the answer, and a new worktree of the same repository
 // that has run nothing is told of the red at its first prompt.
@@ -585,5 +700,44 @@ func TestThePromptDoesNotWalkHistoryAgainForTheStore(t *testing.T) {
 	stamps, err := filepath.Glob(abcdhome.Path(w.home, "scheduled-runs", handed, "*.attempt"))
 	if err != nil || len(stamps) != 1 {
 		t.Fatalf("the stamp is not under the root commit the prompt looked up: %v, %v", stamps, err)
+	}
+}
+
+// TestAnUnkeptStampIsSaidInFixedWords: the block's reason is chosen by the error's
+// class and never carries the error's text, a refusal fsutil wrote for a person
+// included.
+func TestAnUnkeptStampIsSaidInFixedWords(t *testing.T) {
+	inPath := func(err error) error {
+		return &os.PathError{Op: "open", Path: abcdhome.Path("/home/pat", "x"), Err: err}
+	}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{&fsutil.HomeScopeLinkError{Link: abcdhome.Display("scheduled-runs")}, "a link in the store's path is refused"},
+		{&fsutil.HomeScopeExposedError{Dir: abcdhome.Display("scheduled-runs"), Perm: 0o777}, "a folder of the store is open to another account"},
+		{inPath(syscall.ENOSPC), "the disk is full"},
+		{inPath(fsutil.ErrNotRealDir), "something that is not a folder stands in the store's path"},
+		{inPath(syscall.EACCES), "the store cannot be written by this account"},
+		{inPath(syscall.EROFS), "the store cannot be written by this account"},
+		{errors.New("run chmod 700 on it"), "the store could not be written"},
+	} {
+		got := unstampedWords(c.err)
+		if got != c.want {
+			t.Errorf("unstampedWords(%v) = %q; want %q", c.err, got, c.want)
+		}
+		if strings.Contains(got, "/home/pat") || strings.Contains(got, "chmod") {
+			t.Errorf("unstampedWords(%v) = %q carries the error's text", c.err, got)
+		}
+	}
+}
+
+// TestTheStderrReasonIsOneLine: the operator's stderr line carries the error's
+// text, which a path can fill with any rune, so U+2028 and U+2029, at which a
+// renderer starts a new line, are masked there as a newline is.
+func TestTheStderrReasonIsOneLine(t *testing.T) {
+	got := stderrReason(errors.New("open a\u2028forged line\u2029and another\nthird"))
+	if strings.ContainsAny(got, "\u2028\u2029\n") {
+		t.Fatalf("stderrReason = %q; want no line breaks of any kind", got)
 	}
 }

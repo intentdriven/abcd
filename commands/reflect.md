@@ -146,17 +146,22 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reflect` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain reflect` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd reflect <release-tag> [flags]`
   - An example call is `abcd reflect v0.11.0`.
+  - What usually follows:
+    - `abcd reflect interview <release-tag>`, to run the retrospective interview.
 - `abcd reflect interview <release-tag> [--answers <file>] [--answered-in <place>] [--proceed] [flags]`
   - Reads `--answers`, the interview answers.
   - An example call is `abcd reflect interview v0.11.0`.
+  - What usually follows:
+    - `abcd reflect write <release-tag> --answers <file>`, once the interview is answered.
 - `abcd reflect write <release-tag> --answers <file> [flags]`
   - Reads `--answers`, the interview answers.
   - An example call is `abcd reflect write v0.11.0 --answers answers.json`.
+  - Nothing usually follows: the retrospective is written; nothing usually follows.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

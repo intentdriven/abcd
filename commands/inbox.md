@@ -108,7 +108,21 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain inbox` from the running binary disagree, follow the binary.
+<!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
+
+- `abcd inbox [flags]`
+  - An example call is `abcd inbox`.
+  - What usually follows:
+    - `abcd inbox show <id>`, to read one report whole.
+- `abcd inbox promote <id> [flags]`
+  - An example call is `abcd inbox promote rpt-2609010000000001`.
+  - What usually follows:
+    - `abcd capture list --open`, to see the capture it filed.
+- `abcd inbox show <id> [flags]`
+  - An example call is `abcd inbox show rpt-2609010000000001`.
+  - What usually follows:
+    - `abcd inbox promote <id>`, to file the report as a capture.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

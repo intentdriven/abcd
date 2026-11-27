@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -77,9 +76,9 @@ func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
 			code = 3
 		}
 		if asJSON {
-			enc := json.NewEncoder(w)
-			enc.SetIndent("", "  ")
-			if encErr := enc.Encode(loopRefusalDoc{Refusal: red}); encErr != nil {
+			// The refusal's document is no success, so it carries no next
+			// steps; the error object follows it.
+			if encErr := renderRefused(w, true, loopRefusalDoc{Refusal: red}, nil); encErr != nil {
 				return encErr
 			}
 		}
@@ -295,7 +294,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				noticeUnattended(cmd, prefix)
 			}
 			warnOffProfileWhileAway(cmd, prefix, root)
-			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			if err := renderFinal(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				renderStartHead(w, args[0], res)
 				renderPace(w, res.Pace)
 				renderReview(w, res.Review)
@@ -356,7 +355,7 @@ func buildRelease(w io.Writer, asJSON bool, root, key string) error {
 		return &exitError{Code: 2, Msg: msg}
 	}
 	out := reserveView(res)
-	return render(w, asJSON, out, func(w io.Writer) {
+	return renderFinal(w, asJSON, out, func(w io.Writer) {
 		if out.Act == claim.ActAlreadyReleased {
 			fmt.Fprintf(w, "build %s: the reservation on %s was already released; nothing was pushed, and the run's state is unchanged\n", out.Record, out.Record)
 			return
@@ -470,7 +469,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
 			}
-			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) }); err != nil {
+			if err := renderFinal(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) }); err != nil {
 				return err
 			}
 			// The start it made warns on stderr of a directory its
@@ -860,7 +859,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr}, func(w io.Writer) {
+			return renderFinal(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr}, func(w io.Writer) {
 				if outageErr != "" {
 					fmt.Fprintf(w, "outage: unreadable: %s\n", termsafe.Sanitize(outageErr))
 				}
@@ -1425,7 +1424,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: --route %s was not used: a landing ahead of its role moved first; the run record says so\n",
 					prefix, termsafe.Sanitize(text))
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
+			return renderFinal(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
@@ -1518,7 +1517,7 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			res = redactStep(res)
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "receipt", res) })
+			return renderFinal(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "receipt", res) })
 		},
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run the receipt belongs to (run-<16 digits>); the one run in progress when omitted")
@@ -1582,7 +1581,7 @@ func newImplementRecordCommand(asJSON *bool) *cobra.Command {
 			} else if rec, err = loop.ReadRecord(root, id); err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, rec, func(w io.Writer) { renderRunRecord(w, rec) })
+			return renderFinal(cmd.OutOrStdout(), *asJSON, rec, func(w io.Writer) { renderRunRecord(w, rec) })
 		},
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to render (run-<16 digits>); the one in progress, else the latest, when omitted")

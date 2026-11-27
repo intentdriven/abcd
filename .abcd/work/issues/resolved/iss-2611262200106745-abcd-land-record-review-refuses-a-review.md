@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/landing/review.go"
 remedy: "Count a line as a second verdict only when the word verdict is followed, on that line, by one of the known verdict words (SHIP, FIX FIRST, BLOCK, APPROVE, NEEDS-INPUT), so a reference such as 'verdict:52' or a sentence about a verdict record is not one; test both a reference bullet (accepted) and a 'Verdict: SHIP' line outside the heading (still refused)."
-resolution: "the recorder reads a word followed directly by a line number or the rest of a file name as a file reference, not a verdict (internal/core/landing/review.go, fileReference)"
+resolution: "the recorder reads a word followed directly by a line number or the rest of a file name as a file reference, not a verdict, unless a verdict word follows on the same line (internal/core/landing/review.go, fileReference and statesVerdictWord)"
 impact: fix
 ---
 

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd guard",
@@ -14,6 +14,12 @@
         "check",
         "hook",
         "question"
+      ],
+      "next": [
+        {
+          "command": "abcd guard check --command '<line>'",
+          "when": "to judge one shell command before running it"
+        }
       ]
     },
     {
@@ -31,7 +37,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd guard allow --once --command 'git branch -D feat/done'"
+      "example": "abcd guard allow --once --command 'git branch -D feat/done'",
+      "no_next": "the allowance is used by the next matching call through the hook; nothing usually follows"
     },
     {
       "path": "abcd guard approve",
@@ -68,7 +75,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567"
+      "example": "abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567",
+      "no_next": "it answers prompts until its input ends; nothing usually follows"
     },
     {
       "path": "abcd guard check",
@@ -81,7 +89,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd guard check --command 'git push --force origin main'"
+      "example": "abcd guard check --command 'git push --force origin main'",
+      "next": [
+        {
+          "command": "abcd guard allow --once --command '<line>'",
+          "when": "only when the person says yes, and run by them, to let through one unproven delete they have judged safe"
+        }
+      ]
     },
     {
       "path": "abcd guard hook",
@@ -89,7 +103,8 @@
       "usage": "abcd guard hook [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd guard hook < payload.json"
+      "example": "abcd guard hook < payload.json",
+      "no_next": "the host calls it on each tool call and reads its answer; nothing follows it"
     },
     {
       "path": "abcd guard question",
@@ -102,7 +117,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd guard question draft.json"
+      "example": "abcd guard question draft.json",
+      "no_next": "a clean draft is handed to the host's question tool; no abcd command follows it"
     }
   ]
 }

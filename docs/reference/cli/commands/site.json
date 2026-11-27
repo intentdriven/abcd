@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd site",
@@ -17,6 +17,16 @@
       "subcommands": [
         "build",
         "setup"
+      ],
+      "next": [
+        {
+          "command": "abcd site build",
+          "when": "to render the website"
+        },
+        {
+          "command": "abcd site setup",
+          "when": "when the website has no live address yet"
+        }
       ]
     },
     {
@@ -56,7 +66,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd site build"
+      "example": "abcd site build",
+      "next": [
+        {
+          "command": "abcd lint site",
+          "when": "to gate the built website"
+        }
+      ]
     },
     {
       "path": "abcd site setup",
@@ -97,7 +113,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd site setup"
+      "example": "abcd site setup",
+      "next": [
+        {
+          "command": "abcd site",
+          "when": "to see what the website now declares"
+        }
+      ]
     }
   ]
 }

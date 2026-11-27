@@ -51,13 +51,13 @@ func newImplementResumeCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return loopFail(w, *asJSON, prefix, err)
 				}
-				return render(w, *asJSON, res, func(w io.Writer) { renderTake(w, res) })
+				return renderFinal(w, *asJSON, res, func(w io.Writer) { renderTake(w, res) })
 			}
 			l, err := loop.ListRuns(root, only, loop.Options{})
 			if err != nil {
 				return loopFail(w, *asJSON, prefix, err)
 			}
-			return render(w, *asJSON, l, func(w io.Writer) { renderListing(w, l) })
+			return renderFinal(w, *asJSON, l, func(w io.Writer) { renderListing(w, l) })
 		},
 	}
 	cmd.Flags().StringVar(&only, "run", "", "list this run alone (run-<16 digits>)")

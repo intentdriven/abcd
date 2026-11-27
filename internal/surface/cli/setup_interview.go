@@ -46,6 +46,9 @@ var drawnPut = func(t ask.Terminal, a question.Ask) ([]ask.Answer, error) { retu
 // keyboard on stdin, the question drawn on stderr so a --json result on
 // stdout stays clean. ok is false anywhere else.
 func drawnTerminal(in io.Reader, out, errOut io.Writer, cwd string) (ask.Terminal, []string, bool) {
+	// Under --json a visible command's stdout carries its next steps
+	// (next_steps.go); the terminal is the stream beneath.
+	out = plainStdout(out)
 	inF, ok1 := in.(*os.File)
 	outF, ok2 := out.(*os.File)
 	errF, ok3 := errOut.(*os.File)

@@ -24,7 +24,9 @@ import (
 // terminal. Tests override the seam to exercise the on path (the repo's
 // package-var seam pattern).
 var bannerTTY = func(w io.Writer) bool {
-	f, ok := w.(*os.File)
+	// Under --json a visible command's stdout carries its next steps
+	// (next_steps.go); the terminal is the stream beneath.
+	f, ok := streamOf(w).(*os.File)
 	return ok && term.IsTerminal(f)
 }
 
