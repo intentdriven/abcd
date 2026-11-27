@@ -374,7 +374,7 @@ func pushRemovals(segs []segment) (why string, named bool) {
 		for _, site := range sitesNamed(s, "git") {
 			args := s.tokens[site.idx+1:]
 			for _, k := range gitSubcommandAt(args) {
-				if args[k] != "push" || !mayRemove(args[k+1:]) {
+				if !mayBePush(args[k]) || !mayRemove(args[k+1:]) {
 					continue
 				}
 				ts, w := pushDeletes(args[k+1:], "/")
@@ -386,6 +386,14 @@ func pushRemovals(segs []segment) (why string, named bool) {
 		}
 	}
 	return why, named
+}
+
+// mayBePush reports whether a word at a place git's subcommand may stand can
+// be push: the word itself, or one the line does not fix whose fixed text may
+// print it (`"$(x)"push`, `pu"$(x)"sh`). A word that is all substitution is
+// the residual every entry's reading shares, and is not read as push here.
+func mayBePush(w string) bool {
+	return w == "push" || isUnknown(w) && knownText(w) != "" && unknownCouldBe(w, "push")
 }
 
 // gitSubcommandAt is where git's subcommand may stand in args, the words after

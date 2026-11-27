@@ -318,6 +318,9 @@ func TestGuardRefusesAPushThatPrunesOrMirrors(t *testing.T) {
 		`git "$(true)"-c a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
 		`git -c"$(true)" a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
 		`git "$(true)"-C . push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git pu"$(:)"sh --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -C . "$(true)"push --prune origin 'refs/heads/*:refs/heads/*'`,
 	} {
 		p := &recordingProver{proof: DeleteProof{Safe: true}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
@@ -374,6 +377,9 @@ func TestGuardLeavesAPruneThatIsNoPush(t *testing.T) {
 		`cd /tmp/x && git log --grep push --prune`,
 		`cd /tmp/x && git push --dry-run --prune origin`,
 		"git push origin -- --prune",
+		`git "$opts" fetch --prune origin`,
+		`git "$(true)"fetch --prune origin`,
+		`git pu"$(:)"ll --prune origin`,
 	} {
 		p := &recordingProver{proof: DeleteProof{Failed: "never safe"}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
