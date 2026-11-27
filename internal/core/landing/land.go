@@ -1446,7 +1446,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved,
 	// checkout (dcn-2610230058333177), the author's role, the approvals of
 	// the head, and in auto a review receipt naming it.
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+		Rule: rule, RuleRead: true, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
 	if err == nil {
 		// The spot-check's record of the decision, made from the decision
 		// alone: a record that cannot be written changes nothing but the

@@ -352,6 +352,8 @@ var sentences = map[string]string{
 		"Writes only with --approve; refuses a run of another frozen commit.",
 	"abcd lab matrix copy": "Show a matrix copy's hand-off, or hand a host cell's copy back as its trial: " +
 		"Writes only with --receipt; refuses a runner cell's copy.",
+	"abcd lab matrix launch": "Launch a run's waiting copies through their cells' runners, each in its clone: " +
+		"Writes each copy's trial; refuses a host cell's copy or a run being launched.",
 	"abcd lab matrix review": "Draw a code task's blinded reviewer requests, or record the reviewers' answers: " +
 		"Writes the requests once; refuses an answer that does not validate.",
 	"abcd lab matrix judge": "Draw a writing or check task's judging packet, or record its verdicts: " +

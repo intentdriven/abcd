@@ -35,19 +35,20 @@ and asks the network nothing, while the gate fetches it first, so after the
 mode changes on origin the two can disagree until the next fetch. Under `human` the gate merges once
 the technical facilitator approves the head; under `auto` it merges
 autonomously once a review pair has passed the head. The product view draws one
-line above the version (`facilitator: human (not set, the bundled default):
-merges once the technical facilitator approves`, or `facilitator: auto (the
-project's, set in .abcd/config.json at origin/main): merges autonomously, once a
-review pair passes`, or `facilitator: human (this computer's, set in
-~/.abcd.noindex/config.json): …`); the facilitator view draws the same as a row
+line above the version (`facilitator: human (left to each contributor: not set,
+the bundled default): merges once the technical facilitator approves`, or
+`facilitator: auto (the project enforces it, set in .abcd/config.json at
+origin/main): merges autonomously, once a review pair passes`, or `facilitator: human (left to each contributor: this
+computer's, set in ~/.abcd.noindex/config.json): …`); the facilitator view draws the same as a row
 after the status block, said of the head. A pull request a contributor opens needs an approval of
 its head by someone with write access in either mode, which the line does not
 repeat. `--json` carries it as `facilitator` (`key`, `mode`, `layer`, `origin`,
-and `home_refused` when a refused home decided it). A `human` from any layer
-wins, so a `human` in `~/.abcd.noindex/config.json` reads as `human`
-whatever the repository says, and a refused home reads as `human`
-(`facilitator: human (abcd could not read your own settings file safely):
-merges once the technical facilitator approves`). A
+and `home_refused` when a refused home decided it). The repository's committed
+value decides, so a `human` in `~/.abcd.noindex/config.json` does not hold a
+repository that commits `auto`; only where the repository commits none does
+that file decide, and a refused home then reads as `human`
+(`facilitator: human (left to each contributor: abcd could not read your own
+settings file safely): merges once the technical facilitator approves`). A
 repository with no commit has no default branch that could say anything, so the
 line reads the computer's file alone. When the mode cannot be read, or the
 repository has commits and no default branch to read it at, the line says

@@ -34,7 +34,7 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 			}
 		}
 		if !r.target.ok {
-			out = append(out, unplacedWrite(r.target.base))
+			out = append(out, unplacedWriteIn(r.target.base, r.target.dirLoose))
 			continue
 		}
 		out = append(out, writeAt(rc, st, r.target.text, r.target.tilde))
@@ -47,6 +47,12 @@ func writesOf(rc *readCtx, s segment, st *shellState) []writeTarget {
 // name.
 func unplacedWrite(base string) writeTarget {
 	return writeTarget{base: base, wrote: true}
+}
+
+// unplacedWriteIn is unplacedWrite with dirLoose: the component before base
+// is not fixed either.
+func unplacedWriteIn(base string, dirLoose bool) writeTarget {
+	return writeTarget{base: base, dirLoose: dirLoose, wrote: true}
 }
 
 // writeAt is a write to word, resolved as the shell opens it. Where the line
@@ -303,7 +309,7 @@ func (w writerArgs) at(i int) writeTarget {
 	tok, ok := fixedToken(w.s, i)
 	if !ok {
 		if i >= 0 && i < len(w.s.tokens) && !w.s.globAt(i) {
-			return unplacedWrite(tokenBase(w.s.tokens[i]))
+			return unplacedWriteIn(tokenBase(w.s.tokens[i]), tokenDirLoose(w.s.tokens[i]))
 		}
 		return unplacedWrite("")
 	}
@@ -333,6 +339,20 @@ func tokenBase(tok string) string {
 		return ""
 	}
 	return rest
+}
+
+// tokenDirLoose reports whether the component before tok's last one holds
+// a value the line does not fix, or is empty, "." or "..": the token's form
+// of literalDirLoose. A token with no slash, or whose slash is its first
+// byte, is not.
+func tokenDirLoose(tok string) bool {
+	i := strings.LastIndexByte(tok, '/')
+	if i <= 0 {
+		return false
+	}
+	dir := tok[:i]
+	dir = dir[strings.LastIndexByte(dir, '/')+1:]
+	return dir == "" || dir == "." || dir == ".." || isUnknown(dir) || strings.ContainsRune(dir, varMark)
 }
 
 // operands is the operand indexes after w.from, stepping options; an option

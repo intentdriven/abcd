@@ -1738,7 +1738,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1909,7 +1909,23 @@ a remedy rewritten since the request is refused and asked again. Once judged, th
 drain hands the next eligible issue, in that order, to the implement loop's issue-keyed
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
-pull request is open, and it routes the lane's outcome and opens the next. Under
+pull request is open, and it routes the lane's outcome and opens the next. A lane is
+in work until its pull request is armed or left open, or it is handed back; one that
+only owes the withdrawal of its pull request's arming is not counted, and is settled
+before another lane opens. The lanes in work are held to drain.in_work_max (1 by
+default; 1 to 10), read once, when the drain begins, from the repository's
+.abcd/config.json at the commit origin names as its default branch's tip, never
+from a working tree, or set for one drain with --in-work <n>, which wins; ~/.abcd.noindex/config.json
+does not hold it and is refused if it does. The drain keeps the limit, with its layer
+and origin, for its whole life (in_work_max in its state), and --in-work naming
+another while it runs is refused. Below the limit a move asks or opens the next lane
+beside those in work and names each; at it, or with nothing more to open, it names
+the lanes to drive and neither stops nor waits. Each such sentence, and the wait at
+the cap, names both counts: the lanes in work against the limit, and, where the
+move's view of the reservations can tell them, your live reservations against your
+ceiling and the layer that set it (in_work and held in --json). A lane whose
+pull request is queued keeps its reservation until the merge, counted against the
+ceiling and not against the limit. Under
 drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not
 open its lane at once: that move and the ones after it reserve and judge each member in turn,
 keeping every hold, a yes routing that member alone, and the lane opens with the lead
@@ -2020,6 +2036,7 @@ drain or run holds the state lock.
       --drive[=true|false]            make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run[=true|false]          show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string             the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --in-work int                   the most lanes a drain beginning now holds in work, 1 to 10; wins over the repository's drain.in_work_max (1 when neither sets it)
       --judgement string              the host's answer to the judgement the drain awaits, at the path its request names
       --max int                       cap the lanes this drain opens; the default is all, and eight for a drive
       --no-self-update[=true|false]   with --drive: take no new release of abcd during the run, and ask the release origin nothing
@@ -4926,8 +4943,9 @@ yes to it. The run then hands off every pilot copy, each in its own clone of the
 frozen commit made under a random alias in the clone store outside every
 checkout; a clone bound for a provider passes the launch bundle's secret scan
 first, and a hit refuses the cell. A host cell's copy is the host's to make in
-its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits,
-since abcd does not launch a runner in a clone yet and nothing stands in for it.
+its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits
+for `abcd lab matrix launch`, which starts the cell's runner in its clone, and
+nothing stands in for the runner.
 
 Refused, exit 2, with nothing written: a declaration that does not parse, a
 cell route the runner rung or this machine's runner configuration refuses, a
@@ -5062,6 +5080,48 @@ verdicts are locked, and an answer for a runner cell. A halted lab exits 1.
 
 ```
 abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3
+```
+
+##### `abcd lab matrix launch`
+
+Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.
+
+**Usage:** `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]`
+
+abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>]
+
+Launch, in the foreground, the copies of a consented run that wait for their
+cell's runner, at most as many at once as the run's declared concurrency; with a
+key, that one copy alone. Each copy's runner is started in its own clone, in the
+runners' cell mode, on the blind brief a host cell's copy is made from, with the
+cell's route for this launch alone. Nothing stands in for the runner: one that
+fails, refuses or answers unparsably is the cell's failure, never handed to the
+host; a provider down before the copy began is tried again on the same pin and
+recorded as not started, never scored. A provider-bound clone passes the secret
+scan again first. The brief and the receipt sit in the hand-off store, outside
+the clone, the clone store and the lab's state. A made copy is checked for
+compliance and written as its trial through the secret screen, as a host copy's
+hand-back is; a made code copy waits for its hidden tests' result, handed back
+with `abcd lab matrix copy --receipt`. A metered copy whose declared cost the
+spending cap's remainder does not cover is left waiting and named.
+
+An interrupt, a termination or a hangup stops the launch: every runner at work
+is killed with its process group, and each copy it was making is left
+interrupted, which is the run's error and never the copy's score; such a copy is
+not launched again. A launch killed outright leaves its copies interrupted too,
+once its run's launch lock is free.
+
+Refused, exit 2, with nothing launched: a key that is not one, a copy the run
+did not hand off, a host cell's copy, a refused cell's, one already launched,
+and a cell whose route, source or pin on this machine is not the one the run
+recorded. A launch stopped part-way exits 2 and says what it wrote. One launch
+per run runs at a time: a second, while one holds the run's launch lock, is
+refused at exit 3, naming who holds it. A halted lab exits 1.
+
+**Example:**
+
+```
+abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b
 ```
 
 ##### `abcd lab matrix report`
@@ -5349,8 +5409,12 @@ credentials, so run it only on a branch whose content you trust.
      create` command naming it with --body-file, and stops; it never opens one.
 
 The merge gate reads facilitator.mode from the default branch's committed
-.abcd/config.json and ~/.abcd.noindex/config.json (human from either wins;
-human by default), never from the branch being landed. A pull request whose
+.abcd/config.json, which decides, and only where it commits none from
+~/.abcd.noindex/config.json (human with neither), never from the branch
+being landed. A pull request that changes the committed line is armed in no
+mode; you merge it on the forge's page. Under your own auto (none committed),
+only a pull request your forge account opened is armed without an approval.
+A pull request whose
 author has Read or Triage permission, or none, is armed only once an approval of
 its head counts, in either mode. An approval counts when it is the latest review
 by someone with Write, Maintain or Admin permission, approves the head commit
@@ -6435,7 +6499,9 @@ the layer that set it: reservation.max_live in the repository's
 .abcd/config.json at origin's default branch, which this machine's own
 figure may only lower, ten when neither sets it; with a warning from four
 fifths of it, since every session and account on the same login counts
-toward the same total, and a
+toward the same total; under it, while a drain is in progress here, its lanes in
+work against the limit it began with and the layer that set it (drain_in_work),
+and a
 line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the

@@ -52,6 +52,7 @@
       "subcommands": [
         "copy",
         "judge",
+        "launch",
         "report",
         "rerun",
         "review"
@@ -144,6 +145,14 @@
           "when": "once the verdicts are recorded"
         }
       ]
+    },
+    {
+      "path": "abcd lab matrix launch",
+      "sentence": "Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.",
+      "usage": "abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]",
+      "flags": [],
+      "inputs": [],
+      "example": "abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b"
     },
     {
       "path": "abcd lab matrix report",

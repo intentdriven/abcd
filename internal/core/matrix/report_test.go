@@ -7,6 +7,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -276,6 +277,12 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		"could not be pinned",        // an unpinned field of the run record
 		"asserted, not proven",       // the host cell's isolation
 		"network policy",             // asserted for every copy
+		"deleted clone",              // a pattern matched at judging time
+		"cannot tell the folder",     // an unclear pattern is unexamined
+		"closes the run's folders",   // listing denial, not the scan, holds
+		"whenever the host makes it", // a host copy runs with them open
+		"a chmod of . among them",    // a relative path after a cd
+		"a substitution builds",      // a path built at run time
 		"smallest difference",        // an unsized comparison
 		"model and harness together", // the harness confound
 		"could not examine",          // the unexamined copy
@@ -293,5 +300,46 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		if !strings.Contains(improve, want) {
 			t.Errorf("the improvements suggest nothing of %q:\n%s", want, improve)
 		}
+	}
+}
+
+// The report stops counting a launched copy as awaiting its runner: one at
+// work or stopped, one interrupted and one awaiting its hidden tests' result
+// are each shown as launched, in no rate, and named in the limitations; a
+// trial a runner's launch wrote says the launch has no live proof yet.
+func TestTheReportStopsCountingALaunchedCopyAsAwaitingItsRunner(t *testing.T) {
+	r, _, m, rec := reportLab(t)
+	handOffIn(t, r, m, rec, TrialKey{"feature-a", "or-cheap", 6}, KindCode, HandOffAwaitingRunner, "waits for its launch")
+	handOffIn(t, r, m, rec, TrialKey{"feature-a", "or-cheap", 7}, KindCode, HandOffLaunching, "its launch began")
+	handOffIn(t, r, m, rec, TrialKey{"feature-a", "or-cheap", 8}, KindCode, HandOffInterrupted, "its launch was stopped")
+	handOffIn(t, r, m, rec, TrialKey{"feature-a", "or-cheap", 9}, KindCode, HandOffLaunched, "awaits its hidden tests' result")
+	launched := codeTrial(t, rec, "or-cheap", 10, StatusPassed)
+	launched.Roles = []runner.RoleReceipt{{Role: "implementer", Route: runner.RouteRecord{Asked: "opencode", Ran: "opencode"}}}
+	if err := writeTrial(r.Root(), m.ID, launched); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := BuildReport(r.Root(), m.ID, rec.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cheap := codeCell(t, rep, "or-cheap")
+	if cheap.AwaitingRunner != 1 || cheap.Launched != 3 {
+		t.Fatalf("or-cheap = %d awaiting its runner and %d launched; want 1 and 3", cheap.AwaitingRunner, cheap.Launched)
+	}
+	for rep_, state := range map[int]UnreturnedState{7: UnreturnedLaunching, 8: UnreturnedInterrupted, 9: UnreturnedAwaitingScore} {
+		u := unreturnedOf(rep, "feature-a", "or-cheap", state)
+		if u == nil || len(u.Repeats) != 1 || u.Repeats[0] != rep_ {
+			t.Errorf("repeat %d is accounted %s: %+v", rep_, state, u)
+		}
+	}
+	all := strings.Join(rep.Limitations, "\n")
+	for _, want := range []string{"were launched and wrote no trial", "stopped before they were made", "wait for their hidden tests' result",
+		"no live proof", "which their launch starts"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the limitations say nothing of %q:\n%s", want, all)
+		}
+	}
+	if strings.Contains(all, "does not launch yet") {
+		t.Errorf("the limitations still say abcd does not launch a runner:\n%s", all)
 	}
 }

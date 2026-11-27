@@ -84,11 +84,12 @@ func TestTheRowReadsTheKeptModeAndAsksGitNothing(t *testing.T) {
 		committed, machine string
 		want               statusline.MergingState
 	}{
-		"auto committed":                  {committed: autoConfig, want: statusline.MergingAuto},
-		"human committed":                 {committed: humanConfig, want: statusline.MergingHuman},
-		"set nowhere":                     {want: statusline.MergingHuman},
-		"human on the computer over auto": {committed: autoConfig, machine: humanConfig, want: statusline.MergingHuman},
-		"auto on the computer alone":      {machine: autoConfig, want: statusline.MergingAuto},
+		"auto committed":  {committed: autoConfig, want: statusline.MergingAuto},
+		"human committed": {committed: humanConfig, want: statusline.MergingHuman},
+		"set nowhere":     {want: statusline.MergingHuman},
+		"auto committed over the computer's human": {committed: autoConfig, machine: humanConfig, want: statusline.MergingAuto},
+		"human committed over the computer's auto": {committed: humanConfig, machine: autoConfig, want: statusline.MergingHuman},
+		"auto on the computer alone":               {machine: autoConfig, want: statusline.MergingAuto},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, root := mergingRepo(t, c.committed)
@@ -120,14 +121,25 @@ func TestTheKeptModeIsReadInALinkedWorktree(t *testing.T) {
 }
 
 // TestTheKeptModeIsJoinedToTheComputersFileNow: only the default branch's part
-// is kept; the computer's own file is read at each render, so a person taking
-// the role back on their computer shows at the next one.
+// is kept; the computer's own file is read at each render, so where the
+// project leaves it to each, a person changing their computer's file shows at
+// the next one, and where the project has a value, the change shows nothing.
 func TestTheKeptModeIsJoinedToTheComputersFileNow(t *testing.T) {
-	_, root := mergingRepo(t, autoConfig)
+	_, root := mergingRepo(t, "")
 	kept(t, root)
+	wantMerging(t, root, statusline.MergingHuman, "")
+	writeMachineConfig(t, autoConfig)
 	wantMerging(t, root, statusline.MergingAuto, "")
 	writeMachineConfig(t, humanConfig)
 	wantMerging(t, root, statusline.MergingHuman, "")
+
+	_, root = mergingRepo(t, autoConfig)
+	kept(t, root)
+	writeMachineConfig(t, humanConfig)
+	wantMerging(t, root, statusline.MergingAuto, "")
+	if m, _ := KeptMerging(context.Background(), root); m.Whose != statusline.WhoseProject {
+		t.Errorf("the row says it is %q's, want the project's", m.Whose)
+	}
 }
 
 // TestAnUnusableKeptModeIsNotKnown: a reading that is missing, malformed,
@@ -244,8 +256,8 @@ func TestADefaultBranchThatCannotBeToldKeepsNothing(t *testing.T) {
 	repo, root := mergingRepo(t, autoConfig)
 	repo.Git("branch", "-m", "side")
 	writeMachineConfig(t, humanConfig)
-	if auto, err := AutoForSessions(context.Background(), root); auto || err != nil {
-		t.Fatalf("auto = %t, err = %v; want neither", auto, err)
+	if f, err := AutoForSessions(context.Background(), root); f.Mode == ModeAuto || err != nil {
+		t.Fatalf("reading = %+v, err = %v; want neither auto nor an error", f, err)
 	}
 	if files := keptFiles(t); len(files) != 0 {
 		t.Errorf("kept %v", files)
@@ -292,10 +304,13 @@ func TestARepositoryWithNoCommitAsksTheComputersFileAlone(t *testing.T) {
 	}
 }
 
-// TestUnderARefusedHomeTheRowTakesTheResolversAnswer: a home abcd refuses
-// hides the computer's file and the kept reading, and the mode is the one the
-// resolver gives for that.
-func TestUnderARefusedHomeTheRowTakesTheResolversAnswer(t *testing.T) {
+// TestUnderARefusedHomeTheRowSaysTheComputersFileWasNotRead: a home abcd
+// refuses hides the computer's file and the kept reading, and the resolver's
+// answer there turns on the default branch, which the row asks git nothing
+// of, so it names no mode and says the computer's file was not read. A
+// repository with no commit has no project value to turn on, so there it
+// names the resolver's human.
+func TestUnderARefusedHomeTheRowSaysTheComputersFileWasNotRead(t *testing.T) {
 	_, root := mergingRepo(t, autoConfig)
 	kept(t, root)
 	tree := gittest.NewRepo(t)
@@ -304,13 +319,17 @@ func TestUnderARefusedHomeTheRowTakesTheResolversAnswer(t *testing.T) {
 	if !r.HomeRefused {
 		t.Fatalf("the fixture's home was not refused (%q)", note)
 	}
-	want, err := readModeContext(context.Background(), r)
-	if err != nil {
-		t.Fatal(err)
+	m, note := KeptMerging(context.Background(), root)
+	if m.State != statusline.MergingUnknown || m.Whose != statusline.WhoseComputerUnread || note != "" {
+		t.Errorf("the row reads %+v with note %q; want not read, the computer's file not read, and no note", m, note)
 	}
-	wantMerging(t, root, want.merging().State, "")
 	if _, err := os.Lstat(abcdhome.Path(tree.Root())); err == nil {
 		t.Error("a refused home was written")
+	}
+	empty := gittest.NewRepo(t)
+	m, _ = KeptMerging(context.Background(), empty.Root())
+	if m.State != statusline.MergingHuman || m.Whose != statusline.WhoseComputerUnread {
+		t.Errorf("with no commit under a refused home the row reads %+v; want human, the computer's file not read", m)
 	}
 }
 
@@ -487,8 +506,8 @@ func TestAKeptModeIsNotWrittenBehindALinkedHome(t *testing.T) {
 	if err := os.Symlink(to, abcdhome.Path(os.Getenv("HOME"))); err != nil {
 		t.Fatal(err)
 	}
-	if auto, err := AutoForSessions(context.Background(), root); !auto || err != nil {
-		t.Fatalf("auto = %t, err = %v; a reading that cannot be kept must still answer", auto, err)
+	if f, err := AutoForSessions(context.Background(), root); f.Mode != ModeAuto || err != nil {
+		t.Fatalf("reading = %+v, err = %v; a reading that cannot be kept must still answer", f, err)
 	}
 	if entries, _ := os.ReadDir(to); len(entries) != 0 {
 		t.Errorf("wrote %v behind the link", entries)
@@ -535,8 +554,8 @@ func TestTheKeptModeDecidesNothing(t *testing.T) {
 	if f, err := ReadFetchedFacilitator(root); err != nil || f.Mode != ModeHuman {
 		t.Errorf("the shell guard reads %+v, %v; want human", f, err)
 	}
-	if auto, err := AutoForSessions(context.Background(), root); err != nil || auto {
-		t.Errorf("the prompt line reads auto = %t, %v; want human", auto, err)
+	if f, err := AutoForSessions(context.Background(), root); err != nil || f.Mode != ModeHuman {
+		t.Errorf("the prompt line reads %+v, %v; want human", f, err)
 	}
 	wantMerging(t, root, statusline.MergingHuman, "")
 }

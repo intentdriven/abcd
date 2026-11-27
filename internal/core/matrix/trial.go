@@ -163,7 +163,9 @@ type TrialRecord struct {
 // tests' result (TrialScore), the receipts of its calls (TrialCalls) and its
 // times (TrialTimes). A copy made in the host's harness lists the first as
 // self-reported, the second as not reported, since the host hands back no
-// call receipts, and the third as self-reported where the host gave them.
+// call receipts, and the third as self-reported where the host gave them. A
+// copy its runner made on a launch lists none of the three for its making: its
+// served side is the runner's role receipt, and its times are abcd's clock.
 const (
 	TrialScore oracle.Field = "trial.score"
 	TrialCalls oracle.Field = "trial.calls"

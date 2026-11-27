@@ -9,6 +9,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -58,6 +59,10 @@ func TestMain(m *testing.M) {
 	// The verbs here read a stop from the fixture home each test names, and the
 	// machine's own shared folder stops no test.
 	runstop.AccountHome = os.UserHomeDir
+	// So is the home the facilitator's mode reads the person's global
+	// setting from, which in production is the account database's alone
+	// (landing.AccountHome).
+	landing.AccountHome = os.UserHomeDir
 	runstop.WellKnownFolder = func() string { return "" }
 	// No test here, nor a child of one acting as the binary, trims the
 	// machine's own Go build cache through `ahoy worktree prune`. The shipping

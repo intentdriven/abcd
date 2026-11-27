@@ -1658,6 +1658,13 @@
           "hidden": false
         },
         {
+          "name": "in-work",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "judgement",
           "shorthand": "",
           "type": "string",
@@ -3473,6 +3480,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd lab matrix launch",
+      "hidden": false,
+      "sentence": "Launch a run's waiting copies through their cells' runners, each in its clone: Writes each copy's trial; refuses a host cell's copy or a run being launched.",
+      "flags": []
     },
     {
       "path": "abcd lab matrix report",

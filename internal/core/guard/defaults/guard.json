@@ -1368,6 +1368,47 @@
         ]
       }
     },
+    "abcd-facilitator-auto": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "facilitator",
+        "subcommand2": "auto"
+      },
+      "why": "Setting the facilitator's mode to auto is the person's own act: under auto the merge gate lands a head no person approved, so an auto an agent sets hands it an approval no person gave.",
+      "successor": "Leave this one to the person: say which mode you believe fits and why. No abcd command sets it yet: they edit facilitator.mode in ~/.abcd.noindex/config.json by hand, or, for the project, in its committed .abcd/config.json on the default branch, merged by hand on the forge's page.",
+      "fixtures": {
+        "known_bad": [
+          "abcd facilitator auto",
+          "abcd --json facilitator auto"
+        ],
+        "known_good": [
+          "abcd facilitator",
+          "abcd mode facilitator",
+          "abcd capture \"an agent ran abcd facilitator auto\""
+        ]
+      }
+    },
+    "abcd-facilitator-human": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "facilitator",
+        "subcommand2": "human"
+      },
+      "why": "Setting the facilitator's mode is the person's own act: the setting decides whose approval a merge waits on, so a mode an agent sets is one no person chose.",
+      "successor": "Leave this one to the person: say which mode you believe fits and why. No abcd command sets it yet: they edit facilitator.mode in ~/.abcd.noindex/config.json by hand, or, for the project, in its committed .abcd/config.json on the default branch, merged by hand on the forge's page.",
+      "fixtures": {
+        "known_bad": [
+          "abcd facilitator human",
+          "abcd --json facilitator human"
+        ],
+        "known_good": [
+          "abcd facilitator --json",
+          "abcd mode facilitator"
+        ]
+      }
+    },
     "abcd-guard-allow": {
       "tier": "blocker",
       "pattern": {

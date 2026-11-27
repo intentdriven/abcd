@@ -228,6 +228,9 @@ type pathUse struct {
 	top      string
 	// why is the writer's own reason for a write the guard cannot place.
 	why *writeWhy
+	// dirLoose marks, beside a written name the line does not place, that
+	// the component before it is not fixed either.
+	dirLoose bool
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -281,12 +284,12 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		if !w.ok {
 			written = w.base
 		}
-		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top, why: w.why})
+		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel, tree: w.tree, in: w.in, top: w.top, why: w.why, dirLoose: !w.ok && w.dirLoose})
 	}
 	at := func(i int, remove bool) pathUse {
 		tok, ok := fixedToken(s, i)
 		if !ok {
-			return pathUse{remove: remove, written: tokenBase(s.tokens[i])}
+			return pathUse{remove: remove, written: tokenBase(s.tokens[i]), dirLoose: tokenDirLoose(s.tokens[i])}
 		}
 		p, ok := st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
 		return pathUse{path: p, ok: ok, remove: remove, written: tok, rel: !ok && st.relativeUnknown(tok)}
@@ -374,7 +377,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 				}
 				u := at(i, true)
 				if view.tokens[i] != s.tokens[i] {
-					u = pathUse{remove: true, written: tokenBase(view.tokens[i])}
+					u = pathUse{remove: true, written: tokenBase(view.tokens[i]), dirLoose: tokenDirLoose(view.tokens[i])}
 				}
 				out = append(out, u)
 			}
