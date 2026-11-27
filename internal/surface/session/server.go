@@ -15,6 +15,7 @@
 //   - /auth/device, /auth/device/token and /auth/device/cancel, the device
 //     sign-in of a local session (device.go);
 //   - /config, the sign-in app's public client id: always a GitHub App's;
+//     and the relay's own address, when it was started with one;
 //   - /healthz, for the host's health check.
 //
 // It is abcd's second listener, admitted by adr-2610032150581128's amendment
@@ -152,6 +153,13 @@ type Config struct {
 	// host or host:port; any other is refused with 421 before anything is
 	// read. A local session names its tailnet name and its loopback address.
 	Hosts []string
+	// OwnOrigin, when given, is the relay's own public address, the https
+	// origin repository setup assigned it and recorded in the repository's
+	// relays.json (spc-2610230609005313). /config names it, so a later setup
+	// run can tell the relay answering there is the one it assigned. It is
+	// not a Host allowlist: the host's health check may reach the relay by
+	// another name.
+	OwnOrigin string
 }
 
 // maxDeviceLogins bounds the device sign-ins one relay holds at once, and
@@ -204,6 +212,13 @@ func New(cfg Config) (*Server, error) {
 	}
 	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
 		return nil, ErrNoRepositories
+	}
+	if cfg.OwnOrigin != "" {
+		own, err := core.NormalizeRelayOrigin(cfg.OwnOrigin)
+		if err != nil {
+			return nil, err
+		}
+		cfg.OwnOrigin = own
 	}
 	var origins map[string]bool
 	var bases map[string][]string
@@ -831,7 +846,8 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 
 // serveConfig names the sign-in app's public client id, whether sign-in is
 // set up at all, and which flow it takes; with a client id, its kind is always
-// a GitHub App's, since the relay takes no other. It never names the secret. The authorize
+// a GitHub App's, since the relay takes no other; and, when it was started
+// with one, the relay's own origin. It never names the secret. The authorize
 // URL is bare: it carries no scope, which a GitHub App does not use, and the
 // page adds the request's own parameters.
 func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
@@ -852,6 +868,9 @@ func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.cfg.ClientID != "" {
 		cfg["app_type"] = AppTypeGitHubApp
+	}
+	if s.cfg.OwnOrigin != "" {
+		cfg["own_origin"] = s.cfg.OwnOrigin
 	}
 	if signIn {
 		cfg["flow"] = "web"
