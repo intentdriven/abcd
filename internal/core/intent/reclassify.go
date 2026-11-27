@@ -150,7 +150,7 @@ func Reclassify(repoRoot, intentID string, req ReclassifyRequest) (ReclassifyRes
 		}
 		it, ok := corpus.Lookup(intentID)
 		if !ok {
-			return fmt.Errorf("intent: %s not found in any bucket", intentID)
+			return unknownIntent("intent: %s not found in any bucket", intentID)
 		}
 		if req.Kind == KindDiscipline {
 			if it.Bucket == BucketShipped {
@@ -447,7 +447,7 @@ func resolveSuccessor(repoRoot string, corpus Corpus, it Intent, by string) (str
 	case recordid.ValidIntentID(by):
 		succ, ok := corpus.Lookup(by)
 		if !ok {
-			return "", "", fmt.Errorf("intent: successor %s not found in any bucket; a successor must be present (nothing written)", by)
+			return "", "", unknownIntent("intent: successor %s not found in any bucket; a successor must be present (nothing written)", by)
 		}
 		if succ.ID == it.ID {
 			return "", "", fmt.Errorf("intent: %s cannot supersede itself (nothing written)", it.ID)

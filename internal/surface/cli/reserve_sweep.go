@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/reservesweep"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -39,7 +40,7 @@ func (s *sweepFlags) args(cmd *cobra.Command, args []string) error {
 	if !s.on {
 		for _, f := range []string{"apply", "older-than"} {
 			if cmd.Flags().Changed(f) {
-				return &exitError{Code: 2, Msg: "abcd reserve: --" + f + " is for --sweep; nothing was pushed"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd reserve: --"+f+" is for --sweep; nothing was pushed")
 			}
 		}
 		return nil
@@ -54,10 +55,10 @@ func (s *sweepFlags) args(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if len(with) > 0 {
-		return &exitError{Code: 2, Msg: "abcd reserve: --sweep takes no " + strings.Join(with, ", ") + "; nothing was deleted"}
+		return refused(2, refusal.UsageFlagConflict, "abcd reserve: --sweep takes no "+strings.Join(with, ", ")+"; nothing was deleted")
 	}
 	if s.olderThan < 1 {
-		return &exitError{Code: 2, Msg: fmt.Sprintf("abcd reserve: --older-than takes a whole number of days, at least 1, not %d; nothing was deleted", s.olderThan)}
+		return refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd reserve: --older-than takes a whole number of days, at least 1, not %d; nothing was deleted", s.olderThan))
 	}
 	return nil
 }
@@ -99,7 +100,7 @@ func runReserveSweep(w io.Writer, asJSON bool, s *sweepFlags) error {
 	}
 	root, err := gitutil.CheckoutRoot(cwd, reserveStore)
 	if err != nil {
-		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; " + outcome}
+		return refused(2, refusal.ReserveOutsideCheckout, "abcd reserve: "+err.Error()+"; "+outcome)
 	}
 	rep, err := reservesweep.Sweep(root, reservesweep.Options{Now: reserveSweepNow,
 		Age: time.Duration(s.olderThan) * 24 * time.Hour, Apply: s.apply})
@@ -108,14 +109,14 @@ func runReserveSweep(w io.Writer, asJSON bool, s *sweepFlags) error {
 		if reservesweep.IsNoOrigin(err) {
 			msg += "; " + outcome
 		}
-		return &exitError{Code: 2, Msg: "abcd reserve: " + msg}
+		return refused(2, refusal.ReserveUnreachableOrigin, "abcd reserve: "+msg)
 	}
 	out := sweepView(rep, s.olderThan)
 	if err := render(w, asJSON, out, func(w io.Writer) { renderReserveSweep(w, out) }); err != nil {
 		return err
 	}
 	if rep.Failed() {
-		return &exitError{Code: 2, Msg: "abcd reserve: origin refused a deletion of a spent reservation branch; the others are as reported"}
+		return refused(2, refusal.ReserveUnreachableOrigin, "abcd reserve: origin refused a deletion of a spent reservation branch; the others are as reported")
 	}
 	return nil
 }

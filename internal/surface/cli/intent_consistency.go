@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -59,11 +60,11 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			roots, _ := layered.RootsFor(repoRoot)
 			cfg, err := intent.LoadConsistencyConfig(roots)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent consistency: the request limit is refused: " +
-					termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+				return refused(2, refusal.IntentInvalidRequest, "abcd intent consistency: the request limit is refused: "+
+					termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 			}
 			if maxChunks < 1 {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: --max-chunks %d is not a chunk count (want 1 or more)", maxChunks)}
+				return refused(2, refusal.UsageInvalidFlagValue, fmt.Sprintf("abcd intent consistency: --max-chunks %d is not a chunk count (want 1 or more)", maxChunks))
 			}
 			opts := intent.ConsistencyEmitOptions{
 				RoutingSection:  oracle.RenderRequestSection(route.Request()),
@@ -88,15 +89,15 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				if capErr.Answered > 0 {
 					answered = fmt.Sprintf(" (%d more are answered by kept answers and not sent)", capErr.Answered)
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent consistency: the corpus overflows into %d chunks to send, %d bytes of requests and corpus files in all%s, "+
+				return refused(2, refusal.IntentInvalidRequest, fmt.Sprintf("abcd intent consistency: the corpus overflows into %d chunks to send, %d bytes of requests and corpus files in all%s, "+
 					"and the route sends each to %s as a request of its own, more than the %d --max-chunks allows; nothing was written or sent. "+
 					"Run again with --max-chunks %d to send them all, raise consistency.max_request_bytes for fewer chunks, or route the auditor to the host",
-					capErr.Chunks, capErr.Bytes, answered, termsafe.Sanitize(route.ConnectionUsed), capErr.Cap, capErr.Chunks)}
+					capErr.Chunks, capErr.Bytes, answered, termsafe.Sanitize(route.ConnectionUsed), capErr.Cap, capErr.Chunks))
 			}
 			if err != nil {
-				e := &exitError{Code: 2, Msg: "abcd intent consistency: " + fsutil.RedactHome(err.Error())}
+				e := exitWith(2, intentRefusalCode(err), "abcd intent consistency: "+fsutil.RedactHome(err.Error()))
 				if id != "" {
-					return peerHeldRefusal(repoRoot, "abcd intent consistency: ", id, e)
+					return peerHeldRefusal(repoRoot, "abcd intent consistency: ", id, refusal.IntentHeldByPeer, e)
 				}
 				return e
 			}
@@ -164,7 +165,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if len(findingsJSON) == 0 {
-				return &exitError{Code: 2, Msg: "abcd intent consistency ingest: --findings-json <path> is required"}
+				return refused(2, refusal.UsageMissingRequiredFlag, "abcd intent consistency ingest: --findings-json <path> is required")
 			}
 			route, err := ingestRoute.resolve(cmd, "abcd intent consistency ingest", auditAgent)
 			if err != nil {
@@ -181,7 +182,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			for _, p := range findingsJSON {
 				payload, err := intent.ReadConsistencyFindings(p)
 				if err != nil {
-					return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
+					return refused(2, refusal.IntentInvalidFindings, "abcd intent consistency ingest: "+fsutil.RedactHome(err.Error()))
 				}
 				payloads = append(payloads, payload)
 			}
@@ -426,7 +427,7 @@ func planConsistencyIngest(cmd *cobra.Command, verb, repoRoot string, payloads [
 	}
 	plan, err := capture.PlanConsistencyChunks(repoRoot, payloads, "")
 	if err != nil {
-		return &exitError{Code: 2, Msg: verb + ": " + fsutil.RedactHome(err.Error())}
+		return refused(2, refusal.IntentInvalidFindings, verb+": "+fsutil.RedactHome(err.Error()))
 	}
 	res := plan.Result
 	warnUnreviewed(cmd.ErrOrStderr(), verb, "reviewed", res.Overflow)
@@ -468,7 +469,7 @@ func ingestConsistency(cmd *cobra.Command, verb, repoRoot string, payloads [][]b
 		res, err = capture.IngestConsistencyChunks(repoRoot, payloads, "", mc)
 	}
 	if err != nil {
-		return &exitError{Code: 2, Msg: verb + ": " + fsutil.RedactHome(err.Error())}
+		return refused(2, refusal.IntentInvalidFindings, verb+": "+fsutil.RedactHome(err.Error()))
 	}
 	warnUnreviewed(cmd.ErrOrStderr(), verb, "reviewed", res.Overflow)
 	// The set is in the ledger (or was already): the answers kept for its

@@ -545,9 +545,10 @@ var spotcheckNetTimeout = time.Minute
 // branch (refs/heads/abcd-spotcheck), by the one push this package makes
 // (pushTo): plain, never forced, with the repository's hooks running, so
 // origin takes it only as a fast-forward. A push origin refused comes back as
-// git's own words (pushRejection). A ctx already ended pushes nothing; the
-// push itself is bounded by gitutil.NetTimeout, since no runner of gitutil's
-// runs the repository's hooks under a caller's context.
+// git's own words (pushRejection). A ctx already ended pushes nothing, and
+// the push runs under ctx as well as gitutil.NetTimeout, its hooks included
+// (gitutil.NetInputContext): git, and the pre-push hook it runs, are stopped
+// when ctx ends, so a caller's deadline holds over the whole push.
 func PushBranch(ctx context.Context, root, sha, ref string) error {
 	if !gitutil.IsFullSHA(sha) || ref != spotcheckBranchRef {
 		return refuse("%s is not a commit and the spot-check's branch to push; %s", echoName(ref), nothingPushed)
@@ -555,7 +556,12 @@ func PushBranch(ctx context.Context, root, sha, ref string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("%s: %w", nothingPushed, err)
 	}
-	return push(root, pushTo(sha, ref))
+	args := pushTo(sha, ref)
+	trace(args...)
+	if out, err := gitutil.NetInputContext(ctx, root, "", args...); err != nil {
+		return pushRejection(out, err)
+	}
+	return nil
 }
 
 // FetchBranch fetches ref, which must be the spot-check's store branch, into
@@ -581,10 +587,13 @@ func FetchBranch(ctx context.Context, root, ref, tracking string) (found bool, e
 	if r := redacted(ferr); r.notRun != nil {
 		return false, &FetchError{Reason: r.text, cause: r.notRun, what: echoName(ref), outcome: "nothing was fetched"}
 	}
+	// git lists every branch whose name ends in ref's path as well
+	// (refs/heads/x/refs/heads/abcd-spotcheck), so the listing is read line
+	// by line and only ref's own line says origin holds it.
 	list := []string{"ls-remote", "--heads", Remote, ref}
 	trace(list...)
-	out, lerr := gitutil.NetContext(ctx, root, list...)
-	if lerr == nil && strings.TrimSpace(out) == "" {
+	l := gitutil.RefListing{Ref: ref}
+	if lerr := gitutil.NetEachContext(ctx, root, gitutil.RefLineMax, l.Line, list...); lerr == nil && l.Tips == 0 {
 		return false, nil
 	}
 	return false, &FetchError{Reason: redacted(ferr).text, cause: redacted(ferr).notRun, what: echoName(ref), outcome: "nothing was fetched"}
@@ -1145,37 +1154,45 @@ func originDefault(root string) string {
 // remoteDefault asks origin which branch is its default, for a clone that
 // names none (no origin/HEAD, and no conventional branch name fetched), and
 // returns that branch's remote-tracking ref, refs/remotes/origin/<branch>. It
-// asks with `git ls-remote --symref origin HEAD`, which reads the remote's
-// advertisement and writes nothing here: origin/HEAD stays as the repository
-// has it, unset. An answer that names no branch, or a branch whose name is
-// not a valid ref, is an error, never a guess. A branch literally named HEAD
-// names no branch: its remote-tracking ref would be origin/HEAD itself.
+// asks with `git ls-remote --symref origin HEAD` (originHeadLines), which reads
+// the remote's advertisement and writes nothing here: origin/HEAD stays as the
+// repository has it, unset. An answer that names no branch, or a branch whose
+// name is not a valid ref, is an error, never a guess. A branch literally
+// named HEAD names no branch: its remote-tracking ref would be origin/HEAD
+// itself.
 func remoteDefault(root string) (string, error) {
-	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
-	trace(args...)
-	out, err := gitutil.Net(root, args...)
+	target, symref, _, err := originHeadLines(root)
 	if err != nil {
 		return "", redacted(err).err()
 	}
-	for _, line := range strings.Split(out, "\n") {
-		rest, ok := strings.CutPrefix(line, "ref: ")
-		if !ok {
-			continue
-		}
-		target, name, ok := strings.Cut(rest, "\t")
-		if !ok || name != "HEAD" {
-			continue
-		}
-		branch, ok := strings.CutPrefix(target, "refs/heads/")
-		if !ok || branch == "" || branch == "HEAD" {
-			return "", errors.New("origin's HEAD does not name a branch")
-		}
-		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
-			return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
-		}
-		return "refs/remotes/" + Remote + "/" + branch, nil
+	if !symref {
+		return "", errors.New("origin did not name a default branch")
 	}
-	return "", errors.New("origin did not name a default branch")
+	branch, ok := strings.CutPrefix(target, "refs/heads/")
+	if !ok || branch == "" || branch == "HEAD" {
+		return "", errors.New("origin's HEAD does not name a branch")
+	}
+	if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
+		return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
+	}
+	return "refs/remotes/" + Remote + "/" + branch, nil
+}
+
+// originHeadLines asks origin what its HEAD is, with `git ls-remote --symref
+// origin HEAD`: target is the ref its symbolic-ref line names (symref false
+// when there is no such line, a detached HEAD), and tip the object name on
+// its own line ("" when there is none). The listing also names every ref
+// whose last component is HEAD (refs/heads/x/HEAD), however many origin
+// holds, so it is read one line at a time (gitutil.NetEach) and only the
+// lines whose ref is exactly HEAD are kept (gitutil.RefListing).
+func originHeadLines(root string) (target string, symref bool, tip string, err error) {
+	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
+	trace(args...)
+	l := gitutil.RefListing{Ref: "HEAD"}
+	if err := gitutil.NetEach(root, gitutil.RefLineMax, l.Line, args...); err != nil {
+		return "", false, "", err
+	}
+	return l.Target, l.Symrefs > 0, l.Tip, nil
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the

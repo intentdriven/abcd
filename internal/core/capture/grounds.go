@@ -39,7 +39,10 @@ func requireGrounds(repoRoot, verb, raw string) (g grounds.Grounds, redacted int
 	if err != nil {
 		return grounds.Grounds{}, 0, "", fmt.Errorf("%s: %w: %v; nothing written", verb, ErrGroundsRefused, err)
 	}
-	redText, n, deg := redactLedgerText(repoRoot, parsed.Text)
+	redText, n, deg, err := redactLedgerText(repoRoot, parsed.Text)
+	if err != nil {
+		return grounds.Grounds{}, 0, "", err
+	}
 	validated, err := grounds.New(parsed.Token, redText)
 	if err != nil {
 		return grounds.Grounds{}, 0, "", fmt.Errorf("%s: %w: %v; nothing written", verb, ErrGroundsRefused, err)
@@ -88,7 +91,10 @@ func wontfixGrounds(repoRoot, raw, reason string) (g grounds.Grounds, redacted i
 			return grounds.Grounds{}, 0, "", fmt.Errorf(
 				"wontfix: %w: wontfix_reason must be a non-empty string; nothing written", ErrGroundsRefused)
 		}
-		redText, _, deg := redactLedgerText(repoRoot, reason)
+		redText, _, deg, err := redactLedgerText(repoRoot, reason)
+		if err != nil {
+			return grounds.Grounds{}, 0, "", err
+		}
 		if grounds.Fold(redText) == "" {
 			return grounds.Grounds{}, 0, "", fmt.Errorf(
 				"wontfix: %w: the reason is empty after redaction; nothing written", ErrGroundsRefused)

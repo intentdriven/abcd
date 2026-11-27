@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core"
@@ -251,7 +252,21 @@ func renderMatrixPlan(w io.Writer, v labMatrixView) {
 		fmt.Fprintf(w, "  time:        %s\n", v.Time.Note)
 	}
 	for _, j := range v.Judges {
-		fmt.Fprintf(w, "  judges:      %s (%s): %d, %s\n", termsafe.Sanitize(j.Task), j.Kind, j.Count, j.Who)
+		fmt.Fprintf(w, "  judges:      %s (%s): %d, %s\n", termsafe.Sanitize(j.Task), j.Kind, j.Count, termsafe.SanitizeLine(j.Who))
+		if j.Note != "" {
+			fmt.Fprintf(w, "               %s\n", termsafe.SanitizeLine(j.Note))
+		}
+	}
+	// The digest covers each code task's hidden tests, so the person reads
+	// them, every word of the command, before the line that consents to them.
+	for _, h := range v.HiddenTests {
+		words := make([]string, len(h.Command))
+		for i, word := range h.Command {
+			words[i] = termsafe.SanitizeLine(strconv.QuoteToASCII(word))
+		}
+		fmt.Fprintf(w, "  hidden tests: %s, from %s\n", termsafe.Sanitize(h.Task), termsafe.SanitizeLine(strconv.QuoteToASCII(h.Folder)))
+		fmt.Fprintf(w, "    command:   %s\n", strings.Join(words, " "))
+		fmt.Fprintf(w, "    consent:   %s\n", termsafe.SanitizeLine(h.Consent))
 	}
 	fmt.Fprintf(w, "  sandbox:     none: %s\n", notSandboxed)
 	fmt.Fprintf(w, "  digest:      %s\n", v.Digest)

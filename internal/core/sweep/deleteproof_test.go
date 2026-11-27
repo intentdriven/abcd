@@ -154,8 +154,8 @@ func TestDeleteProofJudgesARemoteBranchAtOriginsTip(t *testing.T) {
 	repo.Git("fetch", "-q", "origin")
 	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged}, remote("feat")), "holds work origin/main does not")
 
-	unreachable := func(string, string, string) (string, bool, error) { return "", false, errors.New("no route") }
-	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged, RemoteTip: unreachable}, remote("feat")), "could not be read")
+	unreachable := func(string, string, []string) (map[string]string, error) { return nil, errors.New("no route") }
+	proofRefused(t, prove(t, DeleteProofOptions{Forge: merged, RemoteRefs: unreachable}, remote("feat")), "could not be read")
 }
 
 // TestDeleteProofJudgesAWorktreeRemoval pins the worktree's proof: a clean
@@ -378,9 +378,9 @@ func TestARemoteBranchProofRestsOnOriginBeingOneRepository(t *testing.T) {
 	branchWith(repo, "topic", "topic.txt")
 	repo.Git("push", "-q", other, "topic")
 	read := false
-	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteTip: func(dir, remote, branch string) (string, bool, error) {
+	o := DeleteProofOptions{Forge: forgeSaying(`[]`), RemoteRefs: func(dir, remote string, refs []string) (map[string]string, error) {
 		read = true
-		return lsRemoteTip(dir, remote, branch)
+		return lsRemoteRefs(dir, remote, refs)
 	}}
 	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "topic"}
 	proofRefused(t, prove(t, o, target), "origin is read from one repository and pushed to another")
@@ -413,5 +413,67 @@ func TestARemoteDeleteRefusedForItsOwnReasonAsksNoForge(t *testing.T) {
 	}
 	if calls := rec.all(); len(calls) != 0 {
 		t.Fatalf("the forge was asked %v", calls)
+	}
+}
+
+// askedProver passes each target on to a prover and records it.
+type askedProver struct {
+	p     guard.DeleteProver
+	asked []guard.DeleteTarget
+}
+
+func (a *askedProver) ProveDelete(t guard.DeleteTarget) guard.DeleteProof {
+	a.asked = append(a.asked, t)
+	return a.p.ProveDelete(t)
+}
+
+// TestAPushThatPrunesOrMirrorsIsRefusedUnread pins git's behaviour against a
+// bare origin and the guard's answer to it: a push with --prune and a pattern
+// refspec, or with --mirror, however spelled, deletes a branch origin holds
+// and this copy lacks, which the line never names, so the guard refuses each
+// such push without asking the prover anything. A push with --prune and a
+// branch named on its own deletes nothing, and is refused all the same,
+// because which refspecs prune is git's to settle. A plain push, and a push
+// under remote.<name>.prune (which only a fetch reads), delete nothing.
+func TestAPushThatPrunesOrMirrorsIsRefusedUnread(t *testing.T) {
+	for _, c := range []struct {
+		line          string
+		args          []string
+		deletes, held bool
+	}{
+		{`git push --prune origin 'refs/heads/*:refs/heads/*'`, []string{"push", "-q", "--prune", "origin", "refs/heads/*:refs/heads/*"}, true, true},
+		{`git push --pru origin 'refs/heads/*:refs/heads/*'`, []string{"push", "-q", "--pru", "origin", "refs/heads/*:refs/heads/*"}, true, true},
+		{`git push origin --all --prune`, []string{"push", "-q", "origin", "--all", "--prune"}, true, true},
+		{`git push --prune origin main`, []string{"push", "-q", "--prune", "origin", "main"}, false, true},
+		{`git push --mirror origin`, []string{"push", "-q", "--mirror", "origin"}, true, true},
+		{`git push --mirr origin`, []string{"push", "-q", "--mirr", "origin"}, true, true},
+		{`git -c remote.origin.mirror=true push origin`, []string{"-c", "remote.origin.mirror=true", "push", "-q", "origin"}, true, true},
+		{`git -c remote.origin.prune=true push origin 'refs/heads/*:refs/heads/*'`, []string{"-c", "remote.origin.prune=true", "push", "-q", "origin", "refs/heads/*:refs/heads/*"}, false, false},
+		{`git push origin main`, []string{"push", "-q", "origin", "main"}, false, false},
+	} {
+		t.Run(c.line, func(t *testing.T) {
+			repo, _ := proofRepo(t)
+			repo.Git("push", "-q", "origin", "main:refs/heads/gone")
+			reg, err := guard.Load(repo.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := &askedProver{p: NewDeleteProver(DeleteProofOptions{Forge: forgeSaying(`[]`), Probe: idleProbe()})}
+			d, err := reg.ReadingFrom(guard.NewFiles(repo.Root())).ProvingDeletes(p).Check(c.line)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if held := d.Verdict == guard.VerdictBlock; held != c.held {
+				t.Errorf("the guard's verdict is %q under %q, want held %v", d.Verdict, d.EntryID, c.held)
+			}
+			if len(p.asked) != 0 {
+				t.Errorf("the prover was asked %+v of a push whose deletes the line does not name", p.asked)
+			}
+			repo.Git(c.args...)
+			deleted := repo.Git("ls-remote", "origin", "refs/heads/gone") == ""
+			if deleted != c.deletes {
+				t.Errorf("git deleted origin's gone: %v, want %v", deleted, c.deletes)
+			}
+		})
 	}
 }

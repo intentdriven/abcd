@@ -37,7 +37,8 @@ it any other way. `abcd drain --drive` is the person's own form of the verb, typ
 in a plain terminal with no host session; it refuses inside an agent's own session.
 
 It runs on a subscription alone, on one separate login: a directory under
-`~/.abcd.noindex/profiles/` that the person makes and logs the harness into once, in
+`~/.abcd.noindex/profiles/` that `abcd start` makes (`/abcd:start`), or the person by
+hand, and that the person logs the harness into once, in
 their own shell. abcd never reads, stores or forwards that login. The directory's
 `settings.json` is abcd's, rewritten at each start, and holds abcd's hooks and the
 harness's own attribution, off, and nothing else. A harness update during the run
@@ -99,7 +100,9 @@ issue, and their preflights queue at the one load gate. One that moves to a new 
 ends the other, as the drive's release section says.
 
 A session started by hand with `CLAUDE_CONFIG_DIR` set to either directory reads as on a
-profile. No abcd command starts one, and a drive that starts later on that directory
+profile. `abcd start`, the person's to type (`/abcd:start`), starts one; its settings are
+handed over at the start, so the directory's files are not written. A drive that starts
+later on that directory
 rewrites its `settings.json` and stops at anything a session left there that a launch
 would load.
 
@@ -479,9 +482,28 @@ root or with no `found_at` path takes no members, and its lane opens alone.
 
 Under a cap above 1, the dry run prints, under each eligible issue that would
 lead, the members its next lane would take, and says that the judgements, the
-reservations and `reservation.max_live` may make a bundle smaller. The drain
-does not yet open a lane with members: it opens one issue's lane at a time,
-whatever the cap.
+reservations and `reservation.max_live` may make a bundle smaller.
+
+Under a cap above 1, a move whose judgement answers no on an issue that may
+lead does not open its lane at once. That move and the ones after it take each
+member in turn as the drain takes an issue: passing over one that is held,
+skipped, lapsed or already run, reserving it and asking its judgement. A no
+adds it to the bundle, and a yes hands it back alone. Every hold is kept and
+renewed across the moves. The lane opens with the lead and its members once
+no member is left, the cap is reached, or the next reservation would reach
+`reservation.max_live`. A bundle whose start is refused for a reason that is
+not its reservation's releases its holds, passes its lead over for the rest of
+the move and of a drive, and returns its members to the eligible issues, which
+the move goes on to; a lead another holds counts as held work the drain waits
+on. A lead whose found_at moved ends the move, and the next one forms the
+bundle again on its new path. A stop, an elapsed pace window and an origin that
+does not answer keep the bundle forming; a drain that ends, or a drive that
+lets go, releases every forming hold with no tombstone. A member the lane's
+receipt hands back alone is routed as a lane's hand-back of its kind, a pull
+request closed unmerged hands back every issue the lane still holds as
+`closed`, and a merged one finishes every member. `abcd build <member-id>` in
+the copy that holds the bundle resumes the bundle's run and names its lead.
+With the default of 1, every lane takes one issue.
 
 ## Loosened floors
 
@@ -950,9 +972,11 @@ what it did in `next`:
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
 - **It waits at the cap and on held work.** When the user holds their cap of
-  live reservations (ten unless `reservation.max_live` in their machine's
-  `~/.abcd.noindex/config.json` sets another, from 1 to 100), counted in the move's view
-  before any reservation or judgement, or when every eligible issue left is
+  live reservations (ten unless the repository's `reservation.max_live` in
+  `.abcd/config.json` at origin's default branch sets another, from 1 to 100,
+  or their computer's `~/.abcd.noindex/config.json` lowers it, read at the
+  branch origin last named as its default to a reservation made here),
+  counted in the move's view before any reservation or judgement, or when every eligible issue left is
   held by another, the move neither refuses nor ends: it reserves and asks
   nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
   `held`), and names what it waits on: at the cap, the reservations and the
@@ -1087,7 +1111,11 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 (`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
 `handed-back`, `done`, `halted`, a lane a person's stop halted that waits for its
 take-over, or `taken-over`, the same lane once that happened and its run is the
-person's to drive, and `pr`); `lane` is the one in progress; `start` is
+person's to drive, `pr`, and `bundle`, the members a lane took beside its
+issue, its lead, absent for a lane of one issue, which the text form names on
+the lane's line); `forming` is the bundle the drain is forming (`lead` and the
+`members` judged so far), absent when none forms, which the text form names on
+a `forming:` line; `lane` is the one in progress; `start` is
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
@@ -1130,6 +1158,11 @@ the lane's `issue`, `hand_backs` its lane routed and their `kinds`) and
 hand-back's, and a lane's that opened none); `next` is the one move to make. A drain
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
+
+A move that read origin's default branch then observes it for the spot-check,
+as `abcd land` observes a landing (`commands/land.md`, "The spot-check at a
+landing"): the observation's line joins `next`, and nothing of the move waits on
+it or changes with it. A move that could not read origin observes nothing.
 
 Each move also keeps the spot-check's record of what the drain decided with no
 person involved: every hand-back it routed and every judgement a routed model

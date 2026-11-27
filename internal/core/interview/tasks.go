@@ -15,7 +15,7 @@ const RetrospectiveTask = "Run the retrospective interview for one cut release f
 	"before moving on, and keep the reply as that section's follow_up. Ask for lessons one per line, each framed for future-you. " +
 	"The words are the person's, lightly joined into sentences where they answered in fragments: never write an answer they did not give. " +
 	"A drawn question takes a choice, not typed prose: offer as its options the drafts of the section's answer the record supports, " +
-	"each in the person's register, and the outcome carries the drafts the person chose, joined into the section's answer."
+	"each in the person's register, and the outcome carries the drafts the person chose, joined into the section's answer. " + ProductChipInternals
 
 // RetrospectiveDone is the retrospective's outcome.
 const RetrospectiveDone = "The outcome is the answers object, strictly these four keys, each {\"answer\": \"...\", \"follow_up\": \"...\"} " +
@@ -28,7 +28,7 @@ const RetrospectiveDone = "The outcome is the answers object, strictly these fou
 const PlanningTask = "Run the planning interview for the one intent the seed names, as abcd's planning interview runs in a host session: " +
 	"open from the seed's planning brief when it names one, asking its questions first; summarise the record back; " +
 	"then walk the press release, the open questions, the mechanism claim, the scope conditions and every acceptance criterion, " +
-	"one question at a time, each quoting the text it asks about. After each answer, and before the next question, " +
+	"one question at a time, each quoting the text it asks about. " + ProductChipInternals + " After each answer, and before the next question, " +
 	"edit the intent record at the seed's path to what was confirmed, with the tools your contract grants (Read, Edit, Grep, Glob): " +
 	"a decision line under its Decisions section, a changed criterion, a deferral recorded as one. " +
 	"Never move the record between folders, never edit another file, and never perform the plan act: the sign-off is the product thinker's, " +
@@ -37,3 +37,13 @@ const PlanningTask = "Run the planning interview for the one intent the seed nam
 // PlanningDone is the planning interview's outcome.
 const PlanningDone = "The outcome is {\"summary\": \"<what the interview changed in the record, in one paragraph>\"}, and nothing else. " +
 	"abcd then reports the readiness gate on the record as you left it."
+
+// ProductChipInternals is what a question under a Product chip does with
+// material in internals (iss-2611252121330106): the chip puts it to the
+// product thinker, whom abcd's check holds to their knowledge floor, so both
+// AI-written interviews' tasks carry it, and the planning interviewer's page
+// states it in the same words.
+const ProductChipInternals = "A question under a Product chip is for the product thinker, and abcd's check holds it to their knowledge floor. " +
+	"Where the text it quotes is in internals (a record id, a command, a word below the floor), restate it in plain words, dropping nothing an answer turns on; " +
+	"where a word cannot be avoided, introduce it in one sentence before its first use, as in \"A checksum is a fingerprint saying two copies are identical.\"; " +
+	"and put text that is mechanism alone, which no answer of the product thinker's turns on, to the technical facilitator under a Tech chip."

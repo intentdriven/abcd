@@ -1097,3 +1097,36 @@ func TestClientAddressBehindRendersProxy(t *testing.T) {
 		}
 	}
 }
+
+// TestConfigNamesTheRelaysOwnOriginOnlyWhenGiven: a relay started with its
+// own address (`abcd session serve --own-origin`) names it at /config, as the
+// exact origin NormalizeRelayOrigin reads, so a later setup run can tell the
+// relay answering there is the one it assigned; one started without names
+// none, and New refuses an own origin that is not an https origin
+// (spc-2610230609005313 step 1).
+func TestConfigNamesTheRelaysOwnOriginOnlyWhenGiven(t *testing.T) {
+	get := func(f *fixture) map[string]any {
+		resp, err := http.Get(f.http.URL + "/config")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	m := get(newFixture(t, func(c *Config) { c.OwnOrigin = "https://Relay.Example.org:443/" }))
+	if m["own_origin"] != "https://relay.example.org" {
+		t.Fatalf("/config = %v, want own_origin https://relay.example.org", m)
+	}
+	if _, named := get(newFixture(t, nil))["own_origin"]; named {
+		t.Fatal("/config names an own origin the relay was never given")
+	}
+	for _, o := range []string{"http://relay.example.org", "https://relay.example.org/x", "relay.example.org", "https://relay.example.org?x=1", "https://\x1b[31mrelay"} {
+		if _, err := New(Config{OwnOrigin: o, LoopbackOnly: true}); err == nil {
+			t.Errorf("own origin %q accepted", o)
+		}
+	}
+}

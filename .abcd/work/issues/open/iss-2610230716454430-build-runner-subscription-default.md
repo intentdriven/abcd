@@ -14,3 +14,7 @@ related_intents: [itd-2611040344170206]
 ---
 
 The build runner (runner.claude) still follows ruling RN2's key-only rule (dcn-2610020000000016): it runs claude with --bare on an API key, and a person with only a subscription runs the role in their own session. On 2026-10-23 the product thinker ruled that a terminal drive runs on the person's subscription by default behind a wall, with an API key optional per configuration (dcn-2610230716408975). The two routes now differ, and the product thinker has not said whether the build runner takes the same default.
+
+## Ideate verdict 2026-11-26
+
+A terminal build of one READY intent was judged reframed (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`). Its surviving shape runs the build's roles on the drain drive's own walled profile login, so it presupposes the answer here is yes for a build the drive steps. The question stays the product thinker's; the verdict records only that a terminal build depends on it.

@@ -42,3 +42,7 @@ What it shows: a subscription login runs `claude -p` without `--bare`; `--safe-m
 ## Deferral 2026-10-27
 
 Deferred past v0.15.1: Waits on the technical facilitator's ruling on reversing RN2 (dcn-2610020000000016) after a live isolation probe; subscription owners keep running roles in their own session, as v0.15.1 documents (ruled 27 October 2026).
+
+## Ideate verdict 2026-11-26
+
+A terminal build of one READY intent was judged reframed (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`). It bears on this issue: the verdict rejects routing a terminal build's roles through this runner, which runs bare on a key only, and has the build step through the drain drive's walled profile launch, which runs on a subscription with no API key. If the build takes that route, a subscription user's terminal build no longer waits on this issue's ruling; the host-stepped build's routed roles still do. The remedy above is unchanged.

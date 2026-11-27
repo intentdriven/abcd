@@ -10,12 +10,12 @@ import (
 
 // The cap counts a person's live reservations across every session, copy and
 // account whose holds are theirs (Self.Owns: their holder id, the ids their
-// home declares, and their login on a hold made before the id), while each
-// machine reads its own
-// reservation.max_live (maxlive.go). A machine's sessions can therefore hold
-// another account of theirs at a ceiling nobody here can read
+// home declares, and their login on a hold made before the id), against one
+// ceiling the repository sets at origin's default branch, which a machine may
+// only lower for itself (maxlive.go). Another machine of theirs may therefore
+// stop short of the number read here, by a lower figure nobody here can read
 // (iss-2610231004140527). The ceiling view says how near the reader stands to
-// this machine's, and from which copies the holds come.
+// the ceiling, which layer set it, and from which copies the holds come.
 
 // SiblingLive is how many live reservations one sibling worktree holds.
 type SiblingLive struct {
@@ -23,12 +23,17 @@ type SiblingLive struct {
 	Live int    `json:"live"`
 }
 
-// Ceiling is the reader's live reservations against this machine's cap,
-// counted by the copy each was made from.
+// Ceiling is the reader's live reservations against their ceiling, counted
+// by the copy each was made from.
 type Ceiling struct {
 	Holder string `json:"holder"`
 	Live   int    `json:"live"`
 	Limit  int    `json:"limit"`
+	// LimitLayer is the layer that set Limit (LimitBundled, LimitRepository
+	// or LimitMachine) and LimitOrigin where: "bundled", the repository's
+	// .abcd/config.json at origin's default branch, or the machine's file.
+	LimitLayer  string `json:"limit_layer"`
+	LimitOrigin string `json:"limit_origin"`
 	// ThisCopy, Siblings and Elsewhere split Live: this checkout's copy, each
 	// other worktree of the repository on this machine (by name, sorted), and
 	// every copy not found among them: another clone on this machine or
@@ -38,8 +43,10 @@ type Ceiling struct {
 	Elsewhere int           `json:"elsewhere"`
 	// Warn is true from four fifths of the limit.
 	Warn bool `json:"warn"`
-	// Note says why the machine's configuration was read past for the
-	// limit, or why the worktrees could not be listed; "" when neither.
+	// Note says what was read past or ignored for the limit (no default
+	// branch of origin to read the repository's figure at, a machine figure
+	// above it, a machine file that could not be read), or why the worktrees
+	// could not be listed; "" when neither.
 	Note string `json:"note,omitempty"`
 }
 
@@ -47,7 +54,8 @@ type Ceiling struct {
 // siblings in s (NameSiblings) once it is known whose holds are the reader's
 // (ReaderSelf), even when the cap is then refused: false when neither a
 // holder id nor the reader's GitHub login can be read without the network,
-// or this machine's reservation.max_live is one an act would refuse.
+// or a reservation.max_live, the repository's or this machine's, is one an
+// act would refuse.
 func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	self := readerSelf(root, o)
 	if !self.Known() {
@@ -56,12 +64,12 @@ func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	// The siblings are named whether or not the cap can be read: the rows
 	// that show them do not depend on it.
 	s.NameSiblings(root, self)
-	limit, note, err := maxLive(o.home())
+	limit, note, err := maxLive(root, originDefault(root), o.home())
 	if err != nil {
 		return Ceiling{}, false
 	}
 	note = joinNote(note, s.SiblingsUnread)
-	c := Ceiling{Holder: self.Name(), Limit: limit, Siblings: []SiblingLive{}, Note: note}
+	c := Ceiling{Holder: self.Name(), Limit: limit.N, LimitLayer: limit.Layer, LimitOrigin: limit.Origin, Siblings: []SiblingLive{}, Note: note}
 	// Siblings are counted by copy key and shown by name, so two worktrees
 	// are never merged by what they are called (iss-2610272352168723).
 	bySibling := map[string]*SiblingLive{}
@@ -100,10 +108,21 @@ func (c Ceiling) Warning() string {
 	if c.Live >= c.Limit {
 		where = "at"
 	}
-	return fmt.Sprintf("%s holds %d of the %d live reservations this machine's %s allows, %s the cap; "+
+	return fmt.Sprintf("%s holds %d of the %d live reservations %s allows, %s the cap; "+
 		"every session and account whose holds are yours counts toward the same total, "+
-		"so another account's own ceiling, which is not readable here, may already be reached",
-		c.Holder, c.Live, c.Limit, MaxLiveKey, where)
+		"and another machine of yours may lower the ceiling for itself, which is not readable here",
+		c.Holder, c.Live, c.Limit, c.ceilingName(), where)
+}
+
+// ceilingName names the ceiling by the layer that set it.
+func (c Ceiling) ceilingName() string {
+	switch c.LimitLayer {
+	case LimitRepository:
+		return fmt.Sprintf("the repository's ceiling (%s in %s)", MaxLiveKey, c.LimitOrigin)
+	case LimitMachine:
+		return fmt.Sprintf("this machine's lower ceiling (%s in %s)", MaxLiveKey, c.LimitOrigin)
+	}
+	return "the default ceiling (no " + MaxLiveKey + " was read from the repository's file)"
 }
 
 // joinNote is a and b joined by "; ", either alone when the other is "".

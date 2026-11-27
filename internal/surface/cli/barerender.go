@@ -60,6 +60,8 @@ var bareRenderExceptions = map[string]string{
 		"which writes the team relay's files, and page, which writes the session's static " +
 		"page; a running relay's sessions live in that " +
 		"process's memory alone, so there is no state to render and bare prints its sub-verbs",
+	"start": "bare is the start itself: it makes the account's first profile or hands the terminal " +
+		"to the host, so it is not a render; anywhere but a person's terminal it refuses (exit 2) and writes nothing",
 	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
 		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
 		"this test's scratch repository included, abcd has no row and bare prints nothing of " +

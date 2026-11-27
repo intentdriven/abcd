@@ -60,8 +60,9 @@ them: it marks that result, the model served, the harness version and the
 times as the host's own word, and says it carries no call receipts. A writing
 copy's document is kept only once its trial passes the secret screen, so a
 hand-back the screen refuses can be made again. A runner cell's copy waits for
-its launch, and the host never stands in for its runner, since its answer would
-measure the wrong model. A copy handed back is checked for compliance under one overall deadline
+its launch, and the cell's runner makes the copy in its clone from the same
+blind brief (dcn-2611251746554510); the host never stands in for its runner,
+since its answer would measure the wrong model. A copy handed back is checked for compliance under one overall deadline
 before its trial is written, a check copy's findings are recorded and its trial
 written before its clone is deleted, and every trial, review request and
 judging packet passes the secret screen. The report accounts for every copy
@@ -162,6 +163,42 @@ copy's length; below three judges it gives each judge's ranking and the
 good-enough counts only. Guests and the host's own self-blinded rankings are
 reported apart. Every report lists the run's limitations and the improvements
 it suggests for the next run.
+
+A check task is judged in two phases (spc-2610161949559050 step 9). The run
+first joins its copies' findings by their exact keys; a copy the compliance
+check set apart, or one never started, is in no comparison. Where the
+declaration names a matcher cell, the findings no key joins go to it alone, each
+under an opaque id with nothing of the copy, cell or model that raised it, and
+its answer is read as untrusted input, refused whole when any part of it fails;
+with no matcher those findings stay rows of their own and its agreement is not
+estimable. The person then judges each distinct finding alone, shuffled, under
+a code, with no model named and no verdict proposed, and their verdicts lock
+once. Only then is the second phase shown: each finding a row and each model a
+column, the verdict the proposer cell proposes where one is declared, each
+model's precision, unique valid findings, recall and overlap, and the matcher's
+agreement on a sample of its pairs the person labels, reported from ten
+labelled pairs up. The matcher and the proposer are cells the person declares,
+on their own routes and never on a builder's route or model, and each is
+optional: nothing is chosen for the person. The model is compared by its name
+with what carriers add to one model set aside: the provider prefix, a known
+carrier's dotted region and vendor (`us.anthropic.`) and, behind it, the
+carrier's revision tail (`-v1:0`), a routing variant such as `:free` or
+`:latest`, a context suffix such as `[1m]`, a date or `@` stamp, a trailing
+`-latest`, case, spaces, and a dot or a dash between version digits.
+A size or quantisation tag (`:7b`), a model's own dotted name (`aya.expanse`)
+and the version number itself still tell two models apart, a host builder is
+compared by the model its copies were served, and the plan's judges note asks the person to check the
+routes shown, since a name read this way can still miss one model sold under
+two names.
+One on a runner route waits for a launcher abcd does not have yet, and the host
+never answers for it: the plan's judges line says so, and the judging stops at
+that cell's stage saying so. Nothing of a check is filed or
+written where the release gates read. A code task may name its hidden tests, a
+folder outside the checkout, and the command that runs them; the printed plan
+shows both, the folder quoted and each word of the command quoted where it
+holds anything but plain printable text, with the line the person consents to:
+that abcd will run each copy's code with that command, and that until it runs
+hidden tests itself a code copy's result is the host's report, as above.
 
 A model run is re-runnable, not reproducible. A re-run starts from a recorded
 run, named by its id in the lab or by a run's folder carried from elsewhere,
@@ -362,6 +399,10 @@ Sub-verbs: none.
 | `--good` | string |
 | `--host` | string |
 | `--judges` | string |
+| `--labels` | string |
+| `--matcher` | string |
+| `--proposals` | string |
+| `--table` | bool |
 | `--verdicts` | string |
 
 ### `abcd lab matrix launch`

@@ -467,7 +467,7 @@ func ReEmitAuditWith(repoRoot, intentID string, opts AuditEmitOptions) (AuditEmi
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return AuditEmitResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
+		return AuditEmitResult{}, unknownIntent("intent: %s not found in any bucket", intentID)
 	}
 	if it.Bucket != BucketShipped {
 		return AuditEmitResult{}, fmt.Errorf("intent: %s is in %s, not shipped; only a shipped intent owes a fidelity audit", intentID, it.Bucket)

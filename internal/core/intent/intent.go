@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/refusal"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
@@ -415,4 +416,12 @@ type IntentListing struct {
 	// Filed is the date a timestamp id encodes (adr-45), as YYYY-MM-DD, and
 	// null for an ordinal id, which encodes none: the view reads no git history.
 	Filed *string `json:"filed"`
+}
+
+// unknownIntent is the refusal of an intent id no bucket of the store holds,
+// carrying refusal.IntentUnknownIntent: the front door reads the code from the
+// error (refusal.CodeOf), never from its wording, so a reworded message keeps
+// its code (spc-2610301431108175 approach 1).
+func unknownIntent(format string, args ...any) error {
+	return refusal.Wrap(refusal.IntentUnknownIntent, fmt.Errorf(format, args...))
 }

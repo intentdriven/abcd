@@ -32,7 +32,21 @@ const maxScriptCorpusWarns = 1
 // block when an agent runs them: each is named with what it runs.
 var scriptCorpusBlocks = map[string]string{
 	"bash scripts/dependency-reauthor.sh": "the dependency re-author pushes with --force-with-lease, from CI",
+	"bash hooks/permission-request.sh":    shimDogfoodBlock,
+	"bash hooks/post-tool-use.sh":         shimDogfoodBlock,
+	"bash hooks/pre-compact.sh":           shimDogfoodBlock,
+	"bash hooks/pre-tool-use.sh":          shimDogfoodBlock,
+	"bash hooks/session-end.sh":           shimDogfoodBlock,
+	"bash hooks/session-start.sh":         shimDogfoodBlock,
+	"bash hooks/stop-failure.sh":          shimDogfoodBlock,
+	"bash hooks/stop.sh":                  shimDogfoodBlock,
+	"bash hooks/subagent-start.sh":        shimDogfoodBlock,
+	"bash hooks/subagent-stop.sh":         shimDogfoodBlock,
+	"bash hooks/user-prompt-submit.sh":    shimDogfoodBlock,
 }
+
+// shimDogfoodBlock is why each hook shim blocks when an agent runs it.
+const shimDogfoodBlock = "the hook shim runs the dogfood build `abcd hook dogfood-binary` prints, a program whose path the guard does not read; the host runs it, never an agent"
 
 // TestScriptReadingWarnRateOnRepoScripts runs every script under scripts/,
 // .githooks/ and hooks/ through the reading. A block there that

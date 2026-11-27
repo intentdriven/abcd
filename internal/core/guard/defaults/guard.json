@@ -1390,6 +1390,31 @@
         ]
       }
     },
+    "abcd-update-tag": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "update",
+        "arg_shapes": ["release-tag"]
+      },
+      "why": "Choosing which release of abcd this computer runs is the person's own act: `abcd update` with a tag installs the release the tag names, so a tag an agent names is a choice no person made.",
+      "successor": "Leave this one to the person: tell them which release you believe they want and why, and let them run `abcd update <tag>` themselves.",
+      "fixtures": {
+        "known_bad": [
+          "abcd update v0.7.0",
+          "abcd update --yes v0.7.0",
+          "go run ./cmd/abcd update v0.7.0 --json"
+        ],
+        "known_good": [
+          "abcd update",
+          "abcd update --yes --json",
+          "abcd update --check --json",
+          "abcd update news --answer not-now",
+          "abcd update --help",
+          "abcd capture \"an agent ran abcd update v0.7.0\""
+        ]
+      }
+    },
     "abcd-source-ledger-flip-retired": {
       "tier": "blocker",
       "pattern": {

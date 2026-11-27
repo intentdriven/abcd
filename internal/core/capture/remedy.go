@@ -51,7 +51,10 @@ func SetRemedy(req RemedyRequest) (RemedyResult, error) {
 	if !reIssID.MatchString(req.ID) {
 		return RemedyResult{}, refused(fmt.Errorf("remedy: invalid iss-N identifier: %q; nothing written", req.ID))
 	}
-	redRemedy, redacted, degraded := redactLedgerText(repoRoot, req.Remedy)
+	redRemedy, redacted, degraded, err := redactLedgerText(repoRoot, req.Remedy)
+	if err != nil {
+		return RemedyResult{}, err
+	}
 	remedy := grounds.Fold(redRemedy)
 	switch {
 	case remedy == "":

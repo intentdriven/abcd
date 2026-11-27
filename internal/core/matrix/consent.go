@@ -131,8 +131,10 @@ func sameCap(a, b *Money) bool {
 }
 
 // loopRole is the build loop's role a matrix cell plays: the runner
-// configuration knows the loop's roles, not the matrix's.
-var loopRole = map[Role]string{RoleBuilder: "implementer", RoleReviewer: "ruthless-reviewer"}
+// configuration knows the loop's roles, not the matrix's. A matcher and a
+// proposer read and judge, as a reviewer does.
+var loopRole = map[Role]string{RoleBuilder: "implementer", RoleReviewer: "ruthless-reviewer",
+	RoleMatcher: "ruthless-reviewer", RoleProposer: "ruthless-reviewer"}
 
 // PlanForLab builds the plan for a run of the declaration in the lab labID of
 // the repository at repoRoot, on a machine of cores cores: the lab's pin is the
@@ -166,7 +168,8 @@ func PlanForLab(repoRoot, labID string, declaration []byte, cores int) (Plan, []
 			return err
 		}
 		// A matrix cell's role is checked as the loop role it plays: a
-		// builder is the implementer, a reviewer the ruthless reviewer.
+		// builder is the implementer, a reviewer, a matcher and a proposer
+		// the ruthless reviewer.
 		fr.Agent = loopRole[Role(fr.Agent)]
 		return rc.Override([]oracle.FlagRoute{fr})
 	}

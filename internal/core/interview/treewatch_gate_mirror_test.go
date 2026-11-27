@@ -95,6 +95,7 @@ func TestTheReceiptlessPrefixesMirrorThePrePushHook(t *testing.T) {
 		"origin/abcd-status/me", "origin/x/abcd-status/me", "origin/abcd-reservedx", "origin/xabcd-reserved/y",
 		"abcd-reserved/x", "origin/claude/abcd-wip/x", "origin/other/abcd-wip/x", "origin/x/ABCD-WIP",
 		"origin/abcd-wipe/x", "origin/abcd-wip", "origin/claude/x", "origin/claude/abcd-wipx",
+		"origin/abcd-spotcheck", "origin/ABCD-Spotcheck", "origin/xabcd-spotcheck",
 	}
 	cmd := exec.Command(bash, "-c", script)
 	cmd.Stdin = strings.NewReader(strings.Join(refs, "\n") + "\n")

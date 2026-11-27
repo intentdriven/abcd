@@ -61,7 +61,9 @@ type questionCheckResult struct {
 	// ByRule is the findings folded one entry per rule and tab, in the order
 	// the first of each appeared, with its first echoed value and a count:
 	// the groups the hook's deny and the text render name one line each
-	// (question.GroupFindings, spc-2610301917245442 step 2).
+	// (question.GroupFindings, spc-2610301917245442 step 2). The register
+	// rule can take two entries on one tab: its record numbers and commands,
+	// and its words below the knowledge floor, the entry marked floor.
 	ByRule    []questionGroupJSON `json:"by_rule"`
 	Rows      []questionRowsJSON  `json:"rows"`
 	RowsLimit int                 `json:"rows_limit"`
@@ -125,15 +127,19 @@ type questionFindingJSON struct {
 	Value   string `json:"value"`
 	Limit   string `json:"limit"`
 	Remedy  string `json:"remedy"`
+	Plain   string `json:"plain,omitempty"`
 	Refuses bool   `json:"refuses"`
 }
 
-// questionGroupJSON is one rule's findings on one tab.
+// questionGroupJSON is one rule's findings on one tab; Floor marks the
+// register rule's words below the knowledge floor, an entry apart from its
+// record numbers and commands.
 type questionGroupJSON struct {
 	Tab   int    `json:"tab"`
 	Rule  string `json:"rule"`
 	Value string `json:"value"`
 	Count int    `json:"count"`
+	Floor bool   `json:"floor,omitempty"`
 }
 
 type questionRowsJSON struct {
@@ -178,8 +184,10 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"later: lines next, the question last, the decide-later option last) before\n" +
 			"it is judged. A line the draft does not carry is never invented: the\n" +
 			"check names it.\n\n" +
-			"The verb reads the stores the hook reads (the away record, and the mode\n" +
-			"where the status line's badge shows) and calls the one decision the hook\n" +
+			"The verb reads the stores the hook reads (the away record, the\n" +
+			"conversation window of the session the host's environment names, read in\n" +
+			"that session's start copy, and the mode where the status line's badge\n" +
+			"shows) and calls the one decision the hook\n" +
 			"calls, so it reports every finding, the rows each tab takes at 80 columns\n" +
 			"(header and frame, question text, options, total), what the hook would do\n" +
 			"with the draft in this checkout now (admit, admit-with-rows-note, refuse,\n" +
@@ -226,7 +234,9 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "guard question: " + err.Error()}
 			}
 			cwd, _ := os.Getwd()
-			reads := questionState(cmd, cwd)
+			// The session is the one the host's environment names, so the
+			// verb reads the window the hook would read for it.
+			reads := questionState(cmd, cwd, os.Getenv(hostSessionIDEnv))
 			v := question.Decide(fields, reads.state, reads.state.Limits)
 			res := questionCheckOf(form, v, structural, ready, reads)
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
@@ -390,7 +400,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 		res.Findings = append(res.Findings, findingJSON(f, question.RefusingFinding(f)))
 	}
 	for _, g := range question.GroupFindings(append(slices.Clone(structural), v.Findings...)) {
-		res.ByRule = append(res.ByRule, questionGroupJSON{Tab: g.Tab, Rule: string(g.Rule), Value: g.First.Value, Count: g.Count})
+		res.ByRule = append(res.ByRule, questionGroupJSON{Tab: g.Tab, Rule: string(g.Rule), Value: g.First.Value, Count: g.Count, Floor: g.First.Plain != ""})
 	}
 	for i, r := range v.Rows {
 		res.Rows = append(res.Rows, questionRowsJSON{Tab: i + 1, RowSplit: r})
@@ -402,7 +412,7 @@ func questionCheckOf(form string, v question.Verdict, structural []question.Find
 }
 
 func findingJSON(f question.Finding, refuses bool) questionFindingJSON {
-	return questionFindingJSON{Tab: f.Tab, Part: f.Part, Rule: string(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Refuses: refuses}
+	return questionFindingJSON{Tab: f.Tab, Part: f.Part, Rule: string(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Plain: f.Plain, Refuses: refuses}
 }
 
 // questionCheckExit maps the result onto the verb's exit (decision 8): 2 for
@@ -554,7 +564,7 @@ func writeQuestionCheck(w io.Writer, res questionCheckResult) {
 	// would refuse with, byte for byte (spc-2610301917245442, step 2).
 	var refusing, rest []question.Finding
 	for _, f := range res.Findings {
-		qf := question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy}
+		qf := question.Finding{Tab: f.Tab, Part: f.Part, Rule: question.Rule(f.Rule), Value: f.Value, Limit: f.Limit, Remedy: f.Remedy, Plain: f.Plain}
 		if f.Refuses {
 			refusing = append(refusing, qf)
 		} else {

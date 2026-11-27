@@ -19,9 +19,9 @@ impact: additive
 
 ## Press Release
 
-> **Type `abcd drain --drive` in a plain terminal and it works through the ledger on its own.** Frank opens a terminal on a spare machine and types `abcd drain --drive`. Before it touches anything, abcd tells him what it will do: work through up to eight issues, start Claude sessions on his own subscription, walled off from his own setup, about forty agent runs at most. It asks him once. He says yes. The terminal then shows one line per step: an issue judged, a lane opened, its checks run, its pull request queued. Then it moves to the next. It stops at the cap, when nothing eligible is left, or when Frank presses Ctrl-C, and it tells him what it left and how to pick it up again. Whatever it cannot finish, it hands back with the reason. It never leaves an issue held while it waits for someone who isn't coming.
+> **Type `abcd drain --drive` in a plain terminal and it works through the ledger on its own.** Frank opens a terminal on a spare machine and types `abcd drain --drive`. Before it touches anything, abcd tells them what it will do: work through up to eight issues, start Claude sessions on their own subscription, walled off from their own setup, about forty agent runs at most. It asks them once. They say yes. The terminal then shows one line per step: an issue judged, a lane opened, its checks run, its pull request queued. Then it moves to the next. It stops at the cap, when nothing eligible is left, or when Frank presses Ctrl-C, and it tells them what it left and how to pick it up again. Whatever it cannot finish, it hands back with the reason. It never keeps an issue held while it waits for someone who isn't coming: a lane it sets aside keeps its reservation only until the lease lapses, two hours at most.
 >
-> _Facilitator-proposed on 2026-10-22 from iss-2610222000271964 and revised after the Opus and Sonnet review round 1 the same night; signed off by the product thinker on 2026-10-23 (dcn-2610230813064058)._
+> _Facilitator-proposed on 2026-10-22 from iss-2610222000271964 and revised after the Opus and Sonnet review round 1 the same night; signed off by the product thinker on 2026-10-23 (dcn-2610230813064058). Its last sentence amended on 2026-11-25 for a set-aside lane's reservation (decision 12)._
 
 ## Why This Matters
 
@@ -41,7 +41,7 @@ We expect a terminal drive to land work with no person and no host session, beca
 - it starts each role through the person's runner;
 - it hands back what fails.
 
-The claim is shown wrong if a terminal drive on a scratch repository seeded with three minor issues, on a machine with the runner set up, needs any input after its one yes before it reaches its cap, or ends with an issue still reserved and no lane working on it.
+The claim is shown wrong if a terminal drive on a scratch repository seeded with three minor issues, on a machine with the runner set up, needs any input after its one yes before it reaches its cap, or ends with an issue still reserved, no lane working on it and no lease due to lapse. A set-aside lane's reservation that stands until its lease lapses, two hours at most, does not show it wrong (decision 12; amended 2026-11-25).
 
 ## Scope Conditions
 
@@ -57,14 +57,14 @@ _Facilitator-proposed; signed off by the product thinker on 2026-10-23 (dcn-2610
 
 _Facilitator-proposed on 2026-10-22 and revised after review round 1; walked and kept in full by the product thinker on 2026-10-23 (dcn-2610230813064058)._
 
-- **Given** Frank types `abcd drain --drive` in a plain terminal, **when** it starts, **then** before its first move it shows the cap (eight unless `--max` says otherwise), an estimate of the agent runs that cap allows, and the runner and the route the agents will use (his subscription, walled, or the API key his configuration names), and starts nothing without his yes. Without a terminal, `--drive` alone is not enough; the scripted yes is `--drive --yes`.
+- **Given** Frank types `abcd drain --drive` in a plain terminal, **when** it starts, **then** before its first move it shows the cap (eight unless `--max` says otherwise), an estimate of the agent runs that cap allows, and the runner and the route the agents will use (their subscription, walled, or the API key their configuration names), and starts nothing without their yes. Without a terminal, `--drive` alone is not enough; the scripted yes is `--drive --yes`.
 - **Given** a machine where the runner is not enabled, the walled configuration directory has no login (or, on the key route, the API key is missing), the judge is routed to opencode, or the repository pins a role to the host, **when** `abcd drain --drive` starts, **then** it refuses before its first move and names what is missing. It reserves nothing.
 - **Given** the subscription route, **when** a drive starts, **then** it first proves in a live run that each wall holds: the person's own instructions, memory, MCP servers and connectors, hooks other than abcd's own, and saved sessions are out of the agent's reach, the agent's tools are the allow-list the launch named, abcd's guard answers in it, and no API key is set; it refuses to start and names the wall that failed when any does. abcd never reads, stores or forwards the login token (dcn-2610230716408975; amended 2026-11-04 with decision 10).
 - **Given** Frank said yes, **when** the drive runs, **then** it judges each eligible issue through the runner, opens its lane, starts each role through the runner, runs the lane's preflight itself behind the load gate, lands it, and moves to the next, with no further input. It prints one line per step and logs the detail under the local tier.
 - **Given** a role whose runner fails or answers out of shape during a lane, **when** the driver meets that fallback, **then** the lane is handed back as stuck with the runner's reason, its reservation is released, and the drive moves on. No lane is left waiting for a host.
 - **Given** three runner failures in a row, or a judgement whose runner fails, **when** the driver meets them, **then** it treats them as an outage: it waits 1, 5 and 10 minutes, then hourly, saying so each time. It stops after eight hours of failures, and hands no issue back for an outage.
 - **Given** the drain's own waits (its pace window, its cap wait, a wait for origin), **when** a move returns one, **then** the driver sleeps until the earliest time the move named, never less than thirty seconds, and holds the drain's lock only during a move.
-- **Given** a drive, **when** Frank presses Ctrl-C or the terminal closes, **then** the agent in a call finishes that call, the open lane is left on its branch with its reservation and claims released, and the drive prints the run, the lane and the command that resumes it, so the next `abcd drain --drive` or a peer picks it up. A second Ctrl-C kills the agent and exits at once (amended 2026-11-04 with decision 8).
+- **Given** a drive, **when** Frank presses Ctrl-C once, **then** the lane in hand runs to its end, no further lane opens, and the drive says how to stop it now. **When** they press it a second time, or the terminal closes, **then** the agent in a call finishes that call, the open lane is left on its branch with its reservation and claims released, and the drive prints the run, the lane and the command that resumes it, so the next `abcd drain --drive` or a peer picks it up. A third Ctrl-C kills the agent and exits at once (amended 2026-11-04 with decision 8, and 2026-11-25 with decision 13).
 - **Given** `abcd drain` without `--drive`, **when** it runs, in a terminal or a host session, **then** it does what it does today, one move per call. The host's page always calls it that way.
 
 ## Open Questions
@@ -106,10 +106,20 @@ The product thinker's walk and sign-off of 2026-10-23 (dcn-2610230813064058):
 
 11. **Signed off as written.** The six stories stand, both parts of the technical list are accepted, and the press release, the mechanism, the scope conditions and the reason for doing it now are signed off with no wording change. With the plan, adr-2610222222326104 is accepted, and AGENTS.md's host-delegated boundary names it as the one written exception, not built until this intent ships. The scope condition now says, as the product thinker was shown, that the fence and the login check apply to the helpers abcd starts.
 
+The product thinker's ruling of 2026-11-15, folded in on 2026-11-25:
+
+12. **A set-aside lane's reservation may stand until its lease lapses.** itd-2611141610197753, which builds on this intent, lets a drive set a lane aside when it cannot take it and open the next one; the product thinker ruled on 2026-11-15 that the set-aside lane's reservation is not released by a push but left to lapse, so the issue stays hidden from other sessions for at most the two-hour lease (its decision 4). The press release's last sentence and the mechanism's test are amended to say so: the drive still never keeps an issue held for someone who is not coming, and a reservation that only waits out its lease is not that case. The amendment was filed as iss-2611150635298371, resolved by this change.
+
+The product thinker's ruling of 2026-11-25, folded in the same day:
+
+13. **The first Ctrl-C stops after the lane in hand.** itd-2611150636498012 (its decision 6) makes an interrupt take two steps before the kill: the first press lets the lane in hand run to its end and opens no further lane, and says how to stop now; the second makes the orderly stop that decision 8 gave the first press; the hard kill that decision 8 gave the second press moves to a third. The eighth criterion is amended to say so. A closed terminal still makes the orderly stop at once, since nobody is there to press again.
+
+_Ideate verdict, 2026-11-26, recorded here as a pointer and not a decision (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`): a terminal build of one READY intent was judged reframed as spc-2609202134338445 step 12, which waits on this intent shipping. The verdict asks whether that step should wait only on this intent's subscription-route steps, the built drive and the live proof on the one walled login that spc-2611051628562376 holds open as its first, MUST step, rather than on the whole of that spec's remainder, whose other two steps are the key route and the ruling on a lane paused past an outage; the product thinker rules. Nothing in this intent changes._
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 
 ## Grounds
 
-- pursued: a terminal drive lands work with no person and no host session once each thing a host does between steps becomes the driver's own act or a hand-back; shown wrong if a drive on a scratch repository seeded with three minor issues needs any input after its one yes before its cap, or ends with an issue still reserved and no lane working on it. Occasioned by 2026-10-22, when a drain typed in a plain terminal reserved the first of 213 issues, opened none, and held it for two hours (iss-2610222000271964).
+- pursued: a terminal drive lands work with no person and no host session once each thing a host does between steps becomes the driver's own act or a hand-back; shown wrong if a drive on a scratch repository seeded with three minor issues needs any input after its one yes before its cap, or ends with an issue still reserved, no lane working on it and no lease due to lapse (a set-aside lane's reservation standing until its lease lapses does not count, decision 12). Occasioned by 2026-10-22, when a drain typed in a plain terminal reserved the first of 213 issues, opened none, and held it for two hours (iss-2610222000271964).

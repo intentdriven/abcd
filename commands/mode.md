@@ -148,14 +148,53 @@ or one already past, is refused (exit 2) with nothing written. Add
 narrows what sessions do and grants nothing. Tell the user the `terms` the
 verb prints. A prompt never ends the mode.
 
+**The person talking while away.** A prompt the person types in a session while
+the mode holds does not end it, but for 15 minutes after it that session reads
+them as present: its questions go to them on the host's question tool and are
+checked as when they are present, and its turn ends are allowed as a present
+session's when nothing is owed or the session holds a scheduled wake that fires
+soon enough. While work is owed and no wake is held, the turn's end is held,
+naming the window: the session may wait for the person's reply only holding a
+wake, so the checks read it again once the window ends. The prompt hook says
+so in one line beside the away block. A prompt that one of the session's own
+wakes fires, a background task's report, another session's message and the
+host's own resumptions open nothing. Every stop the check reads, present or
+away, keeps the session's wakes so their prompts are known; a stop it allows
+before reading them (its time spent before the checkout is named, a session
+state it cannot read, a payload it cannot read, or a turn the host ends on an
+error) keeps nothing, so a wake made in that turn reads as the person's at its
+first firing and opens one window, whose own turn's end then keeps it. A
+session holding more wakes than its state keeps (32), or a wake whose prompt
+the host turns into other text when it fires (a slash command, expanded, or a
+loop's sentinel such as `<<autonomous-loop>>`, resolved to the loop's
+instructions), has no prompt open its window; a stop listing an empty set of
+wakes clears that, and one whose payload carries no wakes leaves it. A prompt
+typed under
+one away record opens nothing under the next. Every other session stays away,
+and once the 15 minutes pass the checks hold again in that session at its next
+turn's end: answer the person, then carry on with the owed work. Anything
+running as this account can write the session's state or run the prompt hook
+by hand, so the window holds against other accounts and stale state, not
+against this account's own agent; nothing enforces more. It is a convenience
+for the person, not a boundary against the agent.
+
+**An intent's open question never stops the work while away.** The planning
+interview is how an intent's open questions are settled while the person is
+there. While they are away, `abcd build`'s start check, `abcd intent ready`, the
+record's page and the away block all name the other route: the session decides
+a technical or product question itself with `abcd decide` and marks it resolved
+citing that decision, queues one only the person may answer with
+`abcd mode queue`, and takes the next ready item meanwhile rather than waiting
+for their return.
+
 **A session whose setting reads as off a profile is warned.** After the set, one
 line on stderr opens `WARNING:` (stdout's JSON is untouched) when one setting in
 this session's environment reads as off a profile. A host that reports no such
 setting reads as off, and every doubt falls towards the line. Pass the line on to
 the person, as it asks. The mode is set and the exit code is the same either way:
 this warns and never refuses. This reads one setting and proves no wall, and the setting's value changes nothing
-the session holds. No abcd command starts
-a session on a profile yet. A profile is a separate login and settings on one
+the session holds. `abcd start`,
+typed by the person in a plain terminal, starts a session on a profile. A profile is a separate login and settings on one
 operating-system account, and a stage's shell reads what the account can.
 `abcd drain --drive` is the unattended start: it runs agents of its own on a separate
 login, with named tools, checked at its start.

@@ -118,7 +118,7 @@ spec's `- packages:` lines to the files the work changes.
   hosted session that restarted with a fresh home and no `ABCD_HOLDER_ID`
   minted a new one, so the reservations its earlier sessions made read as
   another person's, not as your other copy's, until they lapse, and the cap
-  on your live reservations (ten, or `reservation.max_live`) counts them apart (`/abcd:reserve` says how to keep one id).
+  on your live reservations (ten, or the repository's `reservation.max_live`) counts them apart (`/abcd:reserve` says how to keep one id).
 - Any other refusal of the reservation (no username, no local tier, `origin`
   not answering) is exit 2, naming it, and starts nothing.
 
@@ -1124,7 +1124,9 @@ A lane's stages run in order:
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, deleting the branch only at a tip that commit stores,
    the lane is done, and the next pending step opens the
-   next lane. In a repository abcd manages, that step then sweeps on its own
+   next lane. The proved landing is observed for the spot-check, as `abcd
+   land` observes one (`commands/land.md`, "The spot-check at a landing"),
+   and its note says what the observation did. In a repository abcd manages, that step then sweeps on its own
    once its save is written: the provably spent part of `abcd sweep --apply`,
    with the same proofs against a fresh fetch (other merged, clean worktrees
    removed, a dirty one's work saved and kept, the merged lane branches

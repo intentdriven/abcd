@@ -91,7 +91,7 @@ func TestTheRedactorLeavesAFindingKeyAlone(t *testing.T) {
 	key := findingkey.Derive("premise_contradiction",
 		findingkey.End{Path: ".abcd/development/intents/planned/itd-10-one-spec.md", Quote: "An intent carries exactly one spec."},
 		findingkey.End{Path: ".abcd/development/intents/shipped/itd-11-many-specs.md", Quote: "An intent owns one or more specs."})
-	if out, n, _ := redactLedgerText(root, "finding_ref: "+key); n != 0 || !strings.Contains(out, key) {
+	if out, n, _, _ := redactLedgerText(root, "finding_ref: "+key); n != 0 || !strings.Contains(out, key) {
 		t.Fatalf("the redactor rewrote a finding key (%d span(s)): %q", n, out)
 	}
 	res, err := testCapture(CaptureRequest{RepoRoot: root, Text: "Filed under finding key " + key + ".", Severity: "minor",

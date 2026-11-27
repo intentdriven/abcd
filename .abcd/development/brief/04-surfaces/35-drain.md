@@ -7,9 +7,10 @@ chapter describes what ships: the rule that decides which issues a machine may
 take alone, the order it takes them in, a dry run that shows every open issue's
 disposition and writes nothing, and the run, which asks the host to judge each
 eligible issue's remedy before its lane opens, hands each issue the judgement
-does not hand back to the implement loop keyed by the issue, one lane at a
-time, routes every hand-back by its kind, and is bounded by the pace rule's
-window and a cap on the lanes it opens.
+does not hand back to the implement loop keyed by the issue, alone or, under a
+bundle cap above 1, as the lead of a lane that carries issues of its kind in
+its place beside it, one lane at a time, routes every hand-back by its kind,
+and is bounded by the pace rule's window and a cap on the lanes it opens.
 
 ## Sub-verbs
 
@@ -170,6 +171,13 @@ that has none yet it takes each group oldest first and says, in `order` and in
 `order_drawn_at_first_move`, that the copy's own order is drawn at its first
 move.
 
+The order is the order of a lane's lead. A bundle's members do not keep it
+(the amendment of 20 Nov 2026 to
+[adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md),
+dcn-2611201515310051): once a lead is judged, the issues of its category and
+area are taken into its lane at either severity the record takes, so a `minor`
+member is fixed ahead of an older issue, or a `nitpick` one, in another area.
+
 ## Bundles: the cap and who joins
 
 A lane may take several issues of one kind in one place, one branch and one
@@ -204,8 +212,49 @@ its lane opens alone.
 The dry run shows, under each eligible issue that would lead, the members its
 next lane would take, and says that the judgements, the reservations and
 `reservation.max_live` may make the bundle smaller; its payload carries
-`bundle_max` and `bundles`. The drain itself does not yet form a lane with
-members: whatever the cap, it opens one issue's lane at a time.
+`bundle_max` and `bundles`.
+
+The drain forms a bundle across its moves (spc-2611201455051897 step 4).
+When the lead's judgement answers no, the cap is above 1 and the lead has
+candidates, the lane does not open at once: the drain records `forming`, the
+lead and its hold and the members judged so far with theirs. The rest of the
+move, and each move after it, takes the next candidate as the drain takes an
+issue: it passes over one that is held, skipped, lapsed or already run,
+reserves the candidate and asks its judgement; a no adds it to the bundle, and
+a yes routes it as a judgement's hand-back and leaves it out. The lead's and
+the members' holds are kept across moves, never released by the move that
+leaves them, and renewed at half their lease. The lane opens when no candidate
+is left, when the cap is reached, or when the person's live reservations would
+reach `reservation.max_live` with the next one, and then opens as it stands
+rather than waiting. A bundle whose start is refused, for a reason that is not
+its reservation's, is passed over as a single lane's lead is: its holds are
+released, its lead is passed over for the rest of the move and of a drive, and
+its members go back among the eligible issues, which the move goes on to in
+the drain's order. A lead another holds counts as held work, so the drain
+waits on it as it waits on any, and the drive looks at it again once that wait
+ends. A lead whose found_at moved since it was reserved ends the move instead,
+and the next move reserves it on its new path and forms the bundle again. A forming bundle may hold up to `bundle_max` of the
+person's live reservations across several moves; lowering the cap is the
+remedy for that cost. A stop, a pace window that elapses and an origin that
+does not answer keep `forming` and its holds, as an awaited judgement is
+kept. A drain that ends releases every forming hold plainly, with no
+tombstone, and so does the drive's let-go, which clears `forming` and, when its
+comparison stops it, names each hold it would have released. A member counts
+as taken, so no other lane opens on it. A cap of 1, a lead that may not lead
+and a lead with no candidates take the path a single issue takes, and no
+`forming` is written. The default of 1 keeps all of this off until a person
+sets the key.
+
+The lane carries its members on its run and records them on the drain's
+state as the lane's `bundle`. A member the receipt hands back alone is routed
+as a lane's hand-back of its kind while the others go on; a hand-back of the
+whole lane routes every member's. A pull request closed unmerged is a
+person's word on the whole lane: every issue still held is handed back as
+`closed`, as a single lane's is. A merged pull request finishes the lane for
+every member. Each move's summary names every lane's lead and members, and
+the bundle forming, with its lead and the members taken so far; the payload
+carries a lane's members in `bundle` and the bundle forming in `forming`
+(`lead`, `members`), absent when none forms.
 
 The drain's state is version 4, which holds every field bundling needs: the
 drain's `bundle_max` and `forming`, and a lane's `bundle`, `split` and
@@ -568,8 +617,9 @@ read there takes, so a name that fails is refused before the question and before
 reserved. A stage's files are made through each level of abcd's home the same way. The question
 names the profile. The settings, the login, the live check, each launch and each limit's
 probe are that directory's, so a limit pauses that drive until that profile's limit ends
-and nothing moves it to another. Choosing by itself among several, a registry, a creating
-command and key profiles are itd-2611040344170206, which stays a draft.
+and nothing moves it to another. Choosing by itself among several, a registry
+and key profiles are itd-2611040344170206, which stays a draft; `abcd start` makes the
+first profile on an account that holds none ([`43-start.md`](43-start.md)).
 
 A run records the profile a drive started it on (`State.Profile`, schema version 22), and
 the record and the listing of unfinished runs name it. A drive on another profile does not take
@@ -1175,6 +1225,12 @@ the fix and pass after, its tests gated as an intent lane's brief spells. Its va
 issue has no criteria. Its implementer's receipt must name the issue in
 `resolves`, and the landing resolves the issue with the commit named there in
 the lane's own change, opens one pull request and pushes nothing while it is armed, its sync withdrawing an armed merge first.
+A lane that carries members (above) has one brief, one branch and one pull
+request for all of them: its brief renders each member's record and remedy in
+the drain order and asks for one commit per member; its receipt names each
+issue in `resolves` or hands it back alone in `handbacks`; and its landing
+resolves each issue with the commit named for it, one `Resolves:` line each,
+and releases each issue's own reservation.
 Its records commit carries `Admitted-by: drain <adr-N>`, the rule record the
 drain loaded for the move that opened the lane, which the lane's state records
 with its path at the start (itd-2610301850454860).

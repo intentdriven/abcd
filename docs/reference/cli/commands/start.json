@@ -1,0 +1,30 @@
+{
+  "format_version": 2,
+  "commands": [
+    {
+      "path": "abcd start",
+      "sentence": "Start a session on abcd alone, making its separate login where none exists: Writes that profile once, a copy of abcd, a ledger entry; refuses off a terminal.",
+      "usage": "abcd start [prompt] [flags]",
+      "flags": [
+        {
+          "name": "permission-mode",
+          "type": "string",
+          "allowed": [
+            "manual",
+            "acceptEdits",
+            "plan",
+            "auto",
+            "dontAsk",
+            "bypassPermissions"
+          ]
+        },
+        {
+          "name": "profile",
+          "type": "string"
+        }
+      ],
+      "inputs": [],
+      "example": "abcd start"
+    }
+  ]
+}

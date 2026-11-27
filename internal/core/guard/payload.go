@@ -72,6 +72,10 @@ type payloadSignal struct {
 	// guard cannot place, a file it cannot read, a spent budget — which a
 	// script's reading carries out whatever its tier (script.go).
 	fromRead bool
+	// last marks a hold on what the guard did not read at all, which speaks
+	// for its pool only where no other entry-less verdict does: one that names
+	// what it read tells more.
+	last bool
 }
 
 // entryID is the id this signal is reported under.
@@ -125,6 +129,7 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		capIFSSplits(segs)
 	}
 	queue := []work{{segs: segs, depth: depth}}
+	budget := &carriedBudget{}
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
@@ -132,7 +137,16 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 		// (carried.go): each such command is read once more with the value
 		// in its words, as another reading of it, and a command whose words
 		// hold a value's output passes that output on (segment.carries).
-		carried, carriedSigs := carriedReadings(item.segs)
+		budget.grant(item.segs)
+		for _, s := range item.segs {
+			if !budget.suppliedHeld && xargsRunsInput(s) {
+				budget.suppliedHeld = true
+			}
+			if !budget.rebound && rebindsProgram(s) {
+				budget.rebound = true
+			}
+		}
+		carried, carriedSigs := carriedReadings(item.segs, budget)
 		signals = append(signals, carriedSigs...)
 		// The records go to the copy of each command in out, and to its
 		// copy in the tokenize call that emitted it, which a run another
@@ -268,6 +282,17 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 	}
 	if splitAfterIFS(out) {
 		signals = append(signals, ifsSplitSignal())
+	}
+	// The holds on a program or a command string the guard did not read
+	// (payloadSignal.last).
+	if budget.programHeld {
+		signals = append(signals, unreadProgramSignal())
+	}
+	if budget.suppliedHeld {
+		signals = append(signals, suppliedStringSignal())
+	}
+	if budget.rebound {
+		signals = append(signals, reboundSignal())
 	}
 	return out, signals
 }
@@ -2590,3 +2615,100 @@ func shellWarnSignal() payloadSignal {
 		successor: "If this is intentional, run it as written; prefer spelling the command out so the guard can check it.",
 	}
 }
+
+// assignsIFS reports whether segs can give IFS a value that splits a word where
+// the default blanks do not: an assignment to IFS of a value other than blanks
+// (a fixed one of spaces, tabs and newlines splits on no more than the guard's
+// reading does, and a variable that only ever holds `$IFS` restores what was
+// there), one in text no word reads (`: $((IFS=1))`), IFS handed to a builtin
+// that names what it sets (`read IFS`, `export IFS`), or a name an expansion
+// spells handed to one. An IFS assignment that prefixes read, mapfile or
+// readarray splits only what they read, and leaves the shell's IFS as it was.
+func assignsIFS(segs []segment) bool {
+	saved := savedIFSNames(segs)
+	for _, s := range segs {
+		if s.ifsAssignInText {
+			return true
+		}
+		// The command's first word past its keywords and assignments.
+		first := 0
+		for first < len(s.tokens) && (quietKeywords[s.tokens[first]] || s.tokens[first] == "while" || s.tokens[first] == "until") {
+			first++
+		}
+		for first < len(s.tokens) && isAssignment(s.tokens[first]) {
+			first++
+		}
+		reader := first < len(s.tokens) && ifsReaders[s.tokens[first]]
+		naming, target, decl := false, false, false
+		flag := ""
+		for i, tok := range s.tokens {
+			if name, eq, appends, subscript, ok := splitAssignment(tok); ok && name == "IFS" {
+				if i < first && reader {
+					continue
+				}
+				if appends || subscript || !blankIFS(s, i, tok[eq+1:], saved) {
+					return true
+				}
+			} else if strings.Contains(tok, "IFS") && (naming || strings.Contains(tok, "IFS=") || strings.Contains(tok, "IFS+=")) {
+				return true
+			}
+			// A redirection's word names a file, not a variable.
+			redirect := strings.HasPrefix(tok, "<") || strings.HasPrefix(tok, ">")
+			if !redirect && nameMarked(tok) && (naming || target || flag != "" && strings.HasPrefix(tok, flag)) {
+				return true
+			}
+			target = flag != "" && tok == flag
+			if decl && len(tok) > 1 && tok[0] == '-' && strings.IndexByte(tok, 'n') > 0 {
+				return true
+			}
+			if namingCommands[tok] {
+				naming, decl = true, declarations[tok]
+			}
+			if f, ok := targetFlags[tok]; ok {
+				flag = f
+			}
+		}
+	}
+	return false
+}
+
+// blankIFS reports whether the value v word i of s gives IFS splits on no byte
+// but a blank: fixed text of spaces, tabs and newlines, or a variable of saved.
+func blankIFS(s segment, i int, v string, saved map[string]bool) bool {
+	if !unfixed(v) {
+		return strings.Trim(v, blanks) == ""
+	}
+	if len(s.spelled[i]) != 1 {
+		return false
+	}
+	_, sp, _ := strings.Cut(s.spelled[i][0], "=")
+	name := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(sp, "$"), "{"), "}")
+	return v == unknownText && strings.HasPrefix(sp, "$") && isName(name) && saved[name]
+}
+
+// savedIFSNames is the variables segs assign only `$IFS`, as a script saves IFS
+// to restore it.
+func savedIFSNames(segs []segment) map[string]bool {
+	saved := map[string]bool{}
+	other := map[string]bool{}
+	for _, s := range segs {
+		for i, tok := range s.tokens {
+			name, _, _, _, ok := splitAssignment(tok)
+			if !ok {
+				continue
+			}
+			if sp := s.spelled[i]; len(sp) == 1 && (strings.HasSuffix(sp[0], "=$IFS") || strings.HasSuffix(sp[0], "=${IFS}")) {
+				saved[name] = true
+			} else {
+				other[name] = true
+			}
+		}
+	}
+	for n := range other {
+		delete(saved, n)
+	}
+	return saved
+}
+
+// ifsReaders are the builtins whose IFS prefix splits only what they read.
+var ifsReaders = map[string]bool{"read": true, "mapfile": true, "readarray": true}

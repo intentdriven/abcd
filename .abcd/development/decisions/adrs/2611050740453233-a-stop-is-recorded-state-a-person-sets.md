@@ -53,3 +53,11 @@ We will make a stop recorded state that a person sets, and we will admit one sha
 - Setup gains one option, and the folder's rule is checked on every read.
 - A folder under an age cleaner's care can lose a long-standing stop, so the setup's page says which folders those are.
 - A brief invariant states this rule once this record is accepted, which is the person's act.
+
+## Amendment — 2026-11-25: a drive's next start takes up the run a lifted stop halted
+
+The third consequence above says a run that took a stop needs a take-over before it steps again, so nothing resumes by itself when a stop lifts. The product thinker ruled on 2026-11-15 that, once a person has lifted their own stop, the next start of `abcd drain --drive` takes up the runs that stop halted, with nothing else typed (itd-2611141610197753, decision 1). This amendment restates that consequence for a drive's start; it reverses nothing else.
+
+- **The drive's start stands in for the take-over.** The start is the person's own typed command, answered with their yes at a terminal, so it is the second deliberate act the take-over was; the lift alone still resumes nothing. A start that finds the stop still standing leaves the run halted and names it.
+- **Only the drive's start.** A host session's `abcd implement step` on a run a lifted stop halted still needs `abcd implement resume --take`, as before.
+- **What it costs.** The lift becomes the go for the next drive a person starts in that checkout: a person who lifts a stop meaning to resume by hand later finds the next drive has taken the run up. That is reversed if people who lift a stop are seen to be surprised by it.

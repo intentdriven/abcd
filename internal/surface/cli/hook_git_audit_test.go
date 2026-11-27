@@ -138,6 +138,7 @@ var hookEntries = []hookEntry{
 	{"hook stop", "newHookStopCommand", "stop"},
 	{"hook stop-failure", "newHookStopFailureCommand", "stop-failure"},
 	{"hook subagent-stop", "newSubagentStopCommand", "subagent-stop"},
+	{"hook subagent-start", "newSubagentStartCommand", "subagent-start"},
 }
 
 // auditSpec says what one walk starts from.
