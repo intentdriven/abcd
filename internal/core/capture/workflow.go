@@ -113,6 +113,38 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
 		return CaptureResult{}, err
 	}
+	// Redact the free-text INPUTS, before the slug is normalised and before the
+	// record is rendered. Redacting the rendered file instead treats the
+	// structural fields as free text: a home path in the body reaches the
+	// caller-derived slug, redaction rewrites it to a bracketed placeholder, and
+	// the kebab-case check then REFUSES the capture — turning a leak into a lost
+	// finding, which is the outcome this whole path exists to avoid. Normalising
+	// after redaction strips the placeholder's brackets instead.
+	//
+	// Only free text is touched. id, severity, category and source are generated
+	// or enum-constrained, so they carry nothing to redact and must not be
+	// rewritten. It runs before the preamble, so its one refusal
+	// (identityRefusal) writes nothing at all.
+	var redacted int
+	var degraded string
+	var redactErr error
+	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded, redactErr =
+		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
+	if redactErr != nil {
+		return CaptureResult{}, redactErr
+	}
+	// The remedy is free text too, and the drain hands it to a lane as the brief
+	// (itd-82), so it is redacted by the same redactor and counted with the rest.
+	{
+		r, n, deg, err := redactLedgerText(repoRoot, req.Remedy)
+		if err != nil {
+			return CaptureResult{}, err
+		}
+		req.Remedy, redacted = r, redacted+n
+		if deg != "" {
+			degraded = deg
+		}
+	}
 	if err := mutationPreambleWith(lock, repoRoot, issuesRoot); err != nil {
 		return CaptureResult{}, err
 	}
@@ -126,31 +158,6 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 
 	if strings.TrimSpace(req.FoundDuring) == "" {
 		return CaptureResult{}, fmt.Errorf("found_during must be a non-empty string")
-	}
-
-	// Redact the free-text INPUTS, before the slug is normalised and before the
-	// record is rendered. Redacting the rendered file instead treats the
-	// structural fields as free text: a home path in the body reaches the
-	// caller-derived slug, redaction rewrites it to a bracketed placeholder, and
-	// the kebab-case check then REFUSES the capture — turning a leak into a lost
-	// finding, which is the outcome this whole path exists to avoid. Normalising
-	// after redaction strips the placeholder's brackets instead.
-	//
-	// Only free text is touched. id, severity, category and source are generated
-	// or enum-constrained, so they carry nothing to redact and must not be
-	// rewritten.
-	var redacted int
-	var degraded string
-	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded =
-		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
-	// The remedy is free text too, and the drain hands it to a lane as the brief
-	// (itd-82), so it is redacted by the same redactor and counted with the rest.
-	{
-		r, n, deg := redactLedgerText(repoRoot, req.Remedy)
-		req.Remedy, redacted = r, redacted+n
-		if deg != "" {
-			degraded = deg
-		}
 	}
 
 	// When no explicit slug was supplied, derive it HERE — from the text that
@@ -657,7 +664,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		// The note is the only free text a transition adds, so it is what gets
 		// redacted — before it is written into the record, never after, so no
 		// rewritten span can reach a field the validator has already passed.
-		redNote, redacted, degraded := redactLedgerText(rr, note)
+		redNote, redacted, degraded, err := redactLedgerText(rr, note)
+		if err != nil {
+			return err
+		}
 		// Hidden runes are encoded at the record boundary, as the capture body's
 		// are (iss-2608301206073609).
 		redNote = termsafe.EncodeHiddenRunesBlock(redNote)

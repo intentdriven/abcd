@@ -375,20 +375,44 @@ func newBase(ctx context.Context, repoRoot string) *Scanner {
 // place, degrades the scanner from that call on, so a caller that wired one
 // consults this after ScanText as well as before.
 //
-// An identity value that is not valid UTF-8 (identityNotUTF8) leaves the
-// scanner unavailable too: no pattern holds its raw bytes and no store is
-// handed them, so it is refused rather than matched in a guessed form.
+// An identity value that is not valid UTF-8 leaves the scanner unavailable
+// too (IdentityUnmatchable): no pattern holds its raw bytes and no store is
+// handed them, so a store refuses it rather than match a guessed form.
 func (s *Scanner) Unavailable() (bool, string) {
+	if bad, why := s.PatternsUnavailable(); bad {
+		return true, why
+	}
+	if setting := s.IdentityUnmatchable(); setting != "" {
+		return true, IdentityUnmatchableReason(setting)
+	}
+	return false, ""
+}
+
+// PatternsUnavailable is Unavailable without the identity cause: whether the
+// pattern set itself is degraded (the per-repo config, or an augmenter run),
+// and why. A check that reads no identity, such as the privacy lint's network
+// patterns, consults this one.
+func (s *Scanner) PatternsUnavailable() (bool, string) {
 	if s.unavailable {
 		return true, s.unavailReason
-	}
-	if why := identityNotUTF8(s.identity); why != "" {
-		return true, why
 	}
 	if why := s.augDegraded(); why != "" {
 		return true, why
 	}
 	return false, ""
+}
+
+// IdentityUnmatchable names the setting that holds an identity value no
+// pattern can match, because it is not valid UTF-8 — "git config user.name",
+// "the home folder's name" and so on — or is "" when every value is valid. It
+// never carries the value. A writer that writes through a degraded pattern set
+// with a note refuses on this cause instead: the value would be written in
+// clear.
+func (s *Scanner) IdentityUnmatchable() string { return identityNotUTF8(s.identity) }
+
+// IdentityUnmatchableReason words the cause IdentityUnmatchable names.
+func IdentityUnmatchableReason(setting string) string {
+	return setting + " is not valid UTF-8, so the redactor cannot match it: re-save it as UTF-8 (the value is not shown)"
 }
 
 // mergeConfig layers a per-repo override onto the built-in defaults, enforcing

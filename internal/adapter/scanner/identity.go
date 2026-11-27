@@ -322,8 +322,7 @@ func containsFold(list []string, v string) bool {
 }
 
 // identityNotUTF8 names the setting that holds an identity value that is not
-// valid UTF-8, as a refusal reason that says to re-save it, or is "" when every
-// value is valid. The reason never carries the value.
+// valid UTF-8, or is "" when every value is valid. It never carries the value.
 func identityNotUTF8(id Identity) string {
 	allValid := func(vs []string) bool {
 		for _, v := range vs {
@@ -352,8 +351,7 @@ func identityNotUTF8(id Identity) string {
 	default:
 		return ""
 	}
-	return setting + " is not valid UTF-8, so the redactor cannot match it and refuses the write: " +
-		"re-save it as UTF-8 (the value is not shown)"
+	return setting
 }
 
 // foldedAlternation compiles values into one case-insensitive literal

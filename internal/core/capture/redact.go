@@ -15,7 +15,8 @@ import (
 // and `history`, so an absolute home path handed to `abcd capture` reached the
 // repository with every lint gate green (iss-2608231025198888).
 //
-// It REDACTS AND REPORTS; it never refuses. history.Capture is fail-closed on
+// It REDACTS AND REPORTS, and refuses only while an identity value no pattern
+// can match is set (identityRefusal). history.Capture is fail-closed on
 // the same detector and that asymmetry is deliberate: a transcript is
 // machine-produced bulk whose loss costs one session, whereas refusing to record
 // a finding loses the finding itself, and a ledger that rejects writes is a
@@ -32,21 +33,36 @@ import (
 // than by timing.
 var newLedgerScanner = func(repoRoot string) (*scanner.Scanner, error) { return scanner.New(repoRoot) }
 
-func redactLedgerText(repoRoot, text string) (redacted string, count int, degraded string) {
+func redactLedgerText(repoRoot, text string) (redacted string, count int, degraded string, err error) {
 	sc, err := newLedgerScanner(repoRoot)
 	if err != nil {
 		// A scanner that cannot be constructed leaves the text untouched and says
 		// so. Silently returning the input would be the fail-open this exists to
 		// close.
-		return text, 0, fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)
+		return text, 0, fmt.Sprintf("scanner unavailable (%v); text written unredacted", err), nil
+	}
+	if err := identityRefusal(sc); err != nil {
+		return "", 0, "", err
 	}
 	findings := sc.ScanText(text, "issue")
 	degraded = scanNote(sc)
 	if len(findings) == 0 {
-		return text, 0, degraded
+		return text, 0, degraded, nil
 	}
 	out, _ := scanner.Redact(text, findings)
-	return out, len(findings), degraded
+	return out, len(findings), degraded, nil
+}
+
+// identityRefusal is the one cause the ledger refuses on rather than writes
+// and notes: an identity value that is not valid UTF-8, which no pattern can
+// match, so a text holding it would reach the ledger in clear. The refusal
+// names the setting to re-save and never the value.
+func identityRefusal(sc *scanner.Scanner) error {
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return fmt.Errorf("refusing to write to the issue ledger: %s; nothing written",
+			scanner.IdentityUnmatchableReason(setting))
+	}
+	return nil
 }
 
 // scanNote is the loud-degrade note for a scanner that has run: a degraded
@@ -81,11 +97,18 @@ func scanNote(sc *scanner.Scanner) string {
 // through here: rewriting a field a validator constrains is how the refusal
 // above happened.
 func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
-	rText, rSlug, rFoundAt, rFoundDuring string, count int, degraded string) {
+	rText, rSlug, rFoundAt, rFoundDuring string, count int, degraded string, err error) {
 	total := 0
 	worst := ""
 	red := func(in string) string {
-		out, n, deg := redactLedgerText(repoRoot, in)
+		if err != nil {
+			return ""
+		}
+		out, n, deg, e := redactLedgerText(repoRoot, in)
+		if e != nil {
+			err = e
+			return ""
+		}
 		total += n
 		if deg != "" {
 			worst = deg
@@ -96,7 +119,10 @@ func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
 	rSlug = red(slug)
 	rFoundAt = red(foundAt)
 	rFoundDuring = red(foundDuring)
-	return rText, rSlug, rFoundAt, rFoundDuring, total, worst
+	if err != nil {
+		return "", "", "", "", 0, "", err
+	}
+	return rText, rSlug, rFoundAt, rFoundDuring, total, worst, nil
 }
 
 // ledgerRedactor is one scanner reused across a batch of free-text values.
@@ -117,15 +143,19 @@ type ledgerRedactor struct {
 	degraded string
 }
 
-// newLedgerRedactor builds the batch redactor. It never fails: an unusable
-// scanner degrades LOUDLY through Degraded, because refusing the write here
-// would lose the finding rather than protect it.
-func newLedgerRedactor(repoRoot string) *ledgerRedactor {
+// newLedgerRedactor builds the batch redactor. An unusable scanner degrades
+// LOUDLY through Degraded, because refusing the write here would lose the
+// finding rather than protect it; the one refusal is identityRefusal's, an
+// identity value no pattern can match.
+func newLedgerRedactor(repoRoot string) (*ledgerRedactor, error) {
 	sc, err := newLedgerScanner(repoRoot)
 	if err != nil {
-		return &ledgerRedactor{degraded: fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)}
+		return &ledgerRedactor{degraded: fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)}, nil
 	}
-	return &ledgerRedactor{sc: sc}
+	if err := identityRefusal(sc); err != nil {
+		return nil, err
+	}
+	return &ledgerRedactor{sc: sc}, nil
 }
 
 // redact sanitises one value and reports how many spans it rewrote.
