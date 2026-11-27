@@ -59,9 +59,16 @@ var spawnScheduledRefresh = func(dir string) error {
 
 // startDueRefresh starts the refresh the block n asked for, when the hook's deadline
 // leaves room: stamped first, so a refresh that cannot be stamped is not started on
-// every prompt.
+// every prompt. A stamp that cannot be kept, from a full disk or a changed mode, is
+// said on the prompt it failed on, since otherwise a kept green would stay silent
+// until the answer aged out (iss-2611051719396028).
 func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) {
-	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) || n.StampRefresh(now) != nil {
+	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) {
+		return
+	}
+	if err := n.StampRefresh(now); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return
 	}
 	if err := spawnScheduledRefresh(root); err != nil {

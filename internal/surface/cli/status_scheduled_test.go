@@ -455,6 +455,44 @@ func TestThePromptHookStartsARefreshWhenOneIsDue(t *testing.T) {
 	}
 }
 
+// TestAStampThatCannotBeKeptIsSaidOnThePrompt: a store that cannot be written,
+// as from a full disk or a changed mode, starts no refresh, and the prompt it
+// failed on says so on stderr rather than leave a kept green silent for days
+// (iss-2611051719396028).
+func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
+	ownHookBudgets(t, 10*time.Second)
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	t.Cleanup(claim.WaitPromptReadsForTest)
+	nameScheduledWorkflow(t, pat)
+	standInForge(t, runListing("failure", time.Now()), false)
+	spawned := spawnsRefreshes(t)
+	t.Setenv("HOME", w.home)
+	// A file where the store's folder goes: no stamp can be kept under it.
+	store := abcdhome.Path(w.home, "scheduled-runs")
+	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, stderr := runHook(t, hookInputJSON(t, "s-sched", pat, "hello there"), "hook", "prompt-router")
+	if !strings.Contains(out, "is unknown") {
+		t.Fatalf("the hook's text:\n%s\nwant it to say the state is unknown", out)
+	}
+	if spawned.count() != 0 {
+		t.Fatalf("an unstamped refresh was started %d times; want none", spawned.count())
+	}
+	if !strings.Contains(stderr, "the background refresh of the scheduled run was not started") {
+		t.Fatalf("the hook's stderr:\n%s\nwant it to say the refresh was not started", stderr)
+	}
+	if strings.Contains(stderr, w.home) {
+		t.Fatalf("the hook's stderr names the home unredacted:\n%s", stderr)
+	}
+}
+
 // TestTheRefreshVerbTellsASessionThatNeverRanStatus: what the prompt starts in
 // the background keeps the answer, and a new worktree of the same repository
 // that has run nothing is told of the red at its first prompt.
