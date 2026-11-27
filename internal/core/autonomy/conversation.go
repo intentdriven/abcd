@@ -34,15 +34,18 @@ const maxCronPrompts = 32
 
 // unmatchableWakes reports whether a stop's wakes cannot all be told from the
 // person typing by their prompts' text: more of them than the state keeps, or
-// one whose prompt is a slash command, which reaches the prompt hook expanded
-// rather than as the stop lists it (dcn-2611262236204687). A plain-text wake's
-// prompt arrives as it was set.
+// one whose prompt the host turns into other text when it fires, a slash
+// command (expanded) or a loop's sentinel such as `<<autonomous-loop>>`
+// (resolved to the loop's instructions), so it reaches the prompt hook other
+// than as the stop lists it (dcn-2611262236204687). A plain-text wake's prompt
+// arrives as it was set.
 func unmatchableWakes(crons []SessionCron) bool {
 	if distinctPrompts(crons) > maxCronPrompts {
 		return true
 	}
 	for _, c := range crons {
-		if strings.HasPrefix(strings.TrimSpace(c.Prompt), "/") {
+		p := strings.TrimSpace(c.Prompt)
+		if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "<<") {
 			return true
 		}
 	}

@@ -169,6 +169,15 @@ func TestSlashWakeOpensNoWindow(t *testing.T) {
 			t.Errorf("record %v: the slash-command wake's expanded prompt reads as the person's", rec != nil)
 		}
 	}
+	// A loop's wake is set with a sentinel prompt the host resolves to the
+	// loop's instructions when it fires, so it is marked the same way.
+	for _, sentinel := range []string{"<<autonomous-loop>>", "  <<autonomous-loop-dynamic>>\n"} {
+		in := StopInput{SessionCrons: []SessionCron{{ID: "l", Schedule: "*/10 * * * *", Recurring: true, Prompt: sentinel}}}
+		v := judgeAt(t, away, Owed{}, in, SessionState{}, now)
+		if personPrompt(v.State, "status?") {
+			t.Errorf("a session holding the loop wake %q took a prompt for the person's", sentinel)
+		}
+	}
 	// Once the session holds no such wake, prompts read as before.
 	v := judgeAt(t, away, Owed{}, slash, SessionState{}, now)
 	v = judgeAt(t, away, Owed{}, StopInput{SessionCrons: slash.SessionCrons[:1]}, v.State, now)
