@@ -38,6 +38,18 @@ const (
 // OAuth app, refused rather than started with a sign-in it cannot honour.
 const sessionLegacyAppTypeEnv = "ABCD_SESSION_GITHUB_APP_TYPE"
 
+// sessionOwnOriginEnv names the relay's own public address when no
+// --own-origin is given: the https origin repository setup assigned it. The
+// blueprint will write it (spc-2610230609005313 step 2); step 3 points this
+// name at the core's constant.
+const sessionOwnOriginEnv = "ABCD_SESSION_RELAY_ORIGIN"
+
+// sessionHostOriginEnv is where the relay's host states the service's public
+// address: Render sets it on every web service
+// (https://render.com/docs/environment-variables). serve compares it with
+// its own address and never trusts it for anything else.
+const sessionHostOriginEnv = "RENDER_EXTERNAL_URL"
+
 // sessionOriginsEnv names the page origins serve admits when no --origin is
 // given: a comma list. The blueprint writes it.
 const sessionOriginsEnv = coresession.OriginsEnv
@@ -315,7 +327,7 @@ func newSessionStartCommand(asJSON *bool) *cobra.Command {
 }
 
 func newSessionServeCommand(asJSON *bool) *cobra.Command {
-	var listen, clientID string
+	var listen, clientID, ownOrigin string
 	var origins, repos, owners []string
 	var behindProxy bool
 	c := &cobra.Command{
@@ -352,6 +364,13 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"relay serves its own session page.\n" +
 			sessionLegacyAppTypeEnv + " set to anything but github-app is refused: the\n" +
 			"relay takes no OAuth app.\n\n" +
+			"--own-origin, or else " + sessionOwnOriginEnv + ", names the relay's own\n" +
+			"public address, the https origin repository setup assigned it; /config then\n" +
+			"names it too. Where the host states the service's public address in\n" +
+			sessionHostOriginEnv + " and it is another, the relay refuses to start and\n" +
+			"names abcd session setup --relay-origin, which records the address the relay is\n" +
+			"reached at; where the host states none, it starts and says the address was not\n" +
+			"checked.\n\n" +
 			"Exit 2 on a refusal, with nothing started.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -373,6 +392,32 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: prefix + sessionLegacyAppTypeEnv + " is " + strconv.Quote(v) +
 					"; the relay signs in through a GitHub App only: register one with Contents and Pull requests read and write and Metadata read, and unset the variable (nothing started)"}
 			}
+			// The relay's own address: the flag, else the environment. A
+			// stated address that is not one, or another, refuses the start.
+			own, ownFrom := ownOrigin, "--own-origin"
+			if own == "" {
+				own, ownFrom = strings.TrimSpace(os.Getenv(sessionOwnOriginEnv)), sessionOwnOriginEnv
+			}
+			ownNote := ""
+			if own != "" {
+				n, err := coresession.NormalizeRelayOrigin(own)
+				if err != nil {
+					return &exitError{Code: 2, Msg: prefix + ownFrom + " " + termsafe.Sanitize(own) +
+						" is not the relay's own address: give https://host[:port], with no path (nothing started)"}
+				}
+				own = n
+				stated := strings.TrimSpace(os.Getenv(sessionHostOriginEnv))
+				switch sn, err := coresession.NormalizeRelayOrigin(stated); {
+				case stated == "":
+					ownNote = "its own address " + own + " was not checked: the host states no public address in " + sessionHostOriginEnv
+				case err != nil || sn != own:
+					return &exitError{Code: 2, Msg: prefix + "the host states this relay's public address as " + termsafe.Sanitize(stated) +
+						", and its own address is " + own + "; the team's GitHub App and .abcd/relay/relays.json name only its own, so run" +
+						" `abcd session setup --relay-origin` with the address the relay is reached at, commit and push what it writes, and deploy again (nothing started)"}
+				default:
+					ownNote = "its own address " + own + ", as the host states it"
+				}
+			}
 			admit, admitFrom := sessionOrigins(origins, os.Getenv(sessionOriginsEnv))
 			// On loopback alone, the relay is the host's own machine behind
 			// Tailscale Serve, and a visitor is counted by the tailnet address
@@ -385,6 +430,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				Owners:       allowOwners,
 				ClientID:     clientID,
 				ClientSecret: os.Getenv(sessionSecretEnv),
+				OwnOrigin:    own,
 			})
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + admitFrom + " " + err.Error() + " (nothing started)"}
@@ -409,6 +455,9 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 					"`; open the session page with the https address that prints"
 			} else {
 				start.Hint = "listening beyond this computer, on an address chosen with --listen"
+			}
+			if ownNote != "" {
+				start.Hint += "; " + ownNote
 			}
 			_ = render(cmd.OutOrStdout(), *asJSON, start, func(w io.Writer) {
 				where := "this computer alone (loopback)"
@@ -445,6 +494,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	c.Flags().StringArrayVar(&repos, "repo", nil, "a repository to serve sessions for, as owner/name (repeatable; also "+sessionReposEnv+")")
 	c.Flags().StringArrayVar(&owners, "owner", nil, "a GitHub user or organisation whose every repository to serve sessions for (repeatable)")
 	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub sign-in app's public client id (default: "+sessionClientIDEnv+")")
+	c.Flags().StringVar(&ownOrigin, "own-origin", "", "the relay's own public address, as https://host[:port], which repository setup assigned it (default: "+sessionOwnOriginEnv+"); where "+sessionHostOriginEnv+" states another, it refuses to start")
 	return c
 }
 

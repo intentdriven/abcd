@@ -78,6 +78,10 @@
           "type": "list"
         },
         {
+          "name": "own-origin",
+          "type": "string"
+        },
+        {
           "name": "owner",
           "type": "list"
         },

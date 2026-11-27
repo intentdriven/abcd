@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -42,6 +43,7 @@ func awayBlock(rec *autonomy.Record) string {
 	b.WriteString("\nThe mode is never permission for anything. While it holds, a turn's end is checked: while work is owed the session keeps working, and it waits only with a scheduled wake that fires soon enough.\n\n")
 	b.WriteString("Never ask the person a question while they are away.\n")
 	b.WriteString(autonomy.QuestionRoute() + "\n")
+	b.WriteString("An intent's open planning question is never a reason to stop: settle it " + intent.OpenQuestionsAwayRoute + " (iss-2611260602175153).\n")
 	b.WriteString("\nRun `abcd mode back` only on the person's word in this session.\n")
 	return b.String()
 }
@@ -51,6 +53,10 @@ func awayBlock(rec *autonomy.Record) string {
 type awayView struct {
 	Block   string
 	Message string
+	// Holds is whether the away record holds at this prompt, and Record is
+	// that record when it does.
+	Holds  bool
+	Record *autonomy.Record
 }
 
 // readPromptAway reads the away record for the repository whose root commit
@@ -79,11 +85,39 @@ func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView 
 	}
 	switch {
 	case holds:
-		return awayView{Block: awayBlock(rec), Message: rec.PersonLine()}
+		return awayView{Block: awayBlock(rec), Message: rec.PersonLine(), Holds: true, Record: rec}
 	case rec.Lapsed(now):
 		return awayView{Block: asBlock(rec.LapsedSessionLine()), Message: rec.LapsedLine()}
 	}
 	return awayView{}
+}
+
+// promptConversation opens the session's conversation window when the away
+// record holds and the prompt is one the person typed
+// (iss-2611260602137306), and returns the agent's line saying so, or "". It
+// reads and writes only the session's state in its start copy, under ctx, the
+// hook's deadline: a deadline spent opens nothing and names nothing, and any
+// other failure is named on stderr and opens nothing, so the session stays
+// away, as it was.
+func promptConversation(ctx context.Context, stderr io.Writer, cwd, sessionID, prompt string, rec *autonomy.Record) string {
+	if stageActive() || !autonomy.ValidSessionID(sessionID) || ctx.Err() != nil {
+		return ""
+	}
+	copyRoot, _, err := autonomy.ResolveCopyContext(ctx, cwd, sessionID, autonomy.Options{})
+	if err != nil {
+		return ""
+	}
+	opened, err := autonomy.NotePrompt(ctx, copyRoot, sessionID, prompt, rec, time.Now())
+	if err != nil {
+		if ctx.Err() == nil {
+			diagnosticLine(stderr, "abcd mode: the prompt did not open the conversation window (%s)", fsutil.RedactHome(err.Error()))
+		}
+		return ""
+	}
+	if !opened {
+		return ""
+	}
+	return asBlock(autonomy.ConversationLine())
 }
 
 // asBlock ends a one-line block with its newline, as every block the prompt

@@ -2849,8 +2849,10 @@ later: lines next, the question last, the decide-later option last) before
 it is judged. A line the draft does not carry is never invented: the
 check names it.
 
-The verb reads the stores the hook reads (the away record, and the mode
-where the status line's badge shows) and calls the one decision the hook
+The verb reads the stores the hook reads (the away record, the
+conversation window of the session the host's environment names, read in
+that session's start copy, and the mode where the status line's badge
+shows) and calls the one decision the hook
 calls, so it reports every finding, the rows each tab takes at 80 columns
 (header and frame, question text, options, total), what the hook would do
 with the draft in this checkout now (admit, admit-with-rows-note, refuse,
@@ -7267,6 +7269,14 @@ relay serves its own session page.
 ABCD_SESSION_GITHUB_APP_TYPE set to anything but github-app is refused: the
 relay takes no OAuth app.
 
+--own-origin, or else ABCD_SESSION_RELAY_ORIGIN, names the relay's own
+public address, the https origin repository setup assigned it; /config then
+names it too. Where the host states the service's public address in
+RENDER_EXTERNAL_URL and it is another, the relay refuses to start and
+names abcd session setup --relay-origin, which records the address the relay is
+reached at; where the host states none, it starts and says the address was not
+checked.
+
 Exit 2 on a refusal, with nothing started.
 
 **Flags:**
@@ -7276,6 +7286,7 @@ Exit 2 on a refusal, with nothing started.
       --client-id string            the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
       --listen string               the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
       --origin stringArray          a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app, and a page on this computer is admitted only when named, as http://127.0.0.1:<port>
+      --own-origin string           the relay's own public address, as https://host[:port], which repository setup assigned it (default: ABCD_SESSION_RELAY_ORIGIN); where RENDER_EXTERNAL_URL states another, it refuses to start
       --owner stringArray           a GitHub user or organisation whose every repository to serve sessions for (repeatable)
       --repo stringArray            a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```
