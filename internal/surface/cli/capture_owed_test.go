@@ -248,9 +248,6 @@ func TestCaptureOwedSettlesByTheKindTable(t *testing.T) {
 	_ = n
 }
 
-// TestCaptureOwedSettledTakesItsRecordAsAWord: --settled given bare beside
-// handles takes the one word that is not a handle as its record, the way the
-// block writes it (settled <record>).
 // TestCaptureOwedKeepsAReasonOnlyFromTheEntrysCheckout: an entry put from
 // another checkout of the repository is settled from this one with its act
 // kept and its reason withheld, and the line says where a reason is kept.
@@ -273,6 +270,9 @@ func TestCaptureOwedKeepsAReasonOnlyFromTheEntrysCheckout(t *testing.T) {
 	}
 }
 
+// TestCaptureOwedSettledTakesItsRecordAsAWord: --settled given bare beside
+// handles takes the one word that is not a handle as its record, the way the
+// block writes it (settled <record>).
 func TestCaptureOwedSettledTakesItsRecordAsAWord(t *testing.T) {
 	root := findingsRepo(t)
 	issue := captureIssueForProbe(t, "the reader breaks on an empty input file", "minor")
