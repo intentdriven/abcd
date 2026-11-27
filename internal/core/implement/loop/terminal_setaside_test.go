@@ -48,37 +48,25 @@ func otherLanesLanded(t *testing.T, w *terminalWorld, issue string) {
 	}
 }
 
-// tipAtSetAside reads the reservation of issue on origin as the drive says it set its lane
-// aside, the first time, so a test can tell whether anything was pushed for it since.
-func tipAtSetAside(t *testing.T, w *terminalWorld, o *TerminalOptions, issue string) func() reservation {
+// noteAtSetAside reports, once issue's lane has been set aside, whether this copy left its
+// reservation's tip to lapse as the drive said so, the first time.
+func noteAtSetAside(t *testing.T, w *terminalWorld, o *TerminalOptions, issue string) func() bool {
 	t.Helper()
-	var got *reservation
+	var noted *bool
 	say := o.Say
 	o.Say = func(s string) {
 		say(s)
-		if got == nil && strings.HasPrefix(s, "set aside ") && strings.Contains(s, issue) {
-			r := tipOf(t, w.bare, issue)
-			got = &r
+		if noted == nil && strings.HasPrefix(s, "set aside ") && strings.Contains(s, issue) {
+			n := claim.LeftToLapse(w.repo.Root(), issue, tipOf(t, w.bare, issue).commit)
+			noted = &n
 		}
 	}
-	return func() reservation {
+	return func() bool {
 		t.Helper()
-		if got == nil {
+		if noted == nil {
 			t.Fatalf("%s was never set aside:\n%s", issue, w.said())
 		}
-		return *got
-	}
-}
-
-// leftToLapseAt fails the test unless nothing was pushed for issue since its lane was set
-// aside, and this copy left that tip to lapse.
-func leftToLapseAt(t *testing.T, w *terminalWorld, issue string, at reservation) {
-	t.Helper()
-	if now := tipOf(t, w.bare, issue); now.commit != at.commit || now.released {
-		t.Fatalf("a push was made for %s after it was set aside: %+v, was %+v", issue, now, at)
-	}
-	if !claim.LeftToLapse(w.repo.Root(), issue, at.commit) {
-		t.Fatalf("%s's reservation is not left to lapse at %s", issue, at.commit)
+		return *noted
 	}
 }
 
@@ -122,14 +110,30 @@ func waitedAtLeast(t *testing.T, s SetAsideLane, bound time.Duration) {
 
 // TestARunWithALiveDriverInAnotherTerminalIsSetAside: the lane's run is held by a live
 // driver in another terminal, which the drive may not take. At the stuck bound's minutes
-// the lane is set aside, saying why, and the two other lanes land; nothing is pushed for
-// it after, and its reservation is left to lapse. Once the others are done it is tried
-// again, set aside again at once where nothing changed, and then tried once an hour until
-// the bound, never spinning.
+// the lane is set aside, saying why, and the two other lanes land. The live driver is
+// still working the run, so its reservation is not left to lapse: no note is written,
+// and a passive renewal in this copy renews it as before (dcn-2611270753395749).
+// Once the others are done it is tried again, set aside again at once where nothing
+// changed, and then tried once an hour until the bound, never spinning.
 func TestARunWithALiveDriverInAnotherTerminalIsSetAside(t *testing.T) {
 	w, run, home := setAsideBlockedByOther(t)
-	var tip func() reservation
-	res, until := setAsideUntil(t, w, home, 4, func(o *TerminalOptions) { tip = tipAtSetAside(t, w, o, run.Key) })
+	root := w.repo.Root()
+	var noted, renewed, seen bool
+	res, until := setAsideUntil(t, w, home, 4, func(o *TerminalOptions) {
+		say := o.Say
+		o.Say = func(l string) {
+			say(l)
+			if seen || !strings.HasPrefix(l, "set aside ") || !strings.Contains(l, run.Key) {
+				return
+			}
+			seen = true
+			tip := tipOf(t, w.bare, run.Key)
+			noted = claim.LeftToLapse(root, run.Key, tip.commit)
+			for _, r := range RenewRunsIn(root, "", tip.claimed.Add(61*time.Minute)) {
+				renewed = renewed || (r.RunID == run.RunID && r.Renewed)
+			}
+		}
+	})
 	if res.Ended != TerminalUntil {
 		t.Fatalf("the drive ends at its bound: %+v\n%s", res, w.said())
 	}
@@ -139,7 +143,12 @@ func TestARunWithALiveDriverInAnotherTerminalIsSetAside(t *testing.T) {
 		t.Fatalf("the set-aside does not say who holds the run: %+v\n%s", s, w.said())
 	}
 	otherLanesLanded(t, w, run.Key)
-	leftToLapseAt(t, w, run.Key, tip())
+	if !seen || noted || s.LeftToLapse || !renewed {
+		t.Fatalf("a lane a live driver holds is left to lapse: set aside %v, note %v, LeftToLapse %v, renewed by implement status %v\n%s", seen, noted, s.LeftToLapse, renewed, w.said())
+	}
+	if !strings.Contains(setAsideLine(w, run.RunID), "left to the driver that holds the run") {
+		t.Fatalf("the set-aside does not say the hold is the live driver's: %q", setAsideLine(w, run.RunID))
+	}
 	if c := controlOf(t, w.repo.Root(), run.RunID); c.Driver == nil || c.Driver.PID != claimOtherLogin {
 		t.Fatalf("the drive took the run from its live driver: %+v", c.Driver)
 	}
@@ -209,13 +218,24 @@ func TestABlockThatClearsJustAfterTheSetAsideLands(t *testing.T) {
 }
 
 // TestATryAfterTheLeaseLapsedReservesAgain: the lane's hold lapses while it is set aside,
-// since nothing renews it, so the try once its block clears reserves it again before it
-// steps; and where a peer has taken the issue since, the lane is dropped to the peer.
+// since nothing in the test renews it, so the try once its block clears holds it again
+// before it steps; and where a peer has taken the issue since, the lane is dropped to the
+// peer.
 func TestATryAfterTheLeaseLapsedReservesAgain(t *testing.T) {
 	for _, peer := range []bool{false, true} {
 		t.Run(map[bool]string{false: "lapsed", true: "a peer holds it"}[peer], func(t *testing.T) {
 			w, run, home := setAsideBlockedByOther(t)
-			cleared := false
+			cleared, stepped, heldAtStep := false, false, claim.StateExpired
+			for i := range w.stages {
+				inner := w.stages[i].Run
+				w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+					if cleared && !stepped && c.State.Key == run.Key {
+						stepped = true
+						heldAtStep = reservationOf(t, w.repo.Root(), run.Key, w.clock.t).State
+					}
+					return inner(c, l)
+				}
+			}
 			res, _ := setAsideUntil(t, w, home, 8, func(o *TerminalOptions) {
 				say := o.Say
 				o.Say = func(s string) {
@@ -247,8 +267,8 @@ func TestATryAfterTheLeaseLapsedReservesAgain(t *testing.T) {
 				}
 				return
 			}
-			if !tookUpLine(w, run.RunID) {
-				t.Fatalf("the try does not reserve the lapsed lane again:\n%s", w.said())
+			if !stepped || heldAtStep != claim.StateLive {
+				t.Fatalf("the try steps the lane holding nothing: stepped %v, its hold %s\n%s", stepped, heldAtStep, w.said())
 			}
 			if done := lanesDone(t, w.repo); len(done) != 3 || len(res.SetAside) != 0 {
 				t.Fatalf("the lane reserved again lands: %v %+v\n%s", done, res.SetAside, w.said())
@@ -312,9 +332,13 @@ func TestTheLandingsMissingRecordIsSetAside(t *testing.T) {
 			if bounded {
 				o.Until = w.clock.t.Add(3 * time.Hour)
 			}
+			noted := noteAtSetAside(t, w, &o, eligibleIssue)
 			res, err := RunTerminal(context.Background(), w.repo.Root(), o)
 			if err != nil {
 				t.Fatalf("the drive: %v\n%s", err, w.said())
+			}
+			if !noted() {
+				t.Fatalf("the hold of a lane no driver works is not left to lapse as it is set aside:\n%s", w.said())
 			}
 			want := map[bool]string{true: TerminalUntil, false: TerminalWaited}[bounded]
 			if res.Ended != want {
@@ -326,8 +350,8 @@ func TestTheLandingsMissingRecordIsSetAside(t *testing.T) {
 			}
 			s := res.SetAside[i]
 			waitedAtLeast(t, s, 30*time.Minute)
-			if !strings.Contains(s.Reason, "is in no status folder") {
-				t.Fatalf("the set-aside does not give the landing's reason: %+v", s)
+			if !strings.Contains(s.Reason, "is in no status folder") || !s.LeftToLapse {
+				t.Fatalf("the set-aside does not give the landing's reason, or leave its hold to lapse: %+v", s)
 			}
 			otherLanesLanded(t, w, eligibleIssue)
 			run, err := ReadState(w.repo.Root(), s.Run)
@@ -481,6 +505,9 @@ func TestALaterStartTakesUpAKeptHoldNoDrainListsOnceItsDriverIsGone(t *testing.T
 	tm := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now}, Say: func(s string) { w.lines = append(w.lines, s) }})
 	tm.stepped = []string{run.RunID}
 	tm.haltOnSignal()
+	// The driver the stop could not get past ends before the drive lets go, so the hold is
+	// no one's work (dcn-2611270753395749).
+	claimNextStart(t)
 	tm.letGo()
 	kept := tipOf(t, w.bare, run.Key)
 	if kept.released || !claim.LeftToLapse(root, run.Key, kept.commit) {
@@ -504,5 +531,126 @@ func TestALaterStartTakesUpAKeptHoldNoDrainListsOnceItsDriverIsGone(t *testing.T
 	}
 	if tookUpLine(w, run.RunID) {
 		t.Fatalf("the start reserved again a hold still live:\n%s", w.said())
+	}
+}
+
+// TestAKeptHoldALiveDriverWorksKeepsItsRenewals: the signal's stop could not be applied
+// because another live driver holds the run, which is still alive as the drive lets go:
+// that driver is working the run, so its hold is not left to lapse, the kept line names
+// the renewers, and implement status renews it (dcn-2611270753395749).
+func TestAKeptHoldALiveDriverWorksKeepsItsRenewals(t *testing.T) {
+	w, run, _ := stopUnclaimable(t, schemaVersionPrevious)
+	root := w.repo.Root()
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now}, Say: func(s string) { w.lines = append(w.lines, s) }})
+	tm.haltOnSignal()
+	tm.letGo()
+	kept := tipOf(t, w.bare, run.Key)
+	if kept.released || claim.LeftToLapse(root, run.Key, kept.commit) {
+		t.Fatalf("the hold a live driver works is released, or left to lapse: %+v\n%s", kept, w.said())
+	}
+	if !strings.Contains(w.said(), UnlessRunRenewed) {
+		t.Fatalf("the kept line does not name the renewers:\n%s", w.said())
+	}
+	renewed := false
+	for _, r := range RenewRunsIn(root, "", kept.claimed.Add(61*time.Minute)) {
+		renewed = renewed || (r.RunID == run.RunID && r.Renewed)
+	}
+	if !renewed {
+		t.Fatalf("implement status does not renew the hold a live driver works:\n%s", w.said())
+	}
+}
+
+// TestALaneGivenBackForItsLookAndNotReachedStaysSetAside: two lanes are set aside, and at
+// their try the drive reaches one, whose stage runs past the bound, so the drive ends
+// before the other's look. That other lane is still set aside: the end names it so, its
+// reservation is kept, not released, and it is left to lapse again.
+func TestALaneGivenBackForItsLookAndNotReachedStaysSetAside(t *testing.T) {
+	w := newTerminalWorld(t)
+	setAsideMinutes(t, w, 10)
+	recordGoneAtLand(t, w, eligibleIssue, secondIssue)
+	o := w.options(t)
+	until := w.clock.t.Add(3 * time.Hour)
+	o.Until = until
+	tried, reached := false, ""
+	say := o.Say
+	o.Say = func(l string) {
+		say(l)
+		if strings.HasPrefix(l, "trying again the lanes set aside") {
+			tried = true
+		}
+	}
+	for i := range w.stages {
+		run := w.stages[i].Run
+		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+			if tried && reached == "" && (c.State.Key == eligibleIssue || c.State.Key == secondIssue) {
+				reached = c.State.Key
+				w.clock.t = until.Add(time.Minute)
+			}
+			return run(c, l)
+		}
+	}
+	res, err := RunTerminal(context.Background(), w.repo.Root(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ended != TerminalUntil || reached == "" {
+		t.Fatalf("premise: the bound passes in the stage of the first lane tried: %q %+v\n%s", reached, res, w.said())
+	}
+	other := map[string]string{eligibleIssue: secondIssue, secondIssue: eligibleIssue}[reached]
+	i := slices.IndexFunc(res.SetAside, func(s SetAsideLane) bool { return s.Issue == other })
+	if i < 0 {
+		t.Fatalf("the lane given back for its look and not reached is not named set aside: %+v\n%s", res.SetAside, w.said())
+	}
+	tip := tipOf(t, w.bare, other)
+	if tip.released || !claim.LeftToLapse(w.repo.Root(), other, tip.commit) || !res.SetAside[i].LeftToLapse {
+		t.Fatalf("the lane still set aside is released, or not left to lapse: %+v %+v\n%s", tip, res.SetAside[i], w.said())
+	}
+}
+
+// TestAStartLetsGoAnUnlistedRunItTookUpThatCannotMove (iss-2611270555396370): the start
+// takes up a run no drain lists that an earlier drive's end let go, and its step is
+// refused, so it comes back still in progress, and no move of the drive reaches it. The
+// start lets it go before the drain's first move opens a lane, so the drive never holds two
+// reserved runs and steps one; the run is recorded as let go, for a later start to take up.
+func TestAStartLetsGoAnUnlistedRunItTookUpThatCannotMove(t *testing.T) {
+	w, run, home := stopLetGoAtBound(t)
+	stopLaterStart(t)
+	root := w.repo.Root()
+	opened, heldThen := false, claim.StateLive
+	for i := range w.stages {
+		inner, name := w.stages[i].Run, w.stages[i].Name
+		w.stages[i].Run = func(c Context, l *Lane) (Outcome, error) {
+			if c.State.Key == run.Key {
+				if name == StageLand {
+					return Outcome{}, refuse(string(StageLand), "", l.ID, "the landing cannot go on here", "see the reason")
+				}
+				return inner(c, l)
+			}
+			if !opened {
+				opened = true
+				heldThen = reservationOf(t, root, run.Key, w.clock.t).State
+			}
+			return inner(c, l)
+		}
+	}
+	claimStart(t, w, home)
+	if !tookUpLine(w, run.RunID) {
+		t.Fatalf("premise: the start takes the run up:\n%s", w.said())
+	}
+	if !opened {
+		t.Fatalf("premise: the drain opens a lane:\n%s", w.said())
+	}
+	if heldThen == claim.StateLive {
+		t.Fatalf("the drive held the run it took up beside the lane the drain opened:\n%s", w.said())
+	}
+	after, err := ReadState(root, run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, _, _ := laneOutcome(after); outcome != DrainLaneInProgress || !letGoByDrive(after) {
+		t.Fatalf("the run is not left in progress and let go for a later start: %s\n%s", outcome, w.said())
+	}
+	if !strings.Contains(w.said(), "which no drain lists, is still in progress") {
+		t.Fatalf("the let-go is not said:\n%s", w.said())
 	}
 }

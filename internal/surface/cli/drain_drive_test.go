@@ -641,22 +641,25 @@ func TestADriveThatHeldBackAndEndedOnLanesItPassedOverNamesBoth(t *testing.T) {
 // TestADriveEndNamesALaneSetAsideInItsOwnWords (spc-2611141617199772 step 3): a lane the
 // drive set aside is named with how long it waited and its own reason, and that its
 // reservation is left to lapse, never as a lane passed over since the drive may not save
-// it; --json carries it as set_aside. A lane passed over for its file's version still
-// prints today's line, and a hold a stop could not be applied to is said to lapse with no
-// waiter renewing it.
+// it; --json carries it as set_aside. A lane whose run a live driver holds keeps that
+// driver's renewals and is said so. A lane passed over for its file's version still prints
+// today's line, and a hold a stop could not be applied to is said to lapse with no waiter
+// renewing it.
 func TestADriveEndNamesALaneSetAsideInItsOwnWords(t *testing.T) {
 	since := time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)
 	const why = "run run-1 is held by process 8000 (login), which has been alive since it took the run"
 	lapses := since.Add(3 * time.Hour)
 	res := loop.TerminalResult{Ended: loop.TerminalUntil, Resume: loop.TerminalResumeCommand,
-		SetAside:    []loop.SetAsideLane{{Issue: "iss-1", Run: "run-1", Reason: why, Since: since, At: since.Add(time.Hour)}},
+		SetAside: []loop.SetAsideLane{{Issue: "iss-1", Run: "run-1", Reason: why, Since: since, At: since.Add(time.Hour)},
+			{Issue: "iss-4", Run: "run-4", Reason: "the landing's record is in no status folder", Since: since, At: since.Add(time.Hour), LeftToLapse: true}},
 		PassedLanes: []loop.PassedLane{{Issue: "iss-2", Run: "run-2", Reason: "its file states schema version 25"}},
 		Run:         "run-3", Issue: "iss-3", Lane: "l1", Lapses: &lapses, LeftToLapse: true}
 	var b bytes.Buffer
 	renderDriveEnd(&b, res)
 	out := b.String()
 	for _, want := range []string{
-		"  set aside: iss-1, run run-1, after waiting 1h0m0s: " + why + "; its reservation lapses with its lease " + loop.UnlessKeptTakenUp,
+		"  set aside: iss-1, run run-1, after waiting 1h0m0s: " + why + "; its reservation is the driver's that holds the run, and lapses with its lease " + loop.UnlessRunRenewed,
+		"  set aside: iss-4, run run-4, after waiting 1h0m0s: the landing's record is in no status folder; its reservation lapses with its lease " + loop.UnlessKeptTakenUp,
 		"  passed over, since this drive may not save it: iss-2, run run-2: its file states schema version 25",
 		"  its reservation lapses at " + lapses.Format(time.RFC3339) + " " + loop.UnlessKeptTakenUp,
 		"to resume: " + loop.TerminalResumeCommand,
@@ -670,8 +673,10 @@ func TestADriveEndNamesALaneSetAsideInItsOwnWords(t *testing.T) {
 			t.Fatalf("the lane set aside is named as one the drive may not save: %q", line)
 		}
 	}
-	if strings.Contains(out, loop.UnlessRunRenewed) {
-		t.Fatalf("a hold left to lapse is said to be renewed by a waiter:\n%s", out)
+	for _, line := range strings.Split(out, "\n") {
+		if (strings.Contains(line, "iss-4") || strings.Contains(line, "lapses at")) && strings.Contains(line, loop.UnlessRunRenewed) {
+			t.Fatalf("a hold left to lapse is said to be renewed by a waiter: %q", line)
+		}
 	}
 	var j bytes.Buffer
 	if err := render(&j, true, res, nil); err != nil {
