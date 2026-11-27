@@ -278,3 +278,23 @@ spec stays open until the last lane closes it.
   12 on 2026-10-28, needing 3 and 11, so no step waits on a later one; its reversal
   is recorded in adr-2610222222326104, and it is built only once
   itd-2610222215485265 ships.
+- **Ideate verdict on step 12, 2026-11-26** (dcn-2611260633352557, `.abcd/development/research/ideas/488a0aa96ac5de805348635b27036addf15cddc2/2026-11-26-ideate-terminal-build-from-a-plain-terminal.md`).
+  An idea to run an intent's build from a plain terminal, unattended, was judged
+  reframed, and its surviving shape is this step worded honestly: one READY
+  intent, never a draft; the drain drive's own engine, walls and profile login,
+  not a second driver; ending with every lane landed and the spec closed where
+  `facilitator.mode` lets it, or with each lane armed for an approval or handed
+  back with its reason ("delivered, or a named hand-back"). It names what the
+  step needs beyond the drain: the drive's handling of a refused receipt (set
+  aside, counted toward stuck), which today stops an intent's run, extended to
+  intent runs, and the operability itd-2611141610197753 gives issue drives
+  extended to builds. It also questions the blocker: the step waits on the
+  whole of itd-2610222215485265, whose remainder spc-2611051628562376 holds as
+  three steps: the live proof on the one walled login (MUST, live, still open),
+  the key route a subscription-only person does not use, and the ruling on a
+  lane paused past an outage. Whether the step should wait only on that
+  intent's subscription-route steps, the built drive and that live proof, is
+  the product thinker's to rule. The idea is already held by the draft
+  itd-2611251725209625, which dcn-2611251726008978 schedules after
+  itd-2611251725190796 and itd-2611251725203320. Nothing in the step changes
+  here.

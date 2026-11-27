@@ -118,6 +118,34 @@
         "Every claim has one home: each fact, rule, behaviour and list in the record is written in one place, and every other place that needs it names that place instead of restating it; a one-line pointer, a generated copy with a matching check, and history kept in git and the ADRs are not second homes — see .abcd/development/principles/every-claim-has-one-home.md.",
         "The full set of opinionated conventions lives in .abcd/development/principles/ — read the relevant file rather than guessing the convention."
       ]
+    },
+    "ANSWERING": {
+      "state": "active",
+      "aliases": [
+        "where are we",
+        "where do we stand",
+        "is it possible",
+        "is that possible",
+        "is this possible",
+        "already possible",
+        "already built",
+        "built already",
+        "built yet",
+        "is it planned",
+        "is that planned",
+        "planned or",
+        "anyone working on",
+        "who is building",
+        "who is working",
+        "the plan forward",
+        "what is the state of",
+        "being built",
+        "what is the status",
+        "what's the status"
+      ],
+      "rules": [
+        "Answer a question about the project from the record read in this turn, never from memory or from earlier in the conversation: where a capability stands, whether something is possible, planned or already built, and who is working on what are read from `abcd status`, `abcd <id>`, the intents in every bucket, the issues and decisions folders, the command pages and `abcd peers` before the answer is written. Cite the record id or page each claim rests on, and say plainly that a claim the record does not settle is unsettled rather than filling it in."
+      ]
     }
   }
 }
