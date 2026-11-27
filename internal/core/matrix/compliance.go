@@ -1197,9 +1197,16 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 	// mode is whether the command so far, since the last ; | & or line end,
 	// names chmod or chflags (modeCommand).
 	mode := false
+	// modeIn is whether that chmod or chflags was named inside a
+	// substitution, which ends at the backtick closing it (a Markdown code
+	// span on a line of prose: `chmod +x setup.sh` and `cd ..`).
+	modeIn := false
 	// ticks is how many backticks the line holds so far: an odd count after
 	// one is a substitution it opens, an even one a substitution it closes.
 	ticks := 0
+	// quoted is whether the line so far holds a single quote, inside which
+	// the shell reads a backtick as literal; the count does not track quotes.
+	quoted := false
 	flush := func() (string, bool) {
 		if len(tok) == 0 {
 			return "", false
@@ -1208,7 +1215,7 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 		tok = tok[:0]
 		sc.changing = mode
 		if modeCommand(t) {
-			mode = true
+			mode, modeIn = true, ticks%2 == 1
 		}
 		return sc.token(t)
 	}
@@ -1218,8 +1225,13 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 		}
 		c := b[i]
 		climbing := bytes.HasPrefix(tok, []byte(".."))
-		if c == '`' {
+		tick := c == '`'
+		if tick {
 			ticks++
+		}
+		endsMode := tick && ticks%2 == 0 && modeIn
+		if c == '\'' {
+			quoted = true
 		}
 		switch {
 		case (c == '"' || c == '\'') && homeGoesOn(tok, b[i+1:]):
@@ -1257,7 +1269,7 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 				return seen, true
 			}
 			if i+1 < len(b) && b[i+1] == 'n' {
-				mode, ticks = false, 0
+				mode, modeIn, ticks, quoted = false, false, 0, false
 			}
 			if i+1 < len(b) && b[i+1] == 'u' {
 				i += 5
@@ -1273,13 +1285,25 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 			}
 			tok = append(tok, b[i:i+end+1]...)
 			i += end
-		case climbing && c == '`' && (ticks%2 == 1 || bytes.Count(tok, []byte("`"))%2 == 1):
+		case climbing && tick && (ticks%2 == 1 || bytes.Count(tok, []byte("`"))%2 == 1):
 			// A command substitution the climb opens, or the backtick that
 			// closes it: what it makes is not seen, so the climb is judged by
 			// what comes before it (shellPattern). A backtick that closes a
 			// substitution opened before the path (a Markdown code span,
 			// `../docs/guide.md`) ends it, as a path end.
 			tok = append(tok, c)
+		case climbing && tick && quoted:
+			// By the count this backtick closes a substitution opened before
+			// the path, but a single quote earlier on the line may hold a
+			// backtick the shell reads as literal, and then this one opens a
+			// substitution in the climb instead. The scan does not track
+			// quotes, so the climb is read both ways, and a second reading
+			// that is not kept leaves the rule unexamined (either).
+			alt := string(tok) + "`"
+			if seen, ok := flush(); ok {
+				return seen, true
+			}
+			sc.either(alt)
 		case strings.IndexByte("[]{},:()|", c) >= 0 && climbGoesOn(tok, c):
 			// A class, a brace, an extended pattern or a substitution in a
 			// climb is part of its pattern (../[a-z]*/x, ../{a,b}/x,
@@ -1293,13 +1317,25 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 				mode = false
 			}
 			if c == '\n' {
-				ticks = 0
+				modeIn, ticks, quoted = false, 0, false
 			}
 		default:
 			tok = append(tok, c)
 		}
+		if endsMode {
+			mode, modeIn = false, false
+		}
 	}
 	return flush()
+}
+
+// either judges t, a climb the transcript may spell one of two ways the scan
+// cannot choose between: a read outside by it leaves the rule unexamined,
+// never broken, and the other reading is judged as written.
+func (sc *transcriptScan) either(t string) {
+	if _, ok := sc.token(t); ok {
+		sc.unclearToken(path.Clean(t)+"\x02", "a backtick after a climb may open a command substitution, which a quote earlier on the line hides from the count: "+termsafe.Sanitize(t))
+	}
 }
 
 // modeCommand reports whether the word t is chmod or chflags, by any path.
@@ -1884,13 +1920,13 @@ func shellClass(s string) (string, int, bool) {
 }
 
 // shellPattern is the clean climb rest pattern, split into its segments as
-// path.Match reads them, and whether the check evaluates it exactly; wide
-// where its braces were left unexpanded. Where it does not, it is its literal
-// prefix: the segments before the first it does not evaluate, and that
-// segment up to its first unevaluated character with an extended pattern's
-// operator dropped and * after it, a pattern that matches every path the form
-// could, and more.
-func shellPattern(rest string, wide bool) ([]string, bool) {
+// path.Match reads them; wide where its braces were left unexpanded. Where
+// the check does not evaluate it exactly, it is its literal prefix: the
+// segments before the first it does not evaluate, and that segment up to its
+// first unevaluated character with an extended pattern's operator dropped and
+// * after it, a pattern that matches every path the form could where what the
+// form substitutes holds no slash and no "..", and more.
+func shellPattern(rest string, wide bool) []string {
 	stops := "$`()|["
 	if wide {
 		stops += "{}"
@@ -1921,9 +1957,9 @@ func shellPattern(rest string, wide bool) ([]string, bool) {
 		case !strings.HasSuffix(m, "*") || strings.HasSuffix(m, `\*`):
 			m += "*"
 		}
-		return append(out, m), false
+		return append(out, m)
 	}
-	return out, true
+	return out
 }
 
 // globClimb judges the clean climb c, a pattern, written t; wide where its
@@ -1940,8 +1976,10 @@ func shellPattern(rest string, wide bool) ([]string, bool) {
 // list, which is not a folder that holds nothing (globWalker.read). Syntax the
 // check does not evaluate exactly is judged by its literal prefix
 // (shellPattern) under the same rule: a prefix that matches nothing outside
-// the copy is kept, as an exact pattern is, since every path the form could
-// reach the prefix matches too, and one that matches outside is never kept.
+// the copy is kept, as an exact pattern is, since the prefix matches every
+// path the form could reach where what it substitutes holds no slash and no
+// ".." (one that does builds its path at run time, which the scan does not
+// see: ownCopyOnly), and one that matches outside is never kept.
 func (sc *transcriptScan) globClimb(t, c string, wide bool) string {
 	k, rest := climbs(c)
 	if k == 0 {
@@ -1951,7 +1989,7 @@ func (sc *transcriptScan) globClimb(t, c string, wide bool) string {
 		sc.unclearToken(c, fmt.Sprintf("it holds more than the %d climbing path patterns the check walks: %s", maxGlobPatterns, termsafe.Sanitize(t)))
 		return ""
 	}
-	segs, _ := shellPattern(rest, wide)
+	segs := shellPattern(rest, wide)
 	budget := maxGlobEntries
 	unread := false
 	where, err := sc.globOutside(k, segs, &budget, &unread)
