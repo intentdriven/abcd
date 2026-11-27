@@ -301,7 +301,7 @@ func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 		if body == "" {
 			return "", false
 		}
-		re := regexp.MustCompile(`abcd["':]?\s*` + regexp.QuoteMeta(full) + `(?:[^A-Za-z0-9-]|$)`)
+		re := regexp.MustCompile(invocationHead + regexp.QuoteMeta(full) + `(?:[^A-Za-z0-9-]|$)`)
 		return what, re.MatchString(body)
 	}
 	if !flagShape.MatchString(s.flag) {
@@ -319,6 +319,18 @@ func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 	return what, synopsisCarriesFlag(body, s)
 }
 
+// abcdWord is abcd as a word of its own: at the start of the text or after a
+// character no program name continues through, so `myabcd` and `my-abcd` are
+// other programs (iss-2610142319008919). The character before abcd is part of
+// the match; only a match's end is ever read.
+const abcdWord = `(?:^|[^A-Za-z0-9_-])abcd`
+
+// invocationHead is an abcd invocation up to its command path, in each
+// spelling a page uses: `abcd capture`, `"${CLAUDE_PLUGIN_ROOT}/abcd" capture`
+// and `/abcd:capture`. The path follows the slash form's colon or whitespace,
+// never abcd directly: `abcdcapture` invokes nothing.
+const invocationHead = abcdWord + `(?::|["']?\s+)`
+
 // synopsisCarriesFlag reports whether a synopsis line for the typed command —
 // an invocation of exactly s.known inside a fenced block — names s.flag after
 // it. The rest of the page is not evidence (iss-2610120921497084): build.md
@@ -328,9 +340,9 @@ func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 // sub-verbs, is a deeper sub-verb's synopsis (`implement outage record` is not
 // `implement outage`'s); where it has none, the word is an argument.
 func synopsisCarriesFlag(body string, s usageSkew) bool {
-	head := `abcd["':]?`
+	head := abcdWord + `["':]?`
 	if len(s.known) > 0 {
-		head += `\s*` + regexp.QuoteMeta(strings.Join(s.known, " "))
+		head = invocationHead + regexp.QuoteMeta(strings.Join(s.known, " "))
 	}
 	invocation := regexp.MustCompile(head + `(?:\s|$)`)
 	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])(` + regexp.QuoteMeta(s.flag) + `)(?:[^A-Za-z0-9-]|$)`)
