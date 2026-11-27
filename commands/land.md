@@ -318,7 +318,9 @@ recorded it with `--approve` (below). Then:
   onto the default branch, as a rebase lands them, would. The note says you
   merge it on the forge's page. One where that
   cannot be read, a merge that conflicts in the file included, is not armed
-  either.
+  either, and nor is any on a git older than 2.38, which computes the merge,
+  or, where the queue rebases, older than 2.45, which computes the replay: the
+  note names the version it needs.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.

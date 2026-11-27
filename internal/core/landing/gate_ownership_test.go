@@ -1,6 +1,7 @@
 package landing
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -210,6 +211,27 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 			t.Fatalf("arm %v, why %q, err %v: want no re-arm, whose method is not known, of a replay that moves the mode line", arm, why, err)
 		}
 	})
+	// The merge is computed with git 2.38's merge-tree --write-tree, and the
+	// replay with git 2.45's, which first takes trees beside --merge-base: on
+	// an older git nothing is armed, and the answer names the floor.
+	for _, c := range []struct {
+		name, method, below, says string
+	}{
+		{"a git too old to compute the merge", "MERGE", "2.38", "needs git 2.38 or later, and this git is 2.37"},
+		{"a git too old to compute the replay", "REBASE", "2.45", "needs git 2.45 or later, and this git is 2.44"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
+			oldGit(t, c.below)
+			tip := f.repo.Git("rev-parse", "origin/main")
+			d, err := DecideMerge(MergeQuery{RepoRoot: f.repo.Root(), Roots: f.options().Roots, Tip: tip, TipName: "origin/main", Default: "main",
+				Rule: MergeRule{Method: c.method},
+				Repo: "o/r", PR: "7", Head: f.head(), Forge: func(args ...string) (string, error) { return f.forge.run("", args...) }})
+			if err != nil || d.Arm || !d.Unread || !strings.Contains(d.Why, c.says) {
+				t.Fatalf("decision %+v, %v: want nothing armed, unread, saying %q", d, err, c.says)
+			}
+		})
+	}
 	t.Run("the re-arm of a second merge base", func(t *testing.T) {
 		f := secondBase(t)
 		f.forge.head = f.head()
@@ -251,6 +273,22 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
+}
+
+// oldGit makes the gate's version check answer as a git whose version is
+// one minor release below floor ("2.38" answers 2.37 for 2.38 and above,
+// and at the floor for anything older), for the rest of the test.
+func oldGit(t *testing.T, floor string) {
+	t.Helper()
+	var major, minor int
+	if _, err := fmt.Sscanf(floor, "%d.%d", &major, &minor); err != nil {
+		t.Fatal(err)
+	}
+	was := gitAtLeast
+	gitAtLeast = func(_ context.Context, ma, mi int) (bool, string, error) {
+		return ma < major || (ma == major && mi < minor), fmt.Sprintf("%d.%d", major, minor-1), nil
+	}
+	t.Cleanup(func() { gitAtLeast = was })
 }
 
 // pushMain pushes the fixture's main to origin and fetches it back.

@@ -109,6 +109,7 @@ var driveGitCommands = []driveGitCommand{
 	{"gitutil.WorkingTreeCommand", personEnv, false},
 	{"gitutil.WorkingTreeCommandContext", personEnv, false},
 	{"gitutil.GitAtLeast", personEnv, false},
+	{"gitutil.GitAtLeastContext", personEnv, false},
 	{"claim.personalGitContext", personEnv, false},
 	{"scanner.configListing", personEnv, false},
 	// The lane's add, commit, merge and reset, and the other commands that

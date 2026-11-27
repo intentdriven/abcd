@@ -429,7 +429,8 @@ The decision, in order:
    against the tip: nothing is armed in any mode, whatever the approvals and receipts,
    and the note says the person merges it on the forge's page. Where that
    cannot be read, a merge that conflicts in the file included, nothing is
-   armed either (adr-2611262044127943).
+   armed either, and nor on a git older than 2.38 (the merge) or, where the
+   replay is read, 2.45, which the note names (adr-2611262044127943).
 2. An unverified author: nothing is armed, whatever the approvals, and the
    note says the role is unverified.
 3. A contributor's pull request, in either mode: nothing is armed until an

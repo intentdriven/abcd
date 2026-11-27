@@ -172,6 +172,29 @@ const maxReplayCommits = 256
 // parent: two object names to a line.
 const maxReplayListBytes = (maxReplayCommits + 1) * 2 * 41
 
+// The git the gate's reads need: merge-tree --write-tree, which computes the
+// merge, is git 2.38's, and its taking trees as the two sides beside
+// --merge-base, which the replay steps on, is git 2.45's.
+const (
+	mergeTreeFloorMajor, mergeTreeFloorMinor = 2, 38
+	replayFloorMajor, replayFloorMinor       = 2, 45
+)
+
+// gitAtLeast is the version check the floors are read through; a test
+// answers as an older git.
+var gitAtLeast = gitutil.GitAtLeastContext
+
+// belowFloor says, when the git on PATH is older than major.minor, that what
+// needs it does, naming the version; "" when it is at the floor or its
+// version cannot be said, which the git run that follows answers for itself.
+func belowFloor(ctx context.Context, what string, major, minor int) string {
+	ok, version, err := gitAtLeast(ctx, major, minor)
+	if err != nil || ok || version == "" {
+		return ""
+	}
+	return what + " needs git " + strconv.Itoa(major) + "." + strconv.Itoa(minor) + " or later, and this git is " + version
+}
+
 // modeLineRel is the file that holds the committed mode line.
 const modeLineRel = ".abcd/config.json"
 
@@ -242,6 +265,9 @@ func modeLineChange(root, tip, tipName, head, method string) (why string, unread
 			return "it changes the facilitator.mode line in " + modeLineRel + " (" + unset(was) + " at the merge base " + short(base) + ", " + unset(is) + " at the head " + short(head) + "), and " + never, false
 		}
 	}
+	if old := belowFloor(ctx, "the merge of "+short(head)+" into "+tipName, mergeTreeFloorMajor, mergeTreeFloorMinor); old != "" {
+		return cannot(old)
+	}
 	overrides, err := gitutil.MergeDriverOverridesContext(ctx, root)
 	if err != nil {
 		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
@@ -267,6 +293,9 @@ func modeLineChange(root, tip, tipName, head, method string) (why string, unread
 	}
 	if method == "MERGE" || method == "SQUASH" {
 		return "", false
+	}
+	if old := belowFloor(ctx, "the replay of "+short(head)+"'s commits onto "+tipName+", as a rebase lands them,", replayFloorMajor, replayFloorMinor); old != "" {
+		return cannot(old)
 	}
 	replayed, what := replayedTree(ctx, root, overrides, tip, head)
 	if what != "" {

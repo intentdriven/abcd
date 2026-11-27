@@ -92,7 +92,7 @@ If you wish to experiment with `abcd`, we recommend installing it as a plugin *(
 
 ### Requirements
 
-- **Git**: Always. `abcd` shells out to the `git` binary and anchors every record it keeps to a repository. In a partial clone (a repository with a promisor remote) it needs git 2.44 or later: an older git fetches a missing object through the transport the repository configures, so `abcd` refuses to read that repository's objects until git is upgraded. `abcd status` and `abcd announce` need git 2.29 or later once `origin` holds a status branch, since they name those branches on a fetch's standard input (`git fetch --stdin`).
+- **Git**: Always. `abcd` shells out to the `git` binary and anchors every record it keeps to a repository. In a partial clone (a repository with a promisor remote) it needs git 2.44 or later: an older git fetches a missing object through the transport the repository configures, so `abcd` refuses to read that repository's objects until git is upgraded. `abcd status` and `abcd announce` need git 2.29 or later once `origin` holds a status branch, since they name those branches on a fetch's standard input (`git fetch --stdin`). `abcd land` arms a merge only with git 2.38 or later, which computes the merge of a pull request into the default branch (`git merge-tree --write-tree`), and, where the merge queue rebases, 2.45 or later, which computes the commits replayed onto it; on an older git it arms nothing and names the version it needs.
 - **A released platform**: macOS or Linux, on amd64 or arm64. *(Windows runs the Linux route inside WSL)*.
 - **An agent harness**: The plugin route and the verbs that hand their work to a model, and nothing else.
 
