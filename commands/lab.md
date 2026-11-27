@@ -206,12 +206,13 @@ document is kept, says so instead.
 Hand back every host copy you were handed, a failed one with its reason: a copy
 never handed back is in no rate, and the report names it.
 
-**Launch the runner cells' copies** once the person has said yes to the run,
-telling them it may spend against the cap. Tell them too, before they say yes,
+**Launch the runner cells' copies** once the product thinker has said yes to
+the run, under a `Product` chip, telling them it may spend against the cap. Tell them too, before they say yes,
 what the plan's `not_sandboxed` says: the runner and each copy's code run as
 this account on this machine and are not sandboxed. The launch runs in the foreground
 for as long as its copies take, which can be hours: when a host's command time
-limit would cut it short, ask the person to run it in a plain terminal.
+limit would cut it short, ask the technical facilitator, under a `Tech` chip,
+to run it in a plain terminal.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix launch --json <lab-id> <run-id> [<task>/<cell>/<repeat>]

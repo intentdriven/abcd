@@ -80,7 +80,7 @@ func newLabMatrixLaunchCommand(asJSON *bool) *cobra.Command {
 				res.Copies[i].Reason = fsutil.RedactHome(res.Copies[i].Reason)
 			}
 			if errors.Is(err, matrix.ErrLaunchHeld) {
-				return &exitError{Code: 3, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was launched"}
+				return matrixHeld(verb, err)
 			}
 			if err != nil {
 				if len(res.Copies) > 0 {

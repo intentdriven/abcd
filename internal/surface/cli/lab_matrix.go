@@ -181,6 +181,16 @@ func matrixFailure(err error) error {
 	return &exitError{Code: 2, Msg: msg + "; nothing was written"}
 }
 
+// matrixHeld is a launch refused because another launch of its run holds it:
+// exit 3, the message masked and with no home path, nothing launched. It is
+// the peer-held refusal, which stays uncoded with this package's other holds
+// until the record verbs' step names it once for all of them
+// (dcn-2611222121290312), so it is built here, beside matrixFailure, in a file
+// the migration has yet to reach.
+func matrixHeld(verb string, err error) error {
+	return &exitError{Code: 3, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was launched"}
+}
+
 // onOff names a switch.
 func onOff(on bool) string {
 	if on {
