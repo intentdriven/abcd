@@ -892,6 +892,7 @@ func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
 		{`rm ` + homeDir + `/c*.json`, facilitatorStoreEntryID},
 		{`rm ` + homeDir + `/conf*`, facilitatorStoreEntryID},
 		{`echo x > ` + upperHomeDir + `/Config.json`, facilitatorStoreEntryID},
+		{`cp x.json "$(echo ` + homeDir + `/config.json)"`, facilitatorStoreEntryID},
 	} {
 		d, err := reg.Check(c.cmd)
 		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -911,6 +912,7 @@ func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
 		`rm ` + homeDir + `/facilitator.json`,
 		`echo '{}' > .abcd/config.json`,
 		`printf x >> ` + homeDir + `/trusted-roots`,
+		`git -C ` + homeDir + `/worktrees/r/x show HEAD:.abcd/config.json > "$OUT"`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)

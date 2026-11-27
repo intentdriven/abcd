@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -62,6 +63,17 @@ func facilitatorStoreLeaf(name string) bool {
 	return name == facilitatorSettingsFile
 }
 
+// settingsLeafWord is the settings file's name as a word of its own on a
+// line: at its start, or after a space, a quote, `=` or `>`.
+var settingsLeafWord = regexp.MustCompile(`(^|[\s'"=>])` + regexp.QuoteMeta(facilitatorSettingsFile))
+
+// namesSettingsFile reports whether a folded line names the settings file:
+// in abcd's home folder, or as a word of its own, not as the last part of
+// another path such as a repository's own .abcd/config.json.
+func namesSettingsFile(folded string) bool {
+	return strings.Contains(folded, abcdhome.Rel()+"/"+facilitatorSettingsFile) || settingsLeafWord.MatchString(folded)
+}
+
 // facilitatorStoreSignal refuses a line that writes, moves or removes the
 // file: by its path, by a relative name on a line that names abcd's home
 // folder, by a glob there that can match it, or by removing the folder
@@ -73,7 +85,7 @@ func (r Registry) facilitatorStoreSignal(command string, rc *readCtx, v verdicts
 	}
 	folded := fsutil.FoldPath(command, true)
 	homeNamed := strings.Contains(folded, abcdhome.Rel())
-	named := homeNamed && strings.Contains(folded, facilitatorSettingsFile)
+	named := homeNamed && namesSettingsFile(folded)
 	if !homeNamed && !strings.ContainsAny(command, "*?[") {
 		return payloadSignal{}, false
 	}
