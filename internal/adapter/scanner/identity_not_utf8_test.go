@@ -179,3 +179,28 @@ func TestIdentityThatIsUTF8IsMatchedAsBefore(t *testing.T) {
 		t.Errorf("RedactRefusal = %q, want the identity redacted in place", got)
 	}
 }
+
+// The outbound check judges only the disclosure class, which reads no
+// identity, so an identity value that is not UTF-8 leaves it judging: a
+// session URL or a tool footer is still refused and reported, and clean text
+// still passes.
+func TestCheckOutboundJudgesWhileAnIdentityValueIsNotUTF8(t *testing.T) {
+	url := "See https://agent-host.dev/code/session_" + synthSessionID(t, 62) + "\n"
+	footer := "Closes the gate.\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n" // abcd-lint:allow
+	for _, cases := range notUTF8Values() {
+		for _, c := range cases {
+			pc := newPinCtx(t, false)
+			configure(t, pc, c.setting, c.value)
+			for kind, text := range map[string]string{kindHarnessSessionURL: url, kindHarnessFooter: footer} {
+				findings, err := CheckOutbound(pc.repo, text, "pr-body")
+				if err == nil || !hasKind(findings, kind) {
+					t.Errorf("%s invalid at the %s: CheckOutbound = %+v, %v; want the %s refused and reported",
+						c.setting, c.at, findings, err, kind)
+				}
+			}
+			if findings, err := CheckOutbound(pc.repo, "fix: the walk\n", "pr-body"); err != nil || len(findings) != 0 {
+				t.Errorf("%s invalid at the %s: clean text = %+v, %v; want it passed", c.setting, c.at, findings, err)
+			}
+		}
+	}
+}

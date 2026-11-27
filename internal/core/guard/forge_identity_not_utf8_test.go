@@ -9,9 +9,11 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// A forge text the guard cannot judge because a git identity value is not
-// valid UTF-8 names that setting to re-save, not the scanner's configuration.
-func TestForgeTextUnjudgedForAnIdentityValueNamesTheSettingToReSave(t *testing.T) {
+// The forge check judges the disclosure class, which reads no identity, so a
+// git identity value that is not valid UTF-8 leaves it judging: a session URL
+// or a tool footer is still blocked, and a clean, disclosing text is neither
+// blocked nor warned as unjudged.
+func TestForgeTextIsJudgedWhileAnIdentityValueIsNotUTF8(t *testing.T) {
 	_, reg := forgeRepo(t, forgeOptedIn)
 	for _, kv := range os.Environ() {
 		if k, _, _ := strings.Cut(kv, "="); strings.HasPrefix(k, "GIT_") {
@@ -26,15 +28,16 @@ func TestForgeTextUnjudgedForAnIdentityValueNamesTheSettingToReSave(t *testing.T
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv(abcdhome.StageHomeEnv, "")
+	for _, cmd := range []string{
+		`gh pr create --body "Summary` + "\n\nSee " + forgeSessionURL() + "\n\nAssisted-by: Claude:claude-opus-5-5\"",
+		`gh pr create --body "Summary` + "\n\n" + forgeFooter() + "\n\nAssisted-by: Claude:claude-opus-5-5\"",
+	} {
+		if d := forgeCheck(t, reg, cmd); d.Verdict != VerdictBlock || d.EntryID != forgeTextEntryID {
+			t.Errorf("Check = %q via %q (%s), want block via %q", d.Verdict, d.EntryID, d.Message, forgeTextEntryID)
+		}
+	}
 	d := forgeCheck(t, reg, "gh pr create --body \"Summary\n\nAssisted-by: Claude:claude-opus-5-5\"")
-	if d.Verdict != VerdictWarn || !contains(d.Matches, forgeUnreadEntryID) {
-		t.Fatalf("Check = %q via %q (matches %v), want warn via %q", d.Verdict, d.EntryID, d.Matches, forgeUnreadEntryID)
-	}
-	said := d.Message + "\n" + d.Reason + "\n" + d.Successor
-	if !strings.Contains(said, "re-save git config user.name as UTF-8") || strings.Contains(said, "pii.json") {
-		t.Errorf("the warning = %q; want git config user.name named to re-save as UTF-8, not pii.json", said)
-	}
-	if strings.Contains(strings.ToLower(said), "orv") {
-		t.Errorf("the warning prints the value: %q", said)
+	if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) {
+		t.Errorf("a clean body = %q via %q (matches %v), want neither blocked nor unjudged", d.Verdict, d.EntryID, d.Matches)
 	}
 }
