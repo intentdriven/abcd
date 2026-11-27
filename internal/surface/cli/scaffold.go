@@ -53,7 +53,7 @@ func newLaunchScaffoldCommand(asJSON *bool) *cobra.Command {
 				// before the fault, which were skipped) — render it first so the
 				// operator sees the disk state; a pure preflight fault has none.
 				if len(rep.Files) > 0 {
-					_ = render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
+					_ = renderRefused(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
 						renderScaffold(w, rep, false)
 					})
 				}

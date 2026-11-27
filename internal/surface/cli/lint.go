@@ -66,7 +66,12 @@ func newLintCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), string(out))
+				// Through the document writer, so a clean run's result carries
+				// its next steps (next_steps.go); a run with findings exits
+				// non-zero and carries none.
+				if err := writeDocument(cmd.OutOrStdout(), append(out, '\n'), docOne, renderStyle); err != nil {
+					return err
+				}
 			} else {
 				renderLintHuman(cmd.OutOrStdout(), result)
 			}

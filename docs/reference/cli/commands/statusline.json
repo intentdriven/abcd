@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd statusline",
@@ -7,7 +7,8 @@
       "usage": "abcd statusline [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd statusline < payload.json"
+      "example": "abcd statusline < payload.json",
+      "no_next": "the host draws the row and calls it again; nothing follows it"
     }
   ]
 }

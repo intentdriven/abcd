@@ -246,7 +246,7 @@ func refuseUpdate(w io.Writer, asJSON bool, rep update.Report) error {
 		renderUpdateReport(w, false, rep)
 		return errors.New(msg)
 	}
-	_ = render(w, true, updateRefusal{Abcd: "error", Report: rep, Error: msg, ExitCode: 1}, nil)
+	_ = renderRefused(w, true, updateRefusal{Abcd: "error", Report: rep, Error: msg, ExitCode: 1}, nil)
 	return &exitError{Code: 1, Msg: ""}
 }
 

@@ -154,22 +154,37 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd docs [flags]`
   - An example call is `abcd docs`.
+  - What usually follows:
+    - `abcd docs cite refresh`, to fetch every cited URL and refresh the baseline.
+    - `abcd docs fidelity`, to judge the brief against the shipped surfaces.
 - `abcd docs cite [flags]`
   - An example call is `abcd docs cite`.
+  - What usually follows:
+    - `abcd docs cite refresh`, to fetch every cited URL and refresh the baseline.
 - `abcd docs cite confirm [url...] [flags]`
   - An example call is `abcd docs cite confirm https://example.com/article.html`.
+  - What usually follows:
+    - `abcd lint docs`, to check the docs against the confirmed baseline.
 - `abcd docs cite refresh [flags]`
   - An example call is `abcd docs cite refresh`.
+  - What usually follows:
+    - `abcd docs cite confirm <url>`, for a URL the fetcher could not read that a person verified.
+    - `abcd lint docs`, to check the docs against the refreshed baseline.
 - `abcd docs fidelity [flags]`
   - An example call is `abcd docs fidelity`.
+  - What usually follows:
+    - `abcd docs fidelity record --verdict-json <file>`, once a docs review has been run for HEAD.
 - `abcd docs fidelity record --verdict-json <file|-> [--dry-run] [flags]`
   - Reads `--verdict-json`, the docs review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain docs fidelity record --input verdict-json` prints its shape.
   - An example call is `abcd docs fidelity record --verdict-json verdict.json`.
+  - What usually follows:
+    - `abcd spec close <spc-N>`, to close the spec the review was owed for.
+    - `abcd launch ship --dry-run`, to preview the release cut the review clears.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

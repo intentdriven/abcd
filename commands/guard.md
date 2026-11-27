@@ -1812,21 +1812,29 @@ Whichever rung fires, the candidate still goes in on stdin via the
 quoted-delimiter heredoc shown above.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd guard [flags]`
   - An example call is `abcd guard`.
+  - What usually follows:
+    - `abcd guard check --command '<line>'`, to judge one shell command before running it.
 - `abcd guard allow --once --command <line> [flags]`
   - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
+  - Nothing usually follows: the allowance is used by the next matching call through the hook; nothing usually follows.
 - `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
   - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
+  - Nothing usually follows: it answers prompts until its input ends; nothing usually follows.
 - `abcd guard check [flags]`
   - An example call is `abcd guard check --command 'git push --force origin main'`.
+  - What usually follows:
+    - `abcd guard allow --once --command '<line>'`, only when the person says yes, and run by them, to let through one unproven delete they have judged safe.
 - `abcd guard hook [flags]`
   - An example call is `abcd guard hook < payload.json`.
+  - Nothing usually follows: the host calls it on each tool call and reads its answer; nothing follows it.
 - `abcd guard question [<file>|-] [flags]`
   - An example call is `abcd guard question draft.json`.
+  - Nothing usually follows: a clean draft is handed to the host's question tool; no abcd command follows it.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

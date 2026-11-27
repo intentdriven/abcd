@@ -134,10 +134,16 @@ func TestEveryCommandPageOpensWithTheAskTheBinaryCall(t *testing.T) {
 // command's slice of its committed JSON file, the file's document cut to the
 // one command and encoded as the files are (EncodeCommandFacts, so with no
 // HTML escaping), never with explain's own encoder, which would hold explain
-// to itself, for every command a file holds. A file is decoded strictly, so a field explain does not print fails
-// here too.
+// to itself, for every command a file holds, followed only by explain's own
+// next_steps, which every successful result carries (spc-2610301431108175
+// step 6). A file is decoded strictly, so a field explain does not print
+// fails here too.
 func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	explainNext, ok := surface.NextFor("abcd explain")
+	if !ok {
+		t.Fatal("abcd explain has no entry in internal/core/surface/next.go")
+	}
 	files := committedFactsFiles(t)
 	if len(files) == 0 {
 		t.Fatalf("%s holds no file; %s", CommandFactsDir, regenerateCommandFacts)
@@ -158,6 +164,9 @@ func TestExplainJSONIsTheCommittedFileSliceForEveryCommand(t *testing.T) {
 			seen++
 			want, err := EncodeCommandFacts(CommandFactsDocument{FormatVersion: doc.FormatVersion, Commands: []surface.Facts{f}})
 			if err != nil {
+				t.Fatal(err)
+			}
+			if want, err = spliceNextSteps(want, explainNext.Steps, docStyle{indent: true}); err != nil {
 				t.Fatal(err)
 			}
 			code, out, errOut := explainRun(t, append(explainWords(f.Path), "--json")...)

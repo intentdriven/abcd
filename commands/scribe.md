@@ -169,16 +169,21 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd scribe [flags]`
   - An example call is `abcd scribe`.
+  - What usually follows:
+    - `abcd scribe assemble --run <rdg-N> --dispositions <path>`, to build a scribe session's context.
 - `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
   - An example call is `abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md`.
+  - What usually follows:
+    - `abcd scribe ingest --scribe-json <path> --dispositions <path>`, once the scribe has transcribed.
 - `abcd scribe ingest --scribe-json <path> --dispositions <path> [--dry-run] [flags]`
   - Reads `--scribe-json`, the scribe output, at schema version 1, in its _type tag; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain scribe ingest --input scribe-json` prints its shape.
   - An example call is `abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md`.
+  - Nothing usually follows: what the scribe transcribed is on the ledger; nothing usually follows.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

@@ -73,6 +73,11 @@ func TestLintConformingExitsZero(t *testing.T) {
 	if len(res.Findings) != 0 {
 		t.Errorf("conforming repo findings = %d, want 0", len(res.Findings))
 	}
+	// A clean run is a success, so its result carries what usually follows
+	// (next_steps.go).
+	if !bytes.Contains(stdout.Bytes(), []byte(`"next_steps": [`)) {
+		t.Errorf("a clean lint's result carries no next_steps:\n%s", stdout.String())
+	}
 }
 
 // A repo missing the committed work tier: exit 2, and the JSON carries the
@@ -103,6 +108,10 @@ func TestLintMissingWorkTierExitsTwo(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no three-tier-layout error in JSON:\n%s", stdout.String())
+	}
+	// Findings exit non-zero: no success, so no next steps.
+	if bytes.Contains(stdout.Bytes(), []byte(`"next_steps"`)) {
+		t.Errorf("a lint with findings carries next_steps:\n%s", stdout.String())
 	}
 }
 

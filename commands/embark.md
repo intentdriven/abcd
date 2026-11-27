@@ -164,17 +164,25 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embark` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embark` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd embark [flags]`
   - An example call is `abcd embark`.
+  - What usually follows:
+    - `abcd embark probe <lifeboat-dir> <target-dir>`, to see what a lifeboat would write into a target.
 - `abcd embark from <lifeboat-dir> [target-dir] [flags]`
   - An example call is `abcd embark from ../lifeboat`.
+  - What usually follows:
+    - `abcd embark lessons <lifeboat-dir> <target-dir>`, to rank the lifeboat's lessons against the new brief.
+    - `abcd`, to read the board of the target repository.
 - `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`
   - An example call is `abcd embark lessons ../lifeboat`.
+  - Nothing usually follows: the ranking is read and acted on in the new voyage's brief; no command usually follows.
 - `abcd embark probe <lifeboat-dir> [target-dir] [flags]`
   - An example call is `abcd embark probe ../lifeboat`.
+  - What usually follows:
+    - `abcd embark from <lifeboat-dir> <target-dir>`, to unpack the lifeboat once the probe shows no conflict.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

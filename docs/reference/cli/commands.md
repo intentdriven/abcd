@@ -2422,7 +2422,8 @@ Print how to call one command, an input's shape, or what a refusal code means: W
 Print how to call one command, from the binary that runs it: its sentence, its usage
 line, each flag with its type, its allowed values, its default and whether it is
 required, the flags it inherits, each filled-in input it reads with that input's
-schema version, its worked example and its sub-commands, in at most 40 lines.
+schema version, its worked example, what usually follows its success and its
+sub-commands, in at most 40 lines.
 A hidden command is answered too, marked (hidden) on its first line.
 
 --input <flag> prints one input's schema version, its fields and an example that

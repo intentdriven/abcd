@@ -393,31 +393,51 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd library [flags]`
   - An example call is `abcd library`.
+  - What usually follows:
+    - `abcd library ask "<question>"`, to query the memory store.
+    - `abcd library add <document>`, to register a new source.
 - `abcd library add [document] [flags]`
   - An example call is `abcd library add article.md --public --key example-paper-2026 --title "Example Widgets in Practice"`.
+  - What usually follows:
+    - `abcd library ingest <path-or-https-url>`, to distil the source into cited memory pages.
 - `abcd library ask <question> [--dry-run] [flags]`
   - Reads `--page-json`, the answer page, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ask --input page-json` prints its shape.
   - An example call is `abcd library ask "why do record ids carry a timestamp?"`.
+  - Nothing usually follows: the cited answer is the result; nothing usually follows.
 - `abcd library cite-check <file|-> [flags]`
   - An example call is `abcd library cite-check draft.md`.
+  - What usually follows:
+    - `abcd library declassify <key>`, for a hit on a confidential source that is now published.
 - `abcd library declassify <key> [flags]`
   - An example call is `abcd library declassify example-paper-2026`.
+  - What usually follows:
+    - `abcd library sync-banlist`, to project the remaining confidential titles into the banlist.
 - `abcd library ingest <path-or-https-url> [--dry-run] [flags]`
   - Reads `--pages-json`, the distilled pages, at schema_version 1 (the input carries none); `"${CLAUDE_PLUGIN_ROOT}/abcd" explain library ingest --input pages-json` prints its shape.
   - An example call is `abcd library ingest https://example.com/article.html`.
+  - What usually follows:
+    - `abcd library lint`, to health-check the memory store with the new pages.
 - `abcd library init [flags]`
   - An example call is `abcd library init`.
+  - What usually follows:
+    - `abcd library add <document>`, to register the corpus's first source.
 - `abcd library ledger [flags]`
   - An example call is `abcd library ledger --list`.
+  - What usually follows:
+    - `abcd library ledger --list`, to see the ledger's lines.
 - `abcd library lint [flags]`
   - An example call is `abcd library lint`.
+  - What usually follows:
+    - `abcd library ingest <path-or-https-url>`, to fill a gap the check names.
 - `abcd library sync-banlist [flags]`
   - An example call is `abcd library sync-banlist`.
+  - What usually follows:
+    - `abcd banlist list --private`, to see the projected entries by key.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

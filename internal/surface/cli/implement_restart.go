@@ -29,7 +29,7 @@ func runRestart(ctx context.Context, cmd *cobra.Command, asJSON bool, root, runI
 	accepted := acceptedBy(cmd, res.StepResult, nil)
 	res.StepResult = redactStep(res.StepResult)
 	res.AcceptedConfigChange = accepted
-	return render(w, asJSON, res, func(w io.Writer) { renderRestart(w, res) })
+	return renderFinal(w, asJSON, res, func(w io.Writer) { renderRestart(w, res) })
 }
 
 // renderRestart is the restart's text form: what was saved aside and where,

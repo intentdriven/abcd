@@ -317,7 +317,7 @@ func reflectRefuse(w io.Writer, asJSON bool, err error) error {
 		return &exitError{Code: 2, Msg: msg}
 	}
 	if asJSON {
-		if rerr := render(w, true, ref, nil); rerr != nil {
+		if rerr := renderRefused(w, true, ref, nil); rerr != nil {
 			return rerr
 		}
 		return &exitError{Code: 1}

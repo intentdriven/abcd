@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd reading",
@@ -11,6 +11,12 @@
       "subcommands": [
         "assemble",
         "ingest"
+      ],
+      "next": [
+        {
+          "command": "abcd reading assemble --position <position> --target <HEAD|sha>",
+          "when": "to assemble a reading's input"
+        }
       ]
     },
     {
@@ -42,7 +48,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd reading assemble --position widening --target HEAD"
+      "example": "abcd reading assemble --position widening --target HEAD",
+      "next": [
+        {
+          "command": "abcd reading ingest --reading-json <path>",
+          "when": "once the reading has been run and returned its JSON"
+        }
+      ]
     },
     {
       "path": "abcd reading ingest",
@@ -82,7 +94,13 @@
           "version_in": "_type"
         }
       ],
-      "example": "abcd reading ingest --reading-json reading.json"
+      "example": "abcd reading ingest --reading-json reading.json",
+      "next": [
+        {
+          "command": "abcd capture disposition <rdi-N> --state <state> --grounds \"<why>\"",
+          "when": "to answer each reading item"
+        }
+      ]
     }
   ]
 }

@@ -369,21 +369,31 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain session` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain session` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd session [flags]`
   - An example call is `abcd session`.
+  - What usually follows:
+    - `abcd session setup`, to set up live brief sessions.
+    - `abcd session start`, to start a live brief session on this computer.
 - `abcd session blueprint [flags]`
   - An example call is `abcd session blueprint`.
+  - What usually follows:
+    - `abcd session page`, to write the brief session's static page beside the relay.
 - `abcd session page [flags]`
   - An example call is `abcd session page --out brief-page`.
+  - Nothing usually follows: the page is written for hosting; nothing usually follows.
 - `abcd session serve [flags]`
   - An example call is `abcd session serve`.
+  - Nothing usually follows: the relay runs in the foreground until stopped; nothing usually follows.
 - `abcd session setup [flags]`
   - An example call is `abcd session setup --where local`.
+  - What usually follows:
+    - `abcd session start`, to start a live brief session.
 - `abcd session start [flags]`
   - An example call is `abcd session start`.
+  - Nothing usually follows: the session runs on this computer; its link is shared with the team.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

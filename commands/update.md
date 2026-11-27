@@ -264,13 +264,17 @@ summary on a host that runs no session-start hook. `--answer` takes neither
 `--full` nor `--seen`.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain update` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd update [tag] [flags]`
   - An example call is `abcd update --check`.
+  - What usually follows:
+    - `abcd update news`, to see what changed since the update.
 - `abcd update news [flags]`
   - An example call is `abcd update news`.
+  - What usually follows:
+    - `abcd ahoy install`, when it offers setup that waits.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

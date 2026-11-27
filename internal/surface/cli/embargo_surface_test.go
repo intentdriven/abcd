@@ -153,7 +153,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("intake: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,repo,restores,store,store_created,unread" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,next_steps,repo,restores,store,store_created,unread" {
 		t.Errorf("intake keys %s", got)
 	}
 	if strings.Contains(out, os.Getenv("HOME")) {
@@ -164,7 +164,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("clean check: exit %d", code)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "allowed,commits,files,findings,intake_at,intake_stale,no_store,under_embargo" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "allowed,commits,files,findings,intake_at,intake_stale,next_steps,no_store,under_embargo" {
 		t.Errorf("check keys %s", got)
 	}
 
@@ -175,6 +175,9 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	dec := json.NewDecoder(strings.NewReader(out))
 	var res embargo.CheckResult
 	var env errorEnvelope
+	if strings.Contains(out, `"next_steps"`) {
+		t.Errorf("a refused check's document carries next steps: %s", out)
+	}
 	if err := dec.Decode(&res); err != nil || code != 2 || len(res.Findings) != 1 ||
 		res.Findings[0].Kind != embargo.KindAdvisoryID || strings.Contains(out, "xxxx") {
 		t.Fatalf("check finding: exit %d, %v, %s", code, err, out)
@@ -226,7 +229,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("publish: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,no_draft_left,plan,published,restores" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,next_steps,no_draft_left,plan,published,restores" {
 		t.Errorf("publish keys %s", got)
 	}
 	var pr embargo.PublishResult

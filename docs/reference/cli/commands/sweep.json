@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd sweep",
@@ -12,7 +12,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd sweep"
+      "example": "abcd sweep",
+      "next": [
+        {
+          "command": "abcd sweep --apply",
+          "when": "to clear what it listed as spent"
+        }
+      ]
     }
   ]
 }

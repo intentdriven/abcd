@@ -2618,55 +2618,102 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain implement` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd implement [flags]`
   - An example call is `abcd implement`.
+  - What usually follows:
+    - `abcd implement status`, to see the loop's runs lane by lane.
+    - `abcd implement join --session <id> --role <role>`, to join the shared run.
 - `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
   - An example call is `abcd implement check lane --session s-example`.
+  - What usually follows:
+    - `abcd implement claim <record> --session <id> --lane <lane>`, when the stage is allowed, to claim its record.
 - `abcd implement claim <record> --session <id> --lane <lane> [flags]`
   - An example call is `abcd implement claim iss-2609010000000001 --session s-example --lane cli`.
+  - What usually follows:
+    - `abcd implement release <record> --session <id>`, once the lane's work is done.
 - `abcd implement heartbeat [<branch>|<pr>...] [flags]`
   - An example call is `abcd implement heartbeat --json`.
+  - What usually follows:
+    - `abcd implement status`, to see the run lane by lane.
 - `abcd implement join --session <id> --role first|second [flags]`
   - An example call is `abcd implement join --session s-example --role first`.
+  - What usually follows:
+    - `abcd implement mode <mode> --session <id>`, to open a window by logging its division mode.
+    - `abcd implement check lane --session <id>`, before taking a lane.
 - `abcd implement leave --session <id> [flags]`
   - An example call is `abcd implement leave --session s-example`.
+  - Nothing usually follows: the session has left the run and holds no claim; nothing usually follows.
 - `abcd implement load --site preflight|eval-harness | --wait [--narrow] [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
   - An example call is `abcd implement load --site preflight`.
+  - What usually follows:
+    - `abcd implement load --wait --narrow --timeout <duration> -- <command>`, to run a test command once there is capacity.
 - `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
   - An example call is `abcd implement log lane_open --session s-example`.
+  - Nothing usually follows: the event is on today's run log; nothing usually follows.
 - `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
   - An example call is `abcd implement mode single --session s-example`.
+  - What usually follows:
+    - `abcd implement check lane --session <id>`, before taking a lane in the window.
 - `abcd implement outage [flags]`
   - An example call is `abcd implement outage`.
+  - What usually follows:
+    - `abcd implement outage probe --session <id>`, when the next probe is due.
 - `abcd implement outage ack --session <id> [flags]`
   - An example call is `abcd implement outage ack --session s-example`.
+  - What usually follows:
+    - `abcd implement outage clear --session <id> --reason "<why>"`, once the connection is back.
 - `abcd implement outage clear --session <id> --reason <why> [flags]`
   - An example call is `abcd implement outage clear --session s-example --reason "the network is back"`.
+  - What usually follows:
+    - `abcd implement status`, to see the run carry on.
 - `abcd implement outage probe --session <id> [--model ok|fail] [flags]`
   - An example call is `abcd implement outage probe --session s-example`.
+  - What usually follows:
+    - `abcd implement outage`, to see whether the outage is still open.
 - `abcd implement outage record --session <id> --service network|model --kind host|agent|tool --lane <lane> --what <text> [flags]`
   - An example call is `abcd implement outage record --session s-example --service network --kind tool --lane cli --what "git push"`.
+  - What usually follows:
+    - `abcd implement outage`, to see the shared outage and when its next probe is due.
 - `abcd implement receipt <path> [--run <run-id>] [flags]`
   - An example call is `abcd implement receipt review-receipt.json --run run-2609010000000001`.
+  - What usually follows:
+    - `abcd implement step`, to perform the run's next stage.
 - `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
   - An example call is `abcd implement record`.
+  - What usually follows:
+    - `abcd implement report`, to compare the division modes from the run log.
 - `abcd implement release <record> --session <id> [flags]`
   - An example call is `abcd implement release iss-2609010000000001 --session s-example`.
+  - What usually follows:
+    - `abcd implement leave --session <id>`, when the session holds nothing else in the run.
 - `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
   - An example call is `abcd implement report`.
+  - Nothing usually follows: the comparison is the run's final reading; nothing usually follows.
 - `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
   - An example call is `abcd implement resume --run run-2609010000000001`.
+  - What usually follows:
+    - `abcd implement resume --take <run-id>`, only when the person says yes, to take over a run it listed.
+    - `abcd implement step`, to perform a taken run's next stage.
 - `abcd implement status [--run <run-id>] [flags]`
   - An example call is `abcd implement status`.
+  - What usually follows:
+    - `abcd implement step`, to perform a run's next stage.
 - `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
   - An example call is `abcd implement step`.
+  - What usually follows:
+    - `abcd implement step`, to perform the stage after it.
+    - `abcd implement status`, to see the run lane by lane.
 - `abcd implement stop [--lift] [flags]`
   - An example call is `abcd implement stop`.
+  - What usually follows:
+    - `abcd implement stop --lift`, only when the person says yes, and run by them from their own account, once the runs may start again.
 - `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
   - An example call is `abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001`.
+  - What usually follows:
+    - `abcd implement step`, to carry on the lane with the wider hold.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS
