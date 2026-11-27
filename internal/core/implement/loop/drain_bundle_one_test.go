@@ -20,7 +20,9 @@ import (
 // before bundles left them. The fixtures under
 // testdata/drain_bundle_one were taken from the default branch before step 4
 // (b8250514c) with ABCD_UPDATE_BUNDLE_ONE=1. The comparison masks the schema
-// versions and the drain state's bundle_max, and, as every run differs in
+// versions and the drain state's bundle_max and in_work_max (the bundled one
+// lane in work is the drain before either, itd-2611251809580662), and, as
+// every run differs in
 // them, the times, the run ids, the commit names and the fixture's paths.
 
 // bundleOneMasks are the masks every run needs, in order.
@@ -36,7 +38,8 @@ var bundleOneMasks = []struct {
 }
 
 // bundleOneJSON is a state file read as JSON with its schema version, and
-// the drain state's bundle_max, masked, written back in a stable form.
+// the drain state's bundle_max and in_work_max, masked, written back in a
+// stable form.
 func bundleOneJSON(t *testing.T, file string) string {
 	t.Helper()
 	data, err := os.ReadFile(file)
@@ -49,6 +52,7 @@ func bundleOneJSON(t *testing.T, file string) string {
 	}
 	doc["schema_version"] = "<VERSION>"
 	delete(doc, "bundle_max")
+	delete(doc, "in_work_max")
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		t.Fatal(err)

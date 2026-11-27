@@ -1738,7 +1738,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1909,7 +1909,23 @@ a remedy rewritten since the request is refused and asked again. Once judged, th
 drain hands the next eligible issue, in that order, to the implement loop's issue-keyed
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
-pull request is open, and it routes the lane's outcome and opens the next. Under
+pull request is open, and it routes the lane's outcome and opens the next. A lane is
+in work until its pull request is armed or left open, or it is handed back; one that
+only owes the withdrawal of its pull request's arming is not counted, and is settled
+before another lane opens. The lanes in work are held to drain.in_work_max (1 by
+default; 1 to 10), read once, when the drain begins, from the repository's
+.abcd/config.json at the commit origin names as its default branch's tip, never
+from a working tree, or set for one drain with --in-work <n>, which wins; ~/.abcd.noindex/config.json
+does not hold it and is refused if it does. The drain keeps the limit, with its layer
+and origin, for its whole life (in_work_max in its state), and --in-work naming
+another while it runs is refused. Below the limit a move asks or opens the next lane
+beside those in work and names each; at it, or with nothing more to open, it names
+the lanes to drive and neither stops nor waits. Each such sentence, and the wait at
+the cap, names both counts: the lanes in work against the limit, and, where the
+move's view of the reservations can tell them, your live reservations against your
+ceiling and the layer that set it (in_work and held in --json). A lane whose
+pull request is queued keeps its reservation until the merge, counted against the
+ceiling and not against the limit. Under
 drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not
 open its lane at once: that move and the ones after it reserve and judge each member in turn,
 keeping every hold, a yes routing that member alone, and the lane opens with the lead
@@ -2020,6 +2036,7 @@ drain or run holds the state lock.
       --drive[=true|false]            make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run[=true|false]          show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string             the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --in-work int                   the most lanes a drain beginning now holds in work, 1 to 10; wins over the repository's drain.in_work_max (1 when neither sets it)
       --judgement string              the host's answer to the judgement the drain awaits, at the path its request names
       --max int                       cap the lanes this drain opens; the default is all, and eight for a drive
       --no-self-update[=true|false]   with --drive: take no new release of abcd during the run, and ask the release origin nothing
@@ -6434,7 +6451,9 @@ the layer that set it: reservation.max_live in the repository's
 .abcd/config.json at origin's default branch, which this machine's own
 figure may only lower, ten when neither sets it; with a warning from four
 fifths of it, since every session and account on the same login counts
-toward the same total, and a
+toward the same total; under it, while a drain is in progress here, its lanes in
+work against the limit it began with and the layer that set it (drain_in_work),
+and a
 line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the

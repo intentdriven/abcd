@@ -158,21 +158,15 @@ func maxLive(root, ref, home string) (liveLimit, string, error) {
 func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 	lim, note := bundledLimit(), ""
 	if root != "" {
-		branch, tip, none, err := originHead(root)
+		at, err := askOriginDefault(root, MaxLiveKey)
 		if err != nil {
 			return liveLimit{}, "", err
 		}
-		if none != "" {
-			note = fmt.Sprintf("%s, so it has no repository figure for %s and %s applies", none, MaxLiveKey, lim.describe())
+		if at.None != "" {
+			note = fmt.Sprintf("%s, so it has no repository figure for %s and %s applies", at.None, MaxLiveKey, lim.describe())
 			return machineAfter(home, lim, note)
 		}
-		name := Remote + "/" + branch
-		keepOriginDefault(root, branch)
-		if !commitHere(root, tip) {
-			if err := fetchTip(root, branch, tip); err != nil {
-				return liveLimit{}, "", err
-			}
-		}
+		name, tip := at.Name, at.Tip
 		if tracked != "refs/remotes/"+name {
 			note = fmt.Sprintf("this checkout tracks %s as %s's default branch, but %s names %s, so the figure is read at the tip %s names",
 				orNone(termsafe.Sanitize(gitutil.ShortRef(tracked))), Remote, Remote, name, Remote)
@@ -184,6 +178,46 @@ func actMaxLive(root, tracked, home string) (liveLimit, string, error) {
 		note = joinNote(note, rnote)
 	}
 	return machineAfter(home, lim, note)
+}
+
+// OriginDefault is origin's default branch as origin itself names it, for a
+// reader of a repository figure at that branch (AskOriginDefault): Name as a
+// person names it ("origin/main") and Tip the commit origin named, brought
+// into this checkout; or, where origin answers but names no branch with a
+// commit as its default, None saying what it named instead, with Name and Tip
+// "".
+type OriginDefault struct {
+	Name string
+	Tip  string
+	None string
+}
+
+// AskOriginDefault asks origin which branch is its default and at which
+// commit, as an act that adds a reservation asks it for reservation.max_live,
+// for the figure named key: never a name this checkout tracks, which a lane's
+// agent can move or a pushed branch can stand in for. It keeps the branch for
+// MaxLiveFor, and fetches it where this checkout does not hold the commit
+// origin named. Where origin cannot be asked, or the commit cannot be brought
+// here, it is a *FetchError and no figure is to be read.
+func AskOriginDefault(root, key string) (OriginDefault, error) {
+	return askOriginDefault(root, key)
+}
+
+func askOriginDefault(root, key string) (OriginDefault, error) {
+	branch, tip, none, err := originHeadFor(root, key)
+	if err != nil {
+		return OriginDefault{}, err
+	}
+	if none != "" {
+		return OriginDefault{None: none}, nil
+	}
+	keepOriginDefault(root, branch)
+	if !commitHere(root, tip) {
+		if err := fetchTip(root, branch, tip, key); err != nil {
+			return OriginDefault{}, err
+		}
+	}
+	return OriginDefault{Name: Remote + "/" + branch, Tip: tip}, nil
 }
 
 // machineAfter is an act's lim lowered by the machine, with note joined to
@@ -208,18 +242,19 @@ func orNone(s string) string {
 	return s
 }
 
-// originHead asks origin which branch is its default and at which commit
+// originHeadFor asks origin which branch is its default and at which commit
 // (git ls-remote --symref, as landing.ReadFetchedFacilitator does, read from
-// the lines naming HEAD alone: originHeadLines): the branch, a valid ref name
-// under refs/heads/, and the tip, a full object name. Where origin answers but
-// names no such branch with a commit (none of its own, a detached HEAD, a HEAD
-// outside refs/heads/), none says what it named instead and branch and tip are
-// "". Only an origin that cannot be asked is a *FetchError.
-func originHead(root string) (branch, tip, none string, err error) {
+// the lines naming HEAD alone: originHeadLines), for the figure named key,
+// which its refusal names: the branch, a valid ref name under refs/heads/,
+// and the tip, a full object name. Where origin answers but names no such
+// branch with a commit (none of its own, a detached HEAD, a HEAD outside
+// refs/heads/), none says what it named instead and branch and tip are "".
+// Only an origin that cannot be asked is a *FetchError.
+func originHeadFor(root, key string) (branch, tip, none string, err error) {
 	target, symref, tip, err := originHeadLines(root)
 	if err != nil {
 		r := redacted(err)
-		return "", "", "", &FetchError{Reason: r.text, cause: r.notRun, what: "which branch is its default, for " + MaxLiveKey + ",", outcome: gapOutcome}
+		return "", "", "", &FetchError{Reason: r.text, cause: r.notRun, what: "which branch is its default, for " + key + ",", outcome: gapOutcome}
 	}
 	if symref {
 		branch, _ = strings.CutPrefix(target, "refs/heads/")
@@ -246,8 +281,8 @@ func originHead(root string) (branch, tip, none string, err error) {
 // checkout tracks, or the branch moved since): a *FetchError when the fetch
 // fails or still does not bring tip (the branch moved again while it was
 // read).
-func fetchTip(root, branch, tip string) error {
-	what := MaxLiveKey + " at " + Remote + "/" + branch
+func fetchTip(root, branch, tip, key string) error {
+	what := key + " at " + Remote + "/" + branch
 	args := []string{"fetch", "--no-tags", Remote, "+refs/heads/" + branch + ":refs/remotes/" + Remote + "/" + branch}
 	trace(args...)
 	if _, err := gitutil.Net(root, args...); err != nil {
@@ -386,18 +421,23 @@ func checkMaxLive(n int) error {
 // under a conventional name can stand in for. Whatever would refuse the act
 // (the ref naming no commit here, an unusable figure, a machine file that
 // cannot be read) is refused here too. On any error such a caller leaves the
-// count to the act, which asks origin and decides.
-func MaxLiveFor(root string, o Options) (int, error) {
+// count to the act, which asks origin and decides. Beside the figure it
+// returns the layer that set it (LimitBundled, LimitRepository or
+// LimitMachine), which the drain's wait sentences name beside the count.
+func MaxLiveFor(root string, o Options) (int, string, error) {
 	b := keptOriginDefault(root)
 	if b == "" {
-		return 0, errNoKeptDefault
+		return 0, "", errNoKeptDefault
 	}
 	lim, _, err := repoMaxLive(root, "refs/remotes/"+Remote+"/"+b)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	lim, _, err = machineMaxLive(o.home(), lim, true)
-	return lim.N, err
+	if err != nil {
+		return 0, "", err
+	}
+	return lim.N, lim.Layer, nil
 }
 
 // errNoKeptDefault is MaxLiveFor's answer in a checkout where no act has

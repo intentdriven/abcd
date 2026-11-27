@@ -12,7 +12,8 @@ implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
 `pace.sub_agents` and `pace.fix_rounds`, and the drain's `pace.stuck_refusals`,
 1 to 64 and 3 by default, and `pace.stuck_minutes`, 1 to 10080 and 60 by default;
 `internal/core/implement/loop/pace.go`), the drain's bundle cap
-`drain.bundle_max` (below), the consistency pass's `consistency`
+`drain.bundle_max` and its limit on lanes in work `drain.in_work_max` (both
+below), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
@@ -279,6 +280,22 @@ act that adds a reservation, naming the file at the branch; a machine file that
 is there but cannot be read refuses it too, naming the file, and one that is
 not there reads as none. Neither refuses a release or a renewal
 (`internal/core/claim/maxlive.go`).
+
+The `drain.in_work_max` key, the most lanes one drain holds in work, 1 to 10
+and 1 by default, is the repository's and the run's alone
+(itd-2611251809580662 decision 2): a drain reads it once, when it begins, from
+`--in-work`, then from the repository's `.abcd/config.json` as stored at the
+commit origin itself names as its default branch's tip, as an act adding a
+reservation reads `reservation.max_live`, never from a working tree or
+another branch, then the bundled 1, and keeps it on its state with its layer
+and origin. `~/.abcd.noindex/config.json` does not hold it: one there is
+refused naming the file, never passed over. A repository value outside 1 to
+10 refuses the drain's start naming the file at the branch; an origin that
+cannot be asked, or names no default branch, leaves the bundled 1 and says so
+(`internal/core/implement/loop/drain_inwork.go`). A drive reads none: it
+holds one lane in work whatever the figure, and a drain it drives records
+that one with layer `drive`. The `drain` namespace's readers claim it with
+both of its keys, from one list.
 
 The `drain.bundle_max` key is read through the same reader, and a repository
 may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the

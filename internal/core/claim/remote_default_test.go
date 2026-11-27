@@ -30,7 +30,7 @@ func headNamedBranches(t *testing.T, bare string, want int) {
 // TestTheDefaultBranchIsReadFromTheHEADLinesAlone: an origin holding enough
 // branches whose names end in /HEAD that `git ls-remote --symref origin HEAD`
 // lists more than a networked read keeps whole still names main as its
-// default, at main's tip, both to an act asking for the ceiling (originHead)
+// default, at main's tip, both to an act asking for the ceiling (originHeadFor)
 // and to a clone that names no default branch of its own (remoteDefault):
 // only the two lines whose ref is HEAD itself are read.
 func TestTheDefaultBranchIsReadFromTheHEADLinesAlone(t *testing.T) {
@@ -42,9 +42,9 @@ func TestTheDefaultBranchIsReadFromTheHEADLinesAlone(t *testing.T) {
 		t.Fatalf("origin's listing of HEAD runs to %d bytes; want more than %d", len(listed), bound)
 	}
 	main := runGit(t, w.bare, "rev-parse", "refs/heads/main")
-	branch, tip, none, err := originHead(p.dir)
+	branch, tip, none, err := originHeadFor(p.dir, MaxLiveKey)
 	if err != nil || branch != "main" || tip != main || none != "" {
-		t.Fatalf("originHead = %q, %q, %q, %v; want main at %s", branch, tip, none, err, main)
+		t.Fatalf("originHeadFor = %q, %q, %q, %v; want main at %s", branch, tip, none, err, main)
 	}
 	if ref, err := remoteDefault(p.dir); err != nil || ref != "refs/remotes/"+Remote+"/main" {
 		t.Fatalf("remoteDefault = %q, %v; want refs/remotes/%s/main", ref, err, Remote)

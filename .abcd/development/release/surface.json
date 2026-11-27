@@ -1658,6 +1658,13 @@
           "hidden": false
         },
         {
+          "name": "in-work",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "judgement",
           "shorthand": "",
           "type": "string",
