@@ -299,9 +299,9 @@ func TestConversationLineIsAReading(t *testing.T) {
 
 // TestWakesBound: up to maxCronPrompts distinct wakes are all kept and leave
 // the session's prompts readable; one more marks it, so no prompt reads as the
-// person's. A stop whose payload lists no wakes (the host's task list not
-// reached) leaves the mark as it was, since the wakes it let go may still
-// fire.
+// person's. A stop whose payload carries no wakes field (the host's task list
+// not reached) leaves the mark as it was, since the wakes it let go may still
+// fire; one listing an empty set clears it.
 func TestWakesBound(t *testing.T) {
 	now := at(t, "2026-11-26 06:00")
 	listed := func(n int) []SessionCron {
@@ -325,7 +325,12 @@ func TestWakesBound(t *testing.T) {
 		t.Errorf("%d wakes left the session's prompts readable", maxCronPrompts+1)
 	}
 	if after, _ := KeepWakes(at33, nil, now); !after.CronPromptsUnmatched {
-		t.Error("a stop listing no wakes cleared the mark")
+		t.Error("a stop whose payload carries no wakes field cleared the mark")
+	}
+	// An empty list is the host's task list read and holding no wake: the
+	// wakes that could not be matched are gone, and so is the mark.
+	if after, _ := KeepWakes(at33, []SessionCron{}, now); after.CronPromptsUnmatched || !personPrompt(after, "status?") {
+		t.Error("a stop listing an empty set of wakes left the mark")
 	}
 }
 

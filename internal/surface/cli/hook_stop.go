@@ -285,7 +285,7 @@ nothing.`,
 // written is left as it is, unnamed: the stop is allowed already, and its
 // reason named.
 func stopKeepWakes(copyRoot string, p stopPayload, now time.Time) {
-	if !autonomy.ValidSessionID(p.SessionID) || len(p.SessionCrons) == 0 {
+	if !autonomy.ValidSessionID(p.SessionID) || p.SessionCrons == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), stopStateBudget)
