@@ -8,7 +8,7 @@ source: "agent-observation"
 found_during: "autonomous surge run, coordinating session, 27/11"
 origin: researcher-authored
 production_mode: hand-written
-found_at: "internal/surface/cli"
+found_at: "internal/core/autonomy/forge.go"
 remedy: "Judge each check by its newest run per name and workflow (the latest startedAt), as the forge's merge gate does, and count a check as failing only when that run failed; add a test with a rollup that holds a failure followed by a success for the same check"
 ---
 
