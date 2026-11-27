@@ -281,6 +281,8 @@ func TestTheReportListsLimitationsAndSuggestedImprovements(t *testing.T) {
 		"cannot tell the folder",     // an unclear pattern is unexamined
 		"closes the run's folders",   // listing denial, not the scan, holds
 		"whenever the host makes it", // a host copy runs with them open
+		"a chmod of . among them",    // a relative path after a cd
+		"a substitution builds",      // a path built at run time
 		"smallest difference",        // an unsized comparison
 		"model and harness together", // the harness confound
 		"could not examine",          // the unexamined copy
