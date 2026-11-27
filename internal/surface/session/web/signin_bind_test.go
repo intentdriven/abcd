@@ -1,6 +1,8 @@
 package web
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"testing"
@@ -34,10 +36,17 @@ function updateFragment() {}
 function framed() { return false; }
 function readStartForm() {}
 function askTrust(action) { toasts.push("askTrust:" + action); }
-function recheckRelayList() {}
+let linkRelay = "";
+let rechecking = false;
+async function refreshSignIn() {}
 function startDeviceSignIn() { toasts.push("device"); }
 function takeRejoin() { return false; }
-async function readRelayList() { return { state: anchor.state, relays: anchor.relays }; }
+// listSeen, when set, is what the repository's list shows a token; else the
+// anchor as it stands.
+let listSeen = null;
+async function readRelayList() { return listSeen || { state: anchor.state, relays: anchor.relays, app: anchor.app }; }
+let relayApp = { relay: "", clientID: "", state: "" };
+let appCheck = null;
 const sent = [];
 let socket = false;
 function socketOpen() { return socket; }
@@ -57,15 +66,20 @@ const rejoinToken = "";
 function proceed() {}
 let anchor = { state: "listed", relays: [] };
 let config = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: "https://github.com/login/oauth/authorize", flow: "web" };
+// configAnswer, when set, is how the relay's /config fails instead: an HTTP
+// status, or "throw" for a request that never reaches it.
+let configAnswer = null;
 globalThis.fetch = async (url, init) => {
   requests.push({ url, body: init && init.body ? JSON.parse(init.body) : null });
+  if (url.endsWith("/config") && configAnswer === "throw") throw new Error("unreachable");
+  if (url.endsWith("/config") && typeof configAnswer === "number") return { ok: false, status: configAnswer, json: async () => ({}) };
   if (url.endsWith("/config")) return { ok: true, status: 200, json: async () => config };
   return { ok: true, status: 200, json: async () => ({ access_token: "ghu_x" }) };
 };
 `)
 	// Each piece is taken when session.js has it, so the harness runs the
 	// page as it stands; a test asserts on what the page does.
-	for _, c := range []string{"GITHUB_AUTHORIZE", "KEY_SIGN_IN", "KEY_TRUSTED", "CONFIRM_LIFE", "CALLBACK_PATH", "CODE_ALPHABET"} {
+	for _, c := range []string{"GITHUB_AUTHORIZE", "KEY_SIGN_IN", "KEY_TRUSTED", "CONFIRM_LIFE", "CALLBACK_PATH", "CODE_ALPHABET", "RELAY_WAKE"} {
 		if regexp.MustCompile(`(?m)^const ` + c + ` = `).MatchString(js) {
 			b.WriteString(constLine(t, js, c) + "\n")
 		}
@@ -73,7 +87,8 @@ globalThis.fetch = async (url, init) => {
 	for _, fn := range []string{
 		"recall", "remember", "stashSignIn", "takeSignIn", "trustedRelays", "keepTrusted", "liveConfirmations", "confirmedRelays", "confirmRelay", "forgetRelay",
 		"pageURL", "relayOrigin", "normalizeCode", "b64url", "randomText", "isLoopbackOrigin", "relayConfig",
-		"relayStanding", "relayCleared", "relayTokenCleared", "standingRefusal", "relayClearedFor",
+		"appRequired", "appStanding", "relayAnswersAs", "checkRelayApp",
+		"relayStanding", "relayCleared", "relayTokenCleared", "standingRefusal", "relayClearedFor", "chooseRelay", "recheckRelayList",
 		"startSignIn", "finishSignIn", "presentHeldToken", "connectSignedIn", "afterOpen",
 	} {
 		if regexp.MustCompile(`(?m)^(?:async )?function ` + fn + `\(`).MatchString(js) {
@@ -283,5 +298,388 @@ console.log(JSON.stringify(out));
 	js := pageScript(t)
 	if !strings.Contains(functionBody(t, js, "main"), "localStorage.removeItem(LEGACY_TRUSTED)") {
 		t.Error("main does not drop a confirmation an earlier page kept in local storage")
+	}
+}
+
+// A relay the repository's relays.json names must answer as the
+// repository's own: its /config names the client id .abcd/relay/github-app.json
+// records beside the list, and offers GitHub's web flow, or the page signs
+// nobody in through it, sends it no token and opens no session on it
+// (spc-2610230609005313 step 4). The app file holds a listed relay to the
+// team's own app and to GitHub's web flow.
+
+// appRelay is the relay the app-check tests hold to the app file.
+const appRelay = "https://brief-relay.onrender.com"
+
+// appProbe is a script that drives the page through one relay as main
+// would, with the anchor and the relay's /config each case names: the app
+// check, a sign-in started, a guest's join, a return from GitHub and the
+// token it brings. It prints what reached the relay for each case.
+func appProbe(t *testing.T, cases string) string {
+	return pageHarness(t) + `
+const RELAY = "` + appRelay + `";
+async function probe({ anchorIs, cfg, confirmed }) {
+  sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0;
+  heldToken = ""; githubToken = ""; tokenRelay = ""; assigned = ""; listSeen = null;
+  relayApp = { relay: "", clientID: "", state: "" }; appCheck = null;
+  anchor = anchorIs; config = cfg;
+  session.relay = RELAY;
+  if (confirmed) confirmRelay(RELAY);
+  // main checks the relay it chose before anything reaches it.
+  await checkRelayApp();
+  const r = { standing: relayStanding(RELAY) };
+  await startSignIn();
+  r.signIn = assigned !== "";
+  r.join = relayClearedFor("join");
+  requests.length = 0; sent.length = 0;
+  sessionStorage.setItem(KEY_SIGN_IN, JSON.stringify({ state: "s1.cGFnZQ", verifier: "v".repeat(43), relay: RELAY, code: "", name: "" }));
+  location.search = "?" + new URLSearchParams({ code: "good-code", state: "s1.cGFnZQ", relay: RELAY }).toString();
+  await finishSignIn();
+  r.code = requests.filter((q) => q.url.endsWith("/auth/token")).length;
+  r.token = sent.filter((x) => x.msg.type === "open" || x.msg.type === "verify").length;
+  r.toasts = toasts.slice();
+  return r;
+}
+const ours = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: "https://github.com/login/oauth/authorize", flow: "web" };
+const listedWith = (app) => ({ state: "listed", relays: [RELAY], app });
+const theApp = { required: true, clientID: "Iv1.abc" };
+const out = {};
+(async () => {
+` + cases + `
+  console.log(JSON.stringify(out));
+})();
+`
+}
+
+// appProbeResult is what appProbe prints for one case.
+type appProbeResult struct {
+	Standing    string
+	SignIn      bool
+	Join        bool
+	Code, Token int
+	Toasts      []string
+}
+
+// refusedAsNotOurs reports how r falls short of a relay held off entirely,
+// with the page saying it is not answering as the project's own.
+func refusedAsNotOurs(r appProbeResult) string {
+	if r.Standing != "foreign" || r.SignIn || r.Join || r.Code != 0 || r.Token != 0 {
+		return "it was used"
+	}
+	for _, s := range r.Toasts {
+		if s == "notOurs" {
+			return ""
+		}
+	}
+	return "the page did not say the session is not answering as the project's own"
+}
+
+// usedAsToday reports how r falls short of a relay the page uses fully.
+func usedAsToday(r appProbeResult, standing string) string {
+	if r.Standing != standing || !r.SignIn || !r.Join || r.Code != 1 || r.Token != 1 {
+		return "it was not used as today"
+	}
+	return ""
+}
+
+func TestAListedRelayMustNameTheRepositorysApp(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  out.foreign = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { client_id: "Iv1.someoneelse" }) });
+  out.noID = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { client_id: undefined }) });
+  out.ours = await probe({ anchorIs: listedWith(theApp), cfg: ours });
+`), &out)
+	for _, name := range []string{"foreign", "noID"} {
+		if why := refusedAsNotOurs(out[name]); why != "" {
+			t.Errorf("%s: %s: %+v", name, why, out[name])
+		}
+	}
+	if why := usedAsToday(out["ours"], "listed"); why != "" {
+		t.Errorf("a relay naming the repository's app: %s: %+v", why, out["ours"])
+	}
+}
+
+func TestAListedRelayMustOfferTheWebFlow(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  out.device = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { flow: "device" }) });
+  out.none = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { flow: undefined, sign_in: false }) });
+  out.unnamed = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { flow: undefined }) });
+  out.oauth = await probe({ anchorIs: listedWith(theApp), cfg: Object.assign({}, ours, { app_type: "oauth-app" }) });
+`), &out)
+	for name, r := range out {
+		if why := refusedAsNotOurs(r); why != "" {
+			t.Errorf("%s: %s: %+v", name, why, r)
+		}
+	}
+	if len(out) != 4 {
+		t.Fatalf("got %d cases, want 4", len(out))
+	}
+}
+
+func TestARepositoryWithoutAnAppFileBehavesAsBefore(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  const other = Object.assign({}, ours, { client_id: "Iv1.someoneelse" });
+  out.noFile = await probe({ anchorIs: listedWith({ required: false, clientID: "" }), cfg: other });
+  out.noAnswer = await probe({ anchorIs: { state: "listed", relays: [RELAY] }, cfg: other });
+`), &out)
+	for name, r := range out {
+		if why := usedAsToday(r, "listed"); why != "" {
+			t.Errorf("%s: %s: %+v", name, why, r)
+		}
+	}
+	// readRelayList reads the app file only beside a list it could read, and
+	// GitHub's 404 for it is a repository that records no app.
+	got := readListWithApp(t, map[string]string{"absent": "404"})
+	if c := got["absent"]; c.State != "listed" || c.App.Required || c.Standing[0] != "listed" {
+		t.Errorf("no app file: %+v, want the list as today", c)
+	}
+}
+
+func TestAConfirmedRelayIsNotHeldToTheAppFile(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  out.confirmed = await probe({ anchorIs: { state: "unknown", relays: [] }, confirmed: true, cfg: Object.assign({}, ours, { client_id: "Iv1.someoneelse" }) });
+`), &out)
+	if why := usedAsToday(out["confirmed"], "confirmed"); why != "" {
+		t.Errorf("a relay the person confirmed: %s: %+v", why, out["confirmed"])
+	}
+}
+
+func TestAnAppFileWithAClientSecretRefusesEveryListedRelay(t *testing.T) {
+	got := readListWithApp(t, map[string]string{
+		"secret":    `{"client_id": "Iv1.abc", "client_secret": "shh"}`,
+		"nullsec":   `{"client_id": "Iv1.abc", "client_secret": null}`,
+		"malformed": `{"client_id": "Iv1.abc"`,
+		"badID":     `{"client_id": "Iv1 abc"}`,
+		"array":     `[{"client_id": "Iv1.abc"}]`,
+		"good":      `{"client_id": "Iv1.abc"}`,
+		"forbidden": "403",
+		"offline":   "throw",
+	})
+	for _, name := range []string{"secret", "nullsec", "malformed", "badID", "array"} {
+		c := got[name]
+		if c.State != "listed" || !c.App.Required || c.App.ClientID != "" {
+			t.Errorf("%s: %+v, want an app file that names no usable client id", name, c)
+		}
+		for i, s := range c.Standing {
+			if s != "foreign" {
+				t.Errorf("%s: listed relay %d stands %q, want every listed relay refused", name, i, s)
+			}
+		}
+	}
+	if c := got["good"]; !c.App.Required || c.App.ClientID != "Iv1.abc" || c.Standing[0] != "listed" || c.Standing[1] != "listed" {
+		t.Errorf("a well-formed app file: %+v, want its client id and both relays listed once each answers as it", c)
+	}
+	// An app file GitHub would not show is a list that could not be checked:
+	// nothing reaches any relay until it can be.
+	for _, name := range []string{"forbidden", "offline"} {
+		if c := got[name]; c.State != "unavailable" {
+			t.Errorf("%s: %+v, want the list unavailable", name, c)
+		}
+	}
+	for name, c := range got {
+		if !c.AppRead {
+			t.Errorf("%s: the app file was not read from the repository's contents on api.github.com", name)
+		}
+	}
+}
+
+// listWithApp is what readListWithApp reports for one app-file answer.
+type listWithApp struct {
+	State string
+	App   struct {
+		Required bool
+		ClientID string
+	}
+	// Standing is each listed relay's standing, once it answers with the
+	// client id Iv1.abc and the web flow.
+	Standing []string
+	AppRead  bool
+}
+
+// readListWithApp runs readRelayList against a list naming two relays and,
+// per case, an app file answered as given: an HTTP status, "throw" for a
+// network error, or the file's contents.
+func readListWithApp(t *testing.T, cases map[string]string) map[string]listWithApp {
+	t.Helper()
+	js := pageScript(t)
+	enc := func(s string) string {
+		b, _ := json.Marshal(map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(s))})
+		return string(b)
+	}
+	answers, _ := json.Marshal(cases)
+	var b strings.Builder
+	for _, c := range []string{"GITHUB_API", "RELAYS_FILE", "APP_FILE"} {
+		b.WriteString(constLine(t, js, c) + "\n")
+	}
+	for _, fn := range []string{"readRelayList", "readAppFile", "appIn", "relaysIn", "decodeBlob", "relayOrigin", "repoPath", "appRequired", "appStanding", "relayStanding"} {
+		b.WriteString(functionBody(t, js, fn) + "\n")
+	}
+	b.WriteString(`
+const route = { owner: "acme", repo: "brief", slug: "acme/brief" };
+const location = { origin: "https://abcdesign.app" };
+function confirmedRelays() { return []; }
+const RELAYS = ["https://brief-relay.onrender.com", "https://second-relay.onrender.com"];
+const listBody = ` + enc(`{"relays": ["https://brief-relay.onrender.com", "https://second-relay.onrender.com"]}`) + `;
+const answers = ` + string(answers) + `;
+const files = {};
+for (const [k, v] of Object.entries(answers)) files[k] = /^[0-9]+$/.test(v) || v === "throw" ? v : { type: "file", encoding: "base64", content: Buffer.from(v).toString("base64") };
+let answer = null;
+let appRead = false;
+globalThis.fetch = async (url) => {
+  if (url === "https://api.github.com/repos/acme/brief/contents/.abcd/relay/relays.json") return { status: 200, json: async () => listBody };
+  if (url === "https://api.github.com/repos/acme/brief/contents/.abcd/relay/github-app.json") {
+    appRead = true;
+    if (answer === "throw") throw new Error("offline");
+    if (typeof answer === "string") return { status: Number(answer), json: async () => ({}) };
+    return { status: 200, json: async () => answer };
+  }
+  return { status: 500, json: async () => ({}) };
+};
+let anchor = null;
+let relayApp = null;
+const out = {};
+(async () => {
+  for (const [name, file] of Object.entries(files)) {
+    answer = file; appRead = false;
+    anchor = await readRelayList("");
+    const standing = [];
+    for (const relay of RELAYS) {
+      relayApp = { relay, clientID: "Iv1.abc", state: "ours" };
+      standing.push(relayStanding(relay));
+    }
+    out[name] = { state: anchor.state, app: anchor.app || { required: false, clientID: "" }, standing, appRead };
+  }
+  console.log(JSON.stringify(out));
+})();
+`)
+	var out map[string]listWithApp
+	runPage(t, b.String(), &out)
+	return out
+}
+
+// TestAHeldTokenWaitsForTheAppCheck: a token GitHub returned through a
+// relay the person confirmed, in a private repository whose list the token
+// then shows, becomes the token the page presents only once that relay
+// answers as the repository's app: the check runs before the token is given.
+func TestAHeldTokenWaitsForTheAppCheck(t *testing.T) {
+	script := pageHarness(t) + `
+const RELAY = "` + appRelay + `";
+const ours = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: "https://github.com/login/oauth/authorize", flow: "web" };
+async function held(cfg) {
+  sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0;
+  relayApp = { relay: "", clientID: "", state: "" }; appCheck = null; githubToken = "";
+  anchor = { state: "unknown", relays: [] };
+  confirmRelay(RELAY);
+  listSeen = { state: "listed", relays: [RELAY], app: { required: true, clientID: "Iv1.abc" } };
+  config = cfg;
+  session.relay = RELAY; tokenRelay = RELAY; heldToken = "ghu_x";
+  await presentHeldToken(false);
+  return { asked: requests.filter((q) => q.url === RELAY + "/config").length, token: githubToken, held: heldToken, sent: sent.length, toasts: toasts.slice() };
+}
+const out = {};
+(async () => {
+  out.foreign = await held(Object.assign({}, ours, { client_id: "Iv1.someoneelse" }));
+  out.ours = await held(ours);
+  console.log(JSON.stringify(out));
+})();
+`
+	var out map[string]struct {
+		Asked, Sent int
+		Token, Held string
+		Toasts      []string
+	}
+	runPage(t, script, &out)
+	if f := out["foreign"]; f.Asked != 1 || f.Token != "" || f.Held != "" || f.Sent != 0 || len(f.Toasts) != 1 || f.Toasts[0] != "notOurs" {
+		t.Errorf("a held token for a relay naming another app: %+v, want it dropped, nothing sent, and the page saying so", f)
+	}
+	if o := out["ours"]; o.Asked != 1 || o.Sent != 1 {
+		t.Errorf("a held token for the repository's own relay: %+v, want it presented once the relay answered", o)
+	}
+	present := functionBody(t, pageScript(t), "presentHeldToken")
+	check, give := strings.Index(present, "await checkRelayApp();"), strings.Index(present, "githubToken = heldToken;")
+	if check < 0 || give < 0 || check > give {
+		t.Errorf("presentHeldToken gives the token before the app check:\n%s", present)
+	}
+}
+
+// A listed relay whose /config does not answer, by a status other than 200
+// or a request that never reaches it, gets nothing, and the page says it
+// could not reach the session and offers to ask again: the start screen's
+// Try again asks the relay again, and once it answers as the repository's
+// app the page uses it.
+func TestAListedRelayThatDoesNotAnswerCanBeAskedAgain(t *testing.T) {
+	script := appProbe(t, `
+  for (const [name, failing] of [["status", 503], ["thrown", "throw"]]) {
+    sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0;
+    heldToken = ""; githubToken = ""; tokenRelay = ""; assigned = ""; listSeen = null;
+    relayApp = { relay: "", clientID: "", state: "" }; appCheck = null;
+    anchor = listedWith(theApp); config = ours; configAnswer = failing;
+    session.relay = RELAY;
+    await checkRelayApp();
+    const r = { standing: relayStanding(RELAY) };
+    await startSignIn();
+    r.signIn = assigned !== "";
+    r.join = relayClearedFor("join");
+    // Let a re-ask the refusal started settle while the relay still fails.
+    await new Promise((done) => setTimeout(done, 20));
+    r.sent = sent.length + requests.filter((q) => !q.url.endsWith("/config")).length;
+    r.toasts = toasts.slice();
+    // The relay answers now; Try again asks it again.
+    configAnswer = null;
+    await recheckRelayList();
+    r.after = relayStanding(RELAY);
+    out[name] = r;
+  }
+`)
+	var out map[string]struct {
+		Standing, After string
+		SignIn, Join    bool
+		Sent            int
+		Toasts          []string
+	}
+	runPage(t, script, &out)
+	for _, name := range []string{"status", "thrown"} {
+		r := out[name]
+		if r.Standing != "unanswered" || r.SignIn || r.Join || r.Sent != 0 {
+			t.Errorf("%s: %+v, want the relay unanswered and nothing sent to it", name, r)
+		}
+		said := false
+		for _, s := range r.Toasts {
+			said = said || s == "sessionUnreachable"
+		}
+		if !said {
+			t.Errorf("%s: the page said %v, want that the session could not be reached", name, r.Toasts)
+		}
+		if r.After != "listed" {
+			t.Errorf("%s: after the relay answered, Try again left it %q, want listed", name, r.After)
+		}
+	}
+}
+
+// startSignIn signs in with the repository's own app alone: a relay that
+// answered as that app at the check and names another client id by the
+// time the person signs in gets no sign-in.
+func TestASignInUsesOnlyTheRepositorysClientID(t *testing.T) {
+	var out map[string]appProbeResult
+	runPage(t, appProbe(t, `
+  sessionStorage.m.clear(); requests.length = 0; toasts.length = 0; sent.length = 0; assigned = "";
+  relayApp = { relay: "", clientID: "", state: "" }; appCheck = null;
+  anchor = listedWith(theApp); config = ours; session.relay = RELAY;
+  await checkRelayApp();
+  config = Object.assign({}, ours, { client_id: "Iv1.someoneelse" });
+  await startSignIn();
+  out.changed = { standing: relayStanding(RELAY), signIn: assigned !== "", toasts: toasts.slice() };
+  config = ours; toasts.length = 0; assigned = "";
+  await startSignIn();
+  out.same = { standing: relayStanding(RELAY), signIn: assigned !== "", toasts: toasts.slice() };
+`), &out)
+	if c := out["changed"]; c.SignIn || len(c.Toasts) != 1 || c.Toasts[0] != "notOurs" {
+		t.Errorf("a relay naming another client id at sign-in: %+v, want no sign-in and the page saying so", c)
+	}
+	if c := out["same"]; !c.SignIn {
+		t.Errorf("the repository's own client id: %+v, want the sign-in started", c)
 	}
 }

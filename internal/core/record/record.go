@@ -344,7 +344,8 @@ func describeIntent(repoRoot, id string) (Description, error) {
 			// work, not the implementer's.
 			d.NextMoves = []string{
 				"open questions — " + q.Detail + "; hold the planning interview (`abcd " + verbIntentInterview + " " + id +
-					"`, a human-session act) to settle each in the record's `## Decisions`, then re-check with `abcd " + verbIntentReady + " " + id + "`",
+					"`, a human-session act) to settle each in the record's `## Decisions`, then re-check with `abcd " + verbIntentReady + " " + id + "`" +
+					"; while the person is away (abcd mode autonomous), " + intent.OpenQuestionsAwayRoute,
 			}
 		} else {
 			for _, c := range ready.Checks {

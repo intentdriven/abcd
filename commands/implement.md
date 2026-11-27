@@ -1141,6 +1141,15 @@ over each of the run's lanes' own diff.
    landing's note, and a tombstone origin refuses is named there and never
    undoes the landing. The branch removal touches only the lane's
    `build/<run>-<lane>`, never the reservation branch.
+   Once the landing is proved, the step observes it for the spot-check, as
+   `abcd land` does at a landed re-run (`commands/land.md`, "The spot-check at
+   a landing"), and the landing's note carries what the observation did; a
+   draw that cannot be made writes nothing and never undoes the landing. In
+   `auto` mode the merge gate's decision abcd takes alone at the arming is kept
+   for the spot-check on this checkout's local copy of its record, made from the
+   decision as given; a record that cannot be written leaves the decision
+   standing, its reason saying so, and a parked lane asking the gate again over
+   the same head keeps one record.
 
 A conflicting pull request that is refused names what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in

@@ -34,8 +34,9 @@ const BundledBundleMax = 1
 // one reviewable pull request.
 const maxBundleMax = 10
 
-// The configuration key the cap claims, under the `drain` namespace of
-// .abcd/config.json and ~/.abcd.noindex/config.json.
+// The configuration key the cap reads, under the `drain` namespace of
+// .abcd/config.json and ~/.abcd.noindex/config.json; the namespace's every
+// key is drainKeys (drain_inwork.go).
 const (
 	drainNamespace = "drain"
 	keyBundleMax   = "bundle_max"
@@ -77,7 +78,10 @@ func resolveBundleMax(roots layered.Roots) (PaceValue, string, error) {
 	if err != nil {
 		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
-	if err := s.Claim(drainNamespace, keyBundleMax); err != nil {
+	// The namespace is claimed with every key it holds, the lanes-in-work
+	// limit's among them (drain_inwork.go), so a file setting that one is
+	// not refused here as a misspelt key.
+	if err := s.Claim(drainNamespace, drainKeys...); err != nil {
 		return PaceValue{}, "", bundleMaxRefusal(err.Error())
 	}
 	key := drainNamespace + "." + keyBundleMax

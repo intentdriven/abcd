@@ -1124,7 +1124,9 @@ A lane's stages run in order:
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, deleting the branch only at a tip that commit stores,
    the lane is done, and the next pending step opens the
-   next lane. In a repository abcd manages, that step then sweeps on its own
+   next lane. The proved landing is observed for the spot-check, as `abcd
+   land` observes one (`commands/land.md`, "The spot-check at a landing"),
+   and its note says what the observation did. In a repository abcd manages, that step then sweeps on its own
    once its save is written: the provably spent part of `abcd sweep --apply`,
    with the same proofs against a fresh fetch (other merged, clean worktrees
    removed, a dirty one's work saved and kept, the merged lane branches

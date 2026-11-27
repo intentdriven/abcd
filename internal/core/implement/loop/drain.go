@@ -42,6 +42,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landings"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
@@ -92,7 +93,20 @@ const drainLockRel = RunRelDir + "/drain.lock"
 // no bundle, and written back at version 4; a file of version 3 or lower
 // carrying any of them is refused naming it. Releases that write version 3
 // refuse a version-4 file as a newer abcd's before any strict decode.
-const DrainSchemaVersion = 4
+//
+// Version 5 is a drain that holds its lanes in work to a limit
+// (itd-2611251809580662 decision 2): the drain's `in_work_max`, the limit it
+// started with, with its layer and origin (drain_inwork.go). Version 4 and
+// lower are its strict subsets, read as a drain that started with the bundled
+// limit of one lane in work, its layer recorded as `bundled`, and written back
+// at version 5; a file of version 4 or lower carrying it is refused naming
+// it. Releases that write version 4 refuse a version-5 file as a newer abcd's
+// before any strict decode.
+const DrainSchemaVersion = 5
+
+// drainSchemaVersionUnworked is the drain state's version before the limit on
+// lanes in work: read, never written.
+const drainSchemaVersionUnworked = 4
 
 // drainSchemaVersionUnbundled is the drain state's version before bundles:
 // read, never written.
@@ -213,6 +227,11 @@ type DrainState struct {
 	// drain keeps it, whatever the files say by then (drain_bundle.go). Nil
 	// reads as the bundled cap.
 	BundleMax *PaceValue `json:"bundle_max,omitempty"`
+	// InWorkMax is drain.in_work_max, or --in-work, as the drain started
+	// with it, the layer and origin it came from: the most lanes the drain
+	// holds in work at once. A running drain keeps it, whatever the files
+	// say by then (drain_inwork.go). Nil reads as the bundled one.
+	InWorkMax *PaceValue `json:"in_work_max,omitempty"`
 	// Forming is the bundle the drain's moves are forming, its lead and the
 	// members judged so far, each with its hold; nil while none forms.
 	Forming *DrainForming `json:"forming,omitempty"`
@@ -282,6 +301,10 @@ type DrainRoute struct {
 type DrainOptions struct {
 	// Max is --max as typed; 0 when not given, which is all.
 	Max int
+	// InWork is --in-work as typed: the most lanes a drain beginning now
+	// holds in work, 1 to MaxInWorkMax; 0 when not given, which reads the
+	// repository's figure (drain_inwork.go).
+	InWork int
 	// Judgement is --judgement: the path of the host's answer to the
 	// judgement the drain awaits; empty when not given.
 	Judgement string
@@ -463,6 +486,12 @@ type DrainResult struct {
 	// Skips is the drain's skip list as this call leaves it: empty once the
 	// drain has ended, which clears it (drain_skip.go).
 	Skips []DrainSkip `json:"skips"`
+	// InWork is the drain's lanes in work against its limit as this call
+	// leaves them, and Held the person's live reservations against their
+	// ceiling, when the move's view could tell them (nil otherwise)
+	// (drain_inwork.go).
+	InWork LanesInWork `json:"in_work"`
+	Held   *HeldCount  `json:"held,omitempty"`
 	// passedOnly are the lanes in progress a drive passed over, set when they are
 	// all the drain has left: it would have stopped at its cap or as empty, and
 	// stays open for them instead (DrainOptions.PassedLanes).
@@ -555,6 +584,11 @@ func drainOnce(repoRoot string, o Options, d DrainOptions) (DrainResult, error) 
 		return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("--max %d is not a number of lanes", d.Max),
 			"give --max a whole number of lanes, 1 or more, or leave it out to drain all")
 	}
+	if d.InWork != 0 {
+		if err := checkInWorkMax(d.InWork); err != nil {
+			return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("--in-work %d: %v", d.InWork, err), inWorkMaxForm)
+		}
+	}
 	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
 		return DrainResult{}, err
@@ -645,8 +679,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// bundleIgnored names a repository's drain.bundle_max above the cap
 	// it may only lower, when a new drain ignored one (drain_bundle.go).
 	bundleIgnored := ""
+	// inWorkNote says why a new drain read no repository figure for
+	// drain.in_work_max where it could not, or that a drive narrowed the
+	// limit of the drain it took up to its one lane (drain_inwork.go).
+	inWorkNote := ""
+	// beside are the lanes in work a move went on past, below the limit, to
+	// ask or open another, and besideNamed whether its next step named them
+	// already (drain_inwork.go).
+	var beside []inWorkLane
+	besideNamed := false
 	var repace *drainRepace
 	stillPace := st.Pace
+	// A drive holds one lane in work whatever the limit, and takes no other
+	// (driveInWorkMax).
+	if d.driveEnds && d.InWork > 1 {
+		return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("--in-work %d names more than one lane in work, and %s", d.InWork, driveInWorkOrigin),
+			"drive without --in-work; a drive holds one lane in work, until its pull request is queued or it is handed back")
+	}
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
 		if err != nil {
@@ -658,18 +707,45 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if bundleMax, bundleIgnored, err = resolveBundleMax(o.roots(repoRoot)); err != nil {
 			return DrainResult{}, err
 		}
+		// So is the limit on lanes in work, at origin's default branch
+		// (drain_inwork.go).
+		// A drive's drain holds the drive's one, reading no figure; the
+		// machine's file is still refused for carrying one.
+		var inWorkMax PaceValue
+		if d.driveEnds {
+			if err = refuseMachineInWork(o.roots(repoRoot)); err != nil {
+				return DrainResult{}, err
+			}
+			inWorkMax = driveInWorkMax()
+		} else if inWorkMax, inWorkNote, err = resolveInWorkMax(repoRoot, o.roots(repoRoot), d.InWork); err != nil {
+			return DrainResult{}, err
+		}
 		// A hand-back an ended drain could not publish is still a person's,
 		// so the new drain keeps it pending (drain_pending.go).
 		pending := st.PendingHandBacks
 		st = DrainState{SchemaVersion: DrainSchemaVersion, StartedAt: now, UpdatedAt: now, Rule: rule.Record,
 			Max: d.Max, Pace: &pace, WindowStartedAt: &now, Lanes: []DrainLane{}, HandBacks: []DrainRoute{},
-			PendingHandBacks: pending, BundleMax: &bundleMax}
+			PendingHandBacks: pending, BundleMax: &bundleMax, InWorkMax: &inWorkMax}
 		started = true
 	} else {
 		if d.Max != 0 && d.Max != st.Max {
 			return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("the drain started %s is in progress with %s; --max %d names another, and a cap is set when a drain starts",
 				st.StartedAt.Format(time.RFC3339), capPhrase(st.Max), d.Max),
 				"drain again without --max; the drain keeps the cap it started with")
+		}
+		if c := st.inWorkCap(); d.InWork != 0 && d.InWork != c.Value {
+			return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("the drain started %s is in progress holding %d %s in work (%s); --in-work %d names another, and the limit is set when a drain starts",
+				st.StartedAt.Format(time.RFC3339), c.Value, plural(c.Value, "lane", "lanes"), c.Origin, d.InWork),
+				"drain again without --in-work; the drain keeps the limit it started with")
+		}
+		// A drive that takes up a drain holds it to one lane in work from
+		// this move on, for the rest of the drain's life (driveInWorkMax).
+		if c := st.inWorkCap(); d.driveEnds && c.Layer != driveInWorkLayer {
+			if c.Value > 1 {
+				inWorkNote = fmt.Sprintf("%s, so this drain now holds 1 lane in work, not the %d it started with (%s)", driveInWorkOrigin, c.Value, c.Origin)
+			}
+			v := driveInWorkMax()
+			st.InWorkMax = &v
 		}
 		// A running drain takes a new pace rather than refusing it
 		// (drain_pace.go).
@@ -742,6 +818,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if bundleIgnored != "" {
 			res.Next = joinNext(res.Next, bundleIgnored)
 		}
+		// The lanes in work a move went on past are named beside what it
+		// asked or opened (drain_inwork.go).
+		if len(beside) > 0 && !besideNamed {
+			res.Next = joinNext(res.Next, besideNext(beside, st.inWorkCap().Value, res.Held))
+		}
+		if inWorkNote != "" {
+			res.Next = joinNext(res.Next, inWorkNote)
+		}
 		// The state is written before any hold is released over the network
 		// (iss-2611260523161723): no push sits between a new lane's run
 		// write and the drain state's, and a move killed in a release's push
@@ -794,6 +878,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if note := spotcheckRecords(d.Context, repoRoot, st); note != "" {
 			res.Next = joinNext(res.Next, note)
 		}
+		// The spot-check observes origin's default branch as this move
+		// fetched it, the third observing site (spc-2610301925429250
+		// approach 3); its note is the move's to read, and nothing of the
+		// move waits on it. A move that could not read origin observes
+		// nothing.
+		if origin != nil {
+			def := strings.TrimPrefix(origin.Ref, claim.Remote+"/")
+			if sc := observeLanding(ctxOr(d.Context), spotcheck.Observed{Root: repoRoot, Default: def, Site: spotcheck.SiteDrain}); sc != "" {
+				res.Next = joinNext(res.Next, sc)
+			}
+		}
 		// The lanes in progress take a new pace only once the move has
 		// written it, so a move refused before here takes none.
 		if repace != nil {
@@ -826,6 +921,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			res.Skips = []DrainSkip{}
 		}
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
+		res.InWork = st.lanesInWork(repoRoot, d)
 		// The normal ending is claimed only once every lane has ended: an
 		// outage stop is taken before the lane in progress is read, so a
 		// drain can stop with a lane still mid-flight.
@@ -920,6 +1016,29 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		} else {
 			viewUnread = "the reservations this move fetched could not be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
 				"), so held work was judged by each reservation act alone, and the drain's own judgement hold by the commit it records"
+		}
+	}
+	// The cap is the person's, as the repository sets it at origin's default
+	// branch and this machine may lower it (reservation.max_live,
+	// claim.MaxLiveFor), read with no network act at the branch origin
+	// last named to a reservation act here, so a branch this checkout merely
+	// tracks does not hold the drain at a wait; where no act here has saved
+	// that name, or the setting cannot be read, no figure is read and the
+	// count is left to the reservation act, which asks origin and decides.
+	// capHolder is the holder this copy reserves as (claim.ReaderSelf:
+	// unknown when neither a holder id nor a login can be read here, where
+	// each reservation act counts it instead), and also the reader the
+	// pass-over below judges for (Snapshot.Contention): this copy's own
+	// reservations are those made under a holder it owns, as the reservation
+	// act reads them (iss-2611190011141331). The move's view of the person's
+	// holds against the cap is named in its wait sentences (res.Held).
+	var capHolder claim.Self
+	capLimit, capLayer, capErr := claim.MaxLive, "", error(nil)
+	if view != nil {
+		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
+		capLimit, capLayer, capErr = claim.MaxLiveFor(repoRoot, claimOptions(now))
+		if capHolder.Known() && capErr == nil {
+			res.Held = &HeldCount{Live: len(view.LiveHeldBy(capHolder, "")), Limit: capLimit, Layer: capLayer}
 		}
 	}
 
@@ -1167,6 +1286,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	var bounds *stuckBounds
 	var owed *DrainLane
 	var owedRun State
+	// working are the lanes in work (drain_inwork.go): every lane in
+	// progress but one owing only its withdrawal, which is not counted.
+	var working []inWorkLane
 	for i := range st.Lanes {
 		l := &st.Lanes[i]
 		// A lane the drive passed over is not read for its outcome: it is the later
@@ -1229,12 +1351,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 				continue
 			}
-			res.Next = fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s` (one lane at a time); run `abcd drain` again once it is handed back or its pull request is open",
-				l.Issue, l.RunID, l.RunID)
-			if note := refusingNote(run, *bounds); note != "" {
-				res.Next += "; " + note
-			}
-			return finish(true)
+			working = append(working, inWorkLane{lane: *l, run: run})
+			continue
 		case DrainLaneHandedBack:
 			// The issue is a person's again: its reservation is released
 			// rather than left to hold others off until it lapses. A
@@ -1248,12 +1366,42 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		l.Outcome, l.PR = outcome, pr
 	}
-	if owed != nil {
-		res.Next = owedNext(*owed, owedRun, *bounds, now)
+	// The gate on the next lane (drain_inwork.go): the move goes on to ask
+	// or open another only while its lanes in work are below the drain's
+	// limit. A lane owing only the withdrawal its hand-back owes is not
+	// counted, but it is settled before any new lane opens, as it always
+	// has been: a drive drives the lane the move names, and a new lane beside
+	// it would leave its pull request armed.
+	inWorkLimit := st.inWorkCap().Value
+	if owed != nil || len(working) >= inWorkLimit {
+		// The lanes in work are named first and alone, as the lane a drive
+		// takes up; the owed lane is named once none is in work.
+		if len(working) == 0 {
+			res.Next = owedNext(*owed, owedRun, *bounds, now)
+		} else {
+			res.Next = joinNext(inHandNext(working, inWorkLimit, res.Held, *bounds), st.driveHolds())
+		}
 		return finish(true)
+	}
+	beside = working
+	// inHand ends a move that went on past its lanes in work and opened
+	// nothing more, why saying why: it neither stops nor waits while a lane
+	// is in work, and names each with both counts. ok is false with none in
+	// work, where the move ends as it would without the gate.
+	inHand := func(why string) (bool, DrainResult, error) {
+		if len(working) == 0 {
+			return false, DrainResult{}, nil
+		}
+		res.Next = joinNext(inHandNext(working, inWorkLimit, res.Held, *bounds), res.Next, "it opens no other lane: "+why, st.driveHolds())
+		besideNamed = true
+		r, err := finish(true)
+		return true, r, err
 	}
 
 	if st.Max > 0 && len(st.Lanes) >= st.Max {
+		if ok, r, err := inHand(fmt.Sprintf("the cap is reached: --max %d, and the drain opened %d lane(s)", st.Max, len(st.Lanes))); ok {
+			return r, err
+		}
 		if passed := passedInProgress(st, d); len(passed) > 0 {
 			return finish(passedOnlyMove(&res, passed, d.SetAside, "the cap is reached"))
 		}
@@ -1295,31 +1443,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	var cooling time.Time
 	// The wait this move may end in (drain_wait.go): the cap, counted in the
 	// move's view before any reservation or judgement for the holder this
-	// copy reserves as, read with no network act (claim.ReaderSelf: unknown
-	// when neither a holder id nor a login can be read here, where each
-	// reservation act counts it instead), and the
-	// issues passed over because another holds them. A wait the drain was
-	// in is taken off here, and written again if the move still waits.
+	// copy reserves as (capHolder, above), and the issues passed over
+	// because another holds them. A wait the drain was in is taken off here,
+	// and written again if the move still waits.
 	prevWait := waitFrom(&st)
-	// capHolder is also the reader the pass-over below judges for
-	// (Snapshot.Contention): this copy's own reservations are those made
-	// under a holder it owns, as the reservation act reads them
-	// (iss-2611190011141331).
-	var capHolder claim.Self
-	// The cap is the person's, as the repository sets it at origin's default
-	// branch and this machine may lower it (reservation.max_live,
-	// claim.MaxLiveFor), read with no network act at the branch origin last
-	// named to a reservation act here, so a branch this checkout merely
-	// tracks does not hold the drain at a wait; where no act here has saved
-	// that name, or the setting cannot be read, no figure is read and the
-	// count is left to the reservation act, which asks origin and decides.
-	capLimit, capErr := claim.MaxLive, error(nil)
-	if view != nil {
-		capHolder = claim.ReaderSelf(repoRoot, claimOptions(now))
-		if reserving {
-			capLimit, capErr = claim.MaxLiveFor(repoRoot, claimOptions(now))
-		}
-	}
 	var capped, held []string
 	// visited are the issues this move has walked, each walked once, but for
 	// one the walk stopped at for the reservation cap, walked again should a
@@ -1770,10 +1897,27 @@ walk:
 	// keeps its judgements; it stops as empty only when nothing eligible is
 	// left, held or not (drain_wait.go).
 	if capped != nil {
-		return finish(waitMove(&st, &res, prevWait, DrainWaitCap, capWaitText(capped, runs), now, time.Time{}))
+		capHeld := res.Held
+		if capHeld != nil {
+			c := *capHeld
+			c.Live = len(capped)
+			capHeld = &c
+		}
+		why := capWaitText(capped, runs, countsPhrase(len(working), inWorkLimit, capHeld))
+		if ok, r, err := inHand(why); ok {
+			// Prior waits are not kept: the move drives the lanes in work.
+			return r, err
+		}
+		return finish(waitMove(&st, &res, prevWait, DrainWaitCap, why, now, time.Time{}))
 	}
 	if len(held) > 0 {
+		if ok, r, err := inHand(heldWaitText(held, len(st.Judgements))); ok {
+			return r, err
+		}
 		return finish(waitMove(&st, &res, prevWait, DrainWaitHeld, heldWaitText(held, len(st.Judgements)), now, cooling))
+	}
+	if ok, r, err := inHand("nothing else eligible is left to open beside it"); ok {
+		return r, err
 	}
 	if !cooling.IsZero() {
 		at := stamp(cooling)
@@ -2197,6 +2341,13 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 				"the drain is the file's only writer; restore it or remove it")
 		}
 	}
+	// version is the file's own, before an older one is read as the current.
+	version := st.SchemaVersion
+	if version <= drainSchemaVersionUnworked && st.InWorkMax != nil {
+		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries `in_work_max`, which version %d never wrote",
+			DrainStateRel, version, version),
+			"the drain is the file's only writer; restore it or remove it")
+	}
 	if st.SchemaVersion <= drainSchemaVersionUnbundled {
 		if p := st.bundled(); p != "" {
 			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
@@ -2208,6 +2359,16 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		st.BundleMax = &bundled
 		// Read as the current version; the move's write carries it.
 		st.SchemaVersion = DrainSchemaVersion
+	}
+	if version <= drainSchemaVersionUnworked {
+		// A drain before the limit held one lane in work at a time.
+		limit := bundledInWorkMax()
+		st.InWorkMax = &limit
+		st.SchemaVersion = DrainSchemaVersion
+	}
+	if !inWorkMaxWritten(st.InWorkMax) {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a limit on lanes in work the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
 	}
 	if !st.bundlesWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a bundle or a bundle cap the drain never writes",

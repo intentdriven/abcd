@@ -178,6 +178,56 @@ dcn-2611201515310051): once a lead is judged, the issues of its category and
 area are taken into its lane at either severity the record takes, so a `minor`
 member is fixed ahead of an older issue, or a `nitpick` one, in another area.
 
+## Lanes in work: the limit
+
+A drain holds its lanes in work to a limit (itd-2611251809580662 decision 2,
+spc-2611251810508418 step 2; `internal/core/implement/loop/drain_inwork.go`).
+A lane is in work while the drain reads it in progress for any reason but the
+withdrawal its hand-back owes: a lane whose landing armed its merge, or left
+its pull request open for a person, reads as a pull request and leaves the
+count, keeping its reservation until the merge and counting against the
+person's `reservation.max_live`. A lane owing only its withdrawal is not
+counted, and is still settled before another lane opens, since a drive drives
+the lane the move names and a new lane beside it would leave that pull
+request armed. A bundle's lane counts once.
+
+`drain.in_work_max` is the limit, a whole number from 1 to 10 and 1 by
+default, so a drain works one lane at a time as it always has. It is the
+repository's and the run's, never one machine's: it resolves once, when a
+drain begins, from the run's own flag, then the repository's `.abcd/config.json`
+read as stored at the commit origin itself names as its default branch's tip
+(`claim.AskOriginDefault`, the read an act adding a reservation makes for
+`reservation.max_live`), never from a working tree or another branch, then the
+bundled 1. A `drain.in_work_max` in `~/.abcd.noindex/config.json` is refused
+naming the file. A repository value outside 1 to 10 refuses the drain's start
+naming the file at the branch; an origin that cannot be asked, or names no
+default branch, leaves the bundled 1, the lowest the setting can be, and the
+move says why. The limit is kept on the drain's state as `in_work_max` with
+its layer and origin, and a running drain takes no new one; the flag naming
+another while it runs is refused, as a differing lane cap is, and a drive
+refuses the flag. A drive holds one lane in work whatever the figure, since
+it drives each lane until its pull request is queued or it is handed back and
+returns to a lane still in progress after a refused step: a lane opened beside
+it would sit reserved with no one driving it. A drain a drive begins reads no
+figure and records the drive's 1 with layer `drive`; one a drive takes up is
+narrowed to it from that move on, for the rest of its life, the move saying
+the limit it narrowed, and the stored layer agrees with its value and origin
+or the state is refused. Both of the drain's resolvers claim the `drain`
+namespace with both of its keys, from one list.
+
+In the move, the loop over the drain's lanes counts the lanes in work. Below
+the limit the move goes on to ask or open the next lane and names every lane
+in work beside it; at the limit, or with nothing more it may open (the
+reservation cap, the lane cap, held work only, nothing eligible), it names the lanes to drive and
+neither stops nor waits. The result carries `in_work` (the count, the limit
+and its layer and origin) and `held` (the person's live reservations, the
+ceiling and the layer that set it, when the move's view could tell them), and
+both wait sentences, the one naming the lanes to drive and the wait at the
+cap, name both counts: "1 of 1 lane in work; you hold 7 of the 10
+reservations the repository allows". `abcd peers` shows the drain's row under
+the ceiling's, read from the drain's state through `loop.DrainInWork`, absent
+with no drain in progress.
+
 ## Bundles: the cap and who joins
 
 A lane may take several issues of one kind in one place, one branch and one
@@ -256,13 +306,17 @@ the bundle forming, with its lead and the members taken so far; the payload
 carries a lane's members in `bundle` and the bundle forming in `forming`
 (`lead`, `members`), absent when none forms.
 
-The drain's state is version 4, which holds every field bundling needs: the
-drain's `bundle_max` and `forming`, and a lane's `bundle`, `split` and
-`ci_minutes`, each written only once the drain uses it. A version-3 state is
-read as a drain that started with the bundled cap, its layer recorded as
-`bundled`, and is written back at 4; a version-3 file carrying any of those
-fields is refused naming it, and releases that write version 3 refuse a
-version-4 file as a newer abcd's.
+The drain's state version 4 holds every field bundling needs: the drain's
+`bundle_max` and `forming`, and a lane's `bundle`, `split` and `ci_minutes`,
+each written only once the drain uses it. A version-3 state is read as a
+drain that started with the bundled cap, its layer recorded as `bundled`; a
+version-3 file carrying any of those fields is refused naming it, and
+releases that write version 3 refuse a version-4 file as a newer abcd's.
+Version 5 adds the drain's `in_work_max`: a version-4 state or lower is read
+as a drain that started with the bundled limit of one lane in work and is
+written back at 5, one of version 4 or lower carrying it is refused naming
+it, and releases that write version 4 refuse a version-5 file as a newer
+abcd's.
 
 ## Loud loosening
 
@@ -805,8 +859,9 @@ on origin's default branch backs off, with a tip or without one
    `next_eligible_at` (now plus the pause) into the drain's state and opens
    nothing; the next invocation after that time opens the next window and
    continues.
-4. When the lane it opened last is still in progress, it names the run to drive
-   with the implement loop's step verb and opens nothing: one lane at a time.
+4. When its lanes in work stand at the drain's limit (`drain.in_work_max`, one
+   by default), it names the run of each to drive with the implement loop's
+   step verb and opens nothing; below the limit it goes on to the next lane.
    A lane that cannot finish is handed back as stuck instead
    (spc-2610161044461448 step 5, dcn-2610161040382067). Each refused step of
    an issue run, until its pull request is armed or left open, is logged on its lane with its stage, its check, its reason
@@ -1518,6 +1573,7 @@ Sub-verbs: none.
 | `--drive` | bool |
 | `--dry-run` | bool |
 | `--fix-rounds` | string |
+| `--in-work` | int |
 | `--judgement` | string |
 | `--max` | int |
 | `--no-self-update` | bool |

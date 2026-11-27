@@ -306,6 +306,7 @@ Sub-verbs: none.
 | `--client-id` | string |
 | `--listen` | string |
 | `--origin` | stringArray |
+| `--own-origin` | string |
 | `--owner` | stringArray |
 | `--repo` | stringArray |
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/spotcheck"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -419,10 +420,14 @@ func rearmGate(ask ForgeCall, root, repo, pr, head string) (bool, string, error)
 	if err != nil {
 		return false, "", err
 	}
-	if d.Unread {
-		return false, "", errors.New(d.Why)
+	why := d.Why
+	if note := recordGate(root, spotcheck.SiteRearm, pr, head, d); note != "" {
+		why += "; " + note
 	}
-	return d.Arm, d.Why, nil
+	if d.Unread {
+		return false, "", errors.New(why)
+	}
+	return d.Arm, why, nil
 }
 
 // The release hold's arming is held to the merge gate here: claim cannot import

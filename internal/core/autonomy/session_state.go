@@ -65,6 +65,20 @@ type SessionState struct {
 	// takes it into the session's context.
 	ChecklistNoted string `json:"checklist_noted,omitempty"`
 	ChecklistNote  string `json:"checklist_note,omitempty"`
+	// PersonPromptAt is when the person last typed a prompt in this session
+	// while the away record held (NotePrompt), zero before one; for
+	// ConversationWindow after it, under the record it was typed under, the
+	// session reads as present (iss-2611260602137306, Conversing).
+	PersonPromptAt time.Time `json:"person_prompt_at,omitempty"`
+	// CronPrompts are the hashed prompts of the session's wakes the stop
+	// checks have seen, present or away (KeepWakes), newest last and at most
+	// maxCronPrompts, so the prompt hook can tell a wake firing from the
+	// person typing.
+	CronPrompts []string `json:"cron_prompts,omitempty"`
+	// CronPromptsUnmatched marks a session whose last stop listed wakes
+	// that cannot all be told from the person typing (more than CronPrompts
+	// keeps, or a slash command): no prompt opens its window while it holds.
+	CronPromptsUnmatched bool `json:"cron_prompts_unmatched,omitempty"`
 }
 
 // sessionStatePath is the session's state file below the working copy at

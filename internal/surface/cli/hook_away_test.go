@@ -78,6 +78,8 @@ func assertAwayBlock(t *testing.T, where, text string) {
 		"adding a dependency",
 		"force push",
 		"spends money",
+		// iss-2611260602175153: an intent's open question never stops the work.
+		"An intent's open planning question is never a reason to stop",
 		"Run `abcd mode back` only on the person's word in this session",
 	} {
 		if !strings.Contains(text, want) {

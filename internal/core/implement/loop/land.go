@@ -3155,8 +3155,17 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 	if tidy := tidyReservation(c, *lane); tidy != "" {
 		note += "; " + tidy
 	}
+	// The spot-check observes the landing just proved; its note is the
+	// run's to read, and nothing of the landing waits on it.
+	if sc := observeLanding(context.Background(), spotcheck.Observed{Root: c.RepoRoot, Default: def, Site: spotcheck.SiteLane}); sc != "" {
+		note += "; " + sc
+	}
 	return Outcome{Note: note}, nil
 }
+
+// observeLanding is spotcheck.AfterLanding, the seam a test counts the
+// observations through.
+var observeLanding = spotcheck.AfterLanding
 
 // retireLanded removes a landed lane's worktree and branch once merged, the
 // default branch's commit the landing was proved on, holds what the lane

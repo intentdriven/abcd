@@ -184,8 +184,10 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 			"later: lines next, the question last, the decide-later option last) before\n" +
 			"it is judged. A line the draft does not carry is never invented: the\n" +
 			"check names it.\n\n" +
-			"The verb reads the stores the hook reads (the away record, and the mode\n" +
-			"where the status line's badge shows) and calls the one decision the hook\n" +
+			"The verb reads the stores the hook reads (the away record, the\n" +
+			"conversation window of the session the host's environment names, read in\n" +
+			"that session's start copy, and the mode where the status line's badge\n" +
+			"shows) and calls the one decision the hook\n" +
 			"calls, so it reports every finding, the rows each tab takes at 80 columns\n" +
 			"(header and frame, question text, options, total), what the hook would do\n" +
 			"with the draft in this checkout now (admit, admit-with-rows-note, refuse,\n" +
@@ -232,7 +234,9 @@ func newGuardQuestionCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "guard question: " + err.Error()}
 			}
 			cwd, _ := os.Getwd()
-			reads := questionState(cmd, cwd)
+			// The session is the one the host's environment names, so the
+			// verb reads the window the hook would read for it.
+			reads := questionState(cmd, cwd, os.Getenv(hostSessionIDEnv))
 			v := question.Decide(fields, reads.state, reads.state.Limits)
 			res := questionCheckOf(form, v, structural, ready, reads)
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {

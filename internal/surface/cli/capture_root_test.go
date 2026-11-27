@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/findings"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
@@ -396,6 +397,23 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				}
 				if _, serr := os.Stat(filepath.Join(repo, filepath.FromSlash(res.Path))); serr != nil {
 					t.Errorf("the surprise reported at %q is not in the checkout ledger: %v", res.Path, serr)
+				}
+			},
+		},
+		// The list itself is under abcd's home; the verb reaches the ledger to
+		// answer a --captured claim, which the checkout's open record must
+		// hold from the subdirectory.
+		"owed": {
+			args: func([]string, string) []string { return []string{"capture", "owed", "--json"} },
+			check: func(t *testing.T, repo string, ids []string, _ string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture owed from the subdirectory: %v\n%s", err, out)
+				}
+				t.Setenv("HOME", t.TempDir())
+				gitCommitAt(t, repo, "root")
+				h := plantEntry(t, repo, findings.KindUntested, "a finding the checkout's record captures")
+				if out, err := runCLIErr(t, "capture", "owed", h, "--captured", ids[0], "--json"); err != nil {
+					t.Fatalf("capture owed --captured %s from the subdirectory did not read the checkout's record: %v\n%s", ids[0], err, out)
 				}
 			},
 		},
