@@ -142,8 +142,8 @@ func fileWriteFailOpen(w io.Writer, format string, a ...any) error {
 // storeWriteRefusal is the host's deny for a file tool writing the stop, the
 // facilitator's setting or the checklist by any of the readings of its path, or
 // nil. The stop and its setting are the person's to write, wherever the file tool
-// stands (itd-2611041549471712), and so are the person's facilitator entries and
-// the computer's settings file (itd-2611252049031692).
+// stands (itd-2611041549471712), and so is the computer's settings file, whose
+// facilitator.mode is the person's own setting (itd-2611252049031692).
 // The checklist is the verbs' to write (spc-2610230805429429 step 5): a mistake
 // filter only, since a shell line still reaches the file and the reader holds.
 func storeWriteRefusal(tool string, readings ...string) error {

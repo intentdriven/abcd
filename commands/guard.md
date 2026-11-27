@@ -1643,15 +1643,16 @@ bundled registry on its own, the entry warns.
 
 Merging is the technical facilitator's decision where `facilitator.mode` is
 `human`. The guard reads the mode the way `abcd land`'s merge gate does: from
-the default branch's committed `.abcd/config.json` and
-`~/.abcd.noindex/config.json`, a `human` in either winning. It reads the default
+the default branch's committed `.abcd/config.json`, which decides, and only
+where it commits none from `~/.abcd.noindex/config.json`. It reads the default
 branch as origin names it, just fetched within about 15 seconds, never this checkout's
 own refs, and a mode it cannot read, an unreachable or slow origin included,
 counts as `human`; so does a checkout where gh would act on another remote
 (`upstream`, `github`, or a `gh repo set-default` choice). While it
 is `human`, these commands are a **block**, each naming the setting that allows
-it (`facilitator.mode: auto` on the default branch, with no `human` in the
-machine layer): `gh pr merge --auto` (`merge-auto-human`); any other
+it (`facilitator.mode: auto` in the default branch's committed
+`.abcd/config.json`, or, where it commits none, in
+`~/.abcd.noindex/config.json`): `gh pr merge --auto` (`merge-auto-human`); any other
 `gh pr merge` that merges, into the queue where one gates the default branch
 and at once where none does (`merge-now-human`; `gh pr merge --disable-auto`
 withdraws an arming and is allowed); a `gh api graphql` whose query is the
