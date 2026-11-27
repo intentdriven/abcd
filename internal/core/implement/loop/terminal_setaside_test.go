@@ -803,3 +803,82 @@ func TestALaneTakenUpAgainIsNotNamedLeftToLapseAtAKill(t *testing.T) {
 		t.Fatalf("the end names a hold taken up again as left to lapse: %+v\n%s", res, w.said())
 	}
 }
+
+// TestALetGoTheComparisonStopsNamesAnEarlierDrivesLeftHoldAsLeftToLapse: a lane an earlier
+// drive set aside, its hold left to lapse, is still listed in progress when a later drive,
+// another lane in hand, ends on a changed setting. The later drive passed over nothing, so
+// the lane's line is the held change's, and since no renewal that reads no driver keeps a
+// hold left to lapse (leftToLapse; claim.RenewDue), it names the take-up alone
+// (UnlessKeptTakenUp); the lane in hand, its note taken off, keeps its run's renewers.
+// Watched failing before leftHeld read the note: the left lane's line named the waiter.
+func TestALetGoTheComparisonStopsNamesAnEarlierDrivesLeftHoldAsLeftToLapse(t *testing.T) {
+	w := newTerminalWorld(t)
+	setAsideMinutes(t, w, 10)
+	recordGoneAtLand(t, w, eligibleIssue, secondIssue)
+	root := w.repo.Root()
+	o := w.options(t)
+	o.Until = w.clock.t.Add(30 * time.Minute)
+	if _, err := RunTerminal(context.Background(), root, o); err != nil {
+		t.Fatalf("the earlier drive: %v\n%s", err, w.said())
+	}
+	st, _, err := readDrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := claim.View(root, w.clock.t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{eligibleIssue, secondIssue} {
+		r, _ := snap.Lookup(id)
+		run := drainRunOf(t, root, id)
+		if !drainLists(st, run) || r.State != claim.StateLive || r.Copy != claim.CopyThis || !claim.LeftToLapse(root, id, r.Commit) {
+			t.Fatalf("premise: the earlier drive left %s listed, live and left to lapse: %+v\n%s", id, r, w.said())
+		}
+	}
+	// The later drive has the second lane in hand: its take-up took the note off.
+	if err := claim.KeepRenewing(root, secondIssue); err != nil {
+		t.Fatal(err)
+	}
+	id, err := readRemoteIdentity(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.repo.Git("config", "core.sshCommand", "/bin/true")
+	var lines []string
+	tm := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now}, Say: sayInto(&lines)})
+	tm.o.Options.remote = id
+	tm.stepped = []string{drainRunOf(t, root, secondIssue)}
+	tm.letGo()
+	said := strings.Join(lines, "\n")
+	if !strings.Contains(said, "nothing this drive holds was released: releasing is a push") {
+		t.Fatalf("premise: the comparison stops the let-go:\n%s", said)
+	}
+	lineOf := func(id string) string {
+		for _, l := range lines {
+			if strings.HasPrefix(l, id+": its reservation was not released and lapses at ") {
+				return l
+			}
+		}
+		t.Fatalf("%s's reservation is not named as left:\n%s", id, said)
+		return ""
+	}
+	if left := lineOf(eligibleIssue); !strings.Contains(left, UnlessKeptTakenUp) || strings.Contains(left, "a load-gate waiter in this copy, renews it") {
+		t.Fatalf("the hold an earlier drive left to lapse is named with renewers that pass over it:\n%s", left)
+	}
+	if inHand := lineOf(secondIssue); strings.Contains(inHand, UnlessKeptTakenUp) || !strings.Contains(inHand, "a load-gate waiter in this copy, renews it") {
+		t.Fatalf("the lane in hand, its note taken off, is not named with its run's renewers:\n%s", inHand)
+	}
+
+	// A kill names the lane it leaves the same way: the lane listed last in progress, here
+	// the one whose hold an earlier drive left to lapse, is named left to lapse (the end's
+	// UnlessKeptTakenUp), though this drive left nothing to lapse.
+	killed := newTerminal(root, TerminalOptions{Options: Options{Now: w.clock.now}, Say: sayInto(&lines)})
+	res := killed.ended(TerminalKilled)
+	if res.Issue != eligibleIssue || res.Lapses == nil {
+		t.Fatalf("premise: the kill names the lane left to lapse, its hold live: %+v", res)
+	}
+	if !res.LeftToLapse {
+		t.Fatalf("the kill names a hold an earlier drive left to lapse as renewed: %+v", res)
+	}
+}

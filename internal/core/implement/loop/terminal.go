@@ -3563,6 +3563,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 		forming, unlisted bool
 	}
 	var ids []left
+	snap, verr := claim.View(t.repoRoot, now)
 	for _, runID := range t.heldInProgress(st) {
 		run, err := ReadState(t.repoRoot, runID)
 		if err != nil || !run.holdsAny() || letGoByDrive(run) {
@@ -3578,7 +3579,7 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			continue
 		}
 		for _, id := range run.reservedIssues() {
-			ids = append(ids, left{id: id, runID: runID, renewers: runRenewers(run), unlisted: !drainLists(st, runID)})
+			ids = append(ids, left{id: id, runID: runID, renewers: keptRenewers(t.repoRoot, run, snap, verr == nil), unlisted: !drainLists(st, runID)})
 		}
 	}
 	if j := st.Judging; j != nil && live && j.Hold != nil {
@@ -3589,7 +3590,6 @@ func (t *terminal) leftHeld(why error, now time.Time) {
 			ids = append(ids, left{id: h.issue, forming: true})
 		}
 	}
-	snap, verr := claim.View(t.repoRoot, now)
 	for _, l := range ids {
 		var r claim.Reservation
 		read := verr == nil
@@ -3670,11 +3670,24 @@ func (t *terminal) sayKept(run State, listed, lapsing bool, now time.Time) {
 		key := termsafe.Sanitize(id)
 		unless := UnlessKeptTakenUp
 		if !lapsing {
-			unless = runRenewers(run)
+			unless = keptRenewers(t.repoRoot, run, snap, verr == nil)
 		}
 		t.say("%s: its reservation is kept, since the stop could not be applied to run %s, and %s; %s; `abcd reserve %s --release` releases it by hand",
 			key, runID, lapsesUnless(r, read, unless), on, key)
 	}
+}
+
+// keptRenewers is the clause a lapse says of run, a lane's run still in progress, where a
+// view of the reservations was read (read): a hold a drive left to lapse, an earlier
+// drive's note included, that no take-up has taken off (takeUp), is renewed by no `abcd
+// drain` move, `abcd implement status` call or load-gate waiter (leftToLapse,
+// claim.RenewDue), so it takes UnlessKeptTakenUp; any other takes the renewers of where it
+// stands (runRenewers).
+func keptRenewers(root string, run State, view claim.Snapshot, read bool) string {
+	if read && leftToLapse(root, run, view) {
+		return UnlessKeptTakenUp
+	}
+	return runRenewers(run)
 }
 
 // drainLists reports whether a lane of st names runID.
@@ -3808,8 +3821,10 @@ func (t *terminal) ended(why string) TerminalResult {
 		if why == TerminalKilled || t.unstoppedRun(l.RunID) {
 			if snap, err := claim.View(t.repoRoot, t.now()); err == nil {
 				if r, ok := snap.Lookup(l.Issue); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
+					// A hold an earlier drive left to lapse that no take-up has taken off is
+					// left to lapse as well as one this drive left (keptRenewers).
 					at := r.EffectiveExpiry
-					res.Lapses, res.LeftToLapse = &at, t.lapsing[l.RunID]
+					res.Lapses, res.LeftToLapse = &at, t.lapsing[l.RunID] || (rerr == nil && leftToLapse(t.repoRoot, run, snap))
 				}
 			}
 		}

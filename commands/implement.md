@@ -1749,8 +1749,9 @@ it releases nothing, since releasing is a push: it names each reservation it
 leaves and when its lease lapses, unless a step or `abcd drain` run in this
 copy, an `abcd implement status` call in this copy for a lane short of its pull
 request, or a load-gate waiter in this copy, renews it for a lane's run still in
-progress, and a load-gate waiter alone for the hold a judgement took; once the
-setting is as it should be you release one
+progress, a drive's start or a step that takes the run up alone for a lane whose
+hold a drive left to lapse, and a load-gate waiter alone for the hold a judgement
+took; once the setting is as it should be you release one
 with `abcd reserve <id> --release`, or start the drive again, which takes the
 run up. What changes
 between a comparison and git's own run of the command is not seen.
