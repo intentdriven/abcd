@@ -310,13 +310,34 @@ func replaceRoot(s, root, repl string, fold bool) string {
 // shorter spelling that is a prefix of a longer one ("/h" and "/h/.") never
 // strands the longer one's tail.
 func replaceRoots(s string, roots []string, repl string, fold bool) string {
+	out, _ := scanRoots(s, roots, repl, fold)
+	return out
+}
+
+// scanRoots is replaceRoots, also returning how many bytes of s the search for
+// roots walked, summed over the roots, so a test can hold the pass linear.
+//
+// Each root's next occurrence is remembered between replacements: one at or
+// after the resume point is still that root's first occurrence from there, so
+// it is searched again only once the pass has moved past it, and a root with
+// no occurrence left is never searched again. Each root's search therefore
+// walks s once, whatever the number of replacements; searching every root
+// afresh after each one rescanned the text to its end per replacement.
+func scanRoots(s string, roots []string, repl string, fold bool) (string, int) {
 	var b strings.Builder
-	written, from := 0, 0
+	written, from, scanned := 0, 0, 0
+	next := make([]int, len(roots)) // each root's next occurrence; -1 when none is left
+	searched := make([]bool, len(roots))
 	for from <= len(s) {
 		at, size := -1, 0
-		for _, root := range roots {
-			i := nextRoot(s, root, from, fold, endsInDotSegment(root))
-			if i >= 0 && (at < 0 || i < at || (i == at && len(root) > size)) {
+		for k, root := range roots {
+			if !searched[k] || (next[k] >= 0 && next[k] < from) {
+				n := 0
+				next[k], n = nextRoot(s, root, from, fold, endsInDotSegment(root))
+				searched[k] = true
+				scanned += n
+			}
+			if i := next[k]; i >= 0 && (at < 0 || i < at || (i == at && len(root) > size)) {
 				at, size = i, len(root)
 			}
 		}
@@ -328,13 +349,14 @@ func replaceRoots(s string, roots []string, repl string, fold bool) string {
 		written, from = at+size, at+size
 	}
 	b.WriteString(s[written:])
-	return b.String()
+	return b.String(), scanned
 }
 
 // nextRoot is the index of the first occurrence of root in s at or after from
 // that starts a path (a left boundary) and is the whole path or its directory
 // prefix (a right boundary: no letter or digit follows it, NameContinues), or
-// -1. A rejected occurrence moves the scan one byte on, so an occurrence
+// -1, and how many bytes it walked to answer (to the occurrence, or to the end
+// of s). A rejected occurrence moves the scan one byte on, so an occurrence
 // overlapping it is still judged.
 //
 // A strict root — one whose last segment is "." or "..", a HOME written as
@@ -342,11 +364,12 @@ func replaceRoots(s string, roots []string, repl string, fold bool) string {
 // byte that cannot continue a path segment: its dot is a whole segment, so
 // "/h/alex/._Documents" and "/h/alex/../bob" are a name and a climb under
 // /h/alex, not the root followed by "_Documents" or "./bob".
-func nextRoot(s, root string, from int, fold, strict bool) int {
+func nextRoot(s, root string, from int, fold, strict bool) (int, int) {
+	start := from
 	for from <= len(s) {
 		j := indexFold(s[from:], root, fold)
 		if j < 0 {
-			return -1
+			return -1, max(len(s)-start, 0)
 		}
 		i := from + j
 		after := i + len(root)
@@ -356,11 +379,11 @@ func nextRoot(s, root string, from int, fold, strict bool) int {
 			right = after == len(s) || s[after] == os.PathSeparator || !IsPathSegmentByte(s[after])
 		}
 		if left && right {
-			return i
+			return i, i - start
 		}
 		from = i + 1
 	}
-	return -1
+	return -1, max(len(s)-start, 0)
 }
 
 // endsInDotSegment reports whether root's last segment is "." or "..".
