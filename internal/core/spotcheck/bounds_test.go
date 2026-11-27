@@ -2,6 +2,7 @@ package spotcheck
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -366,7 +367,7 @@ func TestANoteSaysHowManyPlacesAGroupLeftOpen(t *testing.T) {
 	c.plantUnread(w0.Add(2*time.Hour), "iss-80", "iss-81", "iss-82")
 	c.closeWindow()
 	note := c.observe(q1000.Add(time.Hour))
-	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, GroupDrainHandBacks+" drew from 1 of 3 places") || !strings.Contains(note, "1 record file(s)") {
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, GroupDrainHandBacks+" drew from 1 of 3 places; its read bound of 2 files ran out with 3 key(s) not read") || !strings.Contains(note, "1 record file(s)") {
 		t.Fatalf("the draw over a group that left places open said %q", note)
 	}
 	if strings.Contains(note, GroupFacilitatorDecisions) {
@@ -374,5 +375,35 @@ func TestANoteSaysHowManyPlacesAGroupLeftOpen(t *testing.T) {
 	}
 	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
 		t.Fatalf("the window took %v; want the record that read, %v", got, want)
+	}
+}
+
+// TestANoteSaysAKeyTookNoPlaceWhenItsReadFilesAllFailed: a key whose files
+// are read by its greatest names only, none of which reads as a record while
+// more of its files are left unread, takes no place in the window, and the
+// note says so by group and count beside the files that did not read.
+func TestANoteSaysAKeyTookNoPlaceWhenItsReadFilesAllFailed(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	key := c.plantHandBacks(w0.Add(time.Minute), "iss-60")[0]
+	files := map[string]string{}
+	for i := range maxFilesPerKey {
+		files[HandBacksDir+"/"+key+"-"+fmt.Sprintf("fffffffffffffff%x", i)+".json"] = "{}\n"
+	}
+	c.plant(files)
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	line := fmt.Sprintf("in %s, 1 key(s) took no place: none of the %d files read of each is a record, and each has more files not read", GroupDrainHandBacks, maxFilesPerKey)
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, line) || !strings.Contains(note, fmt.Sprintf("%d record file(s)", maxFilesPerKey)) {
+		t.Fatalf("the draw over a key whose read files all failed said %q", note)
+	}
+	if strings.Contains(note, "places") {
+		t.Fatalf("a group whose read bound held says it ran out: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want %v", got, want)
 	}
 }

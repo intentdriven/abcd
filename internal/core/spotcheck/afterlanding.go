@@ -379,9 +379,10 @@ const maxFilesPerKey = 4
 // maxReadFiles files are read; a key none of whose files reads takes no
 // place, and a key beyond either bound waits for a later window, as a record
 // that reaches origin late does. The tally counts the files that did not
-// read as records and names each group whose read bound was spent before its
-// places were filled, with the places it filled of those its window has; a
-// group whose read bound is spent before any of its records read, with some
+// read as records and, by group, the keys that took no place though more of
+// their files were left unread, and names each group whose read bound was
+// spent before its places were filled, with the places it filled of those
+// its window has and the keys it left unread; a group whose read bound is spent before any of its records read, with some
 // file unread, refuses the draw, naming the count. So every record population is listed
 // whole, and the next draw knows each record already drawn from by its key.
 // A file whose name is not a record's is never read, and one whose content
@@ -437,7 +438,7 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 		// record takes no place, and the next key is read in its stead,
 		// until the window's places are filled or the group's files are
 		// spent.
-		budget, used, listed, next, missed := max(maxReadFiles/2, 1), 0, 0, 0, 0
+		budget, used, listed, next, missed, capped := max(maxReadFiles/2, 1), 0, 0, 0, 0, 0
 		spent := false
 		for listed < maxListedKeys && next < len(keys) && !spent {
 			type keyFiles struct {
@@ -494,6 +495,8 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 				}
 				if read {
 					listed++
+				} else if len(byKey[g][kf.key]) > len(kf.names) {
+					capped++
 				}
 			}
 		}
@@ -505,8 +508,12 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 			// drawn from those, and the note counts the rest.
 			return nil, nil, tally, fmt.Errorf("the spot-check's %s listed none of its records within its read of %d files, and %d record file(s) on origin did not read as records", g, budget, missed)
 		}
-		if spent {
-			tally.open = append(tally.open, openPlaces{group: g, listed: listed, places: min(maxListedKeys, len(keys)), budget: budget})
+		if spent || capped > 0 {
+			gr := groupRead{group: g, capped: capped}
+			if spent {
+				gr.listed, gr.places, gr.budget, gr.notRead = listed, min(maxListedKeys, len(keys)), budget, len(keys)-next
+			}
+			tally.groups = append(tally.groups, gr)
 		}
 	}
 	return hbs, ds, tally, nil
@@ -514,27 +521,38 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 
 // recordsRead is what a window's read of its record groups leaves for the
 // note: the files that did not read as records, and each group whose read
-// bound ran out before its window's places were filled.
+// bound ran out before its window's places were filled or that holds keys
+// read by their greatest names only, none of which read as a record.
 type recordsRead struct {
 	unread int
-	open   []openPlaces
+	groups []groupRead
 }
 
-// openPlaces is a group drawn from listed of the places its window has
-// (places, the keys it held up to maxListedKeys), the rest left open when
-// its read of budget files ran out.
-type openPlaces struct {
-	group                  string
-	listed, places, budget int
+// groupRead is one group's line in the note. budget is non-zero when the
+// group's read bound ran out: it was drawn from listed of the places its
+// window has (places, the keys it held up to maxListedKeys), with notRead
+// keys left unread. capped counts the keys that took no place because none
+// of the maxFilesPerKey files read of each is a record while more of its
+// files were not read.
+type groupRead struct {
+	group                                   string
+	listed, places, budget, notRead, capped int
 }
 
-// note is the note's tail: for each group that left places open, how many
-// it drew from of how many, and the count of record files on origin that
-// did not read as records and so took no place in the window, "" for none.
+// note is the note's tail: for each group whose read bound ran out, how many
+// places it drew from of how many and the keys the bound left unread; for
+// each group with keys that took no place though more of their files were
+// not read, how many; and the count of record files on origin that did not
+// read as records and so took no place in the window. "" for none.
 func (r recordsRead) note() string {
 	var b strings.Builder
-	for _, o := range r.open {
-		fmt.Fprintf(&b, "; %s drew from %d of %d places, the rest left open when its read of %d files ran out", o.group, o.listed, o.places, o.budget)
+	for _, g := range r.groups {
+		if g.budget > 0 {
+			fmt.Fprintf(&b, "; %s drew from %d of %d places; its read bound of %d files ran out with %d key(s) not read", g.group, g.listed, g.places, g.budget, g.notRead)
+		}
+		if g.capped > 0 {
+			fmt.Fprintf(&b, "; in %s, %d key(s) took no place: none of the %d files read of each is a record, and each has more files not read", g.group, g.capped, maxFilesPerKey)
+		}
 	}
 	if r.unread > 0 {
 		fmt.Fprintf(&b, "; %d record file(s) on origin did not read as records and took no place in the window", r.unread)
