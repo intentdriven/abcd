@@ -106,7 +106,7 @@ var svgSizeRe = regexp.MustCompile(`\s(width|height)="\d+"`)
 // class of bug this function exists to end. A document that does not parse
 // (which checkInlinableSVG has already refused) is returned untouched.
 func stripRootSize(svg string) string {
-	start, end, ok := rootStartTag(svg)
+	start, end, _, ok := rootStartTag(svg)
 	if !ok {
 		return svg
 	}
@@ -116,13 +116,17 @@ func stripRootSize(svg string) string {
 // hideRootDrawing marks the ROOT <svg> element aria-hidden, so an inlined
 // drawing adds no name of its own beside the one its wrapper takes from the
 // page's alt (iss-2610241550257430). The attribute goes straight after the
-// element name: an HTML parser keeps the first of two same-named attributes,
-// so a drawing that declares aria-hidden="false" itself is hidden all the same.
-// The root start tag is found as stripRootSize finds it, and a document that
-// does not parse is returned untouched.
+// element name. A root that already declares aria-hidden is left as it is, as
+// the page carries no attribute twice (htmlscan refuses a repeat), and
+// checkInlinableSVG has already refused any value of it but "true", so such a
+// root is hidden already. The root start tag is found as stripRootSize finds
+// it, and a document that does not parse is returned untouched.
 func hideRootDrawing(svg string) string {
-	start, end, ok := rootStartTag(svg)
+	start, end, root, ok := rootStartTag(svg)
 	if !ok {
+		return svg
+	}
+	if _, declared := rootAriaHidden(root); declared {
 		return svg
 	}
 	nameEnd := start + 1
@@ -132,9 +136,21 @@ func hideRootDrawing(svg string) string {
 	return svg[:nameEnd] + ` aria-hidden="true"` + svg[nameEnd:]
 }
 
+// rootAriaHidden reports the value of the aria-hidden a root start tag
+// declares, if it declares one; a namespaced attribute of that local name is
+// another attribute in the emitted page, so it is not this one.
+func rootAriaHidden(root xml.StartElement) (string, bool) {
+	for _, a := range root.Attr {
+		if a.Name.Space == "" && a.Name.Local == "aria-hidden" {
+			return a.Value, true
+		}
+	}
+	return "", false
+}
+
 // rootStartTag brackets the ROOT element's start tag in svg, from the same
-// decoder that vetted the document.
-func rootStartTag(svg string) (int, int, bool) {
+// decoder that vetted the document, and returns the element it decoded there.
+func rootStartTag(svg string) (int, int, xml.StartElement, bool) {
 	dec := xml.NewDecoder(strings.NewReader(svg))
 	dec.Strict = true
 	dec.Entity = map[string]string{}
@@ -148,16 +164,17 @@ func rootStartTag(svg string) (int, int, bool) {
 		start := int(dec.InputOffset())
 		tok, err := dec.Token()
 		if err != nil {
-			return 0, 0, false
+			return 0, 0, xml.StartElement{}, false
 		}
-		if _, ok := tok.(xml.StartElement); !ok {
+		se, ok := tok.(xml.StartElement)
+		if !ok {
 			continue
 		}
 		end := int(dec.InputOffset())
 		if start < 0 || end > len(svg) || start >= end || svg[start] != '<' {
-			return 0, 0, false
+			return 0, 0, xml.StartElement{}, false
 		}
-		return start, end, true
+		return start, end, se, true
 	}
 }
 
@@ -289,6 +306,7 @@ func checkInlinableSVG(svg, rel string) error {
 	// reference to one is an error from the decoder itself.
 	dec.Strict = true
 	dec.Entity = map[string]string{}
+	sawRoot := false
 	for {
 		tok, err := dec.Token()
 		if err == io.EOF {
@@ -319,6 +337,16 @@ func checkInlinableSVG(svg, rel string) error {
 			for _, a := range t.Attr {
 				if err := checkSVGAttr(a, name, bad); err != nil {
 					return err
+				}
+			}
+			// The page names the picture from its alt and hides the drawing
+			// inside (hideRootDrawing), so a root that declares itself visible
+			// asks for two names at once. "true" says what the build would
+			// write; any other value is refused here, naming the asset.
+			if !sawRoot {
+				sawRoot = true
+				if v, declared := rootAriaHidden(t); declared && v != "true" {
+					return bad("declares aria-hidden=%q on its root; the page names the picture from its alt and hides the drawing, so drop the attribute or write aria-hidden=\"true\"", v)
 				}
 			}
 		}
