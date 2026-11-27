@@ -358,7 +358,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd capture owed"
+      "example": "abcd capture owed",
+      "next": [
+        {
+          "command": "abcd capture \"<text>\" --remedy \"<fix>\"",
+          "when": "for an owed finding not yet on the ledger"
+        },
+        {
+          "command": "abcd capture owed <handle> --captured <iss-N>",
+          "when": "once its issue is filed, to settle the entry"
+        }
+      ]
     },
     {
       "path": "abcd capture promote",
