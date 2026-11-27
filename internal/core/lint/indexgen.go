@@ -315,9 +315,10 @@ func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
 
 // indexText refuses a value holding a control character before a renderer
 // writes it into a region. A line break in a directory entry's name would be
-// split into lines of its own on the next read, so the name could place a
-// closing marker inside the region, and a carriage return or other control
-// character changes what the line says. The value is named in quoted form,
+// split into lines of its own on the next read, so the name could put an
+// opening marker or lines of its own inside the region (a name cannot hold the
+// closing marker's slash), and a carriage return or other control character,
+// a tab included, changes what the line says. The value is named in quoted form,
 // which spells each control character as an escape.
 func indexText(dir, what, v string) error {
 	if strings.IndexFunc(v, unicode.IsControl) < 0 {
