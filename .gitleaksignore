@@ -48,3 +48,9 @@ dc0ed2c62fad1ed5fef836e4472c677ab3ac23d2:.gitleaksignore:generic-api-key:27
 # it, and generic-api-key read the assignment as a credential. It was never a
 # credential, and the constant is renamed at the branch tip.
 46425fc70b6b56292fbbf32968966ec962686a1d:internal/surface/cli/refusal_envelope_test.go:generic-api-key:95
+
+# Commit d04abf7d3 added the spot-check's beacon check (itd-2610301750162657)
+# with `chainKey = "<hex>"`, the drand quicknet chain's published group public
+# key, and generic-api-key reads the `Key = "…"` assignment as a credential.
+# The value is public by design; the constant is renamed at the branch tip.
+d04abf7d38e2fd7cf63e679345f1b35d25558e65:internal/core/spotcheck/beacon.go:generic-api-key:38

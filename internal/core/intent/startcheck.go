@@ -92,6 +92,17 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 	return res, nil
 }
 
+// OpenQuestionsRoute is how an intent's open questions get settled, the one
+// statement every reader of the row names (iss-2611260602175153): with the
+// person there, the planning interview; while they are away, the session
+// settles what is its to settle and queues the rest, so no open question
+// stops autonomous work.
+const OpenQuestionsRoute = "through the planning interview (/abcd:intent) while the person is there; while they are away (abcd mode autonomous), " + OpenQuestionsAwayRoute
+
+// OpenQuestionsAwayRoute is the half of OpenQuestionsRoute that holds while
+// the person is away.
+const OpenQuestionsAwayRoute = "decide a technical or product question yourself with `abcd decide` and mark it resolved citing that decision, queue one only the person may answer (an act the away block lists) with `abcd mode queue`, and take the next ready item meanwhile rather than waiting for their return"
+
 // startOpenQuestionsRow refuses a record that still asks a question, and a
 // record whose text cannot be read whole (spec.LayoutStatements): an opener
 // nothing closes, or fences that cannot be read one way, withhold readiness as
@@ -109,7 +120,7 @@ func startOpenQuestionsRow(id, content string) StartRow {
 	var why, remedy []string
 	if len(qs) > 0 {
 		why = append(why, fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), questionList(qs)))
-		remedy = append(remedy, "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)")
+		remedy = append(remedy, "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), "+OpenQuestionsRoute)
 	}
 	if len(layout) > 0 {
 		parts := make([]string, len(layout))

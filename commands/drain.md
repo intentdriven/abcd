@@ -1199,6 +1199,11 @@ hand-back's, and a lane's that opened none); `next` is the one move to make. A d
 that ends with every lane ended and none in a pull request says so in `next` as
 a normal ending; one that stops with a lane still in progress does not.
 
+A move that read origin's default branch then observes it for the spot-check,
+as `abcd land` observes a landing (`commands/land.md`, "The spot-check at a
+landing"): the observation's line joins `next`, and nothing of the move waits on
+it or changes with it. A move that could not read origin observes nothing.
+
 Each move also keeps the spot-check's record of what the drain decided with no
 person involved: every hand-back it routed and every judgement a routed model
 answered, each as one file on this checkout's local copy of the spot-check's

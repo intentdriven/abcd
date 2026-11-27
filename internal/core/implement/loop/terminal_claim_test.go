@@ -702,8 +702,8 @@ func TestASignalHaltsARunTheStartStepsThatNoDrainLists(t *testing.T) {
 
 // TestABoundLetsGoARunTheStartStepsThatNoDrainLists: the drive's end lets the run the start
 // took and steps go, as it lets go the drain's lanes: its reservation is released and its
-// record says the drive let it go. A later start does not take such a run up yet, since it
-// carries no mark; that is a later step's (the lane plan's L2).
+// record says the drive let it go. A later start takes such a run up again, though it
+// carries no mark (TestALaterStartTakesUpARunNoDrainListsThatADrivesEndLetGo).
 func TestABoundLetsGoARunTheStartStepsThatNoDrainLists(t *testing.T) {
 	w, run, home := claimReplaced(t)
 	var until time.Time
