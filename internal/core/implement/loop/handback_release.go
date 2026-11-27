@@ -341,7 +341,7 @@ const waiterRenews = "no step and no run renewal renews a handed-back lane's res
 // (TestThePageSaysWhatTheGateWaiterRenews).
 const gateWaiterRenews = "a load-gate waiter in this copy (`abcd implement load --wait`, and `--race-gate`, which preflight's race stage uses) " +
 	"renews, while it waits and while its command runs, each live reservation that is not a release, is half through its lease, " +
-	"and whose tip is the commit this copy last pushed; that renewal, which reads no run, never revives one that has lapsed or been released"
+	"and whose tip is the commit this copy last pushed and no drive left to lapse; that renewal, which reads no run, never revives one that has lapsed or been released"
 
 // unlessWaiterRenews is the clause a lapse said of a reservation that may still
 // be live and this copy's last push takes: a load-gate waiter in this copy may
@@ -354,12 +354,19 @@ const unlessWaiterRenews = "unless a load-gate waiter in this copy renews it"
 // UnlessRunRenewed is the clause a lapse says of a live reservation this
 // copy's last push takes and a lane's run still in progress holds: a step or
 // `abcd drain` run in this copy renews it (advanceWith; renewInProgress, or
-// for a lane parked at its pull request renewParkedDue), as a load-gate waiter
-// does. `abcd implement status` is not named: its renewal (RenewRunsIn)
-// passes over a lane parked at its pull request (renewsWhereItWaits), and a
-// lane named here may be one. A run handed back, stopped or let go keeps
-// unlessWaiterRenews.
-const UnlessRunRenewed = "unless a step or `abcd drain` run in this copy, or a load-gate waiter in this copy, renews it"
+// for a lane parked at its pull request renewParkedDue), as an `abcd
+// implement status` call does for a lane short of its pull request
+// (RenewRunsIn, renewsWhereItWaits) and a load-gate waiter does. A run handed
+// back, stopped or let go keeps unlessWaiterRenews, and a hold a drive left to
+// lapse keeps UnlessKeptTakenUp.
+const UnlessRunRenewed = "unless a step, `abcd drain` or `abcd implement status` run in this copy, or a load-gate waiter in this copy, renews it"
+
+// UnlessKeptTakenUp is the clause a lapse says of a hold a drive left to lapse
+// (claim.LeaveToLapse; itd-2611141610197753 step 3): the kept hold of a run
+// whose stop could not be applied, or of a lane the drive set aside. No
+// renewal that reads no driver keeps it (leftToLapse), so it lapses at the
+// lease that stood when it was left unless a take-up works it again.
+const UnlessKeptTakenUp = "unless a drive's start or a step in this copy takes the run up; no `abcd implement status` call or load-gate waiter renews it"
 
 // unlessRenewedEither is the clause for what a run and a judgement's hold may
 // both be: each kept by its own renewers.

@@ -113,6 +113,11 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			}
 			view = &snap
 		}
+		// A hold a drive left to lapse is no one's work (leftToLapse): no renewal
+		// of a run keeps it past its lease, whatever runs in the copy.
+		if leftToLapse(root, st, *view) {
+			continue
+		}
 		// A run with members is due when any issue it holds is (renewalDueAny).
 		if _, due, lost := renewalDue(st, *view, now); !due && lost == "" && !(st.hasMembers() && renewalDueAny(st, *view, now)) {
 			continue
@@ -161,6 +166,27 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 		}
 	}
 	return out
+}
+
+// leftToLapse reports whether every issue st holds is held from this copy at a tip a
+// drive left to lapse (claim.LeaveToLapse; itd-2611141610197753 step 3): the kept hold
+// of a run whose stop could not be applied, or of a lane a drive set aside. No one works
+// such a run, so neither an `abcd implement status` call (RenewRunsIn), a load-gate
+// waiter (RenewRuns), a drive's waits nor a drain's move renews it, and it lapses at the
+// lease that stood when it was left. Any reservation pushed for it since, a take-up's or
+// a step's, is a tip the note does not name, and the run is renewed as before.
+func leftToLapse(root string, st State, view claim.Snapshot) bool {
+	ids := st.reservedIssues()
+	if len(ids) == 0 {
+		return false
+	}
+	for _, id := range ids {
+		r, ok := view.Lookup(id)
+		if !ok || r.Copy != claim.CopyThis || !claim.LeftToLapse(root, id, r.Commit) {
+			return false
+		}
+	}
+	return true
 }
 
 // membersRenewal is what one pass's renewal of a run with members reports,
