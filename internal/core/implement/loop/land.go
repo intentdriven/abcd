@@ -2760,12 +2760,17 @@ func recheckBody(c Context, lane *Lane) (bool, error) {
 // is the default branch the lane was cut from, so the lane's own commits
 // cannot change the rule it lands by.
 func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) {
-	r, err := landing.ReadMergeRule(c.RepoRoot, lane.BaseSHA, def, "the lane's base")
+	return readMergeRuleAt(c, lane, def, lane.BaseSHA, "the lane's base")
+}
+
+// readMergeRuleAt is readMergeRule at commit, named at in its refusals.
+func readMergeRuleAt(c Context, lane Lane, def, commit, at string) (landing.MergeRule, error) {
+	r, err := landing.ReadMergeRule(c.RepoRoot, commit, def, at)
 	var le *landing.ListError
 	var me *landing.MirrorError
 	switch {
 	case errors.As(err, &le):
-		return landing.MergeRule{}, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", le.Err)
+		return landing.MergeRule{}, fmt.Errorf("listing the ruleset mirror at %s: %v", at, le.Err)
 	case errors.As(err, &me):
 		return landing.MergeRule{}, refuse(string(StageLand), "", lane.ID, me.Reason, me.Fix+", then run `abcd implement step` again")
 	case err != nil:
@@ -2839,7 +2844,7 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		}
 		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 	}
-	d, err := askMergeGate(c, *lane, def, rule)
+	d, err := askMergeGate(c, *lane, def)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -2868,10 +2873,17 @@ var recordLaneGate = landing.RecordMergeGate
 // askMergeGate asks the merge gate about the lane's pull request: the mode as
 // the default branch's tip just fetched and the machine layer declare it,
 // never the lane's checkout (dcn-2610230058333177), with the ruleset mirror's
-// rule at the lane's base. A mode that cannot be read is refused, masked,
+// rule at that same tip. A mode that cannot be read is refused, masked,
 // and nothing is armed.
-func askMergeGate(c Context, lane Lane, def string, rule landing.MergeRule) (landing.MergeDecision, error) {
+func askMergeGate(c Context, lane Lane, def string) (landing.MergeDecision, error) {
 	tip, err := defaultTip(c, lane, def)
+	if err != nil {
+		return landing.MergeDecision{}, err
+	}
+	// The merge rule is read at the tip the mode is read at, as abcd land
+	// reads it, so the method the gate arms by and whether it reads the
+	// commits a rebase would replay are the default branch's now.
+	rule, err := readMergeRuleAt(c, lane, def, tip, Remote+"/"+def)
 	if err != nil {
 		return landing.MergeDecision{}, err
 	}
@@ -3101,7 +3113,7 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			if err != nil {
 				return Outcome{}, err
 			}
-			d, err := askMergeGate(c, *lane, def, rule)
+			d, err := askMergeGate(c, *lane, def)
 			if err != nil {
 				return Outcome{}, err
 			}
