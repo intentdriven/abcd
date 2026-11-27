@@ -1810,7 +1810,7 @@ quoted-delimiter heredoc shown above.
 - `abcd guard check [flags]`
   - An example call is `abcd guard check --command 'git push --force origin main'`.
   - What usually follows:
-    - `abcd guard allow --once --command '<line>'`, for an unproven delete the person has confirmed.
+    - `abcd guard allow --once --command '<line>'`, only when the person says yes, and run by them, to let through one unproven delete they have judged safe.
 - `abcd guard hook [flags]`
   - An example call is `abcd guard hook < payload.json`.
   - Nothing usually follows: the host calls it on each tool call and reads its answer; nothing follows it.

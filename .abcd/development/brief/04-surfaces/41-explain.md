@@ -115,24 +115,34 @@ them.
 A successful machine-readable result carries the same steps as a top-level
 `next_steps` key. The root's pre-run hook wraps a visible command's stdout,
 when the call asks for machine-readable output alone, in a writer that
-carries the command's path and its entry, and the one helper every result is
-written through (`render`, `internal/surface/cli/next_steps.go`) encodes the
-result as it always has and splices the key in before the closing brace:
-nothing is decoded and encoded again, so no key a result already has moves.
-The key is never `next`, which several results already use for their own next
-action. A command whose run can write a document before its last one is
-marked streaming, and only its closing summary, written through
-`renderFinal`, carries the key; a document a refusal follows, or that stands
-in for the error object, is written through `renderRefused` and carries none.
-A hidden command keeps its stdout as it is. A document that is not an object
+carries the command's path and its entry, and wraps the command's run. The
+one helper every result is written through (`render`,
+`internal/surface/cli/next_steps.go`) encodes the result as it always has and
+hands it to that writer, which holds the command's last document until the run
+returns. Only a run that returns nil has the key spliced in before the closing
+brace; a run that fails writes its document as it was, so no document a
+non-zero exit or an error object follows carries the key, whichever helper
+wrote it. Nothing is decoded and encoded again, so no key a result already has
+moves. The key is never `next`, which several results already use for their
+own next action. A command whose run can write a document before its last one
+is marked streaming, and only its closing summary, written through
+`renderFinal`, carries the key; so is one that goes on running after its
+document, such as the session relay, whose start line is written at once and
+carries none; a document that stands in for a refusal on a
+run that still returns nil is written through `renderRefused` and carries
+none. A hidden command keeps its stdout as it is. A document that is not an object
 takes no key: four commands print a JSON array, which a key cannot join
 without breaking its readers, so their results are left as they are while
 their facts still carry the steps; the exemption list in
 `internal/surface/cli/next_steps_test.go` names them. How such a command
-should name its next step in its result is an open product question. The test
+should name its next step in its result was the product thinker's to rule;
+with the person away the default was taken and recorded (dcn-2611262321015065):
+the four stay unchanged, and wrapping them is a breaking intent of its own. The test
 binary checks every machine-readable document the package's tests render, and
-fails on a result that already carries a top-level `next_steps`, or on an
-array from a command the exemption list does not name; the tests in the same
+fails on a result that already carries a top-level `next_steps`, on an array
+from a command the exemption list does not name, on a document a successful
+run wrote straight to its stdout around the helper, and on a key that a
+non-zero exit follows; the tests in the same
 file hold every visible command to an entry and every template to a command
 path the tree has, with flags that command takes.
 

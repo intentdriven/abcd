@@ -511,7 +511,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd history staged`.
   - What usually follows:
     - `abcd history drain`, to redact and store what is staged.
-    - `abcd history discard <staged-filename> --yes`, to delete a staged transcript for good.
+    - `abcd history discard <staged-filename> --yes`, only when the person says yes, to delete a staged transcript for good.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

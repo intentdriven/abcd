@@ -105,7 +105,8 @@
       ],
       "inputs": [],
       "example": "abcd session serve",
-      "no_next": "the relay runs in the foreground until stopped; nothing usually follows"
+      "no_next": "the relay runs in the foreground until stopped; nothing usually follows",
+      "streaming": true
     },
     {
       "path": "abcd session setup",
@@ -156,7 +157,8 @@
       ],
       "inputs": [],
       "example": "abcd session start",
-      "no_next": "the session runs on this computer; its link is shared with the team"
+      "no_next": "the session runs on this computer; its link is shared with the team",
+      "streaming": true
     }
   ]
 }

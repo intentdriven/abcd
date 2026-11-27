@@ -149,7 +149,7 @@
       "next": [
         {
           "command": "abcd launch scaffold --confirm",
-          "when": "once the person agrees to what a practice run listed"
+          "when": "only when the person says yes to what a practice run listed"
         },
         {
           "command": "abcd launch --dry-run",

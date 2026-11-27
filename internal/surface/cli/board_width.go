@@ -17,7 +17,8 @@ const boardColumns = 80
 // COLUMNS says, so piped output is the same on every machine. Tests pin it
 // (the repo's package-var seam pattern).
 var boardWidth = func(w io.Writer) int {
-	f, ok := w.(*os.File)
+	// The stream beneath a --json stdout's next-steps wrapper (next_steps.go).
+	f, ok := streamOf(w).(*os.File)
 	if !ok || !term.IsTerminal(f) {
 		return boardColumns
 	}

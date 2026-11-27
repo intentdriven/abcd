@@ -350,7 +350,7 @@ var errPickLater = errors.New("you chose to decide later; run the command again 
 var (
 	connectIsTerminal = func(s any) bool {
 		if w, ok := s.(io.Writer); ok {
-			s = plainStdout(w) // a --json stdout's next-steps wrapper (next_steps.go)
+			s = streamOf(w) // a --json stdout's next-steps wrapper (next_steps.go)
 		}
 		f, ok := s.(*os.File)
 		return ok && term.IsTerminal(f)

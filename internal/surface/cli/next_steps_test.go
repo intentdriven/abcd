@@ -7,11 +7,13 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/spf13/cobra"
 )
@@ -76,38 +78,49 @@ func TestEveryNextTemplateNamesARealCommand(t *testing.T) {
 }
 
 // TestNoNextStepAnswersAConsentPromptAhead holds the steps to the worked
-// examples' rule (TestNoWorkedExampleAnswersAConsentPromptAhead): an agent
-// reads a step as a call it may run next, so a step passing one of
-// consentFlags that the command's Use line does not require says in its when
-// that it waits on the person.
+// examples' rule (TestNoWorkedExampleAnswersAConsentPromptAhead), and more
+// tightly: an agent reads a step as a call it may run next, so a step that
+// passes one of consentFlags, or that the guard refuses an agent (the acts
+// only the person takes, internal/core/guard/personacts.go, among them), says
+// in its when that it waits on the person's word. No Use line excuses one: a
+// command's own worked example may need the flag to be written at all, but a
+// step offered after another command is a call the agent would make next.
 func TestNoNextStepAnswersAConsentPromptAhead(t *testing.T) {
-	byPath := map[string]*cobra.Command{}
-	for _, c := range visibleCommands(NewRootCommand()) {
-		byPath[c.CommandPath()] = c
-	}
+	reg := guard.Defaults()
 	for _, path := range surface.NextPathsForTest() {
 		n, _ := surface.NextFor(path)
 		for _, s := range n.Steps {
-			c := nextTemplateCommand(byPath, s.Command)
-			if c == nil {
-				continue // TestEveryNextTemplateNamesARealCommand names it
-			}
-			required := map[string]bool{}
-			for _, group := range usageRequirements(c.Use) {
-				for _, f := range group {
-					required[f] = true
-				}
-			}
-			for _, tok := range exampleTokens(s.Command) {
-				for _, flag := range consentFlags {
-					if (tok == flag || strings.HasPrefix(tok, flag+"=")) && !required[flag] && !strings.Contains(s.When, "the person") {
-						t.Errorf("%s: step %q passes %s, and its when %q does not say it waits on the person", path, s.Command, flag, s.When)
-					}
-				}
+			if why := nextStepNeedsThePerson(reg, s.Command); why != "" && !strings.Contains(s.When, nextStepPersonsWord) {
+				t.Errorf("%s: step %q %s, and its when %q does not say it waits %s", path, s.Command, why, s.When, nextStepPersonsWord)
 			}
 		}
 	}
 }
+
+// nextStepPersonsWord is what the when of a step that waits on the person
+// says.
+const nextStepPersonsWord = "only when the person says yes"
+
+// nextStepNeedsThePerson says why the step is the person's to give, or "":
+// it passes a consent flag, or the default guard refuses the line, read with
+// each placeholder filled by a plain word.
+func nextStepNeedsThePerson(reg guard.Registry, template string) string {
+	for _, tok := range exampleTokens(template) {
+		for _, flag := range consentFlags {
+			if tok == flag || strings.HasPrefix(tok, flag+"=") {
+				return "passes " + flag
+			}
+		}
+	}
+	line := nextPlaceholder.ReplaceAllString(template, "placeholder")
+	if d, err := reg.Check(line); err == nil && d.Verdict == guard.VerdictBlock {
+		return "is refused by the guard (" + d.EntryID + ")"
+	}
+	return ""
+}
+
+// nextPlaceholder is a template's placeholder, such as <iss-N>.
+var nextPlaceholder = regexp.MustCompile(`<[^<>]+>`)
 
 // nextTemplateCommand is the visible command a template's leading words
 // reach, or nil.
@@ -222,6 +235,11 @@ func TestOnlyTheRootDeclaresAPreRunHook(t *testing.T) {
 			if sub.PersistentPreRun != nil || sub.PersistentPreRunE != nil {
 				t.Errorf("`%s` declares a persistent pre-run hook, which replaces the root's", sub.CommandPath())
 			}
+			// The key is written when the run returns nil; a post-run hook
+			// could still fail the command after it.
+			if sub.PostRun != nil || sub.PostRunE != nil || sub.PersistentPostRun != nil || sub.PersistentPostRunE != nil {
+				t.Errorf("`%s` declares a post-run hook, which could fail a run whose result already carries next_steps", sub.CommandPath())
+			}
 			walk(sub)
 		}
 	}
@@ -255,6 +273,17 @@ var fixtureSteps = []surface.NextStep{
 // every other test.
 func runFixture(t *testing.T, entry surface.Next, hidden bool, args []string, run func(cmd *cobra.Command, asJSON bool) error) string {
 	t.Helper()
+	out, err := runFixtureErr(t, entry, hidden, args, run)
+	if err != nil {
+		t.Fatalf("the fixture verb failed: %v", err)
+	}
+	return out
+}
+
+// runFixtureErr is runFixture for a fixture verb that may fail: its stdout
+// and the error its run returned.
+func runFixtureErr(t *testing.T, entry surface.Next, hidden bool, args []string, run func(cmd *cobra.Command, asJSON bool) error) (string, error) {
+	t.Helper()
 	root := newRootCommand(func(path string) (surface.Next, bool) {
 		if path == "abcd fixture-next" {
 			return entry, true
@@ -274,16 +303,14 @@ func runFixture(t *testing.T, entry surface.Next, hidden bool, args []string, ru
 	root.SetOut(&out)
 	root.SetErr(io.Discard)
 	root.SetArgs(append([]string{"fixture-next"}, args...))
-	if err := root.Execute(); err != nil {
-		t.Fatalf("the fixture verb failed: %v", err)
-	}
-	return out.String()
+	err := root.Execute()
+	return out.String(), err
 }
 
 // fixtureWriter is a visible fixture command's stdout under --json as the
 // root's pre-run hook wraps it, with a check of its own, for the documents
 // the binary's check would rightly record.
-func fixtureWriter(out io.Writer, entry surface.Next, check func(string, []byte)) io.Writer {
+func fixtureWriter(out io.Writer, entry surface.Next, check *nextStepsChecks) *nextStepsWriter {
 	return &nextStepsWriter{Writer: out, path: "abcd fixture-next", next: entry, check: check}
 }
 
@@ -398,6 +425,7 @@ func TestABareArrayResultIsLeftAsItIs(t *testing.T) {
 	if err := render(w, true, v, func(io.Writer) {}); err != nil {
 		t.Fatal(err)
 	}
+	w.finish(true)
 	if out.String() != plainJSON(t, v) {
 		t.Errorf("a bare array changed:\n%s", out.String())
 	}
@@ -428,17 +456,17 @@ func TestEveryBareArrayExemptionIsAVisibleCommandWithAnEntry(t *testing.T) {
 func TestNextStepsCheckRefusesAResultAlreadyCarryingTheKey(t *testing.T) {
 	var got []string
 	check := checkNextStepsForTest(func(line string) { got = append(got, line) })
-	check("abcd fixture-next", []byte("{\n  \"next_steps\": 1\n}\n"))
+	check.document("abcd fixture-next", []byte("{\n  \"next_steps\": 1\n}\n"))
 	if len(got) != 1 || !strings.Contains(got[0], "already carries a top-level next_steps") {
 		t.Fatalf("a result carrying the key was not recorded: %q", got)
 	}
 	got = nil
-	check("abcd fixture-next", []byte("{\n  \"inner\": {\"next_steps\": 1}\n}\n"))
-	check("abcd decide", []byte("[]\n"))
+	check.document("abcd fixture-next", []byte("{\n  \"inner\": {\"next_steps\": 1}\n}\n"))
+	check.document("abcd decide", []byte("[]\n"))
 	if len(got) != 0 {
 		t.Fatalf("the check recorded a nested key or an exempted bare array: %q", got)
 	}
-	check("abcd fixture-next", []byte("[]\n"))
+	check.document("abcd fixture-next", []byte("[]\n"))
 	if len(got) != 1 || !strings.Contains(got[0], "not a JSON object") {
 		t.Fatalf("a bare array from a command not exempted was not recorded: %q", got)
 	}
@@ -452,6 +480,7 @@ func TestNextStepsCheckRefusesAResultAlreadyCarryingTheKey(t *testing.T) {
 	if err := render(w, true, carrying{NextSteps: 7}, func(io.Writer) {}); err != nil {
 		t.Fatal(err)
 	}
+	w.finish(true)
 	if len(seen) != 1 {
 		t.Errorf("rendering a result that carries the key recorded %q", seen)
 	}
@@ -512,33 +541,199 @@ func TestThePageBlockListsTheNextSteps(t *testing.T) {
 	}
 }
 
-// nextStepsViolations collects, for TestMain, every --json document the
-// package's tests saw rendered that a next_steps key could not join.
+// TestAFailedRunWritesItsDocumentWithNoNextSteps: a run that returns an
+// error, with a code and a message or with the code alone, writes the
+// document it rendered exactly as render always wrote it, so no document a
+// non-zero exit or an error object follows carries the key, whichever helper
+// the verb wrote it through. A streaming command's summary is held to the
+// same end.
+func TestAFailedRunWritesItsDocumentWithNoNextSteps(t *testing.T) {
+	v := newFixtureResult("")
+	for _, fail := range []error{&exitError{Code: 2, Msg: "refused"}, &exitError{Code: 1}, fmt.Errorf("plain failure")} {
+		for _, entry := range []surface.Next{{Steps: fixtureSteps}, {Steps: fixtureSteps, Streaming: true}} {
+			got, err := runFixtureErr(t, entry, false, []string{"--json"}, func(cmd *cobra.Command, asJSON bool) error {
+				if err := renderFinal(cmd.OutOrStdout(), asJSON, v, func(io.Writer) {}); err != nil {
+					return err
+				}
+				return fail
+			})
+			if err == nil {
+				t.Fatalf("the fixture's failure %v was lost", fail)
+			}
+			if got != plainJSON(t, v) {
+				t.Errorf("after %v (streaming %v) the document is not as render wrote it:\n%s", fail, entry.Streaming, got)
+			}
+		}
+	}
+}
+
+// TestOnlyACommandsLastDocumentCarriesNextSteps: a command that writes two
+// documents has its first written as it was, and the key joins the last.
+func TestOnlyACommandsLastDocumentCarriesNextSteps(t *testing.T) {
+	first, last := newFixtureResult("first"), newFixtureResult("last")
+	got := runFixture(t, surface.Next{Steps: fixtureSteps}, false, []string{"--json"}, func(cmd *cobra.Command, asJSON bool) error {
+		if err := render(cmd.OutOrStdout(), asJSON, first, func(io.Writer) {}); err != nil {
+			return err
+		}
+		return render(cmd.OutOrStdout(), asJSON, last, func(io.Writer) {})
+	})
+	want := plainJSON(t, first) + strings.TrimSuffix(plainJSON(t, last), "\n}\n") + ",\n  \"next_steps\": " + stepsJSON(t, fixtureSteps) + "\n}\n"
+	if got != want {
+		t.Errorf("the documents are not the first as it was and the last with next_steps:\ngot\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestATerminalTestLeavesTheDocumentAsItIs: the terminal tests read the
+// stream beneath the wrapper and release nothing, so a --json document is the
+// same whether they run before the render or after it, and only a caller that
+// takes the stream itself (a child's stdout) writes the held document first.
+func TestATerminalTestLeavesTheDocumentAsItIs(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	w := fixtureWriter(f, surface.Next{Steps: fixtureSteps}, nil)
+	if streamOf(w) != io.Writer(f) || plainStdout(w) != io.Writer(f) {
+		t.Fatal("the wrapper does not give the stream beneath it")
+	}
+	v := newFixtureResult("")
+	want := strings.TrimSuffix(plainJSON(t, v), "\n}\n") + ",\n  \"next_steps\": " + stepsJSON(t, fixtureSteps) + "\n}\n"
+	for _, after := range []bool{false, true} {
+		got := runFixture(t, surface.Next{Steps: fixtureSteps}, false, []string{"--json"}, func(cmd *cobra.Command, asJSON bool) error {
+			look := func() {
+				_ = bannerTTY(cmd.OutOrStdout())
+				_ = boardWidth(cmd.OutOrStdout())
+				_ = boardRung(cmd.OutOrStdout(), false)
+			}
+			if !after {
+				look()
+			}
+			if err := render(cmd.OutOrStdout(), asJSON, v, func(io.Writer) {}); err != nil {
+				return err
+			}
+			if after {
+				look()
+			}
+			return nil
+		})
+		if got != want {
+			t.Errorf("with the terminal tests after the render %v, the document changed:\n%s", after, got)
+		}
+	}
+
+	var out bytes.Buffer
+	w = fixtureWriter(&out, surface.Next{Steps: fixtureSteps}, nil)
+	if err := render(w, true, v, func(io.Writer) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _ = streamOf(w); out.Len() != 0 {
+		t.Fatalf("a terminal test released the held document: %q", out.String())
+	}
+	if _ = plainStdout(w); out.String() != plainJSON(t, v) {
+		t.Fatalf("taking the stream did not write the held document first, as it was: %q", out.String())
+	}
+}
+
+// TestADocumentWrittenAroundTheSpliceIsHeard: the test binary's check hears
+// what a run that succeeded wrote to its stdout outside writeDocument, so a
+// --json document a verb encodes straight to the stream is recorded; text,
+// and anything a failed run wrote, is not.
+func TestADocumentWrittenAroundTheSpliceIsHeard(t *testing.T) {
+	for _, c := range []struct {
+		raw  string
+		ok   bool
+		want int
+	}{
+		{"{\n  \"findings\": []\n}\n", true, 1},
+		{"[1, 2]\n", true, 1},
+		{"{\"findings\": []}\n", false, 0},
+		{"a line of text\n", true, 0},
+	} {
+		var seen []string
+		w := fixtureWriter(io.Discard, surface.Next{Steps: fixtureSteps}, checkNextStepsForTest(func(line string) { seen = append(seen, line) }))
+		fmt.Fprint(w, c.raw)
+		w.finish(c.ok)
+		if len(seen) != c.want {
+			t.Errorf("%q written around the splice by a run that succeeded %v was recorded %q", c.raw, c.ok, seen)
+		}
+	}
+}
+
+// TestAKeyAFailedExitFollowsIsHeard: run's half of the check records a key
+// that a non-zero exit follows, and passes one an exit 0 follows.
+func TestAKeyAFailedExitFollowsIsHeard(t *testing.T) {
+	var seen []string
+	w := fixtureWriter(io.Discard, surface.Next{Steps: fixtureSteps}, checkNextStepsForTest(func(line string) { seen = append(seen, line) }))
+	if err := render(w, true, newFixtureResult(""), func(io.Writer) {}); err != nil {
+		t.Fatal(err)
+	}
+	w.finish(true)
+	cmd := &cobra.Command{Use: "fixture-next"}
+	cmd.SetOut(w)
+	checkNextStepsExit(cmd, 0)
+	if len(seen) != 0 {
+		t.Fatalf("a key an exit 0 follows was recorded: %q", seen)
+	}
+	checkNextStepsExit(cmd, 2)
+	if len(seen) != 1 || !strings.Contains(seen[0], "exited 2") {
+		t.Fatalf("a key an exit 2 follows was not recorded: %q", seen)
+	}
+}
+
+// nextStepsViolations collects, for TestMain, everything the next steps'
+// checks recorded while the package's tests ran.
 var nextStepsViolations struct {
 	sync.Mutex
 	lines []string
 }
 
-// checkNextStepsForTest is nextStepsCheck under the package's tests: a
-// document already carrying a top-level next_steps is recorded, and so is a
-// document that is not an object from a command the exemption list does not
-// name.
-func checkNextStepsForTest(record func(string)) func(path string, doc []byte) {
-	return func(path string, doc []byte) {
-		body := bytes.TrimSpace(doc)
-		if len(body) == 0 || body[0] != '{' {
-			if _, ok := nextStepsBareArray[path]; !ok {
-				record(fmt.Sprintf("%s: its --json document is not a JSON object, so next_steps cannot join it; "+
-					"name it in nextStepsBareArray (next_steps_test.go) with its reason", path))
+// checkNextStepsForTest is nextStepsCheck under the package's tests:
+//
+//   - a document already carrying a top-level next_steps is recorded, and so
+//     is a document that is not an object from a command the exemption list
+//     does not name;
+//   - a JSON document a run that succeeded wrote around writeDocument is
+//     recorded, since it carries no next steps;
+//   - a key that a non-zero exit (and so an error object, under --json)
+//     follows is recorded.
+func checkNextStepsForTest(record func(string)) *nextStepsChecks {
+	return &nextStepsChecks{
+		document: func(path string, doc []byte) {
+			body := bytes.TrimSpace(doc)
+			if len(body) == 0 || body[0] != '{' {
+				if _, ok := nextStepsBareArray[path]; !ok {
+					record(fmt.Sprintf("%s: its --json document is not a JSON object, so next_steps cannot join it; "+
+						"name it in nextStepsBareArray (next_steps_test.go) with its reason", path))
+				}
+				return
 			}
-			return
-		}
-		var top map[string]json.RawMessage
-		if json.Unmarshal(body, &top) == nil {
-			if _, dup := top["next_steps"]; dup {
-				record(fmt.Sprintf("%s: its result already carries a top-level next_steps, which the splice would shadow", path))
+			var top map[string]json.RawMessage
+			if json.Unmarshal(body, &top) == nil {
+				if _, dup := top["next_steps"]; dup {
+					record(fmt.Sprintf("%s: its result already carries a top-level next_steps, which the splice would shadow", path))
+				}
 			}
-		}
+		},
+		around: func(path string, raw []byte) {
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			for {
+				var v json.RawMessage
+				if dec.Decode(&v) != nil {
+					return
+				}
+				if b := bytes.TrimSpace(v); len(b) > 0 && (b[0] == '{' || b[0] == '[') {
+					record(fmt.Sprintf("%s: a --json document was written straight to stdout, around writeDocument, "+
+						"so it carries no next_steps; write it through render or writeDocument", path))
+					return
+				}
+			}
+		},
+		exit: func(path string, spliced bool, code int) {
+			if spliced && code != 0 {
+				record(fmt.Sprintf("%s: exited %d after writing next_steps, which only a success carries", path, code))
+			}
+		},
 	}
 }
 

@@ -140,7 +140,7 @@
       "next": [
         {
           "command": "abcd mode back",
-          "when": "on the person's return, to print what was queued"
+          "when": "only when the person says yes, once they are back, to print what was queued"
         }
       ]
     },

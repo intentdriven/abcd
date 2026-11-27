@@ -93,7 +93,7 @@
       "next": [
         {
           "command": "abcd guard allow --once --command '<line>'",
-          "when": "for an unproven delete the person has confirmed"
+          "when": "only when the person says yes, and run by them, to let through one unproven delete they have judged safe"
         }
       ]
     },

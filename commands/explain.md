@@ -142,8 +142,10 @@ not broken. It is `next_steps`, never `next`: several results carry a `next`
 of their own, such as the loop's next action, and keep it as it was. A
 command whose run can write more than one document (a loop's refusal
 document ahead of the error object, say) carries `next_steps` on its closing
-summary alone, and a document a refusal follows carries none. A hidden command
-adds nothing. Four commands print a JSON array rather than an object, and an
+summary alone, and one that goes on running after its document, such as
+`abcd session serve`, writes that document at once with no key. Only a command
+that succeeds adds the key: a document a non-zero
+exit or an error object follows carries none. A hidden command adds nothing. Four commands print a JSON array rather than an object, and an
 array takes no key without breaking its readers: `abcd decide` bare,
 `abcd history list`, `abcd history staged` and `abcd library ledger`. Their
 results are left as they were, and `explain` still names their next steps.

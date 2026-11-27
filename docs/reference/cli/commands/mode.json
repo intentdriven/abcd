@@ -16,11 +16,11 @@
       "next": [
         {
           "command": "abcd mode autonomous",
-          "when": "when the person is going away"
+          "when": "only when the person says yes, as they go away"
         },
         {
           "command": "abcd mode back",
-          "when": "when the person is back"
+          "when": "only when the person says yes, once they are back"
         }
       ]
     },
@@ -47,7 +47,7 @@
         },
         {
           "command": "abcd mode back",
-          "when": "when the person is back"
+          "when": "only when the person says yes, once they are back"
         }
       ]
     },
@@ -70,7 +70,7 @@
       "next": [
         {
           "command": "abcd mode back",
-          "when": "when the person is back"
+          "when": "only when the person says yes, once they are back"
         }
       ]
     }

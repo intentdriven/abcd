@@ -2686,7 +2686,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd implement resume [--run <run-id>] [--take <run-id>] [flags]`
   - An example call is `abcd implement resume --run run-2609010000000001`.
   - What usually follows:
-    - `abcd implement resume --take <run-id>`, once the person agrees to take over a run it listed.
+    - `abcd implement resume --take <run-id>`, only when the person says yes, to take over a run it listed.
     - `abcd implement step`, to perform a taken run's next stage.
 - `abcd implement status [--run <run-id>] [flags]`
   - An example call is `abcd implement status`.
@@ -2700,7 +2700,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd implement stop [--lift] [flags]`
   - An example call is `abcd implement stop`.
   - What usually follows:
-    - `abcd implement stop --lift`, once the runs may start again.
+    - `abcd implement stop --lift`, only when the person says yes, and run by them from their own account, once the runs may start again.
 - `abcd implement widen <path>... --lane <lane-id> [--run <run-id>] [flags]`
   - An example call is `abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001`.
   - What usually follows:

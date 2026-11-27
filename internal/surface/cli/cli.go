@@ -7770,6 +7770,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	called, err := root.ExecuteC()
 	if err == nil {
+		checkNextStepsExit(called, 0)
 		return 0
 	}
 	// A command may request a specific exit code (usage errors, the memory-lint
@@ -7780,6 +7781,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if errors.As(err, &coded) {
 		code = coded.ExitCode()
 	}
+	// An error object follows on stdout under --json, or the code alone
+	// ends the run: either way the command's document carries no next steps.
+	checkNextStepsExit(called, code)
 	msg := scrubPaths(err)
 	if msg == "" {
 		// A silent exit means the command already rendered its output. One

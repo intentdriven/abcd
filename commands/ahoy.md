@@ -2065,7 +2065,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd ahoy shared-folder [<folder>] [--person <account>] [flags]`
   - An example call is `abcd ahoy shared-folder /Users/Shared`.
   - What usually follows:
-    - `abcd implement stop`, to stop the unattended runs of every account that chose the folder.
+    - `abcd implement stop`, only when the person says yes, and run by them from their own account, to stop the unattended runs of every account that chose the folder.
 - `abcd ahoy uninstall [flags]`
   - An example call is `abcd ahoy uninstall`.
   - Nothing usually follows: abcd is gone from the repository, so no abcd command usually follows.

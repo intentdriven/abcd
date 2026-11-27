@@ -1500,7 +1500,7 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
 - `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
   - An example call is `abcd launch scaffold`.
   - What usually follows:
-    - `abcd launch scaffold --confirm`, once the person agrees to what a practice run listed.
+    - `abcd launch scaffold --confirm`, only when the person says yes to what a practice run listed.
     - `abcd launch --dry-run`, to preview the release gates it scaffolded.
 - `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [--dry-run] [flags]`
   - Reads `--changelog-json`, the composed changelog, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain launch ship --input changelog-json` prints its shape.

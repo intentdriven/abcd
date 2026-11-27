@@ -483,7 +483,7 @@
       "next": [
         {
           "command": "abcd implement resume --take <run-id>",
-          "when": "once the person agrees to take over a run it listed"
+          "when": "only when the person says yes, to take over a run it listed"
         },
         {
           "command": "abcd implement step",
@@ -575,7 +575,7 @@
       "next": [
         {
           "command": "abcd implement stop --lift",
-          "when": "once the runs may start again"
+          "when": "only when the person says yes, and run by them from their own account, once the runs may start again"
         }
       ]
     },

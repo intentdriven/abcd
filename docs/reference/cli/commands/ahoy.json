@@ -362,7 +362,7 @@
       "next": [
         {
           "command": "abcd implement stop",
-          "when": "to stop the unattended runs of every account that chose the folder"
+          "when": "only when the person says yes, and run by them from their own account, to stop the unattended runs of every account that chose the folder"
         }
       ]
     },

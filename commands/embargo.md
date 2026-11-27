@@ -452,7 +452,7 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 - `abcd embargo queue [flags]`
   - An example call is `abcd embargo queue`.
   - What usually follows:
-    - `abcd mode back`, on the person's return, to print what was queued.
+    - `abcd mode back`, only when the person says yes, once they are back, to print what was queued.
 - `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
   - An example call is `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`.
   - What usually follows:

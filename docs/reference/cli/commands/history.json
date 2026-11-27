@@ -248,7 +248,7 @@
         },
         {
           "command": "abcd history discard <staged-filename> --yes",
-          "when": "to delete a staged transcript for good"
+          "when": "only when the person says yes, to delete a staged transcript for good"
         }
       ]
     }

@@ -17,8 +17,10 @@ import "sort"
 // command to an entry, every entry to a visible command, and every template
 // to a command path the tree has, with flags that command takes. A step that
 // passes a flag giving the person's yes (--yes, --confirm, --take and the
-// rest) says in its when that it waits on the person, unless the command
-// cannot run without the flag, as the worked examples' rule has it.
+// rest), or that the guard refuses an agent as the person's own act
+// (internal/core/guard/personacts.go), says in its when that it waits on the
+// person (only when the person says yes), even where the command cannot run
+// without the flag.
 
 // NextStep is one step that usually follows a command's success.
 //
@@ -57,6 +59,12 @@ func streaming(s ...NextStep) Next { return Next{Steps: s, Streaming: true} }
 // none is the explicit empty list, with the reason.
 func none(reason string) Next { return Next{None: reason} }
 
+// runsOn is the explicit empty list for a command that goes on running after
+// it writes its document, such as a server's start line: the document is
+// written at once, as a streaming command's are, and carries no next steps,
+// since the run has not ended.
+func runsOn(reason string) Next { return Next{None: reason, Streaming: true} }
+
 var nextSteps = map[string]Next{
 	"abcd": steps(
 		step("abcd <record-id>", "to see what one record on the board is and its next move"),
@@ -93,7 +101,7 @@ var nextSteps = map[string]Next{
 		step("abcd ahoy remote", "to confirm no setting differs any more"),
 	),
 	"abcd ahoy shared-folder": steps(
-		step("abcd implement stop", "to stop the unattended runs of every account that chose the folder"),
+		step("abcd implement stop", "only when the person says yes, and run by them from their own account, to stop the unattended runs of every account that chose the folder"),
 	),
 	"abcd ahoy uninstall": none("abcd is gone from the repository, so no abcd command usually follows"),
 	"abcd ahoy worktree": steps(
@@ -299,7 +307,7 @@ var nextSteps = map[string]Next{
 		step("abcd embargo close <GHSA-id>", "to close an advisory once it is published"),
 	),
 	"abcd embargo queue": steps(
-		step("abcd mode back", "on the person's return, to print what was queued"),
+		step("abcd mode back", "only when the person says yes, once they are back, to print what was queued"),
 	),
 	"abcd embargo triage": steps(
 		step("abcd embargo fixed <GHSA-id> <commit>", "once the commits that fix the advisory exist"),
@@ -325,7 +333,7 @@ var nextSteps = map[string]Next{
 	"abcd guard allow":   none("the allowance is used by the next matching call through the hook; nothing usually follows"),
 	"abcd guard approve": none("it answers prompts until its input ends; nothing usually follows"),
 	"abcd guard check": steps(
-		step("abcd guard allow --once --command '<line>'", "for an unproven delete the person has confirmed"),
+		step("abcd guard allow --once --command '<line>'", "only when the person says yes, and run by them, to let through one unproven delete they have judged safe"),
 	),
 	"abcd guard hook":     none("the host calls it on each tool call and reads its answer; nothing follows it"),
 	"abcd guard question": none("a clean draft is handed to the host's question tool; no abcd command follows it"),
@@ -359,7 +367,7 @@ var nextSteps = map[string]Next{
 	),
 	"abcd history staged": steps(
 		step("abcd history drain", "to redact and store what is staged"),
-		step("abcd history discard <staged-filename> --yes", "to delete a staged transcript for good"),
+		step("abcd history discard <staged-filename> --yes", "only when the person says yes, to delete a staged transcript for good"),
 	),
 
 	"abcd ideate": steps(
@@ -431,7 +439,7 @@ var nextSteps = map[string]Next{
 	),
 	"abcd implement report": none("the comparison is the run's final reading; nothing usually follows"),
 	"abcd implement resume": streaming(
-		step("abcd implement resume --take <run-id>", "once the person agrees to take over a run it listed"),
+		step("abcd implement resume --take <run-id>", "only when the person says yes, to take over a run it listed"),
 		step("abcd implement step", "to perform a taken run's next stage"),
 	),
 	"abcd implement status": streaming(
@@ -442,7 +450,7 @@ var nextSteps = map[string]Next{
 		step("abcd implement status", "to see the run lane by lane"),
 	),
 	"abcd implement stop": steps(
-		step("abcd implement stop --lift", "once the runs may start again"),
+		step("abcd implement stop --lift", "only when the person says yes, and run by them from their own account, once the runs may start again"),
 	),
 	"abcd implement widen": streaming(
 		step("abcd implement step", "to carry on the lane with the wider hold"),
@@ -568,7 +576,7 @@ var nextSteps = map[string]Next{
 		step("abcd land", "to push the relanded bump and queue its pull request"),
 	),
 	"abcd launch scaffold": steps(
-		step("abcd launch scaffold --confirm", "once the person agrees to what a practice run listed"),
+		step("abcd launch scaffold --confirm", "only when the person says yes to what a practice run listed"),
 		step("abcd launch --dry-run", "to preview the release gates it scaffolded"),
 	),
 	"abcd launch ship": steps(
@@ -635,16 +643,16 @@ var nextSteps = map[string]Next{
 	),
 
 	"abcd mode": steps(
-		step("abcd mode autonomous", "when the person is going away"),
-		step("abcd mode back", "when the person is back"),
+		step("abcd mode autonomous", "only when the person says yes, as they go away"),
+		step("abcd mode back", "only when the person says yes, once they are back"),
 	),
 	"abcd mode autonomous": steps(
 		step("abcd mode queue \"<step>\"", "to queue a step for the person's return"),
-		step("abcd mode back", "when the person is back"),
+		step("abcd mode back", "only when the person says yes, once they are back"),
 	),
 	"abcd mode back": none("the queue is printed for the person to act on; nothing usually follows"),
 	"abcd mode queue": steps(
-		step("abcd mode back", "when the person is back"),
+		step("abcd mode back", "only when the person says yes, once they are back"),
 	),
 
 	"abcd peers": steps(
@@ -694,11 +702,11 @@ var nextSteps = map[string]Next{
 		step("abcd session page", "to write the brief session's static page beside the relay"),
 	),
 	"abcd session page":  none("the page is written for hosting; nothing usually follows"),
-	"abcd session serve": none("the relay runs in the foreground until stopped; nothing usually follows"),
+	"abcd session serve": runsOn("the relay runs in the foreground until stopped; nothing usually follows"),
 	"abcd session setup": steps(
 		step("abcd session start", "to start a live brief session"),
 	),
-	"abcd session start": none("the session runs on this computer; its link is shared with the team"),
+	"abcd session start": runsOn("the session runs on this computer; its link is shared with the team"),
 
 	"abcd site": steps(
 		step("abcd site build", "to render the website"),
