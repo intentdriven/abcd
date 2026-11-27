@@ -2086,6 +2086,14 @@ outside the dedup ledger.`,
 			facCtx, facCancel := context.WithDeadline(context.Background(), deadline)
 			away.Block = joinBlocks(away.Block, promptFacilitatorLine(facCtx, cmd.ErrOrStderr(), root))
 			facCancel()
+			// The conversation window (iss-2611260602137306): a prompt the
+			// person typed while away has this session read them as present
+			// for a while, and the agent is told so.
+			if away.Holds {
+				convCtx, convCancel := context.WithDeadline(context.Background(), deadline)
+				away.Block = joinBlocks(away.Block, promptConversation(convCtx, cmd.ErrOrStderr(), cwd, in.SessionID, in.Prompt, away.Record))
+				convCancel()
+			}
 			// The checklist's behind note a present session's last stop left
 			// (spc-2610230805429429 step 4), carried once, beside the away
 			// block and outside the dedup ledger.

@@ -250,7 +250,7 @@ func dispatchWorkflow(ctx context.Context, root string, o Options, now time.Time
 		return fallback("no forge client was given")
 	}
 	c, cancel := context.WithTimeout(ctx, remoteNetTimeout)
-	def, _, err := gitutil.RemoteHeadTip(c, gitutil.NetContext, root, claim.Remote)
+	def, _, err := gitutil.RemoteHeadTip(c, nil, root, claim.Remote)
 	cancel()
 	if cerr := ctx.Err(); cerr != nil {
 		return stopped(cerr, "the run was stopped before the reservation sweep's workflow was dispatched")

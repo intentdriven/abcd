@@ -67,6 +67,15 @@ type DeleteTarget struct {
 	Remote string
 	// Branch is the branch deleted, without refs/heads/.
 	Branch string
+	// Ref is, for a remote branch, the push's destination as the line spells
+	// it, when that is not Branch itself (refs/heads/<Branch>); "" when it
+	// is Branch. git matches a push's destination against the remote's refs
+	// by the rev-parse rules (<ref>, refs/<ref>, refs/tags/<ref>,
+	// refs/heads/<ref>, refs/remotes/<ref>, refs/remotes/<ref>/HEAD), so the
+	// ref a push deletes is the remote's to say: heads/x deletes
+	// refs/heads/x, and a name only a tag on the remote holds deletes that
+	// tag. A prover reads which ref of the remote's the destination names.
+	Ref string
 	// Path is the absolute path of the worktree removed.
 	Path string
 }
@@ -464,7 +473,11 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 		if why != "" {
 			return nil, why
 		}
-		out = append(out, DeleteTarget{Kind: DeleteRemoteBranch, Dir: dir, Remote: remote, Branch: b})
+		ref := ""
+		if name != b {
+			ref = name
+		}
+		out = append(out, DeleteTarget{Kind: DeleteRemoteBranch, Dir: dir, Remote: remote, Branch: b, Ref: ref})
 	}
 	if del && !named {
 		return nil, "the push deletes but names no branch"
