@@ -283,6 +283,18 @@ RemovedFromMergeQueueEvent.reason String SCALAR
 # pinned above and whose concrete type the watch reads through __typename. The
 # same read confirmed createdAt (a non-null DateTime) and reason above.
 RemovedFromMergeQueueEvent.actor Actor INTERFACE
+# The same watch's read of the pull request's last arming or withdrawal of
+# its auto-merge (itd-2611141610201875), so a person's after the queue's
+# removal stands: the two events of the timeline's union and their createdAt,
+# read 2026-11-27 by introspection (the __type query above on
+# AutoMergeEnabledEvent and on AutoMergeDisabledEvent, and possibleTypes of
+# PullRequestTimelineItems). createdAt is a non-null DateTime on both, and
+# AUTO_MERGE_ENABLED_EVENT and AUTO_MERGE_DISABLED_EVENT are values of
+# PullRequestTimelineItemsItemType.
+on PullRequestTimelineItems AutoMergeEnabledEvent
+on PullRequestTimelineItems AutoMergeDisabledEvent
+AutoMergeEnabledEvent.createdAt DateTime SCALAR
+AutoMergeDisabledEvent.createdAt DateTime SCALAR
 # The landings reader's batch of pull requests (spc-2610301950480609 approach
 # 6, internal/core/landings/forge.go), read 2026-11-12 by the same __type
 # queries, one a type: PullRequestReviewConnection and PullRequestCommitConnection

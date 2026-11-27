@@ -1,5 +1,5 @@
 {
-  "captured": "2026-11-27, read-only: gh api graphql, timelineItems(last:20,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}} on intentdriven/abcd",
+  "captured": "2026-11-27, read-only: gh api graphql, timelineItems(last:20,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}} on intentdriven/abcd; #1784 is a person's removal from the queue, #1815 a conflict, #1789 two failed checks",
   "839": [
     {"createdAt": "2026-10-07T08:43:45Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
     {"createdAt": "2026-10-07T09:24:18Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
@@ -7,5 +7,18 @@
   "1011": [
     {"createdAt": "2026-10-15T07:48:04Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
     {"createdAt": "2026-10-15T10:53:55Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
+  ],
+  "1784": [
+    {"createdAt": "2026-11-24T00:59:31Z", "reason": "manual", "actor": {"__typename": "User", "login": "REPPL"}},
+    {"createdAt": "2026-11-24T01:41:50Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
+  ],
+  "1789": [
+    {"createdAt": "2026-11-24T10:21:36Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
+    {"createdAt": "2026-11-24T13:08:56Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
+    {"createdAt": "2026-11-24T14:01:33Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
+  ],
+  "1815": [
+    {"createdAt": "2026-11-27T00:17:13Z", "reason": "merge_conflict", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
+    {"createdAt": "2026-11-27T02:25:14Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
   ]
 }

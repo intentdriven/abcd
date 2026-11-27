@@ -36,6 +36,7 @@ type stubQueue struct {
 	status    string
 	removed   string
 	removal   map[string]any
+	armings   []map[string]any
 }
 
 // queueAnswer makes the stub forge answer the queue state query with q.
@@ -55,6 +56,9 @@ func (f *landFixture) queueAnswer(t *testing.T, q stubQueue) {
 	}
 	if q.removal != nil {
 		pr["timelineItems"] = map[string]any{"nodes": []any{q.removal}}
+	}
+	if q.armings != nil {
+		pr["armings"] = map[string]any{"nodes": q.armings}
 	}
 	f.writeGH(t, "queue.json", map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": pr}}})
 }
@@ -304,6 +308,9 @@ func TestTheQueueWatchAsksTheForgeOnlyForPinnedFields(t *testing.T) {
 	}
 	if !strings.Contains(QueueStateQuery, "... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}") {
 		t.Fatalf("the query reads who removed the pull request from the queue: %s", QueueStateQuery)
+	}
+	if !strings.Contains(QueueStateQuery, "armings:timelineItems(last:1,itemTypes:[AUTO_MERGE_ENABLED_EVENT,AUTO_MERGE_DISABLED_EVENT]){nodes{... on AutoMergeEnabledEvent{createdAt} ... on AutoMergeDisabledEvent{createdAt}}}") {
+		t.Fatalf("the query reads the forge's last arming or withdrawal of the pull request: %s", QueueStateQuery)
 	}
 	if named, ok := ghcontract.GraphQLField("Mutation", "enqueuePullRequest"); !ok || named != "EnqueuePullRequestPayload" ||
 		!strings.Contains(claim.EnqueueMutation, "expectedHeadOid") {

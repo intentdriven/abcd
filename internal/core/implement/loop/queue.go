@@ -64,9 +64,10 @@ import (
 // node id the enqueue call names, the head (the queue and a re-arm are pinned
 // to it), whether it is queued, the arming and its age, the merge state, and
 // the last removal from the queue with the forge's reason and its actor, whose
-// type and login say whether the queue itself removed it. Every field is
-// pinned in internal/ghcontract.
-const QueueStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id state headRefOid isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt} mergeStateStatus timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}}}}}`
+// type and login say whether the queue itself removed it, and the time of the
+// last arming or withdrawal of its auto-merge (armings), a person's after the
+// queue's removal standing. Every field is pinned in internal/ghcontract.
+const QueueStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id state headRefOid isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt} mergeStateStatus timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}} armings:timelineItems(last:1,itemTypes:[AUTO_MERGE_ENABLED_EVENT,AUTO_MERGE_DISABLED_EVENT]){nodes{... on AutoMergeEnabledEvent{createdAt} ... on AutoMergeDisabledEvent{createdAt}}}}}}`
 
 // queueStateArgs are the forge client's arguments for QueueStateQuery on
 // pull request n of the repository gh resolves in the checkout: the owner and
@@ -119,6 +120,11 @@ const (
 	mergeQueueActorLogin = "github-merge-queue"
 )
 
+// manualRemoval is the forge's reason on a removal a person made from the
+// queue (#1784): never armed again, whatever actor the forge names, so a
+// person's act stands even were the forge to sign it as its queue.
+const manualRemoval = "manual"
+
 // The bounds on forge text a refusal or a note carries.
 const (
 	maxQueueReason   = 160
@@ -144,6 +150,27 @@ type queueView struct {
 	TimelineItems    struct {
 		Nodes []queueRemovalNode `json:"nodes"`
 	} `json:"timelineItems"`
+	Armings struct {
+		Nodes []armingNode `json:"nodes"`
+	} `json:"armings"`
+}
+
+// armingNode is the forge's last arming or withdrawal of the pull request's
+// auto-merge (an AutoMergeEnabledEvent or an AutoMergeDisabledEvent): when.
+type armingNode struct {
+	CreatedAt string `json:"createdAt"`
+}
+
+// armedSince reports whether the forge records an arming or a withdrawal of
+// the pull request's auto-merge at or after at. One whose time does not read
+// counts, so a record that cannot be read arms nothing.
+func (v queueView) armedSince(at time.Time) bool {
+	for _, n := range v.Armings.Nodes {
+		if t, err := time.Parse(time.RFC3339, n.CreatedAt); err != nil || !t.Before(at) {
+			return true
+		}
+	}
+	return false
 }
 
 // queueRemovalNode is the forge's last removal of the pull request from the
@@ -550,22 +577,26 @@ func rearmArgs(n, method, head string) []string {
 //     on the hold, and holds it could not read leave a release's withdrawal
 //     not ruled out;
 //   - the forge records a removal and the merge queue itself made it
-//     (byTheQueue);
+//     (byTheQueue), for a reason other than manualRemoval;
 //   - the removal is later than the loop's own last arming of the pushed head
 //     (Landing.ArmedAt, the run's clock), so a removal from before a resync
 //     or before a person armed it again is never read as new;
 //   - the removal is later than the one the landing last armed again for
 //     (Landing.RearmedRemoval, the forge's clock), so a person's withdrawal
 //     after a re-arm stands;
+//   - the removal is later than the last arming or withdrawal of the pull
+//     request's auto-merge the forge records (armedSince, the forge's clock),
+//     so a person who armed it by hand after a removal no step saw, then
+//     withdrew it, has that withdrawal stand;
 //   - fewer than maxRearms re-arms at the pushed head;
 //   - the pushed head is a full object name and the mirror names a method;
 //   - the fence and the merge gate pass, asked as the watch asks them before
 //     it queues or toggles.
 //
 // The count, the removal's time and the arming's are kept only once the forge
-// took the arming. The removal's reason is printed and never chooses
-// (decision 1 of itd-2611141610201875: the forge's data cannot tell the
-// change's own failure from another's).
+// took the arming. The removal's reason is printed and chooses nothing but
+// manualRemoval's refusal (decision 1 of itd-2611141610201875: the forge's
+// data cannot tell the change's own failure from another's).
 func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v queueView) (*Outcome, string, error) {
 	held, err := droppedHold(c, *lane)
 	if err != nil {
@@ -633,7 +664,8 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 // rearmable reads the forge's last removal against the landing: its time, and
 // why it is not armed again, "" when the removal is the queue's own, later than
 // the loop's own last arming of the pushed head and than the removal last armed
-// again for, and under the bound. Both comparisons are strict, and a time that
+// again for, and than the last arming or withdrawal on record, not a manual
+// removal, and under the bound. Every comparison is strict, and a time that
 // does not parse arms nothing.
 func rearmable(ld Landing, v queueView) (time.Time, string) {
 	e, ok := v.lastRemoval()
@@ -642,6 +674,9 @@ func rearmable(ld Landing, v queueView) (time.Time, string) {
 	}
 	if !e.byTheQueue() {
 		return time.Time{}, "the merge queue itself did not remove it"
+	}
+	if strings.EqualFold(strings.TrimSpace(e.Reason), manualRemoval) {
+		return time.Time{}, "the forge gives the removal the reason manual, a person's"
 	}
 	at, err := time.Parse(time.RFC3339, e.CreatedAt)
 	switch {
@@ -653,6 +688,8 @@ func rearmable(ld Landing, v queueView) (time.Time, string) {
 		return time.Time{}, "the removal on record is not later than the loop's own last arming of this head"
 	case ld.RearmedRemoval != nil && !at.After(*ld.RearmedRemoval):
 		return time.Time{}, "no removal on record is later than the one it was last armed again for, so its arming was withdrawn since"
+	case v.armedSince(at):
+		return time.Time{}, "it was armed or its arming withdrawn on the forge since the queue removed it, a person's act that stands"
 	case ld.Rearms >= maxRearms:
 		return time.Time{}, "past the bound"
 	}

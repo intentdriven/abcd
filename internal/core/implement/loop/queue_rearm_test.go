@@ -33,6 +33,13 @@ var mergeQueueBot = map[string]any{"__typename": "Bot", "login": "github-merge-q
 // failed checks, as the forge answered it (testdata/queue-removals.json).
 func capturedRemoval(t *testing.T, pr string) map[string]any {
 	t.Helper()
+	return capturedRemovalOf(t, pr, "failed_checks")
+}
+
+// capturedRemovalOf is the forge's first removal of pull request pr for
+// reason, as it answered it (testdata/queue-removals.json).
+func capturedRemovalOf(t *testing.T, pr, reason string) map[string]any {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", "queue-removals.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -46,11 +53,11 @@ func capturedRemoval(t *testing.T, pr string) map[string]any {
 		t.Fatal(err)
 	}
 	for _, n := range nodes {
-		if n["reason"] == "failed_checks" {
+		if n["reason"] == reason {
 			return n
 		}
 	}
-	t.Fatalf("no failed_checks removal of #%s was captured", pr)
+	t.Fatalf("no %s removal of #%s was captured", reason, pr)
 	return nil
 }
 
@@ -626,4 +633,99 @@ func TestAFailedChecksNameCannotReadAsACommand(t *testing.T) {
 			t.Fatalf("a back-quoted span of the remedy is not the loop's own command (%q): %s", m[1], r.Remedy)
 		}
 	}
+}
+
+// The forge's real removals (testdata/queue-removals.json): the queue's own
+// for failed checks (#1789) and for a conflict (#1815) are armed again; a
+// person's removal from the queue (#1784: the reason manual, the person as
+// actor) is not, and nor is a removal the forge gives the reason manual
+// whatever actor it names, so a person's act stands even if the forge ever
+// signs it as its queue.
+func TestTheForgesRealRemovalsAreArmedAgainOnlyWhereTheQueueMadeThem(t *testing.T) {
+	for _, c := range []struct {
+		name, pr, reason string
+		actor            map[string]any
+		armed            bool
+	}{
+		{"the queue's failed checks (#1789)", "1789", "failed_checks", nil, true},
+		{"the queue's conflict (#1815)", "1815", "merge_conflict", nil, true},
+		{"a person's removal (#1784)", "1784", "manual", nil, false},
+		{"manual, signed as the queue", "1784", "manual", mergeQueueBot, false},
+		{"Manual in another case, signed as the queue", "1784", "manual", mergeQueueBot, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			node := capturedRemovalOf(t, c.pr, c.reason)
+			if c.actor != nil {
+				node["actor"] = c.actor
+			}
+			if strings.HasPrefix(c.name, "Manual") {
+				node["reason"] = " Manual"
+			}
+			at, err := time.Parse(time.RFC3339, node["createdAt"].(string))
+			if err != nil {
+				t.Fatal(err)
+			}
+			f, pushed := rearmFixture(t)
+			f.setLanding(t, func(ld *Landing) {
+				armed := at.Add(-time.Hour)
+				ld.ArmedAt = &armed
+			})
+			f.removedBy(t, pushed, node)
+			if !c.armed {
+				f.wantDroppedUnarmed(t, at.Add(5*time.Minute))
+				return
+			}
+			before := f.ghLog(t)
+			if _, err := f.stepAt(at.Add(5 * time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			if n := armings(strings.TrimPrefix(f.ghLog(t), before)); n != 1 {
+				t.Fatalf("the queue's own removal is armed again once: %d", n)
+			}
+		})
+	}
+}
+
+// arming is an arming or a withdrawal on the pull request's timeline as the
+// forge answers it: typ AutoMergeEnabledEvent or AutoMergeDisabledEvent.
+func arming(typ string, at time.Time) map[string]any {
+	return map[string]any{"__typename": typ, "createdAt": at.UTC().Format(time.RFC3339)}
+}
+
+// A person armed the pull request by hand after a removal by the queue that
+// no step saw, then withdrew the arming before the next step: the withdrawal
+// stands, and nothing is armed. The removal is later than the loop's own
+// arming and was never armed again for, so only the forge's own record of
+// the armings tells it apart; one that arrives at the removal's second, or
+// whose time does not read, arms nothing either. The loop's own arming before
+// the removal holds nothing back.
+func TestAPersonsWithdrawalAfterAnUnseenRemovalStands(t *testing.T) {
+	removedAt := rearmArmedAt.Add(30 * time.Minute)
+	for name, events := range map[string][]map[string]any{
+		"armed, then withdrawn":     {arming("AutoMergeEnabledEvent", removedAt.Add(5*time.Minute)), arming("AutoMergeDisabledEvent", removedAt.Add(10*time.Minute))},
+		"withdrawn":                 {arming("AutoMergeDisabledEvent", removedAt.Add(10*time.Minute))},
+		"at the removal's second":   {arming("AutoMergeDisabledEvent", removedAt)},
+		"a time that does not read": {{"__typename": "AutoMergeDisabledEvent", "createdAt": "later"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, pushed := rearmFixture(t)
+			f.queueAnswer(t, stubQueue{head: pushed, status: "BLOCKED", removal: removal(removedAt, "failed_checks", mergeQueueBot), armings: events})
+			r := f.wantDroppedUnarmed(t, removedAt.Add(20*time.Minute))
+			if !strings.Contains(r.Reason, "armed or its arming withdrawn on the forge since the queue removed it") {
+				t.Fatalf("the hand-back says a person's arming or withdrawal stands: %s", r.Reason)
+			}
+		})
+	}
+	t.Run("the loop's own arming before the removal", func(t *testing.T) {
+		f, pushed := rearmFixture(t)
+		f.queueAnswer(t, stubQueue{head: pushed, status: "BLOCKED", removal: removal(removedAt, "failed_checks", mergeQueueBot),
+			armings: []map[string]any{arming("AutoMergeEnabledEvent", rearmArmedAt)}})
+		before := f.ghLog(t)
+		if _, err := f.stepAt(removedAt.Add(20 * time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		if n := armings(strings.TrimPrefix(f.ghLog(t), before)); n != 1 {
+			t.Fatalf("a removal later than every arming on record is armed again: %d", n)
+		}
+	})
 }
