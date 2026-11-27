@@ -106,6 +106,35 @@ var svgSizeRe = regexp.MustCompile(`\s(width|height)="\d+"`)
 // class of bug this function exists to end. A document that does not parse
 // (which checkInlinableSVG has already refused) is returned untouched.
 func stripRootSize(svg string) string {
+	start, end, ok := rootStartTag(svg)
+	if !ok {
+		return svg
+	}
+	return svg[:start] + svgSizeRe.ReplaceAllString(svg[start:end], "") + svg[end:]
+}
+
+// hideRootDrawing marks the ROOT <svg> element aria-hidden, so an inlined
+// drawing adds no name of its own beside the one its wrapper takes from the
+// page's alt (iss-2610241550257430). The attribute goes straight after the
+// element name: an HTML parser keeps the first of two same-named attributes,
+// so a drawing that declares aria-hidden="false" itself is hidden all the same.
+// The root start tag is found as stripRootSize finds it, and a document that
+// does not parse is returned untouched.
+func hideRootDrawing(svg string) string {
+	start, end, ok := rootStartTag(svg)
+	if !ok {
+		return svg
+	}
+	nameEnd := start + 1
+	for nameEnd < end && !strings.ContainsRune(" \t\r\n/>", rune(svg[nameEnd])) {
+		nameEnd++
+	}
+	return svg[:nameEnd] + ` aria-hidden="true"` + svg[nameEnd:]
+}
+
+// rootStartTag brackets the ROOT element's start tag in svg, from the same
+// decoder that vetted the document.
+func rootStartTag(svg string) (int, int, bool) {
 	dec := xml.NewDecoder(strings.NewReader(svg))
 	dec.Strict = true
 	dec.Entity = map[string]string{}
@@ -119,16 +148,16 @@ func stripRootSize(svg string) string {
 		start := int(dec.InputOffset())
 		tok, err := dec.Token()
 		if err != nil {
-			return svg
+			return 0, 0, false
 		}
 		if _, ok := tok.(xml.StartElement); !ok {
 			continue
 		}
 		end := int(dec.InputOffset())
-		if start < 0 || end > len(svg) || start >= end {
-			return svg
+		if start < 0 || end > len(svg) || start >= end || svg[start] != '<' {
+			return 0, 0, false
 		}
-		return svg[:start] + svgSizeRe.ReplaceAllString(svg[start:end], "") + svg[end:]
+		return start, end, true
 	}
 }
 
@@ -437,9 +466,17 @@ func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) 
 		if err := checkInlinableSVG(string(data), rel); err != nil {
 			return "", fmt.Errorf("%s:%d: %w", at.Path, at.Line, err)
 		}
-		svg := stripRootSize(string(data))
+		svg := hideRootDrawing(stripRootSize(string(data)))
 		stem := strings.TrimSuffix(name, ".svg")
-		return `<span class="svgasset ` + escapeAttr(stem) + `" data-asset="` + escapeAttr(rel) + `">` + svg + `</span>`, nil
+		// The wrapper is the picture, named by the page's alt as an <img> is,
+		// so the site and the forge name it alike; the drawing inside says
+		// nothing of its own. An empty alt is a decorative picture, hidden
+		// whole (WCAG 2.2 H37, iss-2610241550257430).
+		a11y := ` role="img" aria-label="` + escapeAttr(alt) + `"`
+		if alt == "" {
+			a11y = ` aria-hidden="true"`
+		}
+		return `<span class="svgasset ` + escapeAttr(stem) + `" data-asset="` + escapeAttr(rel) + `"` + a11y + `>` + svg + `</span>`, nil
 	}
 
 	dst := assetOutDir + "/" + name

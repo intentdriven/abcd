@@ -1,6 +1,7 @@
 package site
 
 import (
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -350,5 +351,94 @@ func TestCommittedSVGAssetsAreDrawings(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("no SVG assets found; the scan proved nothing")
+	}
+}
+
+// inlinedName reads the accessible name of an inlined picture the way an
+// assistive reader meets it: the wrapper is the picture, so its own role and
+// label are what it says, and a hidden wrapper says nothing. It also reports
+// whether the drawing inside is hidden, since a drawing left exposed would add
+// a name of its own beside the page's.
+func inlinedName(t *testing.T, out string) (name string, exposed, drawingHidden bool) {
+	t.Helper()
+	dec := xml.NewDecoder(strings.NewReader(out))
+	var starts []xml.StartElement
+	for len(starts) < 2 {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("the inlined picture does not parse: %v\n%s", err, out)
+		}
+		if se, ok := tok.(xml.StartElement); ok {
+			starts = append(starts, se.Copy())
+		}
+	}
+	attr := func(se xml.StartElement, key string) (string, bool) {
+		for _, a := range se.Attr {
+			if a.Name.Space == "" && a.Name.Local == key {
+				return a.Value, true
+			}
+		}
+		return "", false
+	}
+	wrap, drawing := starts[0], starts[1]
+	if wrap.Name.Local != "span" || drawing.Name.Local != "svg" {
+		t.Fatalf("want a span wrapping the drawing, got <%s> then <%s>:\n%s", wrap.Name.Local, drawing.Name.Local, out)
+	}
+	hidden, _ := attr(drawing, "aria-hidden")
+	if h, _ := attr(wrap, "aria-hidden"); h == "true" {
+		return "", false, hidden == "true"
+	}
+	role, _ := attr(wrap, "role")
+	label, _ := attr(wrap, "aria-label")
+	if role != "img" {
+		label = ""
+	}
+	return label, true, hidden == "true"
+}
+
+// TestAssetsNameAnInlinedDrawingFromThePage pins iss-2610241550257430: the alt
+// text a page gives an SVG picture is the picture's accessible name on the
+// site, as it is on the forge, and not whatever the drawing file declares. The
+// drawing here declares a name of its own, as the committed ones do, so a
+// wrapper that ignored alt would read "brief" and not the page's words. An
+// empty alt is a decorative picture, which says nothing at all.
+func TestAssetsNameAnInlinedDrawingFromThePage(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4" height="4" role="img" aria-label="brief"><title>brief</title><rect width="2" height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	at := Source{Path: "p.md", Line: 1}
+
+	for _, alt := range []string{"The brief", `A "quoted" <brief> & more`} {
+		out, err := pipe.render("docs/explanation", "../assets/img/x.svg", alt, at)
+		if err != nil {
+			t.Fatalf("a drawing was refused: %v", err)
+		}
+		name, exposed, drawingHidden := inlinedName(t, out)
+		if !exposed || name != alt {
+			t.Errorf("alt %q: the picture's accessible name is %q (exposed %v), want the page's alt:\n%s", alt, name, exposed, out)
+		}
+		if !drawingHidden {
+			t.Errorf("alt %q: the drawing inside is not hidden, so its own name reads beside the page's:\n%s", alt, out)
+		}
+	}
+
+	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", at)
+	if err != nil {
+		t.Fatalf("a drawing was refused: %v", err)
+	}
+	if name, exposed, _ := inlinedName(t, out); exposed {
+		t.Errorf("an empty alt is a decorative picture, yet it reads as %q:\n%s", name, out)
+	}
+
+	// Text before the root element stays where it was, and the hiding lands on
+	// the root start tag alone.
+	root = assetFixture(t, map[string]string{"docs/assets/img/x.svg": `aria-hidden="false" ` + svg})
+	pipe = newAssetPipe(root, mustOpenRoot(t, root), "/")
+	out, err = pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+	if err != nil {
+		t.Fatalf("a drawing was refused: %v", err)
+	}
+	if !strings.Contains(out, `aria-hidden="false" <svg`) || strings.Count(out, `aria-hidden="false"`) != 1 || strings.Count(out, `aria-hidden="true"`) != 1 || !strings.Contains(out, `<rect width="2" height="2"/>`) {
+		t.Errorf("the hiding reached past the root start tag:\n%s", out)
 	}
 }
