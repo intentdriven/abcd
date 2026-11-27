@@ -47,7 +47,11 @@ Run, naming every repository-relative path the work will change, once per path:
 ```
 
 The record is an issue (`iss-N`) or an intent (`itd-N`). The footprint is
-required. Name files, not directories: a directory holds off every other
+required, one path per `--footprint`: a value holding a comma that names no
+path in the checkout, whether it joins two paths or ends one with a stray
+comma, is refused (exit 2, nothing pushed) with the repeated-flag form spelled
+out, each path quoted, because it would otherwise be stored as one path that no
+overlap check matches. Name files, not directories: a directory holds off every other
 reservation of any file inside it, so a lane holding a whole package keeps
 every unrelated lane that touches one file of it waiting. A footprint path
 naming a directory git tracks is still reserved, exit 0, and warns on stderr,
