@@ -334,6 +334,9 @@ type pathWord struct {
 	// base is, for a word the line does not fix, its last path component
 	// where that is literal text (`"$T/n.sh"` is n.sh), else "".
 	base string
+	// dirLoose marks, beside a base, that the component before it is not
+	// literal either (literalDirLoose): `"$T/n.sh"`, not `"$T/d/n.sh"`.
+	dirLoose bool
 }
 
 // redirectWord reads a redirection's raw target the way the shell reads it:
@@ -405,6 +408,26 @@ func literalBase(raw string) string {
 		return ""
 	}
 	return rest
+}
+
+// literalDirLoose reports whether the component before raw's last one is
+// not literal text as literalBase reads one: an expansion, a glob or
+// anything else the shell reads specially, or "." or "..", so the directory
+// the last component lands in is wherever the line's unknown part says.
+// `"$T/n.sh"` and `"$T"/n.sh` are; `"$T/d/n.sh"` is not, nor is a word
+// with no slash.
+func literalDirLoose(raw string) bool {
+	i := strings.LastIndexByte(raw, '/')
+	if i <= 0 {
+		return false
+	}
+	dir := raw[:i]
+	dir = dir[strings.LastIndexByte(dir, '/')+1:]
+	if strings.ContainsAny(dir, "$`\\*?[]{}()<>|&;~ \t\n") {
+		return true
+	}
+	dir = strings.NewReplacer(`"`, "", "'", "").Replace(dir)
+	return dir == "" || dir == "." || dir == ".."
 }
 
 // feed is a run of segments one tokenize call emitted, list.segs[lo:hi]: the
@@ -846,7 +869,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		w := redirectWord(raw)
 		if !w.ok {
-			w.base = literalBase(raw)
+			w.base, w.dirLoose = literalBase(raw), literalDirLoose(raw)
 		}
 		curRedirs = append(curRedirs, redirect{fd: fd, op: op, target: w})
 	}

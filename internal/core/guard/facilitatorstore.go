@@ -109,7 +109,11 @@ func (r Registry) facilitatorStoreSignal(command string, rc *readCtx, v verdicts
 
 // facilitatorStoreUse reports whether one write or removal reaches the file.
 // named says the line names it, and homeNamed that it names abcd's home
-// folder; a target the line does not fix is refused on a line that names it.
+// folder. A target the line does not fix is refused on a line that names it,
+// and on a line that names the home folder where its last component is the
+// file's name and the directory it is in is not fixed either (`"$d/config.json"`
+// with d read from the home folder): `> "$OUT"` and a worktree's own
+// `"$WT/.abcd/config.json"` are not.
 func facilitatorStoreUse(u pathUse, named, homeNamed bool) bool {
 	switch {
 	case u.glob != "" && (u.rel || u.ok):
@@ -121,7 +125,7 @@ func facilitatorStoreUse(u pathUse, named, homeNamed bool) bool {
 	case u.rel:
 		return homeNamed && facilitatorStoreLeaf(fsutil.FoldPath(filepath.Clean(u.written), true))
 	}
-	return named
+	return named || (homeNamed && u.dirLoose && facilitatorStoreLeaf(fsutil.FoldPath(u.written, true)))
 }
 
 // The setting's refusals, under abcd's name and any other, say one thing.

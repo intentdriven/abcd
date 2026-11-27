@@ -893,6 +893,9 @@ func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
 		{`rm ` + homeDir + `/conf*`, facilitatorStoreEntryID},
 		{`echo x > ` + upperHomeDir + `/Config.json`, facilitatorStoreEntryID},
 		{`cp x.json "$(echo ` + homeDir + `/config.json)"`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); cp x.json "$d/config.json"`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); cat x.json > "$d"/config.json`, facilitatorStoreEntryID},
+		{`d=$(dirname ` + homeDir + `/trusted-roots); mv x.json "$d/config.json"`, facilitatorStoreEntryID},
 	} {
 		d, err := reg.Check(c.cmd)
 		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -913,6 +916,8 @@ func TestSettingTheFacilitatorIsThePersonsAct(t *testing.T) {
 		`echo '{}' > .abcd/config.json`,
 		`printf x >> ` + homeDir + `/trusted-roots`,
 		`git -C ` + homeDir + `/worktrees/r/x show HEAD:.abcd/config.json > "$OUT"`,
+		`git -C ` + homeDir + `/worktrees/r/x show HEAD:.abcd/config.json > "$WT/.abcd/config.json"`,
+		`wt=` + homeDir + `/worktrees/r/x; cp x.json "$WT"/.abcd/config.json`,
 	} {
 		if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 			t.Errorf("Check(%q) = %+v, %v; want it allowed", cmd, d, err)
