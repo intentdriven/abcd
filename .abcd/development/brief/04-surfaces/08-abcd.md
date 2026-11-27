@@ -422,6 +422,16 @@ session-start greeting says ([`29-report.md`](29-report.md)); it names no sender
 and it is absent when nothing waits. An inbox that cannot be counted has no row:
 one line on stderr names the refusal instead.
 
+**The findings row** (itd-2611251831138387, criterion 10) counts the list of
+findings abcd keeps for the repository under its own home: when the list holds
+an entry, the facilitator's view carries a `findings:` line giving the count
+owed, the count private and the verb that lists them, and the JSON a `findings`
+object with `open` and `private`, and `newer` and `full` where they apply. It carries counts
+alone, never an entry's text, and it is absent when the list holds nothing, as
+it is in a repository with no commit to key the list on. A list that cannot be
+read has no row: one line on stderr names the refusal instead. The board reads
+the list as a hook does and writes nothing.
+
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository
 (`.abcd/config/oracle-routing.json`) or the machine (`~/.abcd.noindex/oracle-routing.json`).

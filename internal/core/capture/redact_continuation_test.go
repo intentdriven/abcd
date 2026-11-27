@@ -18,7 +18,7 @@ func TestLedgerRedactsHomeWithANameSuffix(t *testing.T) {
 		"old copy under " + home + "-old/x here",
 		"snapshot under /Volumes/T7" + home + "_snapshot/x here",
 	} {
-		out, _, degraded := redactLedgerText(repo, text)
+		out, _, degraded, _ := redactLedgerText(repo, text)
 		if degraded != "" {
 			t.Fatalf("scanner degraded: %s", degraded)
 		}
