@@ -25,6 +25,16 @@ The review of the trailing-boundary unification (iss-2608292037564347) found two
 
 Probes: an external `fsutil_test` probe on a `git archive` copy of fix/drain-drift-2 at b8d69535c, and the same probe on a copy of 5d8bdc084's parent, both on darwin.
 
+## Evidence, 2026-11-27
+
+iss-2611270714040589 taught fsutil.RedactHome every spelling a path carries the home in (as written, cleaned, symlink-resolved from both, the macOS data-volume firmlink, and both Unicode normal forms). The scanner's literal sweep still reads one (dcn-2611270841518400), so the two redactors now also disagree on the spelling of the home, and a store write keeps three shapes of it that RedactHome takes out. Probed on darwin on a `git archive` copy of redact-home-1127 at 969e72904, through `fsutil.RedactHome`, `scanner.SweepCallerHome(text, scanner.CallerHome())` and `scanner.RedactRefusal`:
+
+1. A non-ASCII home in the other normal form. With HOME a /Users home whose name is `café` written composed (NFC), and the text `open <that home>/notes/a.md: denied` naming it decomposed (NFD, the form macOS hands back): RedactHome gives `open ~/notes/a.md: denied`; the sweep and RedactRefusal both return the text whole.
+2. A linked home whose target's last segment is not the username. With HOME `<tmp>/Users/alice` a link to `<tmp>/Volumes/Data/u1042`, the text naming the resolved `/private<tmp>/Volumes/Data/u1042/notes/a.md`: RedactHome gives `~/notes/a.md`; the sweep and RedactRefusal return it whole, and the identity detector has no username in it to find.
+3. The layout around a redacted username, for a home outside /Users and /home. With HOME `/srv//people/alice`, the text `open /srv/people/alice/notes/a.md: denied`: RedactHome gives `open ~/notes/a.md: denied`; the sweep returns it whole, and RedactRefusal gives `open /srv/people/[redacted-user]/notes/a.md: denied`, so the layout around the username (`/srv/people/`) survives. With the same HOME and the text written as HOME is, all three give `~/notes/a.md`.
+
+The shared table test this record's remedy asks for should carry these three rows beside the 2026-09-29 ones.
+
 ## Remedy grounds (2026-09-29)
 
 - Why: ruling BB's two answers, each with its change; it is unanswered and none is picked. The shared test is common to both, because the 2026-09-29 evidence shows the redactors already disagree on three inputs, not one.
