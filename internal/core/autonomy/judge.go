@@ -101,30 +101,72 @@ type Verdict struct {
 //  6. none owed, a qualifying wake: allow (waiting);
 //  7. none owed, no qualifying wake: block, taking the next ready item first.
 //
+// Inside the session's conversation window (SessionState.Conversing) the
+// rows are not read: the stop is allowed with the present line when nothing is
+// owed or the session holds a qualifying wake, and otherwise blocked as row 5,
+// naming the window, so a session the person spoke to is still read again once
+// the window ends (dcn-2611262057069959).
+//
 // stop_hook_active decides no row; it alone drives the count of consecutive
 // blocks (false sets it to one, true adds one), and the block whose count
 // passes the cap is recorded as a stop possibly forced by the cap.
 func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time) Verdict {
 	away := rec.Holds(now)
+	// Every check that reads the payload keeps the session's wakes, present or
+	// away, cut short or not, so the prompt hook knows a wake set before the
+	// mode was (iss-2611260602137306).
+	kept, keptChanged := KeepWakes(st, in.SessionCrons, now)
 	if owed.Incomplete {
 		// The check ran out of its time budget: it fails open, allowing the
 		// stop with a line naming what was not read, and, while away,
-		// recording the stop. The session's state is left as it was.
+		// recording the stop. The session's state is left as it was but for
+		// the wakes.
 		v := Verdict{SystemMessage: incompleteLine(owed)}
 		if away {
 			v.Stop = &Stop{Kind: StopCheckIncomplete, Detail: incompleteDetail(owed)}
 		}
+		if keptChanged {
+			v.Save, v.State = true, kept
+		}
 		return v
+	}
+	if st.Conversing(rec, now) {
+		// The person typed a prompt in this session within the window, under
+		// the record holding now (iss-2611260602137306): the session may wait
+		// for them, so the stop is the present one, but while work is owed
+		// only holding a wake, since nothing else would have the checks read
+		// it again once the window ends (dcn-2611262057069959). The state is
+		// kept as it was but for the wakes, so the away counts resume where
+		// they stood once the window ends.
+		next := kept
+		next.SchemaVersion = SchemaVersion
+		owed, _ = settleHandBacks(rec, owed, false)
+		v := Verdict{Save: true, State: next}
+		if owed.Empty() {
+			return v
+		}
+		deadline := wakeDeadline(owed, now)
+		if _, _, wake := qualifyingWake(in.SessionCrons, now, deadline, in.Location); wake {
+			v.SystemMessage = presentLine(owed)
+			return v
+		}
+		v.Row, v.Reason = 5, owedReason(rec, owed,
+			fmt.Sprintf("The person typed a prompt in this session, so you may stop to wait for their reply, but only holding a scheduled look: schedule one before %s (a cron that fires by then, the host's lateness included), so the away checks read this session again once the window ends; or carry on with the owed work.", clock(deadline, in.Location)))
+		return holdStop(v, next, in, owed)
 	}
 	owed, handBacks := settleHandBacks(rec, owed, away)
 	if !away {
-		if owed.Empty() {
-			return Verdict{}
+		v := Verdict{}
+		if !owed.Empty() {
+			v.SystemMessage = presentLine(owed)
 		}
-		return Verdict{SystemMessage: presentLine(owed)}
+		if keptChanged {
+			v.Save, v.State = true, kept
+		}
+		return v
 	}
 
-	next := st
+	next := kept
 	next.SchemaVersion = SchemaVersion
 	if cfp := owed.CappedFingerprint(); cfp != next.WakeFingerprint {
 		next.Wakes, next.WakeFingerprint, next.WaitingSince = 0, cfp, time.Time{}
@@ -195,6 +237,14 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 		v.State = next
 		return v
 	}
+	return holdStop(v, next, in, owed)
+}
+
+// holdStop is the verdict v blocking the stop, with next the session's state:
+// the session is working, the count of consecutive blocks moves as
+// stop_hook_active says, and the block passing the host's cap is recorded as
+// a stop possibly forced by it.
+func holdStop(v Verdict, next SessionState, in StopInput, owed Owed) Verdict {
 	v.Block = true
 	next.State, next.NextLook = StateWorking, time.Time{}
 	if in.StopHookActive {
