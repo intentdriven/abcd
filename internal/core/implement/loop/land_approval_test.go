@@ -757,3 +757,27 @@ func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 func reviewPairReceipt(sha string) []byte {
 	return []byte(`{"commit":"` + sha + `","verdict_rule":2,"reviews":[{"name":"a","verdict":"SHIP","sha256":"x"},{"name":"b","verdict":"APPROVE","sha256":"y"}]}` + "\n")
 }
+
+// TestTheGateReadsTheMergeRuleAtTheTipItReadsTheModeAt: the merge gate the
+// loop asks reads the ruleset mirror at the default branch's tip as just
+// fetched, where it reads the mode, not at the base the lane was cut from: a
+// lane cut while the mirror named a rebasing queue, asked after the default
+// branch's mirror came to name one that merges, arms by the tip's method.
+func TestTheGateReadsTheMergeRuleAtTheTipItReadsTheModeAt(t *testing.T) {
+	f := newLandFixture(t, unreviewedQueueRuleset("REBASE"))
+	f.approve(t)
+	f.validated(t)
+	f.repo.Write(".abcd/work/rulesets/main-protection.json", unreviewedQueueRuleset("MERGE"))
+	f.repo.Commit("the queue merges")
+	f.repo.Git("push", "-q", "origin", "main")
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	f.step(t)
+	if log := f.ghLog(t); !strings.Contains(log, "pr merge 7 --auto --merge") || strings.Contains(log, "--rebase") {
+		t.Fatalf("want the merge armed by the method the mirror names at the tip: %+v\n%s", currentLane(t, f.repo, f.runID).Landing, log)
+	}
+}
