@@ -482,7 +482,11 @@ asked which branch is its default, or names none, leaves the default of 1,
 and `next` says why. The drain keeps the limit with its layer and origin
 (`in_work_max` in its state) for its whole life, whatever the files say
 later; `--in-work` naming another while it runs is refused, and `--drive`
-refuses it, since a drive drives one lane until its pull request is queued.
+refuses it. A drive holds one lane in work whatever the limit, since it
+drives one lane until its pull request is queued or it is handed back: a
+drain a drive begins reads no figure and keeps `drive` as its limit's layer,
+and a drain begun with more that a drive takes up holds one from the drive's
+first move on, for the rest of its life, `next` saying the limit it narrowed.
 
 Below the limit, a move goes on past the lanes in work to ask or open the
 next one, and `next` names each lane in work beside it. At the limit, or with

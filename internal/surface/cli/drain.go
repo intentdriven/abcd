@@ -535,6 +535,8 @@ func inWorkSource(layer string) string {
 		return "repository"
 	case "flag":
 		return "--in-work"
+	case "drive":
+		return "drive"
 	}
 	return "default"
 }

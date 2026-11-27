@@ -242,19 +242,14 @@ func orNone(s string) string {
 	return s
 }
 
-// originHead asks origin which branch is its default and at which commit
+// originHeadFor asks origin which branch is its default and at which commit
 // (git ls-remote --symref, as landing.ReadFetchedFacilitator does, read from
-// the lines naming HEAD alone: originHeadLines): the branch, a valid ref name
-// under refs/heads/, and the tip, a full object name. Where origin answers but
-// names no such branch with a commit (none of its own, a detached HEAD, a HEAD
-// outside refs/heads/), none says what it named instead and branch and tip are
-// "". Only an origin that cannot be asked is a *FetchError.
-func originHead(root string) (branch, tip, none string, err error) {
-	return originHeadFor(root, MaxLiveKey)
-}
-
-// originHeadFor is originHead for the figure named key, which its refusal
-// names.
+// the lines naming HEAD alone: originHeadLines), for the figure named key,
+// which its refusal names: the branch, a valid ref name under refs/heads/,
+// and the tip, a full object name. Where origin answers but names no such
+// branch with a commit (none of its own, a detached HEAD, a HEAD outside
+// refs/heads/), none says what it named instead and branch and tip are "".
+// Only an origin that cannot be asked is a *FetchError.
 func originHeadFor(root, key string) (branch, tip, none string, err error) {
 	target, symref, tip, err := originHeadLines(root)
 	if err != nil {

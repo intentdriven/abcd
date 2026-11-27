@@ -292,8 +292,10 @@ and origin. `~/.abcd.noindex/config.json` does not hold it: one there is
 refused naming the file, never passed over. A repository value outside 1 to
 10 refuses the drain's start naming the file at the branch; an origin that
 cannot be asked, or names no default branch, leaves the bundled 1 and says so
-(`internal/core/implement/loop/drain_inwork.go`). The `drain` namespace's
-readers claim it with both of its keys, from one list.
+(`internal/core/implement/loop/drain_inwork.go`). A drive reads none: it
+holds one lane in work whatever the figure, and a drain it drives records
+that one with layer `drive`. The `drain` namespace's readers claim it with
+both of its keys, from one list.
 
 The `drain.bundle_max` key is read through the same reader, and a repository
 may only lower it: `~/.abcd.noindex/config.json` over the bundled 1 sets the

@@ -674,7 +674,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// it may only lower, when a new drain ignored one (drain_bundle.go).
 	bundleIgnored := ""
 	// inWorkNote says why a new drain read no repository figure for
-	// drain.in_work_max where it could not (drain_inwork.go).
+	// drain.in_work_max where it could not, or that a drive narrowed the
+	// limit of the drain it took up to its one lane (drain_inwork.go).
 	inWorkNote := ""
 	// beside are the lanes in work a move went on past, below the limit, to
 	// ask or open another, and besideNamed whether its next step named them
@@ -683,6 +684,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	besideNamed := false
 	var repace *drainRepace
 	stillPace := st.Pace
+	// A drive holds one lane in work whatever the limit, and takes no other
+	// (driveInWorkMax).
+	if d.driveEnds && d.InWork > 1 {
+		return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("--in-work %d names more than one lane in work, and %s", d.InWork, driveInWorkOrigin),
+			"drive without --in-work; a drive holds one lane in work, until its pull request is queued or it is handed back")
+	}
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
 		if err != nil {
@@ -696,8 +703,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		// So is the limit on lanes in work, at origin's default branch
 		// (drain_inwork.go).
+		// A drive's drain holds the drive's one, reading no figure; the
+		// machine's file is still refused for carrying one.
 		var inWorkMax PaceValue
-		if inWorkMax, inWorkNote, err = resolveInWorkMax(repoRoot, o.roots(repoRoot), d.InWork); err != nil {
+		if d.driveEnds {
+			if err = refuseMachineInWork(o.roots(repoRoot)); err != nil {
+				return DrainResult{}, err
+			}
+			inWorkMax = driveInWorkMax()
+		} else if inWorkMax, inWorkNote, err = resolveInWorkMax(repoRoot, o.roots(repoRoot), d.InWork); err != nil {
 			return DrainResult{}, err
 		}
 		// A hand-back an ended drain could not publish is still a person's,
@@ -717,6 +731,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return DrainResult{}, refuse(StageDrain, "", "", fmt.Sprintf("the drain started %s is in progress holding %d %s in work (%s); --in-work %d names another, and the limit is set when a drain starts",
 				st.StartedAt.Format(time.RFC3339), c.Value, plural(c.Value, "lane", "lanes"), c.Origin, d.InWork),
 				"drain again without --in-work; the drain keeps the limit it started with")
+		}
+		// A drive that takes up a drain holds it to one lane in work from
+		// this move on, for the rest of the drain's life (driveInWorkMax).
+		if c := st.inWorkCap(); d.driveEnds && c.Layer != driveInWorkLayer {
+			if c.Value > 1 {
+				inWorkNote = fmt.Sprintf("%s, so this drain now holds 1 lane in work, not the %d it started with (%s)", driveInWorkOrigin, c.Value, c.Origin)
+			}
+			v := driveInWorkMax()
+			st.InWorkMax = &v
 		}
 		// A running drain takes a new pace rather than refusing it
 		// (drain_pace.go).
@@ -1339,7 +1362,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if len(working) == 0 {
 			res.Next = owedNext(*owed, owedRun, *bounds, now)
 		} else {
-			res.Next = inHandNext(working, inWorkLimit, res.Held, *bounds)
+			res.Next = joinNext(inHandNext(working, inWorkLimit, res.Held, *bounds), st.driveHolds())
 		}
 		return finish(true)
 	}
@@ -1352,7 +1375,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if len(working) == 0 {
 			return false, DrainResult{}, nil
 		}
-		res.Next = joinNext(inHandNext(working, inWorkLimit, res.Held, *bounds), res.Next, "it opens no other lane: "+why)
+		res.Next = joinNext(inHandNext(working, inWorkLimit, res.Held, *bounds), res.Next, "it opens no other lane: "+why, st.driveHolds())
 		besideNamed = true
 		r, err := finish(true)
 		return true, r, err

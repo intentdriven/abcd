@@ -53,17 +53,33 @@ var drainKeys = []string{keyBundleMax, keyInWorkMax}
 // inWorkMaxKey is the limit's key as a person writes it.
 var inWorkMaxKey = drainNamespace + "." + keyInWorkMax
 
-// inWorkMaxLayers are the layers a stored limit may name: the ones
-// resolveInWorkMax writes. The machine is not among them.
-var inWorkMaxLayers = []string{layered.Flag.String(), layered.Repo.String(), layered.Bundled.String()}
-
 // inWorkMaxForm is the accepted form every refusal of the limit names.
 var inWorkMaxForm = "drain.in_work_max in the repository's .abcd/config.json, read at origin's default branch, or --in-work <n> for one drain, is the most lanes one drain holds in work, a whole number from 1 to 10 (1, the default, works one lane at a time); " +
 	abcdhome.Display("config.json") + " does not hold it"
 
-// drainAskOrigin is claim.AskOriginDefault, a seam a test replaces to make
-// origin unanswerable.
-var drainAskOrigin = claim.AskOriginDefault
+// driveInWorkLayer and driveInWorkOrigin are the limit a drive holds a drain
+// to, whatever the repository or the flag set: one lane in work, the lane the
+// drive drives (driveInWorkMax).
+const (
+	driveInWorkLayer  = "drive"
+	driveInWorkOrigin = "a drive drives one lane at a time"
+)
+
+// driveInWorkMax is the limit a drain holds under a drive: one lane in work,
+// whatever the repository or the flag set. A drive drives one lane at a time,
+// the lane the move names, and returns to it while it is in progress (after
+// a refused step or a contended driver), so a lane the move opened beside it
+// would sit reserved with no one driving it. A drain a drive begins records
+// it as its limit; one a drive takes up is narrowed to it from that move on
+// (drainOnce), and keeps it for the rest of its life.
+func driveInWorkMax() PaceValue {
+	return PaceValue{Value: 1, Layer: driveInWorkLayer, Origin: driveInWorkOrigin}
+}
+
+// askOriginDefault asks origin which branch is its default and at which
+// commit (claim.AskOriginDefault), a parameter rather than a package
+// variable so a test can make origin unanswerable without racing another.
+type askOriginDefault func(root, key string) (claim.OriginDefault, error)
 
 // bundledInWorkMax is the limit a drain carries when nothing set it, and the
 // one a drain state of version 4 or lower is read with.
@@ -77,6 +93,11 @@ func bundledInWorkMax() PaceValue {
 // why no repository figure was read where one could not be. roots name the
 // machine's file, which is read only to refuse the key there.
 func resolveInWorkMax(repoRoot string, roots layered.Roots, flag int) (PaceValue, string, error) {
+	return resolveInWorkMaxAsking(repoRoot, roots, flag, claim.AskOriginDefault)
+}
+
+// resolveInWorkMaxAsking is resolveInWorkMax asking origin through ask.
+func resolveInWorkMaxAsking(repoRoot string, roots layered.Roots, flag int, ask askOriginDefault) (PaceValue, string, error) {
 	if err := refuseMachineInWork(roots); err != nil {
 		return PaceValue{}, "", err
 	}
@@ -93,7 +114,7 @@ func resolveInWorkMax(repoRoot string, roots layered.Roots, flag int) (PaceValue
 		// speaks for the repository.
 		return v, "", nil
 	}
-	at, err := drainAskOrigin(repoRoot, inWorkMaxKey)
+	at, err := ask(repoRoot, inWorkMaxKey)
 	if err != nil {
 		return v, fmt.Sprintf("%s could not be asked which branch is its default (%s), so no repository figure for %s was read and this drain holds %d lane in work, abcd's default",
 			claim.Remote, termsafe.Sanitize(fsutil.RedactHome(err.Error())), inWorkMaxKey, v.Value), nil
@@ -164,12 +185,30 @@ func inWorkMaxRefusal(reason string) error {
 	return refuse(StageDrain, "", "", termsafe.Sanitize(fsutil.RedactHome(reason)), inWorkMaxForm)
 }
 
-// inWorkMaxWritten reports whether a stored limit is one resolveInWorkMax
-// writes: a value in range, a layer it writes and an origin with no control,
-// bidi or zero-width rune.
+// inWorkMaxWritten reports whether a stored limit is one the drain writes:
+// a value in range, an origin with no control, bidi or zero-width rune, and a
+// layer whose value and origin agree with what that layer writes. The bundled
+// layer and the drive's hold one lane at their own origin, the flag's origin
+// is the flag with its value, and the repository's names its file. The
+// machine's layer is never written.
 func inWorkMaxWritten(v *PaceValue) bool {
-	return v == nil || v.Value >= 1 && v.Value <= MaxInWorkMax &&
-		slices.Contains(inWorkMaxLayers, v.Layer) && termsafe.Sanitize(v.Origin) == v.Origin
+	if v == nil {
+		return true
+	}
+	if v.Value < 1 || v.Value > MaxInWorkMax || termsafe.Sanitize(v.Origin) != v.Origin {
+		return false
+	}
+	switch v.Layer {
+	case layered.Bundled.String():
+		return *v == bundledInWorkMax()
+	case driveInWorkLayer:
+		return *v == driveInWorkMax()
+	case layered.Flag.String():
+		return v.Origin == fmt.Sprintf("--in-work %d", v.Value)
+	case layered.Repo.String():
+		return v.Origin != ""
+	}
+	return false
 }
 
 // inWorkCap is the limit the drain started with: the bundled one for a state
@@ -179,6 +218,15 @@ func (s DrainState) inWorkCap() PaceValue {
 		return bundledInWorkMax()
 	}
 	return *s.InWorkMax
+}
+
+// driveHolds says, under a drive's limit, why the move opens no lane beside
+// the one in work; "" under any other.
+func (s DrainState) driveHolds() string {
+	if s.inWorkCap().Layer != driveInWorkLayer {
+		return ""
+	}
+	return driveInWorkOrigin + ", so it opens no lane beside the one in work until that lane's pull request is queued or it is handed back"
 }
 
 // LanesInWork is a drain's lanes in work against its limit: the count, and

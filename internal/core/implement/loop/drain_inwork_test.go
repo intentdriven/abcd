@@ -128,7 +128,8 @@ func TestALimitOfTwoOpensASecondLaneBesideOneInWork(t *testing.T) {
 // TestALaneOwingOnlyItsWithdrawalIsNotCounted: a lane handed back with its
 // pull request still armed is in progress only for the withdrawal it owes,
 // and is not among the lanes in work; it is still settled before another lane
-// opens.
+// opens: the next move, with no lane in work and the limit of one free,
+// reserves, asks and opens nothing.
 func TestALaneOwingOnlyItsWithdrawalIsNotCounted(t *testing.T) {
 	f := drainLandFixture(t)
 	first := f.firstMove(t)
@@ -151,6 +152,17 @@ func TestALaneOwingOnlyItsWithdrawalIsNotCounted(t *testing.T) {
 	iw, err := DrainInWork(root)
 	if err != nil || iw == nil || iw.Count != 0 || iw.Limit != 1 {
 		t.Fatalf("a lane owing only its withdrawal is not in work: %+v %v", iw, err)
+	}
+	runs := runCount(t, f.repo)
+	res, err := Drain(root, Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Start != nil || res.Judging != nil || runCount(t, f.repo) != runs || liveOnOrigin(t, root, eligibleIssue) {
+		t.Fatalf("a lane owing its withdrawal holds the next lane back, though it is not counted: %+v", res)
+	}
+	if res.InWork.Count != 0 || !strings.Contains(res.Next, first.Start.RunID) {
+		t.Fatalf("the move names the owed lane and counts none in work: %+v %s", res.InWork, res.Next)
 	}
 }
 
@@ -292,13 +304,75 @@ func TestTheInWorkLimitIsKeptForTheDrainsLife(t *testing.T) {
 func TestAnOriginThatCannotBeAskedLeavesOneLaneInWork(t *testing.T) {
 	repo, _ := reservingDrainRepo(t, "commands/drain.md")
 	ceilingOnOrigin(t, repo, `{"drain": {"in_work_max": 4}}`)
-	was := drainAskOrigin
-	drainAskOrigin = func(string, string) (claim.OriginDefault, error) {
+	unanswerable := func(string, string) (claim.OriginDefault, error) {
 		return claim.OriginDefault{}, os.ErrDeadlineExceeded
 	}
-	t.Cleanup(func() { drainAskOrigin = was })
-	v, note, err := resolveInWorkMax(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()}, 0)
+	v, note, err := resolveInWorkMaxAsking(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()}, 0, unanswerable)
 	if err != nil || v != bundledInWorkMax() || !strings.Contains(note, "could not be asked") {
 		t.Fatalf("an origin that cannot be asked leaves the bundled one, said: %+v %q %v", v, note, err)
+	}
+}
+
+// TestADriveHoldsOneLaneInWorkWhateverTheRepositorysLimit: under a drive
+// (driveEnds, which only a terminal drive sets), a repository's
+// drain.in_work_max 3 at origin's default branch opens no second lane beside
+// the one the drive drives: the drive returns to its lane in progress after a
+// refused step or a contended driver, and a lane opened beside it would sit
+// reserved with no one driving it. The drain records the drive's limit as its
+// own, with layer drive, and names it in the next step.
+func TestADriveHoldsOneLaneInWorkWhateverTheRepositorysLimit(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	ceilingOnOrigin(t, repo, `{"drain": {"in_work_max": 3}}`)
+	drive := DrainOptions{driveEnds: true}
+	first := drainToLane(t, repo, Options{}, drive)
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drive's drain opens the documentation issue's lane: %+v", first)
+	}
+	if first.InWork.Limit != 1 || first.InWork.Layer != "drive" {
+		t.Fatalf("a drive's drain holds one lane in work, from the drive: %+v", first.InWork)
+	}
+	second, err := Drain(repo.Root(), Options{}, drive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Start != nil || second.Judging != nil || runCount(t, repo) != 1 {
+		t.Fatalf("under a drive the move opens and asks nothing beside its lane in work: %+v", second)
+	}
+	for _, want := range []string{first.Start.RunID, "1 of 1 lane in work", "a drive drives one lane at a time"} {
+		if !strings.Contains(second.Next, want) {
+			t.Fatalf("next names %q: %s", want, second.Next)
+		}
+	}
+	st, live, err := readDrain(repo.Root())
+	if err != nil || !live || st.InWorkMax == nil || st.InWorkMax.Layer != "drive" || st.InWorkMax.Value != 1 {
+		t.Fatalf("the drain's state records the drive's limit: %+v %v %v", st.InWorkMax, live, err)
+	}
+}
+
+// TestADriveTakingUpADrainOfThreeHoldsOne: a drain begun by hand with
+// --in-work 3 that a drive takes up holds one lane in work from the drive's
+// first move, its state recording the drive's limit and the move saying the
+// limit it narrowed.
+func TestADriveTakingUpADrainOfThreeHoldsOne(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, Options{}, DrainOptions{InWork: 3})
+	if first.Start == nil || first.InWork.Limit != 3 {
+		t.Fatalf("premise: a drain by hand holds the flag's three: %+v", first)
+	}
+	res, err := Drain(repo.Root(), Options{}, DrainOptions{driveEnds: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Start != nil || res.Judging != nil || runCount(t, repo) != 1 {
+		t.Fatalf("the drive's first move opens and asks nothing beside the lane in work: %+v", res)
+	}
+	if res.InWork != (LanesInWork{Count: 1, Limit: 1, Layer: "drive", Origin: driveInWorkOrigin}) {
+		t.Fatalf("the drive's move counts against the drive's one: %+v", res.InWork)
+	}
+	if !strings.Contains(res.Next, "--in-work 3") || !strings.Contains(res.Next, "a drive drives one lane at a time") {
+		t.Fatalf("next says the drive narrowed the limit it started with: %s", res.Next)
+	}
+	if iw, err := DrainInWork(repo.Root()); err != nil || iw == nil || iw.Limit != 1 || iw.Layer != "drive" {
+		t.Fatalf("abcd peers reads the drive's limit from the state: %+v %v", iw, err)
 	}
 }

@@ -205,9 +205,15 @@ default branch, leaves the bundled 1, the lowest the setting can be, and the
 move says why. The limit is kept on the drain's state as `in_work_max` with
 its layer and origin, and a running drain takes no new one; the flag naming
 another while it runs is refused, as a differing lane cap is, and a drive
-refuses the flag, since a drive drives each lane until its pull request is
-queued or it is handed back. Both of the drain's resolvers claim the `drain` namespace
-with both of its keys, from one list.
+refuses the flag. A drive holds one lane in work whatever the figure, since
+it drives each lane until its pull request is queued or it is handed back and
+returns to a lane still in progress after a refused step: a lane opened beside
+it would sit reserved with no one driving it. A drain a drive begins reads no
+figure and records the drive's 1 with layer `drive`; one a drive takes up is
+narrowed to it from that move on, for the rest of its life, the move saying
+the limit it narrowed, and the stored layer agrees with its value and origin
+or the state is refused. Both of the drain's resolvers claim the `drain`
+namespace with both of its keys, from one list.
 
 In the move, the loop over the drain's lanes counts the lanes in work. Below
 the limit the move goes on to ask or open the next lane and names every lane

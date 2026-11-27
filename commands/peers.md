@@ -150,7 +150,8 @@ payload adds:
 - `drain_in_work`: while a drain is in progress in this checkout, its lanes
   in work against the limit it began with: `count`, `limit`, and the `layer`
   (`repo` for the repository's `drain.in_work_max` at origin's default
-  branch, `flag` for `--in-work`, `bundled` for the default of one) and
+  branch, `flag` for `--in-work`, `bundled` for the default of one, `drive`
+  for the one a drive holds) and
   `origin` that set it, read from the drain's state alone. A lane whose pull
   request is queued is not in work, though its reservation counts in
   `ceiling`. The text form prints it under the ceiling's row: `this drain: 1

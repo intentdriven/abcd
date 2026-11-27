@@ -114,6 +114,10 @@ func TestAnInWorkLimitTheDrainNeverWritesIsRefused(t *testing.T) {
 		"a limit of 11":         {5, PaceValue{Value: 11, Layer: "flag", Origin: "--in-work 11"}, "a limit on lanes in work the drain never writes"},
 		"a limit of 0":          {5, PaceValue{Value: 0, Layer: "bundled", Origin: "bundled"}, "a limit on lanes in work the drain never writes"},
 		"the machine's layer":   {5, PaceValue{Value: 2, Layer: "machine", Origin: "config.json"}, "a limit on lanes in work the drain never writes"},
+		"ten under bundled":     {5, PaceValue{Value: 10, Layer: "bundled", Origin: "bundled"}, "a limit on lanes in work the drain never writes"},
+		"three under the drive": {5, PaceValue{Value: 3, Layer: "drive", Origin: driveInWorkOrigin}, "a limit on lanes in work the drain never writes"},
+		"a flag of another":     {5, PaceValue{Value: 4, Layer: "flag", Origin: "--in-work 2"}, "a limit on lanes in work the drain never writes"},
+		"a repository unnamed":  {5, PaceValue{Value: 2, Layer: "repo", Origin: ""}, "a limit on lanes in work the drain never writes"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
