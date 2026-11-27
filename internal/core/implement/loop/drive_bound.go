@@ -87,7 +87,8 @@ func resolveDriveDays(repoRoot string, roots layered.Roots) (PaceValue, string, 
 
 // resolveDriveDaysAsking is resolveDriveDays asking origin through ask.
 //
-// Where origin cannot be asked, or names no default branch, the bundled seven
+// Where the checkout's remotes cannot be listed, it has no origin, origin
+// cannot be asked, or origin names no default branch, the bundled seven
 // applies and the note says so: the end is shown as an instant before the
 // person's yes, so a drive the repository would have made shorter starts only
 // on a yes to the end it shows, and an outage, which a drive exists to wait
@@ -98,7 +99,11 @@ func resolveDriveDaysAsking(repoRoot string, roots layered.Roots, ask askOriginD
 	}
 	v := bundledDriveDays()
 	has, err := claim.HasOrigin(repoRoot)
-	if err != nil || !has {
+	if err != nil {
+		return v, fmt.Sprintf("this checkout's remotes could not be listed (%s), so no repository figure for %s was read and the drive runs %d days, abcd's default",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())), untilDaysKey, v.Value), nil
+	}
+	if !has {
 		return v, fmt.Sprintf("this checkout has no remote named %s, so no repository figure for %s was read and the drive runs %d days, abcd's default",
 			claim.Remote, untilDaysKey, v.Value), nil
 	}

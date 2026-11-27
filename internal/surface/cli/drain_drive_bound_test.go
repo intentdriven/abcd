@@ -21,9 +21,12 @@ var driveStart = time.Date(2026, 11, 27, 9, 30, 15, 750_000_000, time.FixedZone(
 
 // TestTheResumeCommandNamesTheInstantAndTheProfile: the command is the
 // drive's start with the end as an RFC 3339 UTC instant in whole seconds,
-// which --until reads back as the same end, and --profile only when one was
-// given.
+// which --until reads back as the very end the drive holds and the start
+// shows, and --profile only when one was given.
 func TestTheResumeCommandNamesTheInstantAndTheProfile(t *testing.T) {
+	if got, want := driveResumeCommand(driveStart, ""), "abcd drain --drive --until 2026-11-27T08:30:15Z"; got != want {
+		t.Fatalf("an instant in another zone is named in UTC: %q, want %q", got, want)
+	}
 	b := driveBoundFromDays(driveStart, loop.PaceValue{Value: 7, Layer: "bundled", Origin: "bundled"})
 	want := "abcd drain --drive --until 2026-12-04T08:30:15Z"
 	if got := driveResumeCommand(b.end, ""); got != want {
@@ -36,22 +39,24 @@ func TestTheResumeCommandNamesTheInstantAndTheProfile(t *testing.T) {
 		!strings.Contains(got, "a reboot, a logout or a crash ends the drive") || !strings.Contains(got, "nothing starts it again") {
 		t.Fatalf("the restart line says what ends a drive and ends on the command: %q", got)
 	}
-	given := strings.TrimPrefix(driveResumeCommand(b.end, ""), loop.TerminalResumeCommand+" --until ")
-	at, err := parseDriveUntil(given, driveStart)
-	if err != nil || !at.Equal(b.end) {
-		t.Fatalf("--until reads the printed instant back as the same end: %v %v, want %v", at, err, b.end)
-	}
-	u := driveBoundUntil(at.In(time.Local).Add(400 * time.Millisecond))
-	if got := driveResumeCommand(u.end, ""); got != want {
-		t.Fatalf("an --until end names the same instant, in UTC and whole seconds: %q", got)
+	until := driveStart.Add(48*time.Hour + 400*time.Millisecond)
+	for name, bd := range map[string]driveBound{"default": b, "--until": driveBoundUntil(until)} {
+		given := strings.TrimPrefix(driveResumeCommand(bd.end, ""), loop.TerminalResumeCommand+" --until ")
+		if given != bd.instant() {
+			t.Errorf("%s: the command names %q, the start shows %q", name, given, bd.instant())
+		}
+		at, err := parseDriveUntil(given, driveStart)
+		if err != nil || !at.Equal(bd.end) || at.Location() != bd.end.Location() {
+			t.Errorf("%s: --until reads the printed instant back as %v (%v), the drive holds %v", name, at, err, bd.end)
+		}
 	}
 }
 
 // TestTheResumeCommandQuotesNothingARepositoryChose: an end set by the
 // repository's days, whose origin names a file, a branch and shell words,
 // gives a command of fixed words, an instant and a plain profile name alone;
-// a profile that is not a plain name is left out, never quoted. No line the
-// start composes repeats the origin.
+// a profile that is not a plain name is left out, never quoted. Every line
+// the start composes reads the same whatever origin the figure came from.
 func TestTheResumeCommandQuotesNothingARepositoryChose(t *testing.T) {
 	planted := ".abcd/config.json at origin/$(touch pwned);`id`|x\n--profile evil"
 	b := driveBoundFromDays(driveStart, loop.PaceValue{Value: 14, Layer: "repo", Origin: planted})
@@ -65,8 +70,17 @@ func TestTheResumeCommandQuotesNothingARepositoryChose(t *testing.T) {
 			t.Errorf("profile %q: a name that is not plain is left out: %q", profile, got)
 		}
 	}
-	for _, line := range []string{b.endsLine(), b.endsPlanLine(), b.restartLine("home"), driveResumeCommand(b.end, "home")} {
-		if strings.Contains(line, "origin") || strings.Contains(line, "config.json") || strings.Contains(line, "pwned") || strings.Contains(line, "evil") {
+	// Every line is a function of the days and the layer alone: an end set by
+	// the same days from another origin reads the same, word for word.
+	other := driveBoundFromDays(driveStart, loop.PaceValue{Value: 14, Layer: "repo", Origin: ".abcd/config.json at origin/main"})
+	lines := func(b driveBound) []string {
+		return []string{b.endsLine(), b.endsPlanLine(), b.restartLine("home"), driveResumeCommand(b.end, "home")}
+	}
+	for i, line := range lines(b) {
+		if line != lines(other)[i] {
+			t.Errorf("a line changes with the origin the repository's figure came from: %q, and from another origin %q", line, lines(other)[i])
+		}
+		if strings.Contains(line, "pwned") || strings.Contains(line, "evil") || strings.Contains(line, "`") {
 			t.Errorf("a line repeats what the repository's origin named: %q", line)
 		}
 	}
