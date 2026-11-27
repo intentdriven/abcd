@@ -528,8 +528,9 @@ func statusLineWith(out, want string) string {
 // TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent: a green kept and gone past due,
 // whose refresh cannot be stamped, says nothing of its own for up to 48 hours,
 // since no stamp is newer than the answer for the read to call a refresh that kept
-// nothing. So the prompt's STATUS block says the stamp could not be kept, with the
-// home redacted, and starts no refresh (iss-2611051719396028).
+// nothing. So the prompt's STATUS block says the stamp could not be kept, in fixed
+// words that carry no path, the home-redacted reason going to stderr alone, and
+// starts no refresh (iss-2611051719396028).
 func TestAKeptGreenWhoseStampCannotBeKeptIsNotSilent(t *testing.T) {
 	ownHookBudgets(t, 10*time.Second)
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
@@ -728,5 +729,15 @@ func TestAnUnkeptStampIsSaidInFixedWords(t *testing.T) {
 		if strings.Contains(got, "/home/pat") || strings.Contains(got, "chmod") {
 			t.Errorf("unstampedWords(%v) = %q carries the error's text", c.err, got)
 		}
+	}
+}
+
+// TestTheStderrReasonIsOneLine: the operator's stderr line carries the error's
+// text, which a path can fill with any rune, so U+2028 and U+2029, at which a
+// renderer starts a new line, are masked there as a newline is.
+func TestTheStderrReasonIsOneLine(t *testing.T) {
+	got := stderrReason(errors.New("open a forged line and another\nthird"))
+	if strings.ContainsAny(got, "  \n") {
+		t.Fatalf("stderrReason = %q; want no line breaks of any kind", got)
 	}
 }

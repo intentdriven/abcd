@@ -73,16 +73,20 @@ func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadli
 		return n
 	}
 	if err := n.StampRefresh(now); err != nil {
-		why := termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n", why)
-		n.Text = withStatusLine(n.Text, termsafe.SanitizeLine(termsafe.Sanitize("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+unstampedWords(err)+"), so no kept answer is renewed; `abcd status` asks now")))
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n", stderrReason(err))
+		n.Text = withStatusLine(n.Text, termsafe.SanitizeLine("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+unstampedWords(err)+"), so no kept answer is renewed; `abcd status` asks now"))
 		return n
 	}
 	if err := spawnScheduledRefresh(root); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run could not be started (%s)\n",
-			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run could not be started (%s)\n", stderrReason(err))
 	}
 	return n
+}
+
+// stderrReason is err as the operator's stderr line says it: home-redacted and
+// masked for one line, U+2028 and U+2029 included.
+func stderrReason(err error) string {
+	return termsafe.SanitizeLine(fsutil.RedactHome(err.Error()))
 }
 
 // unstampedWords is why a stamp could not be kept, in fixed words chosen by the
