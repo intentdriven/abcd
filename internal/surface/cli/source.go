@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -504,6 +505,14 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 				return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 					fmt.Fprintf(w, "abcd library ledger — line %d cites line %d publicly (%s), committed in the corpus\n", res.Line, flip, res.Record.SourceKey)
 				})
+			}
+			// The bare form has nothing to append, so it is told where the read
+			// is rather than handed the first field Append finds missing
+			// (iss-2611040712366155).
+			if !slices.ContainsFunc([]string{"decision", "claim", "source", "locator", "influence", "used-in", "corrects"},
+				cmd.Flags().Changed) {
+				return &exitError{Code: 2, Msg: "abcd library ledger: nothing to append — nothing written; " +
+					"--list prints the ledger, and an append names --decision, --claim, --source and --influence"}
 			}
 			res, err := source.Append(source.AppendRequest{Corpus: dir, Repo: r, DecisionRef: decision, Claim: claim,
 				SourceKey: key, Locator: locator, Influence: influence, UsedIn: usedIn, Corrects: corrects, Now: time.Now()})
