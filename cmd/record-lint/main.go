@@ -17,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/pendingref"
 	"github.com/intentdriven/abcd/internal/core/site"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -221,11 +222,7 @@ func scrubPathString(msg, root string) string {
 		msg = strings.ReplaceAll(msg, root+sep, "")
 		msg = strings.ReplaceAll(msg, root, ".")
 	}
-	if home, e := os.UserHomeDir(); e == nil && len(home) > 1 {
-		msg = strings.ReplaceAll(msg, home+sep, "~"+sep)
-		msg = strings.ReplaceAll(msg, home, "~")
-	}
-	return msg
+	return fsutil.RedactHome(msg)
 }
 
 // multiFlag collects a repeatable string flag (each --require-gate appends).

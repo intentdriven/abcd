@@ -8,11 +8,14 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // ValidRelPath reports whether p is a safe repo-relative slash path: non-empty,
@@ -295,27 +298,100 @@ func RedactRoot(s, root, repl string) string {
 // is not redacted is re-emitted in its original casing, and the scan resumes
 // one byte on so an occurrence overlapping a rejected one is still judged.
 func replaceRoot(s, root, repl string, fold bool) string {
+	return replaceRoots(s, []string{root}, repl, fold)
+}
+
+// replaceRoots is replaceRoot over several spellings of one directory at once,
+// in a single pass: at each point the earliest occurrence of any spelling that
+// passes both boundaries is replaced, the longest spelling winning a tie, and
+// the scan resumes after it. So a span is redacted once — the text a
+// replacement leaves is never read again, which a pass per spelling would do,
+// reading the "~" as a left boundary before whatever path follows it — and a
+// shorter spelling that is a prefix of a longer one ("/h" and "/h/.") never
+// strands the longer one's tail.
+func replaceRoots(s string, roots []string, repl string, fold bool) string {
+	out, _ := scanRoots(s, roots, repl, fold)
+	return out
+}
+
+// scanRoots is replaceRoots, also returning how many bytes of s the search for
+// roots walked, summed over the roots, so a test can hold the pass linear.
+//
+// Each root's next occurrence is remembered between replacements: one at or
+// after the resume point is still that root's first occurrence from there, so
+// it is searched again only once the pass has moved past it, and a root with
+// no occurrence left is never searched again. Each root's search therefore
+// walks s once, whatever the number of replacements; searching every root
+// afresh after each one rescanned the text to its end per replacement.
+func scanRoots(s string, roots []string, repl string, fold bool) (string, int) {
 	var b strings.Builder
-	written, from := 0, 0
+	written, from, scanned := 0, 0, 0
+	next := make([]int, len(roots)) // each root's next occurrence; -1 when none is left
+	searched := make([]bool, len(roots))
+	for from <= len(s) {
+		at, size := -1, 0
+		for k, root := range roots {
+			if !searched[k] || (next[k] >= 0 && next[k] < from) {
+				n := 0
+				next[k], n = nextRoot(s, root, from, fold, EndsInDotSegment(root))
+				searched[k] = true
+				scanned += n
+			}
+			if i := next[k]; i >= 0 && (at < 0 || i < at || (i == at && len(root) > size)) {
+				at, size = i, len(root)
+			}
+		}
+		if at < 0 {
+			break
+		}
+		b.WriteString(s[written:at])
+		b.WriteString(repl)
+		written, from = at+size, at+size
+	}
+	b.WriteString(s[written:])
+	return b.String(), scanned
+}
+
+// nextRoot is the index of the first occurrence of root in s at or after from
+// that starts a path (a left boundary) and is the whole path or its directory
+// prefix (a right boundary: no letter or digit follows it, NameContinues), or
+// -1, and how many bytes it walked to answer (to the occurrence, or to the end
+// of s). A rejected occurrence moves the scan one byte on, so an occurrence
+// overlapping it is still judged.
+//
+// A strict root — one whose last segment is "." or "..", a HOME written as
+// "/h/alex/." — is a directory prefix only where a separator follows it or a
+// byte that cannot continue a path segment: its dot is a whole segment, so
+// "/h/alex/._Documents" and "/h/alex/../bob" are a name and a climb under
+// /h/alex, not the root followed by "_Documents" or "./bob".
+func nextRoot(s, root string, from int, fold, strict bool) (int, int) {
+	start := from
 	for from <= len(s) {
 		j := indexFold(s[from:], root, fold)
 		if j < 0 {
-			break
+			return -1, max(len(s)-start, 0)
 		}
 		i := from + j
 		after := i + len(root)
 		left := i == 0 || s[i-1] == os.PathSeparator || !IsPathSegmentByte(s[i-1])
 		right := !NameContinues(s, after)
-		if !left || !right {
-			from = i + 1
-			continue
+		if strict {
+			right = after == len(s) || s[after] == os.PathSeparator || !IsPathSegmentByte(s[after])
 		}
-		b.WriteString(s[written:i])
-		b.WriteString(repl)
-		written, from = after, after
+		if left && right {
+			return i, i - start
+		}
+		from = i + 1
 	}
-	b.WriteString(s[written:])
-	return b.String()
+	return -1, max(len(s)-start, 0)
+}
+
+// EndsInDotSegment reports whether root's last segment is "." or "..": such a
+// spelling of a directory is its prefix only where a separator, or a byte that
+// cannot continue a path segment, follows it (nextRoot).
+func EndsInDotSegment(root string) bool {
+	sep := string(os.PathSeparator)
+	return strings.HasSuffix(root, sep+".") || strings.HasSuffix(root, sep+"..")
 }
 
 // indexFold is strings.Index, comparing case-insensitively when fold is set so a
@@ -342,26 +418,109 @@ func indexFold(s, sub string, fold bool) int {
 // RedactHome replaces the user's home directory in s with "~" wherever it
 // appears — the home-polarity shortcut over RedactRoot for a success or receipt
 // envelope that carries an absolute path the CLI error scrub (which runs only on
-// the error value) never sees. A home-resolution failure or a root-level home
-// leaves s unchanged, so the primitive is never worse than the raw string.
+// the error value) never sees. A home-resolution failure leaves s unchanged, and
+// so does a root-level home in any spelling ("/", "//", "/."), which names no
+// one and would match every path; the primitive is never worse than the raw
+// string.
 //
 // The home is redacted in both spellings a path can carry it in: the one the
 // environment names, and its symlink-resolved one, which is what git and the
 // kernel report back wherever the home sits behind a link (macOS's /var →
 // /private/var). Where one spelling is the tail of the other, RedactRoot's left
-// boundary keeps the shorter from matching inside the longer, so the order of
-// the two passes does not matter.
+// boundary keeps the shorter from matching inside the longer.
+//
+// The environment's spelling is itself two: as written, and cleaned. A HOME
+// with a doubled slash or a dot segment in it ("/Users//alice", "/Users/./alice") abcd-lint:allow
+// reaches a message as written wherever a path was concatenated onto it, and
+// cleaned wherever filepath.Join built the path or the kernel reported it, so
+// both are redacted (iss-2611270714040589). Every spelling is matched in one
+// pass, longest first (RedactHomeAt).
+//
+// Inside a walled stage, where HOME is the stage's (abcdhome.StageHomeEnv) and
+// the person's own home is named beside it (abcdhome.PersonHomeEnv), the
+// machine's shared records sit under the person's home, so that home is
+// redacted too, in the same spellings (abcdhome.MachineHome).
 func RedactHome(s string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return s
 	}
-	home = filepath.Clean(home)
-	s = RedactRoot(s, home, "~")
-	if real, err := filepath.EvalSymlinks(home); err == nil && real != home {
-		s = RedactRoot(s, real, "~")
+	homes := []string{home}
+	if machine, err := abcdhome.MachineHome(); err == nil && machine != home {
+		// MachineHome gives the person's home cleaned; the variable as
+		// written is the raw spelling a concatenated path keeps.
+		homes = append(homes, machine, os.Getenv(abcdhome.PersonHomeEnv))
 	}
-	return s
+	return RedactHomeAt(s, homes...)
+}
+
+// dataVolumeFirmlink is whether a home under /Users is also reachable as
+// /System/Volumes/Data/Users/…, macOS's firmlink into the data volume; a var
+// so a test can provoke either answer on any host.
+var dataVolumeFirmlink = runtime.GOOS == "darwin"
+
+// RedactHomeAt is RedactHome for homes the caller names rather than the
+// process's own: each home in s is replaced with "~" in every spelling a path
+// can carry it in (HomeSpellings). The spellings are matched in a single pass,
+// the longest first where two start at the same byte, so a span is redacted
+// once and a shorter spelling never strands a longer one's tail ("~/x" for
+// "/h/./x" under a HOME of "/h/."). The boundary and case rules are
+// RedactRoot's, save that a spelling ending in a dot segment must be followed by
+// a separator or a byte that cannot continue a path (nextRoot).
+func RedactHomeAt(s string, homes ...string) string {
+	var roots []string
+	for _, home := range homes {
+		for _, sp := range HomeSpellings(home) {
+			if !slices.Contains(roots, sp) {
+				roots = append(roots, sp)
+			}
+		}
+	}
+	if len(roots) == 0 {
+		return s
+	}
+	return replaceRoots(s, roots, "~", caseFoldingFS())
+}
+
+// HomeSpellings is every spelling a path can carry home in, without
+// duplicates: as given (less a trailing separator, which is no part of the name
+// and would swallow the one after it), cleaned, and symlink-resolved from both
+// of those (a ".." after a link climbs from the link's target, which the
+// cleaned spelling does not name); on macOS, a home under /Users also as
+// /System/Volumes/Data/Users/…, the firmlink into the data volume; and each of
+// those in both Unicode normal forms, NFC and NFD, since the filesystem may hand
+// back a name in the form it was not typed in. It is the one list RedactHome
+// and the scanner's literal home sweep both read (iss-2609290055092630). An
+// empty, relative or root-level home ("/", "//", "/.") has none.
+func HomeSpellings(home string) []string {
+	clean := filepath.Clean(home)
+	if !filepath.IsAbs(clean) || len(clean) <= 1 {
+		return nil // empty, relative or root-level in every spelling
+	}
+	var out []string
+	add := func(sp string) {
+		if len(sp) > 1 && filepath.IsAbs(sp) && !slices.Contains(out, sp) {
+			out = append(out, sp)
+		}
+	}
+	spellings := []string{strings.TrimRight(home, string(os.PathSeparator)), clean}
+	for _, p := range []string{home, clean} {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			spellings = append(spellings, real)
+		}
+	}
+	for _, sp := range spellings {
+		forms := []string{sp}
+		if dataVolumeFirmlink && strings.HasPrefix(sp, "/Users/") {
+			forms = append(forms, "/System/Volumes/Data"+sp)
+		}
+		for _, f := range forms {
+			add(f)
+			add(norm.NFC.String(f))
+			add(norm.NFD.String(f))
+		}
+	}
+	return out
 }
 
 // DisplayPath is the one statement of how a surface prints a directory it names

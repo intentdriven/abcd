@@ -202,6 +202,12 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	if err := CheckReadingCitations(IngestReadingRequest{RepoRoot: repoRoot, IssuesRoot: issuesRoot, Run: req.Run, Items: req.Items}); err != nil {
 		return IngestReadingResult{}, err
 	}
+	// The batch redactor is built before the preamble provisions anything, so
+	// its one refusal (identityRefusal) leaves nothing written.
+	redactor, err := newLedgerRedactor(repoRoot)
+	if err != nil {
+		return IngestReadingResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return IngestReadingResult{}, err
 	}
@@ -223,8 +229,8 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// batch. A scanner probes the machine identity and shells out to do it, so
 	// building one per free-text value per item put seconds inside a lock every
 	// other ledger verb waits on — a large batch failed concurrent work with
-	// allocator contention. Nothing below the lock needs a scanner.
-	redactor := newLedgerRedactor(repoRoot)
+	// allocator contention. Nothing below the lock needs a scanner. The
+	// redactor was built above, before the preamble.
 	manifest, n := redactor.redact(req.Manifest)
 	result.Redacted += n
 	items := make([]ReadingItem, 0, len(req.Items))
@@ -465,7 +471,10 @@ func readItemHead(issuesRoot, item string) (itemHead, error) {
 // zero-width rune in --grounds or --exit-condition would otherwise reach the
 // committed record verbatim (iss-2609251823551349).
 func redactDispositionRequest(repoRoot string, req DispositionRequest) (DispositionRequest, int, string, error) {
-	r := newLedgerRedactor(repoRoot)
+	r, err := newLedgerRedactor(repoRoot)
+	if err != nil {
+		return DispositionRequest{}, 0, "", err
+	}
 	total := 0
 	scrub := func(s string) string {
 		if s == "" {

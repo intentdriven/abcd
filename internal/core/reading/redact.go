@@ -38,7 +38,8 @@ type payloadField func(string) string
 // newPayloadField builds the redactor for one ingest and returns it with a
 // loud-degrade note, or "" when the scanner ran with its full pattern set.
 //
-// It REDACTS AND REPORTS; it never refuses — capture.redactLedgerText's stance
+// It REDACTS AND REPORTS, and refuses only while an identity value no pattern
+// can match is set — capture.redactLedgerText's stance
 // for the ledger, not history.Capture's fail-closed one, and for the same reason
 // the accepted half of this very ingest takes it: refusing to write a refusal
 // record loses the refusal itself, and a run whose outcome is unrecordable is
@@ -52,7 +53,12 @@ type payloadField func(string) string
 // done: a repository's opt-in scanner augmenter (gitleaks) runs inside every
 // ScanText, and a run that failed degrades the scanner during them, which the
 // note has to say (iss-2608291814575788).
-func newPayloadField(repoRoot string) (payloadField, func() string) {
+//
+// The refusal: an identity value that is not valid UTF-8 cannot be matched by
+// any pattern, so payload text holding it would be committed in clear; the
+// ingest stops with nothing written and names the setting to re-save, never
+// the value.
+func newPayloadField(repoRoot string) (payloadField, func() string, error) {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
 		// A scanner that cannot be constructed leaves the text neutralised but
@@ -61,7 +67,11 @@ func newPayloadField(repoRoot string) (payloadField, func() string) {
 		note := fmt.Sprintf(
 			"the privacy scanner was unavailable (%v); payload-derived text was recorded "+
 				"neutralised but unredacted", err)
-		return echo, func() string { return note }
+		return echo, func() string { return note }, nil
+	}
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, nil, fmt.Errorf("reading ingest: refusing to record the run: %s; nothing written",
+			scanner.IdentityUnmatchableReason(setting))
 	}
 	degraded := func() string {
 		if unavail, reason := sc.Unavailable(); unavail {
@@ -78,7 +88,7 @@ func newPayloadField(repoRoot string) (payloadField, func() string) {
 		}
 		redacted, _ := scanner.Redact(s, findings)
 		return echo(redacted)
-	}, degraded
+	}, degraded, nil
 }
 
 // noteDegraded appends one loud-degrade note to the result's, keeping what is
