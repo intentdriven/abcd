@@ -133,4 +133,4 @@ const (
 // facilitatorSuccessor is what each refusal of a setting tells the agent to do
 // instead: leave it to the person, and say how they set it today, since no
 // abcd verb sets it yet. The registry's own entries say the same words.
-var facilitatorSuccessor = "Leave this one to the person: tell them which mode you believe they should work under and why. No abcd command sets it yet; they set it by hand: their own mode, wherever a project commits none, is facilitator.mode (auto or human) in " + abcdhome.Display("config.json") + ", which they edit themselves, and a project's is facilitator.mode in its committed .abcd/config.json on the default branch, a change a person merges by hand on the forge's page."
+var facilitatorSuccessor = "Leave this one to the person: say which mode you believe fits and why. No abcd command sets it yet: they edit facilitator.mode in " + abcdhome.Display("config.json") + " by hand, or, for the project, in its committed .abcd/config.json on the default branch, merged by hand on the forge's page."

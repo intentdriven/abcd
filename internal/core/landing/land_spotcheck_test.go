@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/spotcheck"
 )
 
@@ -267,11 +268,9 @@ func TestTheGatesFactsAreFieldsAndTheRecordReadsThem(t *testing.T) {
 	// not one abcd took alone, with or without an approval; their own is
 	// auto's. A pull request that changes the committed mode line is refused
 	// before the author is read, and is not recorded either.
-	global := Facilitator{Mode: ModeAuto, Layer: "machine", Origin: "~/.abcd.noindex/config.json"}
-	const (
-		globalText = "facilitator.mode is auto (machine layer, ~/.abcd.noindex/config.json)"
-		notOwn     = "#7 was opened by author-a, not by colleague-z, the account abcd runs as"
-	)
+	global := Facilitator{Mode: ModeAuto, Layer: "machine", Origin: abcdhome.Display("config.json")}
+	globalText := "facilitator.mode is auto (machine layer, " + abcdhome.Display("config.json") + ")"
+	const notOwn = "#7 was opened by author-a, not by colleague-z, the account abcd runs as"
 	colleague := func(approved bool) gateFacts {
 		f := with(maintainer(global), func(f *gateFacts) { f.notOwn, f.approvalWhy = notOwn, "none found" })
 		if approved {
