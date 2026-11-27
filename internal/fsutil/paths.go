@@ -428,7 +428,7 @@ func indexFold(s, sub string, fold bool) int {
 // boundary keeps the shorter from matching inside the longer.
 //
 // The environment's spelling is itself two: as written, and cleaned. A HOME
-// with a doubled slash or a dot segment in it ("/Users//alex", "/Users/./alex")
+// with a doubled slash or a dot segment in it ("/Users//alice", "/Users/./alice") abcd-lint:allow
 // reaches a message as written wherever a path was concatenated onto it, and
 // cleaned wherever filepath.Join built the path or the kernel reported it, so
 // both are redacted (iss-2611270714040589). Every spelling is matched in one
