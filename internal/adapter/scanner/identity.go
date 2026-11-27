@@ -668,10 +668,11 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// local_username gate — not slip redaction while the home path is caught.
 		//
 		// Both Unicode normal forms are matched: a non-ASCII login typed
-		// composed reaches a transcript decomposed as often as not. A form that
-		// is not valid UTF-8 cannot be held in a pattern and is left out
-		// (literalAlternation), and with none left there is no matcher.
-		m.localBare = literalAlternation(normalForms(id.HomeUser))
+		// composed reaches a transcript decomposed as often as not. A name that
+		// is not valid UTF-8 is matched in the forms a store receives it in
+		// (receivedForms), its raw bytes left out (literalAlternation), and with
+		// none left there is no matcher.
+		m.localBare = literalAlternation(receivedForms(id.HomeUser))
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}

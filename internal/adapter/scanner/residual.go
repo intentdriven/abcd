@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -132,14 +133,22 @@ var spellingsMemo struct {
 // (one that is not valid UTF-8).
 var homeSpellingsOf = fsutil.HomeSpellings
 
-// callerHomeSpellings is fsutil.HomeSpellings(home), or home alone where that
+// callerHomeSpellings is fsutil.HomeSpellings(home), each spelling in the
+// forms a store receives it in (receivedForms), or home alone where that
 // gives none (a relative or root-level home, swept as written, as it always
 // was).
 func callerHomeSpellings(home string) []string {
 	spellingsMemo.Lock()
 	defer spellingsMemo.Unlock()
 	if spellingsMemo.spellings == nil || spellingsMemo.home != home {
-		sp := homeSpellingsOf(home)
+		var sp []string
+		for _, s := range homeSpellingsOf(home) {
+			for _, f := range receivedForms(s) {
+				if !slices.Contains(sp, f) {
+					sp = append(sp, f)
+				}
+			}
+		}
 		if len(sp) == 0 {
 			sp = []string{home}
 		}
@@ -163,7 +172,45 @@ func callerUserNames(home string) []string {
 	if user == "" || user == "." || user == "/" {
 		return nil
 	}
-	return normalForms(user)
+	return receivedForms(user)
+}
+
+// receivedForms is s in every form a text can carry it in: as given, and in
+// both Unicode normal forms; and, where s is not valid UTF-8, in the forms a
+// store receives it in, since no store is handed the raw bytes — each invalid
+// byte replaced by U+FFFD (as a JSON encoder writes it), each run of them
+// replaced by one (strings.ToValidUTF8), and the invalid bytes dropped (as
+// the history reader clips a scalar) — each in both normal forms too.
+func receivedForms(s string) []string {
+	bases := []string{s}
+	if !utf8.ValidString(s) {
+		bases = append(bases, replaceEachInvalidByte(s), strings.ToValidUTF8(s, "\uFFFD"), strings.ToValidUTF8(s, ""))
+	}
+	var out []string
+	for _, b := range bases {
+		for _, f := range normalForms(b) {
+			if f != "" && !slices.Contains(out, f) {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
+}
+
+// replaceEachInvalidByte is s with every byte that does not start a valid
+// UTF-8 sequence replaced by U+FFFD.
+func replaceEachInvalidByte(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && n == 1 {
+			b.WriteRune(utf8.RuneError)
+		} else {
+			b.WriteString(s[i : i+n])
+		}
+		i += n
+	}
+	return b.String()
 }
 
 // normalForms is s, then its NFC and NFD forms where they differ from it.
