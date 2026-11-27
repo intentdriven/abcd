@@ -130,6 +130,15 @@ type Landing struct {
 	// Toggles counts how many times the watch toggled the arming at the pushed
 	// head, which maxToggles bounds.
 	Toggles int `json:"toggles,omitempty"`
+	// Rearms counts how many times the watch armed the pull request again at
+	// the pushed head after the merge queue removed it, which maxRearms bounds;
+	// RearmedRemoval is the forge's time of the removal it last armed again
+	// for, and ArmedAt the run's time of the loop's own last arming of the
+	// pushed head (the landing's, a toggle's or a re-arm's). A removal is armed
+	// again only when it is later than both (rearmDropped).
+	Rearms         int        `json:"rearms,omitempty"`
+	RearmedRemoval *time.Time `json:"rearmed_removal,omitempty"`
+	ArmedAt        *time.Time `json:"armed_at,omitempty"`
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
@@ -3030,7 +3039,8 @@ func armLane(c Context, lane *Lane, def string, rule landing.MergeRule, d landin
 		}
 		return Outcome{}, forgeRefusal(*lane, args, err)
 	}
-	ld.Armed = true
+	now := c.Now
+	ld.Armed, ld.ArmedAt = true, &now
 	ld.Merge = d.Why
 	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this" + held}, nil
 }

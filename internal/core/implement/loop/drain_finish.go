@@ -77,13 +77,17 @@ const (
 	// default branch declares generated, or not at all as this checkout
 	// merges, so the lane went back through its sync (step 13).
 	ParkedSyncing = "syncing"
-	// ParkedDropped: the armed pull request left the merge queue disarmed (a
-	// failed merge-group check, named in the note), or its head moved under
-	// it, or the loop's own toggle of its arming left it disarmed (the
-	// refusal, naming the command that re-arms it, is the note), so it will
-	// not merge on its own (iss-2610090642376032). It is still
-	// renewed: a person re-arms it, and a release's hold, which withdraws
-	// armed merges and re-arms them after, reads the same in the listing.
+	// ParkedDropped: the armed pull request left the merge queue disarmed and
+	// the watch did not arm it again (a removal not the queue's own, a
+	// withdrawn arming, or the queue's removal past maxRearms at one head; the
+	// failed check, the command that re-runs it and the one that arms it again
+	// are named in the note), or its head moved under it, or the loop's own
+	// toggle of its arming left it disarmed (the refusal, naming the command
+	// that re-arms it, is the note), so it will not merge on its own
+	// (iss-2610090642376032, itd-2611141610201875). A removal the watch armed
+	// again reads as waiting. It is still renewed: a person re-arms it, and a
+	// release's hold, which withdraws armed merges and re-arms them after,
+	// reads the same in the listing.
 	ParkedDropped = "dropped"
 	// ParkedStopHolds: a stop's mark stands on the run, so the move did nothing for it,
 	// whatever its pull request says; the note says what takes it up.

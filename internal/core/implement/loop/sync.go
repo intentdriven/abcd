@@ -363,9 +363,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 		return Outcome{Stay: true, Note: "pull request #" + n + " started to conflict with " + def + " (" + m.note() +
 			"), so its armed merge is withdrawn, and armed again once the lane's sync is pushed; the next step enters the sync"}, nil
 	}
-	again := *ld
-	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed, again.Toggles = "", "", nil, "", false, 0
-	again.GateUnreadSince = nil
+	again := resyncedLanding(*ld)
 	lane.Landing = &again
 	out, _, err := mergeDefault(c, lane, def, tracking, nil)
 	if err != nil {
@@ -373,6 +371,16 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 	}
 	out.Note = "pull request #" + n + " started to conflict with " + def + " (" + m.note() + "), so the lane entered its sync again: " + out.Note
 	return out, nil
+}
+
+// resyncedLanding is ld as the lane's sync starts it again: nothing pushed or
+// armed, and a new head's counts of toggles and re-arms. The removal last armed
+// again for is kept, since the forge's last removal is read whatever head it
+// was at, and the arming after the sync sets ArmedAt anew.
+func resyncedLanding(ld Landing) Landing {
+	ld.Pushed, ld.PreflightReceipt, ld.CheckWaitSince, ld.Merge, ld.Armed, ld.Toggles, ld.Rearms = "", "", nil, "", false, 0, 0
+	ld.GateUnreadSince = nil
+	return ld
 }
 
 // conflictNote is the record's line for a conflicting sync. The paths are

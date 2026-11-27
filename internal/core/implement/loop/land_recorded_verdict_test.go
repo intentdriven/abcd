@@ -2,6 +2,7 @@ package loop
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,13 +68,13 @@ func TestTheCloseIngestsOnlyTheVerdictTheRoundRecorded(t *testing.T) {
 	}
 }
 
-// A state of version 31 carrying a digest of a validator's return that is not a
+// A state of the current version carrying a digest of a validator's return that is not a
 // SHA-256 in hex is refused as one the loop never writes, and one of version 30
 // carrying any digest as one its version never wrote; a version-30 file with
 // none reads as the current version, its verdicts recorded with no digest.
 func TestAReturnDigestIsReadOnlyAsTheLoopWritesIt(t *testing.T) {
-	if SchemaVersion != schemaVersionUndigested+1 {
-		t.Fatalf("a return's digest is the version after %d: %d", schemaVersionUndigested, SchemaVersion)
+	if schemaVersionUnrearmed != schemaVersionUndigested+1 {
+		t.Fatalf("a return's digest is the version after %d: %d", schemaVersionUndigested, schemaVersionUnrearmed)
 	}
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	l := f.validated(t)
@@ -99,7 +100,7 @@ func TestAReturnDigestIsReadOnlyAsTheLoopWritesIt(t *testing.T) {
 		reason string
 	}{
 		"a digest that is no hex": {bytes.Replace(good, []byte(v.ReturnSHA256), []byte(strings.Repeat("Z", 64)), 1), "not a SHA-256 in lower-case hex"},
-		"a digest at version 30":  {bytes.Replace(good, []byte(`"schema_version": 31,`), []byte(`"schema_version": 30,`), 1), "`return_sha256`"},
+		"a digest at version 30":  {bytes.Replace(good, []byte(fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)), []byte(`"schema_version": 30,`), 1), "`return_sha256`"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if bytes.Equal(c.data, good) {

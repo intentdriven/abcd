@@ -1,0 +1,11 @@
+{
+  "captured": "2026-11-27, read-only: gh api graphql, timelineItems(last:20,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}} on intentdriven/abcd",
+  "839": [
+    {"createdAt": "2026-10-07T08:43:45Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
+    {"createdAt": "2026-10-07T09:24:18Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
+  ],
+  "1011": [
+    {"createdAt": "2026-10-15T07:48:04Z", "reason": "failed_checks", "actor": {"__typename": "Bot", "login": "github-merge-queue"}},
+    {"createdAt": "2026-10-15T10:53:55Z", "reason": "merged", "actor": {"__typename": "Bot", "login": "github-merge-queue"}}
+  ]
+}

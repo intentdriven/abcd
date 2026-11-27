@@ -22,12 +22,19 @@ package loop
 //     A head the gate refuses has its arming withdrawn and is left open, for
 //     the gate to be asked again on the next step; a gate it could not read is a
 //     wait, the arming left as it is;
-//   - neither armed nor queued nor merged: a terminal state. It is refused
-//     for a person, naming the forge's reason for the removal and the checks
-//     that failed on the pull request's last merge group, never re-queued
-//     into the same failure. A release being cut withdraws armed merges the
-//     same way and re-arms them after, so while its hold stands the lane
-//     waits on it instead.
+//   - neither armed nor queued nor merged: the merge queue's own removal
+//     (a failed merge-group check clears the arming with it) is armed again
+//     (rearmDropped, itd-2611141610201875), pinned to the pushed head, at most
+//     maxRearms times at one head, past the fence and the merge gate, and only
+//     a removal later than the loop's own last arming of that head and than
+//     the removal it last armed again for. The forge's data cannot tell the
+//     change's own failure from another's, so the reason never chooses. Any
+//     other removal, a withdrawn arming and a removal past the bound are
+//     refused for a person, naming the forge's reason, the checks that failed
+//     on the pull request's last merge group, the command that re-runs them
+//     and the one that arms it again. A release being cut withdraws armed
+//     merges the same way and re-arms them after, so while its hold stands
+//     the lane waits on it instead.
 //
 // The forge's answers are untrusted text: every name and reason is
 // sanitised and bounded, the merge group's commit must be a full object name
@@ -38,6 +45,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -55,9 +63,10 @@ import (
 // it is read through the forge's API, as `abcd land` reads it. It reads the
 // node id the enqueue call names, the head (the queue and a re-arm are pinned
 // to it), whether it is queued, the arming and its age, the merge state, and
-// the last removal from the queue with the forge's reason. Every field is
+// the last removal from the queue with the forge's reason and its actor, whose
+// type and login say whether the queue itself removed it. Every field is
 // pinned in internal/ghcontract.
-const QueueStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id state headRefOid isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt} mergeStateStatus timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason}}}}}}`
+const QueueStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id state headRefOid isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt} mergeStateStatus timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}}}}}}`
 
 // queueStateArgs are the forge client's arguments for QueueStateQuery on
 // pull request n of the repository gh resolves in the checkout: the owner and
@@ -74,12 +83,12 @@ func queueStateArgs(n string) []string {
 const mergeGroupRunsPath = "repos/{owner}/{repo}/actions/runs?event=merge_group&per_page=100"
 
 // mergeGroupRunsFilter is the --jq filter the runs listing is read through:
-// it keeps the listing's own shape, cut to the five fields of each run that
+// it keeps the listing's own shape, cut to the six fields of each run that
 // groupRun decodes. A hundred whole workflow runs outgrow the forge client's
 // output bound (landing.MaxOutput), so every dropped lane read "could not be
-// read" and its failed check went unnamed (iss-2611201352116252); the five
+// read" and its failed check went unnamed (iss-2611201352116252); the six
 // fields keep the listing far under it. gh prints an object result as JSON.
-const mergeGroupRunsFilter = `{workflow_runs: [.workflow_runs[] | {name, head_branch, head_sha, conclusion, created_at}]}`
+const mergeGroupRunsFilter = `{workflow_runs: [.workflow_runs[] | {id, name, head_branch, head_sha, conclusion, created_at}]}`
 
 func checkRunsPath(sha string) string {
 	return "repos/{owner}/{repo}/commits/" + sha + "/check-runs?per_page=100"
@@ -95,6 +104,20 @@ const requeueGrace = 30 * time.Minute
 // maxToggles bounds how many times the watch toggles one lane's arming at one
 // pushed head: an enqueue the forge goes on refusing is not asked for without end.
 const maxToggles = 3
+
+// maxRearms bounds how many times the watch arms again, at one pushed head, a
+// pull request the merge queue removed: a check that goes on failing is
+// handed back to a person rather than queued into it without end.
+const maxRearms = 3
+
+// The merge queue as a removal's actor names it: the forge's own application,
+// with this login. An application is a Bot too, and one that takes a pull
+// request out of the queue was told to by someone, so only this one shape is
+// armed again; a forge that names its queue otherwise arms nothing again.
+const (
+	mergeQueueActorType  = "Bot"
+	mergeQueueActorLogin = "github-merge-queue"
+)
 
 // The bounds on forge text a refusal or a note carries.
 const (
@@ -119,11 +142,38 @@ type queueView struct {
 	} `json:"autoMergeRequest"`
 	MergeStateStatus string `json:"mergeStateStatus"`
 	TimelineItems    struct {
-		Nodes []struct {
-			CreatedAt string `json:"createdAt"`
-			Reason    string `json:"reason"`
-		} `json:"nodes"`
+		Nodes []queueRemovalNode `json:"nodes"`
 	} `json:"timelineItems"`
+}
+
+// queueRemovalNode is the forge's last removal of the pull request from the
+// merge queue: when, the forge's reason, and who removed it (nil when the
+// forge names no one).
+type queueRemovalNode struct {
+	CreatedAt string      `json:"createdAt"`
+	Reason    string      `json:"reason"`
+	Actor     *queueActor `json:"actor"`
+}
+
+// queueActor is a removal's actor: its concrete type and its login.
+type queueActor struct {
+	Typename string `json:"__typename"`
+	Login    string `json:"login"`
+}
+
+// byTheQueue reports whether the forge's merge queue itself made the removal.
+func (e queueRemovalNode) byTheQueue() bool {
+	return e.Actor != nil && e.Actor.Typename == mergeQueueActorType && e.Actor.Login == mergeQueueActorLogin
+}
+
+// lastRemoval is the last removal on record, at whatever head; ok is false
+// when the forge records none.
+func (v queueView) lastRemoval() (queueRemovalNode, bool) {
+	nodes := v.TimelineItems.Nodes
+	if len(nodes) == 0 {
+		return queueRemovalNode{}, false
+	}
+	return nodes[len(nodes)-1], true
 }
 
 // queued reports whether the forge holds the pull request in the merge queue.
@@ -205,6 +255,11 @@ func readQueue(c Context, lane Lane) (v queueView, unread string, err error) {
 var fenceQueue = fenceAct{not: "queue its pull request", none: "the pull request is not queued",
 	stays: "the pull request stays armed outside the queue"}
 
+// fenceRearm is the land fence's act before the watch arms again a pull
+// request the merge queue removed.
+var fenceRearm = fenceAct{not: "arm its pull request again", none: "the pull request is not armed again",
+	stays: "the pull request stays outside the queue, disarmed"}
+
 // fenceDropped is the merge hold's act before the watch reports a pull
 // request gone from the queue: a release being cut withdraws armed merges
 // and re-arms them after, so the lane waits on it rather than report a drop.
@@ -214,8 +269,9 @@ var fenceDropped = fenceAct{not: "report its pull request dropped from the merge
 // watchQueue is the merge-queue half of an armed lane's wait for its merge,
 // where a queue gates def. It returns the step's outcome when it acted (the
 // pull request queued, or its arming toggled), or wait, a clause the ordinary
-// wait adds; a pull request gone from the queue and no longer armed is
-// refused, naming why.
+// wait adds; a pull request gone from the queue and no longer armed is armed
+// again where the queue removed it (rearmDropped), and refused otherwise,
+// naming why.
 func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Outcome, string, error) {
 	ld := lane.Landing
 	n := strconv.Itoa(lane.PR)
@@ -237,7 +293,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	case v.queued():
 		return nil, "; it is in " + def + "'s merge queue" + entryText(v), nil
 	case v.AutoMergeRequest == nil:
-		return nil, "", droppedRefusal(c, *lane, def, rule, v)
+		return rearmDropped(c, lane, def, rule, v)
 	case v.MergeStateStatus != "CLEAN":
 		return nil, "; it is armed and not yet in the merge queue (the forge reports " + bounded(v.MergeStateStatus, 40) + ")", nil
 	}
@@ -468,6 +524,8 @@ func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why
 		return nil, "", r
 	}
 	ld.Toggles++
+	now := c.Now
+	ld.ArmedAt = &now
 	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s sat armed and CLEAN outside %s's merge queue past the %d-minute grace, and the forge refused to queue it (%s), so the loop toggled its auto-merge, toggle %d of %d, re-armed by %s pinned to %s",
 		n, def, int(requeueGrace/time.Minute), why, ld.Toggles, maxToggles, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
 }
@@ -481,26 +539,162 @@ func rearmArgs(n, method, head string) []string {
 	return []string{"pr", "merge", n, "--auto", method, "--match-head-commit=" + head}
 }
 
-// droppedRefusal is the terminal report of an armed lane's pull request that
-// is open, outside the merge queue and no longer armed: the forge removed it
-// from the queue (a failed merge-group check clears the arming with it) or
-// someone withdrew the arming. It names the forge's reason and the checks
-// that failed on the pull request's last merge group, and quotes the command
-// that arms it again by rule's method, the one toggleArming runs. While a
-// release being cut holds every merge, the lane waits on the hold instead:
-// the hold withdraws armed merges and re-arms them after.
-func droppedRefusal(c Context, lane Lane, def string, rule landing.MergeRule, v queueView) error {
-	held := ""
-	m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
+// rearmDropped is the watch's act on an armed lane's pull request that is
+// open, outside the merge queue and no longer armed: the forge's merge queue
+// removed it (a failed merge-group check clears the arming with it), or
+// someone withdrew the arming. It arms the pull request again, by the ruleset
+// mirror's method pinned to the pushed head, when all of these hold, and
+// otherwise refuses for a person (droppedReport):
+//
+//   - no release's hold stands, and the holds were read: a held lane waits
+//     on the hold, and holds it could not read leave a release's withdrawal
+//     not ruled out;
+//   - the forge records a removal and the merge queue itself made it
+//     (byTheQueue);
+//   - the removal is later than the loop's own last arming of the pushed head
+//     (Landing.ArmedAt, the run's clock), so a removal from before a resync
+//     or before a person armed it again is never read as new;
+//   - the removal is later than the one the landing last armed again for
+//     (Landing.RearmedRemoval, the forge's clock), so a person's withdrawal
+//     after a re-arm stands;
+//   - fewer than maxRearms re-arms at the pushed head;
+//   - the pushed head is a full object name and the mirror names a method;
+//   - the fence and the merge gate pass, asked as the watch asks them before
+//     it queues or toggles.
+//
+// The count, the removal's time and the arming's are kept only once the forge
+// took the arming. The removal's reason is printed and never chooses
+// (decision 1 of itd-2611141610201875: the forge's data cannot tell the
+// change's own failure from another's).
+func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v queueView) (*Outcome, string, error) {
+	held, err := droppedHold(c, *lane)
 	if err != nil {
-		held = "; the release holds could not be read (" + forgeWhy(err) + "), so a release's withdrawal is not ruled out"
-	} else if err := heldMerge(lane, m, fenceDropped); err != nil {
-		return err
+		return nil, "", err
+	}
+	if held != "" {
+		return nil, "", droppedReport(c, *lane, def, rule, v, held)
+	}
+	ld := lane.Landing
+	removedAt, why := rearmable(*ld, v)
+	method := landing.MergeMethods[rule.Method]
+	switch {
+	case why != "":
+	case method == "":
+		why = "the ruleset mirror names no merge method to arm it by"
+	case !gitutil.IsFullSHA(ld.Pushed):
+		why = "the loop has no full pushed head to pin the arming to"
+	}
+	if why != "" {
+		return nil, "", droppedReport(c, *lane, def, rule, v, notRearmed(*ld, why))
+	}
+	// Arming again is the arming's own act, so the fence it passed is asked
+	// again (the reservation still this person's, no release held), and so is
+	// the merge gate: nothing is armed at a head the gate would not arm now.
+	if _, _, err := fence(c, *lane, fenceLease, fenceRearm); err != nil {
+		return nil, "", err
+	}
+	d, err := askMergeGate(c, *lane, def, rule)
+	if r, ok := AsRefusal(err); ok && r.modeUnread {
+		return nil, "; the merge queue removed it, and facilitator.mode could not be read at " + Remote + "/" + def + ", so the loop does not arm it again yet", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if d.Unread {
+		return nil, "; the merge queue removed it, and the merge gate could not be read (" + d.Why + "), so the loop does not arm it again yet", nil
 	}
 	n := strconv.Itoa(lane.PR)
+	if !d.Arm {
+		ld.Merge, ld.Armed = "left open: "+d.Why, false
+		return &Outcome{Stay: true, Note: "the merge queue removed pull request #" + n + ", and the loop does not arm it again: " + d.Why + "; the loop asks again on each step"}, "", nil
+	}
+	args := rearmArgs(n, method, ld.Pushed)
+	if _, err := landing.GH(c.RepoRoot, args...); err != nil {
+		if errors.Is(err, landing.ErrNoForgeClient) {
+			return nil, "", forgeRefusal(*lane, args, err)
+		}
+		if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
+			return nil, "", r
+		}
+		return nil, "", droppedReport(c, *lane, def, rule, v, "; the loop armed it again and the forge refused the arming ("+forgeWhy(err)+")")
+	}
+	ld.Rearms++
+	now := c.Now
+	ld.RearmedRemoval, ld.ArmedAt = &removedAt, &now
+	e, _ := v.lastRemoval()
+	reason := ""
+	if r := bounded(e.Reason, maxQueueReason); r != "" {
+		reason = " (its reason: " + r + ")"
+	}
+	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s was removed from %s's merge queue by the queue%s and is armed again, %d of %d at this head, by %s pinned to %s",
+		n, def, reason, ld.Rearms, maxRearms, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
+}
+
+// rearmable reads the forge's last removal against the landing: its time, and
+// why it is not armed again, "" when the removal is the queue's own, later than
+// the loop's own last arming of the pushed head and than the removal last armed
+// again for, and under the bound. Both comparisons are strict, and a time that
+// does not parse arms nothing.
+func rearmable(ld Landing, v queueView) (time.Time, string) {
+	e, ok := v.lastRemoval()
+	if !ok {
+		return time.Time{}, "the forge records no removal by the merge queue, so its arming was withdrawn"
+	}
+	if !e.byTheQueue() {
+		return time.Time{}, "the merge queue itself did not remove it"
+	}
+	at, err := time.Parse(time.RFC3339, e.CreatedAt)
+	switch {
+	case err != nil:
+		return time.Time{}, "the forge's time of the removal does not read"
+	case ld.ArmedAt == nil:
+		return time.Time{}, "the landing keeps no time of its own arming of this head"
+	case !at.After(*ld.ArmedAt):
+		return time.Time{}, "the removal on record is not later than the loop's own last arming of this head"
+	case ld.RearmedRemoval != nil && !at.After(*ld.RearmedRemoval):
+		return time.Time{}, "no removal on record is later than the one it was last armed again for, so its arming was withdrawn since"
+	case ld.Rearms >= maxRearms:
+		return time.Time{}, "past the bound"
+	}
+	return at, ""
+}
+
+// notRearmed is the report's clause saying the loop does not arm the pull
+// request again and why, and how many times it already did at this head.
+func notRearmed(ld Landing, why string) string {
+	if ld.Rearms >= maxRearms {
+		return fmt.Sprintf("; the loop armed it again %d times at this head, the most it does", ld.Rearms)
+	}
+	s := "; the loop does not arm it again: " + why
+	if ld.Rearms > 0 {
+		s += fmt.Sprintf(" (it armed it again %d of %d times at this head)", ld.Rearms, maxRearms)
+	}
+	return s
+}
+
+// droppedHold is the merge hold's answer for a dropped pull request: the
+// hold's wait while a release being cut holds every merge (the hold withdraws
+// armed merges and re-arms them after), or the clause saying the holds could
+// not be read, "" when they were read and none stands.
+func droppedHold(c Context, lane Lane) (string, error) {
+	m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
+	if err != nil {
+		return "; the release holds could not be read (" + forgeWhy(err) + "), so a release's withdrawal is not ruled out", nil
+	}
+	return "", heldMerge(lane, m, fenceDropped)
+}
+
+// droppedReport is the refusal for a person of a pull request the watch does
+// not arm again: the forge's reason for the removal, the checks that failed on
+// the pull request's last merge group, then extra (why the loop does not arm
+// it again, or that the holds were not read); and as the remedy, the failed
+// check, the command that re-runs its workflow run, the command that arms it
+// again by rule's method (the one toggleArming runs), and the step that reads
+// it again.
+func droppedReport(c Context, lane Lane, def string, rule landing.MergeRule, v queueView, extra string) error {
+	n := strconv.Itoa(lane.PR)
 	removed := "the forge records no removal from the merge queue, so its arming was withdrawn"
-	if nodes := v.TimelineItems.Nodes; len(nodes) > 0 {
-		e := nodes[len(nodes)-1]
+	if e, ok := v.lastRemoval(); ok {
 		removed = "the forge removed it from the queue"
 		if t, err := time.Parse(time.RFC3339, e.CreatedAt); err == nil {
 			removed += " at " + stamp(t)
@@ -509,26 +703,57 @@ func droppedRefusal(c Context, lane Lane, def string, rule landing.MergeRule, v 
 			removed += " (its reason: " + r + ")"
 		}
 	}
+	g := failedGroupChecks(c, lane, def)
 	reason := fmt.Sprintf("pull request #%s left %s's merge queue and is no longer armed, so it will not merge on its own: %s; %s%s",
-		n, def, removed, failedGroupChecks(c, lane, def), held)
+		n, def, removed, g.clause, extra)
 	rearm := lane.Landing.Pushed + " by the queue's merge method (the ruleset mirror names none the loop can quote)"
 	if method := landing.MergeMethods[rule.Method]; method != "" {
 		rearm = "(`gh " + strings.Join(rearmArgs(n, method, lane.Landing.Pushed), " ") + "`)"
 	}
+	check := "the failed check"
+	if g.failed != "" {
+		check += " (" + g.failed + ")"
+	}
+	remedy := "the forge names no failed run to re-run, so settle " + check + ", then arm it again pinned to the pushed head " + rearm
+	if len(g.reruns) > 0 {
+		cmds := make([]string, len(g.reruns))
+		for i, id := range g.reruns {
+			cmds[i] = "`gh run rerun " + id + " --failed`"
+		}
+		remedy = "re-run " + check + " with " + strings.Join(cmds, " and ") + ", then arm it again pinned to the pushed head " + rearm
+	}
 	r := refuse(string(StageLand), "", lane.ID, reason,
-		"fix or re-run the failed check, then arm it again pinned to the pushed head "+rearm+
-			", and run `abcd implement step` again: the loop does not re-queue it into the same failure")
+		remedy+", then run `abcd implement step` again, or leave it to `abcd drain --drive`, whose next move reads it again")
 	r.outOfQueue = true
 	return r
 }
 
 // groupRun is one workflow run the merge queue started, as the forge lists it.
 type groupRun struct {
+	ID         runID  `json:"id"`
 	Name       string `json:"name"`
 	HeadBranch string `json:"head_branch"`
 	HeadSHA    string `json:"head_sha"`
 	Conclusion string `json:"conclusion"`
 	CreatedAt  string `json:"created_at"`
+}
+
+// runID is a workflow run's id as the forge lists it, kept only when it is 1
+// to 20 digits and "" otherwise: it is put in a command a person runs, so
+// nothing else read from the forge reaches one.
+type runID string
+
+// runIDShape is the one shape of a run id put in a command.
+var runIDShape = regexp.MustCompile(`^[0-9]{1,20}$`)
+
+// UnmarshalJSON keeps a bare number of 1 to 20 digits, and drops anything
+// else (a string, a sign, a fraction, null) without failing the listing.
+func (r *runID) UnmarshalJSON(b []byte) error {
+	*r = ""
+	if runIDShape.Match(b) {
+		*r = runID(b)
+	}
+	return nil
 }
 
 // checkRun is one check run on a commit, as the forge lists it.
@@ -541,22 +766,32 @@ type checkRun struct {
 // run is left out: the queue cancels the rest of a group it dropped.
 var failedConclusions = map[string]bool{"failure": true, "timed_out": true, "action_required": true, "startup_failure": true}
 
+// groupChecks is what the watch read of a pull request's last merge group:
+// the clause the report says, which always says what it could not read; the
+// failed checks it named, "" for none; and the ids of the group's failed
+// workflow runs, each 1 to 20 digits, which a person re-runs.
+type groupChecks struct {
+	clause string
+	failed string
+	reruns []string
+}
+
 // failedGroupChecks names the checks that failed on the pull request's last
 // merge group: its newest workflow run the queue started on a
 // `gh-readonly-queue/<def>/pr-<n>-` branch gives the group's commit, and the
 // check runs on that commit are read for the failed ones (any app's), the
-// failed workflow runs named instead when they cannot be. It always returns
-// a clause, saying what it could not read.
-func failedGroupChecks(c Context, lane Lane, def string) string {
+// failed workflow runs named instead when they cannot be. The failed workflow
+// runs of that commit are the ones to re-run.
+func failedGroupChecks(c Context, lane Lane, def string) groupChecks {
 	out, err := landing.GH(c.RepoRoot, "api", mergeGroupRunsPath, "--jq", mergeGroupRunsFilter)
 	if err != nil {
-		return "the merge group's checks could not be read (" + forgeWhy(err) + ")"
+		return groupChecks{clause: "the merge group's checks could not be read (" + forgeWhy(err) + ")"}
 	}
 	var listed struct {
 		WorkflowRuns []groupRun `json:"workflow_runs"`
 	}
 	if json.Unmarshal([]byte(out), &listed) != nil {
-		return "the forge's listing of the merge queue's runs does not parse, so the failed check is not named"
+		return groupChecks{clause: "the forge's listing of the merge queue's runs does not parse, so the failed check is not named"}
 	}
 	prefix := "gh-readonly-queue/" + def + "/pr-" + strconv.Itoa(lane.PR) + "-"
 	var runs []groupRun
@@ -566,13 +801,24 @@ func failedGroupChecks(c Context, lane Lane, def string) string {
 		}
 	}
 	if len(runs) == 0 {
-		return "the forge lists no merge-queue run of it among the repository's latest, so the failed check is not named"
+		return groupChecks{clause: "the forge lists no merge-queue run of it among the repository's latest, so the failed check is not named"}
 	}
 	// The newest group: the forge's RFC 3339 times, all in UTC, sort as
 	// strings.
 	slices.SortStableFunc(runs, func(a, b groupRun) int { return strings.Compare(b.CreatedAt, a.CreatedAt) })
 	sha := runs[0].HeadSHA
 	at := "on its last merge group " + shortSHA(sha)
+	var g groupChecks
+	var failedRuns []string
+	for _, r := range runs {
+		if r.HeadSHA != sha || !failedConclusions[r.Conclusion] {
+			continue
+		}
+		failedRuns = append(failedRuns, checkName(r.Name, r.Conclusion))
+		if r.ID != "" && !slices.Contains(g.reruns, string(r.ID)) && len(g.reruns) < maxFailedChecks {
+			g.reruns = append(g.reruns, string(r.ID))
+		}
+	}
 	if out, err := landing.GH(c.RepoRoot, "api", checkRunsPath(sha)); err == nil {
 		var checks struct {
 			CheckRuns []checkRun `json:"check_runs"`
@@ -585,20 +831,19 @@ func failedGroupChecks(c Context, lane Lane, def string) string {
 				}
 			}
 			if len(failed) > 0 {
-				return "the failed check " + at + ": " + namedChecks(failed)
+				g.failed = namedChecks(failed)
+				g.clause = "the failed check " + at + ": " + g.failed
+				return g
 			}
 		}
 	}
-	var failed []string
-	for _, r := range runs {
-		if r.HeadSHA == sha && failedConclusions[r.Conclusion] {
-			failed = append(failed, checkName(r.Name, r.Conclusion))
-		}
+	if len(failedRuns) > 0 {
+		g.failed = namedChecks(failedRuns)
+		g.clause = "the failed workflow " + at + ": " + g.failed
+		return g
 	}
-	if len(failed) > 0 {
-		return "the failed workflow " + at + ": " + namedChecks(failed)
-	}
-	return "the forge names no failed check " + at
+	g.clause = "the forge names no failed check " + at
+	return g
 }
 
 // checkName is a check's name and conclusion as the forge gives them,

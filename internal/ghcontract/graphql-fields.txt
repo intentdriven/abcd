@@ -276,6 +276,13 @@ PullRequestTimelineItemsConnection.nodes PullRequestTimelineItems UNION
 on PullRequestTimelineItems RemovedFromMergeQueueEvent
 RemovedFromMergeQueueEvent.createdAt DateTime SCALAR
 RemovedFromMergeQueueEvent.reason String SCALAR
+# The watch's re-arm of a pull request the merge queue removed
+# (itd-2611141610201875, spc-2611251808377435 step 1): the removal's actor,
+# read 2026-11-27 by introspection ({__type(name:"RemovedFromMergeQueueEvent")
+# {fields{name type{name kind ofType{name kind}}}}}), an Actor whose login is
+# pinned above and whose concrete type the watch reads through __typename. The
+# same read confirmed createdAt (a non-null DateTime) and reason above.
+RemovedFromMergeQueueEvent.actor Actor INTERFACE
 # The landings reader's batch of pull requests (spc-2610301950480609 approach
 # 6, internal/core/landings/forge.go), read 2026-11-12 by the same __type
 # queries, one a type: PullRequestReviewConnection and PullRequestCommitConnection

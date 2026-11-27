@@ -411,6 +411,9 @@ func unreviewOlder(doc map[string]any) {
 	default:
 		return
 	}
+	if v <= schemaVersionUnrearmed {
+		unrearmOlder(doc)
+	}
 	if v <= schemaVersionUndigested {
 		undigestOlder(doc)
 	}
@@ -428,6 +431,21 @@ func unreviewOlder(doc map[string]any) {
 	}
 	if v <= schemaVersionUnrenamed {
 		unrenameOlder(doc)
+	}
+}
+
+// unrearmOlder rewrites a state document as a version before 32 wrote it: no
+// landing keeps its re-arms, the removal it last armed again for or the time
+// of its own last arming.
+func unrearmOlder(doc map[string]any) {
+	lanes, _ := doc["lanes"].([]any)
+	for _, l := range lanes {
+		lm, _ := l.(map[string]any)
+		if ld, ok := lm["landing"].(map[string]any); ok {
+			delete(ld, "rearms")
+			delete(ld, "rearmed_removal")
+			delete(ld, "armed_at")
+		}
 	}
 }
 

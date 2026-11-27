@@ -194,3 +194,23 @@ func TestCheckGraphQLHoldsEachFieldToItsArguments(t *testing.T) {
 		}
 	}
 }
+
+// The merge-queue watch reads who removed a pull request from the queue
+// (itd-2611141610201875): the removal's actor is the forge's Actor, whose
+// login is pinned and whose concrete type the watch reads through
+// __typename, the meta-field; a field Actor lacks is refused.
+func TestTheQueueRemovalsActorIsPinned(t *testing.T) {
+	if named, ok := ghcontract.GraphQLField("RemovedFromMergeQueueEvent", "actor"); !ok || named != "Actor" {
+		t.Fatalf("a removal's actor is pinned as the forge's Actor: %q %v", named, ok)
+	}
+	if named, ok := ghcontract.GraphQLField("Actor", "login"); !ok || named != "String" {
+		t.Fatalf("an actor's login is pinned: %q %v", named, ok)
+	}
+	const q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){timelineItems(last:1,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]){nodes{... on RemovedFromMergeQueueEvent{%s}}}}}}`
+	if err := ghcontract.CheckGraphQL(strings.Replace(q, "%s", "createdAt reason actor{__typename login}", 1)); err != nil {
+		t.Fatalf("the watch's selection of a removal is the forge's: %v", err)
+	}
+	if err := ghcontract.CheckGraphQL(strings.Replace(q, "%s", "actor{name}", 1)); err == nil || !strings.Contains(err.Error(), `"name"`) {
+		t.Fatalf("a field Actor lacks is refused: %v", err)
+	}
+}
