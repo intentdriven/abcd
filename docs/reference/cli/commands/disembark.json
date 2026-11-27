@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd disembark",
@@ -17,6 +17,12 @@
         "principles",
         "probe",
         "review"
+      ],
+      "next": [
+        {
+          "command": "abcd disembark probe <repo>",
+          "when": "to see which brief sections a lifeboat could ground"
+        }
       ]
     },
     {
@@ -25,7 +31,13 @@
       "usage": "abcd disembark coverage <report.json>... [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd disembark coverage probe-report.json"
+      "example": "abcd disembark coverage probe-report.json",
+      "next": [
+        {
+          "command": "abcd disembark pack <repo> <dest>",
+          "when": "to pack a repository the table shows is ready"
+        }
+      ]
     },
     {
       "path": "abcd disembark graveyard",
@@ -61,7 +73,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd disembark graveyard ../lifeboat --lessons-json lessons.json"
+      "example": "abcd disembark graveyard ../lifeboat --lessons-json lessons.json",
+      "next": [
+        {
+          "command": "abcd disembark principles <lifeboat-dir>",
+          "when": "to distil the lifeboat's principles"
+        }
+      ]
     },
     {
       "path": "abcd disembark pack",
@@ -74,7 +92,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd disembark pack . ../lifeboat"
+      "example": "abcd disembark pack . ../lifeboat",
+      "next": [
+        {
+          "command": "abcd disembark review <lifeboat-dir> <source-repo>",
+          "when": "to review the packed lifeboat against its source"
+        }
+      ]
     },
     {
       "path": "abcd disembark plan",
@@ -87,7 +111,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd disembark plan ."
+      "example": "abcd disembark plan .",
+      "next": [
+        {
+          "command": "abcd disembark pack <repo> <dest>",
+          "when": "to write the file set the plan showed"
+        }
+      ]
     },
     {
       "path": "abcd disembark press-release",
@@ -123,7 +153,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd disembark press-release ../lifeboat"
+      "example": "abcd disembark press-release ../lifeboat",
+      "next": [
+        {
+          "command": "abcd embark probe <lifeboat-dir> <target-dir>",
+          "when": "to see what the lifeboat would write into a target"
+        }
+      ]
     },
     {
       "path": "abcd disembark principles",
@@ -159,7 +195,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd disembark principles ../lifeboat"
+      "example": "abcd disembark principles ../lifeboat",
+      "next": [
+        {
+          "command": "abcd disembark press-release <lifeboat-dir>",
+          "when": "to compose the lifeboat's press release"
+        }
+      ]
     },
     {
       "path": "abcd disembark probe",
@@ -172,7 +214,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd disembark probe ."
+      "example": "abcd disembark probe .",
+      "next": [
+        {
+          "command": "abcd disembark plan <repo>",
+          "when": "to see the file set a pack would write"
+        }
+      ]
     },
     {
       "path": "abcd disembark review",
@@ -208,7 +256,13 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd disembark review ../lifeboat ."
+      "example": "abcd disembark review ../lifeboat .",
+      "next": [
+        {
+          "command": "abcd disembark graveyard <lifeboat-dir> --lessons-json <file>",
+          "when": "to validate the lifeboat's lessons"
+        }
+      ]
     }
   ]
 }

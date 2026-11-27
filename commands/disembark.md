@@ -325,31 +325,49 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd disembark [flags]`
   - An example call is `abcd disembark`.
+  - What usually follows:
+    - `abcd disembark probe <repo>`, to see which brief sections a lifeboat could ground.
 - `abcd disembark coverage <report.json>... [flags]`
   - An example call is `abcd disembark coverage probe-report.json`.
+  - What usually follows:
+    - `abcd disembark pack <repo> <dest>`, to pack a repository the table shows is ready.
 - `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [--dry-run] [flags]`
   - Reads `--lessons-json`, the graveyard lessons, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark graveyard --input lessons-json` prints its shape.
   - An example call is `abcd disembark graveyard ../lifeboat --lessons-json lessons.json`.
+  - What usually follows:
+    - `abcd disembark principles <lifeboat-dir>`, to distil the lifeboat's principles.
 - `abcd disembark pack <repo> <dest> [flags]`
   - An example call is `abcd disembark pack . ../lifeboat`.
+  - What usually follows:
+    - `abcd disembark review <lifeboat-dir> <source-repo>`, to review the packed lifeboat against its source.
 - `abcd disembark plan [repo] [flags]`
   - An example call is `abcd disembark plan .`.
+  - What usually follows:
+    - `abcd disembark pack <repo> <dest>`, to write the file set the plan showed.
 - `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [--dry-run] [flags]`
   - Reads `--press-release-json`, the lifeboat press release, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark press-release --input press-release-json` prints its shape.
   - An example call is `abcd disembark press-release ../lifeboat`.
+  - What usually follows:
+    - `abcd embark probe <lifeboat-dir> <target-dir>`, to see what the lifeboat would write into a target.
 - `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [--dry-run] [flags]`
   - Reads `--principles-json`, the lifeboat principles, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark principles --input principles-json` prints its shape.
   - An example call is `abcd disembark principles ../lifeboat`.
+  - What usually follows:
+    - `abcd disembark press-release <lifeboat-dir>`, to compose the lifeboat's press release.
 - `abcd disembark probe [repo] [flags]`
   - An example call is `abcd disembark probe .`.
+  - What usually follows:
+    - `abcd disembark plan <repo>`, to see the file set a pack would write.
 - `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [--dry-run] [flags]`
   - Reads `--review-json`, the lifeboat review verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain disembark review --input review-json` prints its shape.
   - An example call is `abcd disembark review ../lifeboat .`.
+  - What usually follows:
+    - `abcd disembark graveyard <lifeboat-dir> --lessons-json <file>`, to validate the lifeboat's lessons.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

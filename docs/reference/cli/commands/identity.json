@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd identity",
@@ -11,6 +11,16 @@
       "subcommands": [
         "init",
         "render"
+      ],
+      "next": [
+        {
+          "command": "abcd identity init",
+          "when": "when the repository records no identity block yet"
+        },
+        {
+          "command": "abcd identity render",
+          "when": "to see the corrections for every drifted surface"
+        }
       ]
     },
     {
@@ -40,7 +50,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd identity init --title \"Example Widgets\" --tagline \"Widgets that explain themselves\""
+      "example": "abcd identity init --title \"Example Widgets\" --tagline \"Widgets that explain themselves\"",
+      "next": [
+        {
+          "command": "abcd lint identity",
+          "when": "to see every surface held to the block"
+        }
+      ]
     },
     {
       "path": "abcd identity render",
@@ -48,7 +64,13 @@
       "usage": "abcd identity render [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd identity render"
+      "example": "abcd identity render",
+      "next": [
+        {
+          "command": "abcd lint identity",
+          "when": "once the corrections are applied, to confirm nothing drifts"
+        }
+      ]
     }
   ]
 }

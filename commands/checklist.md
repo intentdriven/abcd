@@ -140,19 +140,30 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain checklist` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain checklist` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd checklist [flags]`
   - An example call is `abcd checklist`.
+  - What usually follows:
+    - `abcd checklist set <id> --state <state>`, to move an item on.
+    - `abcd checklist add "<title>"`, to add an item that is missing.
 - `abcd checklist add "<title>" [flags]`
   - An example call is `abcd checklist add "Regenerate the CLI reference"`.
+  - What usually follows:
+    - `abcd checklist set <id> --state <state>`, once the item's state changes.
 - `abcd checklist render [flags]`
   - An example call is `abcd checklist render`.
+  - What usually follows:
+    - `abcd checklist set <id> --state <state>`, to move an item on.
 - `abcd checklist set <id> --state <state> [flags]`
   - An example call is `abcd checklist set regenerate-the-cli-reference --state done`.
+  - What usually follows:
+    - `abcd checklist`, to see the checklist with the item moved.
 - `abcd checklist show <id> [flags]`
   - An example call is `abcd checklist show regenerate-the-cli-reference`.
+  - What usually follows:
+    - `abcd checklist set <id> --state <state>`, to change the item's state.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

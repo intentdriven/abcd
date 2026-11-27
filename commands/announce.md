@@ -150,11 +150,13 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain announce` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain announce` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd announce <kind> <item> [flags]`
   - An example call is `abcd announce merging iss-2609010000000001`.
+  - What usually follows:
+    - `abcd status`, to see the announcement beside everyone else's.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

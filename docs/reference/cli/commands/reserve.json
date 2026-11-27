@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd reserve",
@@ -49,7 +49,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go"
+      "example": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
+      "next": [
+        {
+          "command": "abcd reserve <record-id> --release",
+          "when": "once the work on the record is done"
+        },
+        {
+          "command": "abcd peers",
+          "when": "to see the reservation beside the others"
+        }
+      ]
     }
   ]
 }

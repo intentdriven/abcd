@@ -334,14 +334,18 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd ideate [flags]`
   - An example call is `abcd ideate`.
+  - What usually follows:
+    - `abcd ideate record <idea-slug> --verdict-json <file>`, once the host has run the gauntlet and composed its verdict.
 - `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [--dry-run] [flags]`
   - Reads `--verdict-json`, the ideate verdict, at schema_version 2; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain ideate record --input verdict-json` prints its shape.
   - An example call is `abcd ideate record widen-the-public-api --verdict-json verdict.json`.
+  - What usually follows:
+    - `abcd intent "<text>"`, when the verdict admits the idea, to file it as a draft intent.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

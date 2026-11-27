@@ -466,6 +466,16 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			"names it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// A --flip given is told apart from one absent by the flag's own
+			// state, not by its value: 0 is the absent default, so --flip 0
+			// read as no flip and fell through to the bare append's refusal
+			// (iss-2611271406524430). A line number is 1 or more; the value
+			// typed is not repeated.
+			flipGiven := cmd.Flags().Changed("flip")
+			if flipGiven && flip < 1 {
+				return &exitError{Code: 2, Msg: "abcd library ledger: --flip takes a ledger line number, 1 or more — nothing written; " +
+					"--list prints the ledger, numbered"}
+			}
 			dir, err := sourceCorpusDir(*corpusFlag)
 			if err != nil {
 				return err
@@ -497,7 +507,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 							termsafe.Sanitize(l.Record.DecisionRef), termsafe.Sanitize(l.Record.Claim), mark)
 					}
 				})
-			case flip != 0:
+			case flipGiven:
 				res, err := source.Flip(dir, r, flip, time.Now())
 				if err != nil {
 					return sourceError("ledger", dir, err)

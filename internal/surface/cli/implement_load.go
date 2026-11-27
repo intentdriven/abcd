@@ -896,7 +896,10 @@ func runGated(cmd *cobra.Command, command, env []string, stderr io.Writer, start
 	}
 	c := exec.Command(bin, command[1:]...)
 	c.Env = env
-	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), stderr
+	// The command writes to the stream beneath a --json stdout's next-steps
+	// wrapper (next_steps.go), so a terminal or a file reaches it directly, as
+	// it did before the wrapper existed.
+	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), plainStdout(cmd.OutOrStdout()), stderr
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)

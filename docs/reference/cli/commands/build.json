@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd build",
@@ -39,7 +39,18 @@
       "example": "abcd build itd-2609010000000001",
       "subcommands": [
         "next"
-      ]
+      ],
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to perform the run's next stage"
+        },
+        {
+          "command": "abcd implement status",
+          "when": "to see the run lane by lane"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd build next",
@@ -72,7 +83,18 @@
         }
       ],
       "inputs": [],
-      "example": "abcd build next"
+      "example": "abcd build next",
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to perform the started run's next stage"
+        },
+        {
+          "command": "abcd implement status",
+          "when": "to see the run lane by lane"
+        }
+      ],
+      "streaming": true
     }
   ]
 }

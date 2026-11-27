@@ -53,7 +53,7 @@ func newImplementWidenCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderWiden(w, res) })
+			return renderFinal(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderWiden(w, res) })
 		},
 	}
 	cmd.Flags().StringVar(&laneID, "lane", "", "the lane whose implementer is about to edit the paths (lane-<n>)")

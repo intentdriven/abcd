@@ -170,6 +170,12 @@ func commandFactsOf(cmd *cobra.Command) surface.Facts {
 			f.Subcommands = append(f.Subcommands, child.Name())
 		}
 	}
+	// What usually follows the command's success (spc-2610301431108175
+	// step 6): the table holds visible commands alone, and a test holds it
+	// to them, so a hidden command carries none.
+	if n, ok := surface.NextFor(path); ok && !cmd.Hidden {
+		f.Next, f.NoNext, f.Streaming = n.Steps, n.None, n.Streaming
+	}
 	return f
 }
 

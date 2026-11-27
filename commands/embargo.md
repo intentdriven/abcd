@@ -421,23 +421,40 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embargo` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain embargo` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd embargo [flags]`
   - An example call is `abcd embargo`.
+  - What usually follows:
+    - `abcd embargo intake`, to take new private advisories into the embargo store.
+    - `abcd embargo publish`, to see the publication plan for those ready.
 - `abcd embargo check [flags]`
   - An example call is `abcd embargo check --range v0.11.0..HEAD`.
+  - What usually follows:
+    - `abcd land`, when nothing in the range discloses an advisory under embargo.
 - `abcd embargo close <iss-N|GHSA-id> [flags]`
   - An example call is `abcd embargo close GHSA-xxxx-xxxx-xxxx`.
+  - What usually follows:
+    - `abcd embargo`, to see the advisories still under embargo.
 - `abcd embargo fixed <iss-N|GHSA-id> <commit>... [flags]`
   - An example call is `abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc`.
+  - What usually follows:
+    - `abcd embargo publish`, to see the publication plan the fix makes ready.
 - `abcd embargo intake [flags]`
   - An example call is `abcd embargo intake`.
+  - What usually follows:
+    - `abcd embargo triage <GHSA-id> <verdict>`, to record a verdict on an advisory taken in.
 - `abcd embargo publish [flags]`
   - An example call is `abcd embargo publish`.
+  - What usually follows:
+    - `abcd embargo close <GHSA-id>`, to close an advisory once it is published.
 - `abcd embargo queue [flags]`
   - An example call is `abcd embargo queue`.
+  - What usually follows:
+    - `abcd mode back`, only when the person says yes, once they are back, to print what was queued.
 - `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
   - An example call is `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`.
+  - What usually follows:
+    - `abcd embargo fixed <GHSA-id> <commit>`, once the commits that fix the advisory exist.
 <!-- /generated -->

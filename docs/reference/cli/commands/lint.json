@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd lint",
@@ -18,6 +18,16 @@
         "identity",
         "outbound",
         "site"
+      ],
+      "next": [
+        {
+          "command": "abcd lint docs",
+          "when": "to read the docs findings alone"
+        },
+        {
+          "command": "abcd land",
+          "when": "once nothing is left to fix"
+        }
       ]
     },
     {
@@ -39,7 +49,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd lint docs"
+      "example": "abcd lint docs",
+      "next": [
+        {
+          "command": "abcd docs cite refresh",
+          "when": "when a citation finding names a stale baseline"
+        }
+      ]
     },
     {
       "path": "abcd lint identity",
@@ -47,7 +63,13 @@
       "usage": "abcd lint identity [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd lint identity"
+      "example": "abcd lint identity",
+      "next": [
+        {
+          "command": "abcd identity render",
+          "when": "to see the correction for a drifted surface"
+        }
+      ]
     },
     {
       "path": "abcd lint outbound",
@@ -65,7 +87,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd lint outbound pr-body.md"
+      "example": "abcd lint outbound pr-body.md",
+      "no_next": "a clean text is posted where it was written for; no abcd command follows it"
     },
     {
       "path": "abcd lint site",
@@ -88,7 +111,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd lint site"
+      "example": "abcd lint site",
+      "next": [
+        {
+          "command": "abcd site build",
+          "when": "to render the website again after a fix"
+        }
+      ]
     }
   ]
 }

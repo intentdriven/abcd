@@ -185,6 +185,15 @@ Grounding, read on 30 October 2026:
      such command. If it finds any, the step stops and the product thinker is
      asked how such a command should name its next step. Until then, nothing
      is wrapped.
+     *Amended 2026-11-26 (dcn-2611262321015065):* step 6 found four such
+     commands (`decide`, `history list`, `history staged`, `library ledger`).
+     With the person away, the default was taken instead of stopping: the four
+     stay unchanged and are exempt, since wrapping a bare array breaks every
+     script that reads it; their facts, `explain` and the page still name the
+     steps. Wrapping them is a breaking intent of its own.
+   - *Amended 2026-11-26:* the key is added only once the command's run has
+     returned nil. The writer holds the command's last document until then,
+     so no document a non-zero exit or an error object follows carries it.
    The facts table is the one source, so `explain`, the per-command JSON and
    the page block show the same next steps that a result carries.
 

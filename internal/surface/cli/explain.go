@@ -36,7 +36,8 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 		Long: "Print how to call one command, from the binary that runs it: its sentence, its usage\n" +
 			"line, each flag with its type, its allowed values, its default and whether it is\n" +
 			"required, the flags it inherits, each filled-in input it reads with that input's\n" +
-			"schema version, its worked example and its sub-commands, in at most 40 lines.\n" +
+			"schema version, its worked example, what usually follows its success and its\n" +
+			"sub-commands, in at most 40 lines.\n" +
 			"A hidden command is answered too, marked (hidden) on its first line.\n\n" +
 			"--input <flag> prints one input's schema version, its fields and an example that\n" +
 			"passes the command's own check. --json prints the command's facts as JSON, or with\n" +
@@ -96,14 +97,14 @@ func newExplainCommand(asJSON *bool) *cobra.Command {
 			// document (spc-2610301431075964 approach 4) cut to the one
 			// command, and written by the files' own encoder, with no HTML
 			// escaping, so it is byte for byte that command's slice of its
-			// file and a usage line's <file> reads as written.
+			// file and a usage line's <file> reads as written. Its own next
+			// steps join it in the same style.
 			if *asJSON {
 				data, err := EncodeCommandFacts(CommandFactsDocument{FormatVersion: surface.FactsFormatVersion, Commands: []surface.Facts{at}})
 				if err != nil {
 					return err
 				}
-				_, err = cmd.OutOrStdout().Write(data)
-				return err
+				return writeDocument(cmd.OutOrStdout(), data, docOne, docStyle{indent: true})
 			}
 			for _, line := range explainLines(at, hidden, explainInherited(facts, at.Path)) {
 				fmt.Fprintln(cmd.OutOrStdout(), line)
@@ -242,8 +243,8 @@ func explainInherited(facts []surface.Facts, path string) []explainInheritedFlag
 }
 
 // explainLines is one command's text answer, in the spec's order: the
-// sentence, the usage line, the flags, the inputs, the example and the
-// sub-commands, at most explainMaxLines lines.
+// sentence, the usage line, the flags, the inputs, the example, what usually
+// comes next and the sub-commands, at most explainMaxLines lines.
 func explainLines(f surface.Facts, hidden bool, inherited []explainInheritedFlag) []string {
 	title := f.Path
 	if hidden {
@@ -277,6 +278,7 @@ func explainLines(f surface.Facts, hidden bool, inherited []explainInheritedFlag
 			tail = append(tail, "  "+strings.TrimSpace(line))
 		}
 	}
+	tail = append(tail, explainNextLines(f)...)
 	if len(f.Subcommands) > 0 {
 		call := "abcd explain " + explainArgs(f.Path) + " <sub-command>"
 		if !strings.Contains(f.Path, " ") {
@@ -298,6 +300,23 @@ func explainLines(f surface.Facts, hidden bool, inherited []explainInheritedFlag
 		out = append(out, flags...)
 	}
 	return append(out, tail...)
+}
+
+// explainNextLines is what usually follows the command's success, from its
+// facts: each step's template and when it applies, or the reason nothing
+// usually follows. A hidden command has none, and says nothing.
+func explainNextLines(f surface.Facts) []string {
+	if f.NoNext != "" {
+		return []string{"Next: nothing usually follows: " + f.NoNext}
+	}
+	if len(f.Next) == 0 {
+		return nil
+	}
+	out := []string{"Next:"}
+	for _, s := range f.Next {
+		out = append(out, "  "+s.Command+" — "+s.When)
+	}
+	return out
 }
 
 // explainFlagLine is one flag: its spelling, its type, its closed set (and,

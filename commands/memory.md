@@ -142,17 +142,25 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain memory` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain memory` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd memory [flags]`
   - An example call is `abcd memory`.
+  - What usually follows:
+    - `abcd memory list`, to read every note with its recall words.
 - `abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]`
   - An example call is `abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt`.
+  - What usually follows:
+    - `abcd memory list`, to see the note among the others.
 - `abcd memory list [flags]`
   - An example call is `abcd memory list`.
+  - What usually follows:
+    - `abcd memory remove <mem-id>`, to remove a note that no longer holds.
 - `abcd memory remove <mem-id> [flags]`
   - An example call is `abcd memory remove mem-2609010000000001`.
+  - What usually follows:
+    - `abcd memory list`, to see the notes left.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

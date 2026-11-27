@@ -66,8 +66,10 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	want := map[string]any{"login": "octo", "id": float64(1234), "noreply": octoMail, "source": "git",
 		"holder_id": id, "holder_id_from": abcdhome.Display("holder-id"), "holder_id_file": abcdhome.Display("holder-id"),
 		"declared_holder_ids_file": abcdhome.Display("holder-ids")}
-	if len(got) != len(want)+1 {
-		t.Fatalf("--json = %v; want %v and declared_holder_ids", got, want)
+	// declared_holder_ids, and the next_steps every successful result
+	// carries (spc-2610301431108175 step 6).
+	if _, ok := got["next_steps"]; !ok || len(got) != len(want)+2 {
+		t.Fatalf("--json = %v; want %v, declared_holder_ids and next_steps", got, want)
 	}
 	for k, v := range want {
 		if got[k] != v {

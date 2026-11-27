@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd checklist",
@@ -13,6 +13,16 @@
         "render",
         "set",
         "show"
+      ],
+      "next": [
+        {
+          "command": "abcd checklist set <id> --state <state>",
+          "when": "to move an item on"
+        },
+        {
+          "command": "abcd checklist add \"<title>\"",
+          "when": "to add an item that is missing"
+        }
       ]
     },
     {
@@ -34,7 +44,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd checklist add \"Regenerate the CLI reference\""
+      "example": "abcd checklist add \"Regenerate the CLI reference\"",
+      "next": [
+        {
+          "command": "abcd checklist set <id> --state <state>",
+          "when": "once the item's state changes"
+        }
+      ]
     },
     {
       "path": "abcd checklist render",
@@ -42,7 +58,13 @@
       "usage": "abcd checklist render [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd checklist render"
+      "example": "abcd checklist render",
+      "next": [
+        {
+          "command": "abcd checklist set <id> --state <state>",
+          "when": "to move an item on"
+        }
+      ]
     },
     {
       "path": "abcd checklist set",
@@ -61,7 +83,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd checklist set regenerate-the-cli-reference --state done"
+      "example": "abcd checklist set regenerate-the-cli-reference --state done",
+      "next": [
+        {
+          "command": "abcd checklist",
+          "when": "to see the checklist with the item moved"
+        }
+      ]
     },
     {
       "path": "abcd checklist show",
@@ -69,7 +97,13 @@
       "usage": "abcd checklist show <id> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd checklist show regenerate-the-cli-reference"
+      "example": "abcd checklist show regenerate-the-cli-reference",
+      "next": [
+        {
+          "command": "abcd checklist set <id> --state <state>",
+          "when": "to change the item's state"
+        }
+      ]
     }
   ]
 }

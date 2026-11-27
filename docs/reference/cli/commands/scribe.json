@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd scribe",
@@ -11,6 +11,12 @@
       "subcommands": [
         "assemble",
         "ingest"
+      ],
+      "next": [
+        {
+          "command": "abcd scribe assemble --run <rdg-N> --dispositions <path>",
+          "when": "to build a scribe session's context"
+        }
       ]
     },
     {
@@ -36,7 +42,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md"
+      "example": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
+      "next": [
+        {
+          "command": "abcd scribe ingest --scribe-json <path> --dispositions <path>",
+          "when": "once the scribe has transcribed"
+        }
+      ]
     },
     {
       "path": "abcd scribe ingest",
@@ -69,7 +81,8 @@
           "version_in": "_type"
         }
       ],
-      "example": "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md"
+      "example": "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",
+      "no_next": "what the scribe transcribed is on the ledger; nothing usually follows"
     }
   ]
 }

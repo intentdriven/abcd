@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/hook_scheduled.go"
 remedy: "Say that the stamp failed on the prompt it failed on."
+resolution: "A due refresh whose stamp cannot be kept now says so in the prompt's STATUS block, and on stderr for the operator, instead of starting nothing in silence."
+impact: fix
 ---
 
 A status store that cannot be written, from a full disk or a changed mode, means a due prompt starts no refresh and says nothing, so a kept green can stay silent for up to 48 hours.

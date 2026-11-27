@@ -166,7 +166,7 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 				var ee *exitError
 				if *asJSON && errors.As(err, &ee) && slices.ContainsFunc(res.Changed, func(p string) bool { return !slices.Contains(w.MayChange, p) }) {
 					ref := planningChangesRefusal{Intent: id, Refused: "unexpected_changes", Message: ee.Msg, ChangedPaths: res.Changed, Record: recordRel}
-					if rerr := render(cmd.OutOrStdout(), true, ref, nil); rerr != nil {
+					if rerr := renderRefused(cmd.OutOrStdout(), true, ref, nil); rerr != nil {
 						return rerr
 					}
 					return exitWith(ee.Code, ee.ref, "")
