@@ -112,8 +112,8 @@ type Quarantined struct {
 	ReasonPath    string    `json:"reason_path,omitempty"`
 	Reason        string    `json:"reason,omitempty"`
 	Bytes         int64     `json:"bytes"`
-	StagedAt      time.Time `json:"staged_at,omitempty"`
-	QuarantinedAt time.Time `json:"quarantined_at,omitempty"`
+	StagedAt      time.Time `json:"staged_at,omitzero"`
+	QuarantinedAt time.Time `json:"quarantined_at,omitzero"`
 	// Err is set when the reason file is present but unreadable. The entry is
 	// still listed: the bytes are what matter, and an entry hidden because its
 	// metadata is broken is an entry nobody disposes of.
@@ -426,7 +426,7 @@ type RepoBacklog struct {
 	Staged           int       `json:"staged"`
 	StagedBytes      int64     `json:"staged_bytes"`
 	Overdue          int       `json:"overdue"`
-	OldestStagedAt   time.Time `json:"oldest_staged_at,omitempty"`
+	OldestStagedAt   time.Time `json:"oldest_staged_at,omitzero"`
 	Quarantined      int       `json:"quarantined"`
 	QuarantinedBytes int64     `json:"quarantined_bytes"`
 	// Orphaned marks a key whose recorded checkout no longer exists
