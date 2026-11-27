@@ -1127,14 +1127,34 @@ over each of the run's lanes' own diff.
    the forge refuses leaves the pull request disarmed, which is refused at
    exit 2 saying so and naming the `gh pr merge` command that arms it again,
    and a drain reads its lane as `dropped`. One that left
-   the queue and its arming with it, as a failed merge-group check leaves it,
-   is refused at exit 2 naming the forge's reason and the check that failed on
-   its last merge group (from the queue's workflow runs and that commit's
-   check runs), and is never queued or armed again into the same failure:
-   fix or re-run the check, re-arm it pinned to the pushed head, then `step`
-   again. While another session's release cut holds every merge, which
-   withdraws armed merges and re-arms them after, that is a wait (exit 3)
-   instead. Once the lane that completes the run (no step
+   the queue and its arming with it, as a failed merge-group check or a
+   conflict leaves it, is armed again by the queue's method, pinned to the
+   pushed head, when the merge queue itself removed it: the forge names the
+   queue's own application as the removal's actor and a reason other than
+   `manual`, and the removal is later than the loop's own last arming of the
+   head, than the removal it last armed again for, and than any arming or
+   withdrawal the forge records on the pull request. The land fence and the
+   merge gate are asked again first, as before a queue entry. It is armed
+   again at most three times at one pushed head; a new head starts the count
+   again. The step exits 0, staying at land, and its note is one sentence
+   naming the pull request, the queue's removal and its reason, and the count
+   (`armed again, 1 of 3 at this head`). It is never armed again over a
+   person's act: a removal a person made (or one the forge gives the reason
+   `manual`), an arming a person withdrew with no later removal by the
+   queue, and a person's arming or withdrawal after the queue's removal all
+   stand. A merge gate that would not arm the head now leaves the pull
+   request open with the gate's reason and asks again on each step; a gate,
+   a `facilitator.mode` or release holds that cannot be read arm nothing,
+   and a reservation no longer this person's is refused. A person's act,
+   and the fourth removal at one head, are refused at exit 2
+   naming the forge's reason, the check that failed on its last merge group
+   (from the queue's workflow runs and that commit's check runs, quoted as
+   the forge names it), why the loop does not arm it again and how many
+   times it already did: re-run the check with the `gh run rerun <id>
+   --failed` the refusal names, arm it again with the `gh pr merge` command
+   it names, then `step` again. While another session's release cut holds
+   every merge, which withdraws armed merges and re-arms them after, that is
+   a wait (exit 3) instead. Once the lane that completes the run (no step
    pending, every other lane done) has landed, a run holding a reservation
    pushes a tombstone over it while it is still this person's from this copy;
    another person's or another copy's is left as it stands and named in the
