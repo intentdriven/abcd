@@ -134,11 +134,25 @@ The payload carries:
 - `scheduled_unread`, present only when this fetch's ask could not be read: why,
   on one line. It says nothing of how the runs ended;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
-  `lapsed_releases`,
+  `lapsed_releases`, `release_withdrawals`, `lost_withdrawals`, `ceiling`,
+  `drain_in_work`,
   `view`, `fetch_error`, `derived_unchecked`, `holder_ids_refused` and
   `holder_id_refused`, the same fields `/abcd:peers` lists, with the same one
   line on stderr when `~/.abcd.noindex/holder-ids`, or the holder id itself,
-  is refused;
+  is refused. `/abcd:peers` lists one field more, `settled`, the ended
+  releases whose withdrawn pull requests its listing re-armed or skipped:
+  this verb re-arms nothing, so it never carries it. Of these fields:
+  - `release_withdrawals`: each release whose reservation records withdrawn
+    pull requests worth naming: those it holds, those still to re-arm, and
+    those skipped for their owners;
+  - `lost_withdrawals`: each recent release whose branch history records
+    withdrawals a later commit dropped, which nothing re-arms;
+  - `ceiling`: your own live reservations against your ceiling, with the
+    layer that set it, where they were made from, and its warning; absent
+    when your login cannot be named or the ceiling cannot be read;
+  - `drain_in_work`: this checkout's drain in progress, its lanes in work
+    against the limit it began with and the layer that set it; absent with
+    no drain in progress;
 - `grants`, the line that an announcement informs and grants nothing.
 
 Tell the user, in plain words, who is doing what, which release is being cut,
