@@ -346,8 +346,12 @@ func gateAtLocalHead(res *Result, o Options, dir, tracking, nameWithOwner, n str
 	if err != nil || !gitutil.IsFullSHA(tip) {
 		return "", Remote + "/" + res.Default + " cannot be read"
 	}
+	// The merge rule at the same tip, as the enqueue that follows reads it,
+	// so the gate here does not take off an arming that one makes again; a
+	// mirror that cannot be read leaves the method not known.
+	rule, ruleErr := ReadMergeRule(dir, tip, res.Default, Remote+"/"+res.Default)
 	d, err := DecideMerge(MergeQuery{RepoRoot: dir, From: o.from, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
-		Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
+		Rule: rule, RuleRead: ruleErr == nil, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: ask})
 	switch {
 	case err != nil:
 		return "", fsutil.RedactHome(err.Error())

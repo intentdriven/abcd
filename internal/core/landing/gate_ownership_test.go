@@ -213,6 +213,11 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 		f.reviewed(t)
 		wantArmed(t, f, landGate(t, f))
 	})
+	t.Run("no merge queue, a head that changes another key of the file", func(t *testing.T) {
+		f := otherKeyChanged(t, noQueueRuleset)
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+	})
 	t.Run("the same commits merged", func(t *testing.T) {
 		f := replayRestores(t, queueRuleset)
 		f.reviewed(t)

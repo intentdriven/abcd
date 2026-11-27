@@ -278,6 +278,28 @@ func TestLandLeavesAnArmingAtAReviewedLocalHead(t *testing.T) {
 	}
 }
 
+// An arming at the local head of a branch whose commits touch
+// .abcd/config.json, under a merge queue that merges: the gate land asks
+// before its push reads the same merge rule as the enqueue that follows, so
+// it arms that head, and the arming is left with no withdraw step at all.
+func TestLandLeavesAnArmingAtALocalHeadTouchingTheFileUnderAMergingQueue(t *testing.T) {
+	f := otherKeyChanged(t, queueRuleset)
+	f.reviewed(t)
+	f.forge.prs = f.prFor(f.head())
+	f.forge.armings = []string{armingBy(f.head(), true, false, "alice")}
+	f.forge.views = []string{viewQueued}
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	noWithdrawal(t, f)
+	for _, s := range res.Steps {
+		if s.Name == "withdraw" {
+			t.Fatalf("a withdraw step for an arming the merge gate arms: %+v", s)
+		}
+	}
+}
+
 func TestLandLeavesAForksPullRequestFromABranchOfTheSameName(t *testing.T) {
 	f, _ := moving(t)
 	f.reviewed(t)
