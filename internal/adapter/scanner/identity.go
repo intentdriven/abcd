@@ -666,9 +666,12 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// a case variant of the login (the natural prose spelling in a transcript)
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
-		// A name that is not valid UTF-8 cannot be held in a pattern
-		// (literalAlternation), and then there is no matcher.
-		m.localBare = literalAlternation([]string{id.HomeUser})
+		//
+		// Both Unicode normal forms are matched: a non-ASCII login typed
+		// composed reaches a transcript decomposed as often as not. A form that
+		// is not valid UTF-8 cannot be held in a pattern and is left out
+		// (literalAlternation), and with none left there is no matcher.
+		m.localBare = literalAlternation(normalForms(id.HomeUser))
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
@@ -1767,14 +1770,18 @@ func leadingBoundaryOK(line string, start int) bool {
 	return !isPathSegmentByte(line[start-1])
 }
 
-// isWordRune reports whether r is a Unicode word rune (letter, digit, or '_') —
+// isWordRune reports whether r is a Unicode word rune (letter, digit, mark or '_') —
 // the class RE2's ASCII-only \b cannot see for non-ASCII letters. It bounds
 // the bare-token matchers (local_username, github_username, real_name), where
 // '_' continues a word so "me" does not fire inside "me_2"; the home-path
 // anchor uses nameContinues instead, where '_' is a boundary, because a
 // suffix after the caller's home is still the caller's home.
+//
+// A combining mark continues the word it follows: a name in its decomposed
+// form (NFD, "cafe" then U+0301) ends on the mark, and reading the mark as a
+// boundary put none after the name, so the decomposed name was never matched.
 func isWordRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
 // wordBoundaryAt reports whether a Unicode word boundary falls at byte offset pos
