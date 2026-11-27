@@ -108,5 +108,8 @@ func boardRows(st core.StatusInfo, b boardOutput) []board.Row {
 	if r := bumpsRow(b.Bumps); r != nil {
 		rows = append(rows, *r)
 	}
+	if r := findingsRow(b.Findings); r != nil {
+		rows = append(rows, *r)
+	}
 	return rows
 }

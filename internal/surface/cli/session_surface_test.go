@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 	coresession "github.com/intentdriven/abcd/internal/core/session"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // sessionDigest is the checksum the fake release publishes.
@@ -902,5 +903,126 @@ func TestSessionStartRefusals(t *testing.T) {
 	t.Chdir(managedSessionRepoWithoutOrigin(t))
 	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0", "--client-id", "Iv23liPublicId"); exitCode(err) != 2 {
 		t.Errorf("a checkout without a GitHub origin: %v, want exit 2", err)
+	}
+}
+
+// TestSessionServeHoldsItselfToItsOwnOrigin: a relay told its own address,
+// by --own-origin or ABCD_SESSION_RELAY_ORIGIN, starts only where the host's
+// stated public address (RENDER_EXTERNAL_URL) is that address; a different
+// one is refused, exit 2 with nothing started, naming both addresses through
+// the terminal sanitiser and the setup step that records the right one; and
+// with no stated address it starts and says the address was not checked
+// (spc-2610230609005313 step 1).
+func TestSessionServeHoldsItselfToItsOwnOrigin(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	const own = "https://abcd-relay-abcdefghijklmnopqrst.onrender.com"
+	forms := []struct {
+		name string
+		set  func(t *testing.T, origin string) []string
+	}{
+		{"flag", func(t *testing.T, origin string) []string {
+			t.Setenv("ABCD_SESSION_RELAY_ORIGIN", "")
+			return []string{"--own-origin", origin}
+		}},
+		{"environment", func(t *testing.T, origin string) []string {
+			t.Setenv("ABCD_SESSION_RELAY_ORIGIN", origin)
+			return nil
+		}},
+	}
+	for _, form := range forms {
+		t.Run(form.name, func(t *testing.T) {
+			for _, c := range []struct {
+				name, stated string
+			}{
+				{"equal", own},
+				{"equal, spelled with its default port", "https://ABCD-relay-abcdefghijklmnopqrst.onrender.com:443/"},
+			} {
+				t.Setenv("RENDER_EXTERNAL_URL", c.stated)
+				out, stop := startServe(t, append([]string{"--listen", "127.0.0.1:0"}, form.set(t, own)...)...)
+				if err := stop(); err != nil {
+					t.Fatalf("%s: stop: %v", c.name, err)
+				}
+				if text := out.String(); strings.Contains(text, "not checked") || !strings.Contains(text, own) {
+					t.Errorf("%s: the start line does not say its own address was checked:\n%s", c.name, text)
+				}
+			}
+
+			for _, stated := range []string{"https://abcd-relay-zzzzzzzzzzzzzzzzzzzz.onrender.com", "https://other.example.org\x1b[2J", "not an address\x1b]0;x\x07"} {
+				t.Setenv("RENDER_EXTERNAL_URL", stated)
+				// 192.0.2.1 is a documentation address no test machine holds: a
+				// run past the check fails to listen instead of listening.
+				_, err := runCLIStdinErr(t, "", append([]string{"session", "serve", "--listen", "192.0.2.1:0", "--repo", "acme/brief"}, form.set(t, own)...)...)
+				if exitCode(err) != 2 || strings.Contains(err.Error(), "cannot listen") {
+					t.Fatalf("stated %q: %v, want exit 2", stated, err)
+				}
+				msg := err.Error()
+				for _, want := range []string{"(nothing started)", own, termsafe.Sanitize(stated), "abcd session setup --relay-origin"} {
+					if !strings.Contains(msg, want) {
+						t.Errorf("stated %q: the refusal does not say %q:\n%s", stated, want, msg)
+					}
+				}
+				if strings.ContainsAny(msg, "\x1b\x07") {
+					t.Errorf("stated %q: the refusal echoes an escape sequence: %q", stated, msg)
+				}
+			}
+
+			t.Setenv("RENDER_EXTERNAL_URL", "")
+			out, stop := startServe(t, append([]string{"--listen", "127.0.0.1:0"}, form.set(t, own)...)...)
+			_ = stop()
+			if text := out.String(); !strings.Contains(text, "not checked") || !strings.Contains(text, own) {
+				t.Errorf("no stated address: the start line does not say its own address was not checked:\n%s", text)
+			}
+		})
+	}
+
+	// The flag wins over the environment.
+	t.Setenv("ABCD_SESSION_RELAY_ORIGIN", "https://env.example.org")
+	t.Setenv("RENDER_EXTERNAL_URL", own)
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--own-origin", own)
+	_ = stop()
+	if text := out.String(); !strings.Contains(text, own) || strings.Contains(text, "env.example.org") {
+		t.Errorf("--own-origin did not win over ABCD_SESSION_RELAY_ORIGIN:\n%s", text)
+	}
+}
+
+// TestSessionServeRefusesAnOwnOriginThatIsNotAnOrigin: an own address that
+// NormalizeRelayOrigin refuses is a usage refusal naming where it came from,
+// before anything listens.
+func TestSessionServeRefusesAnOwnOriginThatIsNotAnOrigin(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	t.Setenv("RENDER_EXTERNAL_URL", "")
+	for _, bad := range []string{"http://relay.example.org", "relay.example.org", "https://relay.example.org/auth", "https://relay\x1b[2J.example.org"} {
+		t.Setenv("ABCD_SESSION_RELAY_ORIGIN", "")
+		_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "192.0.2.1:0", "--repo", "acme/brief", "--own-origin", bad)
+		if exitCode(err) != 2 || !strings.Contains(err.Error(), "--own-origin") || !strings.Contains(err.Error(), "nothing started") {
+			t.Errorf("--own-origin %q: %v, want exit 2 naming --own-origin", bad, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "\x1b") {
+			t.Errorf("--own-origin %q: the refusal echoes an escape sequence: %q", bad, err.Error())
+		}
+		t.Setenv("ABCD_SESSION_RELAY_ORIGIN", bad)
+		_, err = runCLIStdinErr(t, "", "session", "serve", "--listen", "192.0.2.1:0", "--repo", "acme/brief")
+		if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_RELAY_ORIGIN") {
+			t.Errorf("ABCD_SESSION_RELAY_ORIGIN %q: %v, want exit 2 naming the variable", bad, err)
+		}
+	}
+}
+
+// TestSessionServeOnLoopbackWithoutAnOwnOriginSaysNothingOfIt: a relay on
+// the host's own machine is told no address of its own, and its start line
+// says nothing of one, even where the environment states a public address.
+func TestSessionServeOnLoopbackWithoutAnOwnOriginSaysNothingOfIt(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	t.Setenv("ABCD_SESSION_RELAY_ORIGIN", "")
+	t.Setenv("RENDER_EXTERNAL_URL", "https://somewhere.example.org")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0")
+	if err := stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	text := out.String()
+	for _, never := range []string{"not checked", "own address", "somewhere.example.org", "RENDER_EXTERNAL_URL", "--own-origin"} {
+		if strings.Contains(text, never) {
+			t.Errorf("the start line says %q:\n%s", never, text)
+		}
 	}
 }

@@ -236,6 +236,9 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// Read after the redactions: an augmenter run that failed during them
 	// degrades the scanner, and the note has to say so.
 	result.Degraded = redactor.Degraded()
+	if err := redactor.Err(); err != nil {
+		return IngestReadingResult{}, err
+	}
 
 	runDir := filepath.Join(issuesRoot, issueschema.ReadingsDir, req.Run)
 	err = withLedgerLock(repoRoot, issuesRoot, func() error {
@@ -381,7 +384,10 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	// Redaction happens outside the lock, as IngestReading's does: a scanner
 	// probes the machine identity and shells out to do it, and nothing under the
 	// lock needs one.
-	clean, redacted, degraded := redactDispositionRequest(repoRoot, req)
+	clean, redacted, degraded, err := redactDispositionRequest(repoRoot, req)
+	if err != nil {
+		return DispositionResult{}, err
+	}
 	// The pre-flight checks the request's own members against the item's
 	// position, so what it refuses is the caller's input (exit 2 at the surface).
 	if err := prevalidateDisposition(clean, head.position); err != nil {
@@ -458,7 +464,7 @@ func readItemHead(issuesRoot, item string) (itemHead, error) {
 // the way every other free-text record write does: a bidi override or a
 // zero-width rune in --grounds or --exit-condition would otherwise reach the
 // committed record verbatim (iss-2609251823551349).
-func redactDispositionRequest(repoRoot string, req DispositionRequest) (DispositionRequest, int, string) {
+func redactDispositionRequest(repoRoot string, req DispositionRequest) (DispositionRequest, int, string, error) {
 	r := newLedgerRedactor(repoRoot)
 	total := 0
 	scrub := func(s string) string {
@@ -471,7 +477,7 @@ func redactDispositionRequest(repoRoot string, req DispositionRequest) (Disposit
 	}
 	req.Grounds = scrub(req.Grounds)
 	req.ExitCondition = scrub(req.ExitCondition)
-	return req, total, r.Degraded()
+	return req, total, r.Degraded(), r.Err()
 }
 
 // dispositionPlaceholderID is a well-formed id the pre-flight validates with

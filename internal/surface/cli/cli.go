@@ -424,7 +424,7 @@ func newRootCommand(nextFor func(path string) (surface.Next, bool)) *cobra.Comma
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
 			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd), Bumps: boardBumps(cwd, cmd.ErrOrStderr())}
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd), Bumps: boardBumps(cwd, cmd.ErrOrStderr()), Findings: boardFindings(cwd, cmd.ErrOrStderr())}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -5899,6 +5899,7 @@ func indefiniteArticle(noun string) string {
 // core.
 func newCaptureCommand(asJSON *bool) *cobra.Command {
 	var severity, category, source, slug, foundDuring, foundAt, lapsedAt, remedy, blockedBy, captureProductionMode string
+	var fixed, fixedImpact string
 
 	captureCmd := &cobra.Command{
 		Use:  "capture [text]",
@@ -6062,6 +6063,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
 						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy))
 			}
+			// --fixed given names what fixed the finding; given empty it names
+			// nothing, and is refused rather than read as no --fixed at all.
+			if cmd.Flags().Changed("fixed") && strings.TrimSpace(fixed) == "" {
+				return refused(2, refusal.CaptureInvalidInput,
+					"abcd capture: --fixed names what fixed the finding, and it is empty (nothing captured)")
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before
@@ -6083,6 +6090,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				LapsedAt:    lapsedAt,
 				Remedy:      remedy,
 				BlockedBy:   splitIDList(blockedBy),
+				Fixed:       fixed,
+				FixedImpact: fixedImpact,
 			}
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode, refusal.CaptureInvalidInput); err != nil {
 				return err
@@ -6161,6 +6170,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// as --severity. There is no flag for `origin`: a capture is
 	// researcher-authored by construction (itd-178).
 	productionModeFlag(captureCmd.Flags(), &captureProductionMode, productionModeLead, productionModeTail)
+	// A finding the change at hand fixes is filed and resolved in one command
+	// (criterion 9 of itd-2611251831138387): capture's and resolve's checks are
+	// all made first and the record is written straight into resolved/, so a
+	// refusal writes nothing and the change's Resolves: trailer is accepted.
+	captureCmd.Flags().StringVar(&fixed, "fixed", "", "what fixed the finding in the change at hand: the record is written straight into resolved/ (needs --impact)")
+	enumFlag(captureCmd.Flags(), &fixedImpact, "impact", "", "with --fixed, the product impact the resolved record carries: ", changelog.ImpactNames(), "")
+	captureCmd.AddCommand(newCaptureOwedCommand(asJSON))
 
 	// list — the earned SD001 exception: a filter flag is REQUIRED.
 	var lsOpen, lsResolved, lsWontfix, lsAll bool

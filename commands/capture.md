@@ -1,7 +1,7 @@
 ---
 name: capture
-description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout."
-argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> [--grounds \"<token>: <text>\"] [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds \"<token>: <text>\"] [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | mentions [--ref <branch>] | migrate [--apply]"
+description: "File an issue from quoted text, or render the ledger's status bare: Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout."
+argument-hint: "[<text> --remedy <fix> [--fixed <what fixed it> --impact <impact>]] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> [--grounds \"<token>: <text>\"] [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds \"<token>: <text>\"] [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | mentions [--ref <branch>] | migrate [--apply] | owed [--settled] | owed --untested|--doubt|--handed-up|--private - | owed <handle>... --captured <iss-N>|--settled <record>|--refuted <test>|--own <run>|--not-a-finding <reason>|--private"
 block: people
 ---
 
@@ -144,6 +144,24 @@ work settles what a lapse record must carry; the instant the discipline gave way
 is still what the flag exists to record, and a value that is given must be an
 RFC 3339 instant.
 
+### A finding the change at hand fixes
+
+A confirmed finding is always captured, fixed or not. One the change you are
+working on fixes is filed and resolved in one command:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture "<text>" --remedy "<the fix it proposes>" --fixed "<what fixed it>" --impact <additive|breaking|fix|internal> --json
+```
+
+`--fixed` names what fixed it and writes the record straight into `resolved/`
+with that note as its resolution; `--impact` is the product impact a resolved
+record carries, with no default, as `resolve` requires. Every check of a
+capture and of a resolve is made first, so a refusal (exit 2) writes nothing,
+and the JSON's `status` is `resolved`. The change that carries the fix says so
+with a `Resolves: iss-N` trailer, which `lint-issues` accepts because the
+record enters `resolved/` in the same change. A fix outside what the lane has
+reserved is not made there: capture the finding and leave it open.
+
 ### A likely double is linked, never refused
 
 Before the record is written, the text is matched against every open and
@@ -282,6 +300,81 @@ flag.
 The write goes through the ledger's in-place frontmatter rewrite, so the list
 is spelled exactly as capture spells it and the derived-priority view picks the
 change up on the next `list` or status render with nothing else to run.
+
+## Findings owed a capture
+
+abcd keeps a list of findings under its own home, keyed on the repository's
+root commit, so it outlives the worktree a finding was met in and is never
+dropped by age or by a new session. It is not the ledger: an entry on it is a
+finding met on the way and not yet answered, and the ledger is what answers it.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture owed --json                     # what is owed, writes nothing
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture owed --settled --json           # the last fifty settled
+printf '%s\n' "<one line>" | "${CLAUDE_PLUGIN_ROOT}/abcd" capture owed --untested - --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture owed <handle>... --captured <iss-N> --json
+```
+
+Bare, it lists the open entries of the whole repository for this account,
+every checkout and session, this checkout's first, a hundred at most and then
+the count (`more`), each by its handle (`f-` and eight characters), kind and
+text. It writes nothing. `--settled` lists the last fifty settled entries, each
+with its act and the record, reason or run it was settled by.
+
+`--untested -`, `--doubt -` and `--handed-up -` each put one entry, its line
+read from standard input, for this checkout and the session of the
+environment: a finding not yet tested, one in doubt on which side of the line
+it falls (a fault there before the change began, or one the change itself made
+and removes before it lands), and one confirmed and handed up by an agent that
+may not write. The text is redacted as a capture's is before it is kept. The
+same line put twice in one session is one entry.
+
+Handles and one clearing flag settle them. Which flag clears which kind:
+
+| Kind | `--captured` | `--settled` | `--refuted` | `--own` | `--not-a-finding` | `--private` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `untested`, `handed-up`, `known` | yes | yes | yes | | | yes |
+| `doubt` | yes | yes | | | | |
+| `line` | yes | yes | yes | | yes | yes |
+| `check` | yes | yes | | yes | | yes |
+| `private` | the person | the person | the person | | | |
+
+`--captured <iss-N>` names the issue that captures it, fixed or not, and holds
+for an issue the default branch has open, or one it lacks that is open or
+resolved in this checkout (filed in this change). `--settled <record>` (or
+`--settled=<record>`) names an open issue, a wontfix, an ADR or a decision that
+settles it. A record that does not answer the claim (a resolved issue on the
+default branch, a wontfix for `--captured`) is refused naming its state, and an
+issue no ledger holds carries `capture/unknown-issue`. `--refuted "<test>"`
+names the test that refuted it, `--own "<run>"` the run on the base that shows
+a failing check is the change's own, and `--not-a-finding "<reason>"` one line
+of reason; each is kept with the settled entry when the settle is typed in the
+checkout the entry was put from. From any other checkout the act is kept and
+the reason withheld, so a settle never reads another checkout's scanner
+configuration. An act the table does not mark
+is refused (`capture/invalid-input`) and the entry stays open. Two acts at once
+are `usage/flag-conflict`. The verb writes only under abcd's home, so a main
+checkout two sessions share is not refused.
+
+**Private findings.** A finding unsafe to publish goes on the private list with
+`--private -` (its text on standard input), or is moved there with
+`<handle>... --private`. Its text is printed only where standard input and
+standard output are a terminal, no agent host's session marker is set and no
+stage runs; everywhere else, and always in `--json`, the count alone
+(`private_count`). That holds for a settled private entry too: `--settled`
+counts it and shows nothing of it, not even its handle or the reason it was
+settled by. Only a caller who passes that test settles a private entry. The
+test keeps a cooperating agent from printing or clearing a private finding by
+mistake; it is not a wall against an agent of the same account, which can read
+the list's files or open a terminal of its own. Never echo a private text into
+the conversation, a record or a commit. A vulnerability still goes to a private
+advisory on the forge; the private list does not replace it.
+
+A clearing flag reads no standard input, so a `-` beside handles is refused
+(`usage/extra-argument`): put a finding and settle one in two calls.
+
+The board's facilitator view gives the list's count and this command, and
+`abcd --json` carries it as `findings`.
 
 ## Query the ledger
 
@@ -882,6 +975,8 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
   - An example call is `abcd capture migrate`.
   - What usually follows:
     - `abcd capture migrate --apply`, after a practice run, to rewrite what it listed.
+- `abcd capture owed [<handle>...] [--captured <iss-N> | --settled <record> | --refuted <test> | --own <run> | --not-a-finding <reason> | --private] | owed --untested|--doubt|--handed-up|--private - | owed --settled [flags]`
+  - An example call is `abcd capture owed`.
 - `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
   - An example call is `abcd capture promote iss-2609010000000001`.
   - What usually follows:
