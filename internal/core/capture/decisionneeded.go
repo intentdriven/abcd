@@ -53,13 +53,16 @@ type DecisionNeededResult struct {
 // as every caller text written into a record is, folded to one line, and its
 // hidden runes encoded, the value MarkDecisionNeeded writes and
 // DecisionNeededHolds compares.
-func decisionQuestion(repoRoot, question string) (value string, redacted int, degraded string) {
-	red, redacted, degraded := redactLedgerText(repoRoot, question)
+func decisionQuestion(repoRoot, question string) (value string, redacted int, degraded string, err error) {
+	red, redacted, degraded, err := redactLedgerText(repoRoot, question)
+	if err != nil {
+		return "", 0, degraded, err
+	}
 	folded := grounds.Fold(red)
 	if folded == "" {
-		return "", redacted, degraded
+		return "", redacted, degraded, nil
 	}
-	return termsafe.EncodeHiddenRunes(folded), redacted, degraded
+	return termsafe.EncodeHiddenRunes(folded), redacted, degraded, nil
 }
 
 // MarkDecisionNeeded writes or replaces the `decision_needed:` of an open
@@ -76,7 +79,10 @@ func MarkDecisionNeeded(req DecisionNeededRequest) (DecisionNeededResult, error)
 	if !reIssID.MatchString(req.ID) {
 		return DecisionNeededResult{}, refused(fmt.Errorf("decision_needed: invalid iss-N identifier: %q; nothing written", req.ID))
 	}
-	question, redacted, degraded := decisionQuestion(repoRoot, req.Question)
+	question, redacted, degraded, err := decisionQuestion(repoRoot, req.Question)
+	if err != nil {
+		return DecisionNeededResult{}, err
+	}
 	if question == "" {
 		return DecisionNeededResult{}, refused(fmt.Errorf("decision_needed: the question is empty — state the question the decision record answers, one line; nothing written"))
 	}
@@ -151,7 +157,10 @@ func DecisionNeededHolds(repoRoot, id, question string) (bool, error) {
 	if !reIssID.MatchString(id) {
 		return false, nil
 	}
-	want, _, _ := decisionQuestion(repoRoot, question)
+	want, _, _, err := decisionQuestion(repoRoot, question)
+	if err != nil {
+		return false, err
+	}
 	if want == "" {
 		return false, nil
 	}

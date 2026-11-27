@@ -98,6 +98,33 @@ wait for their return; that word is kept in the record, narrows what sessions
 do, and grants nothing. A prompt never ends the mode; its time does, or the
 person's word that they are back.
 
+**The person talking while away.** A prompt the person types in a session
+while the record holds does not end the mode, but opens a window of 15 minutes
+in which that session reads them as present (iss-2611260602137306): its
+questions go to the person and are checked as when they are present, and its
+turn ends are allowed as a present session's when nothing is owed or the
+session holds a scheduled wake that fires soon enough. With work owed and no
+wake, the turn's end is held, naming the window, so a session the person spoke
+to is still read again once the window ends (dcn-2611262057069959). The prompt
+hook tells the session so in one line. A prompt is the person's unless it is
+one of the session's wakes, as every stop the check reads, present or away,
+has kept them, or opens as one of the host's own prompts does (a background
+task's report, another session's message, a usage-limit resumption, a
+continued session's summary); in a session holding more wakes than its state
+keeps, or a wake whose prompt the host turns into other text when it fires (a
+slash command, expanded, or a loop's sentinel opening `<<`, resolved to the
+loop's instructions; dcn-2611262236204687), no prompt is, until a stop lists
+the session's wakes without one. A stop the check allows before
+reading its wakes keeps none, so a wake made in that turn reads as the
+person's once, at its first firing. The window is read only under the record it was opened under, so a
+prompt typed under one record opens nothing under the next. Every other
+session stays away, and the window closes on its own, so the person can add to
+a conversation without ending the mode and setting it again. Anything running
+as the same account can write the session's state or run the prompt hook by
+hand, so the window holds against other accounts and stale state, not against
+this account's own agent; nothing enforces more: it is a convenience for the
+person, not a boundary against the agent.
+
 **The queue and the return.** While the record holds, a session keeps a step
 for the person's return instead of asking them: an act only the person may
 approve. On their return the record is ended by word, which prints one plain

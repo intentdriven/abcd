@@ -151,7 +151,7 @@ func JudgeChecklist(v Verdict, b Behind, in StopInput, st SessionState, away boo
 		case fp != st.ChecklistNoted:
 			next.ChecklistNoted, next.ChecklistNote = fp, b.Note()
 		}
-		return v, next, next != st
+		return v, next, next.ChecklistNoted != st.ChecklistNoted || next.ChecklistNote != st.ChecklistNote
 	}
 	if !v.Save {
 		// The reading was cut short: the stop goes as Judge allowed it.

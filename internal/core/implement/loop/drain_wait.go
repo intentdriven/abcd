@@ -73,9 +73,11 @@ func waitMove(st *DrainState, res *DrainResult, prev drainWait, kind, why string
 }
 
 // capWaitText names a wait at the cap: the holder's live reservations, the
-// pull requests among this checkout's runs waiting to merge on them, and the
-// advice to wait for a merge rather than release one.
-func capWaitText(held []string, runs []State) string {
+// pull requests among this checkout's runs waiting to merge on them, the
+// advice to wait for a merge rather than release one, and counts, the drain's
+// lanes in work against its limit and the holds against the ceiling where the
+// move could tell them (countsPhrase).
+func capWaitText(held []string, runs []State, counts string) string {
 	var prs []string
 	for _, id := range held {
 		for _, r := range runs {
@@ -95,8 +97,8 @@ func capWaitText(held []string, runs []State) string {
 	if len(prs) > 0 {
 		waiting = "the pull requests waiting to merge: " + strings.Join(prs, ", ")
 	}
-	return fmt.Sprintf("this person holds %d live reservations, the most one person may hold (%s), so it reserves and asks nothing; %s; wait for one of their pull requests to merge, which ends its reservation, rather than releasing one",
-		len(held), strings.Join(held, ", "), waiting)
+	return fmt.Sprintf("this person holds %d live reservations, the most one person may hold (%s), so it reserves and asks nothing (%s); %s; wait for one of their pull requests to merge, which ends its reservation, rather than releasing one",
+		len(held), strings.Join(held, ", "), counts, waiting)
 }
 
 // heldWaitText names a wait on held work: each hold, and the judgements the

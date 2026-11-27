@@ -276,3 +276,163 @@ func TestGuardRefusesADeleteInARepositoryTheLineMayChange(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardRefusesAPushThatPrunesOrMirrors pins the pushes that delete what
+// the line never names: --prune and --mirror, in every spelling git accepts,
+// on the line, in a payload, through an alias or a setting the line carries,
+// delete each branch of the remote's this copy lacks. The prover, which would
+// prove anything safe, is never asked, and the line is refused under the
+// delete id with the safe form named.
+func TestGuardRefusesAPushThatPrunesOrMirrors(t *testing.T) {
+	for _, line := range []string{
+		`git push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push origin --prune 'refs/heads/*:refs/heads/*'`,
+		`git push --prune origin main`,
+		`git push --prune`,
+		`git push --pru origin 'refs/heads/*:refs/heads/*'`,
+		`git push --pr origin 'refs/heads/*:refs/heads/*'`,
+		`git push --all --prune origin`,
+		`git push --no-prune --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --dry-run --no-dry-run --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --prune origin --delete feat/x`,
+		`git push --prune origin :feat/x`,
+		`git -C sub push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --mirror origin`,
+		`git push --mirr origin`,
+		`git push --mirror`,
+		`git -c remote.origin.mirror=true push origin`,
+		`git -c alias.p='push --prune' p origin 'refs/heads/*:refs/heads/*'`,
+		`sh -c "git push --prune origin 'refs/heads/*:refs/heads/*'"`,
+		execPath + `git-push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --prune"$(true)" origin 'refs/heads/*:refs/heads/*'`,
+		`git push --pru"$(:)"ne origin 'refs/heads/*:refs/heads/*'`,
+		`git push --pr$(printf une) origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push --pru"$(:)"ne origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push --pr$(printf une) origin 'refs/heads/*:refs/heads/*'`,
+		`cd /tmp/x && git push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -C "$wt" push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --repo -- --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push -o -- --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"-c a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -c"$(true)" a.b=c push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"-C . push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git "$(true)"push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git pu"$(:)"sh --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -C . "$(true)"push --prune origin 'refs/heads/*:refs/heads/*'`,
+	} {
+		p := &recordingProver{proof: DeleteProof{Safe: true}}
+		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || !containsString(d.Matches, deleteEntryID) {
+			t.Errorf("%q: verdict %q under %q (matches %v), want a block under %q", line, d.Verdict, d.EntryID, d.Matches, deleteEntryID)
+		}
+		if len(p.asked) != 0 {
+			t.Errorf("%q: the prover was asked %+v of a push whose deletes the line does not name", line, p.asked)
+		}
+		// A mirror is also the git-push-mirror blocker's, whose refusal speaks
+		// for the line and which no allow passes.
+		if d.EntryID == deleteEntryID && (!strings.Contains(d.Message, "every target spelled out") || !strings.Contains(d.Message, "`abcd sweep`")) {
+			t.Errorf("%q: the refusal does not name the safe form: %s", line, d.Message)
+		}
+		// Where the delete refusal speaks for the line, a person may allow it
+		// once; any other blocker (git-push-mirror, a force) passes no allow.
+		if mirror := strings.Contains(line, "mir"); mirror != (d.EntryID == "git-push-mirror") || d.AllowableOnce != (d.EntryID == deleteEntryID) {
+			t.Errorf("%q: refused under %q, allowable once %v", line, d.EntryID, d.AllowableOnce)
+		}
+	}
+}
+
+// TestGuardLeavesAPruneThatIsNoPush pins the other side: a fetch or a
+// `git remote prune` with --prune removes only this copy's record of the
+// remote's branches, a push that turns --prune or --mirror back off or is a
+// dry run deletes nothing, and a plain push reads as it did.
+func TestGuardLeavesAPruneThatIsNoPush(t *testing.T) {
+	for _, line := range []string{
+		"git fetch --prune origin",
+		"git fetch -p origin",
+		"git fetch --prune origin 'refs/heads/*:refs/remotes/origin/*'",
+		"git remote prune origin",
+		"git pull --prune origin main",
+		"git push --prune --no-prune origin main",
+		"git push --mirror --no-mirror origin main",
+		"git push --dry-run --prune origin 'refs/heads/*:refs/heads/*'",
+		"git push -n --mirror origin",
+		"git push origin main",
+		"git push origin 'refs/heads/*:refs/heads/*'",
+		"git push --all origin",
+		"git log --grep push --prune",
+		`git -C "$wt" fetch --prune origin`,
+		`git -C "$(git rev-parse --show-toplevel)" fetch --prune origin`,
+		`git fetch "$R" --prune`,
+		`git -C "$wt" pull --prune`,
+		`git -C "$wt" remote update --prune`,
+		`git -C "$wt" log --oneline --prune`,
+		`cd /tmp/x && git fetch "$remote" --prune`,
+		`cd /tmp/x && for r in origin up; do git fetch "$r" --prune; done`,
+		`GIT_TERMINAL_PROMPT=0 git fetch "$remote" --prune`,
+		`cd /tmp/x && git log --grep push --prune`,
+		`cd /tmp/x && git push --dry-run --prune origin`,
+		"git push origin -- --prune",
+		`git "$opts" fetch --prune origin`,
+		`git "$(true)"fetch --prune origin`,
+		`git pu"$(:)"ll --prune origin`,
+	} {
+		p := &recordingProver{proof: DeleteProof{Failed: "never safe"}}
+		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if containsString(d.Matches, deleteEntryID) || len(p.asked) != 0 {
+			t.Errorf("%q: verdict %q under %q (matches %v), prover asked %+v", line, d.Verdict, d.EntryID, d.Matches, p.asked)
+		}
+	}
+}
+
+// TestGuardReadsADryRunTurnedBackOff pins --no-dry-run: a push whose dry run
+// a later --no-dry-run turns off deletes what it names, so each target
+// reaches the prover.
+func TestGuardReadsADryRunTurnedBackOff(t *testing.T) {
+	dir := t.TempDir()
+	for _, line := range []string{
+		"git push --dry-run --no-dry-run origin --delete a",
+		"git push -n --no-dry-run origin :a",
+	} {
+		p := &recordingProver{proof: DeleteProof{Failed: "never safe"}}
+		d, err := deleteRegistry(t, dir, p).Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		want := []DeleteTarget{{Kind: DeleteRemoteBranch, Dir: dir, Remote: "origin", Branch: "a"}}
+		if !reflect.DeepEqual(p.asked, want) || d.Verdict != VerdictBlock {
+			t.Errorf("%q: verdict %q, asked %+v, want %+v refused", line, d.Verdict, p.asked, want)
+		}
+	}
+}
+
+// TestGuardReadsAPruneWhereNoProverIs pins the door that attaches no prover:
+// a push that turns --prune back off, a dry run and a fetch that prunes delete
+// nothing on the remote and are not refused for the missing prover, and a
+// push that prunes is refused there as anywhere.
+func TestGuardReadsAPruneWhereNoProverIs(t *testing.T) {
+	r := deleteRegistry(t, t.TempDir(), nil)
+	for line, refused := range map[string]bool{
+		"git push --dry-run --prune origin":                            false,
+		"git push --prune --no-prune origin main":                      false,
+		"git push -n --prune origin 'refs/heads/*:refs/heads/*'":       false,
+		`git fetch "$remote" --prune`:                                  false,
+		"git push --prune origin 'refs/heads/*:refs/heads/*'":          true,
+		`git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`: true,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if got := containsString(d.Matches, deleteEntryID); got != refused {
+			t.Errorf("%q: verdict %q under %q (matches %v), want refused %v", line, d.Verdict, d.EntryID, d.Matches, refused)
+		}
+	}
+}

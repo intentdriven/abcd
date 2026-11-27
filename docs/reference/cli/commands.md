@@ -803,7 +803,7 @@ abcd build next
 
 ### `abcd capture`
 
-File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
+File an issue from quoted text, or render the ledger's status bare: Writes one record, open or resolved; refuses a missing --remedy, a lone word or no checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
@@ -812,8 +812,10 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
 ```
       --blocked-by string            comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string              issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
+      --fixed string                 what fixed the finding in the change at hand: the record is written straight into resolved/ (needs --impact)
       --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string          session/command context (default manual-capture)
+      --impact string                with --fixed, the product impact the resolved record carries: additive | breaking | fix | internal
       --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string       how this record's text was produced: hand-written | dictated-and-formatted | scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
@@ -963,6 +965,32 @@ Rewrite retired promote back-links as related_intents and related_issues: Writes
 
 ```
 abcd capture migrate
+```
+
+#### `abcd capture owed`
+
+List, put or settle the findings owed a capture: Writes only the findings list under ~/.abcd.noindex/; refuses an act the entry's kind does not take.
+
+**Usage:** `abcd capture owed [<handle>...] [--captured <iss-N> | --settled <record> | --refuted <test> | --own <run> | --not-a-finding <reason> | --private] | owed --untested|--doubt|--handed-up|--private - | owed --settled [flags]`
+
+**Flags:**
+
+```
+      --captured string           settle the handles by the issue that captures them, fixed or not
+      --doubt[=true|false]        put one finding in doubt on which side of the line it falls, read from standard input (-); cleared only by a record
+      --handed-up[=true|false]    put one confirmed finding handed up by an agent that may not write, read from standard input (-)
+      --not-a-finding string      settle lines the words put on the list, with one line of reason, kept when typed in the checkout the entry was put from
+      --own string                settle failing checks as the change's own, naming the run on the base
+      --private[=true|false]      with -, put one finding kept on the private list, read from standard input; beside handles, move them there
+      --refuted string            settle the handles as refuted, naming the test that did it
+      --settled string[="list"]   bare, list the last fifty settled entries; beside handles, settle them by a record (an open issue, a wontfix, an ADR or a decision)
+      --untested[=true|false]     put one finding not yet tested, its line read from standard input (-)
+```
+
+**Example:**
+
+```
+abcd capture owed
 ```
 
 #### `abcd capture promote`
@@ -1710,7 +1738,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
+**Usage:** `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1881,7 +1909,23 @@ a remedy rewritten since the request is refused and asked again. Once judged, th
 drain hands the next eligible issue, in that order, to the implement loop's issue-keyed
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
-pull request is open, and it routes the lane's outcome and opens the next. Under
+pull request is open, and it routes the lane's outcome and opens the next. A lane is
+in work until its pull request is armed or left open, or it is handed back; one that
+only owes the withdrawal of its pull request's arming is not counted, and is settled
+before another lane opens. The lanes in work are held to drain.in_work_max (1 by
+default; 1 to 10), read once, when the drain begins, from the repository's
+.abcd/config.json at the commit origin names as its default branch's tip, never
+from a working tree, or set for one drain with --in-work <n>, which wins; ~/.abcd.noindex/config.json
+does not hold it and is refused if it does. The drain keeps the limit, with its layer
+and origin, for its whole life (in_work_max in its state), and --in-work naming
+another while it runs is refused. Below the limit a move asks or opens the next lane
+beside those in work and names each; at it, or with nothing more to open, it names
+the lanes to drive and neither stops nor waits. Each such sentence, and the wait at
+the cap, names both counts: the lanes in work against the limit, and, where the
+move's view of the reservations can tell them, your live reservations against your
+ceiling and the layer that set it (in_work and held in --json). A lane whose
+pull request is queued keeps its reservation until the merge, counted against the
+ceiling and not against the limit. Under
 drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not
 open its lane at once: that move and the ones after it reserve and judge each member in turn,
 keeping every hold, a yes routing that member alone, and the lane opens with the lead
@@ -1992,6 +2036,7 @@ drain or run holds the state lock.
       --drive[=true|false]            make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop
       --dry-run[=true|false]          show every open issue's disposition and the order a drain takes them; writes nothing
       --fix-rounds string             the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --in-work int                   the most lanes a drain beginning now holds in work, 1 to 10; wins over the repository's drain.in_work_max (1 when neither sets it)
       --judgement string              the host's answer to the judgement the drain awaits, at the path its request names
       --max int                       cap the lanes this drain opens; the default is all, and eight for a drive
       --no-self-update[=true|false]   with --drive: take no new release of abcd during the run, and ask the release origin nothing
@@ -2849,8 +2894,10 @@ later: lines next, the question last, the decide-later option last) before
 it is judged. A line the draft does not carry is never invented: the
 check names it.
 
-The verb reads the stores the hook reads (the away record, and the mode
-where the status line's badge shows) and calls the one decision the hook
+The verb reads the stores the hook reads (the away record, the
+conversation window of the session the host's environment names, read in
+that session's start copy, and the mode where the status line's badge
+shows) and calls the one decision the hook
 calls, so it reports every finding, the rows each tab takes at 80 columns
 (header and frame, question text, options, total), what the hook would do
 with the draft in this checkout now (admit, admit-with-rows-note, refuse,
@@ -6404,7 +6451,9 @@ the layer that set it: reservation.max_live in the repository's
 .abcd/config.json at origin's default branch, which this machine's own
 figure may only lower, ten when neither sets it; with a warning from four
 fifths of it, since every session and account on the same login counts
-toward the same total, and a
+toward the same total; under it, while a drain is in progress here, its lanes in
+work against the limit it began with and the layer that set it (drain_in_work),
+and a
 line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
@@ -7263,6 +7312,14 @@ relay serves its own session page.
 ABCD_SESSION_GITHUB_APP_TYPE set to anything but github-app is refused: the
 relay takes no OAuth app.
 
+--own-origin, or else ABCD_SESSION_RELAY_ORIGIN, names the relay's own
+public address, the https origin repository setup assigned it; /config then
+names it too. Where the host states the service's public address in
+RENDER_EXTERNAL_URL and it is another, the relay refuses to start and
+names abcd session setup --relay-origin, which records the address the relay is
+reached at; where the host states none, it starts and says the address was not
+checked.
+
 Exit 2 on a refusal, with nothing started.
 
 **Flags:**
@@ -7272,6 +7329,7 @@ Exit 2 on a refusal, with nothing started.
       --client-id string            the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
       --listen string               the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
       --origin stringArray          a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app, and a page on this computer is admitted only when named, as http://127.0.0.1:<port>
+      --own-origin string           the relay's own public address, as https://host[:port], which repository setup assigned it (default: ABCD_SESSION_RELAY_ORIGIN); where RENDER_EXTERNAL_URL states another, it refuses to start
       --owner stringArray           a GitHub user or organisation whose every repository to serve sessions for (repeatable)
       --repo stringArray            a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```

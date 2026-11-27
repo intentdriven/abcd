@@ -187,6 +187,7 @@ func closedSets() map[[2]string][]string {
 		{"abcd reflect interview", "answered-in"}:   interview.AnsweredInPlaces(),
 		{"abcd banlist add", "severity"}:            banlist.Severities(),
 		{"abcd capture disposition", "state"}:       issueschema.DispositionStates,
+		{"abcd capture", "impact"}:                  changelog.ImpactNames(),
 		{"abcd capture resolve", "impact"}:          changelog.ImpactNames(),
 		{"abcd intent", "impact"}:                   changelog.IntentImpactNames(),
 		{"abcd intent plan", "impact"}:              changelog.IntentImpactNames(),
