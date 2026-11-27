@@ -386,8 +386,8 @@ const maxFilesPerKey = 4
 // file unread, refuses the draw, naming the count. So every record population is listed
 // whole, and the next draw knows each record already drawn from by its key.
 // A file whose name is not a record's is never read, nor is an entry under a
-// record's name that is no plain file of a record's size, which the tally
-// counts by group; a file whose content does not read as its name gives is
+// record's name that is not a regular non-executable file of a record's
+// size, which the tally counts by group; a file whose content does not read as its name gives is
 // no record.
 func windowRecords(ctx context.Context, root string, files map[string]entry, pending []file, seen map[string]map[string]bool) ([]namedHandBack, []namedDecision, recordsRead, error) {
 	type src struct {
@@ -397,8 +397,9 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 	}
 	byKey := map[string]map[string]map[string]src{}
 	// skipped are origin's entries under a record's name, by group, that
-	// are not a plain file within maxRecordBytes, so are never read; a
-	// pending copy of the name is read in its stead.
+	// are not a regular non-executable file within maxRecordBytes (a
+	// folder, a link, an executable file, a submodule or an oversize file),
+	// so are never read; a pending copy of the name is read in its stead.
 	skipped := map[string]map[string]bool{}
 	group := func(dir, name string) (string, bool) {
 		g, re := GroupDrainHandBacks, handBackNameRe
@@ -426,15 +427,18 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 	}
 	for p, e := range files {
 		dir, name, _ := strings.Cut(p, "/")
-		if (dir != HandBacksDir && dir != DecisionsDir) || strings.Contains(name, "/") {
+		if dir != HandBacksDir && dir != DecisionsDir {
 			continue
 		}
-		if e.typ != "blob" || e.mode != "100644" || e.size > maxRecordBytes {
-			if g, ok := group(dir, name); ok {
+		// A folder under a record's name is listed by the files in it,
+		// and counted once by its own name.
+		first, _, folder := strings.Cut(name, "/")
+		if folder || e.typ != "blob" || e.mode != "100644" || e.size > maxRecordBytes {
+			if g, ok := group(dir, first); ok {
 				if skipped[g] == nil {
 					skipped[g] = map[string]bool{}
 				}
-				skipped[g][name] = true
+				skipped[g][first] = true
 			}
 			continue
 		}
@@ -556,7 +560,8 @@ type recordsRead struct {
 // keys left unread. capped counts the keys that took no place because none
 // of the maxFilesPerKey files read of each is a record while more of its
 // files were not read. skipped counts the entries under a record's name
-// that are not a plain file within maxRecordBytes, so were never read.
+// that are not a regular non-executable file within maxRecordBytes, so
+// were never read.
 type groupRead struct {
 	group                                            string
 	listed, places, budget, notRead, capped, skipped int
@@ -566,7 +571,7 @@ type groupRead struct {
 // places it drew from of how many and the keys the bound left unread; for
 // each group with keys that took no place though more of their files were
 // not read, how many; for each group with entries under a record's name
-// that are no plain file of a record's size, how many; and the count of
+// that are not a regular non-executable file of a record's size, how many; and the count of
 // record files on origin that did not read as records and so took no place
 // in the window. "" for none.
 func (r recordsRead) note() string {
@@ -579,7 +584,7 @@ func (r recordsRead) note() string {
 			fmt.Fprintf(&b, "; in %s, %d key(s) took no place: none of the %d files read of each is a record, and each has more files not read", g.group, g.capped, maxFilesPerKey)
 		}
 		if g.skipped > 0 {
-			fmt.Fprintf(&b, "; in %s, %d entry(s) under a record's name were not read: each is not a plain file within a record's size", g.group, g.skipped)
+			fmt.Fprintf(&b, "; in %s, %d entry(s) under a record's name were not read: each is a folder, a link, an executable file, a submodule or over a record's size", g.group, g.skipped)
 		}
 	}
 	if r.unread > 0 {
