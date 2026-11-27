@@ -495,6 +495,41 @@ func TestAFailedArmingIsNotCounted(t *testing.T) {
 	})
 }
 
+// The count is raised only once the forge took the arming: the landing
+// rearmDropped is handed is left uncounted by an arming the network lost or the
+// forge refused, as well as the state the step leaves on disk.
+func TestARefusedArmingLeavesTheLandingInHandUncounted(t *testing.T) {
+	for name, fail := range map[string]func(f *landFixture, t *testing.T){
+		"the network": func(f *landFixture, t *testing.T) { f.losesTheNetworkAtTheArming(t) },
+		"the forge": func(f *landFixture, t *testing.T) {
+			if err := os.WriteFile(filepath.Join(f.gh, "refuse-rearm"), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, pushed := rearmFixture(t)
+			fail(f, t)
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lane := st.Lanes[0]
+			c := Context{RepoRoot: f.repo.Root(), Now: rearmArmedAt.Add(40 * time.Minute), State: st}
+			out, _, err := rearmDropped(c, &lane, "main", landing.MergeRule{Method: "MERGE"}, rearmableView(pushed, rearmArmedAt.Add(30*time.Minute)))
+			if out != nil || err == nil {
+				t.Fatalf("a failed arming is refused: %+v %v", out, err)
+			}
+			if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge --match-head-commit="+pushed) {
+				t.Fatalf("premise: the arming was tried:\n%s", f.ghLog(t))
+			}
+			if ld := lane.Landing; ld.Rearms != 0 || ld.RearmedRemoval != nil || !ld.ArmedAt.Equal(rearmArmedAt) {
+				t.Fatalf("the landing in hand is left uncounted: %+v", ld)
+			}
+		})
+	}
+}
+
 // losesTheNetworkAtTheArming puts a forge client before the stub that fails
 // every arming as a lost network does.
 func (f *landFixture) losesTheNetworkAtTheArming(t *testing.T) {
@@ -569,7 +604,7 @@ func TestAResyncClearsTheCountAndKeepsTheRemoval(t *testing.T) {
 // of the remedy is one of the loop's own commands.
 func TestAFailedChecksNameCannotReadAsACommand(t *testing.T) {
 	f, pushed := rearmFixture(t)
-	hostile := "x` then `gh pr merge 7 --admin`\n`rm -rf ~\"\u2028"
+	hostile := "x` then `gh pr merge 7 --admin`\n`rm -rf ~\"\u2028y"
 	f.writeGH(t, "checkruns.json", map[string]any{"check_runs": []map[string]any{{"name": hostile, "conclusion": "failure"}}})
 	f.removedBy(t, pushed, removal(rearmArmedAt.Add(30*time.Minute), "failed_checks", nil))
 	r := f.wantDroppedUnarmed(t, rearmArmedAt.Add(40*time.Minute))
@@ -578,7 +613,7 @@ func TestAFailedChecksNameCannotReadAsACommand(t *testing.T) {
 			t.Fatalf("the check's name reaches the hand-back as it is: %q", text)
 		}
 	}
-	named := strings.Index(r.Remedy, `is "x' then 'gh pr merge 7 --admin'?'rm -rf ~'? (failure)"`)
+	named := strings.Index(r.Remedy, `is "x' then 'gh pr merge 7 --admin'?'rm -rf ~'?y (failure)"`)
 	if named < 0 || named > strings.Index(r.Remedy, "`gh run rerun 4242 --failed`") {
 		t.Fatalf("the name stands quoted, its quotes made single, before the commands: %s", r.Remedy)
 	}
