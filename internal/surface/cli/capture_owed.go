@@ -314,7 +314,7 @@ func newCaptureOwedCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().Lookup("settled").NoOptDefVal = owedSettledListing
 	cmd.Flags().StringVar(&refuted, "refuted", "", "settle the handles as refuted, naming the test that did it")
 	cmd.Flags().StringVar(&own, "own", "", "settle failing checks as the change's own, naming the run on the base")
-	cmd.Flags().StringVar(&notAFinding, "not-a-finding", "", "settle lines the words put on the list, with one line of reason, which is kept")
+	cmd.Flags().StringVar(&notAFinding, "not-a-finding", "", "settle lines the words put on the list, with one line of reason, kept when typed in the checkout the entry was put from")
 	return cmd
 }
 

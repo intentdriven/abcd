@@ -979,7 +979,7 @@ List, put or settle the findings owed a capture: Writes only the findings list u
       --captured string           settle the handles by the issue that captures them, fixed or not
       --doubt[=true|false]        put one finding in doubt on which side of the line it falls, read from standard input (-); cleared only by a record
       --handed-up[=true|false]    put one confirmed finding handed up by an agent that may not write, read from standard input (-)
-      --not-a-finding string      settle lines the words put on the list, with one line of reason, which is kept
+      --not-a-finding string      settle lines the words put on the list, with one line of reason, kept when typed in the checkout the entry was put from
       --own string                settle failing checks as the change's own, naming the run on the base
       --private[=true|false]      with -, put one finding kept on the private list, read from standard input; beside handles, move them there
       --refuted string            settle the handles as refuted, naming the test that did it
