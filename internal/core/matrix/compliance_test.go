@@ -1089,6 +1089,7 @@ func TestOwnCopyOnlyReadsABacktickAndASubstitutionAsTheShellDoes(t *testing.T) {
 		"a substitution's prefix that does": {bash("cd " + own + " && cat ../$(echo copy_)*/document.md"), StateUnexamined},
 		"a backtick after a quoted one":     {bash("cd " + own + " && : '`'; cat ../`echo '*'`/document.md"), StateUnexamined},
 		"a code span after an apostrophe":   {result("It's in `../docs/guide.md`, which isn't long."), StateKept},
+		"a backtick after an escaped one":   {bash("cd " + own + ` && : \\` + "`" + ` ; cat ../` + "`" + `echo \\*` + "`" + `/document.md`), StateUnexamined},
 	} {
 		c.in.Transcript = tc.transcript
 		if got := ruleOf(t, c.check(t), RuleOwnCopyOnly); got.State != tc.want {
@@ -1118,6 +1119,7 @@ func TestOwnCopyOnlyJudgesAModeChangeByWhatItsClimbReaches(t *testing.T) {
 			"a Dockerfile's chmod":               {append(bash("cd "+widget+" && cat Dockerfile"), []byte(`{"type":"tool_result","content":"RUN chmod +x ../entrypoint.sh"}`+"\n")...), StateKept},
 			"chmod of the folder above":          {bash("cd " + own + " && chmod u+r .. && ls .."), StateUnexamined},
 			"chmod of a pattern that matches up": {bash("cd " + own + " && chmod u+r ../*"), StateUnexamined},
+			"chmod past an escaped backtick":     {bash("cd " + own + ` && : \\` + "`" + ` ; chmod u+r \\` + "`" + ` ..`), StateUnexamined},
 			"a README's chmod then cd":           {append(bash("cd "+widget+" && cat README.md"), []byte(`{"type":"tool_result","content":"Run `+"`chmod +x setup.sh` and `cd ..`"+` before building."}`+"\n")...), StateKept},
 		} {
 			c.in.Transcript = tc.transcript

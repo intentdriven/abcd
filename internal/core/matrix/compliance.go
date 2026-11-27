@@ -1204,8 +1204,10 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 	// ticks is how many backticks the line holds so far: an odd count after
 	// one is a substitution it opens, an even one a substitution it closes.
 	ticks := 0
-	// quoted is whether the line so far holds a single quote, inside which
-	// the shell reads a backtick as literal; the count does not track quotes.
+	// quoted is whether the line so far holds a single quote or a backslash,
+	// either of which can make a backtick literal to the shell; the count
+	// tracks neither, so on such a line a backtick that closes by the count
+	// does not end a chmod named inside it.
 	quoted := false
 	flush := func() (string, bool) {
 		if len(tok) == 0 {
@@ -1229,10 +1231,10 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 		if tick {
 			ticks++
 		}
-		endsMode := tick && ticks%2 == 0 && modeIn
-		if c == '\'' {
+		if c == '\'' || c == '\\' {
 			quoted = true
 		}
+		endsMode := tick && ticks%2 == 0 && modeIn && !quoted
 		switch {
 		case (c == '"' || c == '\'') && homeGoesOn(tok, b[i+1:]):
 			// A quote closing "$HOME" before the path goes on ("$HOME"/x):
@@ -1292,13 +1294,15 @@ func (sc *transcriptScan) find(b []byte) (string, bool) {
 			// substitution opened before the path (a Markdown code span,
 			// `../docs/guide.md`) ends it, as a path end.
 			tok = append(tok, c)
-		case climbing && tick && quoted:
+		case climbing && tick:
 			// By the count this backtick closes a substitution opened before
-			// the path, but a single quote earlier on the line may hold a
-			// backtick the shell reads as literal, and then this one opens a
-			// substitution in the climb instead. The scan does not track
-			// quotes, so the climb is read both ways, and a second reading
-			// that is not kept leaves the rule unexamined (either).
+			// the path, but a single quote or a backslash earlier on the line
+			// may make a backtick literal to the shell, and then this one
+			// opens a substitution in the climb instead. The scan tracks
+			// neither, so the climb is read both ways, and a second reading
+			// that is not kept leaves the rule unexamined (either); a code
+			// span's path widens to a prefix that matches nothing outside,
+			// so it stays kept.
 			alt := string(tok) + "`"
 			if seen, ok := flush(); ok {
 				return seen, true
