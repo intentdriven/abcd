@@ -103,13 +103,13 @@ type Owed struct {
 	// under this copy's key, due or not yet; zero when there is none. The
 	// stop verdict's deadline is it less lease.Skew, when that is sooner than
 	// the ceiling (dcn-2610181003455731).
-	NextRenewal time.Time `json:"next_renewal,omitempty"`
+	NextRenewal time.Time `json:"next_renewal,omitzero"`
 	// WakeBy is the latest a wake may fire for this copy's live
 	// reservations: the earliest of each one's renewal while it is not yet
 	// due, and its lapse once it is. A renewal already due is owed, and a
 	// wake before the lease lapses releases it as the spec has it; zero when
 	// there is no reservation, and wakeDeadline then reads NextRenewal.
-	WakeBy time.Time `json:"wake_by,omitempty"`
+	WakeBy time.Time `json:"wake_by,omitzero"`
 	// HandedBack are the items a queued step handed back this check, taken
 	// out of Items by the reader (dcn-2610181035355741). The verdict accepts
 	// only an unpushed branch's item, with its head, under --hold-pushes,
@@ -133,7 +133,7 @@ type Owed struct {
 type OwnedRef struct {
 	Ref     string    `json:"ref"`
 	Aliases []string  `json:"aliases,omitempty"`
-	Changed time.Time `json:"changed,omitempty"`
+	Changed time.Time `json:"changed,omitzero"`
 }
 
 // Empty reports whether nothing is owed.
