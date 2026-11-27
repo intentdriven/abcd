@@ -304,6 +304,15 @@ func TestGuardRefusesAPushThatPrunesOrMirrors(t *testing.T) {
 		`git -c alias.p='push --prune' p origin 'refs/heads/*:refs/heads/*'`,
 		`sh -c "git push --prune origin 'refs/heads/*:refs/heads/*'"`,
 		execPath + `git-push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`,
+		`git push --prune"$(true)" origin 'refs/heads/*:refs/heads/*'`,
+		`git push --pru"$(:)"ne origin 'refs/heads/*:refs/heads/*'`,
+		`git push --pr$(printf une) origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push --pru"$(:)"ne origin 'refs/heads/*:refs/heads/*'`,
+		`printf 'a\n' | xargs git push --pr$(printf une) origin 'refs/heads/*:refs/heads/*'`,
+		`cd /tmp/x && git push --prune origin 'refs/heads/*:refs/heads/*'`,
+		`git -C "$wt" push --prune origin 'refs/heads/*:refs/heads/*'`,
 	} {
 		p := &recordingProver{proof: DeleteProof{Safe: true}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
@@ -346,6 +355,18 @@ func TestGuardLeavesAPruneThatIsNoPush(t *testing.T) {
 		"git push origin 'refs/heads/*:refs/heads/*'",
 		"git push --all origin",
 		"git log --grep push --prune",
+		`git -C "$wt" fetch --prune origin`,
+		`git -C "$(git rev-parse --show-toplevel)" fetch --prune origin`,
+		`git fetch "$R" --prune`,
+		`git -C "$wt" pull --prune`,
+		`git -C "$wt" remote update --prune`,
+		`git -C "$wt" log --oneline --prune`,
+		`cd /tmp/x && git fetch "$remote" --prune`,
+		`cd /tmp/x && for r in origin up; do git fetch "$r" --prune; done`,
+		`GIT_TERMINAL_PROMPT=0 git fetch "$remote" --prune`,
+		`cd /tmp/x && git log --grep push --prune`,
+		`cd /tmp/x && git push --dry-run --prune origin`,
+		"git push origin -- --prune",
 	} {
 		p := &recordingProver{proof: DeleteProof{Failed: "never safe"}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
@@ -375,6 +396,30 @@ func TestGuardReadsADryRunTurnedBackOff(t *testing.T) {
 		want := []DeleteTarget{{Kind: DeleteRemoteBranch, Dir: dir, Remote: "origin", Branch: "a"}}
 		if !reflect.DeepEqual(p.asked, want) || d.Verdict != VerdictBlock {
 			t.Errorf("%q: verdict %q, asked %+v, want %+v refused", line, d.Verdict, p.asked, want)
+		}
+	}
+}
+
+// TestGuardReadsAPruneWhereNoProverIs pins the door that attaches no prover:
+// a push that turns --prune back off, a dry run and a fetch that prunes delete
+// nothing on the remote and are not refused for the missing prover, and a
+// push that prunes is refused there as anywhere.
+func TestGuardReadsAPruneWhereNoProverIs(t *testing.T) {
+	r := deleteRegistry(t, t.TempDir(), nil)
+	for line, refused := range map[string]bool{
+		"git push --dry-run --prune origin":                            false,
+		"git push --prune --no-prune origin main":                      false,
+		"git push -n --prune origin 'refs/heads/*:refs/heads/*'":       false,
+		`git fetch "$remote" --prune`:                                  false,
+		"git push --prune origin 'refs/heads/*:refs/heads/*'":          true,
+		`git push "$(true)"--prune origin 'refs/heads/*:refs/heads/*'`: true,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if got := containsString(d.Matches, deleteEntryID); got != refused {
+			t.Errorf("%q: verdict %q under %q (matches %v), want refused %v", line, d.Verdict, d.EntryID, d.Matches, refused)
 		}
 	}
 }

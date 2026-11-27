@@ -131,8 +131,20 @@ func (r Registry) deleteSignal(v verdicts) (payloadSignal, bool) {
 		return payloadSignal{}, false
 	}
 	line, script := matchedDelete(v)
-	if !line && !script && !prunesOrMirrors(v.segs) {
-		return payloadSignal{}, false
+	if !line && !script {
+		// No delete entry fired, so the line is read only for a push that
+		// prunes or mirrors: refused on that push's own reading, which
+		// needs no directory, no repository and no prover, and passed when
+		// the push turns both off or is a dry run.
+		why, named := pushRemovals(v.segs)
+		if why != "" {
+			return deleteRefusal([]string{why}, []string{
+				"Write the delete with every target spelled out, one git command, no directory change before it and no variable in it, so its targets can be proven.",
+			}), true
+		}
+		if !named {
+			return payloadSignal{}, false
+		}
 	}
 	if script {
 		return deleteRefusal([]string{"a script the line runs deletes a branch or a worktree, and a delete inside a script cannot be proven"}, []string{
@@ -349,26 +361,75 @@ func deletesIn(args []string, dir string) ([]DeleteTarget, bool, string) {
 	return nil, false, ""
 }
 
-// prunesOrMirrors reports whether a git command of segs may be a push with
-// --prune or --mirror, which deletes the remote's branches this copy lacks
-// though no delete entry fires on it: a word after git that is push, or one
-// the line does not fix, followed by a spelling of either option. It only
-// marks the line for the reading (pushDeletes), which refuses such a push.
-func prunesOrMirrors(segs []segment) bool {
+// pushRemovals reads the pushes of segs that may carry --prune or --mirror,
+// which delete each branch of the remote's this copy lacks though no delete
+// entry fires on them: a git command whose subcommand is push, read past git's
+// own options, with a word that spells either option or, unfixed, may print
+// one (mayRemove). why is the reading's refusal of the first such push
+// (pushDeletes): every one that prunes or mirrors, and every one holding a
+// word the line does not fix. named reports whether such a push also names a
+// target, which the delete entries' reading then proves.
+func pushRemovals(segs []segment) (why string, named bool) {
 	for _, s := range segs {
 		for _, site := range sitesNamed(s, "git") {
 			args := s.tokens[site.idx+1:]
-			for k, w := range args {
-				if w != "push" && !isUnknown(w) {
+			for _, k := range gitSubcommandAt(args) {
+				if args[k] != "push" || !mayRemove(args[k+1:]) {
 					continue
 				}
-				for _, a := range args[k+1:] {
-					if o := pushRemovalOption(a); o == "--prune" || o == "--mirror" {
-						return true
-					}
+				ts, w := pushDeletes(args[k+1:], "/")
+				if w != "" && why == "" {
+					why = w
 				}
-				break
+				named = named || len(ts) > 0
 			}
+		}
+	}
+	return why, named
+}
+
+// gitSubcommandAt is where git's subcommand may stand in args, the words after
+// git: past its own options, each of gitValueOptions with the word after it.
+// An option or a word the line does not fix may take the next word, so the
+// word after it is a place too.
+func gitSubcommandAt(args []string) []int {
+	var at []int
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case gitValueOptions[a] || a == "--attr-source" || a == "--shallow-file":
+			i++
+		case strings.HasPrefix(a, "-"):
+			if isUnknown(a) && i+1 < len(args) {
+				at = append(at, i+1)
+			}
+		case isUnknown(a):
+			at = append(at, i)
+			if i+1 < len(args) {
+				at = append(at, i+1)
+			}
+			return at
+		default:
+			return append(at, i)
+		}
+	}
+	return at
+}
+
+// mayRemove reports whether a word of a push's arguments, before any `--`,
+// spells --prune or --mirror, or is one the line does not fix that may print
+// either: glued to a substitution (`"$(x)"--prune`), cut by one
+// (`--pru"$(x)"ne`) or ending in one (`--pr$(x)`).
+func mayRemove(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if o := pushRemovalOption(knownText(a)); o == "--prune" || o == "--mirror" {
+			return true
+		}
+		if isUnknown(a) && (flagCouldBe(a, "--prune") || flagCouldBe(a, "--mirror")) {
+			return true
 		}
 	}
 	return false
@@ -376,7 +437,8 @@ func prunesOrMirrors(segs []segment) bool {
 
 // pushRemovalOption is --prune, --mirror or the negation of either that a
 // spells, or "". An ambiguous prefix of --prune or --mirror (`--pr`) reads as
-// it, the fail-closed side, as `--d` reads as --delete.
+// it, the fail-closed side, as `--d` reads as --delete. A word the line does
+// not fix is read by mayRemove.
 func pushRemovalOption(a string) string {
 	if !strings.HasPrefix(a, "--") {
 		return ""
