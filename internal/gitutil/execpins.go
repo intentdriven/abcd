@@ -117,6 +117,16 @@ func BuiltinMergeDriver() string {
 	return "git merge-file --marker-size=%L -L ours -L base -L theirs %A %O %B"
 }
 
+// BuiltinMergeDriverContext is BuiltinMergeDriver with git's version read
+// bound to ctx, for a hook on a deadline: a version not read before ctx ends
+// gets the form every git accepts, as one the probe cannot read does.
+func BuiltinMergeDriverContext(ctx context.Context) string {
+	if ok, _, _ := gitVersion.atLeastContext(ctx, mergeDriverFloorMajor, mergeDriverFloorMinor); ok {
+		return "git merge-file --marker-size=%L --diff-algorithm=histogram -L %X -L %S -L %Y %A %O %B"
+	}
+	return "git merge-file --marker-size=%L -L ours -L base -L theirs %A %O %B"
+}
+
 // MergeDriverOverrides returns the `git -c` overrides that make every merge
 // driver the repository at root configures git's built-in text merge —
 // `merge.<name>.driver` set to BuiltinMergeDriver for each name — and pin
@@ -150,7 +160,7 @@ func MergeDriverOverridesContext(ctx context.Context, root string) ([]string, er
 		return nil, err
 	}
 	out := []string{"-c", "merge.default=text", "-c", "merge.renormalize=false"}
-	driver := BuiltinMergeDriver()
+	driver := BuiltinMergeDriverContext(ctx)
 	for _, name := range names {
 		out = append(out, "-c", "merge."+name+".driver="+driver)
 	}
