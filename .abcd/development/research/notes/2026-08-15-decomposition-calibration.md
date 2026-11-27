@@ -3085,3 +3085,18 @@ The proposal: drains started with `abcd drain --drive` on several machines and a
 Verdict at filing: SPLIT, one intent, two ADRs, one decision on an open issue, two issues, one answer into an existing draft. Typed links: builds on itd-2611141610197753; refines itd-2610222215485265, itd-2610161016394967, itd-2610161016401115 and adr-2610222222326104. It also refines dcn-2611222342270127: the repository now sets the ceiling by the product thinker's ruling, a machine may lower it and never raise it, and the clause of that record's grounds that kept `reservation.max_live` the machine's alone is replaced while its ruling on the bundle cap stands.
 
 Grade: the morning's routing did not survive the person's answers unchanged, and the differences are what the pre-pass should learn from. Three of its eleven rows were marked HOLD on a product question, and all three changed shape when answered: the bound lost its daily number, the ceiling question was answered with a limit nobody had routed (a drain's own lanes in work) and then with a second answer that kept the ceiling and moved it, and the restart was ruled out instead of made an opt-in. One row the morning table filed inside the intent (the machine-fault hand-back) was split out at planning, because it depends on a figure another intent has not fixed. One row the morning table said to split out if it grew a surface (the published view) was kept in, with the reason recorded. The routing of the trust rules to two ADRs survived. The reviewer of the records left the routing as it stood and corrected two things before filing: the draft had flagged as a reversal awaiting confirmation the move of the ceiling into the repository, which the product thinker had ruled, so the link became `refines` to dcn-2611222342270127; and it had left out the declined fast-forward that the ruling on itd-2611141610201875 sends to the view, which two criteria now carry.
+
+## 2026-11-26: an agent may apply a ruleset change that only tightens (raised by the person; the rows not confirmed by a person)
+
+The proposal: an agent in an autonomous run applies a forge ruleset change that abcd proves only tightens protection, and queues every other change for the person. Hand-run when the draft itd-2611262009343940 was written.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a ruleset change proved tighten-only is applied in an autonomous run; any other is refused and queued for the person | capability | itd-2611262009343940 |
+| an agent never loosens a rule that binds it, and a tighten-only change is proved, never judged | trust rule | an ADR and a brief invariant, minted when the intent is planned |
+| the evaluator stays outside the loop it evaluates | stance | refines the existing principle; no new one |
+| the verb that applies a ruleset and refreshes the mirror | plumbing | the brief |
+
+Verdict at filing: SPLIT. Typed links at filing: none. No reversal was flagged.
+
+Grade: the verdict stood; the links and the reversal flag were missed. The capability lets an agent invoke a remote write with no confirmation from the person, which adr-44 decision 1 reserves to a verb the person invokes and confirms: a partial reversal, now flagged in the draft as `reverses` adr-44 for the person to confirm and not classified. The first review's correction went too far: it claimed no confirmed path applies rulesets, but `abcd ahoy remote apply` applies abcd's three named rulesets behind a confirmation gate, and only a ruleset of another name is applied by hand. The security review caught it. Found by the review of the filing change, not by the hand-run, which is the case the pre-pass should catch: a capability that removes a confirmation step is checked against the ADRs that require one.

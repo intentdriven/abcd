@@ -1,0 +1,6 @@
+---
+id: dcn-2611262023344936
+slug: the-person-ruled-on-2026-11-26-in-their
+date: 2026-11-26
+---
+2026-11-26 — The person ruled on 2026-11-26, in their own words in this session, how the technical facilitator's mode is decided (itd-2611252049031692, branch build-setting-1126). There are two places only. First, what the repository enforces, committed on its main branch: auto enforced or auto prevented; that beats everything. Otherwise, the person's own global setting in ~/.abcd.noindex/config.json decides. With nothing set anywhere, a person is the facilitator. There is no per-repository personal setting: 'simpler; if we ever need a third option, we can revisit.' This reverses two clauses of adr-2610150603484802, both confirmed by the person: 'human from any layer wins over auto', and the setting living only in .abcd/config.json. The branch as built keeps a per-project personal entry (facilitator.json) beside the global file, so that part is removed before it lands. Still open for the person: confirming dcn-2611252138203673 (abcd never merges a change to the facilitator line; the person merges it on the forge's page), the deferred open question of whether a person's auto merges only their own pull requests, and signing off the plan. Reverse: the person rules again.
