@@ -536,6 +536,10 @@ var nextSteps = map[string]Next{
 	"abcd lab matrix judge": steps(
 		step("abcd lab matrix report <lab-id> <run-id>", "once the verdicts are recorded"),
 	),
+	"abcd lab matrix launch": steps(
+		step("abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> --receipt <file>", "once a made code copy's hidden tests have run"),
+		step("abcd lab matrix report <lab-id> <run-id>", "once every launched copy is handed back"),
+	),
 	"abcd lab matrix report": steps(
 		step("abcd lab matrix rerun <lab-id> <run-id>", "to plan a re-run of the recorded run"),
 	),

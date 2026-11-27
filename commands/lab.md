@@ -434,6 +434,9 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
     - `abcd lab matrix report <lab-id> <run-id>`, once the verdicts are recorded.
 - `abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]`
   - An example call is `abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b`.
+  - What usually follows:
+    - `abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> --receipt <file>`, once a made code copy's hidden tests have run.
+    - `abcd lab matrix report <lab-id> <run-id>`, once every launched copy is handed back.
 - `abcd lab matrix report <lab-id> <run-id> [flags]`
   - An example call is `abcd lab matrix report lab-260901000000-0123abc mx-260901000000-0a1b`.
   - What usually follows:

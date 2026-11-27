@@ -152,7 +152,17 @@
       "usage": "abcd lab matrix launch <lab-id> <run-id> [<task>/<cell>/<repeat>] [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b"
+      "example": "abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b",
+      "next": [
+        {
+          "command": "abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> --receipt <file>",
+          "when": "once a made code copy's hidden tests have run"
+        },
+        {
+          "command": "abcd lab matrix report <lab-id> <run-id>",
+          "when": "once every launched copy is handed back"
+        }
+      ]
     },
     {
       "path": "abcd lab matrix report",
