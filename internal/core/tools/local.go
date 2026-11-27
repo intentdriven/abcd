@@ -333,14 +333,23 @@ func exists(p string) bool {
 }
 
 // displayIn is p in the tilde form under home, so a message pasted into an
-// issue never carries the username.
+// issue never carries the username. Home is matched as given (less a trailing
+// separator) and cleaned, the longer first: a path concatenated onto a HOME
+// spelled with a doubled slash or a dot segment keeps that spelling, and one
+// filepath.Join built from it carries the cleaned one (iss-2611270714040589).
 func displayIn(home, p string) string {
 	if home != "" && filepath.IsAbs(home) {
-		if p == home {
-			return "~"
-		}
-		if strings.HasPrefix(p, home+string(filepath.Separator)) {
-			return "~" + p[len(home):]
+		sep := string(filepath.Separator)
+		for _, h := range []string{strings.TrimRight(home, sep), filepath.Clean(home)} {
+			if h == "" {
+				continue
+			}
+			if p == h {
+				return "~"
+			}
+			if strings.HasPrefix(p, h+sep) {
+				return "~" + p[len(h):]
+			}
 		}
 	}
 	return p
