@@ -127,6 +127,11 @@ var spellingsMemo struct {
 	spellings []string
 }
 
+// homeSpellingsOf is fsutil.HomeSpellings, a var so a test can hand the
+// sweep and the detector a spelling no filesystem fixture can portably make
+// (one that is not valid UTF-8).
+var homeSpellingsOf = fsutil.HomeSpellings
+
 // callerHomeSpellings is fsutil.HomeSpellings(home), or home alone where that
 // gives none (a relative or root-level home, swept as written, as it always
 // was).
@@ -134,7 +139,7 @@ func callerHomeSpellings(home string) []string {
 	spellingsMemo.Lock()
 	defer spellingsMemo.Unlock()
 	if spellingsMemo.spellings == nil || spellingsMemo.home != home {
-		sp := fsutil.HomeSpellings(home)
+		sp := homeSpellingsOf(home)
 		if len(sp) == 0 {
 			sp = []string{home}
 		}
@@ -158,13 +163,18 @@ func callerUserNames(home string) []string {
 	if user == "" || user == "." || user == "/" {
 		return nil
 	}
-	names := []string{user}
-	for _, f := range []string{norm.NFC.String(user), norm.NFD.String(user)} {
-		if !slices.Contains(names, f) {
-			names = append(names, f)
+	return normalForms(user)
+}
+
+// normalForms is s, then its NFC and NFD forms where they differ from it.
+func normalForms(s string) []string {
+	forms := []string{s}
+	for _, f := range []string{norm.NFC.String(s), norm.NFD.String(s)} {
+		if !slices.Contains(forms, f) {
+			forms = append(forms, f)
 		}
 	}
-	return names
+	return forms
 }
 
 // backstopSpans returns, sorted and disjoint, the byte spans of text at which

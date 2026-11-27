@@ -666,7 +666,9 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// a case variant of the login (the natural prose spelling in a transcript)
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
-		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
+		// A name that is not valid UTF-8 cannot be held in a pattern
+		// (literalAlternation), and then there is no matcher.
+		m.localBare = literalAlternation([]string{id.HomeUser})
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
@@ -1460,7 +1462,8 @@ func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 // spelling ending in a dot segment comes after every other: it stands as a path
 // in fewer places (homeSelfSweepable), and where the cleaned spelling also
 // starts there, the cleaned one is the match that stands. RE2 keeps the match
-// linear in the line, whatever the number of spellings.
+// linear in the line, whatever the number of spellings. It is nil when no
+// spelling can be held in a pattern (literalAlternation).
 func homeSelfPattern(home string) *regexp.Regexp {
 	spellings := append([]string(nil), callerHomeSpellings(home)...)
 	sort.SliceStable(spellings, func(i, j int) bool {
@@ -1470,9 +1473,23 @@ func homeSelfPattern(home string) *regexp.Regexp {
 		}
 		return len(spellings[i]) > len(spellings[j])
 	})
-	quoted := make([]string, len(spellings))
-	for i, sp := range spellings {
-		quoted[i] = regexp.QuoteMeta(sp)
+	return literalAlternation(spellings)
+}
+
+// literalAlternation is a case-insensitive pattern matching any of literals,
+// tried in the order given, or nil when none is left. A literal that is not
+// valid UTF-8 — a home or a symlink target holding a Latin-1 byte — cannot be
+// held in a regular expression and is left out rather than panic; the literal
+// sweep, which compares bytes, still removes it (SweepCallerHome).
+func literalAlternation(literals []string) *regexp.Regexp {
+	var quoted []string
+	for _, l := range literals {
+		if l != "" && utf8.ValidString(l) {
+			quoted = append(quoted, regexp.QuoteMeta(l))
+		}
+	}
+	if len(quoted) == 0 {
+		return nil
 	}
 	return regexp.MustCompile(`(?i)(?:` + strings.Join(quoted, "|") + `)`)
 }

@@ -1033,8 +1033,11 @@ func wholeMatch(probe matcher, s string) bool {
 }
 
 // ScanText scans text for every secret pattern and identity-derived match,
-// returning findings sorted deterministically. It is pure: identity, patterns
-// and severities are all passed in.
+// returning findings sorted deterministically. Identity, patterns and
+// severities are all passed in, but it is not pure: the caller's home is
+// matched in every spelling a path carries it in, and resolving those reads
+// the filesystem (callerHomeSpellings, through fsutil.HomeSpellings), so the
+// same call can match more where the home sits behind a link.
 func ScanText(text string, id Identity, patterns []Pattern, id2sev map[string]Severity, file string) []Finding {
 	return scanText(text, id, patterns, id2sev, file, false)
 }
