@@ -1096,3 +1096,54 @@ func TestTheDrainVerbNamesTheBundleItIsForming(t *testing.T) {
 		t.Fatalf("the drain asks over the candidate while the bundle forms: %+v", again)
 	}
 }
+
+// TestDrainTakesInWork (itd-2611251809580662 step 2): --in-work is parsed and
+// kept on the drain it begins, shown in the move's summary and in --json, in
+// the help and in the generated reference; it is refused with --dry-run, with
+// --drive, and outside 1 to 10.
+func TestDrainTakesInWork(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"drain", "--in-work", "3"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --in-work 3 exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "lanes: 0 opened; 0 of 3 lanes in work (--in-work)") {
+		t.Errorf("the summary names the lanes in work against the flag's limit:\n%s", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --json exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	var res struct {
+		InWork struct {
+			Count  int    `json:"count"`
+			Limit  int    `json:"limit"`
+			Layer  string `json:"layer"`
+			Origin string `json:"origin"`
+		} `json:"in_work"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil || res.InWork.Limit != 3 || res.InWork.Layer != "flag" || res.InWork.Origin != "--in-work 3" {
+		t.Fatalf("--json carries the limit the drain began with: %v %+v\n%s", err, res, stdout.String())
+	}
+	for _, args := range [][]string{{"drain", "--dry-run", "--in-work", "2"}, {"drain", "--drive", "--in-work", "2"},
+		{"drain", "--in-work", "0"}, {"drain", "--in-work", "11"}} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run(args, &stdout, &stderr); code != 2 {
+			t.Errorf("%v exited %d, want 2:\n%s%s", args, code, stdout.String(), stderr.String())
+		}
+	}
+	help := string(runCLI(t, "drain", "--help"))
+	if !strings.Contains(help, "--in-work") || !strings.Contains(strings.Join(strings.Fields(help), " "), "drain.in_work_max") {
+		t.Fatalf("drain --help lists --in-work and drain.in_work_max:\n%s", help)
+	}
+	if ref := GenerateReference(); !strings.Contains(ref, "--in-work") {
+		t.Fatal("the generated reference lists --in-work")
+	}
+}

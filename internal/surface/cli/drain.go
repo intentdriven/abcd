@@ -38,11 +38,11 @@ type drainOutput struct {
 func newDrainCommand(asJSON *bool) *cobra.Command {
 	var dryRun, takeOver, drive, yes, noSelfUpdate bool
 	var profile string
-	var maxLanes int
+	var maxLanes, inWork int
 	var pace, subAgents, fixRounds, judgement, skipReason, until, afterUpdate string
 	var skip, unskip, updateRefused []string
 	cmd := &cobra.Command{
-		Use: "drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
+		Use: "drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -206,7 +206,23 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
-			"pull request is open, and it routes the lane's outcome and opens the next. Under\n" +
+			"pull request is open, and it routes the lane's outcome and opens the next. A lane is\n" +
+			"in work until its pull request is armed or left open, or it is handed back; one that\n" +
+			"only owes the withdrawal of its pull request's arming is not counted, and is settled\n" +
+			"before another lane opens. The lanes in work are held to drain.in_work_max (1 by\n" +
+			"default; 1 to 10), read once, when the drain begins, from the repository's\n" +
+			".abcd/config.json at the commit origin names as its default branch's tip, never\n" +
+			"from a working tree, or set for one drain with --in-work <n>, which wins; " + abcdhome.Display("config.json") + "\n" +
+			"does not hold it and is refused if it does. The drain keeps the limit, with its layer\n" +
+			"and origin, for its whole life (in_work_max in its state), and --in-work naming\n" +
+			"another while it runs is refused. Below the limit a move asks or opens the next lane\n" +
+			"beside those in work and names each; at it, or with nothing more to open, it names\n" +
+			"the lanes to drive and neither stops nor waits. Each such sentence, and the wait at\n" +
+			"the cap, names both counts: the lanes in work against the limit, and, where the\n" +
+			"move's view of the reservations can tell them, your live reservations against your\n" +
+			"ceiling and the layer that set it (in_work and held in --json). A lane whose\n" +
+			"pull request is queued keeps its reservation until the merge, counted against the\n" +
+			"ceiling and not against the limit. Under\n" +
 			"drain.bundle_max above 1 (1 by default), a no on an issue that may lead does not\n" +
 			"open its lane at once: that move and the ones after it reserve and judge each member in turn,\n" +
 			"keeping every hold, a yes routing that member alone, and the lane opens with the lead\n" +
@@ -330,6 +346,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return driveRefusal("--until is empty, which is no time to end at; give a date or leave the flag out")
 			case drive && (dryRun || cmd.Flags().Changed("judgement")):
 				return &exitError{Code: 2, Msg: "abcd drain: --drive makes every move and judges through the runner itself, so it takes no --dry-run and no --judgement (nothing written)"}
+			case cmd.Flags().Changed("in-work") && (inWork < 1 || inWork > loop.MaxInWorkMax):
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd drain: --in-work %d is not a number of lanes in work from 1 to %d (nothing written)", inWork, loop.MaxInWorkMax)}
+			case cmd.Flags().Changed("in-work") && drive:
+				return &exitError{Code: 2, Msg: "abcd drain: --in-work sets how many lanes a drain holds in work, and a drive drives one lane at a time until its pull request is queued, whatever the limit; leave it out (nothing written)"}
 			case drive:
 				f := driveFlags{yes: yes, maxLanes: maxLanes, takeOver: takeOver, profile: profile, noSelfUpdate: noSelfUpdate,
 					afterUpdate: afterUpdate, refused: updateRefused, self: driveSelfUpdateSteps.target(),
@@ -358,12 +378,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return runDrive(cmd, *asJSON, repoRoot, f)
 			}
 			if !dryRun {
-				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver,
+				return runDrain(cmd, *asJSON, repoRoot, maxLanes, inWork, pace, subAgents, fixRounds, judgement, takeOver,
 					drainSkips{skip: skip, reason: skipReason, unskip: unskip})
 			}
-			for _, f := range []string{"max", "pace", "sub-agents", "fix-rounds", "judgement", "take-over", "skip", "reason", "unskip"} {
+			for _, f := range []string{"max", "in-work", "pace", "sub-agents", "fix-rounds", "judgement", "take-over", "skip", "reason", "unskip"} {
 				if cmd.Flags().Changed(f) {
-					return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds, --judgement, --take-over, --skip, --reason or --unskip: it opens no lane, asks no judgement, reserves nothing and keeps no skip list (nothing written)"}
+					return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --in-work, --pace, --sub-agents, --fix-rounds, --judgement, --take-over, --skip, --reason or --unskip: it opens no lane, asks no judgement, reserves nothing and keeps no skip list (nothing written)"}
 				}
 			}
 			pv, err := loop.DrainDryRun(repoRoot, time.Now())
@@ -400,6 +420,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	cmd.Flags().IntVar(&maxLanes, "max", 0, "cap the lanes this drain opens; the default is all, and eight for a drive")
+	cmd.Flags().IntVar(&inWork, "in-work", 0, "the most lanes a drain beginning now holds in work, 1 to 10; wins over the repository's drain.in_work_max (1 when neither sets it)")
 	cmd.Flags().StringVar(&pace, "pace", "", "the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")
@@ -428,7 +449,7 @@ type drainSkips struct {
 }
 
 // runDrain is the bare verb: one move of the drain run.
-func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string, takeOver bool, sk drainSkips) error {
+func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes, inWork int, pace, subAgents, fixRounds, judgement string, takeOver bool, sk drainSkips) error {
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
@@ -457,7 +478,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	// the process (drainSignalContext).
 	ctx, stop := drainSignalContext()
 	defer stop()
-	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
+	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, InWork: inWork, Judgement: judgement,
 		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx, Skip: sk.skip, SkipReason: sk.reason, Unskip: sk.unskip})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
@@ -488,6 +509,34 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 		v.Forming = formingView(f)
 	}
 	return render(cmd.OutOrStdout(), asJSON, v, func(w io.Writer) { renderDrainMove(w, v) })
+}
+
+// inWorkLine names a drain's lanes in work against its limit and the layer
+// that set it, and the person's holds against their ceiling where the move
+// could tell them: "1 of 1 lane in work (default); you hold 3 of 10
+// reservations (repository)".
+func inWorkLine(iw loop.LanesInWork, held *loop.HeldCount) string {
+	lane := "lanes"
+	if iw.Limit == 1 {
+		lane = "lane"
+	}
+	line := fmt.Sprintf("%d of %d %s in work (%s)", iw.Count, iw.Limit, lane, inWorkSource(iw.Layer))
+	if held != nil {
+		line += fmt.Sprintf("; you hold %d of %d reservations (%s)", held.Live, held.Limit, termsafe.Sanitize(held.Layer))
+	}
+	return line
+}
+
+// inWorkSource names the layer a drain's limit on lanes in work came from in
+// one word.
+func inWorkSource(layer string) string {
+	switch layer {
+	case "repo":
+		return "repository"
+	case "flag":
+		return "--in-work"
+	}
+	return "default"
 }
 
 // formingView is a forming bundle as the summary names it: its lead and the
@@ -557,7 +606,7 @@ func renderDrainMove(w io.Writer, v drainMoveView) {
 			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(claim.ForkAllowedLine(res.Start.ForkAllowed)))
 		}
 	}
-	fmt.Fprintf(w, "  lanes: %d opened, one at a time\n", len(res.Lanes))
+	fmt.Fprintf(w, "  lanes: %d opened; %s\n", len(res.Lanes), inWorkLine(res.InWork, res.Held))
 	for _, l := range res.Lanes {
 		line := fmt.Sprintf("    %s  %s  %s", l.Issue, l.RunID, l.Outcome)
 		if l.PR > 0 {

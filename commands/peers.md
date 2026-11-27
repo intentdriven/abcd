@@ -147,6 +147,15 @@ payload adds:
   copy 2, ...)`. Absent when the reader's login cannot be named without the
   network, or a `reservation.max_live` holds a value a reservation would be
   refused on.
+- `drain_in_work`: while a drain is in progress in this checkout, its lanes
+  in work against the limit it began with: `count`, `limit`, and the `layer`
+  (`repo` for the repository's `drain.in_work_max` at origin's default
+  branch, `flag` for `--in-work`, `bundled` for the default of one) and
+  `origin` that set it, read from the drain's state alone. A lane whose pull
+  request is queued is not in work, though its reservation counts in
+  `ceiling`. The text form prints it under the ceiling's row: `this drain: 1
+  of 1 lane in work (default)`. Absent with no drain in progress, or a drain
+  state that cannot be read (the drain's own move names that refusal).
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,
