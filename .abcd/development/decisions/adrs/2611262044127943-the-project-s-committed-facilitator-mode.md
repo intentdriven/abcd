@@ -136,8 +136,10 @@ Ruled by the product thinker, 2026-11-26 ("yes, both go").
   either rule for a merge command an agent types, and an arming of abcd's own
   that already stands at such a head is not yet taken back off; both are
   spc-2611262159212693.
-- `abcd facilitator auto|human` writes only `~/.abcd.noindex/config.json`; it
-  takes no flag that chooses where.
+- The verb itd-2611252049031692 plans, `abcd facilitator auto|human`, is to
+  write only `~/.abcd.noindex/config.json` and take no flag that chooses where.
+  It is not built: until it is, a person sets `facilitator.mode` in that file
+  by hand, and a project's in its committed `.abcd/config.json`.
 - [adr-2611011332427073](2611011332427073-abcd-resolves-every-layered-setting-by.md),
   proposed, lists `facilitator.mode` among the keys a repository only
   tightens; it takes an exception for this key before it is accepted.

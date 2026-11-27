@@ -22,7 +22,7 @@ it (`TestAChangeToTheCommittedModeLineIsNeverArmed`,
 `TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest` in
 `internal/core/landing`).
 
-What is left is two things. First, the gate refuses such a pull request, but
+Of those two rulings, what is left is two things (steps 1 and 2), and the intent's command that sets the mode is not built either (step 3). First, the gate refuses such a pull request, but
 an arming of abcd's own that already stands at its head is left in place, as
 every refusal of the gate leaves it today; the intent's criterion asks that it
 be taken back off. Second, the same two rules on the commands themselves. The shell
@@ -79,3 +79,14 @@ built the gate's half (the decision that planned this spec).
    - Write the test first: an arming of this account's at such a head is
      withdrawn, another account's is not, and one whose tip moved under it is
      withdrawn on the next read.
+3. The command that sets and shows a person's own mode
+   - packages: internal/surface/cli, internal/core/landing, internal/core/guard, commands, .abcd/development/brief
+   - tests: internal/surface/cli, internal/core/guard
+   - The intent's one command (`abcd facilitator auto|human`, bare to show)
+     is not built: today a person sets `facilitator.mode` in
+     `~/.abcd.noindex/config.json` by hand, and the guard's refusals say so
+     (`TestTheFacilitatorRefusalsSayHowThePersonSetsItToday`). Build it to the
+     intent's criteria on the command: it writes only the global file, takes
+     no flag that chooses where, and refuses `auto` with no terminal of the
+     person's own.
+   - Then point the guard's refusals of a setting at it, in the same change.
