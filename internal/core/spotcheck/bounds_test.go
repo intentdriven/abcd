@@ -407,3 +407,46 @@ func TestANoteSaysAKeyTookNoPlaceWhenItsReadFilesAllFailed(t *testing.T) {
 		t.Fatalf("the window took %v; want %v", got, want)
 	}
 }
+
+// TestANoteCountsARecordEntryThatIsNoPlainFile: an entry under a record's
+// name that is not a plain file of a record's size is never read and takes
+// no place in the window, and the note counts it by group.
+func TestANoteCountsARecordEntryThatIsNoPlainFile(t *testing.T) {
+	latest := "1000"
+	c := newDrawCase(t)
+	c.serveRounds(&latest)
+	c.openWindow(w0)
+	f, err := handBack("iss-60", w0.Add(time.Minute)).typed().file()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.plant(map[string]string{f.path(): string(f.data)})
+	ctx := context.Background()
+	sha, err := storeGit(ctx, c.r.Root(), "", string(f.data), "hash-object", "-w", "--stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tip := c.originTip()
+	tree, err := treeOver(ctx, c.r.Root(), tip, []placed{{path: f.path(), entry: entry{mode: "100755", typ: "blob", sha: sha}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := commitTree(ctx, c.r.Root(), tree, tip, "another writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.r.Git("push", "-q", "origin", commit+":"+BranchRef)
+	want := c.plantHandBacks(w0.Add(time.Hour), "iss-70")
+	c.closeWindow()
+	note := c.observe(q1000.Add(time.Hour))
+	line := "in " + GroupDrainHandBacks + ", 1 entry(s) under a record's name were not read: each is not a plain file within a record's size"
+	if !strings.Contains(note, "drew cycle") || !strings.Contains(note, line) {
+		t.Fatalf("the draw over a record entry that is no plain file said %q", note)
+	}
+	if strings.Contains(note, GroupFacilitatorDecisions) {
+		t.Fatalf("the note names a group with no such entry: %q", note)
+	}
+	if got := groupOf(t, c.newestCycle(), GroupDrainHandBacks).Population.Keys; !slices.Equal(got, want) {
+		t.Fatalf("the window took %v; want %v", got, want)
+	}
+}

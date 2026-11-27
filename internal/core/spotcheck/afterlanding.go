@@ -385,8 +385,10 @@ const maxFilesPerKey = 4
 // its window has and the keys it left unread; a group whose read bound is spent before any of its records read, with some
 // file unread, refuses the draw, naming the count. So every record population is listed
 // whole, and the next draw knows each record already drawn from by its key.
-// A file whose name is not a record's is never read, and one whose content
-// does not read as its name gives is no record.
+// A file whose name is not a record's is never read, nor is an entry under a
+// record's name that is no plain file of a record's size, which the tally
+// counts by group; a file whose content does not read as its name gives is
+// no record.
 func windowRecords(ctx context.Context, root string, files map[string]entry, pending []file, seen map[string]map[string]bool) ([]namedHandBack, []namedDecision, recordsRead, error) {
 	type src struct {
 		dir, name string
@@ -394,14 +396,25 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 		data []byte
 	}
 	byKey := map[string]map[string]map[string]src{}
-	add := func(dir, name string, data []byte) {
+	// skipped are origin's entries under a record's name, by group, that
+	// are not a plain file within maxRecordBytes, so are never read; a
+	// pending copy of the name is read in its stead.
+	skipped := map[string]map[string]bool{}
+	group := func(dir, name string) (string, bool) {
 		g, re := GroupDrainHandBacks, handBackNameRe
 		if dir == DecisionsDir {
 			g, re = GroupFacilitatorDecisions, decisionNameRe
 		}
-		k := recordKey(name)
-		if !re.MatchString(name) || seen[g][k] {
+		return g, re.MatchString(name) && !seen[g][recordKey(name)]
+	}
+	add := func(dir, name string, data []byte) {
+		g, ok := group(dir, name)
+		if !ok {
 			return
+		}
+		k := recordKey(name)
+		if skipped[g] != nil {
+			delete(skipped[g], name)
 		}
 		if byKey[g] == nil {
 			byKey[g] = map[string]map[string]src{}
@@ -413,7 +426,16 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 	}
 	for p, e := range files {
 		dir, name, _ := strings.Cut(p, "/")
-		if (dir != HandBacksDir && dir != DecisionsDir) || strings.Contains(name, "/") || e.typ != "blob" || e.mode != "100644" || e.size > maxRecordBytes {
+		if (dir != HandBacksDir && dir != DecisionsDir) || strings.Contains(name, "/") {
+			continue
+		}
+		if e.typ != "blob" || e.mode != "100644" || e.size > maxRecordBytes {
+			if g, ok := group(dir, name); ok {
+				if skipped[g] == nil {
+					skipped[g] = map[string]bool{}
+				}
+				skipped[g][name] = true
+			}
 			continue
 		}
 		add(dir, name, nil)
@@ -508,8 +530,8 @@ func windowRecords(ctx context.Context, root string, files map[string]entry, pen
 			// drawn from those, and the note counts the rest.
 			return nil, nil, tally, fmt.Errorf("the spot-check's %s listed none of its records within its read of %d files, and %d record file(s) on origin did not read as records", g, budget, missed)
 		}
-		if spent || capped > 0 {
-			gr := groupRead{group: g, capped: capped}
+		if spent || capped > 0 || len(skipped[g]) > 0 {
+			gr := groupRead{group: g, capped: capped, skipped: len(skipped[g])}
 			if spent {
 				gr.listed, gr.places, gr.budget, gr.notRead = listed, min(maxListedKeys, len(keys)), budget, len(keys)-next
 			}
@@ -533,17 +555,20 @@ type recordsRead struct {
 // window has (places, the keys it held up to maxListedKeys), with notRead
 // keys left unread. capped counts the keys that took no place because none
 // of the maxFilesPerKey files read of each is a record while more of its
-// files were not read.
+// files were not read. skipped counts the entries under a record's name
+// that are not a plain file within maxRecordBytes, so were never read.
 type groupRead struct {
-	group                                   string
-	listed, places, budget, notRead, capped int
+	group                                            string
+	listed, places, budget, notRead, capped, skipped int
 }
 
 // note is the note's tail: for each group whose read bound ran out, how many
 // places it drew from of how many and the keys the bound left unread; for
 // each group with keys that took no place though more of their files were
-// not read, how many; and the count of record files on origin that did not
-// read as records and so took no place in the window. "" for none.
+// not read, how many; for each group with entries under a record's name
+// that are no plain file of a record's size, how many; and the count of
+// record files on origin that did not read as records and so took no place
+// in the window. "" for none.
 func (r recordsRead) note() string {
 	var b strings.Builder
 	for _, g := range r.groups {
@@ -552,6 +577,9 @@ func (r recordsRead) note() string {
 		}
 		if g.capped > 0 {
 			fmt.Fprintf(&b, "; in %s, %d key(s) took no place: none of the %d files read of each is a record, and each has more files not read", g.group, g.capped, maxFilesPerKey)
+		}
+		if g.skipped > 0 {
+			fmt.Fprintf(&b, "; in %s, %d entry(s) under a record's name were not read: each is not a plain file within a record's size", g.group, g.skipped)
 		}
 	}
 	if r.unread > 0 {
