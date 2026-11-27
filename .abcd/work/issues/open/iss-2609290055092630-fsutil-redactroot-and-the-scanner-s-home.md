@@ -14,7 +14,7 @@ deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the technical facilitator (rulings-owed BB; lane reanchor, run A 2026-09-29): which leading-boundary rule both redactors follow for a home of two or more segments under a longer root, the scanner sweep's (redact it, iss-324) or fsutil.RedactRoot's (leave it whole, iss-2609230641546141, so '/private~/wt/a' is never produced); the '.' polarity's rendering and the case-folding split in the 2026-09-29 evidence ride on the same ruling"
 ---
 
-fsutil.RedactRoot and the scanner's home sweep still disagree on the LEADING boundary for a home of two or more segments under a longer root: SweepCallerHome sweeps '/Volumes/T7/srv/qzhome/x' to '/Volumes/T7~/x' (iss-324: a longer root does not make the name someone else's), while RedactRoot, and so RedactHome, the CLI error scrub and the install receipt, leave it whole because the byte before the root is a path-segment byte (iss-2609230641546141 chose that to stop '/private~/wt/a' mangles). The identity survives in CLI output wherever a message names a home under a backup volume or mount. Closing it needs a choice between the two rules for the '~' polarity (the '.' repo polarity has no counterpart); found while unifying the trailing half under iss-2608292037564347.
+fsutil.RedactRoot and the scanner's home sweep still disagree on the LEADING boundary for a home of two or more segments under a longer root: SweepCallerHome sweeps '/Volumes/Backup/srv/qzhome/x' to '/Volumes/Backup~/x' (iss-324: a longer root does not make the name someone else's), while RedactRoot, and so RedactHome, the CLI error scrub and the install receipt, leave it whole because the byte before the root is a path-segment byte (iss-2609230641546141 chose that to stop '/private~/wt/a' mangles). The identity survives in CLI output wherever a message names a home under a backup volume or mount. Closing it needs a choice between the two rules for the '~' polarity (the '.' repo polarity has no counterpart); found while unifying the trailing half under iss-2608292037564347.
 
 ## Evidence, 2026-09-29
 
@@ -36,6 +36,8 @@ iss-2611270714040589 taught fsutil.RedactHome every spelling a path carries the 
 4. The reverse: a clean HOME, with the text spelling the home uncleanly. With HOME `/Users/alice`, the text `open /Users//alice/notes/a.md: denied`: RedactHome and the sweep both return it whole, and RedactRefusal gives `open /Users//[redacted-user]/notes/a.md: denied`; left so on purpose (dcn-2611270959355624), since matching every spelling a text can give would mean normalising the text.
 
 The shared table test this record's remedy asks for should carry these four rows beside the 2026-09-29 ones.
+
+Closed by 5d10bd1f2 on the same branch: shapes 1, 2 and 3. scanner.SweepCallerHome, scanner.SurvivingCallerHome and the home_path_self detector now read every spelling fsutil.HomeSpellings gives RedactHome (dcn-2611271029154024, superseding dcn-2611270841518400), and the same probe at 5d10bd1f2 gives `open ~/notes/a.md: denied` through all three paths for each. Shape 4 is unchanged and stays a decision (dcn-2611270959355624). Still open here: the leading-boundary ruling BB, the '.' polarity's dot pair and the case fold (the 2026-09-29 evidence).
 
 ## Remedy grounds (2026-09-29)
 
