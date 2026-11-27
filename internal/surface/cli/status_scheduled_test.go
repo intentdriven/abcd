@@ -496,7 +496,7 @@ func TestAStampThatCannotBeKeptIsSaidOnThePrompt(t *testing.T) {
 		t.Fatalf("the hook's stderr:\n%s\nwant it to say the refresh was not started", stderr)
 	}
 	// The error names the store's folder by its full path, so the redaction is tested.
-	if !strings.Contains(stderr, "~/.abcd.noindex/scheduled-runs") {
+	if !strings.Contains(stderr, abcdhome.Display("scheduled-runs")) {
 		t.Fatalf("the hook's stderr:\n%s\nwant the full, home-redacted reason", stderr)
 	}
 	if strings.Contains(stderr, w.home) {
@@ -706,13 +706,15 @@ func TestThePromptDoesNotWalkHistoryAgainForTheStore(t *testing.T) {
 // class and never carries the error's text, a refusal fsutil wrote for a person
 // included.
 func TestAnUnkeptStampIsSaidInFixedWords(t *testing.T) {
-	inPath := func(err error) error { return &os.PathError{Op: "open", Path: "/home/pat/.abcd.noindex/x", Err: err} }
+	inPath := func(err error) error {
+		return &os.PathError{Op: "open", Path: abcdhome.Path("/home/pat", "x"), Err: err}
+	}
 	for _, c := range []struct {
 		err  error
 		want string
 	}{
-		{&fsutil.HomeScopeLinkError{Link: "~/.abcd.noindex/scheduled-runs"}, "a link in the store's path is refused"},
-		{&fsutil.HomeScopeExposedError{Dir: "~/.abcd.noindex/scheduled-runs", Perm: 0o777}, "a folder of the store is open to another account"},
+		{&fsutil.HomeScopeLinkError{Link: abcdhome.Display("scheduled-runs")}, "a link in the store's path is refused"},
+		{&fsutil.HomeScopeExposedError{Dir: abcdhome.Display("scheduled-runs"), Perm: 0o777}, "a folder of the store is open to another account"},
 		{inPath(syscall.ENOSPC), "the disk is full"},
 		{inPath(fsutil.ErrNotRealDir), "something that is not a folder stands in the store's path"},
 		{inPath(syscall.EACCES), "the store cannot be written by this account"},
