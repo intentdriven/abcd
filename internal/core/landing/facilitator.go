@@ -23,8 +23,10 @@ package landing
 //   - a pull request that changes the facilitator.mode line of
 //     .abcd/config.json (sets, alters or removes it, or leaves it
 //     unreadable), read at its head against each of its merge bases with
-//     the default branch's tip and in the merge of its head into that tip
-//     against the tip (modeLineChange), arms nothing in any mode, and one
+//     the default branch's tip, in the merge of its head into that tip
+//     against the tip, and, unless the queue merges or squashes, in its
+//     commits replayed onto that tip (modeLineChange), arms nothing in any
+//     mode, and one
 //     where that cannot be read arms nothing either: the person merges it on
 //     the forge's page (adr-2611262044127943);
 //   - an author whose permission cannot be read, or a custom role whose base
@@ -58,6 +60,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,6 +164,14 @@ const maxMergeBaseBytes = 4096
 // tip: the merged tree's object name and each conflicted path.
 const maxMergeTreeBytes = 1 << 20
 
+// maxReplayCommits bounds the commits a rebase would replay that the gate
+// reads; a pull request with more is a diff not read.
+const maxReplayCommits = 256
+
+// maxReplayListBytes bounds git's list of those commits, each with its
+// parent: two object names to a line.
+const maxReplayListBytes = (maxReplayCommits + 1) * 2 * 41
+
 // modeLineRel is the file that holds the committed mode line.
 const modeLineRel = ".abcd/config.json"
 
@@ -182,9 +193,18 @@ const modeLineRel = ".abcd/config.json"
 // cannot be computed, is a diff not read. The tip can still move between the
 // arm and the merge, since the arming pins only the head.
 //
+// A rebase lands something else: the head's commits replayed one at a time
+// onto the tip. So unless method (the merge queue's, as the ruleset mirror
+// names it) is MERGE or SQUASH, whose tree is the merge's, the line is judged
+// a third time, in that replay against the tip (replayedTree): where the queue
+// rebases, and where the method is not known, as on a re-arm, which reads no
+// rule. A head that renames the file aside and adds it back reads as its base
+// does and merges to the tip's line, while its replay carries the tip's file
+// aside and lands the base's.
+//
 // Its git questions share one deadline, modeLineTimeout, since a hook reaches
 // the gate (a re-arm); a git that does not answer in time is a diff not read.
-func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
+func modeLineChange(root, tip, tipName, head, method string) (why string, unread bool) {
 	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
 	cannot := func(what string) (string, bool) {
 		return "whether this pull request changes the facilitator.mode line in " + modeLineRel + " cannot be judged (" + what + "), and " + never, true
@@ -226,18 +246,12 @@ func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	if err != nil {
 		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
 	}
-	args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriverContext(ctx),
-		"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", tip, head)
-	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, args...)
-	if err != nil {
+	overrides = append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriverContext(ctx))
+	merged, inFile, err := mergedTree(ctx, root, overrides, tip, head, "")
+	switch {
+	case err != nil:
 		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
-	}
-	entries := strings.Split(string(raw), "\x00")
-	merged := entries[0]
-	if !gitutil.IsFullSHA(merged) {
-		return cannot("git named no merged tree for " + short(head) + " and " + tipName)
-	}
-	if conflicted && slices.Contains(entries[1:], modeLineRel) {
+	case inFile:
 		return cannot("the merge of " + short(head) + " into " + tipName + " conflicts in " + modeLineRel)
 	}
 	held, _, err := committedModeLine(ctx, root, tip)
@@ -251,7 +265,85 @@ func modeLineChange(root, tip, tipName, head string) (why string, unread bool) {
 	if held != lands {
 		return "its merge into " + tipName + " changes the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(lands) + " once merged), and " + never, false
 	}
+	if method == "MERGE" || method == "SQUASH" {
+		return "", false
+	}
+	replayed, what := replayedTree(ctx, root, overrides, tip, head)
+	if what != "" {
+		return cannot("the replay of " + short(head) + "'s commits onto " + tipName + ", as a rebase lands them, " + clip(termsafe.Sanitize(fsutil.RedactHome(what))))
+	}
+	rebased, _, err := committedModeLine(ctx, root, replayed)
+	if err != nil {
+		return cannot("in the replay of " + short(head) + "'s commits onto " + tipName + ": " + masked(err))
+	}
+	if held != rebased {
+		return "its commits replayed onto " + tipName + ", as a rebase lands them, change the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(rebased) + " once replayed), and " + never, false
+	}
 	return "", false
+}
+
+// mergedTree is the tree git's merge of ours and theirs writes into the object
+// store as stored, under overrides (every merge driver the built-in one),
+// with base as the merge base when it is not "" and the merge bases of the
+// two commits otherwise; inFile says the merge conflicts in the mode line's
+// file. A merge conflicting elsewhere still names its tree, which holds the
+// file as merged.
+func mergedTree(ctx context.Context, root string, overrides []string, ours, theirs, base string) (tree string, inFile bool, err error) {
+	args := append(slices.Clone(overrides), "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z")
+	if base != "" {
+		args = append(args, "--merge-base="+base)
+	}
+	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, append(args, ours, theirs)...)
+	if err != nil {
+		return "", false, err
+	}
+	entries := strings.Split(string(raw), "\x00")
+	if !gitutil.IsFullSHA(entries[0]) {
+		return "", false, errors.New("git named no merged tree")
+	}
+	return entries[0], conflicted && slices.Contains(entries[1:], modeLineRel), nil
+}
+
+// replayedTree is the tree the head's commits land as when a rebase replays
+// them onto tip: each commit of tip..head that is no merge, oldest first as
+// git's own rebase orders them, merged onto the tree so far with its parent
+// as the merge base, as a cherry-pick computes it. what says why it cannot
+// be said ("" when it can): a list git cannot give, more than
+// maxReplayCommits commits, a parentless commit, or a step that cannot be
+// computed or conflicts in the file. A head tip already holds replays nothing
+// and lands tip's own tree.
+func replayedTree(ctx context.Context, root string, overrides []string, tip, head string) (tree, what string) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxReplayListBytes,
+		"rev-list", "--reverse", "--topo-order", "--no-merges", "--parents", "--max-count="+strconv.Itoa(maxReplayCommits+1), tip+".."+head)
+	if err != nil {
+		return "", "cannot be listed (" + err.Error() + ")"
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		lines = nil
+	}
+	if len(lines) > maxReplayCommits {
+		return "", "is more than " + strconv.Itoa(maxReplayCommits) + " commits"
+	}
+	tree = tip
+	for _, line := range lines {
+		ids := strings.Fields(line)
+		switch {
+		case len(ids) == 1 && gitutil.IsFullSHA(ids[0]):
+			return "", "starts at " + short(ids[0]) + ", which has no parent"
+		case len(ids) != 2 || !allFullSHA(ids):
+			return "", "cannot be listed (git named no commit and parent)"
+		}
+		next, inFile, err := mergedTree(ctx, root, overrides, tree, ids[0], ids[1])
+		switch {
+		case err != nil:
+			return "", "cannot be computed at " + short(ids[0]) + " (" + err.Error() + ")"
+		case inFile:
+			return "", "conflicts in " + modeLineRel + " at " + short(ids[0])
+		}
+		tree = next
+	}
+	return tree, ""
 }
 
 // allFullSHA reports whether every name is a full object name.
@@ -752,7 +844,7 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head, fromLane: fromDriveLane(q.RepoRoot, q.From)}
-	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head)
+	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head, q.Rule.Method)
 	if f.modeLine != "" {
 		return decided(f), nil
 	}

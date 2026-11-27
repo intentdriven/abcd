@@ -423,7 +423,10 @@ The decision, in order:
    read at its head against each of its merge bases with the default branch's
    tip, and in the merge of its head into that tip, which git computes from
    the object store as stored with the built-in merge driver, against the
-   tip: nothing is armed in any mode, whatever the approvals and receipts,
+   tip; and, unless the merge queue's method is a merge commit or a squash
+   (so where it rebases, and on a re-arm, which reads no method), in its
+   commits replayed one at a time onto that tip, as a rebase lands them,
+   against the tip: nothing is armed in any mode, whatever the approvals and receipts,
    and the note says the person merges it on the forge's page. Where that
    cannot be read, a merge that conflicts in the file included, nothing is
    armed either (adr-2611262044127943).

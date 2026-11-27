@@ -182,6 +182,34 @@ func TestAChangeToTheCommittedModeLineIsNeverArmed(t *testing.T) {
 			}
 		})
 	}
+	// A rebase lands the head's commits replayed one at a time onto the tip,
+	// so where the queue rebases, or the method is not known (a re-arm), the
+	// line is read in that replay as well.
+	rebaseRuleset := strings.Replace(queueRuleset, `"MERGE"`, `"REBASE"`, 1)
+	t.Run("a rebase whose replay restores the line", func(t *testing.T) {
+		f := replayRestores(t, rebaseRuleset)
+		f.reviewed(t)
+		s := landGate(t, f)
+		wantLeft(t, f, s, "on the forge's page")
+		if !strings.Contains(s.Note, "facilitator.mode") || !strings.Contains(s.Note, "once replayed") {
+			t.Errorf("the note %q does not name the line and its replay", s.Note)
+		}
+	})
+	t.Run("the same commits merged", func(t *testing.T) {
+		f := replayRestores(t, queueRuleset)
+		f.reviewed(t)
+		wantArmed(t, f, landGate(t, f))
+	})
+	t.Run("the re-arm of a replay that restores the line", func(t *testing.T) {
+		f := replayRestores(t, queueRuleset)
+		f.forge.head = f.head()
+		f.reviewed(t)
+		ask := func(args ...string) (string, error) { return f.forge.run(f.repo.Root(), args...) }
+		arm, why, err := rearmGate(ask, f.repo.Root(), "o/r", "7", f.head())
+		if err != nil || arm || !strings.Contains(why, "once replayed") {
+			t.Fatalf("arm %v, why %q, err %v: want no re-arm, whose method is not known, of a replay that moves the mode line", arm, why, err)
+		}
+	})
 	t.Run("the re-arm of a second merge base", func(t *testing.T) {
 		f := secondBase(t)
 		f.forge.head = f.head()
@@ -252,6 +280,27 @@ func secondBase(t *testing.T) *fixture {
 	f.repo.Git("merge", "-q", "-s", "ours", "-m", "take x, keep ours", "x")
 	f.repo.Write("feature.txt", "the change\n")
 	f.repo.Commit("the change")
+	return f
+}
+
+// replayRestores: the project commits auto and main makes it human; the head,
+// cut from before, renames the file aside and then adds it back with the
+// base's text. The head reads as its base does, and its merge into the tip
+// keeps the tip's human, while its commits replayed onto the tip carry the
+// tip's file aside and add the base's auto back.
+func replayRestores(t *testing.T, ruleset string) *fixture {
+	t.Helper()
+	const block = "{\n  \"land\": {\n    \"push\": true\n  },\n  \"facilitator\": {\n    \"mode\": \"%s\"\n  }\n}\n"
+	f := newFixtureFiles(t, ruleset, map[string]string{".abcd/config.json": fmt.Sprintf(block, "auto")})
+	f.repo.Git("checkout", "-q", "main")
+	f.repo.Write(".abcd/config.json", fmt.Sprintf(block, "human"))
+	f.repo.Commit("main makes it human")
+	pushMain(f)
+	f.repo.Git("checkout", "-q", "feat/x")
+	f.repo.Git("mv", ".abcd/config.json", ".abcd/config.old.json")
+	f.repo.Commit("set the config aside")
+	f.repo.Write(".abcd/config.json", fmt.Sprintf(block, "auto"))
+	f.repo.Commit("add the config back")
 	return f
 }
 

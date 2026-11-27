@@ -314,7 +314,9 @@ recorded it with `--approve` (below). Then:
   or removes `facilitator.mode` in `.abcd/config.json`, or leaves it
   unreadable, against any of its merge bases with the default branch, or
   whose merge into the default branch would leave that branch's line
-  changed. The note says you merge it on the forge's page. One where that
+  changed, or, unless the queue merges or squashes, whose commits replayed
+  onto the default branch, as a rebase lands them, would. The note says you
+  merge it on the forge's page. One where that
   cannot be read, a merge that conflicts in the file included, is not armed
   either.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
