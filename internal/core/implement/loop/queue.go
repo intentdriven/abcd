@@ -710,17 +710,20 @@ func droppedReport(c Context, lane Lane, def string, rule landing.MergeRule, v q
 	if method := landing.MergeMethods[rule.Method]; method != "" {
 		rearm = "(`gh " + strings.Join(rearmArgs(n, method, lane.Landing.Pushed), " ") + "`)"
 	}
-	check := "the failed check"
+	// The failed checks are the forge's text: they stand in a clause of their
+	// own before the commands, quoted, and as forgeLabel left them, so a name
+	// can neither close nor open a back-quoted command.
+	named := ""
 	if g.failed != "" {
-		check += " (" + g.failed + ")"
+		named = "the failed check, as the forge names it, is \"" + forgeLabel(g.failed) + "\"; "
 	}
-	remedy := "the forge names no failed run to re-run, so settle " + check + ", then arm it again pinned to the pushed head " + rearm
+	remedy := named + "the forge names no failed run to re-run, so settle the failed check, then arm it again pinned to the pushed head " + rearm
 	if len(g.reruns) > 0 {
 		cmds := make([]string, len(g.reruns))
 		for i, id := range g.reruns {
 			cmds[i] = "`gh run rerun " + id + " --failed`"
 		}
-		remedy = "re-run " + check + " with " + strings.Join(cmds, " and ") + ", then arm it again pinned to the pushed head " + rearm
+		remedy = named + "re-run it with " + strings.Join(cmds, " and ") + ", then arm it again pinned to the pushed head " + rearm
 	}
 	r := refuse(string(StageLand), "", lane.ID, reason,
 		remedy+", then run `abcd implement step` again, or leave it to `abcd drain --drive`, whose next move reads it again")
@@ -849,12 +852,23 @@ func failedGroupChecks(c Context, lane Lane, def string) groupChecks {
 // checkName is a check's name and conclusion as the forge gives them,
 // sanitised and bounded.
 func checkName(name, conclusion string) string {
-	n := bounded(name, maxCheckNameText)
+	n := forgeLabel(bounded(name, maxCheckNameText))
 	if n == "" {
 		n = "an unnamed check"
 	}
-	return n + " (" + strings.ReplaceAll(bounded(conclusion, 40), "_", " ") + ")"
+	return n + " (" + strings.ReplaceAll(forgeLabel(bounded(conclusion, 40)), "_", " ") + ")"
 }
+
+// forgeLabel is forge text named beside the loop's own commands: one
+// terminal-safe line (termsafe.SanitizeLine masks a newline and the line
+// separators), with every back-quote and double quote made a single quote, so
+// it can close no quoted command or name and open none.
+func forgeLabel(s string) string {
+	return labelQuotes.Replace(termsafe.SanitizeLine(s))
+}
+
+// labelQuotes turns the quotes a remedy delimits by into a single quote.
+var labelQuotes = strings.NewReplacer("`", "'", `"`, "'")
 
 // namedChecks joins the failed checks, at most maxFailedChecks of them.
 func namedChecks(names []string) string {

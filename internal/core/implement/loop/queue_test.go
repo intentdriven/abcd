@@ -216,7 +216,7 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 		}
 	}
 	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --merge --match-head-commit="+pushed+"`") ||
-		!strings.Contains(r.Remedy, "the forge names no failed run to re-run, so settle the failed check (check (ubuntu-latest) (timed out))") {
+		!strings.Contains(r.Remedy, `the failed check, as the forge names it, is "check (ubuntu-latest) (timed out)"; the forge names no failed run to re-run, so settle the failed check`) {
 		t.Fatalf("the remedy names the failed check and the re-arming a person makes, by the queue's method: %s", r.Remedy)
 	}
 	if !strings.Contains(r.Reason, "the loop does not arm it again: the merge queue itself did not remove it") {

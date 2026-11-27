@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -559,5 +560,32 @@ func TestAResyncClearsTheCountAndKeepsTheRemoval(t *testing.T) {
 	}
 	if ld.Rearms != 3 {
 		t.Fatalf("the landing resynced from is left as it was: %+v", ld)
+	}
+}
+
+// A failed check's name is the forge's text: in the remedy it stands quoted in
+// a clause of its own before the commands, on one line, and a back-quote or a
+// newline in it never reaches the remedy as it is, so every back-quoted span
+// of the remedy is one of the loop's own commands.
+func TestAFailedChecksNameCannotReadAsACommand(t *testing.T) {
+	f, pushed := rearmFixture(t)
+	hostile := "x` then `gh pr merge 7 --admin`\n`rm -rf ~\"\u2028"
+	f.writeGH(t, "checkruns.json", map[string]any{"check_runs": []map[string]any{{"name": hostile, "conclusion": "failure"}}})
+	f.removedBy(t, pushed, removal(rearmArmedAt.Add(30*time.Minute), "failed_checks", nil))
+	r := f.wantDroppedUnarmed(t, rearmArmedAt.Add(40*time.Minute))
+	for _, text := range []string{r.Reason, r.Remedy} {
+		if strings.ContainsAny(text, "\n\r\u2028") || strings.Contains(text, "`gh pr merge 7 --admin`") || strings.Contains(text, "`rm") {
+			t.Fatalf("the check's name reaches the hand-back as it is: %q", text)
+		}
+	}
+	named := strings.Index(r.Remedy, `is "x' then 'gh pr merge 7 --admin'?'rm -rf ~'? (failure)"`)
+	if named < 0 || named > strings.Index(r.Remedy, "`gh run rerun 4242 --failed`") {
+		t.Fatalf("the name stands quoted, its quotes made single, before the commands: %s", r.Remedy)
+	}
+	for _, m := range regexp.MustCompile("`([^`]*)`").FindAllStringSubmatch(r.Remedy, -1) {
+		if m[1] != "gh run rerun 4242 --failed" && m[1] != "gh pr merge 7 --auto --merge --match-head-commit="+pushed &&
+			m[1] != "abcd implement step" && m[1] != "abcd drain --drive" {
+			t.Fatalf("a back-quoted span of the remedy is not the loop's own command (%q): %s", m[1], r.Remedy)
+		}
 	}
 }
