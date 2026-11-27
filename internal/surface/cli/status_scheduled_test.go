@@ -736,8 +736,8 @@ func TestAnUnkeptStampIsSaidInFixedWords(t *testing.T) {
 // text, which a path can fill with any rune, so U+2028 and U+2029, at which a
 // renderer starts a new line, are masked there as a newline is.
 func TestTheStderrReasonIsOneLine(t *testing.T) {
-	got := stderrReason(errors.New("open a forged line and another\nthird"))
-	if strings.ContainsAny(got, "  \n") {
+	got := stderrReason(errors.New("open a\u2028forged line\u2029and another\nthird"))
+	if strings.ContainsAny(got, "\u2028\u2029\n") {
 		t.Fatalf("stderrReason = %q; want no line breaks of any kind", got)
 	}
 }
