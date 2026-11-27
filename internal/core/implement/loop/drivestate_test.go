@@ -1,15 +1,22 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 var driveT0 = time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
@@ -293,5 +300,396 @@ func TestTheHandBackStreakReadsStalled(t *testing.T) {
 	}
 	if !s.stalled(0) {
 		t.Fatalf("no bound did not read the bundled %d: %+v", BundledStuckRefusals, s)
+	}
+}
+
+// The wired half (spc-2611141617199772 step 4): the terminal loop sets the state at each
+// of its waits and hands it to the surface, and writes the file.
+
+// stateDrive is a terminal on root with a clock its waits move, keeping every value its
+// State is handed.
+type stateDrive struct {
+	tm     *terminal
+	clk    *clock
+	states []DriveState
+	lines  []string
+}
+
+func newStateDrive(t *testing.T, root string) *stateDrive {
+	t.Helper()
+	d := &stateDrive{clk: &clock{t: driveT0}}
+	d.tm = newTerminal(root, TerminalOptions{
+		Options: Options{Now: d.clk.now},
+		Say:     func(s string) { d.lines = append(d.lines, s) },
+		State:   func(s DriveState) { d.states = append(d.states, s) },
+		Sleep:   func(_ context.Context, dd time.Duration) { d.clk.t = d.clk.t.Add(dd) },
+	})
+	return d
+}
+
+// last is the value last handed, failing when none was.
+func (d *stateDrive) last(t *testing.T) DriveState {
+	t.Helper()
+	if len(d.states) == 0 {
+		t.Fatalf("no state was handed:\n%s", strings.Join(d.lines, "\n"))
+	}
+	return d.states[len(d.states)-1]
+}
+
+// stateRoot is a git checkout whose layer sets the stuck bounds, so the machine's own layer
+// moves no figure a test reads.
+func stateRoot(t *testing.T, minutes, refusals int) string {
+	t.Helper()
+	repo := gittest.NewRepo(t)
+	repo.Write(".gitignore", ".abcd/.work.local/\n")
+	repoConfig(t, repo, fmt.Sprintf(`{"pace": {"stuck_minutes": %d, "stuck_refusals": %d}}`, minutes, refusals))
+	return repo.Root()
+}
+
+// wantState fails unless s says state since since, on on, with an until of until (zero
+// for none) and the act do.
+func wantState(t *testing.T, s DriveState, state string, since time.Time, on string, until time.Time, do string) {
+	t.Helper()
+	gotUntil := time.Time{}
+	if s.Until != nil {
+		gotUntil = *s.Until
+	}
+	if s.State != state || !s.Since.Equal(since) || s.On != on || !gotUntil.Equal(until) || s.Do != do {
+		t.Fatalf("state %s since %v on %q until %v do %q,\nwant %s since %v on %q until %v do %q",
+			s.State, s.Since, s.On, gotUntil, s.Do, state, since, on, until, do)
+	}
+}
+
+// Each wait sets the state, its since and its act: the pace window sets an until and is
+// waiting before it, past the bound; a look at origin and a cap wait set none, and keep
+// the since of the last movement, so a wait whose reason alternates with the pace
+// window's line is stalled at the bound; a movement clears the start, and a failure after
+// it sets its own; an outage keeps that start; a person's act at the claim is shown and a
+// host session's remedy never is.
+func TestEachDriveWaitSetsItsStateSinceAndAct(t *testing.T) {
+	d := newStateDrive(t, stateRoot(t, 60, 3))
+	ctx := context.Background()
+	pace := driveAt(90)
+	d.tm.waitFor(moveWaitOn(DrainResult{NextEligibleAt: &pace}))
+	d.tm.sleep(ctx, 90*time.Minute, "the pace window")
+	if len(d.states) != 2 {
+		t.Fatalf("a wait of ninety minutes is written at its start and after its first hour: %d values", len(d.states))
+	}
+	for _, s := range d.states {
+		wantState(t, s, DriveWaiting, driveT0, driveOnPace, pace, "")
+	}
+	if got := d.states[1].Written; !got.Equal(driveAt(60)) {
+		t.Fatalf("the second look is written at the first stretch's end: %v", got)
+	}
+	if next := d.states[0].Next; !next.Equal(driveAt(60).Add(driveStateMargin)) {
+		t.Fatalf("a stretch's value is due again at the stretch's end and its margin: %v", next)
+	}
+	origin := DrainOriginWait{NextProbeAt: driveAt(120)}
+	d.tm.waitFor(moveWaitOn(DrainResult{OriginWait: &origin}))
+	d.tm.sleep(ctx, 30*time.Minute, "origin")
+	wantState(t, d.last(t), DriveStalled, driveT0, driveOnOrigin, time.Time{}, "")
+	held := driveAt(200)
+	d.tm.waitFor(moveWaitOn(DrainResult{WaitingUntil: &held}))
+	d.tm.sleep(ctx, time.Minute, "the cap")
+	wantState(t, d.last(t), DriveStalled, driveT0, driveOnHeldWork, time.Time{}, "")
+
+	d.tm.moving("iss-1 at implement")
+	moved := d.clk.t
+	wantState(t, d.last(t), DriveWorking, moved, "iss-1 at implement", time.Time{}, "")
+	d.clk.t = d.clk.t.Add(5 * time.Minute)
+	first := d.clk.t
+	d.tm.failed(ctx, false, "iss-1 did not move")
+	wantState(t, d.last(t), DriveWaiting, first, "a failure, tried again", time.Time{}, "")
+	for range 3 {
+		d.tm.failed(ctx, false, "iss-1 did not move")
+	}
+	wantState(t, d.last(t), DriveWaiting, first, "an outage", time.Time{}, "")
+	d.tm.moved()
+	again := d.clk.t
+	d.tm.failed(ctx, false, "iss-1 did not move")
+	wantState(t, d.last(t), DriveWaiting, again, "a failure, tried again", time.Time{}, "")
+
+	d.tm.waitFor("iss-1, which another driver holds", time.Time{}, driveAct{Words: "end process 42 (login)", Person: true})
+	d.tm.idle(ctx, TerminalWaitFloor, "held by process 42")
+	wantState(t, d.last(t), DriveWaiting, again, "iss-1, which another driver holds", time.Time{}, "end process 42 (login)")
+	d.tm.waitFor("iss-1 at land", time.Time{}, driveAct{Words: "run `abcd implement receipt --run r1`", Person: true})
+	d.tm.sleep(ctx, TerminalWaitFloor, "the receipt")
+	wantState(t, d.last(t), DriveWaiting, again, "iss-1 at land", time.Time{}, "")
+}
+
+// An outage on a fixture drive: its start is set at the first failure after the lane
+// moved, every wait of it keeps that start and names no end, and it reads waiting short
+// of the stuck bound's minutes and stalled past them; the drive's end is stopped, and
+// the file holds the last value with the drive's own process.
+func TestAnOutageReadsStalledFromItsFirstFailure(t *testing.T) {
+	w := newTerminalWorld(t, append([]string{"shape"}, repeated("none", 40)...)...)
+	repoConfig(t, w.repo, `{"pace": {"stuck_minutes": 60}}`)
+	o := w.options(t)
+	o.Drain.Max = 1
+	var states []DriveState
+	o.State = func(s DriveState) { states = append(states, s) }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	var since time.Time
+	waiting, stalled := 0, 0
+	for _, s := range states {
+		if s.On != "an outage" && s.On != "a failure, tried again" {
+			continue
+		}
+		if since.IsZero() {
+			since = s.Since
+		}
+		if !s.Since.Equal(since) || s.Until != nil {
+			t.Fatalf("a wait of the outage moved its start or named an end: %+v, first since %v", s, since)
+		}
+		want := DriveWaiting
+		if s.Written.Sub(s.Since) >= time.Hour {
+			want = DriveStalled
+		}
+		if s.State != want {
+			t.Fatalf("%v into the outage it reads %s, want %s", s.Written.Sub(s.Since), s.State, want)
+		}
+		if s.State == DriveWaiting {
+			waiting++
+		} else {
+			stalled++
+		}
+	}
+	if waiting == 0 || stalled == 0 {
+		t.Fatalf("the outage read waiting %d times and stalled %d times\n%s", waiting, stalled, w.said())
+	}
+	last := states[len(states)-1]
+	if last.State != DriveStopped || last.Process.PID != os.Getpid() {
+		t.Fatalf("the drive's end: %+v", last)
+	}
+	data, err := os.ReadFile(filepath.Join(w.repo.Root(), filepath.FromSlash(DriveStateRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored DriveState
+	if err := json.Unmarshal(data, &stored); err != nil || stored.State != DriveStopped || stored.Version != DriveStateVersion || !stored.Written.Equal(last.Written) {
+		t.Fatalf("the file does not hold the last value: %v %+v", err, stored)
+	}
+}
+
+// A rate limit whose reset the provider names sets that reset as the wait's until and
+// reads waiting before it, however long past the bound; one that names none sets no
+// until, keeps the start of its first limit, and reads stalled past the bound.
+func TestARateLimitSetsAnUntilOnlyWhereItNamesAReset(t *testing.T) {
+	t.Run("a named reset", func(t *testing.T) {
+		w := newTerminalWorld(t, "shape", "limited")
+		w.realWorktree()
+		repoConfig(t, w.repo, `{"pace": {"stuck_minutes": 60}}`)
+		reset := w.clock.t.Add(3 * time.Hour).UTC().Truncate(time.Second)
+		t.Setenv(terminalResetEnv, strconv.FormatInt(reset.Unix(), 10))
+		o := w.options(t)
+		o.Drain.Max = 1
+		var limited []DriveState
+		o.State = func(s DriveState) {
+			if s.On == driveOnLimit {
+				limited = append(limited, s)
+			}
+		}
+		if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+			t.Fatal(err)
+		}
+		if len(limited) == 0 {
+			t.Fatalf("no state named the limit\n%s", w.said())
+		}
+		for _, s := range limited {
+			if s.State != DriveWaiting || s.Until == nil || !s.Until.Equal(reset) {
+				t.Fatalf("a limit with a named reset: %+v, want waiting until %v", s, reset)
+			}
+		}
+		if last := limited[len(limited)-1]; last.Written.Sub(last.Since) < time.Hour {
+			t.Fatalf("premise: the wait outlasts the bound: %+v", last)
+		}
+	})
+	t.Run("no reset", func(t *testing.T) {
+		w := newTerminalWorld(t, append([]string{"shape"}, repeated("limited", 60)...)...)
+		w.realWorktree()
+		repoConfig(t, w.repo, `{"pace": {"stuck_minutes": 60}}`)
+		o := w.options(t)
+		o.Drain.Max = 1
+		var limited []DriveState
+		o.State = func(s DriveState) {
+			if s.On == driveOnLimit {
+				limited = append(limited, s)
+			}
+		}
+		if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+			t.Fatal(err)
+		}
+		stalled := false
+		for _, s := range limited {
+			if s.Until != nil || !s.Since.Equal(limited[0].Since) {
+				t.Fatalf("a limit with no reset named an end or moved its start: %+v", s)
+			}
+			stalled = stalled || s.State == DriveStalled
+		}
+		if !stalled {
+			t.Fatalf("a limit with no reset never read stalled: %+v", limited)
+		}
+	})
+}
+
+// During an agent's call the state is rewritten at each renewal tick, from the tick's
+// own goroutine, each due again a tick and its margin on.
+func TestTheDriveStateIsRewrittenAtEachRenewalTick(t *testing.T) {
+	was := terminalRenewTick
+	terminalRenewTick = 20 * time.Millisecond
+	t.Cleanup(func() { terminalRenewTick = was })
+	w := newTerminalWorld(t, "shape", "slow")
+	o := w.options(t)
+	o.Drain.Max = 1
+	var mu sync.Mutex
+	working := 0
+	o.State = func(s DriveState) {
+		mu.Lock()
+		defer mu.Unlock()
+		if s.State == DriveWorking && strings.Contains(s.On, " at "+string(StageImplement)) {
+			working++
+			if !s.Next.Equal(s.Written.Add(terminalRenewTick + driveStateMargin)) {
+				t.Errorf("a tick's value is due again at %v, want a tick and its margin after %v", s.Next, s.Written)
+			}
+		}
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatalf("%v\n%s", err, w.said())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if working < 3 {
+		t.Fatalf("the state was written %d times on the lane's call, want it rewritten at its ticks\n%s", working, w.said())
+	}
+}
+
+// While every lane left is set aside, the drive's wait ends at its next hourly retry
+// (decision 9): it reads waiting until then, however long nothing has moved.
+func TestEveryLaneSetAsideWaitsUntilTheRetry(t *testing.T) {
+	d := newStateDrive(t, stateRoot(t, 60, 3))
+	d.tm.stillSince = driveAt(-600)
+	d.tm.setAside = []SetAsideLane{{Issue: "iss-1", Run: "r1"}}
+	d.tm.nextRetry = driveAt(60)
+	if ended := d.tm.awaitSetAside(context.Background()); ended != "" {
+		t.Fatalf("the wait ended the drive: %s", ended)
+	}
+	for _, s := range d.states {
+		wantState(t, s, DriveWaiting, driveAt(-600), "1 lane set aside", driveAt(60), "")
+		if s.Lanes.SetAside != 1 {
+			t.Fatalf("the count of lanes set aside: %+v", s.Lanes)
+		}
+	}
+}
+
+// The stall by hand-backs, wired through the drive's moves: three lane hand-backs in a
+// row with one key turn the state stalled since the first, on the count and kind; a
+// judgement between them neither breaks nor extends the run; a bundle's lane routing its
+// every issue counts once; a lane that reaches its pull request clears it; a person's act
+// is never hidden by it; and pace.stuck_refusals set in a layer moves the count.
+func TestThreeLaneHandBacksInARowReadStalled(t *testing.T) {
+	root := stateRoot(t, 60, 3)
+	if err := writeDrain(root, DrainState{SchemaVersion: DrainSchemaVersion, Lanes: []DrainLane{{Issue: "iss-10", RunID: "run-2611270000000010", Bundle: []string{"iss-11", "iss-12"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	d := newStateDrive(t, root)
+	ctx := context.Background()
+	lane := func(issue string, m int) DrainRoute {
+		at := driveAt(m)
+		return DrainRoute{Issue: issue, From: "lane", Kind: HandBackStuck, At: &at}
+	}
+	look := func() DriveState {
+		d.tm.waitFor(driveOnNextMove, time.Time{}, driveAct{})
+		d.tm.sleep(ctx, TerminalWaitFloor, "the next move")
+		return d.last(t)
+	}
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{lane("iss-1", 1)}})
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{{Issue: "iss-9", From: "judgement", Kind: "decision"}}})
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{lane("iss-10", 2), lane("iss-11", 2), lane("iss-12", 2)}})
+	if s := look(); s.State != DriveWaiting {
+		t.Fatalf("two lanes handed back, a bundle's counted once, read %s: %+v", s.State, s)
+	}
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{lane("iss-3", 3)}})
+	s := look()
+	wantState(t, s, DriveStalled, driveAt(1), "3 lanes handed back in a row, stuck", time.Time{}, "")
+	d.tm.waitFor("iss-4, which another driver holds", time.Time{}, driveAct{Words: "end process 42 (login)", Person: true})
+	d.tm.sleep(ctx, TerminalWaitFloor, "held")
+	if s := d.last(t); s.State != DriveWaiting || s.Do != "end process 42 (login)" {
+		t.Fatalf("the streak hid a person's act: %+v", s)
+	}
+	d.tm.sayMove(DrainResult{Counts: DrainCounts{PullRequests: 1}})
+	if s := look(); s.State != DriveWaiting {
+		t.Fatalf("a lane that reached its pull request did not clear the streak: %+v", s)
+	}
+
+	two := stateRoot(t, 60, 2)
+	d = newStateDrive(t, two)
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{lane("iss-1", 1)}})
+	d.tm.sayMove(DrainResult{Routed: []DrainRoute{lane("iss-2", 2)}})
+	if s := look(); s.State != DriveStalled || !strings.HasPrefix(s.On, "2 lanes handed back") {
+		t.Fatalf("pace.stuck_refusals of 2 in a layer did not move the count: %+v", s)
+	}
+}
+
+// Where only some holds of a lane set aside could be left to lapse, a renewal of the run
+// keeps every one of them, so the lane is not named left to lapse: each issue is named
+// with whether its own hold was, the run is not counted among those left to lapse, and
+// the set-aside's line names them issue by issue (dcn-2611271952390075).
+func TestASetAsideLaneWithSomeHoldsLeftNamesThemPerIssue(t *testing.T) {
+	repo, _ := bundleRepo(t)
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	first := drainToLane(t, repo, Options{Now: c.now}, DrainOptions{Skip: []string{bundleTwo, bundleThree}, SkipReason: "the lead's bundle"})
+	if first.Lane == nil {
+		t.Fatalf("the drain opens a lane: %+v", first)
+	}
+	runID := first.Lane.RunID
+	for _, id := range []string{bundleTwo, bundleThree} {
+		if _, err := claim.Reserve(repo.Root(), claim.Request{Record: id, Footprint: []string{bundleFiles[id]}, Drain: true}, clockAt(c.t)); err != nil {
+			t.Fatalf("reserving %s: %v", id, err)
+		}
+	}
+	if err := mutate(repo.Root(), runID, func(_ *os.Root, st *State) (bool, error) {
+		for _, id := range []string{bundleTwo, bundleThree} {
+			when := c.t
+			st.Bundle = append(st.Bundle, Member{Issue: id, Footprint: []string{bundleFiles[id]}, ReservedAt: &when})
+			st.Record = append(st.Record, Entry{At: c.t, Stage: StageReservation, Note: "reserved " + id, Issue: id})
+		}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The second member's note cannot be written: a folder stands where it goes.
+	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd", ".work.local", "reservation", "lapse", bundleTwo, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	tm := newTerminal(repo.Root(), TerminalOptions{Options: Options{Now: c.now}, Say: func(s string) { lines = append(lines, s) }})
+	tm.setLaneAside(SetAsideLane{Issue: bundleLead, Run: runID, Reason: "the landing's record is gone", Since: c.t, At: c.t, site: blockRecord}, false)
+	if len(tm.setAside) != 1 {
+		t.Fatalf("the lane is not set aside: %+v", tm.setAside)
+	}
+	s := tm.setAside[0]
+	left, kept := SplitHolds(s.Holds)
+	if s.LeftToLapse || !slices.Equal(left, []string{bundleLead, bundleThree}) || !slices.Equal(kept, []string{bundleTwo}) {
+		t.Fatalf("the lane's holds: left to lapse %v, left %v, kept %v\n%s", s.LeftToLapse, left, kept, strings.Join(lines, "\n"))
+	}
+	if tm.lapsing[runID] {
+		t.Fatal("a run only some of whose holds were left is counted as left to lapse")
+	}
+	run, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap, err := claim.View(repo.Root(), c.t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leftToLapse(repo.Root(), run, snap) {
+		t.Fatal("premise: a renewal of the run reads it as left to lapse")
+	}
+	want := "the reservation of " + bundleLead + ", " + bundleThree + " is left to lapse and that of " + bundleTwo + " could not be, so a renewal of the run keeps each"
+	if said := strings.Join(lines, "\n"); !strings.Contains(said, want) || strings.Contains(said, "its reservation is left to lapse") {
+		t.Fatalf("the set-aside's line does not name the holds per issue:\n%s", said)
 	}
 }

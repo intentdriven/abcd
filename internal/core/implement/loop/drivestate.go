@@ -233,17 +233,7 @@ func driveText(s string) string {
 // The file is rebuilt at the drive's next write, so it is not flushed to the
 // disk at each one: a power cut loses the last value, never half of one.
 func writeDriveState(repoRoot string, s DriveState, now time.Time, every time.Duration) (DriveState, error) {
-	s.Version = DriveStateVersion
-	s.State = driveText(s.State)
-	s.On = driveText(s.On)
-	s.Do = driveText(s.Do)
-	s.Since = s.Since.UTC()
-	if s.Until != nil {
-		u := s.Until.UTC()
-		s.Until = &u
-	}
-	s.Written = now.UTC()
-	s.Next = now.Add(every).UTC()
+	s = storedDriveState(s, now, every)
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return DriveState{}, err
@@ -260,6 +250,26 @@ func writeDriveState(repoRoot string, s DriveState, now time.Time, every time.Du
 		return DriveState{}, err
 	}
 	return s, nil
+}
+
+// storedDriveState is s as writeDriveState stores it: stamped with this version,
+// written at now and due again by now+every, its words masked and its home
+// redacted (driveText), and its times in UTC. The terminal is handed this value
+// whether or not the write succeeded, so it never shows what a file could not
+// hold.
+func storedDriveState(s DriveState, now time.Time, every time.Duration) DriveState {
+	s.Version = DriveStateVersion
+	s.State = driveText(s.State)
+	s.On = driveText(s.On)
+	s.Do = driveText(s.Do)
+	s.Since = s.Since.UTC()
+	if s.Until != nil {
+		u := s.Until.UTC()
+		s.Until = &u
+	}
+	s.Written = now.UTC()
+	s.Next = now.Add(every).UTC()
+	return s
 }
 
 // handBackKey is what makes two lane hand-backs the same: the hand-back's
@@ -325,9 +335,12 @@ func (s handBackStreak) on() string {
 // over is st with the streak applied: where the streak has reached bound, a
 // working or waiting drive reads stalled since the streak's first hand-back,
 // on the streak, with no act, which the line shows as needing a look. A drive
-// already stalled, or stopped, keeps its own state.
+// already stalled, or stopped, keeps its own state, and so does a wait whose
+// act is a person's: that act is the one thing the drive waits on, and the
+// streak, which never holds the drive up (decision 7), shows again once the
+// wait ends, so the line never hides an act behind a look.
 func (s handBackStreak) over(st DriveState, bound int) DriveState {
-	if !s.stalled(bound) || (st.State != DriveWorking && st.State != DriveWaiting) {
+	if !s.stalled(bound) || st.Do != "" || (st.State != DriveWorking && st.State != DriveWaiting) {
 		return st
 	}
 	st.State, st.Since, st.Until, st.On, st.Do = DriveStalled, s.since, nil, s.on(), ""

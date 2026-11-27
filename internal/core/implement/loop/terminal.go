@@ -96,8 +96,33 @@ type SetAsideLane struct {
 	// (leaveToLapse). A lane a live driver holds is not: that driver is still working it,
 	// so its own renewals keep the hold (dcn-2611270753395749).
 	LeftToLapse bool `json:"left_to_lapse,omitempty"`
+	// Holds names each issue of the lane, and whether its hold was left to lapse, where
+	// only some of them could be (leaveToLapse; LeftToLapse is false then): a renewal of
+	// the run keeps every hold of it while any is not left (leftToLapse), so the drive's end
+	// names them issue by issue rather than say the lane's reservation is left to lapse
+	// (dcn-2611271952390075).
+	Holds []SetAsideHold `json:"holds,omitempty"`
 	// site is where it waited (blockClaim and its kin), which its next try compares.
 	site string
+}
+
+// SetAsideHold is one issue of a set-aside lane only some of whose holds were left to lapse,
+// and whether its own was.
+type SetAsideHold struct {
+	Issue       string `json:"issue"`
+	LeftToLapse bool   `json:"left_to_lapse"`
+}
+
+// SplitHolds is the issues of holds whose own hold was left to lapse, and those whose was not.
+func SplitHolds(holds []SetAsideHold) (left, kept []string) {
+	for _, h := range holds {
+		if h.LeftToLapse {
+			left = append(left, h.Issue)
+		} else {
+			kept = append(kept, h.Issue)
+		}
+	}
+	return left, kept
 }
 
 // heldByLiveDriver reports whether site is a block on a live driver's claim of the run, the
@@ -189,6 +214,11 @@ type TerminalOptions struct {
 	AtBoundary func(ctx context.Context) bool
 	// Say prints one line, already plain; nil says nothing.
 	Say func(string)
+	// State is handed the drive's state each time the drive writes it (drivestate.go),
+	// as it is stored, and one call at a time: at each look of a wait, at each renewal
+	// tick of an agent's call or a preflight, at each movement and at the end. Nil is
+	// handed nothing; the file is written either way.
+	State func(DriveState)
 	// Sleep waits; nil sleeps until the time passes or the stop or the
 	// context ends it.
 	Sleep func(ctx context.Context, d time.Duration)
@@ -389,8 +419,29 @@ type terminal struct {
 	setAside  []SetAsideLane
 	retried   map[string]SetAsideLane
 	nextRetry time.Time
-	// lapsing are the runs whose holds this drive left to lapse (leaveToLapse), by run.
+	// lapsing are the runs every hold of which this drive left to lapse (leaveToLapse), by
+	// run.
 	lapsing map[string]bool
+	// The drive's state (drivestate.go). stillSince is when anything last moved, set by the
+	// first wait after a movement, whatever the wait, and cleared by the next movement
+	// (moving), so an outage and a limit measure from their first failure and waits whose
+	// reasons alternate keep one start. wait is what the next sleep waits on, which its
+	// caller names (waitFor). streak is the lane hand-backs in a row, and prsSeen the
+	// pull requests the last move counted, so a lane that reaches one clears it. onLane is
+	// the lane a call works on, for a working state.
+	stillSince time.Time
+	wait       driveWait
+	streak     handBackStreak
+	prsSeen    int
+	onLane     string
+	// stateMu serialises every write of the drive's state and every State call: the loop
+	// writes from its own goroutine, and a renewal tick (renewing) from another while an
+	// agent is in its call. state is the value last written, which a tick writes again;
+	// stateErr the last write's error, said once; proc the drive's own process.
+	stateMu  sync.Mutex
+	state    DriveState
+	stateErr string
+	proc     *DriveProcess
 }
 
 // laneBlock is where a lane waits on what the drive cannot end, and since when.
@@ -450,6 +501,7 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t.o.Options.RunnerStarting = func(role string) {
 		t.startedAgent = true
 		t.startCall("the " + role)
+		t.showWorking(t.onLane)
 	}
 	t.waited = terminalRenewEvery
 	if t.bounded() {
@@ -663,6 +715,10 @@ func (t *terminal) haltOnSignal() {
 // time slept and by the wall clock, and whichever ends it first stands: a machine
 // that slept through part of it wakes on time, and a clock set back does not
 // stretch it. A clock set forward ends it early, which the next launch answers.
+//
+// The drive's state is written as the wait starts and at each look after a stretch,
+// from the wait its caller named (waitFor), measured from when anything last moved
+// (stillSince), and due again at the stretch's end.
 func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	now := t.now()
 	if t.bounded() {
@@ -671,8 +727,12 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 	end := now.Add(d)
 	asked := d
 	defer func() { t.waited += max(asked-d, t.now().Sub(now)) }()
+	w := t.wait
+	t.wait = driveWait{}
+	t.still(now)
 	t.sayWait(d, why)
 	t.renewHeld()
+	t.showWait(w, min(d, terminalRenewEvery))
 	for d > 0 {
 		if t.stopHolds() {
 			return
@@ -688,6 +748,7 @@ func (t *terminal) sleep(ctx context.Context, d time.Duration, why string) {
 			break
 		}
 		t.sayWait(d, why)
+		t.showWait(w, min(d, terminalRenewEvery))
 	}
 }
 
@@ -730,6 +791,7 @@ func (t *terminal) renewHeld() {
 // less often the longer it lasts, up to its cap.
 func (t *terminal) idle(ctx context.Context, d time.Duration, why string) bool {
 	now := t.now()
+	t.still(now)
 	if t.idleSince.IsZero() {
 		t.idleSince = now
 	}
@@ -747,6 +809,10 @@ func (t *terminal) idle(ctx context.Context, d time.Duration, why string) bool {
 
 // failed counts one failure and waits it out; it reports whether the outage
 // has run its limit.
+//
+// Its start is the drive's (stillSince), set at the first failure after a movement, and
+// its next try is no named end, so an outage reads stalled from the stuck bound's minutes
+// on.
 func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 	d, up := t.outage.fail(t.now(), judge)
 	if up {
@@ -754,16 +820,268 @@ func (t *terminal) failed(ctx context.Context, judge bool, what string) bool {
 		return true
 	}
 	why := what + "; trying again"
+	on := "a failure, tried again"
 	if t.outage.inOutage() {
 		why = "outage: " + what + "; nothing is handed back"
+		on = "an outage"
+	}
+	if t.wait.On == "" {
+		t.waitFor(on, time.Time{}, driveAct{})
 	}
 	t.sleep(ctx, d, why)
 	return false
 }
 
+// What a wait of the drive is on, as its state names it (drivestate.go).
+const (
+	driveOnHeld     = "what another holds"
+	driveOnOrigin   = "origin"
+	driveOnPace     = "the pace window"
+	driveOnHeldWork = "the drain's cap or work others hold"
+	driveOnNextMove = "the drain's next move"
+	driveOnLimit    = "the rate limit"
+	driveOnProof    = "the live check"
+	driveOnStart    = "the drive's start"
+)
+
+// driveStateMargin is how far past the end of a stretch or a tick the drive's next write
+// may come: a write is due at the stretch's end, and the margin covers the look and
+// renewal that come before it.
+const driveStateMargin = 2 * time.Minute
+
+// waitFor names what the next sleep waits on, for the drive's state: on what, its named
+// end (zero for none: decisions 6 and 9 name the only three) and its act.
+func (t *terminal) waitFor(on string, until time.Time, act driveAct) {
+	t.wait = driveWait{On: on, Until: until, Act: act}
+}
+
+// moveWaitOn is what a move's wait is on (moveWait) and its named end: the pace window
+// ends at its next eligible time; a look at origin, at the cap or at work others hold
+// names no end.
+func moveWaitOn(res DrainResult) (string, time.Time, driveAct) {
+	switch {
+	case res.NextEligibleAt != nil:
+		return driveOnPace, *res.NextEligibleAt, driveAct{}
+	case res.OriginWait != nil:
+		return driveOnOrigin, time.Time{}, driveAct{}
+	}
+	return driveOnHeldWork, time.Time{}, driveAct{}
+}
+
+// moveOn is what a drive works on after a move that moved: the lane it opened or goes
+// on with, else the move after.
+func moveOn(res DrainResult) string {
+	if res.Lane != nil {
+		return res.Lane.Issue
+	}
+	return driveOnNextMove
+}
+
+// laneKey is the issue runID's lane works, runID itself where its state cannot be read.
+func (t *terminal) laneKey(runID string) string {
+	if run, err := ReadState(t.repoRoot, runID); err == nil && run.Key != "" {
+		return run.Key
+	}
+	return runID
+}
+
+// still notes the drive has stopped moving: the first wait after a movement sets when.
+func (t *terminal) still(now time.Time) {
+	if t.stillSince.IsZero() {
+		t.stillSince = now
+	}
+}
+
+// moving notes a movement: the drive works on on, and its next wait is measured from its
+// own start.
+func (t *terminal) moving(on string) {
+	t.stillSince = time.Time{}
+	t.showWorking(on)
+}
+
+// stateBounds are the stuck bound's minutes and count (pace.stuck_minutes and
+// pace.stuck_refusals through the pace's layers), which the stall rules read; the bundled
+// ones where they cannot be read, as the set-aside's bound reads them.
+func (t *terminal) stateBounds() (time.Duration, int) {
+	b, err := resolveStuckBounds(t.o.Options.roots(t.repoRoot))
+	if err != nil {
+		return BundledStuckMinutes * time.Minute, BundledStuckRefusals
+	}
+	return time.Duration(b.minutes.Value) * time.Minute, b.refusals.Value
+}
+
+// showWait writes the state of the wait w, measured from when anything last moved and
+// due again after next: waiting or stalled by the time rule, then the hand-back streak.
+func (t *terminal) showWait(w driveWait, next time.Duration) {
+	now := t.now()
+	w.Start = t.stillSince
+	minutes, refusals := t.stateBounds()
+	t.writeState(t.streak.over(waitState(w, minutes, now), refusals), now, next)
+}
+
+// showWorking writes a working state on on, since the work on it began: a working state on
+// the same thing keeps its since, so an agent's call after another on one stage reads as
+// one stretch of work.
+func (t *terminal) showWorking(on string) {
+	now := t.now()
+	since := now
+	t.stateMu.Lock()
+	prev := t.state
+	t.stateMu.Unlock()
+	if prev.State == DriveWorking && prev.On == driveText(on) {
+		since = prev.Since
+	}
+	_, refusals := t.stateBounds()
+	t.writeState(t.streak.over(DriveState{State: DriveWorking, Since: since, On: on}, refusals), now, terminalRenewTick)
+}
+
+// showEnded writes the state of a drive that ended as res says: stopped, on its end, and
+// with the command that goes on as the act where there is one.
+func (t *terminal) showEnded(res TerminalResult) {
+	st := DriveState{State: DriveStopped, Since: t.now(), On: "its end: " + res.Ended}
+	if res.Resume != "" {
+		st.Do = "run `" + res.Resume + "` to go on"
+	}
+	t.writeState(st, t.now(), terminalRenewEvery)
+}
+
+// lanes counts the drive's lanes from the last move and the lanes set aside.
+func (t *terminal) lanes() DriveLanes {
+	c := t.last.Counts
+	aside := len(t.setAside)
+	return DriveLanes{Done: c.PullRequests, InFlight: max(c.InProgress-aside, 0), SetAside: aside, HandedBack: c.LanesHandedBack}
+}
+
+// process is the drive's own process as a run's driver record names it (selfDriver),
+// read once; its id alone where the process table cannot be read. Called under stateMu.
+func (t *terminal) process() DriveProcess {
+	if t.proc != nil {
+		return *t.proc
+	}
+	p := DriveProcess{PID: os.Getpid()}
+	if tab, err := readProcs(); err == nil {
+		if h, _, err := selfDriver(tab); err == nil {
+			p = DriveProcess{PID: h.PID, StartUnix: h.StartUnix, SlackMS: h.Slack.Milliseconds()}
+		}
+	}
+	t.proc = &p
+	return p
+}
+
+// writeState writes st, with the drive's lane counts and process, at now, due again after
+// next and its margin, under stateMu (storeState).
+func (t *terminal) writeState(st DriveState, now time.Time, next time.Duration) {
+	st.Lanes = t.lanes()
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+	st.Process = t.process()
+	t.state = st
+	t.storeState(now, next)
+}
+
+// rewriteState writes the state last written again, as it stands, due again after next:
+// a renewal tick's, while an agent is in its call or a preflight runs, from the tick's own
+// goroutine. Nothing written yet is nothing to write again.
+func (t *terminal) rewriteState(next time.Duration) {
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+	if t.state.State == "" {
+		return
+	}
+	t.storeState(t.now(), next)
+}
+
+// storeState writes t.state to DriveStateRel (writeDriveState) and hands the value as
+// stored to State. A write that fails is said once until one succeeds, and the value is
+// handed on still, so the terminal shows the line the file could not hold. The caller
+// holds stateMu.
+func (t *terminal) storeState(now time.Time, next time.Duration) {
+	every := next + driveStateMargin
+	stored, err := writeDriveState(t.repoRoot, t.state, now, every)
+	if err != nil {
+		stored = storedDriveState(t.state, now, every)
+		if msg := termsafe.Sanitize(fsutil.RedactHome(err.Error())); msg != t.stateErr {
+			t.stateErr = msg
+			t.say("the drive's state could not be written to %s: %s", DriveStateRel, msg)
+		}
+	} else {
+		t.stateErr = ""
+	}
+	if t.o.State != nil {
+		t.o.State(stored)
+	}
+}
+
+// noteHandBacks counts the lane hand-backs res routed in the hand-back streak, each lane
+// once however many of its issues it routed, keyed by the lane's last logged refusal; a
+// lane that reached its pull request since the last move clears the streak first.
+func (t *terminal) noteHandBacks(res DrainResult) {
+	if res.Counts.PullRequests > t.prsSeen {
+		t.streak.landed()
+	}
+	t.prsSeen = res.Counts.PullRequests
+	var st *DrainState
+	seen := map[string]bool{}
+	for _, r := range res.Routed {
+		if r.From != "lane" {
+			continue
+		}
+		if st == nil {
+			st = &DrainState{}
+			if read, _, err := readDrain(t.repoRoot); err == nil {
+				st = &read
+			}
+		}
+		lane := r.Issue
+		var refused *LaneRefused
+		if l, ok := laneOfIssue(*st, r.Issue); ok {
+			lane = l.RunID
+			refused = lastRefused(t.repoRoot, l.RunID)
+		}
+		if seen[lane] {
+			continue
+		}
+		seen[lane] = true
+		at := t.now()
+		if r.At != nil {
+			at = *r.At
+		}
+		t.streak.note(r, refused, at)
+	}
+}
+
+// laneOfIssue is the lane of st, the last opened, that carries id, as its lead or a member.
+func laneOfIssue(st DrainState, id string) (DrainLane, bool) {
+	for i := len(st.Lanes) - 1; i >= 0; i-- {
+		l := st.Lanes[i]
+		if recordid.SameID(l.Issue, id) || slices.ContainsFunc(l.Bundle, func(m string) bool { return recordid.SameID(m, id) }) {
+			return l, true
+		}
+	}
+	return DrainLane{}, false
+}
+
+// lastRefused is the last refusal runID's lanes logged, nil for none or a state that
+// cannot be read: a lane handed back as stuck keeps its run of refusals.
+func lastRefused(repoRoot, runID string) *LaneRefused {
+	run, err := ReadState(repoRoot, runID)
+	if err != nil {
+		return nil
+	}
+	for i := len(run.Lanes) - 1; i >= 0; i-- {
+		if r := run.Lanes[i].Refused; r != nil {
+			c := *r
+			return &c
+		}
+	}
+	return nil
+}
+
 // run is the loop.
 func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	t.ctx = ctx
+	// The state names this process from the start, over what an earlier drive left.
+	t.showWorking(driveOnStart)
 	t.joinSharedRun()
 	// The settings the drive holds, the hooks directories its git runs and
 	// info/attributes are read once, before the drive's first move, and held
@@ -788,11 +1106,13 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		r, ok := AsRefusal(err)
 		if !ok || !r.Contention {
 			t.leaveSharedRun()
+			t.showEnded(TerminalResult{Ended: TerminalRefused})
 			return TerminalResult{}, startRefusal(t.repoRoot, err)
 		}
 		if ended := t.boundEnded(ctx); ended != "" {
 			return t.ended(ended), nil
 		}
+		t.waitFor(driveOnHeld, time.Time{}, driveAct{})
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return t.ended(TerminalWaited), nil
 		}
@@ -816,6 +1136,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 	unset, err := gitutil.SetBeforeHookedGitAt(func(dir string, args []string) error { return heldBeforeGitIn(t.repoRoot, id, dir, args) })
 	if err != nil {
 		t.leaveSharedRun()
+		t.showEnded(TerminalResult{Ended: TerminalRefused})
 		return TerminalResult{}, refuse(StageDrain, "", "", "the drive cannot start: "+err.Error(),
 			"run one drive at a time in a process; nothing was made")
 	}
@@ -870,6 +1191,11 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			// A push or fetch origin refused while reserving may pass; under a
 			// bound that is waited out, as a peer's hold is.
 			if r, ok := AsRefusal(err); ok && (r.Contention || (t.bounded() && r.originUnread)) {
+				on := driveOnHeld
+				if r.originUnread {
+					on = driveOnOrigin
+				}
+				t.waitFor(on, time.Time{}, driveAct{})
 				if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 					return t.ended(TerminalWaited), nil
 				}
@@ -917,6 +1243,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		}
 		if drainMoved(res) {
 			t.idleSince = time.Time{}
+			t.moving(moveOn(res))
 		}
 		// A judge that met a limit is an agent like any other: none starts,
 		// this one included, before the limit lets it.
@@ -935,6 +1262,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 				}
 				continue
 			}
+			t.waitFor(moveWaitOn(res))
 			if res.WaitingUntil == nil {
 				t.sleep(ctx, d, res.Next)
 			} else if t.idle(ctx, d, res.Next) {
@@ -972,6 +1300,7 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 			continue
 		}
 		if res.Lane == nil {
+			t.waitFor(driveOnNextMove, time.Time{}, driveAct{})
 			if t.idle(ctx, TerminalWaitFloor, res.Next) {
 				return t.ended(TerminalWaited), nil
 			}
@@ -1165,6 +1494,7 @@ func (t *terminal) sayMove(res DrainResult) {
 	if res.Start != nil && res.Lane != nil {
 		t.say("opened the lane of %s: run %s", res.Lane.Issue, res.Lane.RunID)
 	}
+	t.noteHandBacks(res)
 }
 
 // drainMoved reports whether a drain's move moved anything: a lane it read and did not finish
@@ -1203,6 +1533,9 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if t.blocked(runID, blockClaim, r.Reason) {
 			return "", nil
 		}
+		// The claim's remedy under a drive is written for the drive's own terminal: what
+		// keeps the drive from the run, and how a person there ends it (claimRun).
+		t.waitFor(t.laneKey(runID)+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: true})
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return TerminalWaited, nil
 		}
@@ -1251,8 +1584,10 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		if back, ended := t.stuckBack(ctx, runID, run); back {
 			return ended, nil
 		}
+		t.onLane = run.Key
 		if i := run.current(); i >= 0 {
 			lane := run.Lanes[i]
+			t.onLane = run.Key + " at " + string(lane.Stage)
 			key := runID + " " + lane.ID
 			if base, seen := t.bases[key]; lane.BaseSHA != "" {
 				switch {
@@ -1328,11 +1663,13 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 				return "", nil
 			}
 		case res.NextEligibleAt != nil:
+			t.waitFor(driveOnPace, *res.NextEligibleAt, driveAct{})
 			t.sleep(ctx, max(res.NextEligibleAt.Sub(t.now()), TerminalWaitFloor), res.Next)
 		case res.Route != nil || res.PerformedStage != "" || res.stepNote != "":
 			t.idleSince = time.Time{}
 			t.moved()
 			t.sayStep(runID, res)
+			t.moving(t.onLane)
 		default:
 			// No agent ran and no stage moved. Every wait has a deadline
 			// (adr-2610222222326104), so this one runs on the outage's. Under a
@@ -1371,6 +1708,7 @@ func (t *terminal) stuckBack(ctx context.Context, runID string, run State) (bool
 		return false, ""
 	}
 	if t.stuckGiven == runID {
+		t.waitFor(run.Key+", stuck and not yet handed back", time.Time{}, driveAct{})
 		if t.idle(ctx, TerminalWaitFloor, runID+" is stuck and the last move did not hand it back: "+why) {
 			return true, TerminalWaited
 		}
@@ -1392,6 +1730,7 @@ func (t *terminal) moved() {
 	}
 	t.outage.succeed()
 	t.limit.succeed()
+	t.stillSince = time.Time{}
 	t.reached, t.stalled, t.spentUnanswered = nil, 0, nil
 	t.netKey, t.netSince = "", time.Time{}
 	t.evidence.resumed(t.now())
@@ -1717,6 +2056,9 @@ func (t *terminal) limited(ctx context.Context, runID, role string, at time.Time
 			}
 			firstLook = false
 			why := fmt.Sprintf("the subscription's rate limit resets at %s", at.UTC().Format(time.RFC3339))
+			// The reset the provider names is the wait's end, whether the drive sleeps to it
+			// or asks before it.
+			t.waitFor(driveOnLimit, at, driveAct{})
 			if !probing || left <= look {
 				t.evidence.add(evidenceEntry{Event: "decided", Decided: "wait until the reset named", NextLook: at.UTC().Format(time.RFC3339)}, now)
 				t.sleep(ctx, max(left, TerminalWaitFloor), why)
@@ -1736,6 +2078,7 @@ func (t *terminal) limited(ctx context.Context, runID, role string, at time.Time
 				t.letGoForLimit(runID)
 			}
 			t.evidence.add(evidenceEntry{Event: "decided", Decided: "probe, since nothing says when it resets", NextLook: now.Add(d).UTC().Format(time.RFC3339)}, now)
+			t.waitFor(driveOnLimit, time.Time{}, driveAct{})
 			t.sleep(ctx, d, "the subscription has met its rate limit, and nothing says when it resets; it is asked again after this wait")
 			if !probing {
 				return ""
@@ -1805,6 +2148,7 @@ func WaitOutProof(ctx context.Context, repoRoot string, o TerminalOptions, first
 		case errors.As(err, &none):
 			t.evidence.begin("suspect-live-proof", evidenceEntry{Event: "failure", Role: "live proof", Response: none.Detail, Seen: none.Seen}, t.now())
 			if none.RetryAfter > 0 {
+				t.waitFor(driveOnProof, time.Time{}, driveAct{})
 				t.sleep(ctx, none.RetryAfter, none.Detail)
 			} else if t.failed(ctx, false, "the live check came to no verdict: "+none.Detail) {
 				return TerminalOutage, nil
@@ -1892,6 +2236,7 @@ func (t *terminal) renewing(work func()) {
 			case <-tick.C:
 				t.renewHeld()
 				t.sayCallStill()
+				t.rewriteState(terminalRenewTick)
 			case <-stop:
 				return
 			}
@@ -1980,6 +2325,7 @@ func (t *terminal) stepRefused(ctx context.Context, runID string, err error) (ag
 		if r.recordAbsent && t.blocked(runID, blockRecord, r.Reason) {
 			return false, "", nil
 		}
+		t.waitFor(t.onLane, time.Time{}, driveAct{})
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return false, TerminalWaited, nil
 		}
@@ -2056,6 +2402,7 @@ func (t *terminal) preflight(ctx context.Context, checkout, head string) error {
 	}()
 	var err error
 	t.beginCall("the preflight")
+	t.showWorking(t.onLane)
 	t.renewing(func() { err = t.o.Preflight(pctx, checkout, head) })
 	cancel()
 	<-looked
@@ -2073,6 +2420,7 @@ func (t *terminal) laneRefused(ctx context.Context, runID, laneID, reason, final
 	}); err != nil {
 		return false, "", err
 	}
+	t.waitFor(t.laneKey(runID)+" at land", time.Time{}, driveAct{})
 	t.sleep(ctx, TerminalWaitFloor, reason)
 	return false, "", nil
 }
@@ -2108,6 +2456,7 @@ func (t *terminal) takeUp(ctx context.Context, runID string) (bool, string) {
 		why, gone := t.settleMark(runID, "this drive takes the run over once it has settled")
 		switch {
 		case why != "":
+			t.waitFor(run.Key+"'s stop, being settled", time.Time{}, driveAct{})
 			if t.idle(ctx, TerminalWaitFloor, why) {
 				return true, TerminalWaited
 			}
@@ -2833,9 +3182,9 @@ func (t *terminal) setLaneAside(s SetAsideLane, again bool) {
 		if run, err := ReadState(t.repoRoot, s.Run); err == nil {
 			t.keepRenewing(run)
 		}
-		s.LeftToLapse = false
+		s.LeftToLapse, s.Holds = false, nil
 	} else {
-		s.LeftToLapse = t.leaveToLapse(s.Run)
+		s.LeftToLapse, s.Holds = t.leaveToLapse(s.Run)
 	}
 	t.setAside = append(slices.DeleteFunc(t.setAside, func(o SetAsideLane) bool { return o.Run == s.Run }), s)
 	t.syncSetAside()
@@ -2845,8 +3194,12 @@ func (t *terminal) setLaneAside(s SetAsideLane, again bool) {
 		return
 	}
 	t.idleSince = time.Time{}
+	t.moving(driveOnNextMove)
 	hold := "its reservation is left to lapse"
-	if !s.LeftToLapse {
+	switch left, kept := SplitHolds(s.Holds); {
+	case len(s.Holds) > 0:
+		hold = fmt.Sprintf("the reservation of %s is left to lapse and that of %s could not be, so a renewal of the run keeps each", strings.Join(left, ", "), strings.Join(kept, ", "))
+	case !s.LeftToLapse:
 		hold = "its reservation is left to the driver that holds the run, whose renewals keep it"
 	}
 	t.say("set aside %s's lane, run %s, after waiting %s, and going on with the drain's other work: %s; %s, and the drive tries the lane again once no other lane is in progress",
@@ -2939,8 +3292,8 @@ func (t *terminal) foldRetried() {
 		if outcome, _, _ := laneOutcome(run); outcome != DrainLaneInProgress {
 			continue
 		}
-		if s.LeftToLapse {
-			s.LeftToLapse = t.leaveToLapse(s.Run)
+		if s.LeftToLapse || len(s.Holds) > 0 {
+			s.LeftToLapse, s.Holds = t.leaveToLapse(s.Run)
 		}
 		if !t.passedLane(s.Run) {
 			t.o.Drain.PassedLanes = append(t.o.Drain.PassedLanes, s.Run)
@@ -2977,6 +3330,9 @@ func (t *terminal) awaitSetAside(ctx context.Context) string {
 	now := t.now()
 	d := max(t.nextRetry.Sub(now), TerminalWaitFloor)
 	why := fmt.Sprintf("every lane left in progress is set aside (%s), and each is tried again at %s", strings.Join(names, ", "), stamp(t.nextRetry))
+	// The hourly retry is the wait's named end (decision 9), so the line reads waiting
+	// however long every lane stays set aside.
+	t.waitFor(fmt.Sprintf("%d %s set aside", len(names), plural(len(names), "lane", "lanes")), t.nextRetry, driveAct{})
 	if !t.bounded() {
 		if t.idle(ctx, d, why) {
 			return TerminalWaited
@@ -2995,40 +3351,48 @@ func (t *terminal) awaitSetAside(ctx context.Context) string {
 // peer takes the issue while that is unsure, and no renewal that reads no driver keeps it
 // past its lease, an `abcd implement status` call, a load-gate waiter, a drive's waits and
 // a drain's move among them (leftToLapse). A note that cannot be written is said. It
-// reports whether a hold was left to lapse.
-func (t *terminal) leaveToLapse(runID string) bool {
+// reports whether every hold of the run was left to lapse, which is what keeps the run
+// from those renewals; where only some were, it names each issue with whether its own
+// was, since a renewal of the run then keeps every hold of it (dcn-2611271952390075).
+func (t *terminal) leaveToLapse(runID string) (bool, []SetAsideHold) {
 	run, err := ReadState(t.repoRoot, runID)
 	if err != nil {
-		return false
+		return false, nil
 	}
 	ids := run.reservedIssues()
 	if len(ids) == 0 {
-		return false
+		return false, nil
 	}
 	snap, err := claim.View(t.repoRoot, t.now())
 	if err != nil {
 		t.say("%s: its reservation could not be read to leave it to lapse, so a renewal in this copy may keep it: %s", termsafe.Sanitize(run.Key), err.Error())
-		return false
+		return false, nil
 	}
-	left := false
+	holds := make([]SetAsideHold, 0, len(ids))
+	left := 0
 	for _, id := range ids {
-		r, ok := snap.Lookup(id)
-		if !ok || r.Copy != claim.CopyThis || (r.State != claim.StateLive && r.State != claim.StateExpired) {
-			continue
+		h := SetAsideHold{Issue: termsafe.Sanitize(id)}
+		if r, ok := snap.Lookup(id); ok && r.Copy == claim.CopyThis && (r.State == claim.StateLive || r.State == claim.StateExpired) {
+			if err := claim.LeaveToLapse(t.repoRoot, id, r.Commit); err != nil {
+				t.say("%s: its reservation could not be left to lapse, so a renewal in this copy may keep it: %s", termsafe.Sanitize(id), termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+			} else {
+				h.LeftToLapse = true
+				left++
+			}
 		}
-		if err := claim.LeaveToLapse(t.repoRoot, id, r.Commit); err != nil {
-			t.say("%s: its reservation could not be left to lapse, so a renewal in this copy may keep it: %s", termsafe.Sanitize(id), err.Error())
-			continue
-		}
-		left = true
+		holds = append(holds, h)
 	}
-	if left {
-		if t.lapsing == nil {
-			t.lapsing = map[string]bool{}
-		}
-		t.lapsing[runID] = true
+	switch {
+	case left == 0:
+		return false, nil
+	case left < len(ids):
+		return false, holds
 	}
-	return left
+	if t.lapsing == nil {
+		t.lapsing = map[string]bool{}
+	}
+	t.lapsing[runID] = true
+	return true, nil
 }
 
 // keptToLapse reports whether a hold of run is one a drive left to lapse at its tip
@@ -3126,6 +3490,7 @@ func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
 			if t.blocked(run.RunID, blockTakeOver, r.Reason) {
 				return true, ""
 			}
+			t.waitFor(run.Key+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: true})
 			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 				return true, TerminalWaited
 			}
@@ -3170,6 +3535,7 @@ func (t *terminal) tookUp(ctx context.Context, run State, err error) (bool, stri
 		if t.blocked(runID, blockTakeUp, r.Reason) {
 			return true, ""
 		}
+		t.waitFor(run.Key+"'s run, which another invocation holds", time.Time{}, driveAct{})
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return true, TerminalWaited
 		}
@@ -3617,7 +3983,8 @@ func (t *terminal) keepUnstopped(runID string) bool {
 	if t.drivenElsewhere(runID) {
 		return false
 	}
-	return t.leaveToLapse(runID)
+	all, _ := t.leaveToLapse(runID)
+	return all
 }
 
 // drivenElsewhere reports whether the control of runID names a driver other than this
@@ -3752,8 +4119,9 @@ func lapsesUnless(r claim.Reservation, read bool, unless string) string {
 // lane left in progress is named, with the command that resumes it, and, after a
 // kill or a signal whose stop could not be applied to its run (unstopped), when its
 // reservation lapses. A stop from elsewhere names its own remedy.
-func (t *terminal) ended(why string) TerminalResult {
+func (t *terminal) ended(why string) (res TerminalResult) {
 	defer t.leaveSharedRun()
+	defer func() { t.showEnded(res) }()
 	if why == TerminalWall && t.wallEnded != "" {
 		why = t.wallEnded
 	}
@@ -3769,7 +4137,7 @@ func (t *terminal) ended(why string) TerminalResult {
 	if why != TerminalKilled && why != TerminalHalted {
 		t.letGo()
 	}
-	res := TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes, SetAside: t.setAside}
+	res = TerminalResult{Ended: why, Last: t.last, HeldBack: t.heldBack, PassedOver: t.passedOver, PassedLanes: t.passedLanes, SetAside: t.setAside}
 	// A drive that ends, other than killed, halted on a check or stopped by
 	// a person, sweeps on its own once, after it has let its lanes go
 	// (autosweep.go); the line is the drive's end's to print (Swept). A
