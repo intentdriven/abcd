@@ -195,18 +195,31 @@ func dequeue(forge ForgeCall, id string) error {
 }
 
 // RemoteTip is the commit origin's branch is at, asked of origin itself, or ""
-// when origin has no such branch.
+// when origin has no such branch. git lists every branch whose name ends in
+// the branch's path as well (refs/heads/x/refs/heads/<branch>), so only the
+// line naming the branch exactly is read (gitutil.RefListing). git is the
+// caller's runner; nil reads the listing line by line through
+// gitutil.NetEach, as does a runner that refuses it as past its bound
+// (gitutil.OutputCapError).
 func RemoteTip(git GitFunc, dir, branch string) (string, error) {
-	out, err := git(dir, "ls-remote", Remote, "refs/heads/"+branch)
+	args := []string{"ls-remote", Remote, "refs/heads/" + branch}
+	l := gitutil.RefListing{Ref: "refs/heads/" + branch}
+	var err error
+	if git != nil {
+		var out string
+		if out, err = git(dir, args...); err == nil {
+			l.Read(out)
+		}
+	}
+	var capped *gitutil.OutputCapError
+	if git == nil || errors.As(err, &capped) {
+		l = gitutil.RefListing{Ref: "refs/heads/" + branch}
+		err = gitutil.NetEach(dir, gitutil.RefLineMax, l.Line, args...)
+	}
 	if err != nil {
 		return "", err
 	}
-	for _, l := range strings.Split(out, "\n") {
-		if f := strings.Fields(l); len(f) == 2 && f[1] == "refs/heads/"+branch {
-			return f[0], nil
-		}
-	}
-	return "", nil
+	return l.Tip, nil
 }
 
 // withdrawBeforePush is the step before the push. An arming at the head the push

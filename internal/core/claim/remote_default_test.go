@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // headNamedBranches gives the bare repository at bare branches named
@@ -34,7 +36,7 @@ func headNamedBranches(t *testing.T, bare string, want int) {
 func TestTheDefaultBranchIsReadFromTheHEADLinesAlone(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
-	const bound = 1 << 20
+	bound := gitutil.NetOutputCap
 	headNamedBranches(t, w.bare, bound)
 	if listed := runGit(t, p.dir, "ls-remote", "--symref", Remote, "HEAD"); len(listed) <= bound {
 		t.Fatalf("origin's listing of HEAD runs to %d bytes; want more than %d", len(listed), bound)

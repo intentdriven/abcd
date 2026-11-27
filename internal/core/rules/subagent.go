@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"time"
@@ -93,6 +94,24 @@ func WriteSubagentFact(session, agent string, fact SubagentFact, rec SubagentRec
 // write but one it was asked to replace.
 func ReplaceSubagentFact(session, agent string, fact SubagentFact, rec SubagentRecord) error {
 	return keepSubagentFact(session, agent, fact, rec, true)
+}
+
+// RemoveSubagentFact takes one fact of one sub-agent away: the start hook's
+// told fact when its answer never reached the sub-agent. An absent fact, or an
+// absent folder, is no error.
+func RemoveSubagentFact(session, agent string, fact SubagentFact) error {
+	dir, _, _, err := stateFolder(false)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	defer dir.Close()
+	if err := dir.Remove(subagentLeaf(session, agent, fact)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func keepSubagentFact(session, agent string, fact SubagentFact, rec SubagentRecord, replace bool) error {

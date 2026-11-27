@@ -435,20 +435,15 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 	} else if other != "" {
 		return Facilitator{}, fresh("the forge client would act on the remote "+other+" here, not on "+Remote, nil)
 	}
-	out, err := gitutil.NetContext(ctx, root, "ls-remote", "--symref", Remote, "HEAD")
-	if err != nil {
+	// The listing also names every branch whose name ends in /HEAD, however
+	// many origin holds, so it is read line by line and only the lines whose
+	// ref is HEAD itself are kept (gitutil.RefListing).
+	head := gitutil.RefListing{Ref: "HEAD"}
+	if err := gitutil.NetEachContext(ctx, root, gitutil.RefLineMax, head.Line, "ls-remote", "--symref", Remote, "HEAD"); err != nil {
 		return Facilitator{}, fresh(Remote+" could not say which branch is its default", err)
 	}
-	def, tip := "", ""
-	for _, line := range strings.Split(out, "\n") {
-		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
-			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
-				def, _ = strings.CutPrefix(target, "refs/heads/")
-			}
-		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
-			tip = sha
-		}
-	}
+	def, _ := strings.CutPrefix(head.Target, "refs/heads/")
+	tip := head.Tip
 	if def == "" || def == "HEAD" || !gitutil.IsFullSHA(tip) {
 		return Facilitator{}, fresh(Remote+" did not name a default branch and its tip", nil)
 	}
