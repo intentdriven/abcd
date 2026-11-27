@@ -309,12 +309,14 @@ someone with write access, approves the head commit itself (an earlier commit's 
 for nothing) and is not the author's own, or when the technical facilitator
 recorded it with `--approve` (below). Then:
 
-- **A pull request that changes the committed mode line** (its diff, from
-  its merge base with the default branch to its head, sets, alters or removes
-  `facilitator.mode` in `.abcd/config.json`, or leaves it unreadable) is
-  armed in no mode, whatever approvals and receipts it has: the note says you
-  merge it on the forge's page. One whose diff cannot be read for it is not
-  armed either.
+- **A pull request that changes the committed mode line** is armed in no
+  mode, whatever approvals and receipts it has: one whose head sets, alters
+  or removes `facilitator.mode` in `.abcd/config.json`, or leaves it
+  unreadable, against any of its merge bases with the default branch, or
+  whose merge into the default branch would leave that branch's line
+  changed. The note says you merge it on the forge's page. One where that
+  cannot be read, a merge that conflicts in the file included, is not armed
+  either.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.

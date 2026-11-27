@@ -12,10 +12,10 @@ production_mode: hand-written
 itd-2611252049031692's two places decide the mode, and the merge gate
 (`internal/core/landing/facilitator.go`) holds both rulings the product
 thinker made beside them on 2026-11-26, as built on the branch that planned
-this spec: `abcd land` and the build loop arm no pull request whose diff, read
-from its merge base with the default branch's tip to its head, changes the
-`facilitator.mode` line of `.abcd/config.json`, in any mode, and say the
-person merges it on the forge's page; and where `auto` is the person's own
+this spec: `abcd land` and the build loop arm no pull request that changes the
+`facilitator.mode` line of `.abcd/config.json`, read at its head against each
+of its merge bases with the default branch's tip and in the merge of its head
+into that tip, in any mode, and say the person merges it on the forge's page; and where `auto` is the person's own
 global setting rather than the repository's, the gate arms only a pull request
 the forge account abcd runs as opened, judging anyone else's as `human` judges
 it (`TestAChangeToTheCommittedModeLineIsNeverArmed`,
@@ -72,5 +72,10 @@ built the gate's half (the decision that planned this spec).
      its head, `abcd land`, the build loop and a re-arm take it off
      (`withdrawOwn`, as the dependency check does) and say so; an arming
      another account made is left and named.
+   - The arming pins the head (`--match-head-commit`) but not the tip, so the
+     default branch can move between the arm and the merge and change what
+     the merge leaves on the line. Withdraw an arming whose merge, judged
+     again at the tip as last fetched, now changes the line.
    - Write the test first: an arming of this account's at such a head is
-     withdrawn, another account's is not.
+     withdrawn, another account's is not, and one whose tip moved under it is
+     withdrawn on the next read.

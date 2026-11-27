@@ -418,12 +418,15 @@ Its inputs:
 
 The decision, in order:
 
-1. A pull request whose diff, read from its merge base with the default
-   branch's tip to its head, changes the committed `facilitator.mode` line of
-   `.abcd/config.json` (sets, alters or removes it, or leaves it unreadable):
-   nothing is armed in any mode, whatever the approvals and receipts, and the
-   note says the person merges it on the forge's page. A diff that cannot be
-   read for it arms nothing either (adr-2611262044127943).
+1. A pull request that changes the committed `facilitator.mode` line of
+   `.abcd/config.json` (sets, alters or removes it, or leaves it unreadable),
+   read at its head against each of its merge bases with the default branch's
+   tip, and in the merge of its head into that tip, which git computes from
+   the object store as stored with the built-in merge driver, against the
+   tip: nothing is armed in any mode, whatever the approvals and receipts,
+   and the note says the person merges it on the forge's page. Where that
+   cannot be read, a merge that conflicts in the file included, nothing is
+   armed either (adr-2611262044127943).
 2. An unverified author: nothing is armed, whatever the approvals, and the
    note says the role is unverified.
 3. A contributor's pull request, in either mode: nothing is armed until an
