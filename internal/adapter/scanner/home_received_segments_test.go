@@ -11,6 +11,7 @@ func TestHomeFormThatLosesASegmentIsNotTheHome(t *testing.T) {
 	for _, c := range []struct{ home, text string }{
 		{"/home/\xe8\xe2\xe0\xed", "list /home/ and /home/zed/notes today"},
 		{"/h/\xe9/maya", "open /h//maya/x and /h/maya/x"},
+		{"/\xe8\xe2/srv/maya", "open //srv/maya/x and /srv/maya/x"},
 	} {
 		withHomeSpellings(t, []string{c.home})
 		if got := SweepCallerHome(c.text, c.home); got != c.text {
