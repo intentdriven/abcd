@@ -75,3 +75,20 @@ func TestARecordOverTheRecordCapIsRefusedByName(t *testing.T) {
 		t.Fatalf("SlugsOverCap = %+v; want the one record named as over the record cap", got)
 	}
 }
+
+// A block nothing closes is no frontmatter, to this reader as to record-lint's
+// scanner (frontmatter.Fields), so a `slug:` line under an unclosed opening rule
+// is not a slug field: the slug cap judges such a record by its filename alone,
+// and record_schema refuses it for the fields it then lacks. The hand scan this
+// reader replaced took the line as the field and held the record to the cap on
+// it, the one place the two readers disagreed the other way.
+func TestAnUnclosedBlockCarriesNoSlugField(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "record.md")
+	if err := os.WriteFile(file, []byte("---\nslug: far-too-long\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	slug, line, ok, err := frontmatterSlug(file)
+	if err != nil || ok {
+		t.Fatalf("frontmatterSlug = %q, %d, %v, %v; want no field from an unclosed block", slug, line, ok, err)
+	}
+}

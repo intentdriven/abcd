@@ -164,3 +164,18 @@ func TestSlugCapFindingsNamesARecordOverTheRecordCap(t *testing.T) {
 		t.Fatalf("SlugCapFindings = %+v; want one blocker naming the record cap", got)
 	}
 }
+
+// An unclosed block carries no slug field to the slug cap, exactly as record-lint's
+// own scanner reads no field from it: the record is judged by its filename alone
+// here, and record_schema, reading the same fields, refuses it for its missing id.
+func TestSlugCapReadsNoFieldFromAnUnclosedBlockAsTheLintReadsNone(t *testing.T) {
+	rel := ".abcd/work/decisions/dcn-2611280000000002-short.md"
+	body := "---\nid: dcn-2611280000000002\nslug: " + overTheDefaultCap + "\nbody\n"
+	if f := frontmatterFields(strings.Split(body, "\n")); len(f) != 0 {
+		t.Fatalf("premise: record-lint's scanner reads %+v from an unclosed block", f)
+	}
+	got, err := SlugCapFindings(slugCapRepo(t, "", rel, body), []string{rel})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("SlugCapFindings = %+v, %v; want nothing from a block the lint reads no field from", got, err)
+	}
+}
