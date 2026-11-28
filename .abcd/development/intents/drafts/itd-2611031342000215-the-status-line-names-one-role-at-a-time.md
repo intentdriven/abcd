@@ -135,7 +135,9 @@ what it records.
 ## Acceptance Criteria
 
 Restated from the product thinker's rulings of 2026-11-03; each to be walked
-at the planning interview.
+at the planning interview. On 2026-11-28 the session rewrote criteria 3, 10,
+11, 12, 13 and 19 against what has shipped since and the technical calls of
+decisions 20 to 30, and added criterion 20 for decision 17.
 
 - **Given** blocking answers and pending reviews owed to both roles, **when**
   the row renders, **then** the first badge names exactly one role: the role
@@ -148,9 +150,13 @@ at the planning interview.
   badge state rendered that way; **given** `facilitator.mode` is `auto`,
   **then** an `auto-merge` badge follows the role badge and `waiting` never
   renders, whatever is owed.
-- **Given** a checkout whose working tree's `facilitator.mode` differs from
-  the default branch's committed one, **when** the row renders, **then** the
-  mode badge follows the committed one, as the merge gate reads it.
+- **Given** a checkout whose working tree's `.abcd/config.json` declares a
+  `facilitator.mode` that differs from what the merge gate's resolver gives
+  (the default branch's committed value, else the person's global
+  `~/.abcd.noindex/config.json`, else `human`), **when** the row renders,
+  **then** the mode the row shows and the `waiting` rule follow the
+  resolver's answer as the kept reading holds it, never the working tree's
+  copy.
 - **Given** reviews pending for the named role below both thresholds,
   **when** the row renders, **then** the count renders as grey text
   (`manual reviews 3`) with no background and no warning symbol; **given**
@@ -185,25 +191,35 @@ at the planning interview.
 - **Given** any element of the table in any view, **when** its words,
   visibility, detail stages or dropping position are set in the repository's
   `.abcd/config.json` or the machine's `~/.abcd.noindex/config.json`,
-  **then** the row renders with that entry replaced and every other entry at
-  its bundled default; the repository's entry wins the machine's; an unknown
-  key under the namespace is refused by name; and the badge colours and the
-  text mode are never read from the repository layer.
+  **then** the row renders with that field replaced and every other field at
+  its bundled default; for every field but `visible` the repository's value
+  wins the machine's; `visible: false` from any layer, or the element
+  switched off in the person's `statusline.json`, hides the element; an
+  unknown key under `statusline` is refused naming its file; and the badge
+  colours, the text mode, the theme and the links switch are refused by name
+  when the repository's file sets them.
 - **Given** the same payload, checkout and settings, **when**
   `abcd statusline --explain` runs, **then** it emits one JSON record naming
-  the view and, for every element, its value, whether it warns, why (the
-  reading against its threshold) and the source it was read from; two runs
-  over the same input emit the same record; and each warning symbol on the
-  row links to a rendering of that record.
-- **Given** a row showing a pull request number or a builds count, **when**
-  the terminal passes OSC 8 links through, **then** the number links to the
-  pull request and the count to a local page listing each lane and its
-  stage, rewritten on each refresh; a terminal that does not pass links
-  through shows the same text.
-- **Given** the install step wiring the status line into the harness,
-  **when** it writes the harness's setting, **then** it sets a refresh
-  interval of five seconds by default, the person can change or remove it in
-  the same setting, and uninstall restores what was there before.
+  the view and, for every element of the view's table, its value, whether it
+  warns, why, the threshold it was judged against, its source and whether
+  that source is available; two runs emit identical bytes; and the run
+  writes no file; **given** a warning on the row and an explanation page the
+  detached pages refresh has written for this session, **when** the terminal
+  passes OSC 8 links through, **then** the `!` links to that page, which
+  states the time it was written, and with no page written the `!` carries
+  no link.
+- **Given** a row showing the branch's pull request number or a builds
+  count, **when** the terminal passes OSC 8 links through, **then** the
+  number links to that pull request's forge page and the count to the lanes
+  page the detached pages refresh last wrote for this session; **given** a
+  terminal that does not, or `links: false` in the person's
+  `statusline.json`, **then** the same text shows with no link; and the
+  status command writes neither page.
+- **Given** `ahoy install` wiring the status line, **when** it writes the
+  harness's `statusLine` setting, **then** it sets the host's refresh
+  interval to five seconds unless the setting already carries one, which it
+  keeps; **when** `ahoy uninstall` runs, **then** the `statusLine` setting is
+  byte for byte what it was before the install.
 - **Given** the text mode set in the person's `statusline.json`, **when**
   the row renders, **then** the gauges render as percentages, the collapsed
   counts as `PT`, `TF` and `ag` before their numbers, the warning symbol as
@@ -233,11 +249,17 @@ at the planning interview.
   session id, never another session's and never a sum across sessions; the
   usage windows, which the host reports for the account, and the badges,
   which are the repository's, are the only figures shared.
-- **Given** the row refreshing, **when** a forge read is needed (the
-  branch's pull request, the person's open pull requests), **then** the row
-  reads a cache a detached refresh fills at most once a minute, and the row
-  itself never waits on the network, staying inside its existing time
-  ceiling.
+- **Given** the row needing the branch's pull request or the person's open
+  pull requests, **when** it renders, **then** it reads them from the file
+  the detached pull-request refresh of itd-2611141507299828 keeps, at most a
+  minute old in normal running and marked "as of" when older; the status
+  command makes no network call, starts no process and asks git nothing new;
+  and its existing time ceiling holds.
+- **Given** a session whose working directory is a build lane's worktree,
+  **when** the row renders, **then** the checkout element reads
+  `<repo> ‹<intent short id> L<lane>›` from the run state, another worktree
+  reads by its own name, a label wider than 24 columns is cut in the middle,
+  and the main checkout still reads `<repo>:<branch>`.
 
 ## Decisions
 
@@ -547,6 +569,11 @@ set the first values.
 6. The gauge palette on a light terminal, which the payload cannot tell the
    row about (decision 10).
 7. The mode badge's word once the wider automatic mode ships (decision 3).
+
+Waiting on the planning answers (2026-11-28): criteria 1, 2, 6 and 17, and a
+criterion for an element whose source has not shipped, are left as they are
+until the person answers the five product trade-offs the planning put to
+them, since each rewrite turns on those answers.
 
 ## Audit Notes
 
