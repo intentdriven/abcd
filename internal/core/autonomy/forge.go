@@ -132,11 +132,14 @@ func (c checkEntry) ordered() (at time.Time, ok bool) {
 	return instant(c.CompletedAt)
 }
 
-// waiting reports a check run the forge has queued and not yet started: no
-// start, no conclusion, and not completed. It is the newest run of its check
-// by construction, so it sets aside every finished run of that check.
+// waiting reports a check run the forge has queued and not yet started: a
+// status other than COMPLETED, no start and no conclusion. It is read as a
+// rerun that will follow every finished run sharing its workflow and name, so
+// it sets those aside; a same-named run that is in fact another queued leg,
+// not a rerun, is read that way too. An entry with no status at all says
+// nothing about being queued and is not waiting.
 func (c checkEntry) waiting() bool {
-	if c.Context != "" {
+	if c.Context != "" || c.Status == "" {
 		return false
 	}
 	if _, started := c.started(); started {

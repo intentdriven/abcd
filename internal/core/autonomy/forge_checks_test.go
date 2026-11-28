@@ -70,6 +70,14 @@ func TestChecksJudgeEachCheckByItsNewestRun(t *testing.T) {
 			run("ci", "attribution", "COMPLETED", "CANCELLED", zero, middle),
 			run("ci", "attribution", "COMPLETED", "SUCCESS", late, later),
 		}, checksPassing},
+		{"a stale pass beside a queued rerun", []map[string]any{
+			run("ci", "attribution", "COMPLETED", "SUCCESS", early, middle),
+			run("ci", "attribution", "QUEUED", "", zero, zero),
+		}, checksPending},
+		{"a run with no status, start or conclusion is not waiting", []map[string]any{
+			run("ci", "attribution", "COMPLETED", "FAILURE", early, middle),
+			{"__typename": "CheckRun", "name": "attribution", "workflowName": "ci"},
+		}, checksFailing},
 		{"overlapping legs sharing a name are both judged", []map[string]any{
 			run("ci", "test linux", "COMPLETED", "FAILURE", early, later),
 			run("ci", "test linux", "COMPLETED", "SUCCESS", middle, late),
@@ -94,6 +102,10 @@ func TestChecksJudgeEachCheckByItsNewestRun(t *testing.T) {
 			{"__typename": "StatusContext", "context": "external", "state": "FAILURE", "startedAt": early},
 			{"__typename": "StatusContext", "context": "external", "state": "SUCCESS", "startedAt": late},
 		}, checksPassing},
+		{"a commit status with no time is never set aside", []map[string]any{
+			{"__typename": "StatusContext", "context": "external", "state": "FAILURE"},
+			{"__typename": "StatusContext", "context": "external", "state": "SUCCESS", "startedAt": late},
+		}, checksFailing},
 		{"unnamed entries are never merged", []map[string]any{
 			{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "FAILURE", "startedAt": early},
 			{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": late},
