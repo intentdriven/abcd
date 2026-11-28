@@ -875,7 +875,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					}
 					for _, l := range st.Lanes {
 						if l.HandBack != nil {
-							state = "handed back (" + l.ID + ", " + l.HandBack.Verdict + ")"
+							state = "handed back (" + l.ID + ", " + handBackAs(l.HandBack) + ")"
 						}
 					}
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
@@ -936,12 +936,34 @@ func shortOrNone(sha string) string {
 	return sha[:12]
 }
 
+// handBackAs names what stopped a handed-back lane: the verdict when the
+// fix-round cap stopped it, otherwise the kind the lane's receipt or the loop
+// recorded (a design finding, stuck, closed), and never an empty field.
+func handBackAs(hb *loop.HandBack) string {
+	switch {
+	case hb.Verdict != "":
+		return termsafe.Sanitize(hb.Verdict)
+	case hb.Kind != "":
+		return termsafe.Sanitize(hb.Kind)
+	}
+	return "an unrecorded kind"
+}
+
+// handBackStoppedAs is handBackAs with the cap the lane ran to, which only a
+// verdict hand-back has: a kind hand-back ran no fix rounds to a cap.
+func handBackStoppedAs(hb *loop.HandBack) string {
+	if hb.Verdict == "" {
+		return handBackAs(hb)
+	}
+	return fmt.Sprintf("%s after %d fix round(s)", handBackAs(hb), hb.FixRounds)
+}
+
 // renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
 	case res.HandBack != nil:
-		fmt.Fprintf(w, "%s: HANDED BACK: %s's %s stopped as %s after %d fix round(s); the run starts nothing further for it\n",
-			verb, res.RunID, res.Lane, res.HandBack.Verdict, res.HandBack.FixRounds)
+		fmt.Fprintf(w, "%s: HANDED BACK: %s's %s stopped as %s; the run starts nothing further for it\n",
+			verb, res.RunID, res.Lane, handBackStoppedAs(res.HandBack))
 	case res.RateLimit != nil:
 		rl := res.RateLimit
 		fmt.Fprintf(w, "%s: the %s runner's rate limit on %s's %s ended %s's window early; paused until %s\n", verb,
@@ -1633,7 +1655,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 		}
 		renderLanding(w, l.PR, l.Landing)
 		if l.HandBack != nil {
-			fmt.Fprintf(w, "    handed back as %s after %d fix round(s)\n", termsafe.Sanitize(l.HandBack.Verdict), l.HandBack.FixRounds)
+			fmt.Fprintf(w, "    handed back as %s\n", handBackStoppedAs(l.HandBack))
 		}
 	}
 	renderPending(w, rec.Pending)

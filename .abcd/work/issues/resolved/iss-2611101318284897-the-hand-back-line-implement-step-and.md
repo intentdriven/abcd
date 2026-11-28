@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/build.go"
 remedy: "Name what stopped the lane (stuck, design finding, closed) whenever the verdict is empty, and never print an empty field; a test renders a hand-back with no verdict and finds a kind named."
+resolution: "The hand-back line of implement step and implement receipt, the implement record lane line and the implement status run line now name a hand-back with no verdict by its kind (design finding, stuck, closed), print the fix-round cap only for a verdict hand-back, and never leave the field empty."
+impact: fix
 ---
 
 The hand-back line implement step and implement receipt print leaves the hand-back's kind blank when the hand-back carries no verdict. renderStepResult (internal/surface/cli/build.go) prints the verdict field where the kind belongs, so on 7 Nov a lane's hand-back read stopped as, then two spaces, then after 0 fix round(s).
