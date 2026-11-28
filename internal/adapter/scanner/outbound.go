@@ -152,8 +152,10 @@ func CheckOutbound(repoRoot, text, label string) ([]Finding, error) {
 	// so an unreadable or unparseable .abcd/config/pii.json silently drops the
 	// repo's OWN detectors and leaves the built-in set — and a GATE that reports
 	// "clean" from a weakened set is worse than one that reports nothing: the
-	// green tick is read as "this was checked".
-	if degraded, reason := sc.Unavailable(); degraded {
+	// green tick is read as "this was checked". It asks PatternsUnavailable,
+	// not Unavailable: the class it judges reads no identity, so an identity
+	// value no pattern can match leaves the judgement whole.
+	if degraded, reason := sc.PatternsUnavailable(); degraded {
 		return nil, fmt.Errorf("outbound artefact %q: refusing to judge with a degraded scanner config: %s", label, reason)
 	}
 

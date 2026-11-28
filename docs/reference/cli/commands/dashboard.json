@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd dashboard",
@@ -12,6 +12,16 @@
         "start",
         "status",
         "stop"
+      ],
+      "next": [
+        {
+          "command": "abcd dashboard start",
+          "when": "when the dashboard is not running"
+        },
+        {
+          "command": "abcd dashboard stop",
+          "when": "when it runs and is no longer wanted"
+        }
       ]
     },
     {
@@ -26,7 +36,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd dashboard start"
+      "example": "abcd dashboard start",
+      "next": [
+        {
+          "command": "abcd dashboard status",
+          "when": "to see its address and the devices that opened it"
+        }
+      ]
     },
     {
       "path": "abcd dashboard status",
@@ -34,7 +50,17 @@
       "usage": "abcd dashboard status [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd dashboard status"
+      "example": "abcd dashboard status",
+      "next": [
+        {
+          "command": "abcd dashboard start",
+          "when": "when the dashboard is not running"
+        },
+        {
+          "command": "abcd dashboard stop",
+          "when": "when it runs and is no longer wanted"
+        }
+      ]
     },
     {
       "path": "abcd dashboard stop",
@@ -42,7 +68,8 @@
       "usage": "abcd dashboard stop [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd dashboard stop"
+      "example": "abcd dashboard stop",
+      "no_next": "the dashboard is stopped, and nothing usually follows"
     }
   ]
 }

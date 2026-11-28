@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd explain",
@@ -12,7 +12,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd explain ideate record --input verdict-json"
+      "example": "abcd explain ideate record --input verdict-json",
+      "no_next": "the answer is what the next call is built from; no abcd command usually follows it"
     }
   ]
 }

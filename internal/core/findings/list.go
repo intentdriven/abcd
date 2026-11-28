@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -168,50 +169,54 @@ var newRedactor = func(ctx context.Context, root string) (textRedactor, error) {
 // redactors builds one redactor for each checkout a call meets, once, and
 // keeps the cause of one that failed.
 type redactors struct {
-	ctx   context.Context
-	made  map[string]textRedactor
-	cause map[string]string
+	ctx     context.Context
+	made    map[string]textRedactor
+	cause   map[string]string
+	setting map[string]string
 }
 
 func newRedactors(ctx context.Context) *redactors {
-	return &redactors{ctx: ctx, made: map[string]textRedactor{}, cause: map[string]string{}}
+	return &redactors{ctx: ctx, made: map[string]textRedactor{}, cause: map[string]string{}, setting: map[string]string{}}
 }
 
-// clean is text as stored, uncut, or why it was withheld and the scanner's
-// cause: capture's redactor for the checkout as given, termsafe, the home
+// clean is text as stored, uncut, or why it was withheld, the scanner's
+// cause and, for an identity value no pattern can match, the setting to
+// re-save: capture's redactor for the checkout as given, termsafe, the home
 // redacted. A redactor that cannot be built, or whose scan degrades, is
 // dropped for the rest of the call; once the caller's deadline has passed
 // every text is withheld for that (the augmenter's own run is not bound by
 // it).
-func (r *redactors) clean(checkout, text string) (string, Withholding, string) {
+func (r *redactors) clean(checkout, text string) (string, Withholding, string, string) {
 	if r.ctx.Err() != nil {
-		return "", WithheldDeadline, ""
+		return "", WithheldDeadline, "", ""
 	}
 	red, ok := r.made[checkout]
 	if !ok {
 		made, err := newRedactor(r.ctx, checkout)
 		if err != nil {
 			// A failed build may hand back a typed nil; keep a true nil.
-			made, r.cause[checkout] = nil, causeOf(err)
+			made = nil
+			r.cause[checkout], r.setting[checkout] = causeOf(err), id(scanner.UnmatchableSetting(err))
 		}
 		red, r.made[checkout] = made, made
 	}
 	if red == nil {
-		return "", WithheldScan, r.cause[checkout]
+		return "", WithheldScan, r.cause[checkout], r.setting[checkout]
 	}
 	out, err := red.Redact(text)
 	if r.ctx.Err() != nil {
-		return "", WithheldDeadline, ""
+		return "", WithheldDeadline, "", ""
 	}
 	if errors.Is(err, capture.ErrRedactionResidual) {
 		// This text alone: the scan ran whole and the redactor stays.
-		return "", WithheldScan, "redaction left a span its re-scan still finds"
+		return "", WithheldScan, "redaction left a span its re-scan still finds", ""
 	}
 	if err != nil {
-		r.made[checkout], r.cause[checkout] = nil, causeOf(err)
-		return "", WithheldScan, r.cause[checkout]
+		r.made[checkout] = nil
+		r.cause[checkout], r.setting[checkout] = causeOf(err), id(scanner.UnmatchableSetting(err))
+		return "", WithheldScan, r.cause[checkout], r.setting[checkout]
 	}
-	return fsutil.RedactHome(termsafe.SanitizeBlock(out)), "", ""
+	return fsutil.RedactHome(termsafe.SanitizeBlock(out)), "", "", ""
 }
 
 // causeOf is a redactor's error as an entry may keep it: the scanner's own
@@ -266,10 +271,13 @@ type Entry struct {
 	Withheld Withholding `json:"text_withheld,omitempty"`
 	// WithheldWhy is the scanner's own cause, sanitised and cut, where it gave
 	// one.
-	WithheldWhy string      `json:"text_withheld_why,omitempty"`
-	At          time.Time   `json:"at"`
-	Settled     *Settlement `json:"settled,omitempty"`
-	Name        string      `json:"-"`
+	WithheldWhy string `json:"text_withheld_why,omitempty"`
+	// WithheldSetting is the identity setting to re-save where the scan
+	// could not run because its value is not valid UTF-8, or "".
+	WithheldSetting string      `json:"text_withheld_setting,omitempty"`
+	At              time.Time   `json:"at"`
+	Settled         *Settlement `json:"settled,omitempty"`
+	Name            string      `json:"-"`
 }
 
 // Withholding is why an entry's text was not kept, or "".
@@ -294,6 +302,9 @@ func (e Entry) WithheldLine() string {
 		why := ""
 		if e.WithheldWhy != "" {
 			why = " (" + e.WithheldWhy + ")"
+		}
+		if e.WithheldSetting != "" {
+			return "its text was withheld because the full scan could not run" + why + "; " + scanner.IdentityUnmatchableRemedy(e.WithheldSetting)
 		}
 		return "its text was withheld because the full scan could not run" + why + "; fix the repository's scanner configuration (.abcd/config/pii.json, and .abcd/config/gitleaks.json where it configures the augmenter)"
 	case WithheldDeadline:
@@ -572,13 +583,13 @@ func prepare(rs *redactors, e Entry) (prepared, error) {
 	}
 	e.SchemaVersion = schemaVersion
 	e.Settled = nil
-	e.Withheld, e.WithheldWhy = "", ""
+	e.Withheld, e.WithheldWhy, e.WithheldSetting = "", "", ""
 	for _, f := range []*string{&e.Session, &e.Agent, &e.AgentType, &e.Run, &e.Lane, &e.Head, &e.Position} {
 		*f = id(*f)
 	}
 	// The redactor is built for the checkout as given; what is stored is
 	// made valid and safe, then cut.
-	text, why, cause := rs.clean(e.Checkout, e.Text)
+	text, why, cause, setting := rs.clean(e.Checkout, e.Text)
 	raw := e.Checkout
 	e.Checkout, e.Place = pathOf(e.Checkout), pathOf(e.Place)
 	e.CheckoutAltered = e.Checkout != raw
@@ -588,7 +599,7 @@ func prepare(rs *redactors, e Entry) (prepared, error) {
 	}
 	e.Name = name
 	e.Text = cut(text, maxTextBytes)
-	e.Withheld, e.WithheldWhy = why, cause
+	e.Withheld, e.WithheldWhy, e.WithheldSetting = why, cause, setting
 	bound := maxFileBytes - settleReserve
 	body, err := encode(e, bound)
 	if errors.Is(err, ErrTooLarge) && e.Text != "" {
@@ -1162,7 +1173,7 @@ func (s Store) settle(ctx context.Context, req SettleRequest) ([]Entry, error) {
 				reasons[key] = cleaned{withheld: true}
 				continue
 			}
-			r, why, _ := rs.clean(l.e.Checkout, req.Reason)
+			r, why, _, _ := rs.clean(l.e.Checkout, req.Reason)
 			reasons[key] = cleaned{reason: cut(r, maxTextBytes), withheld: why != ""}
 		}
 	}

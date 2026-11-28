@@ -285,6 +285,13 @@ func passwdHome(path string, uid int) (string, error) {
 	return "", fmt.Errorf("%s: no entry for uid %d", path, uid)
 }
 
+// AccountHome is the home the account database names for this process's
+// uid, never $HOME (lookupAccountHome says how it is read, and why off
+// darwin it reads the passwd file itself). An account the database does not
+// list is an error, which a caller judging a person's own setting reads as no
+// setting.
+func AccountHome() (string, error) { return accountHome() }
+
 // SwapAccountHomeForTest substitutes the account-database home lookup
 // HomeInsideWorkingTree exempts and returns the restore. It is exported
 // because the tests of the rule's callers live in other packages. Tests only;

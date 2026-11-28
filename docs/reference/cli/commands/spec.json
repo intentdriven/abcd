@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd spec",
@@ -10,6 +10,12 @@
       "example": "abcd spec",
       "subcommands": [
         "close"
+      ],
+      "next": [
+        {
+          "command": "abcd spec close <spc-N>",
+          "when": "once the change that delivers a spec lands"
+        }
       ]
     },
     {
@@ -41,7 +47,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd spec close spc-2609010000000001"
+      "example": "abcd spec close spc-2609010000000001",
+      "next": [
+        {
+          "command": "abcd land",
+          "when": "to push the branch that carries the close and queue its pull request"
+        }
+      ]
     }
   ]
 }

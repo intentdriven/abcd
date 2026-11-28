@@ -190,6 +190,7 @@ var examples = map[string]string{
 	"abcd lab matrix copy":   "abcd lab matrix copy lab-260901000000-0123abc mx-260901000000-0a1b feature-a/host-big/1",
 	"abcd lab matrix review": "abcd lab matrix review lab-260901000000-0123abc mx-260901000000-0a1b feature-a",
 	"abcd lab matrix judge":  "abcd lab matrix judge lab-260901000000-0123abc mx-260901000000-0a1b doc-a --good good.md --bad bad.md --judges 3",
+	"abcd lab matrix launch": "abcd lab matrix launch lab-260901000000-0123abc mx-260901000000-0a1b",
 	"abcd lab mint":          `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`,
 	"abcd lab preflight":     "abcd lab preflight lab-260901000000-0123abc",
 	"abcd lab record":        "abcd lab record lab-260901000000-0123abc bare-status",

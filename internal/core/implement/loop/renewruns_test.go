@@ -444,3 +444,45 @@ func TestALapsedRevivalWithAHeldLaneIsJudgedWhole(t *testing.T) {
 	}
 	f.revivalBacksOffOnGuide(t, "with a held lane")
 }
+
+// TestAHoldLeftToLapseIsRenewedByNoPassiveRenewal (spc-2611141617199772 step 3): a hold a
+// drive left to lapse, the kept hold of a stop that could not be applied or of a lane it
+// set aside, is no one's work. An `abcd implement status` call (RenewRunsIn) and a
+// load-gate waiter's round (claim.RenewDue and RenewRuns, from the run's checkout and from
+// its lane's worktree) leave the tip's expiry as it stood, past half the lease and past
+// the lease alike, so it lapses at the lease that stood when it was left. Taken up again
+// (claim.KeepRenewing), it is renewed as before.
+func TestAHoldLeftToLapseIsRenewedByNoPassiveRenewal(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.awaitImplementerOnce(t)
+	l := currentLane(t, f.repo, f.runID)
+	before := f.tip(t)
+	if err := claim.LeaveToLapse(f.repo.Root(), secondIssue, before.commit); err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []time.Time{before.claimed.Add(61 * time.Minute), before.expires.Add(time.Minute)} {
+		if got := RenewRunsIn(f.repo.Root(), "", at); len(got) != 0 {
+			t.Fatalf("implement status's renewal at %s = %+v; want none", stamp(at), got)
+		}
+		if got, err := claim.RenewDue(f.repo.Root(), claimOptions(at)); err != nil || len(got) != 0 {
+			t.Fatalf("the waiter's own renewal at %s = %+v, %v; want none", stamp(at), got, err)
+		}
+		for _, root := range []string{f.repo.Root(), l.Worktree} {
+			if got := RenewRuns(root, at); len(got) != 0 {
+				t.Fatalf("the waiter's run renewal from %s at %s = %+v; want none", root, stamp(at), got)
+			}
+		}
+		if tip := f.tip(t); tip.commit != before.commit || !tip.expires.Equal(before.expires) {
+			t.Fatalf("a passive renewal moved the hold left to lapse at %s: %+v, was %+v", stamp(at), tip, before)
+		}
+	}
+
+	if err := claim.KeepRenewing(f.repo.Root(), secondIssue); err != nil {
+		t.Fatal(err)
+	}
+	at := before.claimed.Add(61 * time.Minute)
+	if got := RenewRunsIn(f.repo.Root(), "", at); len(got) != 1 || !got[0].Renewed {
+		t.Fatalf("taken up again, the hold is renewed as before: %+v", got)
+	}
+	f.renewedAt(t, before, at)
+}

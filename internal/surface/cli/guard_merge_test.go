@@ -166,3 +166,29 @@ func TestTheGuardReadsTheModeOnlyAsJustFetched(t *testing.T) {
 		t.Fatalf("an origin that cannot be reached counts as human, saying the mode cannot be read: %q", reason)
 	}
 }
+
+// TestTheGuardTakesTheProjectsValueOverTheComputers (dcn-2611252132144530):
+// the project's committed value stands above the computer's file, so origin's
+// auto lets an agent's `gh pr merge --auto` through over the computer's
+// human, and origin's human refuses it over the computer's auto.
+func TestTheGuardTakesTheProjectsValueOverTheComputers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	merge := strings.Join([]string{"gh", "pr", "merge", "7", "--auto", "--merge"}, " ")
+	writeMachineConfig(t, `{"facilitator":{"mode":"human"}}`+"\n")
+	auto := guardRepo(t)
+	commitConfig(t, auto, `{"facilitator":{"mode":"auto"}}`+"\n")
+	withOrigin(t, auto)
+	stdout, _, code := runGuard(preToolUse(t, "Bash", merge, auto), "guard", "hook")
+	if code != 0 || strings.Contains(stdout, "deny") {
+		t.Fatalf("the project's auto over the computer's human lets gh pr merge --auto through: exit %d, stdout %q", code, stdout)
+	}
+
+	writeMachineConfig(t, `{"facilitator":{"mode":"auto"}}`+"\n")
+	human := guardRepo(t)
+	commitConfig(t, human, `{"facilitator":{"mode":"human"}}`+"\n")
+	withOrigin(t, human)
+	stdout, stderr, code := runGuard(preToolUse(t, "Bash", merge, human), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "merge-auto-human") || !strings.Contains(reason, "repo layer") {
+		t.Fatalf("the project's human over the computer's auto refuses gh pr merge --auto, naming the project: %q", reason)
+	}
+}

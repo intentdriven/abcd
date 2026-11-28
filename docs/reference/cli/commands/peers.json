@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd peers",
@@ -7,7 +7,13 @@
       "usage": "abcd peers [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd peers"
+      "example": "abcd peers",
+      "next": [
+        {
+          "command": "abcd reserve <record-id> --footprint <path>",
+          "when": "to reserve a record no peer holds"
+        }
+      ]
     }
   ]
 }

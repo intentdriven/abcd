@@ -99,8 +99,12 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     one, judges it as the shell guard judges a posted body, prints the `gh pr\n" +
 			"     create` command naming it with --body-file, and stops; it never opens one.\n\n" +
 			"The merge gate reads facilitator.mode from the default branch's committed\n" +
-			".abcd/config.json and " + abcdhome.Display("config.json") + " (human from either wins;\n" +
-			"human by default), never from the branch being landed. A pull request whose\n" +
+			".abcd/config.json, which decides, and only where it commits none from\n" +
+			abcdhome.Display("config.json") + " (human with neither), never from the branch\n" +
+			"being landed. A pull request that changes the committed line is armed in no\n" +
+			"mode; you merge it on the forge's page. Under your own auto (none committed),\n" +
+			"only a pull request your forge account opened is armed without an approval.\n" +
+			"A pull request whose\n" +
 			"author has Read or Triage permission, or none, is armed only once an approval of\n" +
 			"its head counts, in either mode. An approval counts when it is the latest review\n" +
 			"by someone with Write, Maintain or Admin permission, approves the head commit\n" +

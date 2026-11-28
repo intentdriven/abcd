@@ -31,7 +31,8 @@ with its type, its closed set of values (on a list flag, with what in each
 value the set applies to: each member of a comma-list, or one segment of each
 repeated value), its default and whether it is required, the persistent flags
 the command inherits from the commands above it, each filled-in input with the schema version the binary reads, the worked
-example and the visible sub-commands. A flag list that would run past the bound
+example, what usually comes next once the command succeeds, and the visible
+sub-commands. A flag list that would run past the bound
 is cut, with one line saying how many flags are left and that the
 machine-readable form lists them all. A hidden flag is left out of the text.
 
@@ -85,10 +86,11 @@ page under `commands/`. The first stands straight after the page's heading and
 tells an agent to run `abcd explain <verb>` before it fills in an input, and to
 follow the binary where the page disagrees with it. The second ends the page,
 or stands just before its closing user-input line. Its first line names the
-facts' format version. Where the page's commands declare a visible flag or read
-an input, the block then lists each visible command's usage line, the inputs it
-reads (a filled-in JSON input with its schema version) and its example;
-otherwise the first line is all it holds. The drift tests in
+facts' format version. Where the page's commands declare a visible flag, read
+an input or name what follows them, the block then lists each visible
+command's usage line, the inputs it reads (a filled-in JSON input with its
+schema version), its example and what usually follows its success; otherwise
+the first line is all it holds. The drift tests in
 `internal/surface/cli/commandfacts_drift_test.go` fail when a committed copy
 differs from a fresh rendering of the tree. The command-page facts lint
 (`internal/core/lint/commandpagefacts.go`) reads each page's own prose outside
@@ -97,6 +99,52 @@ tree lacks, a flag that neither the command nor a persistent flag on its path
 registers, or a `schema_version` the input does not have. It reports nothing on
 a line marked `<!-- facts-lint: historical -->`, though it still reads that
 line to tell which input a nearby `schema_version` belongs to.
+
+## Next steps on success
+
+Every visible command names what usually comes next once it succeeds
+(itd-2610301428378830, spc-2610301431108175 step 6). One table held in code
+(`internal/core/surface/next.go`) gives each visible command its steps, each a
+command template and one line saying when it applies, or the explicit empty
+list with the reason nothing usually follows. The facts carry the table's
+entry as `next`, `no_next` and `streaming`, so the text answer, the
+machine-readable form, the per-command JSON files and the command-facts block
+of every page show the same steps; the facts' format version moved to 3 with
+them.
+
+A successful machine-readable result carries the same steps as a top-level
+`next_steps` key. The root's pre-run hook wraps a visible command's stdout,
+when the call asks for machine-readable output alone, in a writer that
+carries the command's path and its entry, and wraps the command's run. The
+one helper every result is written through (`render`,
+`internal/surface/cli/next_steps.go`) encodes the result as it always has and
+hands it to that writer, which holds the command's last document until the run
+returns. Only a run that returns nil has the key spliced in before the closing
+brace; a run that fails writes its document as it was, so no document a
+non-zero exit or an error object follows carries the key, whichever helper
+wrote it. Nothing is decoded and encoded again, so no key a result already has
+moves. The key is never `next`, which several results already use for their
+own next action. A command whose run can write a document before its last one
+is marked streaming, and only its closing summary, written through
+`renderFinal`, carries the key; so is one that goes on running after its
+document, such as the session relay, whose start line is written at once and
+carries none; a document that stands in for a refusal on a
+run that still returns nil is written through `renderRefused` and carries
+none. A hidden command keeps its stdout as it is. A document that is not an object
+takes no key: four commands print a JSON array, which a key cannot join
+without breaking its readers, so their results are left as they are while
+their facts still carry the steps; the exemption list in
+`internal/surface/cli/next_steps_test.go` names them. How such a command
+should name its next step in its result was the product thinker's to rule;
+with the person away the default was taken and recorded (dcn-2611262321015065):
+the four stay unchanged, and wrapping them is a breaking intent of its own. The test
+binary checks every machine-readable document the package's tests render, and
+fails on a result that already carries a top-level `next_steps`, on an array
+from a command the exemption list does not name, on a document a successful
+run wrote straight to its stdout around the helper, and on a key that a
+non-zero exit follows; the tests in the same
+file hold every visible command to an entry and every template to a command
+path the tree has, with flags that command takes.
 
 ## Refusal codes
 

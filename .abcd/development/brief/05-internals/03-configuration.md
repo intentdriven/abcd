@@ -93,7 +93,9 @@ and the checks it requires, whether the shell guard also holds a pull
 request's title and body to RS004 (`outbound.declare_mentions`, a rule a
 repository adopts, so no install sets it), who merges (`facilitator.mode`,
 `human` by default or `auto`, read by the merge gate, the board and the shell
-guard at the default branch's tip, where `human` from any layer wins), the
+guard at the default branch's tip, where the repository's committed value
+decides and otherwise the person's own global setting in the machine layer
+does, [adr-2611262044127943](../../decisions/adrs/2611262044127943-the-project-s-committed-facilitator-mode.md)), the
 file a release cut appends its digest to (`release.digest`, read from the
 repository layer alone), whether abcd sweeps on its own (`sweep.automatic`)
 and the workflow `abcd status` watches
@@ -188,7 +190,8 @@ hand-set: the binary reads them and never writes them.
   },
   "facilitator": {
     "mode": "human"                     // "human" (default) | "auto": whether a person or abcd merges, read
-                                        //   at the default branch's tip; human from any layer wins
+                                        //   at the default branch's tip, which decides; where it is
+                                        //   absent, the person's global setting in the machine layer
   },
   "release": {
     "digest": "internal/core/releasedigest/digest.json"
@@ -1585,7 +1588,9 @@ route's `oracle.review`, the filing-time match's `match`, the
 `reservation.fork_origin`, `facilitator.mode`, `review.reviewers`, `review.judge`,
 the `question` keys, the role routes under `roles` and `worktrees.quiet_days`, each
 read with the repo-scope `.abcd/config.json` above it, except `land`, whose layers
-are ANDed, `facilitator.mode`, where `human` from any layer wins, and `question`,
+are ANDed, `facilitator.mode`, where the repository's committed value decides and
+the machine layer, the person's global setting, decides only where the
+repository commits none, and `question`,
 where the machine's file may only lower a limit; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
@@ -2052,15 +2057,15 @@ iss-2608261550580260):
   "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
   "recalled": [],
-  "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
-             "LEAVING", "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP",
-             "SCRATCH", "SHELL", "WIDGETS"]
+  "active": ["ANSWERING", "COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS",
+             "ISSUES", "LEAVING", "LIFEBOAT", "LOAD", "OPINIONS", "PII",
+             "ROADMAP", "SCRATCH", "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all fourteen. No memory note matched, so `recalled` is empty.
+the set names all fifteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|

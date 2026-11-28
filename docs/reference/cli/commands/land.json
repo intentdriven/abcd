@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd land",
@@ -36,7 +36,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd land"
+      "example": "abcd land",
+      "next": [
+        {
+          "command": "abcd landings",
+          "when": "to see how the change landed once the queue merges it"
+        },
+        {
+          "command": "abcd reserve <record-id> --release",
+          "when": "to release the record's reservation once it merges"
+        }
+      ]
     }
   ]
 }

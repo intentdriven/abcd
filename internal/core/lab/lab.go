@@ -375,12 +375,13 @@ func tilde(p, home string) string {
 	return fsutil.RedactHome(p)
 }
 
-// redact scrubs the home path out of an error's text.
+// redact scrubs the home path out of an error's text, in each spelling a
+// store path built from it can carry (fsutil.RedactHomeAt).
 func redact(err error, home string) string {
 	if err == nil {
 		return ""
 	}
-	return fsutil.RedactRoot(err.Error(), home, "~")
+	return fsutil.RedactHomeAt(err.Error(), home)
 }
 
 // clip bounds an untrusted token quoted back in a refusal.

@@ -1,8 +1,14 @@
 package scanner
 
 import (
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -68,11 +74,172 @@ func BlockingResidual(findings []Finding) []Finding {
 // so "\/Users\/me", its \u002f form, a second JSON layer and "%2FUsers%2Fme" abcd-lint:allow
 // are swept with the escape's own bytes, exactly as the literal home is
 // (iss-2609261659041553).
+//
+// The home itself is read in every spelling a path carries it in, the list
+// fsutil.HomeSpellings gives RedactHome too: as written, cleaned,
+// symlink-resolved (a linked home's target need not be named after the user,
+// so the detector has no name to find there), the macOS data-volume firmlink,
+// and both Unicode normal forms (iss-2609290055092630). Each spelling is
+// searched once across the text, and the spans they find are unioned, so two
+// spellings that start at one byte rewrite the longer of the two, once. A
+// spelling ending in a dot segment ("/Users/me/.") must be followed by a abcd-lint:allow
+// separator or a byte that cannot continue a path, so "/Users/me/._x" keeps abcd-lint:allow
+// its separator as the cleaned spelling gives it ("~/._x").
 func SweepCallerHome(text, home string) string {
 	if home == "" {
 		return text
 	}
-	return replaceSpans(text, backstopSpans(text, home, true, homeSweepable), "~")
+	return replaceSpans(text, callerHomeSpans(text, home), "~")
+}
+
+// callerHomeSpans is the sorted, disjoint spans of text at which home stands
+// as a path, in any of its spellings (callerHomeSpellings).
+func callerHomeSpans(text, home string) []span {
+	spellings := callerHomeSpellings(home)
+	var out []span
+	for _, sp := range spellings {
+		accept := homeSweepable
+		if fsutil.EndsInDotSegment(sp) {
+			accept = dotSegmentHomeSweepable
+		}
+		out = append(out, backstopSpans(text, sp, true, accept)...)
+	}
+	if len(spellings) == 1 {
+		return out
+	}
+	return disjointSpans(out)
+}
+
+// dotSegmentHomeSweepable is homeSweepable for a spelling whose last segment
+// is "." or "..": its dot is a whole segment, so it stands as a path only
+// where a separator or a byte that cannot continue a path segment follows it.
+func dotSegmentHomeSweepable(text string, at, end int, urls urlSet) bool {
+	if end < len(text) && text[end] != '/' && isPathSegmentByte(text[end]) {
+		return false
+	}
+	return homeSweepable(text, at, end, urls)
+}
+
+// spellingsMemo keeps the last home's spellings: resolving them stats the
+// filesystem, and a store's residue check sweeps one home line by line.
+var spellingsMemo struct {
+	sync.Mutex
+	home      string
+	spellings []string
+}
+
+// homeSpellingsOf is fsutil.HomeSpellings, a var so a test can hand the
+// sweep and the detector a spelling no filesystem fixture can portably make
+// (one that is not valid UTF-8).
+var homeSpellingsOf = fsutil.HomeSpellings
+
+// callerHomeSpellings is fsutil.HomeSpellings(home), each spelling in the
+// forms a store receives it in (receivedForms), or home alone where that
+// gives none (a relative or root-level home, swept as written, as it always
+// was). A received form that ends in a separator or holds fewer segments than
+// its spelling names another folder — dropping the bytes of a last segment
+// that holds no valid one leaves "/home/", the parent of every account — and
+// is left out.
+func callerHomeSpellings(home string) []string {
+	spellingsMemo.Lock()
+	defer spellingsMemo.Unlock()
+	if spellingsMemo.spellings == nil || spellingsMemo.home != home {
+		var sp []string
+		for _, s := range homeSpellingsOf(home) {
+			for _, f := range receivedForms(s) {
+				if f != s && (strings.HasSuffix(f, "/") || pathSegments(f) < pathSegments(s)) {
+					continue
+				}
+				if !slices.Contains(sp, f) {
+					sp = append(sp, f)
+				}
+			}
+		}
+		if len(sp) == 0 {
+			sp = []string{home}
+		}
+		spellingsMemo.home, spellingsMemo.spellings = home, sp
+	}
+	return spellingsMemo.spellings
+}
+
+// pathSegments counts the non-empty segments of a slash-separated path.
+func pathSegments(p string) int {
+	n := 0
+	for _, seg := range strings.Split(p, "/") {
+		if seg != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// callerUserNames is the caller's username as the last segment of the cleaned
+// home, so a HOME written "/Users/me/." still names "me", in both Unicode abcd-lint:allow
+// normal forms. A name that is not valid UTF-8 is refused by the scanner
+// (identityNotUTF8), never matched in a guessed form.
+func callerUserNames(home string) []string {
+	name := home
+	if filepath.IsAbs(home) {
+		name = filepath.Clean(home)
+	}
+	user := name
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		user = name[i+1:]
+	}
+	if user == "" || user == "." || user == "/" {
+		return nil
+	}
+	return normalForms(user)
+}
+
+// receivedForms is a home spelling s in every form a text can carry it in: as
+// given, and in both Unicode normal forms; and, where s is not valid UTF-8, in
+// the forms a store receives it in, since no store is handed the raw bytes —
+// each invalid byte replaced by U+FFFD (as a JSON encoder writes it), each run
+// of them replaced by one (strings.ToValidUTF8), and the invalid bytes dropped
+// (as the history reader clips a scalar) — each in both normal forms too.
+func receivedForms(s string) []string {
+	bases := []string{s}
+	if !utf8.ValidString(s) {
+		bases = append(bases, replaceEachInvalidByte(s), strings.ToValidUTF8(s, "\uFFFD"), strings.ToValidUTF8(s, ""))
+	}
+	var out []string
+	for _, b := range bases {
+		for _, f := range normalForms(b) {
+			if f != "" && !slices.Contains(out, f) {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
+}
+
+// replaceEachInvalidByte is s with every byte that does not start a valid
+// UTF-8 sequence replaced by U+FFFD.
+func replaceEachInvalidByte(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && n == 1 {
+			b.WriteRune(utf8.RuneError)
+		} else {
+			b.WriteString(s[i : i+n])
+		}
+		i += n
+	}
+	return b.String()
+}
+
+// normalForms is s, then its NFC and NFD forms where they differ from it.
+func normalForms(s string) []string {
+	forms := []string{s}
+	for _, f := range []string{norm.NFC.String(s), norm.NFD.String(s)} {
+		if !slices.Contains(forms, f) {
+			forms = append(forms, f)
+		}
+	}
+	return forms
 }
 
 // backstopSpans returns, sorted and disjoint, the byte spans of text at which
@@ -289,11 +456,7 @@ func SurvivingCallerHome(text, home string) (string, []Finding) {
 	if home == "" {
 		return text, nil
 	}
-	user := home
-	if i := strings.LastIndex(home, "/"); i >= 0 {
-		user = home[i+1:]
-	}
-	if user != "" {
+	for _, user := range callerUserNames(home) {
 		for _, prefix := range []string{"/Users/", "/home/"} {
 			text = sweepUserSegment(text, prefix+user, prefix+redactionReplacement(Finding{Kind: kindLocalUser}))
 		}

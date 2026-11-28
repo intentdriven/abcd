@@ -118,10 +118,7 @@ func scrubMessage(msg string) string {
 	if cwd, e := os.Getwd(); e == nil {
 		msg = fsutil.RedactRoot(msg, cwd, ".")
 	}
-	if home, e := os.UserHomeDir(); e == nil {
-		msg = fsutil.RedactRoot(msg, home, "~")
-	}
-	return msg
+	return fsutil.RedactHome(msg)
 }
 
 // renderReceiptsProtocol ends the emit step's render with the receipts protocol

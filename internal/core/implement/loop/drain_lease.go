@@ -32,6 +32,7 @@ import (
 // next step; a lane whose run cannot be read is left to the routing below,
 // which names it. A run a drive let go is not renewed by this pass either: the tip of
 // a release that did not reach origin is the take-up's, which compares the record first.
+// Nor is a hold a drive left to lapse (leftToLapse), which the take-up reserves again.
 func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now time.Time) []string {
 	var notes []string
 	for _, l := range st.Lanes {
@@ -48,6 +49,11 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 				continue
 			}
 			view = &snap
+		}
+		// A hold a drive left to lapse is no one's work, and lapses at its lease
+		// (leftToLapse): the take-up that works it again reserves it again.
+		if leftToLapse(repoRoot, run, *view) {
+			continue
 		}
 		if _, due, lost := renewalDue(run, *view, now); !due && lost == "" {
 			continue

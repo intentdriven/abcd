@@ -1,0 +1,6 @@
+---
+id: dcn-2611262019299972
+slug: own-copy-only-reads-a-backtick-a
+date: 2026-11-26
+---
+2026-11-26 — own_copy_only reads a backtick, a substitution, a mode change and a folder it cannot list as the shell and the copy saw them, superseding dcn-2611252329490651 where they differ: a backtick opens or closes a command substitution by the count since the line's start, so one that closes a code span ends the path; a substitution or an extended pattern is judged by its literal prefix, kept where that prefix matches nothing outside the copy and never kept where it does; a chmod or chflags of a climb is judged by what the climb reaches, broken where no folder of the clone is deep enough to keep it inside, unexamined where one is, and kept where it reaches nothing outside; a folder of the stores a pattern's walk cannot list leaves the copy unexamined, save the run's own two folders for a copy its launch ran while it held them closed, which read empty as they did to the copy; and the run's folders a launch killed outright left at mode 0300 get 0700 back under the run's launch lock, from the next launch before it picks a copy and from a hand-back that finds the lock free, never while a launch holds it.

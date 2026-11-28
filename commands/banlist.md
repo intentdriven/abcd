@@ -147,19 +147,29 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain banlist` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain banlist` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd banlist [flags]`
   - An example call is `abcd banlist`.
+  - What usually follows:
+    - `abcd banlist add --private <key> <pattern>`, to ban a name that is missing.
 - `abcd banlist add --private|--public <key> <pattern|-> [flags]`
   - An example call is `abcd banlist add --private acme-internal 'acme-internal\.example\.com'`.
+  - What usually follows:
+    - `abcd banlist list --private`, to see the entry among the others, by key.
 - `abcd banlist list [--private | --public] [flags]`
   - An example call is `abcd banlist list --private`.
+  - What usually follows:
+    - `abcd banlist remove --private <key>`, to drop an entry that no longer applies.
 - `abcd banlist migrate [flags]`
   - An example call is `abcd banlist migrate`.
+  - What usually follows:
+    - `abcd banlist list --private`, to see the keyed store.
 - `abcd banlist remove --private|--public <key> [flags]`
   - An example call is `abcd banlist remove --private acme-internal`.
+  - What usually follows:
+    - `abcd banlist list --private`, to see the entries left.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

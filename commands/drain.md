@@ -158,6 +158,15 @@ until a later drive routes it. A later drive comes to the lane again, where its 
 the same judge decide whether it may take it up. The drive keeps the lanes it passed over in
 its own memory, not in the run or the drain's state.
 
+**A lane it sets aside.** A lane that waits as long as `pace.stuck_minutes` on what the drive
+cannot end (a live driver it may not take, a take-up refused, the landing's issue record gone)
+is set aside and the drive goes on with its other lanes. It is tried again once no other lane is
+in progress, then once an hour; with only such lanes left the drive waits, ending at its bound
+or after eight hours with nothing moving. Its reservation is left to lapse at its lease, with no
+waiter or `abcd implement status` renewing it, except where a live driver holds the run, whose
+renewals keep it. The end names each lane set aside with its wait and reason, and `--json`
+carries `set_aside` and `left_to_lapse`.
+
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
 drive asks the release origin for its latest release. A lane still in progress after a refused
@@ -1300,7 +1309,7 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain drain` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain drain` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
@@ -1312,6 +1321,9 @@ plugin-root binary, and the plugin-root binary while it prints nothing.
     - `abcd drain --max 3`
     - `abcd drain --json`
     - `abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json`
+  - What usually follows:
+    - `abcd implement status`, to see the drain's lanes.
+    - `abcd capture list --open`, to see the issues handed back.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

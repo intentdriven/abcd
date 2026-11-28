@@ -108,7 +108,11 @@ func newLintOutboundCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return &exitError{Code: 2, Msg: "lint outbound: " + scrubPaths(err)}
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), string(out))
+				// One compact line, as it always was, with the next steps
+				// joining it in the same style.
+				if err := writeDocument(cmd.OutOrStdout(), append(out, '\n'), docOne, docStyle{escapeHTML: true}); err != nil {
+					return err
+				}
 			} else {
 				renderOutboundHuman(cmd.OutOrStdout(), label, findings)
 			}

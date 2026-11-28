@@ -296,8 +296,10 @@ before arming. It reads `facilitator.mode` from the default branch's committed
 `.abcd/config.json` (as just fetched) and `~/.abcd.noindex/config.json`, never
 from the branch being landed, so a branch cannot choose its own gate. The
 value is `human` (a person facilitates; every fresh install's default) or
-`auto` (abcd does), and `human` from either file wins. A value that is neither
-is refused with exit 2, naming the file, and nothing is armed.
+`auto` (abcd does). The repository's committed value decides; only where it
+commits none does your own global setting, and with neither it is `human`. A
+value that is neither is refused with exit 2, naming the file, and nothing is
+armed.
 
 The pull request's author is read from the forge, with their permission on
 the repository. Write, Maintain and Admin are write access; Read and Triage,
@@ -307,6 +309,22 @@ someone with write access, approves the head commit itself (an earlier commit's 
 for nothing) and is not the author's own, or when the technical facilitator
 recorded it with `--approve` (below). Then:
 
+- **A pull request that changes the committed mode line** is armed in no
+  mode, whatever approvals and receipts it has: one whose head sets, alters
+  or removes `facilitator.mode` in `.abcd/config.json`, or leaves it
+  unreadable, against any of its merge bases with the default branch, or
+  whose merge into the default branch would leave that branch's line
+  changed. Unless the ruleset mirror at the default branch names a merge
+  queue that merges or squashes, so is one with any commit that touches
+  `.abcd/config.json` at all, since abcd does not judge what a rebase
+  replays and the forge may rebase through a queue the mirror does not name.
+  A merge commit that takes one of its parents' file, as merging the default
+  branch does, does not count; one that makes a file of its own does. The
+  note says you merge it on the forge's page. One where that cannot be read,
+  a merge that conflicts in the file included, is not armed either, nor, on
+  a re-arm, which does not read the mirror, one with a commit that touches
+  the file, nor any on a git older than 2.38, which computes the merge: the
+  note names the version it needs.
 - **An author whose role cannot be read** (the forge cannot be asked, or a
   custom role's base cannot be read) is unverified: nothing is armed,
   whatever approvals the pull request has, and the note says so.
@@ -323,6 +341,12 @@ recorded it with `--approve` (below). Then:
   then the note names the commit that has no recorded review pair. A delta
   review's receipt names the head only while its delta stands, and when it does
   not the note says why and that the head needs a full pair.
+- **Your own global `auto`** (the repository commits no mode) arms only a pull
+  request the forge account abcd runs as opened. Anyone else's is judged as
+  `human` judges it: it waits for an approval of its head, or for its author to
+  land it, and the note says whose it is. Where the forge cannot say which
+  account abcd runs as, nothing is armed without an approval. Where the
+  repository commits `auto`, a colleague's pull request is armed as above.
 
 abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the
@@ -671,11 +695,14 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `go run ./cmd/abcd ahoy install` in a source checkout.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain land` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain land` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd land [<branch>] [flags]`
   - An example call is `abcd land`.
+  - What usually follows:
+    - `abcd landings`, to see how the change landed once the queue merges it.
+    - `abcd reserve <record-id> --release`, to release the record's reservation once it merges.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

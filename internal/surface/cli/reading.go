@@ -143,7 +143,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				// its ingest commits the outcome, so the operator has to be told
 				// where the artefacts went.
 				if runs, ok := wideningRunsOf(err); ok && *asJSON {
-					_ = render(cmd.OutOrStdout(), true,
+					_ = renderRefused(cmd.OutOrStdout(), true,
 						struct {
 							WideningRuns []reading.WideningRun `json:"widening_runs"`
 						}{WideningRuns: runs}, func(io.Writer) {})
@@ -297,7 +297,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				res := plan.Result
 				if err != nil {
 					if res.HasDisclosure() {
-						_ = render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+						_ = renderRefused(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 							renderIngestResult(w, res)
 						})
 					}
@@ -331,7 +331,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				// type error (iss-2608311517509690). A refusal with nothing to
 				// disclose renders nothing, because there is no run to name.
 				if res.HasDisclosure() {
-					_ = render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+					_ = renderRefused(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 						renderIngestResult(w, res)
 					})
 				}
@@ -811,7 +811,7 @@ func runReadingDispatch(cmd *cobra.Command, rf *routeFlag, runID string, asJSON 
 	})
 	if err != nil {
 		if res.HasDisclosure() {
-			_ = render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderIngestResult(w, res) })
+			_ = renderRefused(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderIngestResult(w, res) })
 		}
 		return readingRefusal(verb, err)
 	}

@@ -345,6 +345,11 @@ type DrainOptions struct {
 	// The outage and origin stops end the drain as before. Held in the drive's
 	// memory alone, never written.
 	PassedLanes []string
+	// SetAside are the run ids among PassedLanes of lanes the drive set aside, since each
+	// waited the stuck bound's minutes on what the drive cannot end (terminal.blocked),
+	// rather than for its file's version: the move names them so, as lanes the drive
+	// tries again, not as lanes it may not save. Held in the drive's memory alone.
+	SetAside []string
 	// PassedLeads are the leads of bundles whose start was refused this run of
 	// a drive, each with why: every move after passes such a lead over before
 	// anything is pushed or asked over it, and forms no bundle with it, as the
@@ -1398,7 +1403,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return r, err
 		}
 		if passed := passedInProgress(st, d); len(passed) > 0 {
-			return finish(passedOnlyMove(&res, passed, "the cap is reached"))
+			return finish(passedOnlyMove(&res, passed, d.SetAside, "the cap is reached"))
 		}
 		st.Stopped, st.EndedAt = DrainStoppedCap, &now
 		res.Next = fmt.Sprintf("the cap is reached: --max %d, and the drain opened %d lane(s); it stops here. `abcd drain` again begins a new drain", st.Max, len(st.Lanes))
@@ -1920,7 +1925,7 @@ walk:
 		return finish(true)
 	}
 	if passed := passedInProgress(st, d); len(passed) > 0 {
-		return finish(passedOnlyMove(&res, passed, "nothing eligible is left"))
+		return finish(passedOnlyMove(&res, passed, d.SetAside, "nothing eligible is left"))
 	}
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
@@ -1946,15 +1951,29 @@ func admitDrainLane(repoRoot string, st DrainState, run State, rule drainrule.Ru
 // passedOnlyMove is a move whose only lanes left are the drive passed over: the drain
 // would have stopped, why, and stays open instead, so a later drive takes them up through
 // its own claim and judge; the move names each lane and writes the drain's state as any
-// move does.
-func passedOnlyMove(res *DrainResult, passed []DrainLane, why string) bool {
+// move does. A lane the drive set aside (setAside) is named as set aside, which the drive
+// tries again, and one passed over for its file's version as one it may not save.
+func passedOnlyMove(res *DrainResult, passed []DrainLane, setAside []string, why string) bool {
 	res.passedOnly = passed
-	names := make([]string, 0, len(passed))
+	var names, aside []string
 	for _, l := range passed {
-		names = append(names, fmt.Sprintf("%s's lane, run %s", l.Issue, l.RunID))
+		name := fmt.Sprintf("%s's lane, run %s", l.Issue, l.RunID)
+		if slices.Contains(setAside, l.RunID) {
+			aside = append(aside, name)
+		} else {
+			names = append(names, name)
+		}
 	}
-	res.Next = fmt.Sprintf("%s, and the only lanes left in progress are ones this drive passed over, since it may not save them: %s; the drain stays open, and a drive that may save them takes them up",
-		why, strings.Join(names, "; "))
+	var parts []string
+	if len(names) > 0 {
+		parts = append(parts, fmt.Sprintf("ones this drive passed over, since it may not save them: %s; a drive that may save them takes them up",
+			strings.Join(names, "; ")))
+	}
+	if len(aside) > 0 {
+		parts = append(parts, fmt.Sprintf("ones this drive set aside, each blocked past the stuck bound on what the drive cannot end: %s; the drive tries them again once an hour, and a later drive takes them up",
+			strings.Join(aside, "; ")))
+	}
+	res.Next = fmt.Sprintf("%s, and the only lanes left in progress are %s; the drain stays open", why, strings.Join(parts, "; and "))
 	return true
 }
 

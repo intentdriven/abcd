@@ -174,7 +174,7 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 				// A refusal after something landed discloses what landed, before it
 				// exits: the operator's handle on the partial state is the render.
 				if len(res.Landed()) > 0 {
-					_ = render(cmd.OutOrStdout(), *asJSON, jsonSafeIngest(res), func(w io.Writer) {
+					_ = renderRefused(cmd.OutOrStdout(), *asJSON, jsonSafeIngest(res), func(w io.Writer) {
 						renderScribeIngest(w, res)
 					})
 				}

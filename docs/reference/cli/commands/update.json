@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd update",
@@ -19,6 +19,12 @@
       "example": "abcd update --check",
       "subcommands": [
         "news"
+      ],
+      "next": [
+        {
+          "command": "abcd update news",
+          "when": "to see what changed since the update"
+        }
       ]
     },
     {
@@ -44,7 +50,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd update news"
+      "example": "abcd update news",
+      "next": [
+        {
+          "command": "abcd ahoy install",
+          "when": "when it offers setup that waits"
+        }
+      ]
     }
   ]
 }
