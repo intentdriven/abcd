@@ -60,6 +60,12 @@ type DrainParked struct {
 	Bundle []string `json:"bundle,omitempty"`
 	State  string   `json:"state"`
 	Note   string   `json:"note"`
+	// acted marks a Note that is the record's line of an act the move's watch
+	// made on the lane (watchParked): an arming made again, a queuing, a toggle,
+	// or an arming withdrawn at the merge gate's word. A drive says it once
+	// (terminal.sayParked), as it says a dropped lane's report, and never the
+	// listing's ordinary reading. It is not in the --json shape.
+	acted bool
 }
 
 // HandBackClosed is the kind a parked lane whose pull request was closed
@@ -402,10 +408,11 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 				// watched in the merge queue by the lane's own landing step
 				// (queue.go): queued, or reported dropped with the failed
 				// check (iss-2610090642376032).
-				note, dropped, done, err := watchParked(repoRoot, run.RunID, now, save)
+				w, err := watchParkedLane(repoRoot, run.RunID, now, save)
 				if err != nil {
 					return nil, nil, err
 				}
+				note, dropped, done := w.note, w.dropped, w.finished
 				if done {
 					// The pull request merged after the move's fetch, and
 					// the watch's own step finished the lane: it is named
@@ -418,7 +425,7 @@ func finishMerged(repoRoot string, lanes []DrainLane, now time.Time, o Options, 
 					p.State = ParkedDropped
 				}
 				if note != "" {
-					p.Note = note
+					p.Note, p.acted = note, w.acted
 				}
 			}
 			if p.State == ParkedClosed {
@@ -571,8 +578,24 @@ func outOfQueue(pr listedPR) bool {
 // file stands (mayWholeSave) is named in note. A wait, or a step that refused for
 // any other reason, leaves the listing's reading as it was.
 func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note string, dropped, finished bool, err error) {
+	w, err := watchParkedLane(repoRoot, runID, now, save)
+	return w.note, w.dropped, w.finished, err
+}
+
+// parkedWatch is what watchParkedLane read: watchParked's note, dropped and
+// finished, and acted, set when note is the record's line of an act the step
+// made (it wrote a line and neither finished the lane nor refused).
+type parkedWatch struct {
+	note                     string
+	dropped, acted, finished bool
+}
+
+// watchParkedLane is watchParked, saying too whether its note is an act's.
+func watchParkedLane(repoRoot, runID string, now time.Time, save saveFrame) (parkedWatch, error) {
+	var note string
+	var finished, acted bool
 	var release *handBackRelease
-	err = save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+	err := save(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		release = nil
 		i := parkedAtLand(*st)
 		if i < 0 {
@@ -590,8 +613,9 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 			return false, err
 		}
 		release = res.release
+		note, acted = "", false
 		if n := len(st.Record); n > logged {
-			note = st.Record[n-1].Note
+			note, acted = st.Record[n-1].Note, true
 		}
 		finished = st.Lanes[i].Stage == StageDone
 		return true, nil
@@ -599,16 +623,19 @@ func watchParked(repoRoot, runID string, now time.Time, save saveFrame) (note st
 	if r, ok := AsRefusal(err); ok {
 		switch {
 		case r.outOfQueue:
-			return fsutil.RedactHome(r.Reason + "; " + r.Remedy), true, false, nil
+			return parkedWatch{note: fsutil.RedactHome(r.Reason + "; " + r.Remedy), dropped: true}, nil
 		case r.leftAtVersion:
-			return fsutil.RedactHome(r.Reason + "; " + r.Remedy), false, false, nil
+			return parkedWatch{note: fsutil.RedactHome(r.Reason + "; " + r.Remedy)}, nil
 		}
-		return "", false, false, nil
+		return parkedWatch{}, nil
 	}
-	if err == nil {
-		note = release.said(note)
+	if err != nil {
+		return parkedWatch{}, err
 	}
-	return note, false, finished, err
+	// A step that handed the lane back says the release instead of its line,
+	// which is the hand-back's to say, not an act of the watch's.
+	said := release.said(note)
+	return parkedWatch{note: said, acted: acted && !finished && release == nil, finished: finished}, nil
 }
 
 // handBackClosed hands run's parked lane back as closed, its pull request
