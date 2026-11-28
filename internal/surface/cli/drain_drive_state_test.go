@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 )
 
 // The drive's state at the terminal (spc-2611141617199772 step 4): the loop hands each
@@ -106,5 +108,64 @@ func TestADriveEndNamesEachHoldWhereOnlySomeWereLeftToLapse(t *testing.T) {
 	}
 	if strings.Contains(out, loop.UnlessKeptTakenUp) || strings.Contains(out, "the driver's that holds the run") {
 		t.Fatalf("the end says the lane is left to lapse, or a driver's:\n%s", out)
+	}
+}
+
+// standDriveNow has the status surfaces compose the drive's line at at.
+func standDriveNow(t *testing.T, at time.Time) {
+	t.Helper()
+	old := driveNow
+	driveNow = func() time.Time { return at }
+	t.Cleanup(func() { driveNow = old })
+}
+
+// threeWay is the drive's line as each of the three places prints it for the one value
+// s, stored in the checkout at root and read back at the time it was written: the
+// drive's terminal, `abcd implement status` and the board's building line, each with
+// its own label taken off.
+func threeWay(t *testing.T, root string, s loop.DriveState) (terminal, status, boardLine string) {
+	t.Helper()
+	storeDriveState(t, root, s)
+	standDriveNow(t, s.Written)
+	show := driveStateLines(func(l string) { terminal = l })
+	show(s)
+	var out, errb strings.Builder
+	renderDriveShown(&out, driveShownIn(root, &errb))
+	status = strings.TrimSuffix(out.String(), "\n")
+	d := boardDrive(root, &errb)
+	if errb.Len() != 0 {
+		t.Fatalf("the stored value was not read: %s", errb.String())
+	}
+	for _, l := range board.Render(board.Input{Status: &statusblock.Block{}, Drive: d.line()}, board.Frame{View: board.Product, Form: board.Text, Width: 200, Rung: board.Mono}) {
+		if strings.HasPrefix(l, "● building: ") {
+			boardLine = l
+		}
+	}
+	return strings.TrimPrefix(terminal, "state: "), strings.TrimPrefix(status, "drive: "), strings.TrimPrefix(boardLine, "● building: drive ")
+}
+
+// The drive's terminal, `abcd implement status` and the board print the one line,
+// composed once from one stored value, byte for byte (criterion 6), in each state a
+// drive stores.
+func TestTheTerminalTheStatusAndTheBoardShowOneDriveLine(t *testing.T) {
+	root := managedCheckout(t)
+	self := thisProcess(t)
+	written := stateAt(90)
+	until := stateAt(120)
+	for _, s := range []loop.DriveState{
+		{State: loop.DriveWorking, Since: stateAt(84), On: "iss-1 at implement"},
+		{State: loop.DriveWaiting, Since: stateAt(60), Until: &until, On: "the pace window"},
+		{State: loop.DriveWaiting, Since: stateAt(41), On: "iss-1, which another driver holds", Do: "end process 42 (login)"},
+		{State: loop.DriveStalled, Since: stateT0, On: "3 lanes handed back in a row, stuck at validate"},
+		{State: loop.DriveStopped, Since: stateAt(88), On: "its end: until", Do: "run `abcd drain --drive` to go on"},
+	} {
+		s.Version, s.Process, s.Written, s.Next = loop.DriveStateVersion, self, written, written.Add(10*time.Minute)
+		terminal, status, boardLine := threeWay(t, root, s)
+		if terminal == "" || terminal != status || terminal != boardLine {
+			t.Fatalf("the three places differ for %s:\nterminal: %q\nstatus:   %q\nboard:    %q", s.State, terminal, status, boardLine)
+		}
+		if want := loop.DriveLine(s, written); terminal != want {
+			t.Fatalf("the line is %q, want %q", terminal, want)
+		}
 	}
 }

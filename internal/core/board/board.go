@@ -93,6 +93,14 @@ type Input struct {
 	// beside the machine layer. It is drawn as the facilitator: line just above
 	// the version line in both views and both forms; nil draws no line.
 	Merges *Merges
+	// Drive is the drive's state line as the front door composed it from the
+	// stored value (loop.DriveLine; spc-2611141617199772 step 5), "" where there
+	// is none to show. The product thinker's view draws it as its first building
+	// line, in place of "nothing right now" where nothing else is building, and
+	// the facilitator's as its drive: row. It is the line `abcd implement status`
+	// and the drive's own terminal print, so it is wrapped at the window and
+	// never cut short: its last part is the act open to a person.
+	Drive string
 }
 
 // Merges is facilitator.mode and the layer and origin that set it, or, when the
@@ -316,7 +324,9 @@ func product(in Input, f Frame) []string {
 	}
 
 	var out []string
-	if len(building) == 0 {
+	if in.Drive != "" {
+		out = append(out, driveLine(in.Drive, f, sym)...)
+	} else if len(building) == 0 {
 		out = append(out, item(sgr(f, 32, sym.building+" building:")+" nothing right now"))
 	}
 	for _, t := range building {
@@ -351,6 +361,30 @@ type entry struct {
 // line, a column longer, carries its own space).
 const labelWidth = 12
 
+// driveWord opens the drive's line on the product thinker's building line, so it
+// is told from an intent's title there.
+const driveWord = "drive "
+
+// driveLine is the product thinker's building line for the drive's state: the
+// line whole after its label, masked. In text it is wrapped at the window with a
+// hanging indent, the label coloured as every building line's is, since a line
+// cut short would lose the act it ends with.
+func driveLine(drive string, f Frame, sym symbols) []string {
+	label := sym.building + " building:"
+	text := label + " " + driveWord + termsafe.Sanitize(drive)
+	switch f.Form {
+	case Markdown:
+		return []string{"- " + text}
+	case Text:
+		lines := wrap(text, f.Width)
+		if rest, ok := strings.CutPrefix(lines[0], label); ok {
+			lines[0] = sgr(f, 32, label) + rest
+		}
+		return lines
+	}
+	return []string{text}
+}
+
 // facilitator is the full board below its label, in its own order: the
 // directory, each labelled row with its nested lines, then the status block,
 // each Now and Next row carrying its spec and a lane's in-flight mark.
@@ -367,6 +401,9 @@ func facilitator(in Input, f Frame) []string {
 		for _, it := range r.Items {
 			es = append(es, entry{2, termsafe.Sanitize(it)})
 		}
+	}
+	if in.Drive != "" {
+		es = append(es, entry{1, fmt.Sprintf("%-*s%s", labelWidth, "drive:", termsafe.Sanitize(in.Drive))})
 	}
 	if b := in.Status; b != nil {
 		es = append(es, entry{1, fmt.Sprintf("%-*sNow %d · Next %d · Later %d", labelWidth, "status:", len(b.Now), len(b.Next), len(b.Later))})

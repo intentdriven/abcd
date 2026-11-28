@@ -526,6 +526,41 @@ session finishes still reads as in progress, so it keeps the drain open until a 
 routes it. A later drive starts with an empty list, so its own claim and the same judge decide
 the lane again.
 
+**The drive's state, in one line** (itd-2611141610197753, spc-2611141617199772 steps 4 and
+5). The loop composes the drive's state itself, as one value (`loop.DriveState`,
+`drivestate.go`), and no surface reads it back out of a sentence: the state word, `working`,
+`waiting`, `stalled` or `stopped`; since when, which for a wait is when anything last moved;
+until when, only where the wait names an end (the pace window's next eligible time, a reset
+the provider names, and the hourly retry while every lane left is set aside); on what, the
+issue and its stage or the thing outside the drive; and the one act open to a person at a
+terminal, never a remedy written for a host session. A wait with no named end reads `stalled`
+once it has lasted `pace.stuck_minutes` since anything moved, whatever reasons the waits gave
+in between, and so does a run of `pace.stuck_refusals` lane hand-backs in a row that share a
+kind, a stage and a check; judgement, rule and reservation hand-backs neither count nor clear
+it, and a lane that reaches its pull request clears it. The drive keeps opening lanes either
+way. One function composes the line every surface shows (`loop.DriveLine`):
+`<state> <elapsed> · on <what> · you: <act>`, reading `nothing to do` while working or waiting
+and `needs a look` while stalled or stopped where no act is named. The drive writes the value
+whole, by rename, mode 0600, to `.abcd/.work.local/logs/drive-state.json` each time a field
+changes and at each renewal tick while an agent is in its call, with a version of its own, the
+drive's process id and start time, when it was written and when it will have written again,
+each word masked and the home redacted; it is not run state, and the next drive overwrites
+it. The drive's terminal prints `state: <line>` when the word, what it is on or the act
+changes. The board draws the line as its first building line, in place of "nothing right
+now" where nothing else is building, and as the facilitator's `drive:` row, and its
+machine-readable form carries the value and the line under `drive`; the implement verb's
+status render prints it as `drive: <line>` above the runs, for one run as for all, and
+under `drive` in its machine-readable form ([`27-implement.md`](27-implement.md)). Both read the file through the loop
+(`loop.ReadDriveState`, `drivestate_read.go`), which judges the recorded process as a run's
+driver is judged, by the machine's process table with the slack the record keeps: a process
+that is gone, or whose id is held by a process that started at another time, reads `stopped`,
+not heard from since the value was written, and never `working`, while a value the drive
+stored as `stopped` is its own last line and is kept. A record with no start, or a table that
+cannot be read, is judged by the time the drive said it would write again instead. A file that
+is not there, is not a regular file, cannot be read, states a newer version, or carries a
+control code in any word shows no line, and the surface says why on stderr; a drive writes
+every word masked, so a file holding a control code is not one it wrote.
+
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left
 as it stood, and the role is retried; it counts against its lane only if a probe answers.
