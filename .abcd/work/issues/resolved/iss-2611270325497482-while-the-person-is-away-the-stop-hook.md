@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/autonomy/forge.go"
 remedy: "Judge each check by its newest run per name and workflow (the latest startedAt), as the forge's merge gate does, and count a check as failing only when that run failed; add a test with a rollup that holds a failure followed by a success for the same check"
+resolution: "The away mode's stop check now judges each check in a pull request's rollup by its newest run per workflow and name (a commit status by its context), as the forge's merge gate does, so a failure rerun and passed no longer reads as failing; a run not started yet counts as the newest, and runs that cannot be ordered are all kept. TestChecksJudgeEachCheckByItsNewestRun holds it."
+impact: fix
 ---
 
 While the person is away, the stop hook reports a pull request as failing its checks after the failed check was rerun and passed. The forge's status rollup keeps both runs of a check, the superseded failure and the newer success, and the hook reads the failure. It then tells the session to fix checks that already pass, and every reply after that carries the false item. Seen on 27/11: an attribution check failed on a pull-request body, the body was edited, the rerun passed, and the hook went on naming the pull request as failing.
