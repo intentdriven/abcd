@@ -257,7 +257,7 @@ func (u *driveUpdate) take(ctx context.Context, tag string) {
 			_ = os.Remove(st.Path)
 		}
 	}()
-	args := driveReexecArgs(driveArgs(), u.p, from, tag)
+	args := driveReexecArgs(driveArgs(), u.p, u.f.until, from, tag)
 	if u.halted(ctx) {
 		return
 	}
@@ -401,10 +401,11 @@ func withoutFlag(args []string, flag string) []string {
 }
 
 // driveReexecArgs are what a drive re-executes itself with: its own arguments, this
-// move's flag in place of any earlier one, the yes it was given once, and the profile
-// it runs on by name, so a second directory appearing there since is no reason to stop.
-func driveReexecArgs(args []string, p runner.Profile, from, to string) []string {
-	kept := args
+// move's flag in place of any earlier one, the yes it was given once, the end its start
+// fixed (withUntil), and the profile it runs on by name, so a second directory
+// appearing there since is no reason to stop.
+func driveReexecArgs(args []string, p runner.Profile, end time.Time, from, to string) []string {
+	kept := withUntil(args, end)
 	for _, name := range driveStateHolds {
 		kept = withoutFlag(kept, name)
 	}
@@ -416,6 +417,18 @@ func driveReexecArgs(args []string, p runner.Profile, from, to string) []string 
 		out = append(out, "--profile", p.Name())
 	}
 	return out
+}
+
+// withUntil is args with the drive's end as their one --until, an RFC 3339 instant in
+// whole seconds in place of any --until the person typed, whether they typed one or the
+// default set it, so the process they start reads that end and no default, and nothing
+// read later moves it. A zero end, a resuming drive given no bound, leaves args as they
+// are.
+func withUntil(args []string, end time.Time) []string {
+	if end.IsZero() {
+		return args
+	}
+	return append(withoutFlag(args, "--until"), "--until", end.UTC().Format(time.RFC3339))
 }
 
 // driveStartRetries is what a resuming start waits before each further attempt.
@@ -718,7 +731,7 @@ func driveGoBack(w io.Writer, repoRoot string, f driveFlags, cause error) error 
 	say, _, closeLog := driveLog(repoRoot, w)
 	say(driveLine + to + " could not start: " + why + "; " + from + " is restored from the kept copy and the drive goes on with it, and " + to + " is not tried again in this run")
 	closeLog()
-	args := append(withoutFlag(driveArgs(), driveAfterUpdateFlag), driveUpdateRefusedFlag, to)
+	args := append(withUntil(withoutFlag(driveArgs(), driveAfterUpdateFlag), f.until), driveUpdateRefusedFlag, to)
 	err = driveCheckInstalled(target, digest)
 	if err == nil {
 		err = driveReexec(target, args, os.Environ())

@@ -1,0 +1,141 @@
+package cli
+
+// drain_drive_bound.go composes what a drive's start says about how it ends
+// (itd-2611251809580662 decisions 1, 6 and 9, spc-2611251810508418 step 3):
+// the end and its source, and the full plan's `ends`, `restart` and `holds`
+// lines, the restart line naming the one command that carries a drive on to
+// the same end, which loop.DriveResumeCommand composes. The end is fixed
+// once, before the consent, and every word here is built from
+// that instant, a source from a closed set and figures, so nothing a
+// repository's file or origin chose (a path, a branch name, an origin
+// string) reaches a line a person reads as a command.
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/layered"
+)
+
+// driveEndSource is what set a drive's end.
+type driveEndSource int
+
+const (
+	// driveEndDefault is abcd's own seven days.
+	driveEndDefault driveEndSource = iota
+	// driveEndRepository is the repository's drive.until_days.
+	driveEndRepository
+	// driveEndUntil is the person's --until.
+	driveEndUntil
+)
+
+// driveBound is a drive's end as its start fixed it: the instant, in UTC and
+// whole seconds so the printed command names exactly it; what set it; and the
+// default's days (0 for --until).
+type driveBound struct {
+	end    time.Time
+	source driveEndSource
+	days   int
+}
+
+// driveBoundFromDays is the end of a drive starting at now that runs the
+// days loop's drive_bound.go resolved: the repository's where its layer is the
+// repository's, else abcd's default.
+func driveBoundFromDays(now time.Time, d loop.PaceValue) driveBound {
+	source := driveEndDefault
+	if d.Layer == layered.Repo.String() {
+		source = driveEndRepository
+	}
+	return driveBound{
+		end:    now.Add(time.Duration(d.Value) * 24 * time.Hour).UTC().Truncate(time.Second),
+		source: source,
+		days:   d.Value,
+	}
+}
+
+// driveBoundUntil is the end the person gave with --until.
+func driveBoundUntil(at time.Time) driveBound {
+	return driveBound{end: at.UTC().Truncate(time.Second), source: driveEndUntil}
+}
+
+// instant is the end as the start shows it and the command names it.
+func (b driveBound) instant() string {
+	return b.end.Format(time.RFC3339)
+}
+
+// sourceWord is the end's source in one word, for the start's `ends` line.
+func (b driveBound) sourceWord() string {
+	switch b.source {
+	case driveEndRepository:
+		return "repository"
+	case driveEndUntil:
+		return "--until"
+	}
+	return "default"
+}
+
+// sourceInFull is the end's source in full, for the full plan's `ends` line.
+func (b driveBound) sourceInFull() string {
+	switch b.source {
+	case driveEndRepository:
+		return fmt.Sprintf("the repository's default of %s", countOf(b.days, "day"))
+	case driveEndUntil:
+		return "--until"
+	}
+	return "seven days on, abcd's default"
+}
+
+// endsLine is the start's `ends` line after its label: the end with its
+// source in one word.
+func (b driveBound) endsLine() string {
+	return fmt.Sprintf("at %s (%s)", b.instant(), b.sourceWord())
+}
+
+// endsPlanLine is the full plan's `ends` line after its label: the end with
+// its source in full.
+func (b driveBound) endsPlanLine() string {
+	return fmt.Sprintf("at %s, %s; waits through limits and outages until then", b.instant(), b.sourceInFull())
+}
+
+// restartLine is the full plan's `restart` line after its label: what ends a
+// drive that nothing starts again, and the command that carries it on.
+func (b driveBound) restartLine(profile string) string {
+	return "a reboot, a logout or a crash ends the drive, and nothing starts it again; to carry on to the same end, type " +
+		loop.DriveResumeCommand(b.end, profile)
+}
+
+// driveHoldsLine is the full plan's `holds` line after its label: the one
+// lane a drive holds in work, whatever the repository's drain.in_work_max,
+// and one person's ceiling on live reservations with the layer that set it
+// (claim.MaxLiveFor), named as what this checkout last fetched, or, with none
+// read yet, that the first move reads it.
+func driveHoldsLine(ceiling int, layer string) string {
+	if ceiling < 1 {
+		// No act here has asked origin for the ceiling yet (claim.MaxLiveFor).
+		return "1 lane in work; the reservations per person are as the first move reads them at origin"
+	}
+	line := fmt.Sprintf("1 lane in work; %s per person", countOf(ceiling, "reservation"))
+	if w := ceilingLayerWord(layer); w != "" {
+		line += " (" + w + ")"
+	}
+	// The figure is read at the ref this checkout last fetched of origin's default
+	// branch, which can lag origin, so it is named as that; each act that adds a
+	// reservation asks origin itself (dcn-2611280516141989).
+	return line + ", as this checkout last fetched them"
+}
+
+// ceilingLayerWord is the ceiling's layer in a word, "" for one claim does
+// not name.
+func ceilingLayerWord(layer string) string {
+	switch layer {
+	case claim.LimitRepository:
+		return "repository"
+	case claim.LimitMachine:
+		return "this machine"
+	case claim.LimitBundled:
+		return "default"
+	}
+	return ""
+}

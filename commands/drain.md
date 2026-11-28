@@ -247,16 +247,38 @@ session and on a build that never self-updates. `--after-update` is honoured onl
 release the running build claims. An attempt after a failed one proves itself, and the kept
 copy is verified before it is restored and proves itself in one live launch.
 
-**The bound.** With no flag each wait has an eight-hour limit: eight hours of runner
-failures, eight hours with nothing moving, a rate limit that outlasts eight hours, or
-origin unreadable through its schedule each end the run. `--until <date>` replaces
-those with one bound of the person's own, either a date, read as the end of that day
-on this machine's clock, or an RFC 3339 instant: the yes names it, and at that time
-the run ends with the lane on its branch and its reservation released, and exits 0,
+**The bound.** Every drive a person starts has one end time, fixed before the yes.
+With no flag it is seven days on, or the whole number of days from 1 to 31 that
+`drive.until_days` sets in the repository's `.abcd/config.json`, read at the commit
+origin names as its default branch's tip, never from the working tree; the machine's
+`config.json` does not hold it, and a value outside 1 to 31, or one in the machine's
+file, refuses the start naming the file. Where no repository figure can be read (no
+remote named `origin`, origin cannot be asked, or it names no default branch) the
+seven days apply, and a `default:` line before the question, and the log, say why.
+`--until <date>` sets an end of the person's own instead, held to no default and not
+to 31 days: either a date, read as the end of that day on this machine's clock, or an
+RFC 3339 instant. The yes names the end on its `bound:` line with its source, at that
+time the run ends with the lane on its branch and its reservation released, and exits 0,
 since that is what was asked. An agent in a call finishes that call first, and
-`abcd drain --drive`, on the same profile, takes the lane up later. A
-long unattended run needs `--until`, and `--max` too, since the cap stays eight
-lanes unless it says otherwise.
+`abcd drain --drive`, on the same profile, takes the lane up later. A long run needs
+`--max` too, since the cap stays eight lanes unless it says otherwise.
+
+**Carrying on.** Nothing starts a drive again after a reboot, a logout or a crash. The
+start's `restart:` line says so and names the one command that carries the drive on
+to the same end, `abcd drain --drive --until <the end as an RFC 3339 instant>`, with
+`--profile <name>` when one was typed, and after the yes the drive prints that command
+once more. Its `holds:` line names the one lane a drive holds in work and one person's
+ceiling on reservations, with the layer that set it, as this checkout last fetched it from
+origin: each act that adds a reservation asks origin itself. A first interrupt while
+the start reads origin for the default, or anywhere before its question, ends the start
+with nothing started, exit 130, whatever `--yes` says. The command is an ordinary start:
+it asks its one question and ends at the time it names; an end already past is refused
+as any `--until` is. It is also the end's `to resume:` line, while the end is still
+ahead. The whole plan the start showed heads the drive's log, `--yes` included. A
+drive's own re-execution onto a new release, and the way back to the kept copy, pass
+the end as an explicit `--until`, so a resuming start reads no default and nothing read
+later moves its end; one given no `--until`, from a release before this, runs with no
+bound and keeps the eight-hour endings below.
 
 The bound is a time, not a limit on what the run spends: the yes's estimate is what
 the work costs if nothing fails, and retries and probes add to it. Under a bound
@@ -266,8 +288,7 @@ nothing but the bound, the cap, an empty ledger or a stop ends the run:
   first move is no failed check, nor is a launch that came to no verdict on any check.
   Each waits, on the schedule a limit or an outage does, with the settings checked
   before each probe, and the check runs again, so a restart during either picks the
-  run up. Only a verdict, or no harness to run, is refused then. With no `--until` the
-  drive refuses either way, naming which, a limit with exit 3.
+  run up. Only a verdict, or no harness to run, is refused then.
 - **A limit with a reset.** No agent starts, the judge included, until the time the
   harness named, however far off. A wait counts both the time slept and the wall
   clock, so a machine that sleeps through part of it wakes at the right time and a
@@ -377,7 +398,7 @@ lane goes back as stuck, as it does when its reservation was released during the
 A judge's hold is the one thing left to lapse in a wait that long, unless a load-gate waiter in this copy renews it: the next move drops the
 request and asks again, after the drain's other eligible work.
 
-With no `--until` no probe runs: the lane's own launch finds out, as the yes said.
+Every drive a person starts hands the loop its probe, since every one has an end.
 
 The first limit a run meets leaves `drive-limit-<time>.jsonl` under
 `.abcd/.work.local/logs/`, and the first of each other kind of failure that may be one

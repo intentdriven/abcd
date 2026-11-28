@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -410,7 +411,8 @@ func TestAResumeCommandNamesTheProfileThatWasNamed(t *testing.T) {
 	if code := Run([]string{"drain", "--drive", "--yes", "--profile", "beta"}, &out, &errb); code != 3 {
 		t.Fatalf("a stop exits 3, got %d:\n%s%s", code, out.String(), errb.String())
 	}
-	if want := "to resume: abcd drain --drive --profile beta"; !strings.Contains(out.String(), want) {
+	// The command carries the drive on to the end its start fixed (TestThePrintedCommandCarriesOnToTheFirstEndTime).
+	if want := regexp.MustCompile(`to resume: abcd drain --drive --until \S+Z --profile beta\n`); !want.MatchString(out.String()) {
 		t.Fatalf("the end does not say %q:\n%s", want, out.String())
 	}
 }
