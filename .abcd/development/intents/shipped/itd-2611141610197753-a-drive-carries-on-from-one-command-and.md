@@ -22,7 +22,7 @@ production_mode: hand-written
 
 > "I pressed Ctrl-C, rebuilt, and typed the same command the next morning. It took up the three lanes it had left and said so. I did not have to learn what a take-over is." — Iris, a product thinker (they/them)
 
-> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on an outage, the runner has not started. I no longer read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
+> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on an outage, the runner has not started. I do not read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
 
 ## Why This Matters
 
@@ -191,7 +191,153 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: INGESTED receipt=rcp-da2f8a9cec53 -->
+Fidelity review — receipt rcp-da2f8a9cec53 (verifier intent-auditor claude-fable-5-2).
+
+Provenance: intent-auditor@claude-fable-5-2 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:6437f40245447b83f983e70e096a081b8c136aeb40244eefedbf445d170fefec
+Input attestations: diff:origin/main...f185082fa73bdf9c74a0f620563948c570976731 (spec step 5)@sha256:adbe601b4676a7e4e7b287eb928b6a3bb103767182d4868dee1a548364d4d35f; commit:f185082fa73bdf9c74a0f620563948c570976731 (tree read for steps 1 to 4, on origin/main 2de8cb51548a4bcc058a54eeeb847a48b8d68f13)@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 4 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: The claim takes a run its own terminal took over and a drive's start from that terminal lands three lanes with no other command; with a helper beside the drive or an unreadable marker the run is left and the refusal names the act (end the process, close the terminal, remove or repair the file), the claim unwidened.
+  evidence: internal/core/implement/loop/control_terminal_test.go:101 — "func TestADriveTakesARunItsOwnTerminalTookOver(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:234 — "func TestADrivesStartFromItsOwnTerminalLandsThreeLanes(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:494 — "func TestARunLeftForAProcessBesideTheDriveNamesTheAct(t *testing.T) {"
+  evidence: internal/core/implement/loop/control_terminal_test.go:569 — "func TestADriveWaitsWhereASessionMarkerCannotBeRead(t *testing.T) {"
+  evidence: internal/core/implement/loop/control.go:449 — "end process %d (%s), and this drive's next look takes the run where nothing else runs beneath it; or close the terminal the run was taken over from"
+  evidence: internal/core/implement/loop/control.go:434 — "remove or repair each file in %s that cannot be read as a session marker, %s first"
+- ac-2 — MET_WITH_CONCERNS: takeEarlier takes interrupted runs at the start, settled or unsettled, at the earlier schema version, parked on a pull request, and with the drain replaced, each asserted to name no typed take-over. Concern: the start does not take EVERY interrupted run in the checkout as the second clause says: a run that builds an intent and a run naming no driver with no sign its session ended are left, and the lines for them name other commands (`abcd implement resume --take`, `abcd implement step --run`). The earlier version tested is SchemaVersion-1, not the lab's 25.
+  evidence: internal/core/implement/loop/terminal_claim_test.go:251 — "func TestAnUnsettledSignalMarkOnAnEarlierVersionIsSettledAndTaken(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:293 — "func TestARunParkedUnderASignalIsTakenAndFinishedOnceMerged(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:371 — "func TestARunWhoseDrainWasReplacedIsTakenWithTheRest(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal.go:2805 — "func (t *terminal) takeEarlier(ctx context.Context) (string, error) {"
+  evidence: internal/core/implement/loop/terminal.go:2876 — "builds an intent, which a drive does not take up: `abcd implement resume --take %s` takes it over"
+  evidence: internal/core/implement/loop/terminal.go:3027 — "names no driver and carries no mark, so whether the session that let it go has ended cannot be told, and it is left as it stands; `abcd implement step --run %s` claims it and steps it on"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:732 — "func TestAnIntentBuildIsNotTakenAtTheStart(t *testing.T) {"
+- ac-3 — MET: A run whose live driver is another terminal or a host session is not taken, the start names the holding process and lands the other lanes; a person's stop that stands is left and named, and once lifted the next start takes the run up and reserves it again.
+  evidence: internal/core/implement/loop/terminal_claim_test.go:396 — "func TestAHaltedRunWhoseLiveDriverIsInAnotherTerminalIsLeftAndNamed(t *testing.T) {"
+  evidence: internal/core/implement/loop/control_terminal_test.go:140 — "func TestADriveUnderASessionDoesNotTakeTheRun(t *testing.T) {"
+  evidence: internal/core/implement/loop/control_terminal_test.go:219 — "func TestADriveContendsWhereItsTerminalIsNotTheDriver(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:351 — "func TestAPersonsStopThatStandsIsLeftAndNamed(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:327 — "func TestALiftedPersonsStopIsTakenUp(t *testing.T) {"
+- ac-4 — MET_WITH_CONCERNS: blocked() sets a lane aside at pace.stuck_minutes with its reason, the other lanes land, the lane is tried again once they are done, and with every lane left set aside the drive waits and retries hourly to its bound. Concern: the reservation is NOT left to lapse for every set-aside lane as the criterion says; a lane set aside because a live driver holds its run keeps its passive renewals (dcn-2611270753395749, recorded by the building run, not a product-thinker ruling amending decision 4).
+  evidence: internal/core/implement/loop/terminal.go:3147 — "func (t *terminal) blocked(runID, site, why string) bool {"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:118 — "func TestARunWithALiveDriverInAnotherTerminalIsSetAside(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:197 — "func TestABlockThatClearsJustAfterTheSetAsideLands(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:418 — "func TestADrainWithACapOfOneWaitsOnItsSetAsideLane(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal.go:151 — "const terminalSetAsideRetry = time.Hour"
+  evidence: internal/core/implement/loop/terminal.go:3351 — "func (t *terminal) awaitSetAside(ctx context.Context) string {"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:147 — "a lane a live driver holds is left to lapse: set aside %v, note %v, LeftToLapse %v, renewed by implement status %v"
+  evidence: .abcd/work/decisions/dcn-2611270753395749-a-lane-a-drive-sets-aside-because-a-live.md:6 — "keeps its reservation's passive renewals"
+- ac-5 — MET: The landing's lane-less missing-record refusal is marked recordAbsent and routed to blocked(), so the lane is set aside at the bound under --until and with none, stays in progress (not handed back), and the other lanes land; a review-set or configuration refusal that names no lane is logged on no lane and sets nothing aside.
+  evidence: internal/core/implement/loop/terminal.go:2354 — "if r.recordAbsent && t.blocked(runID, blockRecord, r.Reason) {"
+  evidence: internal/core/implement/loop/reservation.go:1466 — "rf.recordAbsent = true"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:325 — "func TestTheLandingsMissingRecordIsSetAside(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:456 — "func TestAMachineRefusalThatNamesNoLaneSetsNothingAside(t *testing.T) {"
+- ac-6 — MET_WITH_CONCERNS: DriveLine composes `<state> <elapsed> · on <what> · you: <act>` once from the stored DriveState, and the terminal's state: line, `abcd implement status` and the board's facilitator view and --json are asserted byte for byte equal. Concern: the bare board, the default product view, shows only the state word and its until (`building: drive waiting`), with no since, no on-what and no act, so a person reading the board without `--view facilitator` does not see the line the criterion promises (dcn-2611280725169564, recorded by the building run).
+  evidence: internal/core/implement/loop/drivestate.go:190 — "func DriveLine(s DriveState, now time.Time) string {"
+  evidence: internal/surface/cli/drain_drive_state_test.go:152 — "func TestTheTerminalTheStatusAndTheBoardShowOneDriveLine(t *testing.T) {"
+  evidence: internal/surface/cli/drain_drive_state_test.go:190 — "func TestTheStatusCommandAndTheBareBoardPrintTheDrivesLine(t *testing.T) {"
+  evidence: internal/surface/cli/drain_drive_state_test.go:215 — "the product view does not show the drive's word alone"
+  evidence: internal/core/board/board.go:378 — "func driveLine(d *Drive, f Frame, sym symbols) string {"
+  evidence: .abcd/work/decisions/dcn-2611280725169564-the-board-s-product-view-shows-a-drive-s.md:6 — "The board's product view shows a drive's state as its word and its until alone"
+- ac-7 — MET_WITH_CONCERNS: ReadDriveState judges the recorded process by id and start time against the process table and a gone drive reads `stopped ... not heard from since <written>`, never working, on both status surfaces. Concern: where the process table cannot be read or the record names no start, the reader falls back to the drive's own next-write time, so a dead drive still reads as stored (working included) until that time passes; a far-future next write is taken at its word (dcn-2611280815384891).
+  evidence: internal/core/implement/loop/drivestate_read.go:69 — "if s.State != DriveStopped && driveGone(s.Process, s.Next, now) {"
+  evidence: internal/core/implement/loop/drivestate_read_test.go:82 — "func TestAGoneDriveReadsStoppedNeverWorking(t *testing.T) {"
+  evidence: internal/surface/cli/board_drive_test.go:81 — "func TestTheBoardReadsAGoneDriveAsStopped(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_read.go:127 — "return next.IsZero() || now.After(next)"
+  evidence: internal/core/implement/loop/drivestate_read_test.go:134 — "func TestADriveThatCannotBeJudgedByItsProcessReadsByItsNextWrite(t *testing.T) {"
+  evidence: .abcd/work/decisions/dcn-2611280815384891-a-drive-s-state-reader-takes-the-stored.md:6 — "a record with no process start and a far-future next write reads working until that time"
+- ac-8 — MET: stallWord reads waiting before a named end and stalled once the stuck bound has passed since the wait's start, whatever the reasons; since survives alternating reasons; an outage and a limit with no reset carry no until and read stalled past the bound; the hourly set-aside retry is a named end and reads waiting however long.
+  evidence: internal/core/implement/loop/drivestate.go:157 — "func stallWord(start, until time.Time, bound time.Duration, now time.Time) string {"
+  evidence: internal/core/implement/loop/drivestate_test.go:67 — "func TestADriveSinceSurvivesAlternatingReasons(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_test.go:46 — "func TestADriveWaitIsNeverStalledBeforeItsNamedEnd(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_test.go:424 — "func TestAnOutageReadsStalledFromItsFirstFailure(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_test.go:479 — "func TestARateLimitSetsAnUntilOnlyWhereItNamesAReset(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_test.go:570 — "func TestEveryLaneSetAsideWaitsUntilTheRetry(t *testing.T) {"
+- ac-9 — MET: handBackStreak counts lane hand-backs sharing kind, stage and check; at pace.stuck_refusals (three bundled) the line reads stalled since the first, on `3 lanes handed back in a row, stuck at validate (lint)`; judgement, rule and reservation hand-backs neither count nor clear, a landed lane or another key clears; the streak only overlays the displayed state, so the drive keeps opening lanes.
+  evidence: internal/core/implement/loop/drivestate_test.go:240 — "func TestTheHandBackStreakReadsStalled(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_test.go:591 — "func TestThreeLaneHandBacksInARowReadStalled(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate.go:357 — "func (s handBackStreak) over(st DriveState, bound int) DriveState {"
+  evidence: internal/core/implement/loop/drivestate.go:334 — "func (s handBackStreak) stalled(bound int) bool {"
+- ac-10 — MET: An interrupt applies the stop (mark, halted) to a run the drive drives, at the earlier version and at this one; a run it could not claim gets no mark and keeps its reservation, every member's included, with the lapse time said, and the next start reads it as reserved.
+  evidence: internal/core/implement/loop/terminal_stop_test.go:606 — "func TestAnInterruptAppliesTheStopToAnEarlierVersionsRunItsTerminalDrove(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_stop_test.go:633 — "func TestAnInterruptKeepsTheHoldOfARunItCouldNotClaim(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_stop_test.go:672 — "func TestAnInterruptKeepsEveryMembersHold(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_stop_test.go:698 — "func TestAnInterruptAtThisVersionIsUnchanged(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal.go:4011 — "func (t *terminal) keepUnstopped(runID string) bool {"
+
+Gap audit:
+- honoured:
+  - After an interrupt, with or without a rebuild, the same command carries on with the lanes its drain lists and nothing else is typed for them.
+    evidence: internal/core/implement/loop/terminal_claim_test.go:234 — "func TestADrivesStartFromItsOwnTerminalLandsThreeLanes(t *testing.T) {"
+    evidence: internal/core/implement/loop/terminal_claim_test.go:251 — "func TestAnUnsettledSignalMarkOnAnEarlierVersionIsSettledAndTaken(t *testing.T) {"
+  - A lane the drive cannot take is set aside with its reason, and the drive opens the next one.
+    evidence: internal/core/implement/loop/terminal.go:3147 — "func (t *terminal) blocked(runID, site, why string) bool {"
+    evidence: internal/core/implement/loop/terminal_setaside_test.go:325 — "func TestTheLandingsMissingRecordIsSetAside(t *testing.T) {"
+  - One line says working, waiting, stalled or stopped, since when, on what, and the one act or nothing to do; the terminal and `abcd implement status` show the same line.
+    evidence: internal/core/implement/loop/drivestate.go:190 — "func DriveLine(s DriveState, now time.Time) string {"
+    evidence: internal/surface/cli/drain_drive_state_test.go:152 — "func TestTheTerminalTheStatusAndTheBoardShowOneDriveLine(t *testing.T) {"
+  - When every lane left is set aside the drive does not end; it retries hourly and reads waiting.
+    evidence: internal/core/implement/loop/terminal.go:3351 — "func (t *terminal) awaitSetAside(ctx context.Context) string {"
+    evidence: internal/core/implement/loop/drivestate_test.go:570 — "func TestEveryLaneSetAsideWaitsUntilTheRetry(t *testing.T) {"
+  - Where output is not a terminal, a `state:` line is printed each time the state changes.
+    evidence: internal/surface/cli/drain_drive.go:912 — "say("state: " + loop.DriveLine(s, s.Written))"
+    evidence: internal/surface/cli/drain_drive_state_test.go:55 — "func TestADriveStateLineIsPrintedOnAChangeAndNotOtherwise(t *testing.T) {"
+  - An interrupt leaves every lane the drive held marked or reserved, at any schema version the build reads.
+    evidence: internal/core/implement/loop/terminal_stop_test.go:633 — "func TestAnInterruptKeepsTheHoldOfARunItCouldNotClaim(t *testing.T) {"
+- diverged:
+  - The board shows the same line: delivered in the facilitator view and --json only; the default product view shows the state word and its until alone.
+    evidence: internal/core/board/board.go:378 — "func driveLine(d *Drive, f Frame, sym symbols) string {"
+    evidence: commands/drain.md:181 — "the product thinker's view shows only the state and when its wait ends"
+  - A set-aside lane's reservation is left to lapse: delivered only for a hold no one works; a lane a live driver holds keeps its renewals.
+    evidence: internal/core/implement/loop/terminal.go:3203 — "func (t *terminal) setLaneAside(s SetAsideLane, again bool) {"
+    evidence: .abcd/work/decisions/dcn-2611270753395749-a-lane-a-drive-sets-aside-because-a-live.md:6 — "Only a hold no one works is left to lapse"
+  - The same command carries on with every run the interrupt left in the checkout: delivered for issue runs; an intent's build and a driverless run with no sign its session ended are left, and their lines name another command.
+    evidence: internal/core/implement/loop/terminal.go:2876 — "`abcd implement resume --take %s` takes it over"
+    evidence: internal/core/implement/loop/terminal.go:3027 — "`abcd implement step --run %s` claims it and steps it on"
+  - A drive that ended without a last line never reads working: delivered where the process table can be read; otherwise the reader trusts the drive's next-write time.
+    evidence: internal/core/implement/loop/drivestate_read.go:127 — "return next.IsZero() || now.After(next)"
+  - The one new stored thing is the drive's state: the delivery also stores a left-to-lapse note per reservation.
+    evidence: internal/core/claim/renewdue.go:203 — "func LeaveToLapse(root, id, commit string) error {"
+- missing:
+  - Evidence for a closed terminal, a reboot and a run file left by a real older build: no delivered test covers them, and the live proof is still open.
+    evidence: .abcd/development/intents/shipped/itd-2611141610197753-a-drive-carries-on-from-one-command-and.md:77 — "A closed terminal, a kill, a reboot and a file left by a real older build were not probed"
+  - A lane left for an unreadable process table being set aside at the bound: no test in the set-aside suite exercises it.
+    evidence: internal/core/implement/loop/terminal_setaside_test.go:118 — "func TestARunWithALiveDriverInAnotherTerminalIsSetAside(t *testing.T) {"
+
+Scope-condition dispositions:
+- cond-2611141617190715 — narrowed: No command or flag was added by step 5 and none by the step commits, and nothing stored must be cleared by a person; but the drive's state is no longer the one new stored thing: a left-to-lapse note per reservation is also stored in the checkout, ended by the next reservation pushed for the id, and lines for runs outside the take rules name existing commands.
+  narrowing: Holds as no new command, no flag to remember and no stored state a person must clear; does not hold as 'the one new stored thing', since the delivery also stores left-to-lapse notes beside the drive's state.
+  evidence: internal/core/claim/renewdue.go:203 — "func LeaveToLapse(root, id, commit string) error {"
+  evidence: internal/core/claim/renewdue.go:191 — "const lapseRelDir = stateRelDir + "/lapse""
+  evidence: internal/core/implement/loop/drivestate.go:43 — "const DriveStateRel = driveStateDir + "/drive-state.json""
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:324 — "nothing is left for a person to clear"
+- cond-2611141617198456 — survived: The state is one file in the drive's own checkout's local tier, read by status surfaces run in that checkout, and one drive holds a checkout at a time.
+  evidence: internal/core/implement/loop/drivestate.go:47 — "const driveStateDir = ".abcd/.work.local/logs""
+  evidence: internal/core/implement/loop/drivestate_read.go:48 — "func ReadDriveState(repoRoot string, now time.Time) (DriveState, error) {"
+  evidence: commands/drain.md:97 — "One drive holds a checkout at a time"
+  evidence: internal/surface/cli/board_drive_test.go:190 — "func TestTheBoardReadsNoDriveOutsideAManagedCheckout(t *testing.T) {"
+- cond-2611141617198101 — survived: Runs at the version before this build's are read, claimed and stopped by the delivered tests, and a file stating a newer version is refused by the read before any decode or claim.
+  evidence: internal/core/implement/loop/state.go:2120 — "if err == nil && peek.SchemaVersion > SchemaVersion {"
+  evidence: internal/core/implement/loop/state_text_test.go:23 — "const schemaVersionPrevious = SchemaVersion - 1"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:251 — "func TestAnUnsettledSignalMarkOnAnEarlierVersionIsSettledAndTaken(t *testing.T) {"
+- cond-2611141617194898 — narrowed: With an unreadable process table the start leaves the run, names why and lands the other lanes; no delivered test sets such a lane aside at the bound, and the state reader, a new consumer of the table, falls back to the next-write time instead.
+  narrowing: Shown for the start leaving the run and naming the process table; the set-aside at the bound under an unreadable table is exercised by no test, and the status reader under an unreadable table judges by the drive's next-write time.
+  evidence: internal/core/implement/loop/terminal_claim_test.go:413 — "func TestAnUnreadableProcessTableLeavesTheRun(t *testing.T) {"
+  evidence: internal/core/implement/loop/drivestate_read.go:119 — "that cannot be read, falls back to next"
+- cond-2611141617192337 — narrowed: Both starts the lab did not build are built and tested (a lifted stop's run taken up, a replaced drain's run taken with the rest), and a stop that stands is left. But the start does not take every interrupted run in the checkout: intent builds and driverless runs with no sign their session ended are left and named. A closed terminal, a reboot and a file from a real older build remain unprobed.
+  narrowing: A start takes every interrupted ISSUE run whose driver is gone, is the drive's own terminal, or shows a sign its session ended; an intent's build and a driverless run with no settled mark or lapsed reservation are left with another command named.
+  evidence: internal/core/implement/loop/terminal_claim_test.go:327 — "func TestALiftedPersonsStopIsTakenUp(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:371 — "func TestARunWhoseDrainWasReplacedIsTakenWithTheRest(t *testing.T) {"
+  evidence: internal/core/implement/loop/terminal.go:2876 — "builds an intent, which a drive does not take up"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:588 — "func TestADriverlessRunWithAnUnsettledMarkIsLeft(t *testing.T) {"
+- cond-2611141617198387 — survived: Every delivered proof still runs on a fixture clock with a stand-in process table and stand-in stages; no figure from a live drive was added, and the live-proof intent is still planned.
+  evidence: internal/core/implement/loop/terminal_setaside_test.go:333 — "o.Until = w.clock.t.Add(3 * time.Hour)"
+  evidence: internal/core/implement/loop/terminal_claim_test.go:398 — "claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimOtherLogin, claimOtherShell)"
+  evidence: .abcd/development/intents/planned/itd-2610222215485265-abcd-drain-run-from-a-plain-terminal.md:1 — "itd-2610222215485265 is still under planned/"
+<!-- abcd-review-end receipt=rcp-da2f8a9cec53 -->
 
 ## Grounds
 

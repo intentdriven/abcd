@@ -167,6 +167,24 @@ waiter or `abcd implement status` renewing it, except where a live driver holds 
 renewals keep it. The end names each lane set aside with its wait and reason, and `--json`
 carries `set_aside` and `left_to_lapse`.
 
+**The drive's state, in one line.** One line says how the drive stands:
+`<state> <elapsed> · on <what> · you: <act>`. The state is `working`, `waiting`, `stalled`
+or `stopped`; the time is since anything last moved; on what is the issue and its stage, or
+the thing outside the drive it waits on; and the act is the one thing a person at a terminal
+can do, or `nothing to do` while it works or waits and `needs a look` once it is stalled or
+stopped. A wait with no named end turns `stalled` after `pace.stuck_minutes` with nothing
+moving, and so does a run of `pace.stuck_refusals` lanes handed back in a row the same way;
+the drive goes on opening lanes either way. The drive prints `state: <line>` when the state,
+what it is on or the act changes, and keeps the value in
+`.abcd/.work.local/logs/drive-state.json`. The board (`/abcd:abcd`) shows the same line in
+its facilitator view and its `--json`, and `abcd implement status` above the runs, with
+`--run` too; the product thinker's view shows only the state and when its wait ends, as
+`building: drive waiting until 14:00`, with no record id or command. Each reads that file,
+and a drive whose process is gone reads `stopped`, not heard from since its last write,
+never `working`. With no file there, as in a checkout no drive has run in, they show no
+line and say nothing; a file that cannot be read, comes from a newer abcd or holds a
+control code shows no line either, and they say why on stderr.
+
 **A new release during the run.** The yes covers one more thing, and the question says so
 on a line of its own: about once an hour, at a lane boundary and never during a stage, the
 drive asks the release origin for its latest release. A lane still in progress after a refused

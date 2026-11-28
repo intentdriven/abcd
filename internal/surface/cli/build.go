@@ -759,6 +759,10 @@ type implementStatusRuns struct {
 	// OutageError names why the outage record could not be read, when it
 	// could not: the read-only status renders the runs regardless.
 	OutageError string `json:"outage_error,omitempty"`
+	// Drive is the drive's state in this checkout as stored and judged, with the
+	// line the drive's terminal and the board show (spc-2611141617199772 step 5);
+	// omitted where there is no line to show, which is said on stderr.
+	Drive *driveShown `json:"drive,omitempty"`
 }
 
 // renderStatusOutage renders the outage in force above the runs, as
@@ -819,6 +823,11 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			"run record. It renews no issue run whose lane is parked at land, which the\n" +
 			"drain renews, nor one whose lane was handed back, whose hand-back released\n" +
 			"its reservation; it writes nothing else and creates nothing.\n" +
+			"Above the runs, --run included, it prints the drive's state as one line\n" +
+			"(drive: <line>), the line the drive's terminal and the board show, read from\n" +
+			"the state a drive stores in this checkout: a drive whose process is gone reads\n" +
+			"stopped. With no state file it says nothing; a file that cannot be read, is\n" +
+			"newer or holds a control code shows no line, and it says why on stderr.\n" +
 			"Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -851,6 +860,9 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				cur, outageErr = nil, fsutil.RedactHome(err.Error())
 			}
+			// The drive's state is read after the runs, so a refusal above prints
+			// nothing about it; a file there that shows no line is said on stderr.
+			drive := driveShownIn(root, cmd.ErrOrStderr())
 			for i := range runs {
 				for j := range runs[i].Lanes {
 					if runs[i].Lanes[j].Awaits != nil {
@@ -859,7 +871,8 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
-			return renderFinal(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr}, func(w io.Writer) {
+			return renderFinal(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs, Outage: cur, OutageError: outageErr, Drive: drive}, func(w io.Writer) {
+				renderDriveShown(w, drive)
 				if outageErr != "" {
 					fmt.Fprintf(w, "outage: unreadable: %s\n", termsafe.Sanitize(outageErr))
 				}

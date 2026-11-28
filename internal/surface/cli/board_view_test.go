@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
@@ -361,5 +362,35 @@ func TestBoardSaysWhenTheFindingsListCannotBeRead(t *testing.T) {
 	}
 	if !strings.Contains(text, "the findings list is not counted") || strings.Contains(text, home) {
 		t.Errorf("the board does not say, with the home as ~, why the list is not counted:\n%s", text)
+	}
+}
+
+// The board's --json carries the drive's state as read and the line the board draws
+// from it (spc-2611141617199772 step 5), and leaves the key out where there is none.
+func TestTheBoardJSONCarriesTheDriveState(t *testing.T) {
+	at := time.Date(2026, 11, 28, 9, 0, 0, 0, time.UTC)
+	s := loop.DriveState{Version: loop.DriveStateVersion, State: loop.DriveWaiting, Since: at.Add(-40 * time.Minute), On: "the pace window", Written: at, Next: at.Add(time.Hour)}
+	var b strings.Builder
+	if err := render(&b, true, boardOutput{Drive: &driveShown{State: s, Line: loop.DriveLine(s, at)}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Drive *struct {
+			State loop.DriveState `json:"state"`
+			Line  string          `json:"line"`
+		} `json:"drive"`
+	}
+	if err := json.Unmarshal([]byte(b.String()), &got); err != nil {
+		t.Fatalf("%v:\n%s", err, b.String())
+	}
+	if got.Drive == nil || got.Drive.State.State != loop.DriveWaiting || got.Drive.State.On != "the pace window" || got.Drive.Line != "waiting 40m · on the pace window · you: nothing to do" {
+		t.Fatalf("the board's --json carries %+v:\n%s", got.Drive, b.String())
+	}
+	b.Reset()
+	if err := render(&b, true, boardOutput{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), `"drive"`) {
+		t.Fatalf("the board's --json carries a drive where there is none:\n%s", b.String())
 	}
 }

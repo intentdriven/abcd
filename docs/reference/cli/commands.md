@@ -4134,6 +4134,11 @@ or a reservation another person or copy now holds (reservation_lost), in the
 run record. It renews no issue run whose lane is parked at land, which the
 drain renews, nor one whose lane was handed back, whose hand-back released
 its reservation; it writes nothing else and creates nothing.
+Above the runs, --run included, it prints the drive's state as one line
+(drive: <line>), the line the drive's terminal and the board show, read from
+the state a drive stores in this checkout: a drive whose process is gone reads
+stopped. With no state file it says nothing; a file that cannot be read, is
+newer or holds a control code shows no line, and it says why on stderr.
 Exit 2 when --run names no run.
 
 **Flags:**

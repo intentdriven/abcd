@@ -577,7 +577,12 @@ Five sub-verbs drive the loop a build starts, the status, step, receipt, widen
 and record verbs, each over the run's state file in the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
 named, and writes only the renewal of a due reservation of each run it shows,
-logged in the run record as a step logs it: it names the slots in use out of the run's ceiling,
+logged in the run record as a step logs it. Above the runs, for one run as for all, it prints
+the drive's state as `drive: <line>`, the line the drive's terminal and the board's facilitator view show, composed
+from the value a drive stores in the checkout and read through the loop, which reads a drive
+whose process is gone as `stopped`, and its machine-readable form carries the value and the
+line under `drive` ([`35-drain.md`](35-drain.md), the drive's state). With no state file it
+says nothing; where a file is there and shows no line it says why on stderr. For each run it names the slots in use out of the run's ceiling,
 every lane alive with its stage and each agent it awaits, and each held lane with
 its cause, the head judged, the landing step it stopped before and the two flags
 that decide it. The step verb performs the run's next move and exits (a lane's
