@@ -3,9 +3,11 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -145,4 +147,35 @@ func TestCommittedRecordSlugsWithinTheCap(t *testing.T) {
 		t.Errorf("the walk did not read every store: %v", counts)
 	}
 	t.Logf("records per store: %v", counts)
+}
+
+// An over-cap record is a named refusal from the slug cap, in the hook's
+// standalone pass as in the whole lint: record_schema names the same record as
+// one it cannot read safely, so the two gates decline it alike.
+func TestSlugCapFindingsNamesARecordOverTheRecordCap(t *testing.T) {
+	rel := ".abcd/work/decisions/dcn-2611280000000001-short.md"
+	body := "---\nid: dcn-2611280000000001\nslug: short\n---\n" + strings.Repeat("\n", issueschema.RecordReadLimit)
+	got, err := SlugCapFindings(slugCapRepo(t, "", rel, body), []string{rel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].File != rel || got[0].RuleID != ruleRecordSlugCap || got[0].Severity != "blocker" ||
+		!strings.Contains(got[0].Message, strconv.Itoa(issueschema.RecordReadLimit)) {
+		t.Fatalf("SlugCapFindings = %+v; want one blocker naming the record cap", got)
+	}
+}
+
+// An unclosed block carries no slug field to the slug cap, exactly as record-lint's
+// own scanner reads no field from it: the record is judged by its filename alone
+// here, and record_schema, reading the same fields, refuses it for its missing id.
+func TestSlugCapReadsNoFieldFromAnUnclosedBlockAsTheLintReadsNone(t *testing.T) {
+	rel := ".abcd/work/decisions/dcn-2611280000000002-short.md"
+	body := "---\nid: dcn-2611280000000002\nslug: " + overTheDefaultCap + "\nbody\n"
+	if f := frontmatterFields(strings.Split(body, "\n")); len(f) != 0 {
+		t.Fatalf("premise: record-lint's scanner reads %+v from an unclosed block", f)
+	}
+	got, err := SlugCapFindings(slugCapRepo(t, "", rel, body), []string{rel})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("SlugCapFindings = %+v, %v; want nothing from a block the lint reads no field from", got, err)
+	}
 }
