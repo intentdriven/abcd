@@ -124,7 +124,8 @@ func storeFileTag(rel string) (string, bool) {
 // the same field with, so the commit-message hook and the lint agree on what a
 // record's slug is: a byte-order mark ahead of the opening rule, a key spelled
 // `slug :`, a trailing comment and a long line above the field read here as they
-// read there. A private line scan missed the first three and gave up at a line
+// read there. A private line scan missed the first two, read a trailing comment
+// into the value and counted it toward the slug's length, and gave up at a line
 // over its buffer (iss-2611070737092992). The block may open below blank lines
 // and HTML comments, located by mdrecord.FirstContent, as record-lint's
 // frontmatterOpen admits an attribution comment above it.
