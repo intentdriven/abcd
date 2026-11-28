@@ -1603,7 +1603,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next listing does",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	case len(r.Due) > 0:
-		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next abcd act that fetches the reservations re-arms them where the merge gate arms their heads, and names any the forge reports armed",
+		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next `abcd peers` or reservation act re-arms them where the merge gate arms their heads, and names any the forge reports armed",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	}
 	if len(r.Stranded) > 0 {
