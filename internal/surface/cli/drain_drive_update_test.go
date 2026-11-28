@@ -645,6 +645,67 @@ func TestAResumedDriveRewritesItsOwnFlagAndKeepsThePersons(t *testing.T) {
 	}
 }
 
+// TestAReexecutionPassesTheEndAsAnExplicitUntil: the end the start fixed goes
+// into the re-execution's arguments as one RFC 3339 instant, in place of any
+// --until the person typed and whether or not they typed one, so nothing the
+// next process reads can move it.
+func TestAReexecutionPassesTheEndAsAnExplicitUntil(t *testing.T) {
+	end := time.Date(2026, 12, 4, 8, 30, 15, 0, time.UTC)
+	for name, typed := range map[string][]string{
+		"none typed":   {"abcd", "drain", "--drive", "--yes"},
+		"a date typed": {"abcd", "drain", "--drive", "--yes", "--until", "2026-12-04"},
+		"an = form":    {"abcd", "drain", "--drive", "--until=2026-12-04T09:30:15+01:00", "--yes"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newUpdateWorld(t)
+			driveArgs = func() []string { return typed }
+			w.passWalls(t)
+			w.stepOn(runner.Profile{Dir: w.profile}, driveFlags{self: driveSelfUpdateSteps.target(), until: end}).atBoundary(context.Background())
+			if len(w.reexecs) != 1 {
+				t.Fatalf("re-executed %d times", len(w.reexecs))
+			}
+			args := w.reexecs[0].args
+			n := 0
+			for i, a := range args {
+				if a == "--until" || strings.HasPrefix(a, "--until=") {
+					n++
+					if a != "--until" || i+1 == len(args) || args[i+1] != "2026-12-04T08:30:15Z" {
+						t.Errorf("the end is passed as one RFC 3339 instant: %q", args)
+					}
+				}
+			}
+			if n != 1 {
+				t.Fatalf("want one --until, got %d: %q", n, args)
+			}
+		})
+	}
+}
+
+// TestAResumingStartReadsNoDefault: a re-executed start keeps the --until it
+// was given, and given none reads no default, so a setting that would refuse
+// the default, or would set another end, reaches no drive already running.
+func TestAResumingStartReadsNoDefault(t *testing.T) {
+	w := newUpdateWorld(t)
+	w.useRelease(updTo)
+	w.passWalls(t)
+	w.liveDrain(t, 3)
+	w.machineConfig(t, `{"runner":{"claude":{}},"drive":{"until_days":3}}`)
+	var out, errb strings.Builder
+	if code := Run(resumeArgs(), &out, &errb); code != 0 {
+		t.Fatalf("a resuming start reads no default: exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if !w.terminal.Until.IsZero() {
+		t.Fatalf("a resuming start given no --until takes no default end: %v", w.terminal.Until)
+	}
+	until := time.Now().Add(100 * time.Hour).UTC().Truncate(time.Second)
+	if code := Run(resumeArgs("--until", until.Format(time.RFC3339)), &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if !w.terminal.Until.Equal(until) {
+		t.Fatalf("a resuming start keeps its --until %v: %v", until, w.terminal.Until)
+	}
+}
+
 // TestARefusedReexecutionPutsThePreviousBack is the "exec refused" row.
 func TestARefusedReexecutionPutsThePreviousBack(t *testing.T) {
 	w := newUpdateWorld(t)

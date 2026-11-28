@@ -2,9 +2,10 @@ package cli
 
 // drain_drive_bound.go composes what a drive's start says about how it ends
 // (itd-2611251809580662 decisions 1, 6 and 9, spc-2611251810508418 step 3):
-// the end and its source, the full plan's `ends`, `restart` and `holds`
-// lines, and the one command that carries a drive on to the same end. The
-// end is fixed once, before the consent, and every word here is built from
+// the end and its source, and the full plan's `ends`, `restart` and `holds`
+// lines, the restart line naming the one command that carries a drive on to
+// the same end, which loop.DriveResumeCommand composes. The end is fixed
+// once, before the consent, and every word here is built from
 // that instant, a source from a closed set and figures, so nothing a
 // repository's file or origin chose (a path, a branch name, an origin
 // string) reaches a line a person reads as a command.
@@ -16,7 +17,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
-	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // driveEndSource is what set a drive's end.
@@ -103,27 +103,18 @@ func (b driveBound) endsPlanLine() string {
 // drive that nothing starts again, and the command that carries it on.
 func (b driveBound) restartLine(profile string) string {
 	return "a reboot, a logout or a crash ends the drive, and nothing starts it again; to carry on to the same end, type " +
-		driveResumeCommand(b.end, profile)
-}
-
-// driveResumeCommand is the one command that carries a drive on to end: the
-// drive's start with the end as an explicit --until, which a re-execution and
-// a person's restart both pass, and the --profile the person typed. A profile
-// that is not a plain name is left out rather than quoted, so the command is
-// always words a shell reads as they stand.
-func driveResumeCommand(end time.Time, profile string) string {
-	cmd := loop.TerminalResumeCommand + " --until " + end.UTC().Format(time.RFC3339)
-	if profile != "" && runner.PlainProfileName(profile) {
-		cmd += " --profile " + profile
-	}
-	return cmd
+		loop.DriveResumeCommand(b.end, profile)
 }
 
 // driveHoldsLine is the full plan's `holds` line after its label: the one
 // lane a drive holds in work, whatever the repository's drain.in_work_max,
 // and one person's ceiling on live reservations with the layer that set it
-// (claim.MaxLiveFor).
+// (claim.MaxLiveFor), or, with none read yet, that the first move reads it.
 func driveHoldsLine(ceiling int, layer string) string {
+	if ceiling < 1 {
+		// No act here has asked origin for the ceiling yet (claim.MaxLiveFor).
+		return "1 lane in work; the reservations per person are as the first move reads them at origin"
+	}
 	line := fmt.Sprintf("1 lane in work; %s per person", countOf(ceiling, "reservation"))
 	if w := ceilingLayerWord(layer); w != "" {
 		line += " (" + w + ")"

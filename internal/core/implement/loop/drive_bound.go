@@ -19,10 +19,12 @@ package loop
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -74,18 +76,39 @@ func bundledDriveDays() PaceValue {
 	return PaceValue{Value: BundledDriveDays, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}
 }
 
-// resolveDriveDays resolves how many days a drive starting now runs when the
+// ResolveDriveDays resolves how many days a drive starting now runs when the
 // person gave no --until: the repository's drive.until_days at origin's
 // default branch, else the bundled seven, with a note saying why no
 // repository figure was read where one could not be. roots name the machine's
 // file, which is read only to refuse the key there. A repository value outside
-// 1 to 31 refuses, naming the file at the branch and the commit.
-// It is unexported until the drive's start calls it, which exports it.
-func resolveDriveDays(repoRoot string, roots layered.Roots) (PaceValue, string, error) {
+// 1 to 31 refuses, naming the file at the branch and the commit. A drive's
+// start the person typed calls it once, before the consent; a resuming start
+// never does.
+func ResolveDriveDays(repoRoot string, roots layered.Roots) (PaceValue, string, error) {
 	return resolveDriveDaysAsking(repoRoot, roots, claim.AskOriginDefault)
 }
 
-// resolveDriveDaysAsking is resolveDriveDays asking origin through ask.
+// DriveResumeCommand is the one command that carries a drive on to end: the
+// drive's start with the end as an explicit --until, in UTC and whole seconds,
+// which a re-execution and a person's restart both pass, and the profile by
+// name. It is the one composer of that command, for the start's restart line,
+// the end's way on and the loop's own stopping lines (resumeCommand). A zero
+// end, a caller that passed no bound, names no --until. A profile that is not
+// a plain name is left out rather than quoted, so the command is always words
+// a shell reads as they stand, and nothing a repository's file or origin chose
+// reaches it.
+func DriveResumeCommand(end time.Time, profile string) string {
+	cmd := TerminalResumeCommand
+	if !end.IsZero() {
+		cmd += " --until " + end.UTC().Format(time.RFC3339)
+	}
+	if profile != "" && runner.PlainProfileName(profile) {
+		cmd += " --profile " + profile
+	}
+	return cmd
+}
+
+// resolveDriveDaysAsking is ResolveDriveDays asking origin through ask.
 //
 // Where the checkout's remotes cannot be listed, it has no origin, origin
 // cannot be asked, or origin names no default branch, the bundled seven

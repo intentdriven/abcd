@@ -121,10 +121,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"commit, merge and reset hooks, and any\n" +
 			"filter run inside those commands, get the stage's variables, while its network commands,\n" +
 			"its other filters and its forge calls keep the person's environment. It ends at the cap,\n" +
-			"when nothing is eligible, or on a stop. With no --until, eight hours of runner failures\n" +
-			"or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable\n" +
-			"through its schedule end it too. --until <date>, a date (the end of that day here) or an\n" +
-			"RFC 3339 instant, replaces those with one bound the yes names: the run waits through\n" +
+			"when nothing is eligible, on a stop, or at its end time. With no --until that is seven\n" +
+			"days on, or drive.until_days (1 to 31) in the repository's .abcd/config.json read at\n" +
+			"origin's default branch, never in " + abcdhome.Display("config.json") + "; --until <date>, a date (the end of that\n" +
+			"day here) or an RFC 3339 instant, sets one of the person's own. The yes names the end and\n" +
+			"its source, and the one command that carries the drive on to it after a reboot, a logout\n" +
+			"or a crash, which nothing restarts: abcd drain --drive --until <instant>, printed again\n" +
+			"after the yes; the whole plan heads the drive's log. Until the end the run waits through\n" +
 			"limits, outages and stuck queues at a capped interval, says what it waits on, keeps\n" +
 			"renewing what it holds, and at that time ends with the lane on its branch, an agent in a\n" +
 			"call finishing that call first. The bound is a time, not a limit on what the run spends.\n" +
@@ -409,7 +412,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&drive, "drive", false, "make every move from this terminal, starting each agent on a separate login, until the cap, an empty ledger or a stop")
 	cmd.Flags().BoolVar(&yes, "yes", false, "with --drive: the scripted yes to its one question")
 	cmd.Flags().StringVar(&profile, "profile", "", "with --drive: the profile directory to run on, by name; needed when there are several")
-	cmd.Flags().StringVar(&until, "until", "", "with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait")
+	cmd.Flags().StringVar(&until, "until", "", "with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is seven days on, or the repository's drive.until_days")
 	cmd.Flags().BoolVar(&noSelfUpdate, "no-self-update", false, "with --drive: take no new release of abcd during the run, and ask the release origin nothing")
 	cmd.Flags().StringVar(&afterUpdate, "after-update", "", "a drive's own, passed when it re-executes itself onto a release: <from>=<to>")
 	cmd.Flags().StringArrayVar(&updateRefused, "update-refused", nil, "a drive's own, passed when it goes back from a release that could not start")

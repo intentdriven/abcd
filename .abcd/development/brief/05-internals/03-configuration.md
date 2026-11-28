@@ -13,7 +13,7 @@ implement loop's `pace` (`pace.work_minutes`, `pace.pause_minutes`,
 1 to 64 and 3 by default, and `pace.stuck_minutes`, 1 to 10080 and 60 by default;
 `internal/core/implement/loop/pace.go`), the drain's bundle cap
 `drain.bundle_max` and its limit on lanes in work `drain.in_work_max` (both
-below), the consistency pass's `consistency`
+below), a drive's default length `drive.until_days` (below), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
 (`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
@@ -321,6 +321,24 @@ directory holding its `found_at` path, or that path itself when it is a
 directory in the checkout); a `security` issue and one whose area is the
 repository's root never join, and a member's severity may differ from its
 lead's (`internal/core/implement/loop/drain_bundle.go`, 04-surfaces/35-drain.md).
+
+The `drive.until_days` key, how many days a drive the person starts with no
+`--until` runs, 1 to 31 and 7 by default, is the repository's alone
+(itd-2611251809580662 decisions 1 and 9): a drive's start reads it once,
+before its consent, from the repository's `.abcd/config.json` as stored at the
+commit origin itself names as its default branch's tip, as
+`drain.in_work_max` is read, never from a working tree, and turns it into an
+end instant the consent shows and the yes covers. `~/.abcd.noindex/config.json`
+does not hold it: one there is refused naming the file. A repository value
+outside 1 to 31 refuses the start naming the file at the branch and the
+commit; a checkout with no `origin`, an origin that cannot be asked, or one
+that names no default branch leaves the bundled seven, and the start says why
+before its question and in its log. `--until` is the person's own bound and
+is held to none of this. A drive's re-execution passes the end it fixed as an
+explicit `--until`, so a resuming start reads no default
+(`internal/core/implement/loop/drive_bound.go`). The `drive` namespace's
+readers claim it from one list that names the one layer holding each key, so
+a key the person's machine holds there later is never mistaken for this one.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries ten of these blocks — `docs`,

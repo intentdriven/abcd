@@ -1821,10 +1821,13 @@ whatever the case of the name: that change needs a person's own session. The dri
 commit, merge and reset hooks, and any
 filter run inside those commands, get the stage's variables, while its network commands,
 its other filters and its forge calls keep the person's environment. It ends at the cap,
-when nothing is eligible, or on a stop. With no --until, eight hours of runner failures
-or of nothing moving, a rate limit that outlasts eight hours, and origin unreadable
-through its schedule end it too. --until <date>, a date (the end of that day here) or an
-RFC 3339 instant, replaces those with one bound the yes names: the run waits through
+when nothing is eligible, on a stop, or at its end time. With no --until that is seven
+days on, or drive.until_days (1 to 31) in the repository's .abcd/config.json read at
+origin's default branch, never in ~/.abcd.noindex/config.json; --until <date>, a date (the end of that
+day here) or an RFC 3339 instant, sets one of the person's own. The yes names the end and
+its source, and the one command that carries the drive on to it after a reboot, a logout
+or a crash, which nothing restarts: abcd drain --drive --until <instant>, printed again
+after the yes; the whole plan heads the drive's log. Until the end the run waits through
 limits, outages and stuck queues at a capped interval, says what it waits on, keeps
 renewing what it holds, and at that time ends with the lane on its branch, an agent in a
 call finishing that call first. The bound is a time, not a limit on what the run spends.
@@ -2047,7 +2050,7 @@ drain or run holds the state lock.
       --sub-agents string             the ceiling on lanes and validators alive at once; wins over every configured layer
       --take-over[=true|false]        move your own live reservation of each issue this move reaches from another copy to this one; never another person's
       --unskip stringArray            take an issue or path off the drain's skip list
-      --until string                  with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is eight hours on each wait
+      --until string                  with --drive: end the run at this time, a date or an RFC 3339 instant, and wait through limits, outages and stuck queues until then; the default is seven days on, or the repository's drive.until_days
       --yes[=true|false]              with --drive: the scripted yes to its one question
 ```
 

@@ -24,15 +24,15 @@ var driveStart = time.Date(2026, 11, 27, 9, 30, 15, 750_000_000, time.FixedZone(
 // which --until reads back as the very end the drive holds and the start
 // shows, and --profile only when one was given.
 func TestTheResumeCommandNamesTheInstantAndTheProfile(t *testing.T) {
-	if got, want := driveResumeCommand(driveStart, ""), "abcd drain --drive --until 2026-11-27T08:30:15Z"; got != want {
+	if got, want := loop.DriveResumeCommand(driveStart, ""), "abcd drain --drive --until 2026-11-27T08:30:15Z"; got != want {
 		t.Fatalf("an instant in another zone is named in UTC: %q, want %q", got, want)
 	}
 	b := driveBoundFromDays(driveStart, loop.PaceValue{Value: 7, Layer: "bundled", Origin: "bundled"})
 	want := "abcd drain --drive --until 2026-12-04T08:30:15Z"
-	if got := driveResumeCommand(b.end, ""); got != want {
+	if got := loop.DriveResumeCommand(b.end, ""); got != want {
 		t.Fatalf("with no profile: %q, want %q", got, want)
 	}
-	if got := driveResumeCommand(b.end, "work-2"); got != want+" --profile work-2" {
+	if got := loop.DriveResumeCommand(b.end, "work-2"); got != want+" --profile work-2" {
 		t.Fatalf("with a profile: %q", got)
 	}
 	if got := b.restartLine("work-2"); !strings.HasSuffix(got, want+" --profile work-2") ||
@@ -41,7 +41,7 @@ func TestTheResumeCommandNamesTheInstantAndTheProfile(t *testing.T) {
 	}
 	until := driveStart.Add(48*time.Hour + 400*time.Millisecond)
 	for name, bd := range map[string]driveBound{"default": b, "--until": driveBoundUntil(until)} {
-		given := strings.TrimPrefix(driveResumeCommand(bd.end, ""), loop.TerminalResumeCommand+" --until ")
+		given := strings.TrimPrefix(loop.DriveResumeCommand(bd.end, ""), loop.TerminalResumeCommand+" --until ")
 		if given != bd.instant() {
 			t.Errorf("%s: the command names %q, the start shows %q", name, given, bd.instant())
 		}
@@ -62,7 +62,7 @@ func TestTheResumeCommandQuotesNothingARepositoryChose(t *testing.T) {
 	b := driveBoundFromDays(driveStart, loop.PaceValue{Value: 14, Layer: "repo", Origin: planted})
 	shape := regexp.MustCompile(`^abcd drain --drive --until \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ( --profile [\p{L}\p{N}][\p{L}\p{N}._-]*)?$`)
 	for _, profile := range []string{"", "home", "x; rm -rf ~", "-x", "a b", "a\nb", "$(id)"} {
-		got := driveResumeCommand(b.end, profile)
+		got := loop.DriveResumeCommand(b.end, profile)
 		if !shape.MatchString(got) {
 			t.Errorf("profile %q: the command is not fixed words, an instant and a plain profile: %q", profile, got)
 		}
@@ -74,7 +74,7 @@ func TestTheResumeCommandQuotesNothingARepositoryChose(t *testing.T) {
 	// the same days from another origin reads the same, word for word.
 	other := driveBoundFromDays(driveStart, loop.PaceValue{Value: 14, Layer: "repo", Origin: ".abcd/config.json at origin/main"})
 	lines := func(b driveBound) []string {
-		return []string{b.endsLine(), b.endsPlanLine(), b.restartLine("home"), driveResumeCommand(b.end, "home")}
+		return []string{b.endsLine(), b.endsPlanLine(), b.restartLine("home"), loop.DriveResumeCommand(b.end, "home")}
 	}
 	for i, line := range lines(b) {
 		if line != lines(other)[i] {
@@ -130,6 +130,7 @@ func TestTheHoldsLineNamesBothLimits(t *testing.T) {
 		{4, claim.LimitMachine, "1 lane in work; 4 reservations per person (this machine)"},
 		{1, claim.LimitRepository, "1 lane in work; 1 reservation per person (repository)"},
 		{3, "elsewhere", "1 lane in work; 3 reservations per person"},
+		{0, "", "1 lane in work; the reservations per person are as the first move reads them at origin"},
 	} {
 		if got := driveHoldsLine(c.n, c.layer); got != c.want {
 			t.Errorf("holds line %q, want %q", got, c.want)

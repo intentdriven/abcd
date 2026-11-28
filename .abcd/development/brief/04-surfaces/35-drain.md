@@ -367,14 +367,27 @@ nothing moved, so no wait goes without a deadline, and a long wait renews what t
 lanes still hold. A preflight that exits 0 and leaves no receipt runs once for a head, and
 the lane then goes to the stuck check.
 
-Those eight hours are the default, for a run someone is watching. A date the person
-names on the command line replaces each of them with one bound of their own (adr-2610222222326104's amendment
-of 2026-11-05, dcn-2611050815115904): the yes names it, as a time and not a limit on what
+Those eight hours are what a caller that passes no bound gets; a drive a person starts
+never is one. Its start fixes one end before the yes (itd-2611251809580662 decisions 1, 6
+and 9): seven days on, or the repository's `drive.until_days` (1 to 31) read at the commit
+origin names as its default branch's tip (`loop.ResolveDriveDays`, 05-internals/03-configuration.md),
+or a date or instant the person names on the command line, which is their own and held
+to no default (adr-2610222222326104's amendment of 2026-11-05, dcn-2611050815115904). The
+consent's `bound:` line names the end with its source, a `default:` line says why no
+repository figure was read where none was, a `restart:` line says that a reboot, a logout
+or a crash ends the drive with nothing to start it again and names the one command that
+carries it on to the same end (`loop.DriveResumeCommand`: the drive's start naming that
+instant, and the profile typed), printed once more after the yes and named as the end's
+way on while the end is ahead, and a `holds:` line names the one lane in work and the
+person's reservation ceiling. The whole plan heads the drive's log, a scripted yes
+included. A re-execution passes the end in its arguments as that same instant, so a
+resuming start reads no default and keeps its end; one given none runs unbounded. The
+yes names the end, as a time and not a limit on what
 is spent, the run ends at that time with the lane on its branch and its reservation
 released, an agent in a call finishing that call first, and until then no limit, outage
 or stuck queue ends the run. A reset is waited for however far off, up to the bound; one
-more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs only
-under a bound, since a yes with none never mentioned it: one launch on the profile asking
+more than 35 days off reads as a misread field and as none. `runner.ProbeLimit` runs
+under the bound every drive a person starts has: one launch on the profile asking
 for no tools, on the model of the launch that met the limit, counting only the word it
 asked for from a launch whose init event names an empty tool list, as version 2.1.318 of
 the harness was seen to, and failing closed on any other. With no reset named it runs at one, five and
@@ -388,8 +401,7 @@ origin is never given up on (`DrainOptions.KeepWaiting`); and a shared outage an
 session gave up on holds the run until it is cleared. A limit the live check meets, and a
 launch that came to no verdict on any check (`runner.LimitError`, `runner.NoVerdictError`),
 are waited out the same way, the settings checked before each probe, and the check run
-again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then, and
-with no bound the drive refuses either way. Under a bound `Failure.Blame` says what a
+again (`loop.WaitOutProof`); only a verdict, or no harness to run, is refused then. Under a bound `Failure.Blame` says what a
 failed launch shows of its work. An answer the contract refused is the work's. A launch
 that spent, read on every exit, may have lost the service afterwards, so spend decides
 nothing by itself. With nothing spent, a launch that was retrying the model service, or a

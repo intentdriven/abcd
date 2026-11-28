@@ -74,12 +74,10 @@ func (t *terminal) onAnotherProfile(run State) bool {
 	return t.o.Options.Profile != "" && run.Profile != "" && run.Profile != t.o.Options.Profile
 }
 
-// resumeCommand is what a person types to go on with this drive's work later.
+// resumeCommand is what a person types to go on with this drive's work later,
+// to the same end: the one command DriveResumeCommand composes.
 func (t *terminal) resumeCommand() string {
-	if p := t.o.Options.Profile; p != "" {
-		return TerminalResumeCommand + " --profile " + p
-	}
-	return TerminalResumeCommand
+	return DriveResumeCommand(t.o.Until, t.o.Options.Profile)
 }
 
 // holdToProfile is the check before a drive drives run runID: another profile ends the

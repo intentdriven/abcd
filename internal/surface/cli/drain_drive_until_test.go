@@ -3,6 +3,10 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -69,27 +73,195 @@ func TestTheYesNamesTheBound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a no is no failure: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "bound:") || !strings.Contains(string(out), at.Format(time.RFC3339)) {
-		t.Fatalf("the consent names the bound:\n%s", out)
-	}
-	out, err = runCLIPipedStdin(t, "n\n", "drain", "--drive")
-	if err != nil {
-		t.Fatalf("a no is no failure: %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), "bound:") || !strings.Contains(string(out), "eight hours") {
-		t.Fatalf("with none given the consent names the eight hours:\n%s", out)
+	if !strings.Contains(string(out), "bound:") || !strings.Contains(string(out), at.Format(time.RFC3339)+", --until;") {
+		t.Fatalf("the consent names the bound and its source:\n%s", out)
 	}
 }
 
-func TestWithNoUntilTheLoopHasNoBound(t *testing.T) {
+// sevenDaysOn reports whether end is seven days after a start made between
+// before and after, in whole seconds.
+func sevenDaysOn(end, before, after time.Time) bool {
+	week := 7 * 24 * time.Hour
+	return !end.Before(before.Add(week).Truncate(time.Second)) && !end.After(after.Add(week))
+}
+
+// TestADriveWithNoUntilPassesTheLoopABound: a drive the person starts with no
+// --until ends seven days on, abcd's default, so the loop always has a bound
+// and the eight-hour endings never end a drive a person started.
+func TestADriveWithNoUntilPassesTheLoopABound(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	var out, errb strings.Builder
+	before := time.Now()
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if !sevenDaysOn(w.terminal.Until, before, time.Now()) {
+		t.Fatalf("with no --until the loop's bound is seven days on: %v", w.terminal.Until)
+	}
+}
+
+// TestAStartWithNoUntilShowsAnEndSevenDaysOnBeforeTheQuestion: the consent
+// names the end as an instant with its source, why no repository figure was
+// read, the command that carries the drive on and what it holds, all before
+// the question; the estimate carries the retry wording, since the drive waits.
+func TestAStartWithNoUntilShowsAnEndSevenDaysOnBeforeTheQuestion(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	withTerminal(t)
+	before := time.Now()
+	out, err := runCLIPipedStdin(t, "n\n", "drain", "--drive")
+	after := time.Now()
+	if err != nil {
+		t.Fatalf("a no is no failure: %v\n%s", err, out)
+	}
+	plan, _, asked := strings.Cut(string(out), "Start? [y/N]")
+	if !asked {
+		t.Fatalf("the question was not asked:\n%s", out)
+	}
+	m := regexp.MustCompile(`(?m)^  bound:    ends at (\S+), seven days on, abcd's default;`).FindStringSubmatch(plan)
+	if m == nil {
+		t.Fatalf("the bound line names the end and its source before the question:\n%s", out)
+	}
+	end, err := time.Parse(time.RFC3339, m[1])
+	if err != nil || !sevenDaysOn(end, before, after) {
+		t.Fatalf("the end shown is seven days on: %q (%v)", m[1], err)
+	}
+	for _, want := range []string{
+		"no repository figure for drive.until_days was read",
+		"  restart:  a reboot, a logout or a crash ends the drive",
+		loop.TerminalResumeCommand + " --until " + m[1],
+		"  holds:    1 lane in work;",
+		"retries through failures",
+	} {
+		if !strings.Contains(plan, want) {
+			t.Errorf("before the question the start says %q:\n%s", want, plan)
+		}
+	}
+	if strings.Contains(plan, "eight hours") || strings.Contains(plan, "at most") {
+		t.Errorf("the start no longer names an eight-hour wait or a ceiling on runs:\n%s", plan)
+	}
+}
+
+// TestUntilWinsAndIsNotHeldToTheDefault: the person's --until is their own
+// bound: it reaches the loop as given, past the default's 31 days, and the
+// default is not read at all, so a setting that would refuse the default
+// refuses nothing.
+func TestUntilWinsAndIsNotHeldToTheDefault(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	w.machineConfig(t, `{"runner":{"claude":{}},"drive":{"until_days":3}}`)
+	at := time.Now().Add(60 * 24 * time.Hour).UTC().Truncate(time.Second)
+	var out, errb strings.Builder
+	if code := Run([]string{"drain", "--drive", "--yes", "--until", at.Format(time.RFC3339)}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+	}
+	if !w.terminal.Until.Equal(at) {
+		t.Fatalf("the loop's bound is %v, want the --until %v", w.terminal.Until, at)
+	}
+	text := refusedDrive(t, "drain", "--drive", "--yes")
+	if !strings.Contains(text, "drive.until_days") || w.terminalCalls != 1 {
+		t.Fatalf("with no --until the default is read, and refused in the machine's file: %d calls: %s", w.terminalCalls, text)
+	}
+}
+
+// TestTheRestartCommandIsPrintedOnceAfterTheYes: after the yes the drive
+// prints the one command that carries it on to the same end, once, with the
+// --profile the person typed.
+func TestTheRestartCommandIsPrintedOnceAfterTheYes(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	withTerminal(t)
+	out, err := runCLIPipedStdin(t, "y\n", "drain", "--drive", "--profile", "walled")
+	if err != nil {
+		t.Fatalf("exit: %v\n%s", err, out)
+	}
+	_, after, asked := strings.Cut(string(out), "Start? [y/N]")
+	if !asked || w.terminalCalls != 1 {
+		t.Fatalf("asked %v, %d calls:\n%s", asked, w.terminalCalls, out)
+	}
+	cmd := loop.TerminalResumeCommand + " --until " + w.terminal.Until.UTC().Format(time.RFC3339) + " --profile walled"
+	if got := strings.Count(after, cmd); got != 1 {
+		t.Fatalf("after the yes the command %q is printed %d times:\n%s", cmd, got, after)
+	}
+}
+
+// driveLogLines are the lines of the drive's one log, each with its stamp cut.
+func driveLogLines(t *testing.T, repo string) []string {
+	t.Helper()
+	logs, err := filepath.Glob(filepath.Join(repo, ".abcd", ".work.local", "logs", "drain-drive-*.log"))
+	if err != nil || len(logs) != 1 {
+		t.Fatalf("want one drive log, found %v (%v)", logs, err)
+	}
+	raw, err := os.ReadFile(logs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
+		_, rest, ok := strings.Cut(l, " ")
+		if !ok {
+			t.Fatalf("a log line with no stamp: %q", l)
+		}
+		lines = append(lines, rest)
+	}
+	return lines
+}
+
+// TestWithYesTheFullPlanIsTheLogsFirstLines: a drive started with --yes,
+// which nobody may be watching, writes the full plan it showed, line for line,
+// at the head of its log, the note on the default among them.
+func TestWithYesTheFullPlanIsTheLogsFirstLines(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
 	var out, errb strings.Builder
 	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
 	}
-	if !w.terminal.Until.IsZero() {
-		t.Fatalf("no flag sets no bound: %v", w.terminal.Until)
+	shown := strings.Split(out.String(), "\n")
+	n := 1
+	for n < len(shown) && strings.HasPrefix(shown[n], "  ") {
+		n++
+	}
+	plan := shown[:n]
+	if !strings.HasPrefix(plan[0], "abcd drain --drive works through") || !strings.Contains(strings.Join(plan, "\n"), "  restart:  ") {
+		t.Fatalf("the plan is the output's first lines:\n%s", out.String())
+	}
+	logged := driveLogLines(t, w.repo)
+	if len(logged) < n || !slices.Equal(logged[:n], plan) {
+		t.Fatalf("the log's first lines are the plan:\nplan:\n%s\nlog:\n%s", strings.Join(plan, "\n"), strings.Join(logged, "\n"))
+	}
+	if !strings.Contains(strings.Join(logged[:n], "\n"), "no repository figure for drive.until_days was read") {
+		t.Fatalf("the log names why no repository figure was read:\n%s", strings.Join(logged, "\n"))
+	}
+}
+
+// TestThePrintedCommandCarriesOnToTheFirstEndTime: a drive that ends leaving
+// work names, as the way on, the command with its own end, and that command,
+// typed, starts a drive that ends then and not seven days after it.
+func TestThePrintedCommandCarriesOnToTheFirstEndTime(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
+		w.terminalCalls++
+		w.terminal = o
+		return loop.TerminalResult{Ended: loop.TerminalStopped, Resume: loop.TerminalResumeCommand}, nil
+	}
+	var out, errb strings.Builder
+	Run([]string{"drain", "--drive", "--yes", "--profile", "walled"}, &out, &errb)
+	first := w.terminal.Until
+	m := regexp.MustCompile(`(?m)^  to resume: (.+)$`).FindStringSubmatch(out.String() + errb.String())
+	if m == nil {
+		t.Fatalf("the end names no way on:\n%s%s", out.String(), errb.String())
+	}
+	want := loop.TerminalResumeCommand + " --until " + first.UTC().Format(time.RFC3339) + " --profile walled"
+	if m[1] != want {
+		t.Fatalf("the way on is %q, want %q", m[1], want)
+	}
+	args := strings.Fields(strings.TrimPrefix(m[1], "abcd "))
+	Run(append(args, "--yes"), &out, &errb)
+	if w.terminalCalls != 2 || !w.terminal.Until.Equal(first) {
+		t.Fatalf("the command carries the drive on to %v; it ended at %v (%d calls)", first, w.terminal.Until, w.terminalCalls)
 	}
 }
 
@@ -106,9 +278,9 @@ func TestADriveCanAskForHundredsOfLanes(t *testing.T) {
 	}
 }
 
-// TestADriveHandsTheLoopItsProbeOnlyUnderABound: the yes of a drive with no bound
-// never mentioned a probe.
-func TestADriveHandsTheLoopItsProbeOnlyUnderABound(t *testing.T) {
+// TestADriveAlwaysHandsTheLoopItsProbe: every drive a person starts has a
+// bound, so the loop always has its probe of a limit.
+func TestADriveAlwaysHandsTheLoopItsProbe(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
 	at := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
@@ -122,8 +294,8 @@ func TestADriveHandsTheLoopItsProbeOnlyUnderABound(t *testing.T) {
 	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
 	}
-	if w.terminal.Probe != nil {
-		t.Fatal("with no bound the loop has no probe")
+	if w.terminal.Probe == nil {
+		t.Fatal("with no --until the loop has its probe too")
 	}
 }
 
@@ -155,8 +327,8 @@ func TestUnderABoundTheEstimateSaysItIsNoCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a no is no failure: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "at most") {
-		t.Fatalf("with no bound the estimate reads as it did:\n%s", out)
+	if strings.Contains(string(out), "at most") || !strings.Contains(string(out), "not a limit on what it spends") {
+		t.Fatalf("with no --until the estimate holds no longer either:\n%s", out)
 	}
 }
 
@@ -199,22 +371,69 @@ func TestALimitAtTheLiveProofIsWaitedOutUnderABound(t *testing.T) {
 	}
 }
 
-// TestALimitAtTheLiveProofWithNoBoundIsRefusedAsALimit: it says so, and blames no
-// wall.
-func TestALimitAtTheLiveProofWithNoBoundIsRefusedAsALimit(t *testing.T) {
+// TestALimitAtTheLiveProofIsWaitedOutWithNoUntil: a drive started with no
+// --until has its default end, so a limit or an outage at the live proof is
+// waited out and the drive goes on, where it used to be refused.
+func TestALimitAtTheLiveProofIsWaitedOutWithNoUntil(t *testing.T) {
+	t.Run("limit", func(t *testing.T) {
+		w := newDriveWorld(t)
+		w.passWalls(t)
+		proofs, _ := limitedProof(t, 1, func(now time.Time) time.Time { return now.Add(3 * time.Hour) })
+		var out, errb strings.Builder
+		if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+			t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+		}
+		if *proofs != 2 || w.terminalCalls != 1 {
+			t.Fatalf("the proof runs again and the loop starts: %d proofs, %d calls", *proofs, w.terminalCalls)
+		}
+	})
+	t.Run("outage", func(t *testing.T) {
+		w := newDriveWorld(t)
+		w.passWalls(t)
+		proofs, _ := limitedProof(t, 0, nil)
+		driveWalls.live = func(context.Context, runner.Profile) error {
+			if *proofs++; *proofs < 3 {
+				return &runner.NoVerdictError{Detail: "the launch came to no verdict"}
+			}
+			return nil
+		}
+		var out, errb strings.Builder
+		if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+			t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
+		}
+		if *proofs != 3 || w.terminalCalls != 1 {
+			t.Fatalf("the proof runs again and the loop starts: %d proofs, %d calls", *proofs, w.terminalCalls)
+		}
+	})
+}
+
+// TestADriveIsStillWaitingNineHoursIntoALimitThatNamesNoReset: the eight
+// hours a limit with no reset used to end a wait on are not a drive's end,
+// which is seven days on: nine hours in, the drive is still waiting, and
+// goes on when the limit lifts.
+func TestADriveIsStillWaitingNineHoursIntoALimitThatNamesNoReset(t *testing.T) {
 	w := newDriveWorld(t)
 	w.passWalls(t)
-	limitedProof(t, 1, func(now time.Time) time.Time { return now.Add(3 * time.Hour) })
+	_, clock := limitedProof(t, 0, nil)
+	start := *clock
+	waitedPastNine := false
+	driveWalls.live = func(context.Context, runner.Profile) error {
+		if clock.Sub(start) >= 9*time.Hour {
+			waitedPastNine = true
+		}
+		if clock.Sub(start) < 10*time.Hour {
+			return &runner.LimitError{}
+		}
+		return nil
+	}
 	var out, errb strings.Builder
-	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
-	text := out.String() + errb.String()
-	if code != 3 || !strings.Contains(text, "rate limit") || strings.Contains(text, "does not hold") {
-		t.Fatalf("exit %d, naming the limit:\n%s", code, text)
+	if code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb); code != 0 {
+		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
 	}
-	if !strings.Contains(text, "--until") || w.terminalCalls != 0 {
-		t.Fatalf("it names the way to wait, and nothing runs: %d calls:\n%s", w.terminalCalls, text)
+	if !waitedPastNine || w.terminalCalls != 1 {
+		t.Fatalf("nine hours in the drive still waits, then goes on: past nine %v, %d calls, waited %s",
+			waitedPastNine, w.terminalCalls, clock.Sub(start))
 	}
-	noDrainBegun(t, w.repo)
 }
 
 // TestAnOutageAtTheLiveProofIsWaitedOutUnderABound: a restart during an outage waits,
@@ -236,19 +455,6 @@ func TestAnOutageAtTheLiveProofIsWaitedOutUnderABound(t *testing.T) {
 	}
 	if *proofs != 3 || w.terminalCalls != 1 {
 		t.Fatalf("the proof runs again and the loop starts: %d proofs, %d calls", *proofs, w.terminalCalls)
-	}
-}
-
-// TestAnOutageAtTheLiveProofWithNoBoundIsRefused: nothing there to wait with.
-func TestAnOutageAtTheLiveProofWithNoBoundIsRefused(t *testing.T) {
-	w := newDriveWorld(t)
-	w.passWalls(t)
-	driveWalls.live = func(context.Context, runner.Profile) error {
-		return &runner.NoVerdictError{Detail: "the launch came to no verdict"}
-	}
-	text := refusedDrive(t, "drain", "--drive", "--yes")
-	if !strings.Contains(text, "no verdict") || w.terminalCalls != 0 {
-		t.Fatalf("%d calls: %s", w.terminalCalls, text)
 	}
 }
 

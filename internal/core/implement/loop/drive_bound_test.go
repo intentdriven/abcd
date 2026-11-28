@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -21,7 +22,7 @@ import (
 // runs abcd's seven days, from the bundled layer, and says nothing more.
 func TestADriveRunsSevenDaysWithNothingSet(t *testing.T) {
 	repo, _ := reservingDrainRepo(t, "commands/drain.md")
-	v, note, err := resolveDriveDays(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()})
+	v, note, err := ResolveDriveDays(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()})
 	if err != nil || v != bundledDriveDays() || v.Value != 7 || note != "" {
 		t.Fatalf("with nothing set a drive runs seven days: %+v %q %v", v, note, err)
 	}
@@ -35,16 +36,16 @@ func TestTheRepositorysUntilDaysAtOriginsDefaultBranchSetTheDefault(t *testing.T
 	repo, _ := reservingDrainRepo(t, "commands/drain.md")
 	roots := layered.Roots{Repo: repo.Root(), Home: t.TempDir()}
 	ceilingOnBranch(t, repo, "develop", `{"drive": {"until_days": 2}}`)
-	if v, _, err := resolveDriveDays(repo.Root(), roots); err != nil || v != bundledDriveDays() {
+	if v, _, err := ResolveDriveDays(repo.Root(), roots); err != nil || v != bundledDriveDays() {
 		t.Fatalf("another branch on origin sets nothing: %+v %v", v, err)
 	}
 	ceilingOnOrigin(t, repo, `{"drive": {"until_days": 14}}`)
-	v, note, err := resolveDriveDays(repo.Root(), roots)
+	v, note, err := ResolveDriveDays(repo.Root(), roots)
 	if err != nil || note != "" || v != (PaceValue{Value: 14, Layer: "repo", Origin: ".abcd/config.json at origin/main"}) {
 		t.Fatalf("the repository's figure at origin's default branch sets the days: %+v %q %v", v, note, err)
 	}
 	ceilingOnOrigin(t, repo, `{"drive": {"until_days": 31}, "drain": {"in_work_max": 2}}`)
-	if v, _, err := resolveDriveDays(repo.Root(), roots); err != nil || v.Value != 31 {
+	if v, _, err := ResolveDriveDays(repo.Root(), roots); err != nil || v.Value != 31 {
 		t.Fatalf("31, the most, is taken beside another namespace: %+v %v", v, err)
 	}
 }
@@ -59,7 +60,7 @@ func TestAWorkingTreeEditOfUntilDaysChangesNothing(t *testing.T) {
 	repo.Write(".abcd/config.json", `{"drive": {"until_days": 30}}`)
 	repo.Commit("a lane's own figure")
 	repo.Write(".abcd/config.json", `{"drive": {"until_days": 99}}`)
-	v, _, err := resolveDriveDays(repo.Root(), roots)
+	v, _, err := ResolveDriveDays(repo.Root(), roots)
 	if err != nil || v.Value != 3 || v.Layer != "repo" {
 		t.Fatalf("the working tree and the checkout's own branch change nothing: %+v %v", v, err)
 	}
@@ -78,7 +79,7 @@ func TestUntilDaysOfZeroAndThirtyTwoRefuseNamingTheirOrigin(t *testing.T) {
 		t.Run(c.body, func(t *testing.T) {
 			repo, _ := reservingDrainRepo(t, "commands/drain.md")
 			ceilingOnOrigin(t, repo, c.body)
-			v, _, err := resolveDriveDays(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()})
+			v, _, err := ResolveDriveDays(repo.Root(), layered.Roots{Repo: repo.Root(), Home: t.TempDir()})
 			rf := mustRefusal(t, err)
 			if !strings.Contains(rf.Reason, ".abcd/config.json at origin/main") || !strings.Contains(rf.Reason, c.want) {
 				t.Fatalf("the refusal names the file at origin's default branch and %q: %q", c.want, rf.Reason)
@@ -124,7 +125,7 @@ func TestACheckoutWithNoOriginReadsNoRepositoryDaysAndSaysSo(t *testing.T) {
 	alone := gittest.NewRepo(t)
 	alone.Write(".abcd/config.json", `{"drive": {"until_days": 2}}`)
 	alone.Commit("config")
-	v, note, err := resolveDriveDays(alone.Root(), layered.Roots{Repo: alone.Root(), Home: t.TempDir()})
+	v, note, err := ResolveDriveDays(alone.Root(), layered.Roots{Repo: alone.Root(), Home: t.TempDir()})
 	if err != nil || v != bundledDriveDays() || !strings.Contains(note, "no remote named origin") || !strings.Contains(note, "7 days") {
 		t.Fatalf("no origin reads no repository figure, said: %+v %q %v", v, note, err)
 	}
@@ -199,5 +200,21 @@ func TestRemotesThatCannotBeListedAreNotReadAsNoOrigin(t *testing.T) {
 	}
 	if strings.Contains(note, "no remote named") || !strings.Contains(note, "remotes could not be listed") || !strings.Contains(note, "7 days") {
 		t.Fatalf("the note names the listing's failure, not an absent origin: %q", note)
+	}
+}
+
+// TestTheLoopsResumeCommandCarriesTheDriveOnToItsEnd: the command the loop
+// names when it stops a drive short is the one the start prints, composed in
+// one place: the drive's end as an explicit --until and its profile, and with
+// no end, as a caller that passes no bound has, no --until.
+func TestTheLoopsResumeCommandCarriesTheDriveOnToItsEnd(t *testing.T) {
+	end := time.Date(2026, 12, 4, 9, 30, 15, 0, time.FixedZone("CET", 3600))
+	bounded := &terminal{o: TerminalOptions{Until: end, Options: Options{Profile: "walled"}}}
+	if got, want := bounded.resumeCommand(), "abcd drain --drive --until 2026-12-04T08:30:15Z --profile walled"; got != want {
+		t.Fatalf("a bounded drive's command is %q, want %q", got, want)
+	}
+	unbounded := &terminal{o: TerminalOptions{Options: Options{Profile: "walled"}}}
+	if got, want := unbounded.resumeCommand(), "abcd drain --drive --profile walled"; got != want {
+		t.Fatalf("with no bound the command is %q, want %q", got, want)
 	}
 }

@@ -66,7 +66,7 @@ func TestAResumeOverADrainTheDriveCappedDoesNotRefuseItself(t *testing.T) {
 		t.Fatalf("the cap over two lanes: %+v, %v", progress, err)
 	}
 	w.useRelease(updTo)
-	args := driveReexecArgs(typed, runner.Profile{Dir: w.profile}, updFrom, updTo)
+	args := driveReexecArgs(typed, runner.Profile{Dir: w.profile}, time.Time{}, updFrom, updTo)
 	if code := Run(args[1:], &out, &errb); code != 0 {
 		t.Fatalf("exit %d:\n%s%s", code, out.String(), errb.String())
 	}
