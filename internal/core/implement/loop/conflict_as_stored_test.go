@@ -2,7 +2,9 @@ package loop
 
 import (
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -69,5 +71,21 @@ func TestTheConflictProbeMergesFromTheStoredMergeBase(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// TestAnArmedConflictQuotesTheArmingByTheMethodTheGateReadsAtTheTip: the
+// refusal of an armed pull request that conflicts quotes its re-arming by the
+// method the loop arms by, the merge gate's at the tip just fetched, never the
+// lane's base's.
+func TestAnArmedConflictQuotesTheArmingByTheMethodTheGateReadsAtTheTip(t *testing.T) {
+	f, _ := rearmFixture(t)
+	f.mirrorAtTip(t, "SQUASH")
+	f.repo.Git("fetch", "-q", "origin")
+	lane := currentLane(t, f.repo, f.runID)
+	c := Context{RepoRoot: f.repo.Root(), Now: time.Now()}
+	r := conflictRefusal(c, lane, "main", "refs/remotes/origin/main", mergeability{Mergeable: MergeableConflicting, MergeStateStatus: "DIRTY"})
+	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --squash`") || strings.Contains(r.Remedy, "--auto --merge") {
+		t.Fatalf("the re-arming is quoted by the tip's method: %s", r.Remedy)
 	}
 }

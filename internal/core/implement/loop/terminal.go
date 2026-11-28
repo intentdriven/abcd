@@ -350,6 +350,9 @@ type terminal struct {
 	blames []launchBlame
 	// notedFinish is what each run left unfinished last said, so it is said once.
 	notedFinish map[string]string
+	// notedParked is what each parked run's watch last said (sayParked), so it
+	// is said once.
+	notedParked map[string]string
 	// laneInHand is the run the lane counts below are of.
 	laneInHand string
 	// startedAgent says this step started an agent, which is movement of a kind.
@@ -1496,10 +1499,31 @@ func (t *terminal) sayMove(res DrainResult) {
 			t.say("%s: %s", f.Issue, f.Note)
 		}
 	}
+	t.sayParked(res.Parked)
 	if res.Start != nil && res.Lane != nil {
 		t.say("opened the lane of %s: run %s", res.Lane.Issue, res.Lane.RunID)
 	}
 	t.noteHandBacks(res)
+}
+
+// sayParked says two notes of a move's parked lanes, and no other: the line of
+// an act the watch made on a lane (an arming made again, a queuing, a toggle),
+// and the report of a lane read dropped, which names the failed check and the
+// commands that re-run it and arm it again. Each is said once while it stands,
+// kept per run as a finished lane's is. A parked lane's ordinary reading
+// (waiting, conflicting, syncing, unread) is the listing's and not an event:
+// its note changes with the queue's every move.
+func (t *terminal) sayParked(parked []DrainParked) {
+	for _, p := range parked {
+		if p.Note == "" || (!p.acted && p.State != ParkedDropped) || t.notedParked[p.RunID] == p.Note {
+			continue
+		}
+		if t.notedParked == nil {
+			t.notedParked = map[string]string{}
+		}
+		t.notedParked[p.RunID] = p.Note
+		t.say("%s: %s", laneIssues(p.Issue, p.RunID, p.Bundle), p.Note)
+	}
 }
 
 // drainMoved reports whether a drain's move moved anything: a lane it read and did not finish

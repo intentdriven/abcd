@@ -729,3 +729,73 @@ func TestAPersonsWithdrawalAfterAnUnseenRemovalStands(t *testing.T) {
 		}
 	})
 }
+
+// mirrorAtTip commits a ruleset mirror whose merge queue merges by method on
+// the default branch and pushes it, so the tip names another method than the
+// lane's base does.
+func (f *landFixture) mirrorAtTip(t *testing.T, method string) {
+	t.Helper()
+	f.repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset(method))
+	f.repo.Commit("the queue " + strings.ToLower(method) + "s")
+	f.repo.Git("push", "-q", "origin", "main")
+}
+
+// TestARemovalIsArmedAgainByTheMethodTheGateReadsAtTheTip: the merge gate
+// reads the ruleset mirror at the default branch's tip, so a pull request the
+// queue removed after the mirror changed is armed again by the tip's method,
+// as the landing's own arming is, never by the method the lane's base named.
+func TestARemovalIsArmedAgainByTheMethodTheGateReadsAtTheTip(t *testing.T) {
+	f, pushed := rearmFixture(t)
+	f.mirrorAtTip(t, "SQUASH")
+	f.removedBy(t, pushed, removal(rearmArmedAt.Add(30*time.Minute), "failed_checks", mergeQueueBot))
+	before := f.ghLog(t)
+	if _, err := f.stepAt(rearmArmedAt.Add(40 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	if armings(log) != 1 || !strings.Contains(log, "pr merge 7 --auto --squash --match-head-commit="+pushed) {
+		t.Fatalf("the removal is armed again once, by the tip's method:\n%s", log)
+	}
+	if note := f.lastNote(t); !strings.Contains(note, "by squash pinned to") {
+		t.Fatalf("the note names the method it armed by: %q", note)
+	}
+}
+
+// TestAToggleArmsByTheMethodTheGateReadsAtTheTip: the toggle that queues a
+// pull request the forge refused to queue arms it again by the gate's method,
+// read at the default branch's tip, not by the lane's base's.
+func TestAToggleArmsByTheMethodTheGateReadsAtTheTip(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.landedToArmedOnce(t)
+	f.mirrorAtTip(t, "SQUASH")
+	if err := os.WriteFile(filepath.Join(f.gh, "refuse-enqueue"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.queueAnswer(t, stubQueue{head: l.Landing.Pushed, enabledAt: rearmArmedAt.Format(time.RFC3339), status: "CLEAN"})
+	before := f.ghLog(t)
+	if _, err := f.stepAt(rearmArmedAt.Add(45 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	log := strings.TrimPrefix(f.ghLog(t), before)
+	if armings(log) != 1 || !strings.Contains(log, "pr merge 7 --auto --squash --match-head-commit="+l.Landing.Pushed) {
+		t.Fatalf("the toggle arms it again once, by the tip's method:\n%s", log)
+	}
+	if ld := f.landingNow(t); ld.Toggles != 1 || !strings.Contains(f.lastNote(t), "re-armed by squash") {
+		t.Fatalf("the toggle is counted and its note names the tip's method: %+v %q", ld, f.lastNote(t))
+	}
+}
+
+// TestAHandBackQuotesTheArmingByTheMethodTheGateReadsAtTheTip: past the bound
+// the hand-back quotes the command that arms the pull request again by the
+// method the loop itself arms by, the merge gate's at the default branch's
+// tip, never the lane's base's.
+func TestAHandBackQuotesTheArmingByTheMethodTheGateReadsAtTheTip(t *testing.T) {
+	f, pushed := rearmFixture(t)
+	f.mirrorAtTip(t, "SQUASH")
+	f.setLanding(t, func(ld *Landing) { ld.Rearms = maxRearms })
+	f.removedBy(t, pushed, removal(rearmArmedAt.Add(30*time.Minute), "failed_checks", mergeQueueBot))
+	r := f.wantDroppedUnarmed(t, rearmArmedAt.Add(40*time.Minute))
+	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --squash --match-head-commit="+pushed+"`") || strings.Contains(r.Remedy, "--auto --merge") {
+		t.Fatalf("the hand-back quotes the arming by the tip's method: %s", r.Remedy)
+	}
+}

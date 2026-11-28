@@ -382,7 +382,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	if ld.Toggles >= maxToggles {
 		return nil, fmt.Sprintf("; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (%s); the loop toggled its auto-merge %d times at this head and no longer toggles it, so the forge queues it by itself or a person settles it", why, ld.Toggles), nil
 	}
-	return toggleArming(c, lane, def, rule, why)
+	return toggleArming(c, lane, def, rule, why, d.Method)
 }
 
 // watchAutoMerge is the same watch where no queue gates the default branch: the
@@ -519,18 +519,20 @@ func enqueue(c Context, lane Lane, id string) (why string, err error) {
 	return "", nil
 }
 
-// toggleArming withdraws the lane's arming and makes it again, by the ruleset
-// mirror's method at the lane's base and pinned to the pushed head, as the
-// arming made it: the toggle that queued #837 and #844 where the forge's
-// enqueue call failed. An arming the forge refuses to make again leaves the
-// pull request disarmed, which is refused, naming the command that re-arms it,
-// and marked out of the queue, so a drain reads its parked lane as dropped
-// with that refusal as its note, not as still armed.
-func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why string) (*Outcome, string, error) {
+// toggleArming withdraws the lane's arming and makes it again, pinned to the
+// pushed head, by armBy, the method the merge gate decided on from the ruleset
+// mirror at the default branch's tip, as the landing's own arming is made: the
+// toggle that queued #837 and #844 where the forge's enqueue call failed. The
+// mirror at the lane's base only says a queue gated it then; a method it names
+// that the tip no longer does is not armed by. An arming the forge refuses to
+// make again leaves the pull request disarmed, which is refused, naming the
+// command that re-arms it, and marked out of the queue, so a drain reads its
+// parked lane as dropped with that refusal as its note, not as still armed.
+func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why, armBy string) (*Outcome, string, error) {
 	ld := lane.Landing
 	n := strconv.Itoa(lane.PR)
-	method := landing.MergeMethods[rule.Method]
-	if method == "" {
+	method := armBy
+	if landing.MergeMethods[rule.Method] == "" || method == "" {
 		return nil, "; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (" + why + "); the ruleset mirror names no merge method to re-arm it by, so the loop leaves it", nil
 	}
 	if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
@@ -569,8 +571,9 @@ func rearmArgs(n, method, head string) []string {
 // rearmDropped is the watch's act on an armed lane's pull request that is
 // open, outside the merge queue and no longer armed: the forge's merge queue
 // removed it (a failed merge-group check clears the arming with it), or
-// someone withdrew the arming. It arms the pull request again, by the ruleset
-// mirror's method pinned to the pushed head, when all of these hold, and
+// someone withdrew the arming. It arms the pull request again, by the method
+// the merge gate decided on from the ruleset mirror at the default branch's
+// tip, pinned to the pushed head, when all of these hold, and
 // otherwise refuses for a person (droppedReport):
 //
 //   - no release's hold stands, and the holds were read: a held lane waits
@@ -603,7 +606,7 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 		return nil, "", err
 	}
 	if held != "" {
-		return nil, "", droppedReport(c, *lane, def, rule, v, held)
+		return nil, "", droppedReport(c, *lane, def, v, held, tipArmMethod(c, *lane, def, ""))
 	}
 	ld := lane.Landing
 	removedAt, why := rearmable(*ld, v)
@@ -611,12 +614,12 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 	switch {
 	case why != "":
 	case method == "":
-		why = "the ruleset mirror names no merge method to arm it by"
+		why = "the ruleset mirror at the lane's base names no merge method to arm it by"
 	case !gitutil.IsFullSHA(ld.Pushed):
 		why = "the loop has no full pushed head to pin the arming to"
 	}
 	if why != "" {
-		return nil, "", droppedReport(c, *lane, def, rule, v, notRearmed(*ld, why))
+		return nil, "", droppedReport(c, *lane, def, v, notRearmed(*ld, why), tipArmMethod(c, *lane, def, ""))
 	}
 	// Arming again is the arming's own act, so the fence it passed is asked
 	// again (the reservation still this person's, no release held), and so is
@@ -639,6 +642,10 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 		ld.Merge, ld.Armed = "left open: "+d.Why, false
 		return &Outcome{Stay: true, Note: "the merge queue removed pull request #" + n + ", and the loop does not arm it again: " + d.Why + "; the loop asks again on each step"}, "", nil
 	}
+	// The arming is the gate's, by the method it read at the default branch's
+	// tip, as the landing's own arming is: the mirror at the lane's base said
+	// only that a queue gated it then. A decision to arm always names one.
+	method = d.Method
 	args := rearmArgs(n, method, ld.Pushed)
 	if _, err := landing.GH(c.RepoRoot, args...); err != nil {
 		if errors.Is(err, landing.ErrNoForgeClient) {
@@ -647,7 +654,7 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 		if r := netFailure(StageLand, lane.ID, "gh pr merge", err); r != nil {
 			return nil, "", r
 		}
-		return nil, "", droppedReport(c, *lane, def, rule, v, "; the loop armed it again and the forge refused the arming ("+forgeWhy(err)+")")
+		return nil, "", droppedReport(c, *lane, def, v, "; the loop armed it again and the forge refused the arming ("+forgeWhy(err)+")", method)
 	}
 	ld.Rearms++
 	now := c.Now
@@ -659,6 +666,30 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 	}
 	return &Outcome{Stay: true, Note: fmt.Sprintf("pull request #%s was removed from %s's merge queue by the queue%s and is armed again, %d of %d at this head, by %s pinned to %s",
 		n, def, reason, ld.Rearms, maxRearms, strings.TrimPrefix(method, "--"), shortSHA(ld.Pushed))}, "", nil
+}
+
+// tipArmMethod is the forge client's flag the merge gate arms by at the
+// default branch's tip (askMergeGate, landing's gate decision): the merge
+// queue's method the ruleset mirror names at tip, or --merge where it names no
+// queue. tip "" is the tip as just fetched. It is "" when the tip or its mirror
+// cannot be read, so a hand-back that quotes it never names a method the loop
+// would not arm by.
+func tipArmMethod(c Context, lane Lane, def, tip string) string {
+	if tip == "" {
+		t, err := defaultTip(c, lane, def)
+		if err != nil {
+			return ""
+		}
+		tip = t
+	}
+	rule, err := readMergeRuleAt(c, lane, def, tip, Remote+"/"+def)
+	if err != nil {
+		return ""
+	}
+	if rule.Method == "" {
+		return "--merge"
+	}
+	return landing.MergeMethods[rule.Method]
 }
 
 // rearmable reads the forge's last removal against the landing: its time, and
@@ -726,9 +757,11 @@ func droppedHold(c Context, lane Lane) (string, error) {
 // the pull request's last merge group, then extra (why the loop does not arm
 // it again, or that the holds were not read); and as the remedy, the failed
 // check, the command that re-runs its workflow run, the command that arms it
-// again by rule's method (the one toggleArming runs), and the step that reads
-// it again.
-func droppedReport(c Context, lane Lane, def string, rule landing.MergeRule, v queueView, extra string) error {
+// again by armBy, the forge client's flag the loop itself arms by (the merge
+// gate's method at the default branch's tip: tipArmMethod, or the gate's own
+// decision where the caller holds it), and the step that reads it again. An
+// empty armBy quotes no command, naming the method to arm by instead.
+func droppedReport(c Context, lane Lane, def string, v queueView, extra, armBy string) error {
 	n := strconv.Itoa(lane.PR)
 	removed := "the forge records no removal from the merge queue, so its arming was withdrawn"
 	if e, ok := v.lastRemoval(); ok {
@@ -744,8 +777,8 @@ func droppedReport(c Context, lane Lane, def string, rule landing.MergeRule, v q
 	reason := fmt.Sprintf("pull request #%s left %s's merge queue and is no longer armed, so it will not merge on its own: %s; %s%s",
 		n, def, removed, g.clause, extra)
 	rearm := lane.Landing.Pushed + " by the queue's merge method (the ruleset mirror names none the loop can quote)"
-	if method := landing.MergeMethods[rule.Method]; method != "" {
-		rearm = "(`gh " + strings.Join(rearmArgs(n, method, lane.Landing.Pushed), " ") + "`)"
+	if armBy != "" {
+		rearm = "(`gh " + strings.Join(rearmArgs(n, armBy, lane.Landing.Pushed), " ") + "`)"
 	}
 	// The failed checks are the forge's text: they stand in a clause of their
 	// own before the commands, quoted, and as forgeLabel left them, so a name
