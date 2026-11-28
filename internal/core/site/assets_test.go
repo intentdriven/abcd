@@ -584,6 +584,16 @@ func TestAssetsRefuseARepeatedAttribute(t *testing.T) {
 		}
 	}
 
+	// A long repeated name is echoed clipped as well: the repeat message names
+	// the attribute, never its value, so the name is what must stay bounded.
+	longName := "aria-" + long
+	nameSVG := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><g ` + longName + `="a" ` + longName + `="b"><rect width="2" height="2"/></g></svg>`
+	nameRoot := assetFixture(t, map[string]string{"docs/assets/img/x.svg": nameSVG})
+	namePipe := newAssetPipe(nameRoot, mustOpenRoot(t, nameRoot), "/")
+	if _, err := namePipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at); err == nil || strings.Contains(err.Error(), longName) {
+		t.Errorf("a long repeated attribute name was not refused with its name clipped: %v", err)
+	}
+
 	// A long aria-hidden value on the root is echoed clipped too.
 	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-hidden="` + long + `"><rect width="2" height="2"/></svg>`
 	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
