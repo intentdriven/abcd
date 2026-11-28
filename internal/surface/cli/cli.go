@@ -5030,17 +5030,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// An advisory gap no install closes is named too, by its
 				// title, and either kind carries its step on the line
 				// under it: otherwise only --json says what to do about
-				// it (iss-2611252138558553). A detail that already holds
-				// the step is not followed by it again.
+				// it (iss-2611252138558553).
 				for _, g := range report.Detection.Gaps {
 					step := unresolvableGapStep(g)
 					switch {
 					case g.Required && !g.Resolvable:
 						fmt.Fprintf(w, "  diagnostic:     %s — %s\n",
 							termsafe.Sanitize(g.ID), termsafe.Sanitize(g.Detail))
-						if strings.Contains(g.Detail, step) {
-							step = ""
-						}
 					case step != "":
 						fmt.Fprintf(w, "  advisory:       %s\n", termsafe.Sanitize(g.Title))
 					}

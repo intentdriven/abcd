@@ -81,10 +81,11 @@ flags.
 - **The dry run** renders the detection envelope as JSON and mutates nothing.
 - **The doctor** runs the full detection pass plus a read-only audit pass. Its
   distinct contribution is the audit, and its distinct value in the text render
-  is that it names, one line each, every required gap that is **not** resolvable
-  — the ones no later install will clear, such as a config file abcd refuses
-  to touch until a human repairs it. A bare count of those would be a number the
-  reader cannot act on. It is the check to reach for after a repo rename, a
+  is that it names, one line each, every gap that is **not** resolvable — the
+  ones no later install will clear, such as a config file abcd refuses to touch
+  until a human repairs it: a required one as a diagnostic with its detail, an
+  advisory one by its title, and either with its step on the line under it. A
+  bare count of those would be a number the reader cannot act on. It is the check to reach for after a repo rename, a
   machine migration, or "why aren't my transcripts showing up".
 - **The remote report** audits, read-only, the repository this checkout's own
   origin names against abcd's settings baseline (itd-2610290746077716), and

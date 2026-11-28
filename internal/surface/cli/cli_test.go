@@ -1210,4 +1210,15 @@ func TestAhoyDoctorNamesTheDiagnosticsNoInstallCanFix(t *testing.T) {
 	if !strings.Contains(out, "could not be parsed") {
 		t.Fatalf("doctor named the gap but not what is wrong with it:\n%s", out)
 	}
+	// The step the person takes sits on the line under the diagnostic
+	// (iss-2611252138558553): the detail says what is wrong, not what to do.
+	const step = "Repair the file by hand — a merge-conflict marker is the usual cause — and re-run ahoy install."
+	lines := strings.Split(out, "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(l, "  diagnostic:     config.malformed") {
+			if i+1 >= len(lines) || lines[i+1] != "                  "+step {
+				t.Errorf("doctor prints no step under the config.malformed diagnostic:\n%s", out)
+			}
+		}
+	}
 }
