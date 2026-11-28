@@ -9,11 +9,12 @@ import (
 // rollup `gh pr list --json statusCheckRollup` prints keeps every run of a
 // check, so a failure that was rerun and passed sits beside the success. The
 // stop check judges each check by its newest run per workflow and name, as the
-// forge's merge gate does, and a run not yet started is newer than any that
-// has. A run is superseded only when it had finished by the time the newer
-// one started: runs whose windows overlap are concurrent (matrix legs sharing
-// a display name, one workflow run on push and on pull_request) and are all
-// judged.
+// forge's merge gate does. A run not yet started is newer than any that has
+// while it is still unfinished; a finished run with no start is ordered by its
+// completion, and one with neither time sets nothing aside. A run is
+// superseded only when it had finished by the time the newer one started:
+// runs whose windows overlap are concurrent (matrix legs sharing a display
+// name, one workflow run on push and on pull_request) and are all judged.
 func TestChecksJudgeEachCheckByItsNewestRun(t *testing.T) {
 	const (
 		early  = "2026-11-27T10:00:00Z"
@@ -57,6 +58,18 @@ func TestChecksJudgeEachCheckByItsNewestRun(t *testing.T) {
 			run("ci", "attribution", "COMPLETED", "FAILURE", early, middle),
 			run("ci", "attribution", "QUEUED", "", zero, zero),
 		}, checksPending},
+		{"a finished pass with no start, ordered by its completion", []map[string]any{
+			run("ci", "attribution", "COMPLETED", "FAILURE", early, middle),
+			run("ci", "attribution", "COMPLETED", "SUCCESS", zero, late),
+		}, checksPassing},
+		{"a finished pass with neither time sets nothing aside", []map[string]any{
+			run("ci", "attribution", "COMPLETED", "FAILURE", early, middle),
+			run("ci", "attribution", "COMPLETED", "SUCCESS", "", ""),
+		}, checksFailing},
+		{"a run cancelled while queued, then a passing rerun", []map[string]any{
+			run("ci", "attribution", "COMPLETED", "CANCELLED", zero, middle),
+			run("ci", "attribution", "COMPLETED", "SUCCESS", late, later),
+		}, checksPassing},
 		{"overlapping legs sharing a name are both judged", []map[string]any{
 			run("ci", "test linux", "COMPLETED", "FAILURE", early, later),
 			run("ci", "test linux", "COMPLETED", "SUCCESS", middle, late),

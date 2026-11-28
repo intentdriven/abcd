@@ -118,16 +118,43 @@ func (c checkEntry) finished() (at time.Time, finished bool) {
 	return instant(c.CompletedAt)
 }
 
+// ordered is the instant a run is placed at among its check's runs: when it
+// started, or, for a finished check run the forge gave no start (one
+// cancelled while queued), when it finished. ok is false for a run with
+// neither, which can be set aside by nothing and sets nothing aside.
+func (c checkEntry) ordered() (at time.Time, ok bool) {
+	if at, ok := c.started(); ok {
+		return at, true
+	}
+	if c.Context != "" {
+		return time.Time{}, false
+	}
+	return instant(c.CompletedAt)
+}
+
+// waiting reports a check run the forge has queued and not yet started: no
+// start, no conclusion, and not completed. It is the newest run of its check
+// by construction, so it sets aside every finished run of that check.
+func (c checkEntry) waiting() bool {
+	if c.Context != "" {
+		return false
+	}
+	if _, started := c.started(); started {
+		return false
+	}
+	return c.Conclusion == "" && !strings.EqualFold(c.Status, "COMPLETED")
+}
+
 // newestRuns is the rollup with every superseded run left out
 // (iss-2611270325497482). The rollup keeps each run of a check, so a failure
 // that was rerun and passed sits beside its success; the forge's merge gate
 // judges a check by its newest run, and so does this. A run is superseded
 // only when it had finished by the time another run of the same check
-// started, a run not started yet counting as starting after every run that
-// has. Runs whose windows overlap are concurrent, not a run and its rerun
-// (matrix legs sharing a display name, or one workflow run for push and for
-// pull_request), and are all judged; so are runs that cannot be ordered (two
-// at one instant, two not started, one whose end is unknown).
+// started, or when another is waiting to start. Runs whose windows overlap
+// are concurrent, not a run and its rerun (matrix legs sharing a display
+// name, or one workflow run for push and for pull_request), and are all
+// judged; so are runs that cannot be ordered (two at one instant, one whose
+// end is unknown, a finished one with no time at all).
 func newestRuns(rollup []checkEntry) []checkEntry {
 	kept := make([]checkEntry, 0, len(rollup))
 	for i, c := range rollup {
@@ -138,17 +165,18 @@ func newestRuns(rollup []checkEntry) []checkEntry {
 	return kept
 }
 
-// superseded reports whether another run of rollup[i]'s check started after
-// rollup[i] began and no earlier than it finished.
+// superseded reports whether rollup[i] has finished and another run of its
+// check is waiting to start, or started after rollup[i] was placed and no
+// earlier than it finished.
 func superseded(rollup []checkEntry, i int) bool {
 	c := rollup[i]
 	key, ok := c.checkKey()
 	if !ok {
 		return false
 	}
-	start, started := c.started()
+	at, placed := c.ordered()
 	end, finished := c.finished()
-	if !started || !finished {
+	if !placed || !finished {
 		return false
 	}
 	for j, n := range rollup {
@@ -158,8 +186,10 @@ func superseded(rollup []checkEntry, i int) bool {
 		if k, ok := n.checkKey(); !ok || k != key {
 			continue
 		}
-		next, nstarted := n.started()
-		if !nstarted || (next.After(start) && !next.Before(end)) {
+		if n.waiting() {
+			return true
+		}
+		if next, ok := n.ordered(); ok && next.After(at) && !next.Before(end) {
 			return true
 		}
 	}
