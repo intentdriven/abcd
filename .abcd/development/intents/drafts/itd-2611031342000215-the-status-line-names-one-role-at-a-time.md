@@ -41,7 +41,7 @@ Built on by: itd-2611141507299828 (the status line shows the progress of work th
 
 ## Press Release
 
-> The status line names one person at a time: the role whose item has waited longest. An answer that blocks comes first, the oldest of them; with nothing blocking, the role with the oldest review to make; with nothing owed, the row says abcd is managing. A red `waiting` stands beside the role only where an answer really blocks, which is a repository that merges by hand; a repository that merges on its own shows an `auto-merge` badge instead, whose word will follow the facilitator's automatic mode as it widens beyond merging. The reviews that role has to make show as a grey count, never a block, and turn yellow once the batch is large or old. Everything after the badges follows the person reading: the product thinker sees outcomes in plain words; the technical facilitator sees the checkout, their session's own time and context, the usage windows, the agents, the builds and the API spend against its budget, in one order when they merge by hand and another when abcd merges for them. A narrow terminal trims detail inside each element first and drops whole elements last, by the width the host reports, and the row never loses its badge. Every element and every warning has a plain explanation behind it (the value, the threshold it was judged against and where it was read from), which a person opens from the row and an agent reads as data. abcd ships the whole table as sensible defaults and makes all of it configurable from the first version, so the defaults are tuned by use and a repository's maintainers adjust them for their own.
+> The status line names one person at a time: the role whose item has waited longest. An answer that blocks comes first, the oldest of them; with nothing blocking, the role with the oldest review to make; with nothing owed, the row says abcd is managing. A red `waiting` stands beside the role only where an answer really blocks, which is a repository whose facilitator works by hand, and it says how long the answer has waited; where abcd is the facilitator, nothing blocks, no `waiting` appears, and the row's facilitator element is the one place that says so. The reviews that role has to make show as a grey count, never a block, and turn yellow once the batch is large or old. Everything after the badges follows the person reading: the product thinker sees outcomes in plain words; the technical facilitator sees the checkout, their session's own time and context, the usage windows, the agents, the builds and the API spend against its budget, in one order when they merge by hand and another when abcd merges for them. A narrow terminal trims detail inside each element first and drops whole elements last, by the width the host reports, and the row never loses its badge. Every element and every warning has a plain explanation behind it (the value, the threshold it was judged against and where it was read from), which a person opens from the row and an agent reads as data. abcd ships the whole table as sensible defaults and makes all of it configurable from the first version, so the defaults are tuned by use and a repository's maintainers adjust them for their own.
 
 _The product thinker's rulings of 2026-11-03, from two labs and a live trial on their own status line; the terminal is the technical facilitator's surface, and the product-thinker view is kept until their web view ships._
 
@@ -130,33 +130,47 @@ what it records.
 - The review count and its age read the spot-check queue
   (itd-2610301750162657) and show only once it ships; the agents, spend,
   API-time and token figures read the launch ledger (itd-2611031342011261)
-  and are dropped, never invented, until it ships.
+  and are dropped, never invented, until it ships. The frame is built first,
+  and the spec closes with a stated remainder for each element whose source
+  has not shipped, which keeps the intent planned until that source ships
+  (decision 31).
 - The terminal is the technical facilitator's surface; the product-thinker
   view is interim, kept until the product thinker's dashboard
   (itd-2610032150577708) carries what it shows.
-- The mode badge's word, `auto-merge`, holds while `facilitator.mode` governs
-  merging alone; it changes with the wider automatic mode the autonomy grant
-  (itd-2610240850336695) describes, and that mode is not this intent's to
-  define.
+- Under the facilitator's automatic mode the row shows no mode badge, and the
+  `facilitator:` element of itd-2611252117557299 names the mode (decision 32),
+  so the row needs no new word as that mode widens under the autonomy grant
+  (itd-2610240850336695); the wider mode is not this intent's to define.
 
 ## Acceptance Criteria
 
 Restated from the product thinker's rulings of 2026-11-03; each to be walked
 at the planning interview. On 2026-11-28 the session rewrote criteria 3, 10,
 11, 12, 13 and 19 against what has shipped since and the technical calls of
-decisions 20 to 30, and added criterion 20 for decision 17.
+decisions 20 to 30, and added criterion 20 for decision 17; later the same
+day it rewrote criteria 1, 2, 6 and 17 on the session's defaults for the
+planning questions (decisions 31 to 35), and added criterion 21 for an
+element whose source has not shipped.
 
-- **Given** blocking answers and pending reviews owed to both roles, **when**
-  the row renders, **then** the first badge names exactly one role: the role
-  of the oldest blocking answer; with no block, the role of the oldest pending
-  review; with neither, `abcd-managed`; and the review count beside it is
-  that role's own count and no other's.
-- **Given** a blocking answer owed to the named role and a repository whose
-  `facilitator.mode` is `human`, **when** the row renders, **then** `waiting`
-  follows the role badge as red text with no background, and it is the only
-  badge state rendered that way; **given** `facilitator.mode` is `auto`,
-  **then** an `auto-merge` badge follows the role badge and `waiting` never
-  renders, whatever is owed.
+- **Given** blocking answers owed to both roles, from the checkout's mode
+  store and from a drive that needs a person, and pending reviews owed to
+  both roles, **when** the row renders, **then** the first element names
+  exactly one role: the role of the oldest block (the mode store's block
+  dated from when its word last changed, a drive's from its stored `since`);
+  with no block, the role of the oldest pending review; with neither,
+  `abcd-managed`; the review count beside it is that role's count alone; and
+  a source that has not shipped or cannot be read takes no part in the
+  choice.
+- **Given** a blocking answer owed to the named role and a
+  `facilitator.mode` that resolves to `human`, **when** the row renders,
+  **then** `waiting` follows the role as red text with no background, with
+  how long the answer has waited beside it (`waiting 2h`), and no other
+  element renders in red; **given** `facilitator.mode` resolves to `auto`,
+  **then** no mode badge renders, `waiting` never renders whatever is owed,
+  and the mode is said by the `facilitator:` element alone; **given** a new
+  session starts over a waiting mode an agent's question set, **then** the
+  mode is back to managed before the row renders, while a mode a person set
+  by hand survives the start and keeps its age.
 - **Given** a checkout whose working tree's `.abcd/config.json` declares a
   `facilitator.mode` that differs from what the merge gate's resolver gives
   (the default branch's committed value, else the person's global
@@ -176,11 +190,15 @@ decisions 20 to 30, and added criterion 20 for decision 17.
   product thinker but the view is the facilitator's; **given** a blocking
   answer owed to the product thinker, **then** the view is the product
   thinker's; and the view is never read from a role setting.
-- **Given** the product-thinker view and build lanes underway, **when** the
-  row renders, **then** work in progress reads as a count of distinct pieces
-  of work (`in progress 2`), and the whole row carries no record id, no lane
-  id and no stage name; the two facilitator views keep the builds element
-  with its lanes and stages.
+- **Given** the product thinker's view and work underway, **when** the row
+  renders at any width, **then** work in progress reads as a count of
+  distinct pieces of work (`in progress 2`), the row carries no record id,
+  lane id or stage name, and none of the elements the table marks absent for
+  that view (the dirty marker, the branch's pull-request state, the person's
+  open pull requests, the peers, the model, the context and the agents);
+  **given** either facilitator view, **then** the builds element shows its
+  lanes and stages in the facilitator's words, and the drive's part keeps
+  the product wording itd-2611141507299828 rules for both views.
 - **Given** `COLUMNS` in the environment and a row wider than `COLUMNS` less
   the margin, **when** the row renders, **then** detail stages are removed
   first in the fixed order the table declares (the same in every view), then
@@ -243,12 +261,14 @@ decisions 20 to 30, and added criterion 20 for decision 17.
   both windows in the same four cells (the seven-day reading as the dot, the
   five-hour as its underline) with a session that lacks the five-hour reading
   keeping the dots alone, and a reset renders as words (`resets 54m/3d19h`).
-- **Given** API-billed launches recorded against the session with their
-  keys, **when** the row renders the spend element, **then** each key shows
-  its spend against its budget, a key at or past 80% of its budget renders
-  yellow, the list collapses to a summary (`3 keys $142/$450`) plus any key
-  past its share once there are more keys than the configured limit (two),
-  and a session billed to the subscription shows no cost figure.
+- **Given** launches recorded against the session with a key route and a
+  budget, **when** the row renders the spend element, **then** each key
+  shows its spend against its budget, a key at or past 80% of its budget
+  renders yellow, more keys than the configured limit (two) collapse to a
+  summary (`3 keys $142/$450`) plus any key past its share, and a session
+  billed to the subscription shows no cost figure; **given** no launch with
+  a key route, **then** the spend element is absent and the explanation
+  names it as unavailable.
 - **Given** a session's own figures (its API time, lines changed, running
   token total, the agents it launched and their spend), **when** the row
   renders in any session, **then** every figure is that session's own, read
@@ -267,6 +287,13 @@ decisions 20 to 30, and added criterion 20 for decision 17.
   `<repo> ‹<intent short id> L<lane>›` from the run state, another worktree
   reads by its own name, a label wider than 24 columns is cut in the middle,
   and the main checkout still reads `<repo>:<branch>`.
+- **Given** an element whose source has not shipped or cannot be read (the
+  review count before the spot-check queue's reading exists, the agents and
+  spend before the launch ledger's rollup, the branch's pull request before
+  the pull-request watcher's file), **when** the row renders, **then** the
+  element is absent with no placeholder and no separator left in its place,
+  and `abcd statusline --explain` lists it with `available: false` and the
+  reason, naming the record whose work supplies it.
 
 ## Decisions
 
@@ -548,39 +575,100 @@ person's answers; a person may reverse any of them:
     Grounds: nothing a reader keys on changes. To reverse: mark it breaking if
     a reader of the plain words turns up. (dcn-2611281148519955)
 
+The session's defaults for the five product trade-offs the planning put to
+the person, taken while the person is away (2026-11-28) on the planning
+brief's recommendation; each is for the person's review, and a person may
+reverse any of them:
+
+31. **The frame ships first.** The table, the three views, the one-role
+    badge, fitting the pane width, `--explain`, text mode, the gauges and the
+    links are built now; each element whose source has not shipped (the
+    review count, the agents and spend, the build lanes, the branch's
+    pull-request state) is a stated remainder that appears when its source
+    ships; the counts keep their present form, left to iss-2610111726481495.
+    Grounds: the badge and narrow-pane rulings reach people now instead of
+    waiting on four records not yet built, one of them a draft. To reverse:
+    hold the whole row until every source ships, or add the ready and
+    fixable counts to the first version. (dcn-2611281155245894)
+32. **Under auto there is no mode badge.** Under `facilitator.mode: auto` the
+    badge names a role, or `abcd-managed`, as in every mode, and the row's
+    `facilitator: auto (project)` element is what says the mode, so it is
+    said once; `waiting` appears only under `human`. This replaces decision
+    3's `auto-merge` badge, and open question 7 has nothing left to settle.
+    Grounds: every row already names the mode in that element
+    (itd-2611252117557299), and `auto` now means the whole facilitator role
+    (itd-2611252049031692), so a badge word about merging would already be
+    out of date. The cost: auto mode loses its own coloured block at the left
+    edge. To reverse: give auto a badge with a wider word beside the element,
+    or let that badge replace the element under auto. (dcn-2611281201513663)
+33. **The product thinker's view leaves the technical elements out.** The
+    dirty marker, the branch's pull-request state, the person's open pull
+    requests, the peers, the model, the context and the agents never appear
+    in that view, whatever the width; this settles open question 2. Grounds:
+    it matches decision 7 and the lab's element catalogue, and the view is
+    interim until the dashboard (itd-2610032150577708). The cost: a person
+    who holds both roles loses those elements on a wide pane whenever an
+    answer owed to the product thinker turns the view. To reverse: show them
+    in that view and shed them first, as the prototype did, by changing their
+    visibility for that view in the bundled table. (dcn-2611281201512624)
+34. **A waiting badge an agent set ends at the next session start, and shows
+    its age.** The session-start hook sets the mode back to managed only
+    when the question marker shows that an agent put the question, so a mode
+    a person set by hand survives; and `waiting` carries how long the answer
+    has waited, dated as decision 26 says. This takes up the ruling
+    iss-2609291032194222 has waited on since 2026-09-29, which decision 26
+    left open, and the spec step that builds it resolves that issue.
+    Grounds: it is the smallest change to the ruled rule that a mode set by
+    hand is never cleared, and with its age shown a park a crash left behind
+    reads as old, not as current. The cost: such a park stays until some
+    session starts. To reverse: show the badge only in the session that set
+    it, or let it lapse after a set time and show it as aged.
+    (dcn-2611281201529151)
+35. **The facilitator's views keep the facilitator's words.** In both
+    facilitator views the builds element names lane ids, stage names and
+    record ids, while the drive's part keeps the product wording
+    itd-2611141507299828 rules for both views; the product thinker's view
+    keeps outcome words alone, so open question 3 concerns that view only.
+    Grounds: the facilitator is the reader who acts on a lane id, and the mix
+    is confined to one part whose words a repository can change (decision
+    13). The cost: one facilitator row mixes two registers. To reverse: use
+    product words in every view and keep the ids to the explanation and the
+    lanes page, by changing the builds element's words in the bundled table.
+    (dcn-2611281201531202)
+
 ## Open Questions
 
-Each is shipped as a default the person tunes in use (decision 13), not a
-question that holds the intent; they are listed so the planning interview can
-set the first values.
+Questions 2 and 7 are answered by decisions 33 and 32. Each of the rest is a
+default the build ships at the value stated and the person tunes in use
+(decision 13); none holds the intent, and each is listed so a later tuning
+can set it.
 
-1. Each view's dropping order. The prototype's orders are a first guess.
-   Product thinker: peers, work, model, pull request state, open pull
-   requests, context, agents, usage windows, spend. Facilitator merging by
-   hand: peers, builds, agents, spend, usage windows, model, open pull
-   requests, context, pull request state. Facilitator on auto-merge: peers,
-   model, pull request state, open pull requests, context, usage windows,
-   agents, spend, builds.
-2. Which elements the product-thinker view leaves out entirely rather than
-   drops late. The catalogue leaves out the dirty marker, the pull request
-   state, the person's open pull requests, the peers, the model, the context
-   and the agents; the prototype only sheds them.
-3. The product-thinker view's own words for the elements it keeps (`in
-   progress`, the spend), in that register: outcomes, no ids, no internals.
-4. The thresholds: the review warning at 5 reviews or 24 hours; a key's
-   budget warning at 80%; the context warning at 80%; the key list
-   collapsing beyond two keys; the shedding margin of six columns; the
-   worktree label cut at 24; the refresh interval of five seconds.
-5. Whether the collapsed counts keep their emoji figures, or follow the
-   warnings into text (decision 8).
-6. The gauge palette on a light terminal, which the payload cannot tell the
-   row about (decision 10).
-7. The mode badge's word once the wider automatic mode ships (decision 3).
-
-Waiting on the planning answers (2026-11-28): criteria 1, 2, 6 and 17, and a
-criterion for an element whose source has not shipped, are left as they are
-until the person answers the five product trade-offs the planning put to
-them, since each rewrite turns on those answers.
+1. **Deferred: a default, tuned in use.** Each view's dropping order. The
+   prototype's orders are a first guess. Product thinker: work, usage
+   windows, spend (the elements decision 33 leaves out of that view never
+   enter its order). Facilitator working by hand: peers, builds, agents,
+   spend, usage windows, model, open pull requests, context, pull request
+   state. Facilitator under auto: peers, model, pull request state, open
+   pull requests, context, usage windows, agents, spend, builds.
+2. resolved: decision 33 (dcn-2611281201512624). The product thinker's view
+   leaves the dirty marker, the pull request state, the person's open pull
+   requests, the peers, the model, the context and the agents out entirely.
+3. **Deferred: a default, tuned in use.** The product thinker's view's own
+   words for the elements it keeps (`in progress`, the spend), in that
+   register: outcomes, no ids, no internals (decision 35 keeps the
+   facilitator's words in the facilitator's views).
+4. **Deferred: defaults, tuned in use.** The thresholds: the review warning
+   at 5 reviews or 24 hours; a key's budget warning at 80%; the context
+   warning at 80%; the key list collapsing beyond two keys; the shedding
+   margin of six columns; the worktree label cut at 24; the refresh interval
+   of five seconds; and the form of the waiting age (decision 34).
+5. **Deferred: a default, tuned in use.** Whether the collapsed counts keep
+   their emoji figures, or follow the warnings into text (decision 8).
+6. **Deferred: a default, tuned in use.** The gauge palette on a light
+   terminal, which the payload cannot tell the row about (decisions 10 and
+   27); the build ships an untuned light ramp.
+7. resolved: decision 32 (dcn-2611281201513663). Under auto the row shows no
+   mode badge, so no badge word waits on the wider automatic mode.
 
 ## Audit Notes
 
