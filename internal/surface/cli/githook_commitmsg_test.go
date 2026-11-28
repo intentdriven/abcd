@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -295,6 +296,42 @@ func TestCommitMsgHookRefusesARecordSlugOverTheCap(t *testing.T) {
 	}
 	if refused, out := c.commitWith(hookLongRel, "docs: a decision\n\nAssisted-by: None\n"); refused {
 		t.Fatalf("a slug within the repository's cap of 60 was refused\n%s", out)
+	}
+}
+
+// A record over the record cap shares the slug cap's exit, though its slug may
+// be short: the header names both causes, so a refusal of a short-slugged record
+// does not say its slug is over the cap.
+func TestCommitMsgHookHeaderNamesARecordOverTheRecordCap(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	c.withRecordLint()
+	c.makeDecisionsDir()
+	rel := hookDecisions + "dcn-2611050000000003-short.md"
+	body := "---\nslug: \"short\"\n---\n" + strings.Repeat("a line of a record grown past the cap\n", (issueschema.RecordReadLimit/38)+2)
+	if err := os.WriteFile(filepath.Join(c.dir, rel), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.git("add", rel)
+	msg := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msg, []byte("docs: a decision\n\nAssisted-by: None\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := c.tryGit("commit", "-q", "-F", msg)
+	if err == nil {
+		t.Fatalf("a record over the record cap was committed\n%s", out)
+	}
+	if !strings.Contains(out, "record cap") {
+		t.Fatalf("premise: the refusal is not the record-size finding\n%s", out)
+	}
+	var header string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "commit-msg: BLOCKED") {
+			header = line
+			break
+		}
+	}
+	if !strings.Contains(header, "too large for its slug to be read") {
+		t.Errorf("the header does not name a record too large to read, only a slug over the cap: %q\n%s", header, out)
 	}
 }
 
