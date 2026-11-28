@@ -191,7 +191,9 @@ Recorded 2026-11-14 within an autonomous run, on the product thinker's delegatio
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-da2f8a9cec53 -->
+Fidelity review OWED (receipt rcp-da2f8a9cec53).
+<!-- abcd-review-end receipt=rcp-da2f8a9cec53 -->
 
 ## Grounds
 
