@@ -201,7 +201,9 @@ The criteria are numbered in the order the intent lists them.
 
 _All resolved: no question is open, and the notes below are kept for the reader, each with what the plan does until told otherwise._
 
-None holds a step. Four notes for the product thinker, each with what the plan does until told otherwise.
+None holds a step. Four notes for the product thinker, each with what the plan does until told otherwise, and one deferred point that holds this spec's close.
+
+- **Deferred to the person:** criterion 21 under `facilitator.mode: auto` waits on itd-2611031342000215's open question 8, which the person answers after that intent's live preview (step 8's badge section says why: under `auto` that intent's default renders no `waiting`, against this intent's decision 4). It holds no step: step 8 builds and tests the criterion under `human`, and asserts the default under `auto`. It holds the close: this spec closes once the person has answered, or before then with `--remainder` naming criterion 21 under `auto`, which keeps itd-2611141507299828 planned. If the answer keeps the default, itd-2611141507299828's criterion 21 is amended to say so before the close.
 
 - Pull requests armed by a session that has ended, and by a drive, appear in no session's row. Decision 7 and the seventh criterion say only the session's own are counted, and the plan follows them. Event 3 of the incident note, which the intent cites, was of the drive's pull requests; those reach the row only through the drive's state.
 - The drive names the technical facilitator as the role it needs in every case built here. The press release's first quote has a product thinker told the drive "needed me", which holds where one person has both roles. A rule that names the product thinker needs a kind of stall that is theirs to settle, and none is defined by itd-2611141610197753.

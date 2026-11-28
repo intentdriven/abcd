@@ -694,11 +694,13 @@ Technical calls the session made after the two adversarial reviews of
 2026-11-28; a person may reverse either:
 
 36. **The session-start reset never clears a question a live session holds.**
-    The question marker gains a line naming the session whose question the
-    guard admitted; the session-start reset acts only where that session is
-    the one starting or is no longer live (`occupancy.Live`), leaves a marker
-    of another live session alone, resets a marker with no session line only
-    with no other live session in the checkout, and resets nothing where the
+    A file beside the question marker names the session whose question the
+    guard admitted, so the marker itself and every reader of it, an older
+    installed release's included, are unchanged; the session-start reset
+    acts only where that session is the one starting or is no longer live
+    (`occupancy.Live`), leaves a marker of another live session alone, resets
+    a marker with no session file beside it only with no other live session
+    in the checkout, and resets nothing where the
     live sessions cannot be read. Grounds: the occupancy markers already tell
     a live session from a gone one by its host process; a reset at every
     start would make a second session's start say nobody is waited on while
