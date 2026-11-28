@@ -55,8 +55,10 @@ type Ceiling struct {
 // (ReaderSelf), even when the cap is then refused: false when neither a
 // holder id nor the reader's GitHub login can be read without the network,
 // or maxLive refuses: the repository's settings at origin's default branch
-// cannot be read, or its or this machine's hold a reservation key the file
-// does not take (reservationKeys, repoReservationKeys) or a
+// cannot be read, or its or this machine's hold a reservation entry the file
+// does not take (one that is not an object, is spelt in another case, as
+// Reservation, or as one dotted key, as reservation.max_live, or holds a key
+// the file does not take: reservationKeys, repoReservationKeys) or a
 // reservation.max_live an act would refuse. No other value is read: a
 // malformed reservation.fork_origin refuses nothing here, and a machine's
 // malformed reservation.github_username only goes unread as a login. A

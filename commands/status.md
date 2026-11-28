@@ -155,9 +155,11 @@ The payload carries:
     that can be read without the network), when the repository's settings
     at origin's default branch cannot be read (that branch names no commit
     here, or its `.abcd/config.json` cannot be read or does not parse), or
-    when the repository's or this machine's settings hold, under
-    `reservation`, a key the file does not take
-    (`reservation.github_username` is not taken in the repository's) or a
+    when the repository's or this machine's settings hold a `reservation`
+    entry the file does not take (one that is not an object, is spelt in
+    another case, as `Reservation`, or as one dotted key, as
+    `reservation.max_live`, or holds a key the file does not take;
+    `reservation.github_username` is not taken in the repository's) or a
     `reservation.max_live` an act would refuse. The cap reads no other
     value: a malformed `reservation.fork_origin` in either file withholds
     nothing, and a malformed `reservation.github_username` in this
