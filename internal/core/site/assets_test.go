@@ -1,8 +1,10 @@
 package site
 
 import (
+	"encoding/xml"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -350,5 +352,329 @@ func TestCommittedSVGAssetsAreDrawings(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("no SVG assets found; the scan proved nothing")
+	}
+}
+
+// inlinedName reads the accessible name of an inlined picture the way an
+// assistive reader meets it: the wrapper is the picture, so its own role and
+// label are what it says, and a hidden wrapper says nothing. It also reports
+// whether the drawing inside is hidden, since a drawing left exposed would add
+// a name of its own beside the page's.
+func inlinedName(t *testing.T, out string) (name string, exposed, drawingHidden bool) {
+	t.Helper()
+	dec := xml.NewDecoder(strings.NewReader(out))
+	var starts []xml.StartElement
+	for len(starts) < 2 {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("the inlined picture does not parse: %v\n%s", err, out)
+		}
+		if se, ok := tok.(xml.StartElement); ok {
+			starts = append(starts, se.Copy())
+		}
+	}
+	attr := func(se xml.StartElement, key string) (string, bool) {
+		for _, a := range se.Attr {
+			if a.Name.Space == "" && a.Name.Local == key {
+				return a.Value, true
+			}
+		}
+		return "", false
+	}
+	wrap, drawing := starts[0], starts[1]
+	if wrap.Name.Local != "span" || drawing.Name.Local != "svg" {
+		t.Fatalf("want a span wrapping the drawing, got <%s> then <%s>:\n%s", wrap.Name.Local, drawing.Name.Local, out)
+	}
+	hidden, _ := attr(drawing, "aria-hidden")
+	if h, _ := attr(wrap, "aria-hidden"); h == "true" {
+		return "", false, hidden == "true"
+	}
+	role, _ := attr(wrap, "role")
+	label, _ := attr(wrap, "aria-label")
+	if role != "img" {
+		label = ""
+	}
+	return label, true, hidden == "true"
+}
+
+// TestAssetsNameAnInlinedDrawingFromThePage pins iss-2610241550257430: the alt
+// text a page gives an SVG picture is the picture's accessible name on the
+// site, as it is on the forge, and not whatever the drawing file declares. The
+// drawing here declares a name of its own, as the committed ones do, so a
+// wrapper that ignored alt would read "brief" and not the page's words. An
+// empty alt is a decorative picture, which says nothing at all.
+func TestAssetsNameAnInlinedDrawingFromThePage(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4" height="4" role="img" aria-label="brief"><title>brief</title><rect width="2" height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	at := Source{Path: "p.md", Line: 1}
+
+	for _, alt := range []string{"The brief", `A "quoted" <brief> & more`} {
+		out, err := pipe.render("docs/explanation", "../assets/img/x.svg", alt, at)
+		if err != nil {
+			t.Fatalf("a drawing was refused: %v", err)
+		}
+		name, exposed, drawingHidden := inlinedName(t, out)
+		if !exposed || name != alt {
+			t.Errorf("alt %q: the picture's accessible name is %q (exposed %v), want the page's alt:\n%s", alt, name, exposed, out)
+		}
+		if !drawingHidden {
+			t.Errorf("alt %q: the drawing inside is not hidden, so its own name reads beside the page's:\n%s", alt, out)
+		}
+	}
+
+	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", at)
+	if err != nil {
+		t.Fatalf("a drawing was refused: %v", err)
+	}
+	if name, exposed, _ := inlinedName(t, out); exposed {
+		t.Errorf("an empty alt is a decorative picture, yet it reads as %q:\n%s", name, out)
+	}
+
+	// Text before the root element stays where it was, and the hiding lands on
+	// the root start tag alone.
+	root = assetFixture(t, map[string]string{"docs/assets/img/x.svg": `aria-hidden="false" ` + svg})
+	pipe = newAssetPipe(root, mustOpenRoot(t, root), "/")
+	out, err = pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+	if err != nil {
+		t.Fatalf("a drawing was refused: %v", err)
+	}
+	if !strings.Contains(out, `aria-hidden="false" <svg`) || strings.Count(out, `aria-hidden="false"`) != 1 || strings.Count(out, `aria-hidden="true"`) != 1 || !strings.Contains(out, `<rect width="2" height="2"/>`) {
+		t.Errorf("the hiding reached past the root start tag:\n%s", out)
+	}
+}
+
+// TestAssetsRootThatDeclaresItsOwnHiding pins the drawing whose root already
+// says aria-hidden. Said "true", the root is left as it is, so the emitted page
+// carries the attribute once and the page's own reader (parseHTML, which
+// refuses a repeated attribute) reads it; the picture is still named by the
+// page's alt. Said anything else, the drawing asks to be read beside the
+// page's name for it, so the build refuses it and names the asset rather than
+// letting the page fail later with a message that names no drawing.
+func TestAssetsRootThatDeclaresItsOwnHiding(t *testing.T) {
+	at := Source{Path: "p.md", Line: 1}
+	page := func(body string) string {
+		return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>t</title>\n</head>\n<body>\n" +
+			body + "\n</body>\n</html>\n"
+	}
+
+	for _, alt := range []string{"The brief", ""} {
+		svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-hidden="true"><rect width="2" height="2"/></svg>`
+		root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+		pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+		out, err := pipe.render("docs/explanation", "../assets/img/x.svg", alt, at)
+		if err != nil {
+			t.Fatalf("alt %q: a drawing that hides itself was refused: %v", alt, err)
+		}
+		doc, err := parseHTML("index.html", page(out))
+		if err != nil {
+			t.Errorf("alt %q: the page's reader refused the inlined drawing: %v\n%s", alt, err, out)
+			continue
+		}
+		drawing := findElement(doc, func(n *htmlNode) bool { return n.Name == "svg" })
+		if drawing == nil || drawing.Attr("aria-hidden") != "true" {
+			t.Errorf("alt %q: the drawing is not hidden:\n%s", alt, out)
+		}
+		name, exposed, _ := inlinedName(t, out)
+		if alt != "" && (!exposed || name != alt) {
+			t.Errorf("alt %q: the picture's accessible name is %q (exposed %v):\n%s", alt, name, exposed, out)
+		}
+		if alt == "" && exposed {
+			t.Errorf("an empty alt is a decorative picture, yet it reads as %q:\n%s", name, out)
+		}
+	}
+
+	for _, value := range []string{"false", "", "TRUE"} {
+		svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-hidden="` + value + `"><rect width="2" height="2"/></svg>`
+		root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+		pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+		out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+		if err == nil {
+			t.Errorf("aria-hidden=%q on the root was inlined, though the page names the picture itself:\n%s", value, out)
+			continue
+		}
+		if !strings.Contains(err.Error(), "docs/assets/img/x.svg") || !strings.Contains(err.Error(), "aria-hidden") {
+			t.Errorf("aria-hidden=%q: the refusal names neither the asset nor the attribute: %v", value, err)
+		}
+	}
+
+	// Below the root the attribute means nothing the page reads: the whole
+	// drawing is hidden, so a part of it saying "false" is left as it is.
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><g aria-hidden="false"><rect width="2" height="2"/></g></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+	if err != nil {
+		t.Fatalf("a drawing with aria-hidden below its root was refused: %v", err)
+	}
+	if _, err := parseHTML("index.html", page(out)); err != nil {
+		t.Errorf("the page's reader refused the inlined drawing: %v\n%s", err, out)
+	}
+}
+
+// TestAssetsFoldTheCaseOfARootsHiding pins that the build reads an attribute
+// name the way a browser does, folding its case. A root that says aria-HIDDEN
+// says aria-hidden: "true" is left as it is, so the page carries one such
+// attribute, and "false" is refused at the asset like its lower-case twin.
+func TestAssetsFoldTheCaseOfARootsHiding(t *testing.T) {
+	at := Source{Path: "p.md", Line: 1}
+	page := func(body string) string {
+		return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>t</title>\n</head>\n<body>\n" +
+			body + "\n</body>\n</html>\n"
+	}
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-HIDDEN="true"><rect width="2" height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+	if err != nil {
+		t.Fatalf("a drawing that hides itself was refused: %v", err)
+	}
+	doc, err := parseHTML("index.html", page(out))
+	if err != nil {
+		t.Fatalf("the page's reader refused the inlined drawing: %v\n%s", err, out)
+	}
+	drawing := findElement(doc, func(n *htmlNode) bool { return n.Name == "svg" })
+	var hiding int
+	for name := range drawing.Attrs {
+		if strings.EqualFold(name, "aria-hidden") {
+			hiding++
+		}
+	}
+	if hiding != 1 {
+		t.Errorf("the root carries %d attributes a browser reads as aria-hidden, want 1:\n%s", hiding, out)
+	}
+
+	svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-HIDDEN="false"><rect width="2" height="2"/></svg>`
+	root = assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe = newAssetPipe(root, mustOpenRoot(t, root), "/")
+	if out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at); err == nil {
+		t.Errorf("aria-HIDDEN=\"false\" on the root was inlined:\n%s", out)
+	} else if !strings.Contains(err.Error(), "docs/assets/img/x.svg") {
+		t.Errorf("the refusal does not name the asset: %v", err)
+	}
+}
+
+// TestAssetsRefuseARepeatedAttribute pins that a start element naming one
+// attribute twice is refused at the asset. The XML decoder admits the repeat,
+// the page's reader does not, and a browser keeps the first and drops the
+// rest, so the drawing would say one thing to the check and another to the
+// page. Names are compared as a browser compares them, case folded, within
+// their namespace, on any element.
+func TestAssetsRefuseARepeatedAttribute(t *testing.T) {
+	at := Source{Path: "p.md", Line: 1}
+	long := strings.Repeat("v", 300)
+	for _, tc := range []struct{ svg, attr string }{
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-hidden="true" aria-hidden="true"><rect width="2" height="2"/></svg>`, "aria-hidden"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-HIDDEN="false" aria-hidden="true"><rect width="2" height="2"/></svg>`, "aria-hidden"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="2" width="3" height="2"/></svg>`, "width"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><g aria-label="a" aria-LABEL="` + long + `"><rect width="2" height="2"/></g></svg>`, "aria-label"},
+	} {
+		root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": tc.svg})
+		pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+		out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at)
+		if err == nil {
+			t.Errorf("a repeated %s was inlined:\n%s", tc.attr, out)
+			continue
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "docs/assets/img/x.svg") || !strings.Contains(strings.ToLower(msg), tc.attr) {
+			t.Errorf("the refusal names neither the asset nor %s: %v", tc.attr, err)
+		}
+		if strings.Contains(msg, long) {
+			t.Errorf("the refusal echoes a value unclipped: %v", err)
+		}
+	}
+
+	// A long repeated name is echoed clipped as well: the repeat message names
+	// the attribute, never its value, so the name is what must stay bounded.
+	longName := "aria-" + long
+	nameSVG := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><g ` + longName + `="a" ` + longName + `="b"><rect width="2" height="2"/></g></svg>`
+	nameRoot := assetFixture(t, map[string]string{"docs/assets/img/x.svg": nameSVG})
+	namePipe := newAssetPipe(nameRoot, mustOpenRoot(t, nameRoot), "/")
+	if _, err := namePipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at); err == nil || strings.Contains(err.Error(), longName) {
+		t.Errorf("a long repeated attribute name was not refused with its name clipped: %v", err)
+	}
+
+	// A long aria-hidden value on the root is echoed clipped too.
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" aria-hidden="` + long + `"><rect width="2" height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	if _, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at); err == nil || strings.Contains(err.Error(), long) {
+		t.Errorf("a long aria-hidden value was not refused with its value clipped: %v", err)
+	}
+}
+
+// TestAssetsStripKeepsAttributesSeparate pins that the build's rewrites of a
+// drawing's root start tag keep every attribute separate from the element name
+// and from its neighbours. The XML decoder reads an attribute written straight
+// after the closing quote of the one before it, so the size strip, which takes
+// the whitespace before a size attribute with it, puts one back where the next
+// byte would otherwise touch what came before. Read back through the page's
+// reader, the root is an svg element carrying the attributes it was given,
+// less its size, plus the build's aria-hidden. The asset check also asks a
+// drawing to separate its own attributes, so the page reads them as written.
+func TestAssetsStripKeepsAttributesSeparate(t *testing.T) {
+	page := func(body string) string {
+		return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>t</title>\n</head>\n<body>\n" +
+			body + "\n</body>\n</html>\n"
+	}
+	attrsOf := func(t *testing.T, out string) (string, []string) {
+		t.Helper()
+		doc, err := parseHTML("index.html", page(out))
+		if err != nil {
+			t.Errorf("the page's reader refused the rewritten drawing: %v\n%s", err, out)
+			return "", nil
+		}
+		body := findElement(doc, func(n *htmlNode) bool { return n.Name == "body" })
+		var first *htmlNode
+		for _, c := range body.Children {
+			if c.Kind == htmlElementNode {
+				first = c
+				break
+			}
+		}
+		if first == nil {
+			t.Errorf("no element in the rewritten drawing:\n%s", out)
+			return "", nil
+		}
+		var names []string
+		for name := range first.Attrs {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return first.Name, names
+	}
+
+	for _, tc := range []struct{ svg, want string }{
+		{`<svg xmlns="http://www.w3.org/2000/svg" width="4"viewBox="0 0 4 4" height="4"aria-label="d"><rect width="2" height="2"/></svg>`,
+			"aria-hidden aria-label viewBox xmlns"},
+		{`<svg width="4"xmlns="http://www.w3.org/2000/svg"><rect width="2" height="2"/></svg>`,
+			"aria-hidden xmlns"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="2" height="2"/></svg>`,
+			"aria-hidden xmlns"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4"/>`,
+			"aria-hidden viewBox xmlns"},
+		{`<svg>
+<rect width="2" height="2"/></svg>`, "aria-hidden"},
+	} {
+		out := hideRootDrawing(stripRootSize(tc.svg))
+		name, attrs := attrsOf(t, out)
+		if attrs == nil && name == "" {
+			continue
+		}
+		if name != "svg" || strings.Join(attrs, " ") != tc.want {
+			t.Errorf("the rewritten root is <%s> carrying %v, want <svg> carrying %s:\n%s", name, attrs, tc.want, out)
+		}
+	}
+
+	// At the asset, a drawing that does not separate its own attributes is
+	// refused, naming the asset.
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="2"height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	if out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", Source{Path: "p.md", Line: 1}); err == nil {
+		t.Errorf("a drawing whose attributes touch was inlined:\n%s", out)
+	} else if !strings.Contains(err.Error(), "docs/assets/img/x.svg") {
+		t.Errorf("the refusal does not name the asset: %v", err)
 	}
 }

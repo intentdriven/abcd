@@ -105,7 +105,106 @@ var svgSizeRe = regexp.MustCompile(`\s(width|height)="\d+"`)
 // may contain one, and a size stripped out of the wrong span is exactly the
 // class of bug this function exists to end. A document that does not parse
 // (which checkInlinableSVG has already refused) is returned untouched.
+//
+// A match takes the whitespace before the attribute with it, so where the byte
+// after the match is not whitespace or the end of the tag, one space is put
+// back: the attributes either side of a removed one stay separate, and the
+// element name stays the element name.
 func stripRootSize(svg string) string {
+	start, end, _, ok := rootStartTag(svg)
+	if !ok {
+		return svg
+	}
+	tag := svg[start:end]
+	var b strings.Builder
+	b.WriteString(svg[:start])
+	last := 0
+	for _, m := range svgSizeRe.FindAllStringIndex(tag, -1) {
+		b.WriteString(tag[last:m[0]])
+		if m[1] < len(tag) && !isTagSeparator(tag[m[1]]) {
+			b.WriteByte(' ')
+		}
+		last = m[1]
+	}
+	b.WriteString(tag[last:])
+	b.WriteString(svg[end:])
+	return b.String()
+}
+
+// isTagSeparator reports whether a byte may follow an element name or an
+// attribute inside a start tag without joining the two: XML whitespace, or the
+// end of the tag.
+func isTagSeparator(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '/' || c == '>'
+}
+
+// attrsSeparated reports whether a start tag's raw bytes follow every closing
+// quote of an attribute value with a separator, so a reader of the page sees
+// the attributes the decoder read, each on its own.
+func attrsSeparated(raw string) bool {
+	var quote byte
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+				if i+1 < len(raw) && !isTagSeparator(raw[i+1]) {
+					return false
+				}
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		}
+	}
+	return true
+}
+
+// hideRootDrawing marks the ROOT <svg> element aria-hidden, so an inlined
+// drawing adds no name of its own beside the one its wrapper takes from the
+// page's alt (iss-2610241550257430). The attribute goes straight after the
+// element name. A root that already declares aria-hidden is left as it is, as
+// the page carries no attribute twice (htmlscan refuses a repeat), and
+// checkInlinableSVG has already refused any value of it but "true", so such a
+// root is hidden already. The root start tag is found as stripRootSize finds
+// it, and a document that does not parse is returned untouched.
+func hideRootDrawing(svg string) string {
+	start, end, root, ok := rootStartTag(svg)
+	if !ok {
+		return svg
+	}
+	if _, declared := rootAriaHidden(root); declared {
+		return svg
+	}
+	// The name ends at a separator, so the inserted attribute is preceded by a
+	// space and followed by the separator that ended the name.
+	nameEnd := start + 1
+	for nameEnd < end && !isTagSeparator(svg[nameEnd]) {
+		nameEnd++
+	}
+	if nameEnd >= end {
+		return svg
+	}
+	return svg[:nameEnd] + ` aria-hidden="true"` + svg[nameEnd:]
+}
+
+// rootAriaHidden reports the value of the aria-hidden a root start tag
+// declares, if it declares one. The name is matched with an ASCII case fold, as
+// a browser lowercases an attribute name, so aria-HIDDEN is this attribute; a
+// namespaced attribute of that local name is another attribute in the emitted
+// page, so it is not.
+func rootAriaHidden(root xml.StartElement) (string, bool) {
+	for _, a := range root.Attr {
+		if a.Name.Space == "" && asciiLower(a.Name.Local) == "aria-hidden" {
+			return a.Value, true
+		}
+	}
+	return "", false
+}
+
+// rootStartTag brackets the ROOT element's start tag in svg, from the same
+// decoder that vetted the document, and returns the element it decoded there.
+func rootStartTag(svg string) (int, int, xml.StartElement, bool) {
 	dec := xml.NewDecoder(strings.NewReader(svg))
 	dec.Strict = true
 	dec.Entity = map[string]string{}
@@ -119,16 +218,17 @@ func stripRootSize(svg string) string {
 		start := int(dec.InputOffset())
 		tok, err := dec.Token()
 		if err != nil {
-			return svg
+			return 0, 0, xml.StartElement{}, false
 		}
-		if _, ok := tok.(xml.StartElement); !ok {
+		se, ok := tok.(xml.StartElement)
+		if !ok {
 			continue
 		}
 		end := int(dec.InputOffset())
-		if start < 0 || end > len(svg) || start >= end {
-			return svg
+		if start < 0 || end > len(svg) || start >= end || svg[start] != '<' {
+			return 0, 0, xml.StartElement{}, false
 		}
-		return svg[:start] + svgSizeRe.ReplaceAllString(svg[start:end], "") + svg[end:]
+		return start, end, se, true
 	}
 }
 
@@ -260,7 +360,11 @@ func checkInlinableSVG(svg, rel string) error {
 	// reference to one is an error from the decoder itself.
 	dec.Strict = true
 	dec.Entity = map[string]string{}
+	sawRoot := false
 	for {
+		// Bracketing the token, as rootStartTag does, gives a start tag's raw
+		// bytes for the spacing check below.
+		tokStart := int(dec.InputOffset())
 		tok, err := dec.Token()
 		if err == io.EOF {
 			return nil
@@ -287,13 +391,61 @@ func checkInlinableSVG(svg, rel string) error {
 			if !svgElements[name] {
 				return bad("uses <%s>, which is not one of the drawing elements", name)
 			}
+			if tokEnd := int(dec.InputOffset()); tokStart >= 0 && tokEnd <= len(svg) && tokStart < tokEnd &&
+				!attrsSeparated(svg[tokStart:tokEnd]) {
+				return bad("writes an attribute of <%s> straight after the closing quote of the one before it; separate attributes with a space", name)
+			}
+			if a, ok := repeatedAttr(t); ok {
+				return bad("sets %s twice on <%s>; a browser keeps the first and drops the rest, so the drawing would say one thing to this check and another to the page",
+					clip(attrSpelling(a)), name)
+			}
 			for _, a := range t.Attr {
 				if err := checkSVGAttr(a, name, bad); err != nil {
 					return err
 				}
 			}
+			// The page names the picture from its alt and hides the drawing
+			// inside (hideRootDrawing), so a root that declares itself visible
+			// asks for two names at once. "true" says what the build would
+			// write; any other value is refused here, naming the asset.
+			if !sawRoot {
+				sawRoot = true
+				if v, declared := rootAriaHidden(t); declared && v != "true" {
+					return bad("declares aria-hidden=%q on its root; the page names the picture from its alt and hides the drawing, so drop the attribute or write aria-hidden=\"true\"", clip(v))
+				}
+			}
 		}
 	}
+}
+
+// repeatedAttr returns the first attribute of a start element whose name an
+// earlier one already took. The XML decoder admits a repeat; the page's reader
+// refuses one, and a browser keeps the first and drops the rest. Names are
+// compared as a browser compares them, with an ASCII case fold, within their
+// namespace.
+func repeatedAttr(se xml.StartElement) (xml.Attr, bool) {
+	seen := make(map[xml.Name]bool, len(se.Attr))
+	for _, a := range se.Attr {
+		key := xml.Name{Space: a.Name.Space, Local: asciiLower(a.Name.Local)}
+		if seen[key] {
+			return a, true
+		}
+		seen[key] = true
+	}
+	return xml.Attr{}, false
+}
+
+// attrSpelling is an attribute's name as a reader would write it: the decoder
+// resolves a prefix to its namespace, so the two prefixes a drawing declares
+// are put back.
+func attrSpelling(a xml.Attr) string {
+	switch {
+	case a.Name.Space == "xmlns":
+		return "xmlns:" + a.Name.Local
+	case strings.Contains(a.Name.Space, "xlink"):
+		return "xlink:" + a.Name.Local
+	}
+	return a.Name.Local
 }
 
 // checkSVGAttr holds one attribute to the allowlist rules.
@@ -437,9 +589,17 @@ func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) 
 		if err := checkInlinableSVG(string(data), rel); err != nil {
 			return "", fmt.Errorf("%s:%d: %w", at.Path, at.Line, err)
 		}
-		svg := stripRootSize(string(data))
+		svg := hideRootDrawing(stripRootSize(string(data)))
 		stem := strings.TrimSuffix(name, ".svg")
-		return `<span class="svgasset ` + escapeAttr(stem) + `" data-asset="` + escapeAttr(rel) + `">` + svg + `</span>`, nil
+		// The wrapper is the picture, named by the page's alt as an <img> is,
+		// so the site and the forge name it alike; the drawing inside says
+		// nothing of its own. An empty alt is a decorative picture, hidden
+		// whole (WCAG 2.2 H37, iss-2610241550257430).
+		a11y := ` role="img" aria-label="` + escapeAttr(alt) + `"`
+		if alt == "" {
+			a11y = ` aria-hidden="true"`
+		}
+		return `<span class="svgasset ` + escapeAttr(stem) + `" data-asset="` + escapeAttr(rel) + `"` + a11y + `>` + svg + `</span>`, nil
 	}
 
 	dst := assetOutDir + "/" + name
