@@ -45,7 +45,7 @@ budget check that always skips
 ([iss-2610100913096346](../../../work/issues/open/iss-2610100913096346-the-run-start-budget-check-never.md)),
 which a per-key sum of recorded launches answers. The status line's own
 elements, words and dropping order are the sibling draft's,
-[itd-2611031342000215](../drafts/itd-2611031342000215-the-status-line-names-one-role-at-a-time.md);
+[itd-2611031342000215](itd-2611031342000215-the-status-line-names-one-role-at-a-time.md);
 this intent supplies the figures that draft's agents and API elements show.
 
 abcd starts agents on a person's behalf and keeps no account of them as a
