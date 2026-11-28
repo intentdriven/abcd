@@ -232,9 +232,23 @@ func classifyUsageError(root *cobra.Command, args []string, msg string) (usageSk
 	}
 	if m := unknownFlagRe.FindStringSubmatch(msg); m != nil {
 		known, verb, at := walkKnownPath(root, args)
+		// The match ends at the first space, so an argument holding a flag
+		// and its value ("--open x", one argument from a shell that did not
+		// split it) reads as the bare flag. A flag this command defines, its
+		// own or inherited, is not one the build predates, whatever a page
+		// says (iss-2611281043117150).
+		if verb == "" && definesFlag(at, strings.TrimPrefix(m[1], "--")) {
+			return usageSkew{}, false
+		}
 		return usageSkew{known: known, verb: verb, flag: m[1], subVerbs: at.HasSubCommands()}, true
 	}
 	return usageSkew{}, false
+}
+
+// definesFlag reports whether cmd takes the long flag name, declared on it
+// or inherited from a parent's persistent flags.
+func definesFlag(cmd *cobra.Command, name string) bool {
+	return cmd.Flags().Lookup(name) != nil || cmd.InheritedFlags().Lookup(name) != nil
 }
 
 // walkKnownPath descends the tree along the positional tokens of args and
