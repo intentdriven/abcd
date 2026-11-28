@@ -22,7 +22,7 @@ production_mode: hand-written
 
 > "I pressed Ctrl-C, rebuilt, and typed the same command the next morning. It took up the three lanes it had left and said so. I did not have to learn what a take-over is." — Iris, a product thinker (they/them)
 
-> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on an outage, the runner has not started. I no longer read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
+> "When I am asked whether the drive is working, I run the status command and read one line: stalled since 16:40 on an outage, the runner has not started. I do not read the log for the last line that is not a wait." — Nia, a technical facilitator (they/them)
 
 ## Why This Matters
 
