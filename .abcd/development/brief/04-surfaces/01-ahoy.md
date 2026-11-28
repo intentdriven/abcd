@@ -840,8 +840,8 @@ distinct tokens precisely because the offer differs.
 
 The install, the dry run, the doctor and bare `/abcd:ahoy` all run the **same**
 detection pass and differ only in what they do with its output: the bare form
-renders a status board, the doctor adds an audit pass and renders gap counts,
-the dry run renders the envelope, and the install runs the apply pass over the gaps.
+renders a status board, the doctor adds an audit pass and renders gap counts
+(both name the step under each gap no install closes, as the JSON does), the dry run renders the envelope, and the install runs the apply pass over the gaps.
 Detection logic lives in exactly one place, so those four cannot drift apart.
 
 The detection pass produces an in-memory state contract, and it is a **value
