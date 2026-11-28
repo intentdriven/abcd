@@ -271,7 +271,7 @@ func TestADueLoginNamedWithdrawalWithNoHolderIDSaysWhatSettlesIt(t *testing.T) {
 	lines := strings.Join(rw.Lines(), "\n")
 	if !slices.Equal(numbers(rw.Due), []string{"#11"}) ||
 		!strings.Contains(lines, "held merges from before the holder id stay held until your next reservation or announcement") ||
-		strings.Contains(lines, "your next abcd act that fetches the reservations re-arms them") || strings.Contains(strings.ToLower(lines), "octo") {
+		strings.Contains(lines, "your next `abcd peers` or reservation act re-arms them") || strings.Contains(strings.ToLower(lines), "octo") {
 		t.Fatalf("octo's listing = %+v %q; want #11 due, held until the next reservation or announcement, and no login", rw, rw.Lines())
 	}
 }

@@ -223,8 +223,9 @@ pushed). Switch `gh` to the holder's account and run it again. When `gh`
 cannot say which account it acts as at all (not logged in, no network), a
 reservation withdraws nothing and says so in `forge_unchecked`, `--admit` is
 refused (exit 2, nothing pushed), and `--release` still pushes the tombstone
-but re-arms nothing, naming why in its settle's `failed`; the next act of a
-copy of yours that fetches the reservations re-arms them once `gh` answers.
+but re-arms nothing, naming why in its settle's `failed`; the next
+reservation act of a copy of yours, or its next `/abcd:peers`, re-arms them
+once `gh` answers.
 
 To let a withdrawn pull request into the cut, from the copy that holds the
 release:
@@ -266,9 +267,9 @@ push ends nothing: it is named once for its tip (a settle's `not_ended`, and
 `/abcd:peers`), and nothing is re-armed until the holder's `--release` or the
 tag. `--release` pushes the tombstone
 first, with every withdrawal as it stands, then re-arms; once the tag is on
-`origin`, the next act of any copy of the same person that fetches the
-reservations (any reserve, a build or drain start, `/abcd:peers`) does the
-same, pushing a tombstone before it touches the forge when the tip is not one
+`origin`, the next reservation act of any copy of the same person (any
+reserve, a build or drain start), or its next `/abcd:peers`, does the
+same (`/abcd:status` fetches the reservations and re-arms nothing), pushing a tombstone before it touches the forge when the tip is not one
 yet. Two copies of the same person that settle the same release at once may
 both re-arm; that is harmless, because a re-arm reads the forge first, is
 pinned to the withdrawn head, and finds the pull request already armed. A

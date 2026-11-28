@@ -169,9 +169,9 @@ release's branch records it. Every other withdrawn pull request is
 re-armed the same way when the release ends. It ends on `--release` from
 this copy, on a tombstone that is its holder's own newest push to its branch
 (as the forge's record of pushes says), or with its tag on `origin`; after a tag or a
-tombstone another copy pushed, the next abcd act of any copy of
-yours that fetches the reservations (a reserve, a build or drain start,
-`abcd peers`) re-arms them. **A lapsed lease ends the cut five minutes later.**
+tombstone another copy pushed, the next reservation act of any copy of
+yours (a reserve, a build or drain start), or its next `abcd peers`,
+re-arms them (`abcd status` fetches the reservations and re-arms nothing). **A lapsed lease ends the cut five minutes later.**
 The reservation holds for 24 hours and nothing renews it by itself: past that,
 while it still holds pull requests withdrawn or admitted, the launch check
 refuses the cut and `abcd peers` reports the lapse; five minutes after it
