@@ -220,7 +220,9 @@ func TestAWallInTheProofsWaitIsTheReasonTheRunGives(t *testing.T) {
 
 // TestAHarnessGoingAfterItsProofLeavesTheNextCheckToFindIt: a file that goes after the check
 // and before the launch is no reason to stop. The launch's own check starts nothing on it,
-// the next check finds the proof owed, and a file that stays gone ends at the outage's limit.
+// the next check finds the proof owed, and a file that stays gone is waited out to the
+// drive's end: a drive started with no --until is bounded at its default end, so the
+// outage's eight-hour limit no longer ends it.
 func TestAHarnessGoingAfterItsProofLeavesTheNextCheckToFindIt(t *testing.T) {
 	standInSigned(t)
 	var once sync.Once
@@ -239,8 +241,11 @@ func TestAHarnessGoingAfterItsProofLeavesTheNextCheckToFindIt(t *testing.T) {
 		t.Fatalf("it goes on:\n%v\n%s", first, out)
 	}
 	var ended *loop.WallEnded
-	if !errors.As(second, &ended) || ended.Ended != loop.TerminalOutage {
-		t.Fatalf("a file that stays gone ends at the outage's limit: %v\n%s", second, out)
+	if !errors.As(second, &ended) || ended.Ended != loop.TerminalUntil {
+		t.Fatalf("a file that stays gone ends at the drive's end: %v\n%s", second, out)
+	}
+	if hours := strings.Count(out, "waiting 1h0m0s: outage"); hours <= 8 {
+		t.Fatalf("the wait goes past the outage's eight hours, %d hour(s):\n%s", hours, out)
 	}
 	if !strings.Contains(out, "no harness") {
 		t.Fatalf("the wait says why:\n%s", out)
