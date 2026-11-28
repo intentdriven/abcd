@@ -232,9 +232,23 @@ func classifyUsageError(root *cobra.Command, args []string, msg string) (usageSk
 	}
 	if m := unknownFlagRe.FindStringSubmatch(msg); m != nil {
 		known, verb, at := walkKnownPath(root, args)
+		// The match ends at the first space, so an argument holding a flag
+		// and its value ("--open x", one argument from a shell that did not
+		// split it) reads as the bare flag. A flag this command defines, its
+		// own or inherited, is not one the build predates, whatever a page
+		// says (iss-2611281043117150).
+		if verb == "" && definesFlag(at, strings.TrimPrefix(m[1], "--")) {
+			return usageSkew{}, false
+		}
 		return usageSkew{known: known, verb: verb, flag: m[1], subVerbs: at.HasSubCommands()}, true
 	}
 	return usageSkew{}, false
+}
+
+// definesFlag reports whether cmd takes the long flag name, declared on it
+// or inherited from a parent's persistent flags.
+func definesFlag(cmd *cobra.Command, name string) bool {
+	return cmd.Flags().Lookup(name) != nil || cmd.InheritedFlags().Lookup(name) != nil
 }
 
 // walkKnownPath descends the tree along the positional tokens of args and
@@ -385,22 +399,102 @@ func synopsisInBlock(block []string, s usageSkew, invocation, flag *regexp.Regex
 		}
 		// One pass over the line for each pattern, never one per invocation: a
 		// page repeating an invocation along one line would otherwise rescan
-		// the rest of it each time. The flag counts after an invocation when
-		// its last occurrence starts at or past the invocation's end.
-		last := -1
+		// the rest of it each time. The flag counts for an invocation when an
+		// occurrence starts at or past the invocation's end and before the
+		// first control operator after it (iss-2610142319015643): in `abcd
+		// lint | jq --frob`, --frob is jq's. Invocations, flags and operators
+		// all come in line order, so one forward walk pairs them.
+		var flags []int
 		for _, m := range flag.FindAllStringSubmatchIndex(line, -1) {
-			last = m[2]
+			flags = append(flags, m[2])
 		}
+		ops := controlOperators(line)
+		f, o := 0, 0
 		for _, loc := range invocations {
 			if s.subVerbs && verbShape.MatchString(leadingField(line[loc[1]:])) {
 				continue
 			}
-			if last >= loc[1] {
+			for o < len(ops) && ops[o] < loc[1] {
+				o++
+			}
+			end := len(line)
+			if o < len(ops) {
+				end = ops[o]
+			}
+			for f < len(flags) && flags[f] < loc[1] {
+				f++
+			}
+			if f < len(flags) && flags[f] < end {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// controlOperators is where each shell control operator on a synopsis line
+// starts, in line order: `;`, `&&` and `||` anywhere, and `|`, `&` and `|&`
+// standing as words of their own. A synopsis spells alternatives with the
+// same characters — `--role first|second`, `--private|--public`, `[--date
+// <d> | --log <file>]`, `"<id | text>"` — so nothing inside quotes, brackets,
+// braces, parentheses or an angle-bracketed placeholder is an operator, and
+// neither is a pipe joined to a word on either side. An ampersand inside a
+// redirection (`2>&1`, `&>file`) is joined to it, so it is none either, and
+// a comment holds none: it glosses the invocation it follows. A
+// line this misreads as holding an operator only withholds the stale-binary
+// note; it never grants one.
+func controlOperators(line string) []int {
+	var ops []int
+	var quote byte
+	nest, angle := 0, 0
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else if c == '\\' && quote == '"' {
+				i++
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '\\':
+			i++
+		case c == '[' || c == '{' || c == '(':
+			nest++
+		case c == ']' || c == '}' || c == ')':
+			if nest > 0 {
+				nest--
+			}
+		case c == '<':
+			if i+1 < len(line) && (i == 0 || line[i-1] != '<') && !strings.ContainsRune(" \t<>&|=();'\"", rune(line[i+1])) {
+				angle++
+			}
+		case c == '>':
+			if angle > 0 {
+				angle--
+			}
+		case nest > 0 || angle > 0:
+		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			// A comment ends the command; a page's comment glosses the
+			// invocation before it (`# private; --public only once ...`).
+			return ops
+		case c == ';':
+			ops = append(ops, i)
+		case c == '&' || c == '|':
+			j := i
+			for j < len(line) && (line[j] == '&' || line[j] == '|') {
+				j++
+			}
+			word := line[i:j]
+			alone := (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') && (j == len(line) || line[j] == ' ' || line[j] == '\t')
+			if word == "&&" || word == "||" || (alone && (word == "|" || word == "&" || word == "|&")) {
+				ops = append(ops, i)
+			}
+			i = j - 1
+		}
+	}
+	return ops
 }
 
 // leadingField is strings.Fields(s)[0] (or ""), reading only as far as it —
