@@ -152,9 +152,13 @@ The payload carries:
   - `ceiling`: Your own live reservations against your ceiling, with the
     layer that set it, where they were made from, and its warning; absent
     when nothing here names you (no holder id, no declared id, and no login
-    that can be read without the network), or when the reservation settings
-    (the repository's at origin's default branch, or this machine's) cannot
-    be read or hold a value an act would refuse;
+    that can be read without the network), when the repository's settings
+    at origin's default branch cannot be read (that branch names no commit
+    here, or its `.abcd/config.json` cannot be read or does not parse), or
+    when the repository's or this machine's settings hold a key or a value
+    an act would refuse (`reservation.github_username` is refused in the
+    repository's alone). A machine file that cannot be read withholds
+    nothing, and the figure so far is shown with a `note`;
   - `drain_in_work`: This checkout's drain in progress, its lanes in work
     against the limit it began with and the layer that set it; absent with
     no drain in progress, or when the drain's state cannot be read;

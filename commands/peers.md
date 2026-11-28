@@ -150,10 +150,14 @@ payload adds:
   listed (their holds then count as `elsewhere`). The text form prints the
   layer beside the number: `your holds: <holder> 7 of 10 (repository) (this
   copy 2, ...)`. Absent when nothing here names the reader (no holder id,
-  no declared id, and no login that can be read without the network), or
-  when the reservation settings (the repository's at origin's default
-  branch, or this machine's) cannot be read or hold a value a reservation
-  would be refused on.
+  no declared id, and no login that can be read without the network), when
+  the repository's settings at origin's default branch cannot be read (that
+  branch names no commit here, or its `.abcd/config.json` cannot be read or
+  does not parse), or when the repository's or this machine's settings hold
+  a key or a value a reservation would be refused on
+  (`reservation.github_username` is refused in the repository's alone). A
+  machine configuration that cannot be read withholds nothing, as the
+  `note` above says.
 - `drain_in_work`: while a drain is in progress in this checkout, its lanes
   in work against the limit it began with: `count`, `limit`, and the `layer`
   (`repo` for the repository's `drain.in_work_max` at origin's default
