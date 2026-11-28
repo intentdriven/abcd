@@ -55,9 +55,13 @@ type Ceiling struct {
 // (ReaderSelf), even when the cap is then refused: false when neither a
 // holder id nor the reader's GitHub login can be read without the network,
 // or maxLive refuses: the repository's settings at origin's default branch
-// cannot be read, or its or this machine's hold a key or a value an act
-// would refuse. A machine file that cannot be read refuses nothing here: the
-// figure so far is returned with a Note.
+// cannot be read, or its or this machine's hold a reservation key the file
+// does not take (reservationKeys, repoReservationKeys) or a
+// reservation.max_live an act would refuse. No other value is read: a
+// malformed reservation.fork_origin refuses nothing here, and a machine's
+// malformed reservation.github_username only goes unread as a login. A
+// machine file that cannot be read refuses nothing here either: the figure so
+// far is returned with a Note.
 func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	self := readerSelf(root, o)
 	if !self.Known() {
