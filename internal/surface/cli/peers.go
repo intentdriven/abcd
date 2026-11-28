@@ -74,8 +74,12 @@ type reservationsBlock struct {
 	// names the reader (claim.Self.Known: no holder id, no declared id and no
 	// login readable without the network), when the repository's settings at
 	// origin's default branch cannot be read, or when its or this machine's
-	// hold a key or a value an act would refuse (claim.CeilingFor); a machine
-	// file that cannot be read withholds nothing and is named in the note.
+	// hold a reservation entry the file does not take (one that is not an
+	// object, is spelt in another case, as Reservation, or as one dotted key,
+	// as reservation.max_live, or holds a key the file does not take) or a
+	// reservation.max_live an act would refuse (claim.CeilingFor); no other
+	// value is read, and a machine file that cannot be read withholds
+	// nothing and is named in the note.
 	Ceiling *ceilingRow `json:"ceiling,omitempty"`
 	// DrainInWork is this checkout's drain in progress, its lanes in work
 	// against the limit it began with and the layer that set it, read from

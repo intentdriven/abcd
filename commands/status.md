@@ -155,10 +155,17 @@ The payload carries:
     that can be read without the network), when the repository's settings
     at origin's default branch cannot be read (that branch names no commit
     here, or its `.abcd/config.json` cannot be read or does not parse), or
-    when the repository's or this machine's settings hold a key or a value
-    an act would refuse (`reservation.github_username` is refused in the
-    repository's alone). A machine file that cannot be read withholds
-    nothing, and the figure so far is shown with a `note`;
+    when the repository's or this machine's settings hold a `reservation`
+    entry the file does not take (one that is not an object, is spelt in
+    another case, as `Reservation`, or as one dotted key, as
+    `reservation.max_live`, or holds a key the file does not take;
+    `reservation.github_username` is not taken in the repository's) or a
+    `reservation.max_live` an act would refuse. The cap reads no other
+    value: a malformed `reservation.fork_origin` in either file withholds
+    nothing, and a malformed `reservation.github_username` in this
+    machine's only goes unread as a login. A machine file that cannot be
+    read withholds nothing either, and the figure so far is shown with a
+    `note`;
   - `drain_in_work`: This checkout's drain in progress, its lanes in work
     against the limit it began with and the layer that set it; absent with
     no drain in progress, or when the drain's state cannot be read;
