@@ -387,10 +387,27 @@ const lockFileName = ".lock"
 // version wrote, and is refused naming it. Releases that write version 30
 // refuse a version-31 file as a newer abcd's before any strict decode.
 //
+// Version 32 let the merge queue's watch arm again a pull request the queue
+// removed (itd-2611141610201875, spc-2611251808377435 step 1): a landing's
+// `rearms`, how many times it armed again at the pushed head; its
+// `rearmed_removal`, the forge's time of the removal it last armed again for;
+// and its `armed_at`, the run's time of the loop's own last arming of the
+// pushed head. Version 31 is its strict subset, read as a run that re-armed
+// nothing and whose landings keep no arming time, which arms nothing again
+// until the loop arms the head itself, and written back at version 32; a file
+// of version 31 or lower carrying any of them is not one its version wrote,
+// and is refused naming it. Releases that write version 31 refuse a version-32
+// file as a newer abcd's before any strict decode.
+//
 // A version raises when the abcd driving the run writes it. A lane's own abcd
 // may be a version ahead of its driver, and what it saves leaves the version
 // where it was (mutateReservation, iss-2611020719494343).
-const SchemaVersion = 31
+const SchemaVersion = 32
+
+// schemaVersionUnrearmed is the last version before a landing kept its
+// re-arms, the removal it last armed again for and the time of its own last
+// arming: read, never written.
+const schemaVersionUnrearmed = 31
 
 // schemaVersionUndigested is the last version before a validator kept the
 // digest of the return its verdict was recorded from: read, never written.
@@ -1226,6 +1243,25 @@ func (s State) digested() string {
 	return ""
 }
 
+// rearmed reports the first landing, in a state, that carries a re-arm count,
+// the removal it last armed again for or the time of its own last arming,
+// which only version 32 and later write; "" when there is none.
+func (s State) rearmed() string {
+	for _, l := range s.Lanes {
+		ld := l.Landing
+		switch {
+		case ld == nil:
+		case ld.Rearms != 0:
+			return "`rearms` on " + l.ID
+		case ld.RearmedRemoval != nil:
+			return "`rearmed_removal` on " + l.ID
+		case ld.ArmedAt != nil:
+			return "`armed_at` on " + l.ID
+		}
+	}
+	return ""
+}
+
 // returnDigestsWritten reports whether every validator's digest of its return
 // is one the loop writes: absent, or a SHA-256 in lower-case hex.
 func (s State) returnDigestsWritten() bool {
@@ -1713,6 +1749,7 @@ var versionChecks = []versionCheck{
 	{highest: schemaVersionUnreasoned, carries: State.strikesKept},
 	{highest: schemaVersionUnbundled, carries: State.bundled},
 	{highest: schemaVersionUndigested, carries: State.digested},
+	{highest: schemaVersionUnrearmed, carries: State.rearmed},
 }
 
 // unwritten names the first thing the state carries that a file stating
@@ -1925,10 +1962,11 @@ func readListedStated(root *os.Root, runID string) (State, int, error) {
 		// it, and this read writes nothing.
 		st.keepStrikes()
 		st.SchemaVersion = SchemaVersion
-	case st.SchemaVersion >= schemaVersionUnbundled && st.SchemaVersion <= schemaVersionUndigested:
-		// Read as the current version, a run with no members at version 29 and
-		// no digest of a validator's return at either. The next write carries
-		// it, and this read writes nothing.
+	case st.SchemaVersion >= schemaVersionUnbundled && st.SchemaVersion <= schemaVersionUnrearmed:
+		// Read as the current version, a run with no members at version 29, no
+		// digest of a validator's return before version 31, and no re-arm or
+		// arming time on a landing at any of them. The next write carries it,
+		// and this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, 0, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),

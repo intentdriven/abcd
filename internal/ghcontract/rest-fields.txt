@@ -32,7 +32,11 @@ pull-request.head.ref
 # ask. Refresh them by one live, read-only GET of each, as above:
 #   workflow-runs  GET repos/{owner}/{repo}/actions/runs?event=merge_group
 #   check-runs     GET repos/{owner}/{repo}/commits/{sha}/check-runs
+# workflow_runs.id, the run a dropped pull request's hand-back names for
+# `gh run rerun <id> --failed` (itd-2611141610201875), was read 2026-11-27 by
+# one live, read-only GET of the merge-queue runs listing: a number.
 workflow-runs.workflow_runs
+workflow-runs.workflow_runs.id
 workflow-runs.workflow_runs.name
 workflow-runs.workflow_runs.head_branch
 workflow-runs.workflow_runs.head_sha

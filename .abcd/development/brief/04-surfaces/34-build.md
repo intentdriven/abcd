@@ -1329,11 +1329,28 @@ mode is `auto`, back at `validate`, and a sync.
    arming is thirty minutes old, since the forge may queue it by itself
    meanwhile, and an arming the forge will not make again is refused, naming
    the command that re-arms it. Open, outside the queue and no longer armed is
-   refused at exit 2, naming the forge's reason for the removal and the checks
-   that failed on its last merge group, and it is never queued again into the
-   same failure; while a release being cut holds merges the lane waits on the
-   hold instead, at exit 3, since the hold withdraws armed merges and re-arms
-   them after. A head on the forge other than the one pushed, outside the queue,
+   armed again where the merge queue itself removed it (itd-2611141610201875,
+   spc-2611251808377435 step 1): the removal's actor is the queue's own
+   application and its reason is not `manual`, and the removal is later than
+   the loop's own last arming of the pushed head (`armed_at`), than the removal
+   it last armed again for (`rearmed_removal`), and than the last arming or
+   withdrawal the forge records on the pull request's timeline. The fence and
+   the merge gate are asked again, and the arming is the queue's method pinned
+   to the pushed head, at most three times at one head (`rearms`, cleared by a
+   resync to a new head). The step exits 0 at land with a one-sentence note
+   naming the removal, its reason and `armed again, N of 3 at this head`. The
+   reason chooses nothing else: the forge's data cannot tell the change's own
+   failure from another's. A person's removal, and a person's withdrawal or
+   arming after the removal, are never armed over, nor is a fourth removal at
+   one head. Each is refused at exit 2,
+   naming the forge's reason, the checks that failed on its last merge group
+   (quoted as the forge names them), why the loop did not arm it again and how
+   many times it did, the `gh run rerun <id> --failed` of the failed run and
+   the `gh pr merge` command that arms it again. A gate refusing the head
+   leaves it open with the gate's reason instead, asked again on each step,
+   and a gate, mode or holds that cannot be read arm nothing. While a release
+   being cut holds merges the lane waits on the hold instead, at exit 3, since
+   the hold withdraws armed merges and re-arms them after. A head on the forge other than the one pushed, outside the queue,
    is refused and neither queued nor re-armed. A place that cannot be read leaves
    the ordinary wait, saying so. A drain's move takes this step for an armed lane the
    forge lists outside the queue ([`35-drain.md`](35-drain.md)).

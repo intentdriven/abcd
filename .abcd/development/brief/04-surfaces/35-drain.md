@@ -1063,7 +1063,7 @@ on origin's default branch backs off, with a tip or without one
    dcn-2610161040380948): a lane whose pull request was closed unmerged is
    handed back as `closed`, its reservation released with a tombstone marking
    it so, and routed home to a person; a conflicting one is no longer renewed
-   and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is read as `dropped`, naming the failed check, and still renewed; one
+   and is named in `next`; an open one is renewed and named as waiting, unless its landing armed it and the listing shows it `CLEAN` or disarmed, when the move takes the lane's own step, whose merge-queue watch runs where a queue gates the default branch: one left outside the queue is queued, and one that left it disarmed is armed again where the merge queue itself removed it ([`34-build.md`](34-build.md)), and otherwise read as `dropped`, naming the failed check, and still renewed; one
    merged by a squash or rebase, its head not on the default branch, is named
    and not renewed; one the listing does not show stays held. A lane's sync
    fetches `origin`'s default branch and merges it whenever it has moved, before

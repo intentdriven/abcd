@@ -1005,9 +1005,15 @@ what it did in `next`:
   own landing step, as `abcd implement step` watches it
   (`commands/implement.md`): one left outside the queue at `CLEAN` is queued,
   and one that left the queue disarmed, as a failed merge-group check leaves
-  it, is read as `dropped`, `next` naming the forge's reason and the failed
-  check; it is still renewed, never queued or armed again by the drain, and
-  waits for a person to re-arm it. One the forge refused to queue whose
+  it, is armed again by that step when the merge queue itself removed it
+  after the loop's own arming, at most three times at one pushed head, past
+  the fence and the merge gate, and the lane reads as waiting, its note
+  saying `armed again, 1 of 3 at this head`. A removal a person made, one
+  the forge gives the reason `manual`, an arming a person withdrew or made
+  after the removal, and a fourth removal at one head are never armed again:
+  the lane is read as `dropped`, `next` naming the forge's reason, the failed check, the `gh run rerun` and `gh pr merge`
+  commands and why it was not armed again; it is still renewed and waits for
+  a person to re-arm it. One the forge refused to queue whose
   auto-merge the step toggled, and whose new arming the forge then refused,
   is read as `dropped` too, `next` saying the loop left it disarmed and
   naming the `gh pr merge` command that arms it again. One that merged

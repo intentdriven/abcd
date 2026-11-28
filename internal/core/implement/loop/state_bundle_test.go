@@ -116,8 +116,8 @@ func TestARunWithNoMembersWritesNoBundleAndNoIssueOnItsLines(t *testing.T) {
 	if _, ok := top["lead_hand_back"]; ok {
 		t.Fatalf("a run with no members writes a lead's hand-back:\n%s", data)
 	}
-	if !strings.Contains(string(data), fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)) || SchemaVersion != 31 {
-		t.Fatalf("the file states the current version, 31:\n%s", data)
+	if !strings.Contains(string(data), fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)) || SchemaVersion != 32 {
+		t.Fatalf("the file states the current version, 32:\n%s", data)
 	}
 	lines := recordLines(t, data)
 	if !slices.ContainsFunc(lines, func(l map[string]any) bool { return l["stage"] == StageReservation }) {

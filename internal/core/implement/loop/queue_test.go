@@ -27,13 +27,16 @@ import (
 // stubQueue is the stub forge's answer to the queue state query for pull
 // request #7: its head, whether it is queued, its arming (enabledAt "" for
 // none), its merge state and the reason of its last removal from the queue
-// ("" for none).
+// ("" for none), a removal with no actor; or removal, the last removal's
+// node whole, as the forge answers it.
 type stubQueue struct {
 	head      string
 	queued    bool
 	enabledAt string
 	status    string
 	removed   string
+	removal   map[string]any
+	armings   []map[string]any
 }
 
 // queueAnswer makes the stub forge answer the queue state query with q.
@@ -50,6 +53,12 @@ func (f *landFixture) queueAnswer(t *testing.T, q stubQueue) {
 	}
 	if q.removed != "" {
 		pr["timelineItems"] = map[string]any{"nodes": []any{map[string]any{"createdAt": "2026-10-15T07:48:00Z", "reason": q.removed}}}
+	}
+	if q.removal != nil {
+		pr["timelineItems"] = map[string]any{"nodes": []any{q.removal}}
+	}
+	if q.armings != nil {
+		pr["armings"] = map[string]any{"nodes": q.armings}
 	}
 	f.writeGH(t, "queue.json", map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequest": pr}}})
 }
@@ -171,9 +180,10 @@ func TestAnEnqueueTheForgeRefusesTogglesTheArmingPastTheGrace(t *testing.T) {
 
 // TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck:
 // an armed pull request the forge reports open, outside the queue and no
-// longer armed is refused for a person, naming the forge's reason and the
-// check that failed on its last merge group, and is neither queued nor armed
-// again.
+// longer armed, by a removal that names no actor, is refused for a person,
+// naming the forge's reason and the check that failed on its last merge
+// group, and is neither queued nor armed again (queue_rearm_test.go holds the
+// queue's own removal, which is).
 func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t *testing.T) {
 	f := newLandFixture(t, queueRuleset("MERGE"))
 	l := f.landedToArmed(t)
@@ -209,8 +219,12 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 			t.Fatalf("a check that passed or was cancelled with the group is not named as failed (%s): %s", not, r.Reason)
 		}
 	}
-	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --merge --match-head-commit="+pushed+"`") || !strings.Contains(r.Remedy, "does not re-queue it") {
-		t.Fatalf("the remedy names the re-arming a person makes, by the queue's method: %s", r.Remedy)
+	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --merge --match-head-commit="+pushed+"`") ||
+		!strings.Contains(r.Remedy, `the failed check, as the forge names it, is "check (ubuntu-latest) (timed out)"; the forge names no failed run to re-run, so settle the failed check`) {
+		t.Fatalf("the remedy names the failed check and the re-arming a person makes, by the queue's method: %s", r.Remedy)
+	}
+	if !strings.Contains(r.Reason, "the loop does not arm it again: the merge queue itself did not remove it") {
+		t.Fatalf("the report says why the loop does not arm it again: %s", r.Reason)
 	}
 	log := strings.TrimPrefix(f.ghLog(t), before)
 	if !strings.Contains(log, "commits/"+group+"/check-runs") || strings.Contains(log, "commits/"+older) {
@@ -226,7 +240,7 @@ func TestAPullRequestDroppedAfterAFailedMergeGroupCheckIsReportedWithTheCheck(t 
 	// The check runs unread: the failed workflow is named instead.
 	_ = os.Remove(filepath.Join(f.gh, "checkruns.json"))
 	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
-	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "the failed workflow on its last merge group "+group[:12]+": ci (failure)") {
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "the failed workflow on its last merge group "+group[:12]+`: "ci (failure)"`) {
 		t.Fatalf("without a failed check run, the failed workflow of the group is named: %s", r.Reason)
 	}
 
@@ -262,7 +276,7 @@ func TestADroppedPullRequestsReArmingIsQuotedWithTheQueuesMethod(t *testing.T) {
 
 	lane := currentLane(t, f.repo, f.runID)
 	c := Context{RepoRoot: f.repo.Root(), Now: time.Now()}
-	err = droppedRefusal(c, lane, "main", landing.MergeRule{}, queueView{})
+	err = droppedReport(c, lane, "main", landing.MergeRule{}, queueView{}, "")
 	r = mustRefusal(t, err)
 	if strings.Contains(r.Remedy, "gh pr merge") || !strings.Contains(r.Remedy, pushed+" by the queue's merge method") {
 		t.Fatalf("with no method to quote, the remedy names the method to arm by and quotes no command gh refuses: %s", r.Remedy)
@@ -292,11 +306,18 @@ func TestTheQueueWatchAsksTheForgeOnlyForPinnedFields(t *testing.T) {
 	if err := ghcontract.CheckGraphQL(QueueStateQuery); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(QueueStateQuery, "... on RemovedFromMergeQueueEvent{createdAt reason actor{__typename login}}") {
+		t.Fatalf("the query reads who removed the pull request from the queue: %s", QueueStateQuery)
+	}
+	if !strings.Contains(QueueStateQuery, "armings:timelineItems(last:1,itemTypes:[AUTO_MERGE_ENABLED_EVENT,AUTO_MERGE_DISABLED_EVENT]){nodes{... on AutoMergeEnabledEvent{createdAt} ... on AutoMergeDisabledEvent{createdAt}}}") {
+		t.Fatalf("the query reads the forge's last arming or withdrawal of the pull request: %s", QueueStateQuery)
+	}
 	if named, ok := ghcontract.GraphQLField("Mutation", "enqueuePullRequest"); !ok || named != "EnqueuePullRequestPayload" ||
 		!strings.Contains(claim.EnqueueMutation, "expectedHeadOid") {
 		t.Fatalf("the enqueue call is the forge's, pinned to the head: %q %v", named, ok)
 	}
 	for _, c := range []struct{ resource, field string }{
+		{"workflow-runs", "workflow_runs.id"},
 		{"workflow-runs", "workflow_runs.name"},
 		{"workflow-runs", "workflow_runs.head_branch"},
 		{"workflow-runs", "workflow_runs.head_sha"},
@@ -340,7 +361,7 @@ func TestTheMergeGroupRunsAreListedThroughAProjectionOfTheDecodedFields(t *testi
 	var full []map[string]any
 	var want []groupRun
 	for i := 0; i < 100; i++ {
-		r := groupRun{Name: "ci", HeadBranch: "gh-readonly-queue/main/pr-" + strconv.Itoa(i) + "-" + strings.Repeat("0", 40),
+		r := groupRun{ID: runID(strconv.Itoa(i)), Name: "ci", HeadBranch: "gh-readonly-queue/main/pr-" + strconv.Itoa(i) + "-" + strings.Repeat("0", 40),
 			HeadSHA: strings.Repeat("ab", 20), Conclusion: "failure", CreatedAt: "2026-11-20T07:10:00Z"}
 		want = append(want, r)
 		full = append(full, map[string]any{"id": i, "name": r.Name, "head_branch": r.HeadBranch, "head_sha": r.HeadSHA,

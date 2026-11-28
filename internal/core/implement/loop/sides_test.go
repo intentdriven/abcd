@@ -49,17 +49,18 @@ func sidedRun(t *testing.T) (string, string, string) {
 }
 
 // TestASidedRouteRoundTrips is criterion 7's run-state half: a route record
-// carrying both sides is read back whole at the current version, 31; 14 is
+// carrying both sides is read back whole at the current version, 32; 14 is
 // the version that added them, 15 the run's review set, 16 a route's pins
 // beside them, 17 a lane's auto-plan record, 18 an await's pause, 19 a
 // killed launch's spend, 20 a round keyed by reviewer, 21 what a round was shown,
 // 22 a run's profile, 23 a landing's settled spec, 24 a reviewer's located
 // findings, 25 the renamed classes, 26 a run's admission, 27 a reviewer's models,
-// 28 a round's judge, 29 the strikes it keeps, 30 a run's members and 31 a return's digest.
+// 28 a round's judge, 29 the strikes it keeps, 30 a run's members, 31 a return's digest
+// and 32 a landing's re-arms.
 func TestASidedRouteRoundTrips(t *testing.T) {
-	if SchemaVersion != 31 || schemaVersionUndigested != 30 || schemaVersionUnbundled != 29 || schemaVersionUnreasoned != 28 || schemaVersionUnjudged != 27 || schemaVersionUnmodelled != 26 || schemaVersionUnadmitted != 25 || schemaVersionUnrenamed != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's, located findings 24's, the renamed classes 25's, an admission 26's, a reviewer's models 27's, a round's judge 28's, its kept strikes 29's, a run's members 30's and a return's digest 31's: %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
-			SchemaVersion, schemaVersionUndigested, schemaVersionUnbundled, schemaVersionUnreasoned, schemaVersionUnjudged, schemaVersionUnmodelled, schemaVersionUnadmitted, schemaVersionUnrenamed, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
+	if SchemaVersion != 32 || schemaVersionUnrearmed != 31 || schemaVersionUndigested != 30 || schemaVersionUnbundled != 29 || schemaVersionUnreasoned != 28 || schemaVersionUnjudged != 27 || schemaVersionUnmodelled != 26 || schemaVersionUnadmitted != 25 || schemaVersionUnrenamed != 24 || schemaVersionUnlocated != 23 || schemaVersionUnsettled != 22 || schemaVersionUnprofiled != 21 || schemaVersionUnshown != 20 || schemaVersionUnkeyed != 19 || schemaVersionUnspent != 18 || schemaVersionUnpaused != 17 || schemaVersionUnplanned != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's, a route's pins 16's, an auto-plan 17's, a pause 18's, a spend 19's, a keyed round 20's, what a round was shown 21's, a run's profile 22's, a settled spec 23's, located findings 24's, the renamed classes 25's, an admission 26's, a reviewer's models 27's, a round's judge 28's, its kept strikes 29's, a run's members 30's, a return's digest 31's and a landing's re-arms 32's: %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d",
+			SchemaVersion, schemaVersionUnrearmed, schemaVersionUndigested, schemaVersionUnbundled, schemaVersionUnreasoned, schemaVersionUnjudged, schemaVersionUnmodelled, schemaVersionUnadmitted, schemaVersionUnrenamed, schemaVersionUnlocated, schemaVersionUnsettled, schemaVersionUnprofiled, schemaVersionUnshown, schemaVersionUnkeyed, schemaVersionUnspent, schemaVersionUnpaused, schemaVersionUnplanned, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)
