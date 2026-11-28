@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -600,5 +601,80 @@ func TestAssetsRefuseARepeatedAttribute(t *testing.T) {
 	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
 	if _, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", at); err == nil || strings.Contains(err.Error(), long) {
 		t.Errorf("a long aria-hidden value was not refused with its value clipped: %v", err)
+	}
+}
+
+// TestAssetsStripKeepsAttributesSeparate pins that the build's rewrites of a
+// drawing's root start tag keep every attribute separate from the element name
+// and from its neighbours. The XML decoder reads an attribute written straight
+// after the closing quote of the one before it, so the size strip, which takes
+// the whitespace before a size attribute with it, puts one back where the next
+// byte would otherwise touch what came before. Read back through the page's
+// reader, the root is an svg element carrying the attributes it was given,
+// less its size, plus the build's aria-hidden. The asset check also asks a
+// drawing to separate its own attributes, so the page reads them as written.
+func TestAssetsStripKeepsAttributesSeparate(t *testing.T) {
+	page := func(body string) string {
+		return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>t</title>\n</head>\n<body>\n" +
+			body + "\n</body>\n</html>\n"
+	}
+	attrsOf := func(t *testing.T, out string) (string, []string) {
+		t.Helper()
+		doc, err := parseHTML("index.html", page(out))
+		if err != nil {
+			t.Errorf("the page's reader refused the rewritten drawing: %v\n%s", err, out)
+			return "", nil
+		}
+		body := findElement(doc, func(n *htmlNode) bool { return n.Name == "body" })
+		var first *htmlNode
+		for _, c := range body.Children {
+			if c.Kind == htmlElementNode {
+				first = c
+				break
+			}
+		}
+		if first == nil {
+			t.Errorf("no element in the rewritten drawing:\n%s", out)
+			return "", nil
+		}
+		var names []string
+		for name := range first.Attrs {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return first.Name, names
+	}
+
+	for _, tc := range []struct{ svg, want string }{
+		{`<svg xmlns="http://www.w3.org/2000/svg" width="4"viewBox="0 0 4 4" height="4"aria-label="d"><rect width="2" height="2"/></svg>`,
+			"aria-hidden aria-label viewBox xmlns"},
+		{`<svg width="4"xmlns="http://www.w3.org/2000/svg"><rect width="2" height="2"/></svg>`,
+			"aria-hidden xmlns"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="2" height="2"/></svg>`,
+			"aria-hidden xmlns"},
+		{`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" width="4"/>`,
+			"aria-hidden viewBox xmlns"},
+		{`<svg>
+<rect width="2" height="2"/></svg>`, "aria-hidden"},
+	} {
+		out := hideRootDrawing(stripRootSize(tc.svg))
+		name, attrs := attrsOf(t, out)
+		if attrs == nil && name == "" {
+			continue
+		}
+		if name != "svg" || strings.Join(attrs, " ") != tc.want {
+			t.Errorf("the rewritten root is <%s> carrying %v, want <svg> carrying %s:\n%s", name, attrs, tc.want, out)
+		}
+	}
+
+	// At the asset, a drawing that does not separate its own attributes is
+	// refused, naming the asset.
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="2"height="2"/></svg>`
+	root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": svg})
+	pipe := newAssetPipe(root, mustOpenRoot(t, root), "/")
+	if out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "The brief", Source{Path: "p.md", Line: 1}); err == nil {
+		t.Errorf("a drawing whose attributes touch was inlined:\n%s", out)
+	} else if !strings.Contains(err.Error(), "docs/assets/img/x.svg") {
+		t.Errorf("the refusal does not name the asset: %v", err)
 	}
 }
