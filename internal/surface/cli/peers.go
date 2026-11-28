@@ -79,7 +79,7 @@ type reservationsBlock struct {
 	// DrainInWork is this checkout's drain in progress, its lanes in work
 	// against the limit it began with and the layer that set it, read from
 	// the drain's state (loop.DrainInWork); absent with no drain in
-	// progress.
+	// progress, and when that state cannot be read.
 	DrainInWork      *loop.LanesInWork `json:"drain_in_work,omitempty"`
 	View             reservationView   `json:"view"`
 	FetchError       string            `json:"fetch_error,omitempty"`
