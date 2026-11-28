@@ -452,7 +452,7 @@ if [ "$own_repo" -eq 1 ]; then
     case "$rc" in
       0) ;;
       1)
-        echo "commit-msg: BLOCKED — a record this commit adds or renames has a slug over the cap." >&2
+        echo "commit-msg: BLOCKED — a record this commit adds or renames has a slug over the cap, or is too large for its slug to be read." >&2
         say "            " "$out"
         exit 1
         ;;
