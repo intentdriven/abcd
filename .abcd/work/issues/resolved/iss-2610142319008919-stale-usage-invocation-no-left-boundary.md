@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/staleusage.go"
 remedy: "Anchor the invocation head on a left word boundary before abcd, and require \\s+ (or the : of the /abcd: slash form) between abcd and a non-empty known path instead of \\s*; test that a fenced `myabcd build next --x` or `abcdbuild next --x` does not document build next --x, watched fail first."
+resolution: "The stale-binary note's invocation patterns, for a flag and for a sub-verb alike, now start at abcd as a word of its own and need whitespace or the slash form's colon before the command path, so a fenced line naming myabcd or abcdbuild documents nothing; TestStaleUsageInvocationNeedsAWordOfItsOwn covers both sites."
+impact: fix
 ---
 
 The invocation regexp in synopsisCarriesFlag (internal/surface/cli/staleusage.go) has no left word boundary before abcd and joins the known path with \s*, which allows zero whitespace: a fenced line `myabcd build next --x` or `abcdbuild next --x` counts as an invocation of `abcd build next` that documents --x, so the stale-binary note can be granted on a line that never invokes abcd. Found by the Opus+Sonnet review of fix/stale-usage-notes, 2026-10-15.
