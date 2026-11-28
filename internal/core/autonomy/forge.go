@@ -66,11 +66,137 @@ func rawSet(v json.RawMessage) bool {
 }
 
 // checkEntry is one entry of a check rollup: a check run (status and
-// conclusion) or a commit status (state).
+// conclusion, named by its workflow and name) or a commit status (state,
+// named by its context). StartedAt is when the run began and CompletedAt when
+// it finished, each the zero instant until it happens; for a commit status
+// the forge client prints its creation time as StartedAt and no completion.
 type checkEntry struct {
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	State      string `json:"state"`
+	Name         string `json:"name"`
+	WorkflowName string `json:"workflowName"`
+	Context      string `json:"context"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	State        string `json:"state"`
+	StartedAt    string `json:"startedAt"`
+	CompletedAt  string `json:"completedAt"`
+}
+
+// checkKey is the check an entry is one run of: the workflow and name of a
+// check run, or the context of a commit status. ok is false for an entry
+// that names no check, which is never taken for another's run.
+func (c checkEntry) checkKey() (key string, ok bool) {
+	if c.Context != "" {
+		return "status\x00" + c.Context, true
+	}
+	if c.Name != "" {
+		return "run\x00" + c.WorkflowName + "\x00" + c.Name, true
+	}
+	return "", false
+}
+
+// instant reads one of the forge's times; ok is false for an absent,
+// unreadable or zero one, which is a moment that has not happened.
+func instant(v string) (at time.Time, ok bool) {
+	at, err := time.Parse(time.RFC3339, v)
+	if err != nil || at.IsZero() {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// started is when the run began; started is false for a run not started yet.
+func (c checkEntry) started() (at time.Time, started bool) { return instant(c.StartedAt) }
+
+// finished is when the run ended; finished is false for one still going or
+// one whose end the forge did not say. A commit status is one moment, so it
+// ends as it starts: the forge's rollup lists only a context's latest status,
+// and a status newer than another replaces it.
+func (c checkEntry) finished() (at time.Time, finished bool) {
+	if c.Context != "" {
+		return c.started()
+	}
+	return instant(c.CompletedAt)
+}
+
+// ordered is the instant a run is placed at among its check's runs: when it
+// started, or, for a finished check run the forge gave no start (one
+// cancelled while queued), when it finished. ok is false for a run with
+// neither, which can be set aside by nothing and sets nothing aside.
+func (c checkEntry) ordered() (at time.Time, ok bool) {
+	if at, ok := c.started(); ok {
+		return at, true
+	}
+	if c.Context != "" {
+		return time.Time{}, false
+	}
+	return instant(c.CompletedAt)
+}
+
+// waiting reports a check run the forge has queued and not yet started: a
+// status other than COMPLETED, no start and no conclusion. It is read as a
+// rerun that will follow every finished run sharing its workflow and name, so
+// it sets those aside; a same-named run that is in fact another queued leg,
+// not a rerun, is read that way too. An entry with no status at all says
+// nothing about being queued and is not waiting.
+func (c checkEntry) waiting() bool {
+	if c.Context != "" || c.Status == "" {
+		return false
+	}
+	if _, started := c.started(); started {
+		return false
+	}
+	return c.Conclusion == "" && !strings.EqualFold(c.Status, "COMPLETED")
+}
+
+// newestRuns is the rollup with every superseded run left out
+// (iss-2611270325497482). The rollup keeps each run of a check, so a failure
+// that was rerun and passed sits beside its success; the forge's merge gate
+// judges a check by its newest run, and so does this. A run is superseded
+// only when it had finished by the time another run of the same check
+// started, or when another is waiting to start. Runs whose windows overlap
+// are concurrent, not a run and its rerun (matrix legs sharing a display
+// name, or one workflow run for push and for pull_request), and are all
+// judged; so are runs that cannot be ordered (two at one instant, one whose
+// end is unknown, a finished one with no time at all).
+func newestRuns(rollup []checkEntry) []checkEntry {
+	kept := make([]checkEntry, 0, len(rollup))
+	for i, c := range rollup {
+		if !superseded(rollup, i) {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+// superseded reports whether rollup[i] has finished and another run of its
+// check is waiting to start, or started after rollup[i] was placed and no
+// earlier than it finished.
+func superseded(rollup []checkEntry, i int) bool {
+	c := rollup[i]
+	key, ok := c.checkKey()
+	if !ok {
+		return false
+	}
+	at, placed := c.ordered()
+	end, finished := c.finished()
+	if !placed || !finished {
+		return false
+	}
+	for j, n := range rollup {
+		if j == i {
+			continue
+		}
+		if k, ok := n.checkKey(); !ok || k != key {
+			continue
+		}
+		if n.waiting() {
+			return true
+		}
+		if next, ok := n.ordered(); ok && next.After(at) && !next.Before(end) {
+			return true
+		}
+	}
+	return false
 }
 
 // checksState is what a pull request's checks say as a whole.
@@ -83,14 +209,15 @@ const (
 	checksFailing
 )
 
-// checks reads the rollup: failing when any entry failed, else pending when
-// any has not finished, else passing when there is any entry at all.
+// checks reads the rollup by each check's newest run: failing when any such
+// run failed, else pending when any has not finished, else passing when there
+// is any entry at all.
 func (p pullRequest) checks() checksState {
 	if len(p.StatusCheckRollup) == 0 {
 		return checksNone
 	}
 	pending := false
-	for _, c := range p.StatusCheckRollup {
+	for _, c := range newestRuns(p.StatusCheckRollup) {
 		switch strings.ToUpper(c.Conclusion) {
 		case "FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
 			return checksFailing
