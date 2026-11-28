@@ -283,7 +283,10 @@ func TestTheLedgerRedactorsReScanWhatTheyRedacted(t *testing.T) {
 	if out, _, _, err := redactLedgerText(repo, in); strings.Contains(out, augmenttest.Value) || !errors.Is(err, ErrRedactionResidual) {
 		t.Errorf("redactLedgerText handed back %q, %v; want the text refused, a span surviving", out, err)
 	}
-	r := newLedgerRedactor(repo)
+	r, err := newLedgerRedactor(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if out, _ := r.redact(in); strings.Contains(out, augmenttest.Value) || !errors.Is(r.Err(), ErrRedactionResidual) {
 		t.Errorf("ledgerRedactor.redact handed back %q, %v; want the text refused, a span surviving", out, r.Err())
 	}

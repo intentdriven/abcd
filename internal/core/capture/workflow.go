@@ -127,21 +127,6 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
 		return CaptureResult{}, err
 	}
-	if err := mutationPreambleWith(lock, repoRoot, issuesRoot); err != nil {
-		return CaptureResult{}, err
-	}
-	// The targets go through the ONE blocked_by validator link shares
-	// (link.go): shape, no self-edge, existence in any status folder, duplicates
-	// collapsed. The subject is the migrator's ForceID when there is one, since
-	// a minted id cannot be named before it exists.
-	if req.BlockedBy, err = validateBlockers(issuesRoot, "capture", req.ForceID, req.BlockedBy); err != nil {
-		return CaptureResult{}, err
-	}
-
-	if strings.TrimSpace(req.FoundDuring) == "" {
-		return CaptureResult{}, fmt.Errorf("found_during must be a non-empty string")
-	}
-
 	// Redact the free-text INPUTS, before the slug is normalised and before the
 	// record is rendered. Redacting the rendered file instead treats the
 	// structural fields as free text: a home path in the body reaches the
@@ -152,14 +137,15 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	//
 	// Only free text is touched. id, severity, category and source are generated
 	// or enum-constrained, so they carry nothing to redact and must not be
-	// rewritten.
+	// rewritten. It runs before the preamble, so its one refusal
+	// (identityRefusal) writes nothing at all.
 	var redacted int
 	var degraded string
-	var rerr error
-	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded, rerr =
+	var redactErr error
+	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded, redactErr =
 		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
-	if rerr != nil {
-		return CaptureResult{}, rerr
+	if redactErr != nil {
+		return CaptureResult{}, redactErr
 	}
 	// The remedy is free text too, and the drain hands it to a lane as the brief
 	// (itd-82), so it is redacted by the same redactor and counted with the rest.
@@ -184,6 +170,20 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 		if deg != "" {
 			degraded = deg
 		}
+	}
+	if err := mutationPreambleWith(lock, repoRoot, issuesRoot); err != nil {
+		return CaptureResult{}, err
+	}
+	// The targets go through the ONE blocked_by validator link shares
+	// (link.go): shape, no self-edge, existence in any status folder, duplicates
+	// collapsed. The subject is the migrator's ForceID when there is one, since
+	// a minted id cannot be named before it exists.
+	if req.BlockedBy, err = validateBlockers(issuesRoot, "capture", req.ForceID, req.BlockedBy); err != nil {
+		return CaptureResult{}, err
+	}
+
+	if strings.TrimSpace(req.FoundDuring) == "" {
+		return CaptureResult{}, fmt.Errorf("found_during must be a non-empty string")
 	}
 
 	// When no explicit slug was supplied, derive it HERE — from the text that

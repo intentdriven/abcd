@@ -17,7 +17,10 @@ func TestPayloadFieldNotesAFailedAugmenterRun(t *testing.T) {
 	augmenttest.Install(t, &augmenttest.Func{F: func(string, string) ([]scanner.Finding, error) {
 		return nil, errors.New("run failed")
 	}})
-	field, note := newPayloadField(t.TempDir())
+	field, note, err := newPayloadField(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if n := note(); n != "" {
 		t.Fatalf("noted before any redaction: %q", n)
 	}

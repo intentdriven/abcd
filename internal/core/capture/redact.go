@@ -17,7 +17,8 @@ import (
 // and `history`, so an absolute home path handed to `abcd capture` reached the
 // repository with every lint gate green (iss-2608231025198888).
 //
-// It REDACTS AND REPORTS; it never refuses. history.Capture is fail-closed on
+// It REDACTS AND REPORTS, and refuses only while an identity value no pattern
+// can match is set (identityRefusal). history.Capture is fail-closed on
 // the same detector and that asymmetry is deliberate: a transcript is
 // machine-produced bulk whose loss costs one session, whereas refusing to record
 // a finding loses the finding itself, and a ledger that rejects writes is a
@@ -41,6 +42,9 @@ func redactLedgerText(repoRoot, text string) (redacted string, count int, degrad
 		// so. Silently returning the input would be the fail-open this exists to
 		// close.
 		return text, 0, fmt.Sprintf("scanner unavailable (%v); text written unredacted", err), nil
+	}
+	if err := identityRefusal(sc); err != nil {
+		return "", 0, "", err
 	}
 	findings := sc.ScanText(text, "issue")
 	degraded = scanNote(sc)
@@ -69,6 +73,18 @@ func redactVerified(sc *scanner.Scanner, text string, findings []scanner.Finding
 		return "", refused(fmt.Errorf("%w (%d span(s)); nothing written", ErrRedactionResidual, len(resid)))
 	}
 	return out, nil
+}
+
+// identityRefusal is the one cause the ledger refuses on rather than writes
+// and notes: an identity value that is not valid UTF-8, which no pattern can
+// match, so a text holding it would reach the ledger in clear. The refusal
+// names the setting to re-save and never the value.
+func identityRefusal(sc *scanner.Scanner) error {
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return fmt.Errorf("refusing to write to the issue ledger: %s; nothing written",
+			scanner.IdentityUnmatchableReason(setting))
+	}
+	return nil
 }
 
 // scanNote is the loud-degrade note for a scanner that has run: a degraded
@@ -107,6 +123,9 @@ func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
 	total := 0
 	worst := ""
 	red := func(in string) string {
+		if err != nil {
+			return ""
+		}
 		out, n, deg, rerr := redactLedgerText(repoRoot, in)
 		total += n
 		if deg != "" {
@@ -121,7 +140,10 @@ func redactCaptureInputs(repoRoot, text, slug, foundAt, foundDuring string) (
 	rSlug = red(slug)
 	rFoundAt = red(foundAt)
 	rFoundDuring = red(foundDuring)
-	return rText, rSlug, rFoundAt, rFoundDuring, total, worst, err
+	if err != nil {
+		return "", "", "", "", 0, "", err
+	}
+	return rText, rSlug, rFoundAt, rFoundDuring, total, worst, nil
 }
 
 // ledgerRedactor is one scanner reused across a batch of free-text values.
@@ -143,15 +165,19 @@ type ledgerRedactor struct {
 	err      error
 }
 
-// newLedgerRedactor builds the batch redactor. It never fails: an unusable
-// scanner degrades LOUDLY through Degraded, because refusing the write here
-// would lose the finding rather than protect it.
-func newLedgerRedactor(repoRoot string) *ledgerRedactor {
+// newLedgerRedactor builds the batch redactor. An unusable scanner degrades
+// LOUDLY through Degraded, because refusing the write here would lose the
+// finding rather than protect it; the one refusal is identityRefusal's, an
+// identity value no pattern can match.
+func newLedgerRedactor(repoRoot string) (*ledgerRedactor, error) {
 	sc, err := newLedgerScanner(repoRoot)
 	if err != nil {
-		return &ledgerRedactor{degraded: fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)}
+		return &ledgerRedactor{degraded: fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)}, nil
 	}
-	return &ledgerRedactor{sc: sc}
+	if err := identityRefusal(sc); err != nil {
+		return nil, err
+	}
+	return &ledgerRedactor{sc: sc}, nil
 }
 
 // redact sanitises one value and reports how many spans it rewrote. A value
@@ -212,6 +238,11 @@ func NewTextRedactor(ctx context.Context, repoRoot string) (*TextRedactor, error
 	sc, err := newContextScanner(ctx, repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
+	}
+	// The identity cause is carried typed (scanner.UnmatchableSetting), so
+	// the caller can name the setting to re-save.
+	if setting := sc.IdentityUnmatchable(); setting != "" {
+		return nil, fmt.Errorf("%w: %w", ErrScannerUnavailable, &scanner.IdentityUnmatchableError{Setting: setting})
 	}
 	if unavailable, reason := sc.Unavailable(); unavailable {
 		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, reason)
