@@ -54,8 +54,8 @@ type Ceiling struct {
 // siblings in s (NameSiblings) once it is known whose holds are the reader's
 // (ReaderSelf), even when the cap is then refused: false when neither a
 // holder id nor the reader's GitHub login can be read without the network,
-// or a reservation.max_live, the repository's or this machine's, is one an
-// act would refuse.
+// or the reservation settings, the repository's or this machine's, cannot be
+// read or hold a value an act would refuse (maxLive).
 func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	self := readerSelf(root, o)
 	if !self.Known() {

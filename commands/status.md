@@ -107,7 +107,7 @@ The payload carries:
   not be read here, or was not kept at the status branches' last fetch.
   The names themselves are never listed: whoever pushed the branch chose the
   name;
-- `branches_not_read` and `announcements_not_read`: how many status
+- `branches_not_read` and `announcements_not_read`: How many status
   branches lie past the 500 one read takes, and how many kept announcements
   lie past the 2,000 one read takes; neither is read;
 - `branches_left_to_read`: how many status branches hold more new commits
@@ -152,8 +152,9 @@ The payload carries:
   - `ceiling`: Your own live reservations against your ceiling, with the
     layer that set it, where they were made from, and its warning; absent
     when nothing here names you (no holder id, no declared id, and no login
-    that can be read without the network), or when a `reservation.max_live`
-    holds a value an act would refuse;
+    that can be read without the network), or when the reservation settings
+    (the repository's at origin's default branch, or this machine's) cannot
+    be read or hold a value an act would refuse;
   - `drain_in_work`: This checkout's drain in progress, its lanes in work
     against the limit it began with and the layer that set it; absent with
     no drain in progress, or when the drain's state cannot be read;

@@ -151,8 +151,9 @@ payload adds:
   layer beside the number: `your holds: <holder> 7 of 10 (repository) (this
   copy 2, ...)`. Absent when nothing here names the reader (no holder id,
   no declared id, and no login that can be read without the network), or
-  when a `reservation.max_live` holds a value a reservation would be refused
-  on.
+  when the reservation settings (the repository's at origin's default
+  branch, or this machine's) cannot be read or hold a value a reservation
+  would be refused on.
 - `drain_in_work`: while a drain is in progress in this checkout, its lanes
   in work against the limit it began with: `count`, `limit`, and the `layer`
   (`repo` for the repository's `drain.in_work_max` at origin's default
