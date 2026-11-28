@@ -8,8 +8,11 @@ package loop
 // (claimDriverMade).
 //
 // A file that is not there, cannot be read, states a newer version, or carries
-// a control code shows no line: ReadDriveState returns an error that says why,
-// and the surface prints it on stderr. A drive that ended without writing its
+// a control code shows no line. A file that is not there returns
+// ErrNoDriveState, and the surface says nothing for it, since a checkout that
+// never ran a drive is the ordinary case (dcn-2611280725158656); for the others
+// ReadDriveState returns an error that says why, and the surface prints it on
+// stderr. A drive that ended without writing its
 // last line is told by its recorded process: one that is gone, or whose id is
 // held by a process that started at another time, reads stopped, not heard
 // from since the value was written, and never working.
