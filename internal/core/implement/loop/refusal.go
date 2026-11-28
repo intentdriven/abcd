@@ -87,6 +87,11 @@ type Refusal struct {
 	// (land_runner_wait.go): a wait by design, bounded by the land stage
 	// itself, whose first call writes the line on the lane once.
 	runnerWait string
+	// personAct marks a remedy that is the act of the person at the drive's own terminal,
+	// what keeps the drive from a run its terminal holds and how they end it
+	// (terminalKept): the drive's state shows only such a remedy as the person's act, never
+	// one written for the drive or for a host session (drivestate.go).
+	personAct bool
 	// originUnread marks a land fence that could not read the reservation
 	// from origin: a wait by design, never logged on a drain's lane
 	// (stuck.go).

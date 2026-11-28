@@ -329,7 +329,9 @@ func claimDriverMade(repoRoot, runID string, o Options, overHalted bool) (made c
 				if kept.remedy != "" {
 					remedy = kept.remedy
 				}
-				return false, contend(StageDriver, "", "", reason, remedy)
+				r := contend(StageDriver, "", "", reason, remedy)
+				r.personAct = kept.act
+				return false, r
 			}
 			if hostErr != nil {
 				return false, nil
@@ -431,6 +433,7 @@ func (o Options) startedUnder(tab sessionname.Table, d LiveDriver) (took bool, k
 					passed.Count, folder),
 				remedy: fmt.Sprintf("remove or repair each file in %s that cannot be read as a session marker, %s first; this drive reads them again at its next look",
 					folder, bounded(passed.First, maxProcNameShown)),
+				act: true,
 			}
 		}
 	}
@@ -445,6 +448,7 @@ func (o Options) startedUnder(tab sessionname.Table, d LiveDriver) (took bool, k
 				p.PID, name),
 			remedy: fmt.Sprintf("end process %d (%s), and this drive's next look takes the run where nothing else runs beneath it; or close the terminal the run was taken over from, so that %s (%s) ends, and start the drive from another terminal",
 				p.PID, name, driverName(d), bounded(procName(tab, d.PID), maxProcNameShown)),
+			act: true,
 		}
 	}
 	return true, kept
@@ -463,9 +467,11 @@ func procName(tab sessionname.Table, pid int) string {
 // terminalKept is what kept a drive from taking a run from the process its shell runs
 // under (startedUnder), or what it could not read under the run's lock, for the contention
 // to say: why, added to its reason, and the way on, in place of its remedy. Either may be
-// empty.
+// empty. act says the way on is the person's to take at the drive's terminal, which the
+// drive's state shows as their act (Refusal.personAct).
 type terminalKept struct {
 	why, remedy string
+	act         bool
 }
 
 // maxProcNameShown bounds a process's name in a refusal.

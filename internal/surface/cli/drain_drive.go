@@ -870,6 +870,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		Preflight:        drivePreflight(detail, p, repoRoot),
 		PreflightAllowed: driveGateCheck(repoRoot),
 		Say:              say,
+		State:            driveStateLines(say),
 		Stop:             sig.stop,
 		Until:            until,
 		Probe:            probe,
@@ -893,6 +894,23 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 		return rerr
 	}
 	return driveEndExit(res)
+}
+
+// driveStateLines is the drive's State: it prints `state: <line>` through say when the
+// state's word, what it is on or the act it names changes, and not otherwise, so a wait
+// rewritten at each look, or a call at each renewal tick, adds no line. The line is
+// composed at the value's own written time (loop.DriveLine), from the value as stored.
+// The loop hands one value at a time (loop.TerminalOptions.State).
+func driveStateLines(say func(string)) func(loop.DriveState) {
+	var last loop.DriveState
+	said := false
+	return func(s loop.DriveState) {
+		if said && s.State == last.State && s.On == last.On && s.Do == last.Do {
+			return
+		}
+		said, last = true, s
+		say("state: " + loop.DriveLine(s, s.Written))
+	}
 }
 
 // driveEndExit is the exit of a drive that ended as res says, once its end is rendered.
@@ -1098,9 +1116,16 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 	// reason: it is no lane the drive may not save, and a later drive tries it again. Its
 	// hold lapses with its lease unless a take-up works it, or, where a live driver holds
 	// the run, is that driver's to renew.
+	// Where only some of a lane's holds were left to lapse, a renewal of the run keeps every
+	// one of them, so each issue is named with what became of its hold
+	// (dcn-2611271952390075).
 	for _, s := range res.SetAside {
 		hold := "its reservation lapses with its lease " + loop.UnlessKeptTakenUp
-		if !s.LeftToLapse {
+		switch left, kept := loop.SplitHolds(s.Holds); {
+		case len(s.Holds) > 0:
+			hold = fmt.Sprintf("the reservation of %s was left to lapse and that of %s could not be, so a renewal of the run keeps each, and each lapses with its lease %s",
+				termsafe.Sanitize(strings.Join(left, ", ")), termsafe.Sanitize(strings.Join(kept, ", ")), loop.UnlessRunRenewed)
+		case !s.LeftToLapse:
 			hold = "its reservation is the driver's that holds the run, and lapses with its lease " + loop.UnlessRunRenewed
 		}
 		fmt.Fprintf(w, "  set aside: %s, run %s, after waiting %s: %s; %s\n",
