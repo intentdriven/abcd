@@ -18,9 +18,17 @@ package matrix
 // and nothing stands in for it, since an answer from any other model would
 // measure the wrong one (decision 4). So the host is never taken at its word
 // for a runner cell's copy, and the report counts it as awaiting its runner,
-// in no rate, until its launch makes it. A launched code copy waits for its
-// hidden tests' result, which the host hands back alone (scoreLaunched) until
-// abcd runs them itself (step 10).
+// in no rate, until its launch makes it.
+//
+// A code task that names its hidden tests has them read from their folder and
+// placed outside every clone as the run starts, before any copy is handed off
+// (placeHidden), and kept by content in the run's state; a clone that holds
+// one of them refuses its cell. abcd then runs them itself (step 10): a host
+// copy as it is handed back, and a launched copy as its launch ends, each in
+// an export of the copy's tree as it was read before its compliance check, so
+// the score is abcd's own run and never the host's word. A code task that
+// names none, or a run started before abcd placed hidden tests, is scored on
+// the result the host hands back, and its trial says so.
 //
 // Every copy handed off is accounted for (readHandOffs): the report shows each
 // one that holds no trial, and a review or a judging, drawn once, waits while
@@ -149,13 +157,17 @@ func (l *Launcher) Start(_ Plan, rec RunRecord) error {
 		return err
 	}
 	store := cloneStore(l.Home, rec.RootSHA)
+	placed, err := l.placeHidden(rec, d, store)
+	if err != nil {
+		return err
+	}
 	for _, task := range d.Tasks {
 		for _, pin := range rec.Cells {
 			if pin.Role != RoleBuilder {
 				continue
 			}
 			for r := 1; r <= d.Repeats.Pilot; r++ {
-				h, err := l.handOff(rec, store, task, pin, TrialKey{Task: task.ID, Cell: pin.Cell, Repeat: r})
+				h, err := l.handOff(rec, store, task, pin, TrialKey{Task: task.ID, Cell: pin.Cell, Repeat: r}, placed[task.ID])
 				if err != nil {
 					return fmt.Errorf("copy %s/%s/%d is not handed off: %w", task.ID, pin.Cell, r, err)
 				}
@@ -166,8 +178,57 @@ func (l *Launcher) Start(_ Plan, rec RunRecord) error {
 	return nil
 }
 
-// handOff makes one copy's clone and records its hand-off.
-func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, key TrialKey) (HandOff, error) {
+// placeHidden places every code task's hidden tests the declaration names, as
+// the run starts and before any copy is handed off: each task's folder is read
+// first (readHiddenFolder), so a folder refused refuses the start with nothing
+// placed, then each task's tests are placed outside every clone (hiddenDir)
+// and kept by content in the run's state (hiddenRecordRel). It returns each
+// task's tests as kept.
+func (l *Launcher) placeHidden(rec RunRecord, d Declaration, store string) (map[string][]ContentRef, error) {
+	read := map[string][]hiddenTest{}
+	for _, task := range d.Tasks {
+		if task.Kind != KindCode || task.HiddenTests == "" {
+			continue
+		}
+		tests, err := readHiddenFolder(l.RepoRoot, store, task.HiddenTests)
+		if err != nil {
+			return nil, fmt.Errorf("task %s's hidden tests are not placed, and no copy is handed off: %w", task.ID, err)
+		}
+		read[task.ID] = tests
+	}
+	placed := map[string][]ContentRef{}
+	for _, task := range d.Tasks {
+		tests, ok := read[task.ID]
+		if !ok {
+			continue
+		}
+		refs, err := placeHiddenTests(store, rec.RunID, task.ID, tests)
+		if err != nil {
+			return nil, fmt.Errorf("task %s's hidden tests are not placed, and no copy of it is handed off: %w", task.ID, err)
+		}
+		data, err := encodeCheck(hiddenRecord{SchemaVersion: hiddenRecordSchema, Run: rec.RunID, Task: task.ID, Tests: refs})
+		if err != nil {
+			return nil, err
+		}
+		proc, err := lab.OpenProcedure(l.RepoRoot, rec.Lab)
+		if err != nil {
+			return nil, err
+		}
+		err = proc.WriteState(hiddenRecordRel(rec.RunID, task.ID), data)
+		proc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("task %s's hidden tests are placed and not recorded, and no copy of it is handed off: %w", task.ID, err)
+		}
+		placed[task.ID] = refs
+	}
+	return placed, nil
+}
+
+// handOff makes one copy's clone and records its hand-off. A code copy whose
+// task's hidden tests are placed (hidden) is refused, its clone removed, when
+// its clone already holds one of them: the frozen commit hands it to every
+// builder.
+func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, key TrialKey, hidden []ContentRef) (HandOff, error) {
 	clone, err := makeCopyClone(rec.Lab, l.RepoRoot, store, rec.RunID, rec.FrozenCommit, key)
 	if err != nil {
 		return HandOff{}, err
@@ -178,7 +239,13 @@ func (l *Launcher) handOff(rec RunRecord, store string, task Task, pin CellPin, 
 		h.State = HandOffAwaitingRunner
 		h.Reason = "the copy waits for its launch (abcd lab matrix launch), which starts the cell's runner in its clone; nothing stands in for the runner"
 	}
-	if err := admitClone(l.RepoRoot, clone, pin); err != nil {
+	admitted := admitClone(l.RepoRoot, clone, pin)
+	if hidden != nil {
+		if err := hiddenOutsideClone(clone, hiddenDir(store, rec.RunID, task.ID), hidden); err != nil {
+			admitted = err
+		}
+	}
+	if err := admitted; err != nil {
 		if rerr := removeClone(clone); rerr != nil {
 			return HandOff{}, errors.Join(err, rerr)
 		}
@@ -534,8 +601,13 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	var h HandOff
 	var alias string
 	var written []byte
+	var hidden []ContentRef
+	abcdRuns := false
 	if err == nil {
 		h, err = readHandOff(proc, run, key)
+	}
+	if err == nil && h.Kind == KindCode {
+		hidden, abcdRuns, err = readHiddenRecord(proc, run, key.Task)
 	}
 	if err == nil {
 		alias, err = readAlias(proc, run, key)
@@ -559,6 +631,13 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	case HandOffAwaitingRunner, HandOffLaunching, HandOffInterrupted:
 		return TrialRecord{}, fmt.Errorf("copy %s is its cell's runner's to make, with abcd lab matrix launch; the host never makes it, since its answer would measure the wrong model", key)
 	case HandOffLaunched:
+		task, _, err := taskAndPin(rec, d, key)
+		if err != nil {
+			return TrialRecord{}, err
+		}
+		if abcdRuns {
+			return scoreLaunchedByAbcd(repoRoot, home, labID, rec, task, hidden, alias, h, rc, back)
+		}
 		return scoreLaunched(repoRoot, labID, h, rc, back)
 	default:
 		return TrialRecord{}, fmt.Errorf("copy %s's cell was refused (%s), so there is no copy to hand back", key, h.Reason)
@@ -588,6 +667,12 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 			t.FinishedAt = time.Now().UTC()
 		}
 		t.Status, t.Reason = StatusFailed, clipTo("the host reports the copy failed: "+termsafe.SanitizeLine(rc.Reason), maxReasonBytes)
+	case task.Kind == KindCode && abcdRuns:
+		// abcd runs the copy's hidden tests itself once its compliance is
+		// checked, so the host's word on them is never asked for.
+		if rc.Score != nil {
+			return TrialRecord{}, fmt.Errorf("copy %s's hidden tests are abcd's to run, placed outside its clone at the run's start, so it is handed back made with no score; abcd runs them now", key)
+		}
 	case task.Kind == KindCode:
 		s := rc.Score
 		if s == nil || s.Total < 1 {
@@ -618,6 +703,13 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		return TrialRecord{}, fmt.Errorf("the run's folders, left closed to listing by a launch that was killed, could not be opened again: %w", err)
 	}
 	store := cloneStore(home, rec.RootSHA)
+	clone := cloneDir(store, run, alias)
+	scoring := task.Kind == KindCode && abcdRuns && rc.Outcome == OutcomeMade
+	if scoring {
+		if t, err = digestForHiddenTests(clone, t); err != nil {
+			return TrialRecord{}, err
+		}
+	}
 	c, err := checkCompliance(complianceInputs{RepoRoot: repoRoot, Store: store, Run: run, Key: key, Alias: alias,
 		Frozen: rec.FrozenCommit, Source: pin.Source, Transcript: back.Transcript, State: labStore(home, rec.RootSHA),
 		Handoff: handoffStore(home, rec.RootSHA)})
@@ -626,6 +718,16 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 	}
 	t = c.apply(t)
 	t.Unpinned = hostTrialUnpinned(rc, scored)
+	if scoring && t.Status == "" {
+		// Its compliance left it ranked: its hidden tests run now, in an
+		// export of the tree read before the check.
+		probe := t
+		probe.Status, probe.Reason = StatusFailed, "awaiting its hidden tests' result"
+		if err := probe.validate(); err != nil {
+			return TrialRecord{}, fmt.Errorf("the trial is not written: %w", err)
+		}
+		return scoreByAbcd(context.Background(), repoRoot, labID, store, task, hidden, clone, t)
+	}
 	if err := t.validate(); err != nil {
 		return TrialRecord{}, fmt.Errorf("the trial is not written: %w", err)
 	}
@@ -692,6 +794,34 @@ func CollectCopy(repoRoot, home, labID, run string, key TrialKey, back CopyBack)
 		return t, nil
 	}
 	return t, writeTrial(repoRoot, labID, t)
+}
+
+// scoreLaunchedByAbcd takes back a launched code copy whose hidden tests are
+// abcd's to run and whose launch kept its trial awaiting their result, its
+// compliance checked and its tree's digest read: the launch's run of them did
+// not reach an outcome (it was stopped, or the command could not start), so
+// abcd runs them now, against the tree the launch read. It refuses, running
+// nothing, a receipt that is not a made copy's or that carries a score or
+// anything the launch recorded itself, and a hand-back with a transcript or
+// an answer, which the launch read.
+func scoreLaunchedByAbcd(repoRoot, home, labID string, rec RunRecord, task Task, hidden []ContentRef, alias string, h HandOff, rc CopyReceipt, back CopyBack) (TrialRecord, error) {
+	key := h.Key
+	switch {
+	case h.Trial == nil:
+		return TrialRecord{}, fmt.Errorf("copy %s was launched and its launch wrote its trial; a copy's trial is written once", key)
+	case back.Transcript != nil || back.Answer != nil || back.Form != "":
+		return TrialRecord{}, fmt.Errorf("copy %s was launched, and its launch read its transcript; hand it back with a made receipt alone", key)
+	case rc.Outcome != OutcomeMade || rc.Score != nil:
+		return TrialRecord{}, fmt.Errorf("copy %s's hidden tests are abcd's to run, so it is handed back with a made receipt and no score; abcd runs them now", key)
+	case rc.HarnessVersion != "" || rc.ModelServed != "" || !rc.StartedAt.IsZero() || !rc.FinishedAt.IsZero() || rc.ModelTimeMS != 0 || rc.GateWaitMS != 0:
+		return TrialRecord{}, fmt.Errorf("copy %s's served model, harness version and times are its launch's own record, never the host's word; hand back a made receipt alone", key)
+	}
+	t := *h.Trial
+	if t.Key != key || t.Run != h.Run || t.Kind != KindCode || t.Status != "" || !t.AbcdRanHiddenTests() || t.TreeDigest == "" {
+		return TrialRecord{}, fmt.Errorf("copy %s's kept trial does not read as its own, awaiting abcd's run of its hidden tests", key)
+	}
+	store := cloneStore(home, rec.RootSHA)
+	return scoreByAbcd(context.Background(), repoRoot, labID, store, task, hidden, cloneDir(store, rec.RunID, alias), t)
 }
 
 // leftoverClone answers a hand-back of copy key whose trial is already

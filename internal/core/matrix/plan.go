@@ -401,8 +401,8 @@ func hiddenTestsOf(d Declaration) []HiddenTestsConsent {
 			continue
 		}
 		out = append(out, HiddenTestsConsent{Task: t.ID, Folder: t.HiddenTests, Command: slices.Clone(t.TestCommand),
-			Consent: fmt.Sprintf("abcd will run each copy's code of %s with `%s`, in an export of the copy with the hidden tests from %s added, never in its clone; "+
-				"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report",
+			Consent: fmt.Sprintf("abcd will run each copy's code of %s with `%s`, in an export of the copy with the hidden tests from %s added, never in its clone, "+
+				"as this account and not sandboxed; a code copy's result is that run's exit status, never the host's report",
 				t.ID, commandLine(t.TestCommand), consentQuote(t.HiddenTests))})
 	}
 	return out
