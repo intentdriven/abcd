@@ -52,9 +52,14 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" peers --json
 ```
 
-The payload carries `live` (the live-peer count), `ids` (the distinct records
-across every row), `default_ref` (the branch a peer is judged merged into),
-`sources` (the sources read: `worktree` and `branch`), `peers` and `skipped`.
+The payload carries:
+
+- `live`: The live-peer count.
+- `ids`: The distinct records across every row.
+- `default_ref`: The branch a peer is judged merged into.
+- `sources`: The sources read, `worktree` and `branch`.
+- `peers` and `skipped`, each described below.
+
 Each peer names its `source`, `branch`, `path` (home-relative, `~/…`, or the
 worktree's directory name when it sits outside HOME, never an absolute path)
 and its `rows`; each row is an `id`, a `kind`, the `folder` that holds it in the peer
@@ -144,9 +149,10 @@ payload adds:
   the file reads), or why the worktrees could not be
   listed (their holds then count as `elsewhere`). The text form prints the
   layer beside the number: `your holds: <holder> 7 of 10 (repository) (this
-  copy 2, ...)`. Absent when the reader's login cannot be named without the
-  network, or a `reservation.max_live` holds a value a reservation would be
-  refused on.
+  copy 2, ...)`. Absent when nothing here names the reader (no holder id,
+  no declared id, and no login that can be read without the network), or
+  when a `reservation.max_live` holds a value a reservation would be refused
+  on.
 - `drain_in_work`: while a drain is in progress in this checkout, its lanes
   in work against the limit it began with: `count`, `limit`, and the `layer`
   (`repo` for the repository's `drain.in_work_max` at origin's default

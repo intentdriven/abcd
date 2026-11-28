@@ -107,9 +107,9 @@ The payload carries:
   not be read here, or was not kept at the status branches' last fetch.
   The names themselves are never listed: whoever pushed the branch chose the
   name;
-- `branches_not_read`: how many status branches lie past the 500 one read
-  takes, and `announcements_not_read` how many kept announcements lie past
-  the 2,000 one read takes; neither is read;
+- `branches_not_read` and `announcements_not_read`: how many status
+  branches lie past the 500 one read takes, and how many kept announcements
+  lie past the 2,000 one read takes; neither is read;
 - `branches_left_to_read`: how many status branches hold more new commits
   than one read takes in (at most 100 in all): none of them is marked read
   past what was taken in, so the next prompt or `abcd status` takes in the
@@ -141,18 +141,22 @@ The payload carries:
   line on stderr when `~/.abcd.noindex/holder-ids`, or the holder id itself,
   is refused. `/abcd:peers` lists one field more, `settled`, the ended
   releases whose withdrawn pull requests its listing re-armed or skipped:
-  this verb re-arms nothing, so it never carries it. Of these fields:
-  - `release_withdrawals`: each release whose reservation records withdrawn
-    pull requests worth naming: those it holds, those still to re-arm, and
-    those skipped for their owners;
-  - `lost_withdrawals`: each recent release whose branch history records
-    withdrawals a later commit dropped, which nothing re-arms;
-  - `ceiling`: your own live reservations against your ceiling, with the
+  This verb re-arms nothing, so it never carries it. Of these fields:
+  - `release_withdrawals`: Each release whose reservation records withdrawn
+    pull requests worth naming (those it holds, those still to re-arm, and
+    those skipped for their owners); absent, not an empty list, when there
+    is none;
+  - `lost_withdrawals`: Each recent release whose branch history records
+    withdrawals a later commit dropped, which nothing re-arms; absent, not
+    an empty list, when there is none;
+  - `ceiling`: Your own live reservations against your ceiling, with the
     layer that set it, where they were made from, and its warning; absent
-    when your login cannot be named or the ceiling cannot be read;
-  - `drain_in_work`: this checkout's drain in progress, its lanes in work
+    when nothing here names you (no holder id, no declared id, and no login
+    that can be read without the network), or when a `reservation.max_live`
+    holds a value an act would refuse;
+  - `drain_in_work`: This checkout's drain in progress, its lanes in work
     against the limit it began with and the layer that set it; absent with
-    no drain in progress;
+    no drain in progress, or when the drain's state cannot be read;
 - `grants`, the line that an announcement informs and grants nothing.
 
 Tell the user, in plain words, who is doing what, which release is being cut,

@@ -70,8 +70,10 @@ type reservationsBlock struct {
 	Settled []claim.Settle `json:"settled,omitempty"`
 	// Ceiling is the reader's live reservations against their ceiling, the
 	// repository's unless this machine lowers it, with the layer that set it,
-	// by copy, with its warning (iss-2610231004140527); absent when the
-	// reader's login cannot be named or the cap cannot be read.
+	// by copy, with its warning (iss-2610231004140527); absent when nothing
+	// names the reader (claim.Self.Known: no holder id, no declared id and no
+	// login readable without the network) or a reservation.max_live is one an
+	// act would refuse (claim.CeilingFor).
 	Ceiling *ceilingRow `json:"ceiling,omitempty"`
 	// DrainInWork is this checkout's drain in progress, its lanes in work
 	// against the limit it began with and the layer that set it, read from
