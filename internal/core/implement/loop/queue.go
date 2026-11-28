@@ -382,7 +382,7 @@ func watchQueue(c Context, lane *Lane, def string, rule landing.MergeRule) (*Out
 	if ld.Toggles >= maxToggles {
 		return nil, fmt.Sprintf("; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (%s); the loop toggled its auto-merge %d times at this head and no longer toggles it, so the forge queues it by itself or a person settles it", why, ld.Toggles), nil
 	}
-	return toggleArming(c, lane, def, rule, why)
+	return toggleArming(c, lane, def, rule, why, d.Method)
 }
 
 // watchAutoMerge is the same watch where no queue gates the default branch: the
@@ -519,18 +519,20 @@ func enqueue(c Context, lane Lane, id string) (why string, err error) {
 	return "", nil
 }
 
-// toggleArming withdraws the lane's arming and makes it again, by the ruleset
-// mirror's method at the lane's base and pinned to the pushed head, as the
-// arming made it: the toggle that queued #837 and #844 where the forge's
-// enqueue call failed. An arming the forge refuses to make again leaves the
-// pull request disarmed, which is refused, naming the command that re-arms it,
-// and marked out of the queue, so a drain reads its parked lane as dropped
-// with that refusal as its note, not as still armed.
-func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why string) (*Outcome, string, error) {
+// toggleArming withdraws the lane's arming and makes it again, pinned to the
+// pushed head, by armBy, the method the merge gate decided on from the ruleset
+// mirror at the default branch's tip, as the landing's own arming is made: the
+// toggle that queued #837 and #844 where the forge's enqueue call failed. The
+// mirror at the lane's base only says a queue gated it then; a method it names
+// that the tip no longer does is not armed by. An arming the forge refuses to
+// make again leaves the pull request disarmed, which is refused, naming the
+// command that re-arms it, and marked out of the queue, so a drain reads its
+// parked lane as dropped with that refusal as its note, not as still armed.
+func toggleArming(c Context, lane *Lane, def string, rule landing.MergeRule, why, armBy string) (*Outcome, string, error) {
 	ld := lane.Landing
 	n := strconv.Itoa(lane.PR)
-	method := landing.MergeMethods[rule.Method]
-	if method == "" {
+	method := armBy
+	if landing.MergeMethods[rule.Method] == "" || method == "" {
 		return nil, "; it is armed and CLEAN outside the merge queue, and the forge refused to queue it (" + why + "); the ruleset mirror names no merge method to re-arm it by, so the loop leaves it", nil
 	}
 	if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
@@ -569,8 +571,9 @@ func rearmArgs(n, method, head string) []string {
 // rearmDropped is the watch's act on an armed lane's pull request that is
 // open, outside the merge queue and no longer armed: the forge's merge queue
 // removed it (a failed merge-group check clears the arming with it), or
-// someone withdrew the arming. It arms the pull request again, by the ruleset
-// mirror's method pinned to the pushed head, when all of these hold, and
+// someone withdrew the arming. It arms the pull request again, by the method
+// the merge gate decided on from the ruleset mirror at the default branch's
+// tip, pinned to the pushed head, when all of these hold, and
 // otherwise refuses for a person (droppedReport):
 //
 //   - no release's hold stands, and the holds were read: a held lane waits
@@ -638,6 +641,12 @@ func rearmDropped(c Context, lane *Lane, def string, rule landing.MergeRule, v q
 	if !d.Arm {
 		ld.Merge, ld.Armed = "left open: "+d.Why, false
 		return &Outcome{Stay: true, Note: "the merge queue removed pull request #" + n + ", and the loop does not arm it again: " + d.Why + "; the loop asks again on each step"}, "", nil
+	}
+	// The arming is the gate's, by the method it read at the default branch's
+	// tip, as the landing's own arming is: the mirror at the lane's base said
+	// only that a queue gated it then.
+	if method = d.Method; method == "" {
+		return nil, "", droppedReport(c, *lane, def, rule, v, notRearmed(*ld, "the merge gate names no merge method to arm it by"))
 	}
 	args := rearmArgs(n, method, ld.Pushed)
 	if _, err := landing.GH(c.RepoRoot, args...); err != nil {
