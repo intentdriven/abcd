@@ -3,6 +3,7 @@ package lint
 import (
 	"fmt"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
@@ -37,6 +38,17 @@ func slugCapFindings(repoRoot string, rels []string, severity string) ([]Finding
 	}
 	var out []Finding
 	for _, o := range recordid.SlugsOverCap(repoRoot, rels, slugCap) {
+		if o.OverRecordCap {
+			// record_schema refuses the same file as one it cannot read safely; the
+			// slug cap names it too, so the commit-message hook, which runs this rule
+			// alone, does not pass a record whose slug field it never read.
+			out = append(out, Finding{
+				File: o.Rel, Line: 1, RuleID: ruleRecordSlugCap, Severity: severity,
+				Message: fmt.Sprintf("record is larger than the %d-byte record cap, so its slug field was not read; shorten the record",
+					issueschema.RecordReadLimit),
+			})
+			continue
+		}
 		out = append(out, Finding{
 			File: o.Rel, Line: o.Line, RuleID: ruleRecordSlugCap, Severity: severity,
 			Message: fmt.Sprintf("%s is %d characters, over this repository's cap of %d (%s in .abcd/config.json, %d when unset); shorten the slug in the filename and the slug field alike, or raise the cap",

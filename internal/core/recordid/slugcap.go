@@ -1,6 +1,7 @@
 package recordid
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path"
@@ -8,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // SlugOverCap is one place a record's slug runs past a repository's cap.
@@ -21,6 +24,10 @@ type SlugOverCap struct {
 	Line int
 	// Len is the slug's length.
 	Len int
+	// OverRecordCap is true when the record itself is larger than the record cap
+	// (issueschema.RecordReadLimit), so its slug field was not read; Where is then
+	// "record" and Line and Len are 0.
+	OverRecordCap bool
 }
 
 // familyFileTag is the family tag a store's filenames carry for
@@ -71,7 +78,8 @@ func RecordFiles(root string) ([]string, error) {
 // frontmatter where the working tree holds it as a regular file. A path outside
 // every store, or one no store could have written, says nothing, and a path with
 // no file is judged by its name alone: a staged rename need not be in the working
-// tree.
+// tree. A record larger than the record cap is not read, and is named with
+// OverRecordCap set, never passed.
 func SlugsOverCap(root string, rels []string, maxLen int) []SlugOverCap {
 	var out []SlugOverCap
 	for _, rel := range rels {
@@ -86,7 +94,12 @@ func SlugsOverCap(root string, rels []string, maxLen int) []SlugOverCap {
 		if len(slug) > maxLen {
 			out = append(out, SlugOverCap{Rel: rel, Where: "filename slug", Len: len(slug)})
 		}
-		if field, line, ok := frontmatterSlug(filepath.Join(root, filepath.FromSlash(rel))); ok && len(field) > maxLen {
+		field, line, ok, err := frontmatterSlug(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			out = append(out, SlugOverCap{Rel: rel, Where: "record", OverRecordCap: true})
+			continue
+		}
+		if ok && len(field) > maxLen {
 			out = append(out, SlugOverCap{Rel: rel, Where: "slug field", Line: line, Len: len(field)})
 		}
 	}
@@ -115,23 +128,28 @@ func storeFileTag(rel string) (string, bool) {
 // over its buffer (iss-2611070737092992). The block may open below blank lines
 // and HTML comments, located by mdrecord.FirstContent, as record-lint's
 // frontmatterOpen admits an attribution comment above it.
-func frontmatterSlug(file string) (string, int, bool) {
-	fi, err := os.Lstat(file)
-	if err != nil || !fi.Mode().IsRegular() {
-		return "", 0, false
+//
+// The file is taken through fsutil.ReadGuarded under the record cap, the read
+// record-lint's record_schema takes of the same file: one open that refuses a
+// symlinked or non-regular leaf, and no more than issueschema.RecordReadLimit
+// bytes. A file that is absent or not a regular file carries no field, as
+// before; a record over the cap returns fsutil.ErrTooBig, which the caller names.
+func frontmatterSlug(file string) (string, int, bool, error) {
+	data, err := fsutil.ReadGuarded(file, issueschema.RecordReadLimit)
+	if errors.Is(err, fsutil.ErrTooBig) {
+		return "", 0, false, err
 	}
-	data, err := os.ReadFile(file)
 	if err != nil {
-		return "", 0, false
+		return "", 0, false, nil
 	}
 	lines := strings.Split(string(data), "\n")
 	open, col := mdrecord.FirstContent(lines)
 	if open >= len(lines) || frontmatter.TrimBOM(lines[open][:col]) != "" || !frontmatter.IsDelimiter(lines[open][col:]) {
-		return "", 0, false
+		return "", 0, false, nil
 	}
 	f, ok := frontmatter.Fields(lines[open:])["slug"]
 	if !ok {
-		return "", 0, false
+		return "", 0, false, nil
 	}
-	return strings.Trim(f.Value, `"'`), f.Line + open, true
+	return strings.Trim(f.Value, `"'`), f.Line + open, true, nil
 }
