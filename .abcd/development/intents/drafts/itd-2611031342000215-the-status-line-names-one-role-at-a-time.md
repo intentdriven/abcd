@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2611031342011261, itd-2610301750162657, itd-2610240850336695]
+builds_on: [itd-2611031342011261, itd-2610301750162657, itd-2610240850336695, itd-2611252117557299, itd-2611252049031692]
 refines: [itd-2610032150577708]
 severity: minor
 impact: additive
@@ -21,16 +21,23 @@ Typed links: `builds_on`
 token figures the row sums),
 [itd-2610301750162657](../planned/itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)
 (the spot-check review queue, which supplies the review count and the age of
-its oldest item) and
+its oldest item),
 [itd-2610240850336695](itd-2610240850336695-before-stepping-away-the-person-grants.md)
 (the autonomy grant, whose widening of the facilitator's automatic mode will
-change the mode badge's word); `refines`
+change the mode badge's word),
+[itd-2611252117557299](itd-2611252117557299-the-status-line-and-the-bare-board.md)
+(the row's `facilitator:` element and the kept reading of the mode, both on
+the default branch, which the badge and the `waiting` rule read; it flags a
+reversal of this draft's decision 3 for a person to confirm) and
+[itd-2611252049031692](../planned/itd-2611252049031692-a-person-sets-for-their-own-git-identity.md)
+(the order that decides the facilitator's mode, adr-2611262044127943, which
+criterion 3 follows); `refines`
 [itd-2610032150577708](../planned/itd-2610032150577708-a-product-thinker-opens-abcd-s-dashboard.md)
 (the product thinker's dashboard: the product-thinker view built here is an
 interim surface, and what it shows is evidence of what that dashboard must
 show).
 
-Built on by: itd-2611141507299828 (the status line shows the progress of work that runs without the person: a drive's state, the session's pull requests and a running check).
+Built on by: itd-2611141507299828 (the status line shows the progress of work that runs without the person: a drive's state, the session's pull requests and a running check). Its spec, spc-2611251806215442, shares the row's code with this intent, as decision 29 divides it; the edge stays one way, since a `builds_on` back would close a cycle.
 
 ## Press Release
 
