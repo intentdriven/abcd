@@ -54,10 +54,14 @@ launch bundle's secret scan first, over its checked-out tree and the frozen
 commit's own message, author and committer, a hit refusing the cell. Each hand-off
 carries the brief the copy is made from, which names no task id, cell, route,
 model or path on this machine. A host cell's copy is the host's to make in its clone and hand back
-with a receipt and its transcript; a made code copy carries its hidden tests'
-result as the host ran them, and its trial says abcd neither placed nor ran
-them: it marks that result, the model served, the harness version and the
-times as the host's own word, and says it carries no call receipts. A writing
+with a receipt and its transcript. Where its task names hidden tests, the
+score is abcd's, not the host's word: abcd placed the tests outside every
+clone as the run started and runs them itself as it takes the copy back,
+refusing a score the host hands it. Otherwise a made code copy carries its
+hidden tests' result as the host ran them, and its trial says abcd neither
+placed nor ran them. Either way the trial marks the model served, the harness
+version and the times as the host's own word, and says it carries no call
+receipts. A writing
 copy's document is kept only once its trial passes the secret screen, so a
 hand-back the screen refuses can be made again. A runner cell's copy waits for
 its launch, and the cell's runner makes the copy in its clone from the same
@@ -138,7 +142,10 @@ copy it cut short is not launched again. A launch killed outright leaves no end
 to its copies' launches, and once its lock is free they read as interrupted, so
 no review or judging waits for them. A made copy passes the same compliance check and secret screen as a host
 copy's hand-back, its served side the runner's own receipt rather than the
-host's word; a made code copy waits for its hidden tests' result. Runner
+host's word. A made code copy whose task names hidden tests is scored by
+abcd's own run of them as its launch ends, and one whose run reaches no
+outcome waits to be handed back and run again; a made code copy of a task
+naming none waits for its hidden tests' result from the host. Runner
 launches are proven against a fake runner only so far, and the report says so
 among its limitations.
 
@@ -151,7 +158,8 @@ gates; a copy that never started, or one the compliance check set apart, is
 counted apart and in no rate. A pass rate resting on hidden tests' results the
 host reported counts them, a limitation names their copies, and every
 comparison on them says so, so no ranking on the host's word is shown
-unqualified. Each pair of builders is ranked only at the
+unqualified; a result abcd placed and ran is counted as abcd's and takes no
+such qualifier. Each pair of builders is ranked only at the
 repeats its power estimate asks for, from the smallest difference in pass rate
 the declaration names; otherwise the comparison states the smallest difference
 it could have detected and is not ranked. A written doc gives each model's
@@ -197,8 +205,30 @@ written where the release gates read. A code task may name its hidden tests, a
 folder outside the checkout, and the command that runs them; the printed plan
 shows both, the folder quoted and each word of the command quoted where it
 holds anything but plain printable text, with the line the person consents to:
-that abcd will run each copy's code with that command, and that until it runs
-hidden tests itself a code copy's result is the host's report, as above.
+that abcd will run each copy's code with that command.
+
+The score of such a task is abcd's, not the host's word (spc-2610161949559050
+step 10). As the run starts, before any copy is handed off, the tests are read
+from their folder and placed outside every clone, under a name made from a
+digest, kept by content in the run's state. The folder is read only where it
+lies apart: one inside the checkout, any worktree of it or the clone store, or
+holding one of them, in any letter case, one reached through a link, and one
+holding anything but regular files are refused with nothing placed, and it is
+opened once and read through that opening, so it cannot be swapped between the
+check and the copy. A frozen commit that already holds a hidden test refuses
+its task's copies before they start. When a copy is handed back or its launch
+ends, abcd reads its tree before the compliance check and records that tree's
+digest in the trial; the tests then run in an export of that tree with the
+tests added, never in the clone, as one owned process group with an
+environment that carries no credential, ended whole at its deadline or at a
+stop abcd receives, and by its own leader once abcd is gone or the deadline
+is well past, so it never outlives abcd's stop (dcn-2611280309537858). The
+command's exit status gives passed or failed, a run abcd did not see end
+leaves the copy unexamined, never failed, and what the tests printed is kept
+with every place and credential withheld. The run is bounded in its
+environment, its working folder and its lifetime only, and is no sandbox: the
+copy's code runs as the person's account, which the plan tells them before
+they consent (dcn-2611251934117439).
 
 A model run is re-runnable, not reproducible. A re-run starts from a recorded
 run, named by its id in the lab or by a run's folder carried from elsewhere,

@@ -3,9 +3,12 @@ package matrix
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // A code task's hidden tests (decision 9) are written before any run and kept
@@ -217,4 +220,121 @@ func TestHiddenTestErrorsNameNoPlaceOnThisMachine(t *testing.T) {
 func namesPlace(err error, dir string) bool {
 	real, _ := filepath.EvalSymlinks(dir)
 	return strings.Contains(err.Error(), dir) || real != "" && strings.Contains(err.Error(), real)
+}
+
+// hiddenFolderWith is a folder of hidden tests outside every checkout, named
+// by its real path, holding files by path.
+func hiddenFolderWith(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(realPath(t, t.TempDir()), "hidden")
+	for p, text := range files {
+		full := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// A task's hidden tests are read from the folder its declaration names, and
+// only from one that lies apart from everything a copy or its export reaches:
+// a folder inside the checkout, a worktree of it or the clone store, one
+// holding the checkout, one reached through a link or that is one, one
+// naming the checkout in another letter case, and one holding what is not a
+// plain test file are each refused, and a folder of its own is read whole,
+// in path order.
+func TestAHiddenTestsFolderIsReadOnlyWhereItLiesApart(t *testing.T) {
+	src, _ := cloneSource(t)
+	root := realPath(t, src.Root())
+	store := filepath.Join(realPath(t, t.TempDir()), "matrix-store")
+	mk := func(p string) string {
+		t.Helper()
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, "widget_hidden_test.go"), []byte("package widget\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	good := hiddenFolderWith(t, map[string]string{"widget_hidden_test.go": "package widget\n", "sub/b_test.go": "package sub\n"})
+	got, err := readHiddenFolder(root, store, good)
+	if err != nil {
+		t.Fatalf("a folder of its own is refused: %v", err)
+	}
+	if len(got) != 2 || got[0].Path != "sub/b_test.go" || got[1].Path != "widget_hidden_test.go" || string(got[1].Data) != "package widget\n" {
+		t.Fatalf("the folder reads as %+v; want both tests, in path order", got)
+	}
+	wt := filepath.Join(realPath(t, t.TempDir()), "wt")
+	add := exec.Command("git", "-C", root, "worktree", "add", "-q", "--detach", wt)
+	add.Env = gittest.Env(t)
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add: %v: %s", err, out)
+	}
+	link := filepath.Join(realPath(t, t.TempDir()), "link")
+	if err := os.Symlink(filepath.Dir(good), link); err != nil {
+		t.Fatal(err)
+	}
+	lastLink := filepath.Join(realPath(t, t.TempDir()), "last")
+	if err := os.Symlink(good, lastLink); err != nil {
+		t.Fatal(err)
+	}
+	refused := map[string]string{
+		"inside the checkout":          mk(filepath.Join(root, "hidden")),
+		"inside a worktree":            mk(filepath.Join(wt, "hidden")),
+		"inside the clone store":       mk(filepath.Join(store, "elsewhere")),
+		"holding the checkout":         filepath.Dir(root),
+		"reached through a link":       filepath.Join(link, "hidden"),
+		"a link itself":                lastLink,
+		"holding a link":               hiddenFolderWith(t, nil),
+		"holding a git directory":      hiddenFolderWith(t, map[string]string{".git/config": "x\n"}),
+		"holding a test with no bytes": hiddenFolderWith(t, map[string]string{"a_test.go": ""}),
+		"holding no file":              mk(filepath.Join(realPath(t, t.TempDir()), "empty")),
+		"not a clean path":             good + "/../hidden",
+	}
+	if err := os.Remove(filepath.Join(refused["holding no file"], "widget_hidden_test.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(refused["holding a link"], 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(good, "widget_hidden_test.go"), filepath.Join(refused["holding a link"], "a_test.go")); err != nil {
+		t.Fatal(err)
+	}
+	// A case-insensitive filesystem names the checkout in any letter case.
+	if upper := filepath.Join(filepath.Dir(root), strings.ToUpper(filepath.Base(root)), "hidden"); upper != filepath.Join(root, "hidden") {
+		if _, err := os.Lstat(upper); err == nil {
+			refused["the checkout in another letter case"] = upper
+		}
+	}
+	for what, folder := range refused {
+		if _, err := readHiddenFolder(root, store, folder); err == nil {
+			t.Errorf("a folder %s is read", what)
+		}
+	}
+}
+
+// The folder is opened once, as the directory its check judged: a folder
+// swapped for another after the check is refused, nothing in it read.
+func TestAHiddenTestsFolderSwappedAfterItsCheckIsRefused(t *testing.T) {
+	src, _ := cloneSource(t)
+	good := hiddenFolderWith(t, map[string]string{"a_test.go": "package a\n"})
+	other := hiddenFolderWith(t, map[string]string{"b_test.go": "package b\n"})
+	was := hiddenFolderChecked
+	hiddenFolderChecked = func(folder string) {
+		if err := os.Rename(folder, folder+".was"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(other, folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { hiddenFolderChecked = was })
+	got, err := readHiddenFolder(realPath(t, src.Root()), filepath.Join(realPath(t, t.TempDir()), "store"), good)
+	if err == nil || !strings.Contains(err.Error(), "replaced") {
+		t.Fatalf("a folder swapped after its check gave %+v, %v; want it refused", got, err)
+	}
 }

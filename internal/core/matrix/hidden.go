@@ -19,6 +19,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // hiddenTest is one hidden test file: its path in the tree it is run against,
@@ -127,6 +131,84 @@ func placeHiddenTests(store, run, task string, tests []hiddenTest) ([]ContentRef
 		}
 	}
 	return refs, nil
+}
+
+// readHiddenTests reads back task's hidden tests for run from hiddenDir, each
+// as the run record keeps it in refs, in that order, and refuses unless the
+// directory holds exactly those files with exactly that content: a test
+// missing, changed, grown or replaced by a link, or a file the run did not
+// place, refuses the whole read, so a copy is only ever scored against the
+// tests its run recorded. Every entry is judged by Lstat before it is read,
+// through an os.Root, and a link is never followed. A refusal names a test
+// by its path in its tree, never where the directory sits on this machine.
+func readHiddenTests(store, run, task string, refs []ContentRef) ([]hiddenTest, error) {
+	if !runIDRe.MatchString(run) {
+		return nil, fmt.Errorf("%q is not a run id", clip(run))
+	}
+	if !validID(task) {
+		return nil, fmt.Errorf("%q is not a task id", clip(task))
+	}
+	if !filepath.IsAbs(store) {
+		return nil, fmt.Errorf("the clone store %q is not an absolute path", clip(store))
+	}
+	if len(refs) == 0 || len(refs) > maxRefs {
+		return nil, fmt.Errorf("a code task keeps from 1 to %d hidden tests, not %d", maxRefs, len(refs))
+	}
+	want := map[string]ContentRef{}
+	for _, r := range refs {
+		if err := hiddenPath(r.Name); err != nil {
+			return nil, err
+		}
+		if _, dup := want[r.Name]; dup {
+			return nil, fmt.Errorf("the hidden test %s is named twice", r.Name)
+		}
+		if r.Bytes < 1 || r.Bytes > maxHiddenBytes {
+			return nil, fmt.Errorf("the hidden test %s is recorded as %d bytes; a hidden test holds from 1 to %d", r.Name, r.Bytes, maxHiddenBytes)
+		}
+		want[r.Name] = r
+	}
+	dir := hiddenDir(store, run, task)
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return nil, fmt.Errorf("task %s of run %s has no hidden tests placed; they are placed at the run's start", task, run)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("task %s of run %s's hidden tests cannot be read", task, run)
+	}
+	defer root.Close()
+	var extra []string
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.New("the hidden tests' directory could not be listed")
+		}
+		if p == "." || d.IsDir() {
+			return nil
+		}
+		if _, ok := want[p]; !ok || !d.Type().IsRegular() {
+			extra = append(extra, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(extra) > 0 {
+		slices.Sort(extra)
+		return nil, fmt.Errorf("task %s of run %s's hidden tests hold what the run did not place: %s",
+			task, run, clipTo(termsafe.SanitizeLine(strings.Join(extra, ", ")), maxReasonBytes))
+	}
+	out := make([]hiddenTest, 0, len(refs))
+	for _, r := range refs {
+		data, err := fsutil.ReadGuardedInRoot(root, filepath.FromSlash(r.Name), maxHiddenBytes)
+		if err != nil {
+			return nil, fmt.Errorf("the hidden test %s cannot be read as the regular file its run placed", r.Name)
+		}
+		if got := contentOf(r.Name, data); got != r {
+			return nil, fmt.Errorf("the hidden test %s is not the content its run recorded, so no copy is scored against it", r.Name)
+		}
+		out = append(out, hiddenTest{Path: r.Name, Data: data})
+	}
+	return out, nil
 }
 
 // hiddenPath holds a hidden test's path to a clean, relative, slash-separated
@@ -325,4 +407,181 @@ func fileSHA256(p string, size int64) (string, error) {
 		return "", fmt.Errorf("a file changed size while it was read")
 	}
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// hiddenFolderChecked is called once readHiddenFolder has judged where the
+// folder lies, before it opens it: a test replaces it to swap the folder in
+// that window.
+var hiddenFolderChecked = func(folder string) {}
+
+// readHiddenFolder reads a code task's hidden tests from folder, the one its
+// declaration names, each file at its path under the folder, in path order.
+// The person consented to the folder by its path, so it is read where that
+// path lies and nowhere else. It refuses, reading nothing: a folder that is
+// not an absolute, clean path to a directory; one reached through a link at
+// any part of its path, its last included; one inside the run's checkout,
+// any worktree of it or the clone store at store, or holding any of them,
+// compared in any letter case, since on a case-insensitive filesystem two
+// spellings name one folder; and one inside any working tree or repository.
+// The folder is then opened once as a root, held to be the directory that
+// was judged (one swapped in its place after the judging is refused), and
+// every entry is read through that root, judged by Lstat, never following a
+// link: a link, a FIFO, device or socket, a git directory, more than maxRefs
+// files, a file past maxHiddenBytes or an empty one refuses the whole read.
+func readHiddenFolder(repoRoot, store, folder string) ([]hiddenTest, error) {
+	shown := clip(termsafe.SanitizeLine(folder))
+	if !filepath.IsAbs(folder) || filepath.Clean(folder) != folder {
+		return nil, fmt.Errorf("the hidden tests' folder %q is not an absolute, clean path", shown)
+	}
+	for at := folder; ; at = filepath.Dir(at) {
+		fi, err := os.Lstat(at)
+		if err != nil {
+			return nil, fmt.Errorf("the hidden tests' folder %q cannot be read", shown)
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("the hidden tests' folder %q is reached through a link; name it by the path the link leads to, so the folder read is the one consented to", shown)
+		}
+		if filepath.Dir(at) == at {
+			break
+		}
+	}
+	judged, err := os.Lstat(folder)
+	if err != nil || !judged.IsDir() {
+		return nil, fmt.Errorf("the hidden tests' folder %q is not a directory", shown)
+	}
+	if err := hiddenFolderApart(repoRoot, store, folder); err != nil {
+		return nil, fmt.Errorf("the hidden tests' folder %q %w", shown, err)
+	}
+	hiddenFolderChecked(folder)
+	root, err := os.OpenRoot(folder)
+	if err != nil {
+		return nil, fmt.Errorf("the hidden tests' folder %q cannot be opened", shown)
+	}
+	defer root.Close()
+	if at, err := root.Stat("."); err != nil || !os.SameFile(judged, at) {
+		return nil, fmt.Errorf("the hidden tests' folder %q was replaced while it was read, so nothing in it is placed", shown)
+	}
+	var tests []hiddenTest
+	listed := 0
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("the hidden tests' folder %q could not be listed whole", shown)
+		}
+		if p == "." {
+			return nil
+		}
+		if listed++; listed > maxExportEntries {
+			return fmt.Errorf("the hidden tests' folder %q holds more than %d entries", shown, maxExportEntries)
+		}
+		rel := clip(termsafe.SanitizeLine(p))
+		if strings.EqualFold(d.Name(), ".git") {
+			return fmt.Errorf("the hidden tests' folder %q holds a git directory or file, %s", shown, rel)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("the hidden tests' folder %q holds %s, which is not a regular file (a link is never followed)", shown, rel)
+		}
+		if err := hiddenPath(p); err != nil {
+			return err
+		}
+		if len(tests) == maxRefs {
+			return fmt.Errorf("the hidden tests' folder %q holds more than %d files", shown, maxRefs)
+		}
+		data, err := fsutil.ReadGuardedInRoot(root, filepath.FromSlash(p), maxHiddenBytes)
+		if err != nil || len(data) == 0 {
+			return fmt.Errorf("the hidden test %s cannot be read as a regular file of 1 to %d bytes", rel, maxHiddenBytes)
+		}
+		tests = append(tests, hiddenTest{Path: p, Data: data})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(tests) == 0 {
+		return nil, fmt.Errorf("the hidden tests' folder %q holds no file", shown)
+	}
+	return tests, nil
+}
+
+// hiddenFolderApart refuses a hidden tests' folder inside, or holding, the
+// run's checkout, any worktree of it or the clone store, compared in any
+// letter case, and one inside any working tree or repository. Its error reads
+// after the folder's name.
+func hiddenFolderApart(repoRoot, store, folder string) error {
+	top, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return errors.New("cannot be told apart from the run's checkout, which cannot be read")
+	}
+	out, err := gitRaw("-C", top, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return errors.New("cannot be told apart from the checkout's worktrees, which git could not list")
+	}
+	places := []string{top}
+	for _, field := range strings.Split(string(out), "\x00") {
+		if wt, ok := strings.CutPrefix(field, "worktree "); ok && filepath.IsAbs(wt) {
+			places = append(places, filepath.Clean(wt))
+		}
+	}
+	if rs, err := resolved(store); err == nil {
+		places = append(places, rs)
+	} else {
+		return errors.New("cannot be told apart from the clone store, which cannot be resolved")
+	}
+	for _, p := range places {
+		if withinFold(folder, p) || withinFold(p, folder) {
+			return errors.New("lies inside the run's checkout, one of its worktrees or the clone store, or holds one of them, " +
+				"where a copy, or the run's own export of it, would find the tests; keep them in a folder of their own outside all three")
+		}
+	}
+	if err := outsideWorkingTrees(folder); err != nil {
+		return errors.New("lies inside a working tree or a repository, or whether it does could not be told; keep the hidden tests outside every checkout")
+	}
+	return nil
+}
+
+// withinFold is within with both paths read in one letter case.
+func withinFold(p, base string) bool { return within(strings.ToLower(p), strings.ToLower(base)) }
+
+// hiddenRecord is a code task's hidden tests as its run placed them, kept by
+// content in the run's state beside its record (hiddenRecordRel): what a copy
+// of the task is scored against, read back whole (readHiddenTests). Why it is
+// a file of its own and not the run record's list is dcn-2611280309431219.
+type hiddenRecord struct {
+	SchemaVersion int          `json:"schema_version"`
+	Run           string       `json:"run"`
+	Task          string       `json:"task"`
+	Tests         []ContentRef `json:"tests"`
+}
+
+// hiddenRecordSchema is a hidden record's schema version.
+const hiddenRecordSchema = 1
+
+// hiddenRecordRel is task's hidden record in run's state.
+func hiddenRecordRel(run, task string) string { return run + "/hidden/" + task + ".json" }
+
+// readHiddenRecord is task's hidden tests as run placed them, and whether it
+// placed any: a run whose task named none, or one started before abcd placed
+// hidden tests, has no record, and its copies' results are the host's report.
+// A record that does not read as its own is an error.
+func readHiddenRecord(proc stateReader, run, task string) ([]ContentRef, bool, error) {
+	raw, err := proc.ReadState(hiddenRecordRel(run, task))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	var h hiddenRecord
+	if err := jsonstrict.Decode(raw, &h); err != nil || h.SchemaVersion != hiddenRecordSchema || h.Run != run || h.Task != task ||
+		len(h.Tests) == 0 || len(h.Tests) > maxRefs {
+		return nil, false, fmt.Errorf("task %s's hidden record does not read as its own", task)
+	}
+	for _, r := range h.Tests {
+		if err := r.validate(); err != nil {
+			return nil, false, fmt.Errorf("task %s's hidden record: %w", task, err)
+		}
+	}
+	return h.Tests, true, nil
 }

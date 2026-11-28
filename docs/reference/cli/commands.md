@@ -4945,7 +4945,12 @@ checkout; a clone bound for a provider passes the launch bundle's secret scan
 first, and a hit refuses the cell. A host cell's copy is the host's to make in
 its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits
 for `abcd lab matrix launch`, which starts the cell's runner in its clone, and
-nothing stands in for the runner.
+nothing stands in for the runner. A code task that names its hidden tests has
+them read from their folder and placed outside every clone before any copy is
+handed off, and abcd runs them itself as each copy comes back, so its score is
+abcd's run, not the host's word; a folder inside the checkout, a worktree of it
+or the clone store, or reached through a link, stops the start with no copy
+handed off.
 
 Refused, exit 2, with nothing written: a declaration that does not parse, a
 cell route the runner rung or this machine's runner configuration refuses, a
@@ -4977,13 +4982,19 @@ abcd lab matrix copy <lab-id> <run-id> <task>/<cell>/<repeat> [--receipt <file>]
 Show one copy's hand-off, writing nothing: its state, its clone and the brief the
 copy is made from, which names no task id, cell, route or model. A host cell's
 copy is the host's to make: hand its brief to a fresh sub-agent working in the
-clone. A runner cell's copy waits for a launcher, and the host never makes it.
+clone. A runner cell's copy waits for `abcd lab matrix launch`, and the host never
+makes it.
 
 --receipt <file> hands a host cell's copy back: a JSON object with schema_version
 1, outcome made or failed, a reason for a failure, and optionally
 harness_version, model_served, started_at, finished_at, model_time_ms and
-gate_wait_ms. A made code copy carries score, its hidden tests' passed and total
-as the host ran them; the trial says abcd neither placed nor ran them.
+gate_wait_ms. A made code copy whose task names its hidden tests carries no
+score: abcd placed them outside the clone at the run's start and runs them now,
+in an export of the copy, so the score is abcd's run, and a score handed back is
+refused. A launched copy whose run of them reached no outcome is handed back the
+same way, with a made receipt alone, to run them again. A made code copy of a
+task naming none carries score, its hidden tests' passed and total as the host
+ran them; the trial says abcd neither placed nor ran them.
 --transcript <file> is the copy's transcript, which the compliance check reads
 for reads outside the clone; without it that rule is unexamined. A made writing
 copy names its document with --answer <file>, and a check copy its answer with

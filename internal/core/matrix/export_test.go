@@ -280,7 +280,7 @@ func TestEveryTrialFieldHasADestinationInBothMappings(t *testing.T) {
 	credits := fullTrial()
 	credits.Cost = &oracle.Cost{Amount: 3.5, Unit: oracle.CostCredits}
 	credits.ModelServed, credits.ServedProvider = "", "provider-b"
-	credits.Kind, credits.Intent = KindCheck, ""
+	credits.Kind, credits.Intent, credits.HiddenTests, credits.TreeDigest = KindCheck, "", "", ""
 	credits.Status = StatusExcluded
 	credits.Fallbacks = []runner.FallbackReceipt{{At: time.Date(2026, 10, 23, 1, 3, 0, 0, time.UTC), Role: "builder",
 		Asked: "runner:opencode", Reason: runner.ReasonRefused, Detail: "refused", Ran: "none"}}

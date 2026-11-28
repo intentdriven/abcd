@@ -343,3 +343,84 @@ func TestTheReportStopsCountingALaunchedCopyAsAwaitingItsRunner(t *testing.T) {
 		t.Errorf("the limitations still say abcd does not launch a runner:\n%s", all)
 	}
 }
+
+// The report drops the host-reported qualifier for the copies abcd scored by
+// its own run of their hidden tests, and for those alone: a cell whose
+// results are all abcd's carries no host-reported count, limitation or
+// qualified comparison, and counts them as abcd's; a cell mixing the two
+// counts and names only the host's.
+func TestTheReportDropsTheHostQualifierForCopiesAbcdScored(t *testing.T) {
+	r, _, m, rec, _ := checkLab(t)
+	abcd := func(cell string, repeat int, status TrialStatus) TrialRecord {
+		tr := codeTrial(t, rec, cell, repeat, status)
+		tr.HiddenTests, tr.TreeDigest, tr.Unpinned = HiddenTestsByAbcd, strings.Repeat("a", 64), nil
+		tr.Score = &Score{Passed: 1, Total: 1, Detail: AbcdScoreDetail}
+		if status == StatusFailed {
+			tr.Score.Passed = 0
+		}
+		return tr
+	}
+	trials := []TrialRecord{
+		abcd("host-big", 1, StatusPassed), abcd("host-big", 2, StatusPassed), codeTrial(t, rec, "host-big", 3, StatusPassed),
+		abcd("or-cheap", 1, StatusPassed), abcd("or-cheap", 2, StatusFailed), abcd("or-cheap", 3, StatusPassed),
+	}
+	for _, tr := range trials {
+		if err := writeTrial(r.Root(), m.ID, tr); err != nil {
+			t.Fatalf("writeTrial(%s): %v", tr.Key, err)
+		}
+	}
+	rep, err := BuildReport(r.Root(), m.ID, rec.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big, cheap := codeCell(t, rep, "host-big"), codeCell(t, rep, "or-cheap")
+	if big.HostReported != 1 || big.AbcdRan != 2 {
+		t.Errorf("host-big counts %d host-reported and %d of abcd's; want 1 and 2", big.HostReported, big.AbcdRan)
+	}
+	if cheap.HostReported != 0 || cheap.AbcdRan != 3 {
+		t.Errorf("or-cheap counts %d host-reported and %d of abcd's; want 0 and 3", cheap.HostReported, cheap.AbcdRan)
+	}
+	all := strings.Join(rep.Limitations, "\n")
+	if want := "the hidden tests' results of feature-a on host-big (repeat 3) are the host's report"; !strings.Contains(all, want) {
+		t.Errorf("the limitations do not name the host's one report, %q:\n%s", want, all)
+	}
+	for _, line := range rep.Limitations {
+		if strings.Contains(line, "host's report") && strings.Contains(line, "or-cheap") {
+			t.Errorf("a limitation names or-cheap's results the host's report: %s", line)
+		}
+	}
+}
+
+// While abcd's run of a launched copy's hidden tests may still be at work, the
+// report never says the copy's launch has ended: the copy waits on that run,
+// or on a hand-back that runs them again.
+func TestTheReportNeverSaysALaunchEndedWhileAbcdRunsItsTests(t *testing.T) {
+	r, _, m, rec := reportLab(t)
+	key := TrialKey{"feature-a", "or-cheap", 9}
+	kept := codeTrial(t, rec, "or-cheap", 9, StatusPassed)
+	kept.Status, kept.Reason, kept.Score, kept.Unpinned = "", "", nil, nil
+	kept.HiddenTests, kept.TreeDigest = HiddenTestsByAbcd, strings.Repeat("a", 64)
+	h := HandOff{SchemaVersion: HandOffSchema, Run: rec.RunID, Key: key, Kind: KindCode, Source: pinOf(t, rec, key.Cell).Source,
+		State: HandOffLaunched, Brief: "make the copy", Reason: "its runner made the copy, and abcd runs its hidden tests",
+		Clone: "/store/" + rec.RunID + "/copy_" + strings.Repeat("a", 32), Trial: &kept}
+	data, err := encodeCheck(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc, err := lab.OpenProcedure(r.Root(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := proc.WriteState(handOffRel(rec.RunID, key), data); err != nil {
+		t.Fatal(err)
+	}
+	proc.Close()
+	rep, err := BuildReport(r.Root(), m.ID, rec.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(rep.Limitations, "\n")
+	if strings.Contains(all, "launch ended") || !strings.Contains(all, "at work") {
+		t.Errorf("the limitations say the launch ended, or not that abcd's run may be at work:\n%s", all)
+	}
+}

@@ -136,6 +136,18 @@ type TrialRecord struct {
 	// at most maxReasonBytes.
 	Reason string `json:"reason"`
 	Score  *Score `json:"score"`
+	// HiddenTests is HiddenTestsByAbcd for a code copy whose hidden tests are
+	// abcd's to place and run (step 10): placed outside every clone at the
+	// run's start and run by abcd in an export of the copy, so its score is
+	// abcd's own run, never the host's word. Empty for a copy whose score the
+	// host reported, and for every other kind.
+	HiddenTests string `json:"hidden_tests,omitempty"`
+	// TreeDigest is a code copy's tree as its export reads it
+	// (copyTreeDigest), taken when the copy was handed back or its launch
+	// ended and before its compliance check, so the tree the check judged and
+	// the tree its hidden tests ran in are proved to be one. Empty where abcd
+	// did not read the tree.
+	TreeDigest string `json:"tree_digest,omitempty"`
 	// Compliance is the compliance check's result (compliance.go), run before
 	// the copy is ranked: nil for a copy that was never made, so has nothing
 	// to check. A ranked copy, and one the check set apart, carries it.
@@ -171,6 +183,14 @@ const (
 	TrialCalls oracle.Field = "trial.calls"
 	TrialTimes oracle.Field = "trial.times"
 )
+
+// HiddenTestsByAbcd is a trial's hidden_tests where abcd placed and ran the
+// copy's hidden tests itself.
+const HiddenTestsByAbcd = "placed_and_run_by_abcd"
+
+// AbcdRanHiddenTests reports whether the copy's hidden tests were abcd's to
+// place and run, so its score, where it has one, is abcd's own run.
+func (t TrialRecord) AbcdRanHiddenTests() bool { return t.HiddenTests == HiddenTestsByAbcd }
 
 // HostReportedScore reports whether the copy's hidden tests' result is its
 // maker's own report, which abcd neither placed nor ran: a score its trial
@@ -237,7 +257,15 @@ func (t TrialRecord) validate() error {
 	if len(t.Fallbacks) > 0 && t.Status != StatusExcluded {
 		return fmt.Errorf("the trial %s carries a fallback receipt, so it is excluded, never %s", t.Key, t.Status)
 	}
-	if err := t.compliance(); err != nil {
+	ct := t
+	if t.AbcdRanHiddenTests() && t.Status == StatusUnexamined && t.Score == nil && t.Compliance != nil {
+		// abcd's own run of its hidden tests could not examine a copy its
+		// compliance check left ranked (a run past its deadline, a tree an
+		// export cannot carry whole): held to its check as an unscored
+		// failure is, which any verdict but an exclusion allows.
+		ct.Status = StatusFailed
+	}
+	if err := ct.compliance(); err != nil {
 		return err
 	}
 	if s := t.Score; s != nil {
@@ -247,6 +275,9 @@ func (t TrialRecord) validate() error {
 		if err := line("score.detail", s.Detail, maxReasonBytes); err != nil {
 			return fmt.Errorf("the trial %s: %w", t.Key, err)
 		}
+	}
+	if err := t.hiddenTests(); err != nil {
+		return err
 	}
 	if t.ModelTimeMS < 0 || t.GateWaitMS < 0 || t.ModelTimeMS > maxMS || t.GateWaitMS > maxMS {
 		return fmt.Errorf("the trial %s's times are from 0 to %d ms", t.Key, int64(maxMS))
@@ -287,6 +318,33 @@ func (t TrialRecord) validate() error {
 		if err := plain(field, reflect.ValueOf(v)); err != nil {
 			return fmt.Errorf("the trial %s: %w", t.Key, err)
 		}
+	}
+	return nil
+}
+
+// hiddenTests holds what a trial says of who ran its hidden tests to one
+// account: a tree digest only on a code trial, and abcd's run only on a code
+// trial whose score, where it has one, is abcd's and never also the host's
+// report, and whose pass or failure stands on the tree it names.
+func (t TrialRecord) hiddenTests() error {
+	if t.TreeDigest != "" && (t.Kind != KindCode || !sha256Re.MatchString(t.TreeDigest)) {
+		return fmt.Errorf("the trial %s names a tree digest, which only a code trial carries, as a sha256 in hex", t.Key)
+	}
+	switch t.HiddenTests {
+	case "":
+		return nil
+	case HiddenTestsByAbcd:
+	default:
+		return fmt.Errorf("the trial %s says its hidden tests were %q", t.Key, clip(t.HiddenTests))
+	}
+	if t.Kind != KindCode {
+		return fmt.Errorf("the %s trial %s says abcd ran its hidden tests; only a code copy has them", t.Kind, t.Key)
+	}
+	if t.HostReportedScore() || t.Score != nil && t.Score.Detail != AbcdScoreDetail {
+		return fmt.Errorf("the trial %s says abcd ran its hidden tests, and its score is another's report", t.Key)
+	}
+	if t.Score != nil && t.TreeDigest == "" {
+		return fmt.Errorf("the trial %s is scored by abcd's run of its hidden tests and names no tree that run read", t.Key)
 	}
 	return nil
 }

@@ -1,0 +1,6 @@
+---
+id: dcn-2611280309537858
+slug: a-model-matrix-hidden-test-run
+date: 2026-11-28
+---
+2026-11-28 — A model-matrix hidden-test run (spc-2610161949559050 step 10) is ended by abcd when abcd is stopped, and by itself when abcd cannot be. An interrupt, a termination or a hangup abcd receives during the run kills the run's process group whole before abcd returns. For a stop abcd cannot catch, a POSIX shell supervisor leads the group and starts two watchers inside it, which end the group with kill -9 0 once the deadline plus 30 seconds passes, or once abcd's end of a pipe the supervisor reads closes, which happens when abcd is gone. Grounds: it runs on darwin and linux with no binary of its own; kill 0 names only the group the watcher is in, so no process number that could be reused is ever signalled; RLIMIT_CPU was set aside because it bounds CPU time and not wall time, so a sleeping or blocked process outlives it, and a limit for a child is set from Go only by setting it on abcd before the fork; PR_SET_PDEATHSIG is Linux-only and reaches the leader alone. A process that leaves the group by setsid stays out of reach, as dcn-2611251934117439 states. To reverse: run the test command directly in place of superviseScript, giving up the backstop, or move the watch into a subcommand of the abcd binary.

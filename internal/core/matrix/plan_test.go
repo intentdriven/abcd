@@ -462,11 +462,12 @@ func TestAPlanCarryingHiddenTestsShowsTheConsentLine(t *testing.T) {
 	}
 	h := p.HiddenTests[0]
 	// Every word holding a space, a Unicode one among them, is quoted, and so
-	// is the folder; the line says no hidden test is run by this build.
+	// is the folder; the line says abcd runs them, unsandboxed, and that the
+	// result is that run's, never the host's report.
 	// A letter outside ASCII is shown as its escape, and a backtick never
 	// ends the command's fence.
-	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" \"g\\u043e\" \"a\\x60b\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone; " +
-		"this build of abcd does not run hidden tests yet, so until one does a code copy's result is the host's report"
+	want := "abcd will run each copy's code of feature-a with `go test -run \"Test Hidden\" \"One\\u00a0Two\" \"g\\u043e\" \"a\\x60b\" ./...`, in an export of the copy with the hidden tests from \"/work/hidden/feature-a\" added, never in its clone, " +
+		"as this account and not sandboxed; a code copy's result is that run's exit status, never the host's report"
 	if h.Task != "feature-a" || h.Folder != "/work/hidden/feature-a" || len(h.Command) != 8 || h.Consent != want {
 		t.Fatalf("hidden tests = %+v\nwant consent %q", h, want)
 	}

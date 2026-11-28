@@ -115,7 +115,12 @@ func newLabMatrixCommand(asJSON *bool) *cobra.Command {
 			"first, and a hit refuses the cell. A host cell's copy is the host's to make in\n" +
 			"its clone and hand back with `abcd lab matrix copy`; a runner cell's copy waits\n" +
 			"for `abcd lab matrix launch`, which starts the cell's runner in its clone, and\n" +
-			"nothing stands in for the runner.\n\n" +
+			"nothing stands in for the runner. A code task that names its hidden tests has\n" +
+			"them read from their folder and placed outside every clone before any copy is\n" +
+			"handed off, and abcd runs them itself as each copy comes back, so its score is\n" +
+			"abcd's run, not the host's word; a folder inside the checkout, a worktree of it\n" +
+			"or the clone store, or reached through a link, stops the start with no copy\n" +
+			"handed off.\n\n" +
 			"Refused, exit 2, with nothing written: a declaration that does not parse, a\n" +
 			"cell route the runner rung or this machine's runner configuration refuses, a\n" +
 			"cell on a runner that names no model, a model its provider does not list, an\n" +

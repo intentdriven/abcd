@@ -46,7 +46,10 @@ package matrix
 //   - What the copy hands back (its receipt or its answer) is untrusted input,
 //     read through an os.Root of its folder within a bound, and a trial is
 //     written through the same compliance check and secret screen as a host
-//     copy's.
+//     copy's. A made code copy whose task's hidden tests the run placed is
+//     scored by abcd's own run of them as its launch ends, in an export of the
+//     tree read before its compliance check (hiddenrun.go), never by its
+//     runner's word or the host's.
 //
 // The runners' live proof is still owed, so this is tested against a fake
 // runner with no network, and the report says so among its limitations.
@@ -283,6 +286,9 @@ type launchPick struct {
 	pin   CellPin
 	task  Task
 	alias string
+	// hidden is the code task's hidden tests as the run placed them, nil
+	// where it placed none and the host hands back their result.
+	hidden []ContentRef
 }
 
 // launch is LaunchCopies with the cells' dispatch made by cells, run while
@@ -669,7 +675,13 @@ func (l *copyLauncher) pick(run string, only *TrialKey) ([]launchPick, RunRecord
 		if err != nil {
 			return fail(err)
 		}
-		picks = append(picks, launchPick{h: h, pin: pin, task: task, alias: alias})
+		var hidden []ContentRef
+		if task.Kind == KindCode {
+			if hidden, _, err = readHiddenRecord(proc, run, task.ID); err != nil {
+				return fail(err)
+			}
+		}
+		picks = append(picks, launchPick{h: h, pin: pin, task: task, alias: alias, hidden: hidden})
 	}
 	if only != nil && !found {
 		return fail(fmt.Errorf("the run %s handed off no copy %s", run, only))
@@ -770,10 +782,30 @@ func (l *copyLauncher) one(ctx context.Context, rec RunRecord, p launchPick) (La
 	if err != nil {
 		return lc, spent, true, errors.Join(err, setState(HandOffInterrupted, "its trial could not be written: "+err.Error()))
 	}
-	if awaiting {
+	if awaiting && p.hidden == nil {
 		h.Trial = &t
 		return lc, spent, true, setState(HandOffLaunched, "its runner made the copy, which waits for its hidden tests' result: "+
 			"the host hands it back with abcd lab matrix copy --receipt")
+	}
+	if awaiting {
+		// The end is recorded first, awaiting abcd's run of the hidden tests,
+		// so a run that does not reach an outcome leaves the copy to be
+		// handed back and run again, never interrupted.
+		h.Trial = &t
+		if err := setState(HandOffLaunched, "its runner made the copy, and abcd runs its hidden tests; if that run does not reach an outcome, "+
+			"hand the copy back with abcd lab matrix copy --receipt, a made receipt with no score, to run them again"); err != nil {
+			return lc, spent, true, err
+		}
+		store := cloneStore(l.home, rec.RootSHA)
+		scored, err := scoreByAbcd(ctx, l.repoRoot, l.labID, store, p.task, p.hidden, cloneDir(store, rec.RunID, p.alias), t)
+		if err != nil {
+			if errors.Is(err, ErrWrittenInPart) {
+				lc.Status, lc.Reason = scored.Status, scored.Reason
+			}
+			return lc, spent, true, afterWrite(err)
+		}
+		lc.Status, lc.Reason = scored.Status, scored.Reason
+		return lc, spent, true, nil
 	}
 	lc.Status = t.Status
 	if err := setState(HandOffLaunched, t.Reason); err != nil {
@@ -1033,6 +1065,12 @@ func madeTrial(t TrialRecord, task Task, answer []byte) TrialRecord {
 func (l *copyLauncher) finish(rec RunRecord, p launchPick, t TrialRecord, back launchBack) (TrialRecord, bool, error) {
 	key := p.h.Key
 	store := cloneStore(l.home, rec.RootSHA)
+	if p.task.Kind == KindCode && p.hidden != nil && t.Status == "" {
+		var err error
+		if t, err = digestForHiddenTests(cloneDir(store, rec.RunID, p.alias), t); err != nil {
+			return t, false, err
+		}
+	}
 	if t.Status != StatusNotStarted {
 		c, err := checkCompliance(complianceInputs{RepoRoot: l.repoRoot, Store: store, Run: rec.RunID, Key: key, Alias: p.alias,
 			Frozen: rec.FrozenCommit, Source: p.pin.Source, Transcript: back.transcript, State: labStore(l.home, rec.RootSHA),

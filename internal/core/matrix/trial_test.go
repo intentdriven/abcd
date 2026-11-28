@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -33,7 +34,9 @@ func fullTrial() TrialRecord {
 		Settings:       oracle.Settings{"temperature": json.RawMessage(`0.6`)},
 		Status:         StatusFailed,
 		Reason:         "hidden tests failed",
-		Score:          &Score{Passed: 7, Total: 9, Detail: "two edge cases"},
+		Score:          &Score{Passed: 7, Total: 9, Detail: AbcdScoreDetail},
+		HiddenTests:    HiddenTestsByAbcd,
+		TreeDigest:     strings.Repeat("a", 64),
 		Compliance:     compliantResult(),
 		Roles: []runner.RoleReceipt{{
 			Role: "builder", Brief: "brief.md", Contract: "receipt.json",
@@ -326,5 +329,63 @@ func TestAnUnscoredFailureNamesWhyAndWhen(t *testing.T) {
 	tr.Reason, tr.FinishedAt = "", time.Time{}
 	if err := tr.validate(); err != nil {
 		t.Fatalf("a scored failure with no reason or finish time: %v", err)
+	}
+}
+
+// abcdTrial is fullTrial scored by abcd's own run of its hidden tests.
+func abcdTrial() TrialRecord {
+	tr := fullTrial()
+	tr.HiddenTests, tr.TreeDigest = HiddenTestsByAbcd, strings.Repeat("a", 64)
+	tr.Score = &Score{Passed: 0, Total: 1, Detail: AbcdScoreDetail}
+	return tr
+}
+
+// A trial says abcd placed and ran its hidden tests only as one account: on a
+// code trial, naming the tree the run read, its score abcd's and never also
+// marked the host's report; it round-trips as written.
+func TestATrialSaysAbcdPlacedAndRanItsHiddenTests(t *testing.T) {
+	tr := abcdTrial()
+	if err := tr.validate(); err != nil {
+		t.Fatalf("abcd's run reads as invalid: %v", err)
+	}
+	if !tr.AbcdRanHiddenTests() || tr.HostReportedScore() {
+		t.Fatalf("the trial reads as abcd's run %v, the host's report %v", tr.AbcdRanHiddenTests(), tr.HostReportedScore())
+	}
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back TrialRecord
+	if err := jsonstrict.Decode(data, &back); err != nil || back.HiddenTests != HiddenTestsByAbcd || back.TreeDigest != tr.TreeDigest {
+		t.Fatalf("the trial round-trips as %+v, %v", back, err)
+	}
+	unexamined := abcdTrial()
+	unexamined.Status, unexamined.Score, unexamined.TreeDigest, unexamined.Reason = StatusUnexamined, nil, "", "its hidden tests cannot run on it"
+	if err := unexamined.validate(); err != nil {
+		t.Errorf("a compliant copy abcd's run could not examine is refused: %v", err)
+	}
+	excluded := unexamined
+	excluded.Compliance = resultWith(RuleOwnCopyOnly, StateBroken)
+	if excluded.validate() == nil {
+		t.Error("a copy its compliance check excluded is admitted as unexamined by abcd's run")
+	}
+	for name, mutate := range map[string]func(*TrialRecord){
+		"another account of who ran them": func(t *TrialRecord) { t.HiddenTests = "host" },
+		"the host's report beside it": func(t *TrialRecord) {
+			t.Unpinned = append(t.Unpinned, oracle.Unpinned{Field: TrialScore, Reason: oracle.SelfReported})
+		},
+		"the host's score detail":   func(t *TrialRecord) { t.Score.Detail = hostScoreDetail },
+		"a score on no tree":        func(t *TrialRecord) { t.TreeDigest = "" },
+		"a tree digest not in hex":  func(t *TrialRecord) { t.TreeDigest = strings.Repeat("z", 64) },
+		"a writing trial run by it": func(t *TrialRecord) { t.Kind, t.Intent, t.Score = KindWriting, "", nil },
+		"a tree digest on a writing trial": func(t *TrialRecord) {
+			t.Kind, t.Intent, t.Score, t.HiddenTests = KindWriting, "", nil, ""
+		},
+	} {
+		tr := abcdTrial()
+		mutate(&tr)
+		if tr.validate() == nil {
+			t.Errorf("%s: validate admitted it", name)
+		}
 	}
 }

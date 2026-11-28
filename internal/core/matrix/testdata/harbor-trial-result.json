@@ -43,8 +43,10 @@
         "score": {
           "passed": 7,
           "total": 9,
-          "detail": "two edge cases"
+          "detail": "abcd placed the hidden tests outside the copy's clone and ran them with the declared test command in an export of the copy; the score is that run's exit status"
         },
+        "hidden_tests": "placed_and_run_by_abcd",
+        "tree_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "compliance": {
           "checks": [
             {

@@ -64,12 +64,18 @@ func newLabMatrixCopyCommand(asJSON *bool) *cobra.Command {
 			"Show one copy's hand-off, writing nothing: its state, its clone and the brief the\n" +
 			"copy is made from, which names no task id, cell, route or model. A host cell's\n" +
 			"copy is the host's to make: hand its brief to a fresh sub-agent working in the\n" +
-			"clone. A runner cell's copy waits for a launcher, and the host never makes it.\n\n" +
+			"clone. A runner cell's copy waits for `abcd lab matrix launch`, and the host never\n" +
+			"makes it.\n\n" +
 			"--receipt <file> hands a host cell's copy back: a JSON object with schema_version\n" +
 			"1, outcome made or failed, a reason for a failure, and optionally\n" +
 			"harness_version, model_served, started_at, finished_at, model_time_ms and\n" +
-			"gate_wait_ms. A made code copy carries score, its hidden tests' passed and total\n" +
-			"as the host ran them; the trial says abcd neither placed nor ran them.\n" +
+			"gate_wait_ms. A made code copy whose task names its hidden tests carries no\n" +
+			"score: abcd placed them outside the clone at the run's start and runs them now,\n" +
+			"in an export of the copy, so the score is abcd's run, and a score handed back is\n" +
+			"refused. A launched copy whose run of them reached no outcome is handed back the\n" +
+			"same way, with a made receipt alone, to run them again. A made code copy of a\n" +
+			"task naming none carries score, its hidden tests' passed and total as the host\n" +
+			"ran them; the trial says abcd neither placed nor ran them.\n" +
 			"--transcript <file> is the copy's transcript, which the compliance check reads\n" +
 			"for reads outside the clone; without it that rule is unexamined. A made writing\n" +
 			"copy names its document with --answer <file>, and a check copy its answer with\n" +

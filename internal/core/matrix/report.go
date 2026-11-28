@@ -83,11 +83,15 @@ type CodeCell struct {
 	PassAt1 PassRate `json:"pass_at_1"`
 	// HostReported counts the attempts in PassAt1 whose hidden tests' result
 	// is the host's report, which abcd neither placed nor ran.
-	HostReported int       `json:"host_reported"`
-	PassHatK     []PassHat `json:"pass_hat_k"`
-	NotStarted   int       `json:"not_started"`
-	Excluded     int       `json:"excluded"`
-	Unexamined   int       `json:"unexamined"`
+	HostReported int `json:"host_reported"`
+	// AbcdRan counts the attempts in PassAt1 whose hidden tests abcd placed
+	// outside the copy's clone and ran itself, so their result is measured,
+	// never the host's word.
+	AbcdRan    int       `json:"abcd_ran"`
+	PassHatK   []PassHat `json:"pass_hat_k"`
+	NotStarted int       `json:"not_started"`
+	Excluded   int       `json:"excluded"`
+	Unexamined int       `json:"unexamined"`
 	// NotHandedBack, AwaitingRunner, Launched, Refused and NeverHandedOff
 	// count the copies with no trial, by where they stand; none is in any
 	// rate. Launched counts a runner cell's copies whose launch began and
@@ -580,6 +584,11 @@ func accountCopies(proc stateReader, rec RunRecord, d Declaration, trials []Tria
 						state, reason = UnreturnedInterrupted, h.Reason
 					case HandOffLaunched:
 						state = UnreturnedAwaitingScore
+						if h.Trial != nil && h.Trial.AbcdRanHiddenTests() {
+							// abcd's own run of its hidden tests is at work,
+							// or ended with no outcome; the reason says so.
+							reason = h.Reason
+						}
 					default:
 						state, reason = UnreturnedRefused, h.Reason
 					}
@@ -639,6 +648,11 @@ func (b *reportBuilder) unreturnedLimits() {
 		case UnreturnedInterrupted:
 			b.limit("%d copies of %s on %s (%s) were launched and stopped before they were made (%s); that is the run's error, not the copies' score, so they are in no rate", n, u.Task, u.Cell, which, u.Reason)
 		case UnreturnedAwaitingScore:
+			if u.Reason != "" {
+				b.limit("%d copies of %s on %s (%s) were made by the cell's runner, and abcd's run of their hidden tests is at work, or was stopped or could not run before it reached an outcome; they are in no rate", n, u.Task, u.Cell, which)
+				b.improve("once no launch of %s on %s is at work, hand back each copy its runner made with a made receipt and no score, so abcd runs its hidden tests again and the cell's figures count it", u.Task, u.Cell)
+				break
+			}
 			b.limit("%d copies of %s on %s (%s) were made by the cell's runner and wait for their hidden tests' result; they are in no rate", n, u.Task, u.Cell, which)
 			b.improve("hand back the hidden tests' result of each copy of %s on %s that its runner made, so the cell's figures count it", u.Task, u.Cell)
 		case UnreturnedRefused:
@@ -769,6 +783,9 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 			if (t.Passed() || t.Failed()) && t.HostReportedScore() {
 				hostReported = append(hostReported, t.Key.Repeat)
 			}
+			if (t.Passed() || t.Failed()) && t.AbcdRanHiddenTests() && t.Score != nil {
+				row.AbcdRan++
+			}
 			if t.Attempted() {
 				model += t.ModelTimeMS
 				gates += t.GateWaitMS
@@ -786,7 +803,7 @@ func (b *reportBuilder) code(task Task, rr *reviewRecord) (CodeReport, error) {
 		row.HostReported = len(hostReported)
 		if len(hostReported) > 0 {
 			b.limit("the hidden tests' results of %s on %s (%s) are the host's report: abcd neither placed nor ran those tests, so the cell's pass rate, and any comparison on it, rests on the host's word", task.ID, d.ID, repeatList(hostReported))
-			b.improve("run %s's hidden tests through abcd, so %s's pass rate is measured rather than reported", task.ID, d.ID)
+			b.improve("run %s's hidden tests through abcd, naming their folder and test command in the declaration of a new run, so %s's pass rate is measured rather than reported", task.ID, d.ID)
 		}
 		b.unreturnedInto(task.ID, &row)
 		b.cellLimits(task.ID, row)

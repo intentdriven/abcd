@@ -166,7 +166,16 @@ its checked-out tree and the frozen commit's own message, author and committer,
 and a hit leaves the cell `refused`. A host cell's copy is `handed_off`: it is yours to
 make, below. A runner cell's copy is `awaiting_runner`: it is launched with
 `lab matrix launch`, below, and nothing stands in for its runner, so never make
-it yourself. Refused, exit 2, with nothing
+it yourself. A code task whose declaration names `hidden_tests` (a folder
+outside the checkout) and `test_command` (the command that runs them, word by
+word, with no shell between) has its tests read from that folder and placed
+outside every clone before any copy is handed off, kept by content in the
+run's state. The folder is refused, with the run's record written and no copy
+handed off, when it lies inside the checkout, any worktree of it or the clone
+store, or holds one of them (compared in any letter case), when any part of
+its path is a link, and when it holds a link, a git directory or anything but
+regular files; a frozen commit that already holds a hidden test leaves every
+copy of its task `refused`. Refused, exit 2, with nothing
 written: a metered cell with no spending
 cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
 person's own machine configuration, never the repository's), a local cell with
@@ -181,12 +190,18 @@ an OpenRouter or local cell with no pin, and a stale approval.
 
 Hand its `brief` to a fresh sub-agent started in its `clone`, which the brief
 calls the current directory, and working nowhere else,
-telling it nothing more of the run. For a code copy, then run the task's hidden
-tests against the clone yourself, through the load gate, outside the clone.
-Hand the copy back with a receipt file, `{"schema_version": 1, "outcome":
-"made"}` or `"failed"` with a `reason`, with `started_at`, `finished_at`,
-`model_time_ms` and `gate_wait_ms` where known, and for a made code copy
-`"score": {"passed": <n>, "total": <n>}` from those hidden tests:
+telling it nothing more of the run. Hand the copy back with a receipt file,
+`{"schema_version": 1, "outcome": "made"}` or `"failed"` with a `reason`, with
+`started_at`, `finished_at`, `model_time_ms` and `gate_wait_ms` where known.
+A made code copy whose task names its hidden tests carries no score: abcd runs
+them itself as it takes the copy back, and a score in its receipt is refused.
+That hand-back runs the whole hidden suite before it returns, for up to its
+deadline of 30 minutes: give the command that long, or run it detached where
+your harness ends a command sooner. A hand-back stopped before the run ends
+writes nothing and is made again the same way.
+Only for a code task that names none, run its hidden tests against the clone
+yourself, through the load gate, outside the clone, and add
+`"score": {"passed": <n>, "total": <n>}` from them:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix copy --json <lab-id> <run-id> <key> --receipt <file> --transcript <file> [--answer <file>] [--form doc-fidelity|consistency]
@@ -197,9 +212,25 @@ for reads outside the clone (without it that rule is unexamined and the copy is
 reported apart). A writing copy names its document with `--answer`; a check
 copy its answer with `--answer` and `--form`. The copy is checked for
 compliance first, and the trial (`status`, `reason`, `score`, `compliance`) is
-written once; the trial says the host, not abcd, ran the hidden tests, and its
-`unpinned` marks the score, the model served, the harness version and the times
-as `self_reported` where the receipt gives them and `trial.calls` as
+written once. Where abcd runs a code copy's hidden tests, it reads the copy's
+tree before the compliance check (the trial's `tree_digest`), then runs the
+task's `test_command` in an export of that tree with the hidden tests added,
+never in the clone, as one process group with an allowlisted environment
+carrying no credential, killed whole at its deadline of 30 minutes, or when
+abcd receives an interrupt, a termination or a hangup during the run. Should
+abcd be stopped in a way it cannot catch, the group ends itself: a shell that
+leads it kills it whole 30 seconds past the deadline, or as soon as abcd is
+gone. A process that leaves the group by its own act is beyond it. The score
+is abcd's, not the host's word: the command's exit status gives passed or
+failed (a score of one test), a run abcd did not see end leaves the copy
+`unexamined` (a group ended before its command's end was seen among them),
+and the trial's `hidden_tests` says `placed_and_run_by_abcd`.
+What the tests printed is kept beside the trial with every place and
+credential withheld. The run is not sandboxed: the copy's code runs as this
+account, so say so to the person before they consent. Otherwise the trial says
+the host, not abcd, ran the hidden tests, and its `unpinned` marks the score as
+`self_reported`. Either way it marks the model served, the harness version and
+the times as `self_reported` where the receipt gives them and `trial.calls` as
 `not_reported`, since a host copy carries no call receipts. A writing copy's
 document is kept only once its trial passes the secret screen. A check
 copy's clone is deleted only once its trial is written. Refused, exit 2, with
@@ -231,9 +262,14 @@ pin. `copies` lists each copy's `key`, `state` (`launched`, `interrupted`, or
 `refused` when the secret scan, run again first, refuses its clone; a copy left
 `awaiting_runner` names why, as when the spending cap's remainder does not cover
 it), `status` (its trial's, where one is written) and `reason`. A made code copy
-is `launched` with no status: run its task's hidden tests against its clone
-yourself, through the load gate, outside the clone, and hand back its result
-alone with `lab matrix copy --receipt` and a receipt of `{"schema_version": 1,
+whose task names its hidden tests is scored as its launch ends by abcd's own
+run of them, as a host copy is; while that run is at work, or where it
+reaches no outcome (it was stopped, or the command could not start), the copy
+stays `launched` with no status, and once no launch is at work, handing it back with `lab matrix copy --receipt` and a receipt of
+`{"schema_version": 1, "outcome": "made"}` runs them again. For a code task
+that names none, a made copy is `launched` with no status: run its hidden
+tests against its clone yourself, through the load gate, outside the clone,
+and hand back its result alone with a receipt of `{"schema_version": 1,
 "outcome": "made", "score": {"passed": <n>, "total": <n>}}`. An interrupt, a
 termination or a hangup kills every runner at work with its process group and
 leaves its copy `interrupted`: the run's error, never the copy's score, and it
@@ -350,7 +386,8 @@ filed or written where the release gates read.
 
 `code` gives, per task, each builder cell's `pass_at_1` (passes of the attempts
 that count, the rate and its 95% `interval`), `host_reported` (how many of
-those rest on the host's own report of its hidden tests), `pass_hat_k`, the copies set
+those rest on the host's own report of its hidden tests), `abcd_ran` (how many
+abcd placed and ran itself, which no qualifier touches), `pass_hat_k`, the copies set
 apart (`not_started`, `unexamined`, `excluded`, in no rate), `reviews`
 (`confirmed` findings on failing copies, `unconfirmed` flags on passing ones),
 `costs` by unit with `per_pass` and what the figure is `comparable` with, and
