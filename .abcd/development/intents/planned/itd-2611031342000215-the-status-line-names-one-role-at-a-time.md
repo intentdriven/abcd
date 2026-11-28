@@ -1,8 +1,8 @@
 ---
 id: itd-2611031342000215
 slug: the-status-line-names-one-role-at-a-time
-spec_id: null
-kind: null
+spec_id: spc-2611281205023617
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2611031342011261, itd-2610301750162657, itd-2610240850336695, itd-2611252117557299, itd-2611252049031692]
@@ -16,23 +16,23 @@ production_mode: hand-written
 # The status line shows each role what it needs, in a table a repository can tune
 
 Typed links: `builds_on`
-[itd-2611031342011261](../planned/itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
+[itd-2611031342011261](itd-2611031342011261-every-agent-abcd-launches-for-a-session.md)
 (the per-session launch ledger, which supplies the agents, spend, API-time and
 token figures the row sums),
-[itd-2610301750162657](../planned/itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)
+[itd-2610301750162657](itd-2610301750162657-a-person-spot-checks-what-abcd-s-agents.md)
 (the spot-check review queue, which supplies the review count and the age of
 its oldest item),
-[itd-2610240850336695](itd-2610240850336695-before-stepping-away-the-person-grants.md)
+[itd-2610240850336695](../drafts/itd-2610240850336695-before-stepping-away-the-person-grants.md)
 (the autonomy grant, whose widening of the facilitator's automatic mode will
 change the mode badge's word),
-[itd-2611252117557299](itd-2611252117557299-the-status-line-and-the-bare-board.md)
+[itd-2611252117557299](../drafts/itd-2611252117557299-the-status-line-and-the-bare-board.md)
 (the row's `facilitator:` element and the kept reading of the mode, both on
 the default branch, which the badge and the `waiting` rule read; it flags a
 reversal of this draft's decision 3 for a person to confirm) and
-[itd-2611252049031692](../planned/itd-2611252049031692-a-person-sets-for-their-own-git-identity.md)
+[itd-2611252049031692](itd-2611252049031692-a-person-sets-for-their-own-git-identity.md)
 (the order that decides the facilitator's mode, adr-2611262044127943, which
 criterion 3 follows); `refines`
-[itd-2610032150577708](../planned/itd-2610032150577708-a-product-thinker-opens-abcd-s-dashboard.md)
+[itd-2610032150577708](itd-2610032150577708-a-product-thinker-opens-abcd-s-dashboard.md)
 (the product thinker's dashboard: the product-thinker view built here is an
 interim surface, and what it shows is evidence of what that dashboard must
 show).
@@ -116,28 +116,28 @@ what it records.
 
 ## Scope Conditions
 
-- A host harness that runs a status command on its refresh events with a JSON
+- A host harness that runs a status command on its refresh events with a JSON <!-- cond: cond-2611281205024831 -->
   payload on stdin and the terminal's width in `COLUMNS`; without the width
   the row renders in full and the badge-first order is its only protection,
   as today.
-- A managed checkout: the row renders only where `.abcd/` is present, and the
+- A managed checkout: the row renders only where `.abcd/` is present, and the <!-- cond: cond-2611281205026208 -->
   previous status command runs everywhere else.
-- A terminal that interprets 24-bit colour, and a dark theme for the shipped
+- A terminal that interprets 24-bit colour, and a dark theme for the shipped <!-- cond: cond-2611281205025624 -->
   gauge palette; a light theme inverts the gauge's reading and the shipped
   defaults do not cover it.
-- Links are hover and click only where the terminal passes OSC 8 through; a
+- Links are hover and click only where the terminal passes OSC 8 through; a <!-- cond: cond-2611281205022914 -->
   terminal that does not shows the same text and loses only the link.
-- The review count and its age read the spot-check queue
+- The review count and its age read the spot-check queue <!-- cond: cond-2611281205024400 -->
   (itd-2610301750162657) and show only once it ships; the agents, spend,
   API-time and token figures read the launch ledger (itd-2611031342011261)
   and are dropped, never invented, until it ships. The frame is built first,
   and the spec closes with a stated remainder for each element whose source
   has not shipped, which keeps the intent planned until that source ships
   (decision 31).
-- The terminal is the technical facilitator's surface; the product-thinker
+- The terminal is the technical facilitator's surface; the product-thinker <!-- cond: cond-2611281205025455 -->
   view is interim, kept until the product thinker's dashboard
   (itd-2610032150577708) carries what it shows.
-- Under the facilitator's automatic mode the row shows no mode badge, and the
+- Under the facilitator's automatic mode the row shows no mode badge, and the <!-- cond: cond-2611281205027423 -->
   `facilitator:` element of itd-2611252117557299 names the mode (decision 32),
   so the row needs no new word as that mode widens under the autonomy grant
   (itd-2610240850336695); the wider mode is not this intent's to define.
