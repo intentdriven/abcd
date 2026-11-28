@@ -66,11 +66,83 @@ func rawSet(v json.RawMessage) bool {
 }
 
 // checkEntry is one entry of a check rollup: a check run (status and
-// conclusion) or a commit status (state).
+// conclusion, named by its workflow and name) or a commit status (state,
+// named by its context). StartedAt is when the run began, the zero instant
+// for one not started yet; for a commit status the forge client prints its
+// creation time there.
 type checkEntry struct {
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	State      string `json:"state"`
+	Name         string `json:"name"`
+	WorkflowName string `json:"workflowName"`
+	Context      string `json:"context"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	State        string `json:"state"`
+	StartedAt    string `json:"startedAt"`
+}
+
+// checkKey is the check an entry is one run of: the workflow and name of a
+// check run, or the context of a commit status. ok is false for an entry
+// that names no check, which is never taken for another's run.
+func (c checkEntry) checkKey() (key string, ok bool) {
+	if c.Context != "" {
+		return "status\x00" + c.Context, true
+	}
+	if c.Name != "" {
+		return "run\x00" + c.WorkflowName + "\x00" + c.Name, true
+	}
+	return "", false
+}
+
+// started is when the run began; started is false for a run not started yet
+// (an absent, unreadable or zero instant).
+func (c checkEntry) started() (at time.Time, started bool) {
+	at, err := time.Parse(time.RFC3339, c.StartedAt)
+	if err != nil || at.IsZero() {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// newestRuns is the rollup with every superseded run left out
+// (iss-2611270325497482). The rollup keeps each run of a check, so a failure
+// that was rerun and passed sits beside its success; the forge's merge gate
+// judges a check by its newest run, and so does this. A run is superseded
+// when another run of the same check started after it, a run not started yet
+// counting as after every run that has. Runs that cannot be ordered (two at
+// one instant, or two not started) are all kept, and so judged as before.
+func newestRuns(rollup []checkEntry) []checkEntry {
+	type newest struct {
+		at        time.Time
+		unstarted bool
+	}
+	latest := map[string]newest{}
+	for _, c := range rollup {
+		key, ok := c.checkKey()
+		if !ok {
+			continue
+		}
+		at, started := c.started()
+		n := latest[key]
+		switch {
+		case !started:
+			n.unstarted = true
+		case at.After(n.at):
+			n.at = at
+		}
+		latest[key] = n
+	}
+	kept := make([]checkEntry, 0, len(rollup))
+	for _, c := range rollup {
+		if key, ok := c.checkKey(); ok {
+			n := latest[key]
+			at, started := c.started()
+			if started && (n.unstarted || at.Before(n.at)) {
+				continue
+			}
+		}
+		kept = append(kept, c)
+	}
+	return kept
 }
 
 // checksState is what a pull request's checks say as a whole.
@@ -83,14 +155,15 @@ const (
 	checksFailing
 )
 
-// checks reads the rollup: failing when any entry failed, else pending when
-// any has not finished, else passing when there is any entry at all.
+// checks reads the rollup by each check's newest run: failing when any such
+// run failed, else pending when any has not finished, else passing when there
+// is any entry at all.
 func (p pullRequest) checks() checksState {
 	if len(p.StatusCheckRollup) == 0 {
 		return checksNone
 	}
 	pending := false
-	for _, c := range p.StatusCheckRollup {
+	for _, c := range newestRuns(p.StatusCheckRollup) {
 		switch strings.ToUpper(c.Conclusion) {
 		case "FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
 			return checksFailing
