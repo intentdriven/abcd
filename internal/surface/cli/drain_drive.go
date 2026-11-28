@@ -509,16 +509,26 @@ func driveConsent(cmd *cobra.Command, w io.Writer, f driveFlags, lanes, runs int
 // consent: the --until given, which wins and is held to no default, or the
 // default days from now (loop.ResolveDriveDays), with the note saying why no
 // repository figure was read where none was.
-func driveFixEnd(repoRoot string, roots layered.Roots, until time.Time) (driveBound, string, error) {
+func driveFixEnd(starting context.Context, repoRoot string, roots layered.Roots, until time.Time) (driveBound, string, error) {
 	if !until.IsZero() {
 		return driveBoundUntil(until), "", nil
 	}
-	days, note, err := loop.ResolveDriveDays(repoRoot, roots)
+	days, note, err := driveResolveDays(starting, repoRoot, roots)
 	if err != nil {
 		return driveBound{}, "", err
 	}
 	return driveBoundFromDays(time.Now(), days), note, nil
 }
+
+// driveResolveDays reads the default length, a seam the tests stand a signal in with.
+// The read asks origin and may take a while: starting is the start's own context, which
+// a first interrupt ends, and the start reads it as soon as the read returns.
+var driveResolveDays = func(_ context.Context, repoRoot string, roots layered.Roots) (loop.PaceValue, string, error) {
+	return loop.ResolveDriveDays(repoRoot, roots)
+}
+
+// driveClock is what the end's way on is judged against, a seam the tests move.
+var driveClock = time.Now
 
 // writeDrivePlan writes the plan the consent showed at the head of a log the start
 // opens, each line stamped, so a drive nobody watched start says what its yes covered.
@@ -635,7 +645,8 @@ func startGuarded(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags
 }
 
 // startDrive takes the checkout and starts the run. Before the yes a signal ends the
-// process, with nothing started; from the yes on it is a stop (drain_drive_signal.go).
+// start, with nothing started: a typed start reads it before its question, a resuming
+// one at its yes; from the yes on it is a stop (drain_drive_signal.go).
 func startDrive(cmd *cobra.Command, asJSON bool, repoRoot string, f driveFlags) error {
 	ctx, stopAsking := drainSignalContext()
 	defer stopAsking()
@@ -701,7 +712,7 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 	// A re-executed drive asks nothing: the yes was given once, and covered this, and
 	// it reads no default: its end is the one its arguments carry.
 	if !f.resuming() {
-		b, note, err := driveFixEnd(repoRoot, roots, f.until)
+		b, note, err := driveFixEnd(starting, repoRoot, roots, f.until)
 		if err != nil {
 			return driveFail(cmd, asJSON, f, nil, err)
 		}
@@ -719,6 +730,12 @@ func runDriveLocked(starting context.Context, cmd *cobra.Command, asJSON bool, r
 		asked := cmd.OutOrStdout()
 		if asJSON {
 			asked = cmd.ErrOrStderr()
+		}
+		// A first interrupt during the reads above, the ask of origin for the default
+		// among them, ends a start the person typed here, before its question: a read it
+		// cut short falls back to the bundled days, and a scripted yes must not take that.
+		if starting.Err() != nil {
+			return &exitError{Code: driveKilledExit, Msg: driveLine + "interrupted before the question (nothing started, nothing reserved)"}
 		}
 		yes, plan, err := driveConsent(cmd, asked, f, lanes, runs, review.Pair(), p, b, note, driveHoldsLine(ceiling, layer))
 		if err != nil {
@@ -930,7 +947,7 @@ func driveRun(sig *driveSignals, cmd *cobra.Command, asJSON bool, repoRoot strin
 	// start refuses an end already past and a new one fixes its own.
 	if res.Resume != "" {
 		end := until
-		if !time.Now().Before(end) {
+		if !driveClock().Before(end) {
 			end = time.Time{}
 		}
 		res.Resume = loop.DriveResumeCommand(end, f.profile)

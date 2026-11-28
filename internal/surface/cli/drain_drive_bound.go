@@ -109,7 +109,8 @@ func (b driveBound) restartLine(profile string) string {
 // driveHoldsLine is the full plan's `holds` line after its label: the one
 // lane a drive holds in work, whatever the repository's drain.in_work_max,
 // and one person's ceiling on live reservations with the layer that set it
-// (claim.MaxLiveFor), or, with none read yet, that the first move reads it.
+// (claim.MaxLiveFor), named as what this checkout last fetched, or, with none
+// read yet, that the first move reads it.
 func driveHoldsLine(ceiling int, layer string) string {
 	if ceiling < 1 {
 		// No act here has asked origin for the ceiling yet (claim.MaxLiveFor).
@@ -119,7 +120,10 @@ func driveHoldsLine(ceiling int, layer string) string {
 	if w := ceilingLayerWord(layer); w != "" {
 		line += " (" + w + ")"
 	}
-	return line
+	// The figure is read at the ref this checkout last fetched of origin's default
+	// branch, which can lag origin, so it is named as that; each act that adds a
+	// reservation asks origin itself (dcn-2611280516141989).
+	return line + ", as this checkout last fetched them"
 }
 
 // ceilingLayerWord is the ceiling's layer in a word, "" for one claim does

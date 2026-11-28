@@ -379,8 +379,10 @@ or a crash ends the drive with nothing to start it again and names the one comma
 carries it on to the same end (`loop.DriveResumeCommand`: the drive's start naming that
 instant, and the profile typed), printed once more after the yes and named as the end's
 way on while the end is ahead, and a `holds:` line names the one lane in work and the
-person's reservation ceiling. The whole plan heads the drive's log, a scripted yes
-included. A re-execution passes the end in its arguments as that same instant, so a
+person's reservation ceiling as this checkout last fetched it (dcn-2611280516141989). A
+first interrupt before the question, during the read of origin included, ends the start
+with nothing started, whatever a scripted yes would answer. The whole plan heads the
+drive's log, a scripted yes included. A re-execution passes the end in its arguments as that same instant, so a
 resuming start reads no default and keeps its end; one given none runs unbounded. The
 yes names the end, as a time and not a limit on what
 is spent, the run ends at that time with the lane on its branch and its reservation

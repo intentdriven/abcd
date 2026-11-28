@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -508,4 +509,69 @@ func TestTheEndSaysTheBoundEndedIt(t *testing.T) {
 	if !strings.Contains(b.String(), "--until") {
 		t.Fatalf("the end names the bound: %s", b.String())
 	}
+}
+
+// TestAnEndAlreadyPastNamesAWayOnThatStarts: a drive that reaches its end with
+// a lane on its branch, the way every default drive with work left ends, names
+// a way on with no --until, since the start refuses an end already past and a
+// new one fixes its own; the command it names starts.
+func TestAnEndAlreadyPastNamesAWayOnThatStarts(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	clock := driveClock
+	t.Cleanup(func() { driveClock = clock })
+	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
+		w.terminalCalls++
+		w.terminal = o
+		// The drive ran to its end: the end has passed by the time it says how it ended.
+		driveClock = func() time.Time { return o.Until.Add(time.Second) }
+		return loop.TerminalResult{Ended: loop.TerminalUntil, Run: "run-1", Issue: "iss-1", Lane: "lane-1", Resume: loop.TerminalResumeCommand}, nil
+	}
+	at := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	var out, errb strings.Builder
+	Run([]string{"drain", "--drive", "--yes", "--until", at, "--profile", "walled"}, &out, &errb)
+	m := regexp.MustCompile(`(?m)^  to resume: (.+)$`).FindStringSubmatch(out.String() + errb.String())
+	if m == nil {
+		t.Fatalf("the end names no way on:\n%s%s", out.String(), errb.String())
+	}
+	if want := loop.TerminalResumeCommand + " --profile walled"; m[1] != want {
+		t.Fatalf("past its end the way on is %q, want %q", m[1], want)
+	}
+	driveClock = clock
+	driveTerminal = func(_ context.Context, _ string, o loop.TerminalOptions) (loop.TerminalResult, error) {
+		w.terminalCalls++
+		w.terminal = o
+		return loop.TerminalResult{Ended: loop.DrainStoppedEmpty}, nil
+	}
+	var out2, errb2 strings.Builder
+	if code := Run(append(strings.Fields(strings.TrimPrefix(m[1], "abcd ")), "--yes"), &out2, &errb2); code != 0 || w.terminalCalls != 2 {
+		t.Fatalf("the way on starts: exit %d, %d calls:\n%s%s", code, w.terminalCalls, out2.String(), errb2.String())
+	}
+}
+
+// TestAStopDuringTheReadOfTheDefaultEndsTheStart: the first interrupt while the
+// start asks origin for the default ends a typed start before its question,
+// with nothing started, even when the read it cut short fell back to the
+// bundled seven days and a scripted yes would answer.
+func TestAStopDuringTheReadOfTheDefaultEndsTheStart(t *testing.T) {
+	w := newDriveWorld(t)
+	w.passWalls(t)
+	resolve := driveResolveDays
+	t.Cleanup(func() { driveResolveDays = resolve })
+	driveResolveDays = func(ctx context.Context, _ string, _ layered.Roots) (loop.PaceValue, string, error) {
+		signalThisProcess(t, func() bool { return ctx.Err() != nil })
+		// The git child died on the same signal, so origin could not be asked.
+		return loop.PaceValue{Value: loop.BundledDriveDays, Layer: "bundled", Origin: "bundled"},
+			"origin could not be asked which branch is its default (signal: interrupt), so no repository figure for drive.until_days was read", nil
+	}
+	var out, errb strings.Builder
+	code := Run([]string{"drain", "--drive", "--yes"}, &out, &errb)
+	text := out.String() + errb.String()
+	if code != driveKilledExit || w.terminalCalls != 0 || !strings.Contains(text, "nothing started") {
+		t.Fatalf("exit %d, %d calls:\n%s", code, w.terminalCalls, text)
+	}
+	if strings.Contains(text, "works through this repository") {
+		t.Fatalf("the plan was shown after the stop:\n%s", text)
+	}
+	noDrainBegun(t, w.repo)
 }

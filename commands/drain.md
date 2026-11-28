@@ -250,7 +250,10 @@ start's `restart:` line says so and names the one command that carries the drive
 to the same end, `abcd drain --drive --until <the end as an RFC 3339 instant>`, with
 `--profile <name>` when one was typed, and after the yes the drive prints that command
 once more. Its `holds:` line names the one lane a drive holds in work and one person's
-ceiling on reservations, with the layer that set it. The command is an ordinary start:
+ceiling on reservations, with the layer that set it, as this checkout last fetched it from
+origin: each act that adds a reservation asks origin itself. A first interrupt while
+the start reads origin for the default, or anywhere before its question, ends the start
+with nothing started, exit 130, whatever `--yes` says. The command is an ordinary start:
 it asks its one question and ends at the time it names; an end already past is refused
 as any `--until` is. It is also the end's `to resume:` line, while the end is still
 ahead. The whole plan the start showed heads the drive's log, `--yes` included. A

@@ -119,17 +119,19 @@ func TestTheEndsLineNamesItsSourceInOneWord(t *testing.T) {
 }
 
 // TestTheHoldsLineNamesBothLimits: the full plan's holds line names the one
-// lane a drive holds in work and the person's ceiling with its layer.
+// lane a drive holds in work and the person's ceiling with its layer, read
+// at what this checkout last fetched of origin and said to be so: the act
+// that adds a reservation asks origin itself.
 func TestTheHoldsLineNamesBothLimits(t *testing.T) {
 	for _, c := range []struct {
 		n           int
 		layer, want string
 	}{
-		{10, claim.LimitRepository, "1 lane in work; 10 reservations per person (repository)"},
-		{10, claim.LimitBundled, "1 lane in work; 10 reservations per person (default)"},
-		{4, claim.LimitMachine, "1 lane in work; 4 reservations per person (this machine)"},
-		{1, claim.LimitRepository, "1 lane in work; 1 reservation per person (repository)"},
-		{3, "elsewhere", "1 lane in work; 3 reservations per person"},
+		{10, claim.LimitRepository, "1 lane in work; 10 reservations per person (repository), as this checkout last fetched them"},
+		{10, claim.LimitBundled, "1 lane in work; 10 reservations per person (default), as this checkout last fetched them"},
+		{4, claim.LimitMachine, "1 lane in work; 4 reservations per person (this machine), as this checkout last fetched them"},
+		{1, claim.LimitRepository, "1 lane in work; 1 reservation per person (repository), as this checkout last fetched them"},
+		{3, "elsewhere", "1 lane in work; 3 reservations per person, as this checkout last fetched them"},
 		{0, "", "1 lane in work; the reservations per person are as the first move reads them at origin"},
 	} {
 		if got := driveHoldsLine(c.n, c.layer); got != c.want {
