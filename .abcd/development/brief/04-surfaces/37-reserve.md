@@ -929,8 +929,8 @@ withdrawing nothing, and an admission or a release is refused.
   each time that held merges from before the holder id stay held until the
   next reservation or announcement (`due_awaits_holder_id`), and a
   reservation then settles them as it keeps the id (an announcement keeps the
-  id, and the next listing settles them), its tombstone naming each by the
-  kept id. Neither a read nor a push naming the login stands in
+  id, and the next `abcd peers` listing or reservation settles them, while
+  `abcd status` re-arms nothing), its tombstone naming each by the kept id. Neither a read nor a push naming the login stands in
   (dcn-2610300525431448). A holder id that is set or kept but refused
   (`ABCD_HOLDER_ID` set to no id, or the kept file refused by its guard) is
   not awaited: every act refuses until it is fixed, so the listing says so
