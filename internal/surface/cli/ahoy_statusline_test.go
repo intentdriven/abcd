@@ -173,4 +173,9 @@ func TestAhoyBareNamesAbcdEntriesInTheHarnessSettings(t *testing.T) {
 	if strings.Contains(out, "\x1b") {
 		t.Errorf("bare render printed a raw terminal escape:\n%q", out)
 	}
+	// The harness line carries the stray entry's remedy, so the step is not
+	// printed under the gap's title as well (iss-2611252138558553).
+	if n := strings.Count(out, "remove this entry from "); n != 1 {
+		t.Errorf("bare render prints the stray entry's remedy %d times, want once:\n%s", n, out)
+	}
 }

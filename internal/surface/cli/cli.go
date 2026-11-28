@@ -4651,9 +4651,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  gaps:        %d\n", len(res.Gaps))
 				// Each gap by its title, the words the install's approvals
-				// list (iss-2610071528375981).
+				// list (iss-2610071528375981), and under the title of a gap
+				// no install closes the step that does, so the text render
+				// is not the one without a way on (iss-2611252138558553).
 				for _, g := range res.Gaps {
 					fmt.Fprintf(w, "               %s\n", termsafe.Sanitize(g.Title))
+					if step := unresolvableGapStep(g); step != "" && !ahoyGapStepPrintedBelow(g) {
+						fmt.Fprintf(w, "                 %s\n", termsafe.Sanitize(step))
+					}
 				}
 				// The provider adapter's explanation (itd-2609081951381895
 				// criterion 6): optional, and named so a person meets it here.
@@ -5022,10 +5027,21 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// for you, so name each one and what is wrong with it. The detail
 				// quotes a parser's own error over the user's file, so it is
 				// sanitised like any other input rendered to a terminal.
+				// An advisory gap no install closes is named too, by its
+				// title, and either kind carries its step on the line
+				// under it: otherwise only --json says what to do about
+				// it (iss-2611252138558553).
 				for _, g := range report.Detection.Gaps {
-					if g.Required && !g.Resolvable {
+					step := unresolvableGapStep(g)
+					switch {
+					case g.Required && !g.Resolvable:
 						fmt.Fprintf(w, "  diagnostic:     %s — %s\n",
 							termsafe.Sanitize(g.ID), termsafe.Sanitize(g.Detail))
+					case step != "":
+						fmt.Fprintf(w, "  advisory:       %s\n", termsafe.Sanitize(g.Title))
+					}
+					if step != "" {
+						fmt.Fprintf(w, "                  %s\n", termsafe.Sanitize(step))
 					}
 				}
 			})
@@ -5039,6 +5055,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoySharedFolderCommand(asJSON))
 
 	return ahoyCmd
+}
+
+// unresolvableGapStep is the step a person takes for a gap no `ahoy install`
+// closes: its fix hint, or "" for a gap the install resolves (its step is the
+// install) or one that names none (iss-2611252138558553).
+func unresolvableGapStep(g ahoy.Gap) string {
+	if g.Resolvable {
+		return ""
+	}
+	return strings.TrimSpace(g.FixHint)
+}
+
+// ahoyGapStepPrintedBelow reports a gap whose own line further down bare
+// ahoy's board already carries its step, so the step is not printed twice.
+func ahoyGapStepPrintedBelow(g ahoy.Gap) bool {
+	switch g.ID {
+	case ahoy.StatusLineUntrustedGapID, ahoy.StoreWorktreeUnlinkedGapID,
+		ahoy.FilterRootsIgnoredGapID, ahoy.ProviderAdapterGapID:
+		return true
+	}
+	return strings.HasPrefix(g.ID, ahoy.HarnessStrayHookGapPrefix+".")
 }
 
 // renderSetupReport prints setup's three-part report (itd-2610240823055889,

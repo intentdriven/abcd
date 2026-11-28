@@ -81,10 +81,11 @@ flags.
 - **The dry run** renders the detection envelope as JSON and mutates nothing.
 - **The doctor** runs the full detection pass plus a read-only audit pass. Its
   distinct contribution is the audit, and its distinct value in the text render
-  is that it names, one line each, every required gap that is **not** resolvable
-  — the ones no later install will clear, such as a config file abcd refuses
-  to touch until a human repairs it. A bare count of those would be a number the
-  reader cannot act on. It is the check to reach for after a repo rename, a
+  is that it names, one line each, every gap that is **not** resolvable — the
+  ones no later install will clear, such as a config file abcd refuses to touch
+  until a human repairs it: a required one as a diagnostic with its detail, an
+  advisory one by its title, and either with its step on the line under it. A
+  bare count of those would be a number the reader cannot act on. It is the check to reach for after a repo rename, a
   machine migration, or "why aren't my transcripts showing up".
 - **The remote report** audits, read-only, the repository this checkout's own
   origin names against abcd's settings baseline (itd-2610290746077716), and
@@ -840,8 +841,8 @@ distinct tokens precisely because the offer differs.
 
 The install, the dry run, the doctor and bare `/abcd:ahoy` all run the **same**
 detection pass and differ only in what they do with its output: the bare form
-renders a status board, the doctor adds an audit pass and renders gap counts,
-the dry run renders the envelope, and the install runs the apply pass over the gaps.
+renders a status board, the doctor adds an audit pass and renders gap counts
+(both name the step under each gap no install closes, as the JSON does), the dry run renders the envelope, and the install runs the apply pass over the gaps.
 Detection logic lives in exactly one place, so those four cannot drift apart.
 
 The detection pass produces an in-memory state contract, and it is a **value
