@@ -150,7 +150,11 @@ at the planning interview. On 2026-11-28 the session rewrote criteria 3, 10,
 decisions 20 to 30, and added criterion 20 for decision 17; later the same
 day it rewrote criteria 1, 2, 6 and 17 on the session's defaults for the
 planning questions (decisions 31 to 35), and added criterion 21 for an
-element whose source has not shipped.
+element whose source has not shipped. After the two adversarial reviews it
+rewrote criteria 2, 5, 10, 13 and 20 and added criterion 22. The person
+approved the move to planned on 2026-11-28, after it was made, and asked to
+see a live version first (dcn-2611281230532771); the criteria and the
+session's defaults stay open to amendment after that preview.
 
 - **Given** blocking answers owed to both roles, from the checkout's mode
   store and from a drive that needs a person, and pending reviews owed to
@@ -167,10 +171,14 @@ element whose source has not shipped.
   how long the answer has waited beside it (`waiting 2h`), and no other
   element renders in red; **given** `facilitator.mode` resolves to `auto`,
   **then** no mode badge renders, `waiting` never renders whatever is owed,
-  and the mode is said by the `facilitator:` element alone; **given** a new
-  session starts over a waiting mode an agent's question set, **then** the
-  mode is back to managed before the row renders, while a mode a person set
-  by hand survives the start and keeps its age.
+  and the mode is said by the `facilitator:` element alone, so with that
+  element switched off nothing on the row says it and `abcd statusline
+  --explain` names it (open questions 8 and 9 hold this default for the
+  person); **given** a new session starts over a waiting mode an agent's
+  question set, and the session that asked it is the one starting or is no
+  longer live, **then** the mode is back to managed before the row renders;
+  a question another live session still holds open stays, with its age;
+  and a mode a person set by hand survives the start and keeps its age.
 - **Given** a checkout whose working tree's `.abcd/config.json` declares a
   `facilitator.mode` that differs from what the merge gate's resolver gives
   (the default branch's committed value, else the person's global
@@ -186,10 +194,13 @@ element whose source has not shipped.
   red; and the thresholds are read from the repository's setting over the
   machine's over the bundled default (5 reviews, 24 hours).
 - **Given** reviews pending for the product thinker and no blocking answer
-  owed to them, **when** the row renders, **then** the badge names the
-  product thinker but the view is the facilitator's; **given** a blocking
-  answer owed to the product thinker, **then** the view is the product
-  thinker's; and the view is never read from a role setting.
+  owed to anyone, **when** the row renders, **then** the badge names the
+  product thinker but the view is the facilitator's; **given** blocking
+  answers, **then** the view follows the badge: it is the view of the role
+  the badge names, the role of the oldest block, so with blocks owed to both
+  roles a facilitator whose block is older sees the facilitator's view and a
+  product thinker whose block is older sees theirs; and the view is never
+  read from a role setting.
 - **Given** the product thinker's view and work underway, **when** the row
   renders at any width, **then** work in progress reads as a count of
   distinct pieces of work (`in progress 2`), the row carries no record id,
@@ -220,9 +231,13 @@ element whose source has not shipped.
   its bundled default; for every field but `visible` the repository's value
   wins the machine's; `visible: false` from any layer, or the element
   switched off in the person's `statusline.json`, hides the element; an
-  unknown key under `statusline` is refused naming its file; and the badge
-  colours, the text mode, the theme and the links switch are refused by name
-  when the repository's file sets them.
+  unknown key under `statusline` is refused naming its file; a `words` or
+  `stages` string from either file that carries a control byte, an escape,
+  a bidirectional control or a hidden rune, or runs past 40 runes, is
+  refused naming its file and key, the field renders at its bundled value,
+  and the coloured row carries no escape but abcd's own colours and the
+  links it admits; and the badge colours, the text mode, the theme and the
+  links switch are refused by name when the repository's file sets them.
 - **Given** the same payload, checkout and settings, **when**
   `abcd statusline --explain` runs, **then** it emits one JSON record naming
   the view and, for every element of the view's table, its value, whether it
@@ -243,8 +258,11 @@ element whose source has not shipped.
 - **Given** `ahoy install` wiring the status line, **when** it writes the
   harness's `statusLine` setting, **then** it sets the host's refresh
   interval to five seconds unless the setting already carries one, which it
-  keeps; **when** `ahoy uninstall` runs, **then** the `statusLine` setting is
-  byte for byte what it was before the install.
+  keeps, and records the interval it found (or that there was none) and the
+  one it wrote; **when** `ahoy uninstall` runs, **then** an interval still
+  equal to the one abcd wrote is put back to what it found, or removed where
+  there was none, while an interval the person changed since, one abcd never
+  wrote, and every other key of the setting are left as they stand.
 - **Given** the text mode set in the person's `statusline.json`, **when**
   the row renders, **then** the gauges render as percentages, the collapsed
   counts as `PT`, `TF` and `ag` before their numbers, the warning symbol as
@@ -286,7 +304,9 @@ element whose source has not shipped.
   **when** the row renders, **then** the checkout element reads
   `<repo> ‹<intent short id> L<lane>›` from the run state, another worktree
   reads by its own name, a label wider than 24 columns is cut in the middle,
-  and the main checkout still reads `<repo>:<branch>`.
+  and the main checkout reads as it does today, the two elements `repo` and
+  `branch` side by side (`abcd · main`), which is decision 17's
+  `repo:branch`.
 - **Given** an element whose source has not shipped or cannot be read (the
   review count before the spot-check queue's reading exists, the agents and
   spend before the launch ledger's rollup, the branch's pull request before
@@ -294,6 +314,12 @@ element whose source has not shipped.
   element is absent with no placeholder and no separator left in its place,
   and `abcd statusline --explain` lists it with `available: false` and the
   reason, naming the record whose work supplies it.
+- **Given** a blocking answer owed to the named role and a kept reading of
+  `facilitator.mode` that is missing, malformed or refused, so the mode is
+  not known, **when** the row renders, **then** `waiting` and its age render
+  as under `human`, since an answer that may block is never hidden; the
+  `facilitator:` element, where shown, says the mode is not read; and the
+  badge reads the mode whether or not that element is switched on.
 
 ## Decisions
 
@@ -463,8 +489,10 @@ person's answers; a person may reverse any of them:
     the product thinker is away (2026-11-28): the row reads the launch ledger
     through a per-session rollup,
     `~/.abcd.noindex/session-work/<sha256(session)>.agents.json`, which the
-    launch writer rewrites whole at each launch's start and end; this answers
-    spc-2611050023402644's open question. The rollup is a derived cache: the
+    launch writer rewrites whole at each launch's start and end (and on a
+    heartbeat while it runs, decision 37); this proposes an answer to
+    spc-2611050023402644's open question, which stays open in that spec for
+    its own ruling. The rollup is a derived cache: the
     explanation says so, `abcd agents` stays the account, and any writer
     rebuilds it when it disagrees with the ledger. Grounds: the status path
     keeps its one admitted write and reads one bounded file, as
@@ -485,8 +513,11 @@ person's answers; a person may reverse any of them:
     the product thinker is away (2026-11-28): `ahoy install` writes a
     five-second refresh interval into the harness's `statusLine` setting;
     there is no daemon and no file watch. A person's own interval survives a
-    reinstall, uninstall restores the setting as it was, and the build pins
-    the host's key name in a test. Grounds: the host does not re-run the
+    reinstall; the install records the interval it found and the one it
+    wrote, and uninstall takes back only an interval still equal to abcd's,
+    leaving one the person changed and every other key alone (the security
+    review of 2026-11-28 corrected an earlier "restores the setting as it
+    was"); and the build pins the host's key name in a test. Grounds: the host does not re-run the
     command on a resize, and one interval covers both a resize and a quiet
     wait. To reverse: drop the key from the install and its test.
     (dcn-2611281148475934)
@@ -582,10 +613,13 @@ reverse any of them:
 
 31. **The frame ships first.** The table, the three views, the one-role
     badge, fitting the pane width, `--explain`, text mode, the gauges and the
-    links are built now; each element whose source has not shipped (the
-    review count, the agents and spend, the build lanes, the branch's
-    pull-request state) is a stated remainder that appears when its source
-    ships; the counts keep their present form, left to iss-2610111726481495.
+    links are built now, and so are the build lanes, whose runs index step 7
+    of the spec builds from the run state already on the default branch;
+    each element whose source has not shipped (the review count, the agents
+    and spend, the branch's pull-request state) is a stated remainder that
+    appears when its source ships (dcn-2611281155245894 listed the build
+    lanes among the remainders; step 7 waits on no other record, so they ship
+    with the frame); the counts keep their present form, left to iss-2610111726481495.
     Grounds: the badge and narrow-pane rulings reach people now instead of
     waiting on four records not yet built, one of them a draft. To reverse:
     hold the whole row until every source ships, or add the ready and
@@ -613,15 +647,20 @@ reverse any of them:
     visibility for that view in the bundled table. (dcn-2611281201512624)
 34. **A waiting badge an agent set ends at the next session start, and shows
     its age.** The session-start hook sets the mode back to managed only
-    when the question marker shows that an agent put the question, so a mode
-    a person set by hand survives; and `waiting` carries how long the answer
-    has waited, dated as decision 26 says. This takes up the ruling
+    when the question marker shows that an agent put the question and the
+    session that asked it is the one starting or is no longer live
+    (decision 36), so a mode a person set by hand survives and a question a
+    live session still holds open is never cleared by another's start; and
+    `waiting` carries how long the answer has waited, dated as decision 26
+    says. This takes up the ruling
     iss-2609291032194222 has waited on since 2026-09-29, which decision 26
     left open, and the spec step that builds it resolves that issue.
     Grounds: it is the smallest change to the ruled rule that a mode set by
     hand is never cleared, and with its age shown a park a crash left behind
     reads as old, not as current. The cost: such a park stays until some
-    session starts. To reverse: show the badge only in the session that set
+    session starts, and a question an idle but live session holds stays until
+    that session answers or ends. Whether this decision stands is open
+    question 10, deferred to the person. To reverse: show the badge only in the session that set
     it, or let it lapse after a set time and show it as aged.
     (dcn-2611281201529151)
 35. **The facilitator's views keep the facilitator's words.** In both
@@ -636,12 +675,47 @@ reverse any of them:
     lanes page, by changing the builds element's words in the bundled table.
     (dcn-2611281201531202)
 
+The person approved the move to planned on 2026-11-28 at about 12:25Z,
+after it was made, in their own words: "correct, I approve", and "I really
+would like to see a live version ... we may have to make amendments,
+depending on how it looks" (dcn-2611281230532771). Decisions 31 to 35 stay
+open to amendment after that preview.
+
+Technical calls the session made after the two adversarial reviews of
+2026-11-28; a person may reverse either:
+
+36. **The session-start reset never clears a question a live session holds.**
+    The question marker gains a line naming the session whose question the
+    guard admitted; the session-start reset acts only where that session is
+    the one starting or is no longer live (`occupancy.Live`), leaves a marker
+    of another live session alone, resets a marker with no session line only
+    with no other live session in the checkout, and resets nothing where the
+    live sessions cannot be read. Grounds: the occupancy markers already tell
+    a live session from a gone one by its host process; a reset at every
+    start would make a second session's start say nobody is waited on while
+    an answer is still owed. The cost: a question an idle but live session
+    holds stays, with its age, until it is answered or the session ends. To
+    reverse: reset at every start where the marker names the stored word, and
+    state that cost. (dcn-2611281231066048)
+37. **The agents element reads stale only past a heartbeat's bound.** While
+    a launch runs, its launcher rewrites the session's rollup every five
+    minutes, so the rollup's written time is its running launches' last
+    heartbeat; the element reads "as of" only when the rollup counts a
+    running launch and is more than twelve minutes old, and a rollup with
+    none running never reads stale. Grounds: the row reads no process table
+    and the ledger keeps no heartbeat, and the launcher lives exactly as long
+    as its launch. To reverse: drop the heartbeat and the time-based "as of".
+    (dcn-2611281231064739)
+
 ## Open Questions
 
-Questions 2 and 7 are answered by decisions 33 and 32. Each of the rest is a
-default the build ships at the value stated and the person tunes in use
-(decision 13); none holds the intent, and each is listed so a later tuning
-can set it.
+Questions 2 and 7 are answered by decisions 33 and 32. Questions 1 and 3 to
+6 are defaults the build ships at the value stated and the person tunes in
+use (decision 13); none holds the intent, and each is listed so a later
+tuning can set it. Questions 8 to 11 are the person's to answer, deferred to
+them after the live preview they asked for (dcn-2611281230532771); the build
+ships each one's stated default meanwhile, and an answer that differs
+rewrites the step it names.
 
 1. **Deferred: a default, tuned in use.** Each view's dropping order. The
    prototype's orders are a first guess. Product thinker: work, usage
@@ -669,6 +743,32 @@ can set it.
    27); the build ships an untuned light ramp.
 7. resolved: decision 32 (dcn-2611281201513663). Under auto the row shows no
    mode badge, so no badge word waits on the wider automatic mode.
+8. **Deferred to the person after the live preview.** For the product thinker: under `facilitator.mode: auto`, does a product
+   question an agent asks still show `waiting` for the product thinker? The
+   default says no: under `auto` nothing blocks and no `waiting` renders
+   (criterion 2, decision 32, the press release). But itd-2611252049031692
+   says product questions are still asked under `auto`, so a product thinker
+   whose answer holds a run would see their role on the badge with no
+   `waiting`, the same as a review batch. Spec step 2's badge rule.
+9. **Deferred to the person after the live preview.** For the product thinker: decision 32 reverses your decision 3, which gave
+   auto mode an `auto-merge` badge; does the reversal stand? The default
+   says yes: under `auto` no mode badge renders and the `facilitator:`
+   element alone says the mode, so with that element switched off nothing on
+   the row says it and only `abcd statusline --explain` does. Spec step 2's
+   badge rule.
+10. **Deferred to the person after the live preview.** For the product thinker: decision 34 settles iss-2609291032194222, whose
+    ruling is owed to you; does it stand? The default says yes: a waiting
+    badge an agent's question set goes back to `abcd-managed` at the next
+    session start, only where the session that asked is the one starting or
+    has ended (decision 36), a mode set by hand is never cleared, and
+    `waiting` shows its age; spec step 2 builds it and resolves the issue.
+11. **Deferred to the person after the live preview.** For the product thinker: may the fill file carry the transcript's offset
+    and running token sums, so a refresh reads only the transcript's new
+    tail? Your ruling of 2026-10-11 (itd-2610091918433290, "Allow one fill
+    file") admitted exactly the one figure, with no cache. The default says
+    yes: the file, its path and its one writer are unchanged, and spec step 5
+    loosens the two tests that pin its fields; a no keeps the file at its two
+    fields and reads the transcript whole on each refresh.
 
 ## Audit Notes
 
