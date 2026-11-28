@@ -784,3 +784,18 @@ func TestAToggleArmsByTheMethodTheGateReadsAtTheTip(t *testing.T) {
 		t.Fatalf("the toggle is counted and its note names the tip's method: %+v %q", ld, f.lastNote(t))
 	}
 }
+
+// TestAHandBackQuotesTheArmingByTheMethodTheGateReadsAtTheTip: past the bound
+// the hand-back quotes the command that arms the pull request again by the
+// method the loop itself arms by, the merge gate's at the default branch's
+// tip, never the lane's base's.
+func TestAHandBackQuotesTheArmingByTheMethodTheGateReadsAtTheTip(t *testing.T) {
+	f, pushed := rearmFixture(t)
+	f.mirrorAtTip(t, "SQUASH")
+	f.setLanding(t, func(ld *Landing) { ld.Rearms = maxRearms })
+	f.removedBy(t, pushed, removal(rearmArmedAt.Add(30*time.Minute), "failed_checks", mergeQueueBot))
+	r := f.wantDroppedUnarmed(t, rearmArmedAt.Add(40*time.Minute))
+	if !strings.Contains(r.Remedy, "`gh pr merge 7 --auto --squash --match-head-commit="+pushed+"`") || strings.Contains(r.Remedy, "--auto --merge") {
+		t.Fatalf("the hand-back quotes the arming by the tip's method: %s", r.Remedy)
+	}
+}

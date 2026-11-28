@@ -276,7 +276,7 @@ func TestADroppedPullRequestsReArmingIsQuotedWithTheQueuesMethod(t *testing.T) {
 
 	lane := currentLane(t, f.repo, f.runID)
 	c := Context{RepoRoot: f.repo.Root(), Now: time.Now()}
-	err = droppedReport(c, lane, "main", landing.MergeRule{}, queueView{}, "")
+	err = droppedReport(c, lane, "main", queueView{}, "", "")
 	r = mustRefusal(t, err)
 	if strings.Contains(r.Remedy, "gh pr merge") || !strings.Contains(r.Remedy, pushed+" by the queue's merge method") {
 		t.Fatalf("with no method to quote, the remedy names the method to arm by and quotes no command gh refuses: %s", r.Remedy)

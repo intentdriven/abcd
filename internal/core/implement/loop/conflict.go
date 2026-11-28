@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -80,9 +79,13 @@ func conflictRefusal(c Context, lane Lane, def, tracking string, m mergeability)
 	local := describeConflict(localConflict(c.RepoRoot, tracking, ld.Pushed), def, ld.Pushed)
 	switch {
 	case ld.Armed:
+		// The re-arming is quoted by the method the loop arms by: the merge
+		// gate's, read at the tip just fetched, not the lane's base's.
 		rearm := "`gh pr merge " + n + " --auto` with the queue's method"
-		if rule, err := readMergeRule(c, lane, def); err == nil && landing.MergeMethods[rule.Method] != "" {
-			rearm = "`gh pr merge " + n + " --auto " + landing.MergeMethods[rule.Method] + "`"
+		if tip, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--"); err == nil && gitutil.IsFullSHA(tip) {
+			if method := tipArmMethod(c, lane, def, tip); method != "" {
+				rearm = "`gh pr merge " + n + " --auto " + method + "`"
+			}
 		}
 		reason = "pull request #" + n + " is armed but conflicts with " + def + " as the forge computes it " + verdict +
 			", and the merge queue never takes a conflicting pull request, so it will not merge; " + local
