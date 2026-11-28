@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/cli.go"
 remedy: "Print the gap's step on the line under its title in both renders, as they do for the gaps abcd can resolve, with a test of the text form."
-resolution: "Bare ahoy prints the step of a gap no install closes on the line under its title, and ahoy doctor names an advisory gap by its title with its step under it and adds the step under a diagnostic whose detail lacks it."
+resolution: "Bare ahoy prints the step of a gap no install closes on the line under its title, and ahoy doctor names an advisory gap by its title with its step under it and prints the step its gap names on the line under every diagnostic, whether or not the detail already words it."
 impact: fix
 ---
 
