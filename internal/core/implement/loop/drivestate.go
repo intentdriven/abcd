@@ -285,16 +285,28 @@ type handBackKey struct {
 // lane that reaches its pull request clears it, and a lane hand-back with
 // another key starts it again at one. Hand-backs at the judgement, by the
 // rule or at a reservation neither count nor clear it: most of a drain's
-// hand-backs are judgements, which is the drain working.
+// hand-backs are judgements, which is the drain working. It counts lanes, not
+// issues: a bundle's lane hands back each of its issues, at once or one member
+// at a time on later moves, and is one lane however many it routes (lanes).
 type handBackStreak struct {
 	key   handBackKey
 	count int
 	since time.Time
+	// lanes are the lanes the streak has counted, by run.
+	lanes map[string]bool
 }
 
 // note counts the hand-back r, routed at at, with refused the lane's last
-// logged refusal (nil for none). Only a lane's hand-back is counted.
+// logged refusal (nil for none), as its issue's own lane. Only a lane's
+// hand-back is counted.
 func (s *handBackStreak) note(r DrainRoute, refused *LaneRefused, at time.Time) {
+	s.noteLane(r, r.Issue, refused, at)
+}
+
+// noteLane counts the hand-back r of the lane lane (its run). A lane the
+// streak has already counted with the same key neither counts again nor
+// breaks it; with another key it starts the streak again at one.
+func (s *handBackStreak) noteLane(r DrainRoute, lane string, refused *LaneRefused, at time.Time) {
 	if r.From != "lane" {
 		return
 	}
@@ -303,10 +315,13 @@ func (s *handBackStreak) note(r DrainRoute, refused *LaneRefused, at time.Time) 
 		k.Stage, k.Check = refused.Stage, refused.Check
 	}
 	if s.count > 0 && k == s.key {
-		s.count++
+		if !s.lanes[lane] {
+			s.count++
+			s.lanes[lane] = true
+		}
 		return
 	}
-	*s = handBackStreak{key: k, count: 1, since: at}
+	*s = handBackStreak{key: k, count: 1, since: at, lanes: map[string]bool{lane: true}}
 }
 
 // landed clears the streak: a lane reached its pull request.
@@ -325,7 +340,7 @@ func (s handBackStreak) stalled(bound int) bool {
 
 // on names the streak: its count, the kind and where the lanes were.
 func (s handBackStreak) on() string {
-	on := fmt.Sprintf("%d lanes handed back in a row, %s", s.count, s.key.Kind)
+	on := fmt.Sprintf("%d %s handed back in a row, %s", s.count, plural(s.count, "lane", "lanes"), s.key.Kind)
 	if s.key.Stage != "" {
 		on += " at " + refusedAt(LaneRefused{Stage: s.key.Stage, Check: s.key.Check})
 	}

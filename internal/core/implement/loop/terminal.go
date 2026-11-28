@@ -501,7 +501,13 @@ func newTerminal(repoRoot string, o TerminalOptions) *terminal {
 	t.o.Options.RunnerStarting = func(role string) {
 		t.startedAgent = true
 		t.startCall("the " + role)
-		t.showWorking(t.onLane)
+		// A judge works on the drain's judgement, never on the lane the drive last drove,
+		// which may be done; every other role is a lane's.
+		on := t.onLane
+		if strings.HasPrefix(role, RoleDrainJudge) {
+			on = driveOnJudge
+		}
+		t.showWorking(on)
 	}
 	t.waited = terminalRenewEvery
 	if t.bounded() {
@@ -842,6 +848,7 @@ const (
 	driveOnLimit    = "the rate limit"
 	driveOnProof    = "the live check"
 	driveOnStart    = "the drive's start"
+	driveOnJudge    = "the drain's judgement"
 )
 
 // driveStateMargin is how far past the end of a stretch or a tick the drive's next write
@@ -1012,16 +1019,17 @@ func (t *terminal) storeState(now time.Time, next time.Duration) {
 	}
 }
 
-// noteHandBacks counts the lane hand-backs res routed in the hand-back streak, each lane
-// once however many of its issues it routed, keyed by the lane's last logged refusal; a
-// lane that reached its pull request since the last move clears the streak first.
+// noteHandBacks counts the lane hand-backs res routed in the hand-back streak, keyed by
+// the lane's last logged refusal; each lane, a bundle's by its run, counts once in a
+// streak however many of its issues it routes and over however many moves
+// (handBackStreak.noteLane); a lane that reached its pull request since the last move
+// clears the streak first.
 func (t *terminal) noteHandBacks(res DrainResult) {
 	if res.Counts.PullRequests > t.prsSeen {
 		t.streak.landed()
 	}
 	t.prsSeen = res.Counts.PullRequests
 	var st *DrainState
-	seen := map[string]bool{}
 	for _, r := range res.Routed {
 		if r.From != "lane" {
 			continue
@@ -1038,15 +1046,11 @@ func (t *terminal) noteHandBacks(res DrainResult) {
 			lane = l.RunID
 			refused = lastRefused(t.repoRoot, l.RunID)
 		}
-		if seen[lane] {
-			continue
-		}
-		seen[lane] = true
 		at := t.now()
 		if r.At != nil {
 			at = *r.At
 		}
-		t.streak.note(r, refused, at)
+		t.streak.noteLane(r, lane, refused, at)
 	}
 }
 
@@ -1175,7 +1179,8 @@ func (t *terminal) run(ctx context.Context) (TerminalResult, error) {
 		t.settleOutage(ctx)
 		t.judge = JudgeOutcome{}
 		t.blames = nil
-		res, err := Drain(t.repoRoot, t.o.Options, t.o.Drain)
+		var res DrainResult
+		t.ticking(func() { res, err = Drain(t.repoRoot, t.o.Options, t.o.Drain) })
 		t.endCall()
 		if err != nil {
 			if ctx.Err() != nil {
@@ -1535,7 +1540,7 @@ func (t *terminal) driveLane(ctx context.Context, runID string) (string, error) 
 		}
 		// The claim's remedy under a drive is written for the drive's own terminal: what
 		// keeps the drive from the run, and how a person there ends it (claimRun).
-		t.waitFor(t.laneKey(runID)+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: true})
+		t.waitFor(t.laneKey(runID)+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: r.personAct})
 		if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 			return TerminalWaited, nil
 		}
@@ -2246,6 +2251,30 @@ func (t *terminal) renewing(work func()) {
 	close(stop)
 	<-done
 	t.endCall()
+}
+
+// ticking runs work, a drain's move, writing the drive's state again at each renewal tick
+// while it runs, as renewing does for an agent's call: a judge's call inside the move can
+// outlast the value's next-write time. It renews nothing, which the move does for itself.
+// The ticks have stopped when it returns.
+func (t *terminal) ticking(work func()) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(terminalRenewTick)
+		defer tick.Stop()
+		for {
+			select {
+			case <-tick.C:
+				t.rewriteState(terminalRenewTick)
+			case <-stop:
+				return
+			}
+		}
+	}()
+	work()
+	close(stop)
+	<-done
 }
 
 // startCall says something is starting that may take a long while, which from
@@ -3490,7 +3519,7 @@ func (t *terminal) takeOver(ctx context.Context, run State) (bool, string) {
 			if t.blocked(run.RunID, blockTakeOver, r.Reason) {
 				return true, ""
 			}
-			t.waitFor(run.Key+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: true})
+			t.waitFor(run.Key+", which another driver holds", time.Time{}, driveAct{Words: r.Remedy, Person: r.personAct})
 			if t.idle(ctx, TerminalWaitFloor, r.Reason) {
 				return true, TerminalWaited
 			}

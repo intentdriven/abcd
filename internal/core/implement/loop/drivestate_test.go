@@ -693,3 +693,165 @@ func TestASetAsideLaneWithSomeHoldsLeftNamesThemPerIssue(t *testing.T) {
 		t.Fatalf("the set-aside's line does not name the holds per issue:\n%s", said)
 	}
 }
+
+// A judge's call works on the drain's judgement, never on the lane the drive drove last,
+// which has landed: the state written as each judge starts names the judgement.
+func TestAJudgesCallNamesTheJudgementNotTheLastLane(t *testing.T) {
+	w := newTerminalWorld(t)
+	o := w.options(t)
+	o.Drain.Max = 2
+	var log []string
+	say := o.Say
+	o.Say = func(s string) {
+		say(s)
+		log = append(log, s)
+	}
+	o.State = func(s DriveState) { log = append(log, "state "+s.State+" on "+s.On) }
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatalf("%v\n%s", err, w.said())
+	}
+	judges, after := 0, false
+	for i, l := range log {
+		if l != "starting the "+RoleDrainJudge {
+			continue
+		}
+		judges++
+		if i+1 >= len(log) || log[i+1] != "state "+DriveWorking+" on "+driveOnJudge {
+			t.Fatalf("the state written as a judge starts does not name the judgement:\n%s", strings.Join(log, "\n"))
+		}
+		after = after || slices.ContainsFunc(log[:i], func(s string) bool { return strings.HasSuffix(s, ": land done") })
+	}
+	if judges < 2 || !after {
+		t.Fatalf("premise: a judge starts after a lane has landed (%d judges, after a landing %v):\n%s", judges, after, strings.Join(log, "\n"))
+	}
+}
+
+// During a judge's call inside a drain's move the state is rewritten at each renewal
+// tick, as it is during an agent's call, so its next-write time never lapses under it.
+func TestTheDriveStateIsRewrittenDuringAJudgesCall(t *testing.T) {
+	was := terminalRenewTick
+	terminalRenewTick = 20 * time.Millisecond
+	t.Cleanup(func() { terminalRenewTick = was })
+	w := newTerminalWorld(t, "slow")
+	o := w.options(t)
+	o.Drain.Max = 1
+	var mu sync.Mutex
+	judging := 0
+	o.State = func(s DriveState) {
+		mu.Lock()
+		defer mu.Unlock()
+		if s.State == DriveWorking && s.On == driveOnJudge {
+			judging++
+		}
+	}
+	if _, err := RunTerminal(context.Background(), w.repo.Root(), o); err != nil {
+		t.Fatalf("%v\n%s", err, w.said())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if judging < 3 {
+		t.Fatalf("the state was written %d times on the judgement, want it rewritten at its ticks\n%s", judging, w.said())
+	}
+}
+
+// A bundle's lane whose members are handed back alone on separate moves is one lane in
+// the streak, however many of its issues it routes.
+func TestABundlesMembersHandedBackOnSeparateMovesCountOnce(t *testing.T) {
+	root := stateRoot(t, 60, 2)
+	if err := writeDrain(root, DrainState{SchemaVersion: DrainSchemaVersion, Lanes: []DrainLane{{Issue: "iss-10", RunID: "run-2611270000000010", Bundle: []string{"iss-11", "iss-12"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	d := newStateDrive(t, root)
+	for i, id := range []string{"iss-11", "iss-12", "iss-10"} {
+		at := driveAt(i)
+		d.tm.sayMove(DrainResult{Routed: []DrainRoute{{Issue: id, From: "lane", Kind: HandBackStuck, At: &at}}})
+	}
+	d.tm.waitFor(driveOnNextMove, time.Time{}, driveAct{})
+	d.tm.sleep(context.Background(), TerminalWaitFloor, "the next move")
+	if s := d.last(t); s.State != DriveWaiting {
+		t.Fatalf("one bundle's lane handed back over three moves counted as more than one: %+v", s)
+	}
+}
+
+// The streak's key reads the lane's last logged refusal from its run: a lane handed back
+// as stuck at a check names that stage and check.
+func TestTheStreakReadsTheLanesLastRefusal(t *testing.T) {
+	repo, _ := bundleRepo(t)
+	repoConfig(t, repo, `{"pace": {"stuck_minutes": 60, "stuck_refusals": 1}}`)
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	first := drainToLane(t, repo, Options{Now: c.now}, DrainOptions{Skip: []string{bundleTwo, bundleThree}, SkipReason: "the lead alone"})
+	if first.Lane == nil {
+		t.Fatalf("the drain opens a lane: %+v", first)
+	}
+	if err := mutate(repo.Root(), first.Lane.RunID, func(_ *os.Root, st *State) (bool, error) {
+		st.Lanes[0].Refused = &LaneRefused{Stage: "validate", Check: "lint", Reason: "3 findings", Count: 3, Since: c.t, Last: c.t}
+		return true, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var states []DriveState
+	tm := newTerminal(repo.Root(), TerminalOptions{
+		Options: Options{Now: c.now},
+		Say:     func(string) {},
+		State:   func(s DriveState) { states = append(states, s) },
+		Sleep:   func(_ context.Context, d time.Duration) { c.t = c.t.Add(d) },
+	})
+	at := c.t
+	tm.sayMove(DrainResult{Routed: []DrainRoute{{Issue: bundleLead, From: "lane", Kind: HandBackStuck, At: &at}}})
+	tm.waitFor(driveOnNextMove, time.Time{}, driveAct{})
+	tm.sleep(context.Background(), TerminalWaitFloor, "the next move")
+	if len(states) == 0 {
+		t.Fatal("no state was handed")
+	}
+	if s := states[len(states)-1]; s.State != DriveStalled || s.On != "1 lane handed back in a row, stuck at validate (lint)" {
+		t.Fatalf("the streak does not name the lane's last refusal: %+v", s)
+	}
+}
+
+// Only a remedy that is the person's to take at the drive's terminal is shown as their
+// act: a process beside the drive under its own terminal names the process to end, while
+// a live driver in another terminal, whose remedy is written for the drive, shows none;
+// and a driver-stage refusal built without the person's act, as a take-over's resume
+// remedy is, is never shown.
+func TestOnlyAPersonsRemedyIsShownAsTheirAct(t *testing.T) {
+	acts := func(t *testing.T, w *terminalWorld, key string) func(*TerminalOptions) {
+		return func(o *TerminalOptions) {
+			o.State = func(s DriveState) {
+				if s.On == key+", which another driver holds" {
+					w.lines = append(w.lines, "act: "+s.Do)
+				}
+			}
+		}
+	}
+	shown := func(w *terminalWorld) []string {
+		var out []string
+		for _, l := range w.lines {
+			if strings.HasPrefix(l, "act: ") {
+				out = append(out, strings.TrimPrefix(l, "act: "))
+			}
+		}
+		return out
+	}
+	t.Run("a process beside the drive", func(t *testing.T) {
+		w, run, home := stopKilled(t)
+		claimProcs(t, claimShell, claimDrive, claimLogin, claimShell, claimDrive, claimHelper)
+		claimDriverIs(t, w.repo.Root(), run.RunID, claimLogin)
+		setAsideUntil(t, w, home, 2, acts(t, w, run.Key))
+		got := shown(w)
+		if len(got) == 0 || !strings.HasPrefix(got[0], "end process "+strconv.Itoa(claimHelper)) {
+			t.Fatalf("the claim's wait does not show the process to end: %q\n%s", got, w.said())
+		}
+	})
+	t.Run("a live driver in another terminal", func(t *testing.T) {
+		w, run, home := setAsideBlockedByOther(t)
+		setAsideUntil(t, w, home, 2, acts(t, w, run.Key))
+		got := shown(w)
+		if len(got) == 0 || slices.ContainsFunc(got, func(s string) bool { return s != "" }) {
+			t.Fatalf("a remedy written for the drive is shown as the person's act: %q\n%s", got, w.said())
+		}
+	})
+	r := contend(StageDriver, "", "", "the process table cannot be read", "run `abcd implement resume --take run-1` again")
+	if got := (driveAct{Words: r.Remedy, Person: r.personAct}).shown(); got != "" {
+		t.Fatalf("a take-over's resume remedy is shown as the person's act: %q", got)
+	}
+}
