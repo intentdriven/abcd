@@ -647,7 +647,10 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race, m
 // its go test and make preflight queued and running here, keeps its
 // reservation with no step to renew it. Each run's renewal is said on w, and
 // one that fails, or finds the reservation another's, is said once until
-// what is said of it changes.
+// what is said of it changes. Neither renews a hold a drive left to lapse
+// (claim.LeaveToLapse): the kept hold of a run whose stop could not be applied,
+// or of a lane a drive set aside, lapses at the lease that stood when it was
+// left, whatever this waiter runs.
 //
 // It runs beside the gate, never in it: the gate's looks, its order and its
 // open neither wait on a renewal nor read one. Stop starts no further round

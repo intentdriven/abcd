@@ -1094,13 +1094,33 @@ func renderDriveEnd(w io.Writer, res loop.TerminalResult) {
 	for _, p := range res.PassedLanes {
 		fmt.Fprintf(w, "  passed over, since this drive may not save it: %s, run %s: %s\n", termsafe.Sanitize(p.Issue), termsafe.Sanitize(p.Run), termsafe.Sanitize(p.Reason))
 	}
+	// A lane set aside is named in its own words, with how long it waited and its own
+	// reason: it is no lane the drive may not save, and a later drive tries it again. Its
+	// hold lapses with its lease unless a take-up works it, or, where a live driver holds
+	// the run, is that driver's to renew.
+	for _, s := range res.SetAside {
+		hold := "its reservation lapses with its lease " + loop.UnlessKeptTakenUp
+		if !s.LeftToLapse {
+			hold = "its reservation is the driver's that holds the run, and lapses with its lease " + loop.UnlessRunRenewed
+		}
+		fmt.Fprintf(w, "  set aside: %s, run %s, after waiting %s: %s; %s\n",
+			termsafe.Sanitize(s.Issue), termsafe.Sanitize(s.Run), s.At.Sub(s.Since).Round(time.Second), termsafe.Sanitize(s.Reason), hold)
+	}
 	if res.Run != "" {
 		fmt.Fprintf(w, "  left on its branch: %s, run %s, %s\n", termsafe.Sanitize(res.Issue), termsafe.Sanitize(res.Run), termsafe.Sanitize(res.Lane))
 		if res.Resume != "" {
 			fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
 		}
 		if res.Lapses != nil {
-			fmt.Fprintf(w, "  its reservation lapses at %s %s\n", res.Lapses.UTC().Format(time.RFC3339), loop.UnlessRunRenewed)
+			// A hold left to lapse, its stop not applied, is renewed by no waiter. The
+			// line reads no run, and a kill can leave its lane parked at its pull
+			// request, which `abcd implement status` passes over, so the call is not
+			// named (loop.UnlessRunRenewed).
+			unless := loop.UnlessRunRenewed
+			if res.LeftToLapse {
+				unless = loop.UnlessKeptTakenUp
+			}
+			fmt.Fprintf(w, "  its reservation lapses at %s %s\n", res.Lapses.UTC().Format(time.RFC3339), unless)
 		}
 	} else if res.Resume != "" {
 		fmt.Fprintf(w, "  to resume: %s\n", res.Resume)
