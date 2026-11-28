@@ -257,9 +257,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"backs this one off. --admit <pr>, from the copy cutting the release, records one\n" +
 			"withdrawn pull request admitted, then re-arms it in its recorded form, pinned to\n" +
 			"its withdrawn head. --release from that copy pushes the tombstone, then re-arms\n" +
-			"every other one the same way; once the tag is on origin, any act of a copy of\n" +
-			"the same person that fetches the reservations does so, and so does one five\n" +
-			"minutes after the lease lapsed with no tag, for the cut's own person alone; a cut\n" +
+			"every other one the same way; once the tag is on origin, the next reservation\n" +
+			"act or abcd peers of a copy of the same person does so (abcd status re-arms\n" +
+			"nothing), and so does one five minutes after the lease lapsed with no tag, for\n" +
+			"the cut's own person alone; a cut\n" +
 			"still going on renews it by reserving again. One\n" +
 			"whose head moved, that was closed or merged, or that can only be merged by hand\n" +
 			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +

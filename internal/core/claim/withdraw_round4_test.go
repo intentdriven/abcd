@@ -275,7 +275,7 @@ func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
 			return got[0]
 		}
 		got := listing()
-		if len(got.Due) != 0 || !check(got) || strings.Contains(strings.Join(got.Lines(), "\n"), "your next abcd act") {
+		if len(got.Due) != 0 || !check(got) || strings.Contains(strings.Join(got.Lines(), "\n"), "your next `abcd peers` or reservation act") {
 			t.Fatalf("%s: listing = %+v %q; want #11 not due", pusher, got, got.Lines())
 		}
 		if _, err := octo.reserve("iss-8", "o.go"); err != nil {

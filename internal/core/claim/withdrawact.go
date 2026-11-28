@@ -1550,7 +1550,7 @@ type ReleaseWithdrawals struct {
 	// DueAwaitsHolderID is true when the reader keeps no holder id yet and
 	// HolderIDEnv is not set, so no listing settles Due: their next
 	// reservation keeps one and settles them, and after an announcement
-	// keeps one the next listing does.
+	// keeps one the next `abcd peers` does (`abcd status` settles nothing).
 	DueAwaitsHolderID bool `json:"due_awaits_holder_id,omitempty"`
 	// ownID and loginKnown are the reader's kept holder id and whether
 	// their login is known, which the stranded line reads (StrandedNote).
@@ -1600,7 +1600,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			r.Subject, strings.Join(numbers(r.Due), ", "), HolderIDRefusedLine(r.HolderIDRefused)))
 	case len(r.Due) > 0 && r.DueAwaitsHolderID:
 		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: held merges from before the holder id stay held "+
-			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next listing does",
+			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next `abcd peers` does",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	case len(r.Due) > 0:
 		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next `abcd peers` or reservation act re-arms them where the merge gate arms their heads, and names any the forge reports armed",

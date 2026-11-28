@@ -6825,9 +6825,10 @@ that pull request is armed. One release is cut at a time: another release live
 backs this one off. --admit <pr>, from the copy cutting the release, records one
 withdrawn pull request admitted, then re-arms it in its recorded form, pinned to
 its withdrawn head. --release from that copy pushes the tombstone, then re-arms
-every other one the same way; once the tag is on origin, any act of a copy of
-the same person that fetches the reservations does so, and so does one five
-minutes after the lease lapsed with no tag, for the cut's own person alone; a cut
+every other one the same way; once the tag is on origin, the next reservation
+act or abcd peers of a copy of the same person does so (abcd status re-arms
+nothing), and so does one five minutes after the lease lapsed with no tag, for
+the cut's own person alone; a cut
 still going on renews it by reserving again. One
 whose head moved, that was closed or merged, or that can only be merged by hand
 (no merge queue), is skipped and named for its owner; every state is recorded on

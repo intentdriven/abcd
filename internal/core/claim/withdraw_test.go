@@ -645,7 +645,7 @@ func TestReleaseReArmsEveryWithdrawnUnadmittedMerge(t *testing.T) {
 
 // TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder: once the tag is on
 // origin, a copy of the same person (here another computer of theirs) re-arms
-// the withdrawals on its next act that fetches the reservations, writes the
+// the withdrawals on its next reservation act or `abcd peers`, writes the
 // tombstone, and a later act does nothing; a copy of another person never
 // re-arms and names them instead.
 func TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder(t *testing.T) {

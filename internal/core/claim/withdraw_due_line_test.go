@@ -20,3 +20,18 @@ func TestTheDueLineNamesTheActsThatReArm(t *testing.T) {
 		t.Errorf("the due line does not name the acts that re-arm: %q", lines)
 	}
 }
+
+// TestTheDueLineAwaitingAHolderIDNamesTheListingThatReArms: with no holder
+// id kept yet, the due line says what re-arms after an announcement; `abcd
+// status` is a listing too and re-arms nothing, so the line names `abcd
+// peers` rather than any listing.
+func TestTheDueLineAwaitingAHolderIDNamesTheListingThatReArms(t *testing.T) {
+	r := ReleaseWithdrawals{Subject: "rel-v0.16.0", Due: []Withdrawal{{Number: 11}}, DueAwaitsHolderID: true}
+	lines := strings.Join(r.Lines(), "\n")
+	if strings.Contains(lines, "your next listing does") {
+		t.Errorf("the due line says any listing re-arms them, which `abcd status` does not: %q", lines)
+	}
+	if !strings.Contains(lines, "after an announcement your next `abcd peers` does") {
+		t.Errorf("the due line does not name `abcd peers` as what re-arms after an announcement: %q", lines)
+	}
+}
