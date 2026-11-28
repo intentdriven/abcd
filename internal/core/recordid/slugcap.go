@@ -1,7 +1,6 @@
 package recordid
 
 import (
-	"bufio"
 	"io/fs"
 	"os"
 	"path"
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 // SlugOverCap is one place a record's slug runs past a repository's cap.
@@ -106,29 +106,32 @@ func storeFileTag(rel string) (string, bool) {
 
 // frontmatterSlug returns the `slug:` value of a regular file's leading
 // frontmatter block, unquoted, its line, and whether the block carries one.
+//
+// It reads the block through frontmatter.Fields, the scanner record-lint reads
+// the same field with, so the commit-message hook and the lint agree on what a
+// record's slug is: a byte-order mark ahead of the opening rule, a key spelled
+// `slug :`, a trailing comment and a long line above the field read here as they
+// read there. A private line scan missed the first three and gave up at a line
+// over its buffer (iss-2611070737092992). The block may open below blank lines
+// and HTML comments, located by mdrecord.FirstContent, as record-lint's
+// frontmatterOpen admits an attribution comment above it.
 func frontmatterSlug(file string) (string, int, bool) {
 	fi, err := os.Lstat(file)
 	if err != nil || !fi.Mode().IsRegular() {
 		return "", 0, false
 	}
-	f, err := os.Open(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return "", 0, false
 	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	if !sc.Scan() || !frontmatter.IsDelimiter(sc.Text()) {
+	lines := strings.Split(string(data), "\n")
+	open, col := mdrecord.FirstContent(lines)
+	if open >= len(lines) || frontmatter.TrimBOM(lines[open][:col]) != "" || !frontmatter.IsDelimiter(lines[open][col:]) {
 		return "", 0, false
 	}
-	for line := 2; sc.Scan(); line++ {
-		text := sc.Text()
-		if frontmatter.IsDelimiter(text) {
-			return "", 0, false
-		}
-		if v, ok := strings.CutPrefix(text, "slug:"); ok {
-			return strings.Trim(strings.TrimSpace(v), `"'`), line, true
-		}
+	f, ok := frontmatter.Fields(lines[open:])["slug"]
+	if !ok {
+		return "", 0, false
 	}
-	return "", 0, false
+	return strings.Trim(f.Value, `"'`), f.Line + open, true
 }
