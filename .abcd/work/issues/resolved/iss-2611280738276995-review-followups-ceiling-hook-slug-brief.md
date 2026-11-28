@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/status.md"
 remedy: "narrow the ceiling wording to what maxlive.go reads, make the hook header name both causes, correct the resolution phrase, and align the brief's settle sentence with commands/reserve.md"
+resolution: "The four review follow-ups are corrected: the ceiling row's absence names only the reservation settings that withhold it, the commit-msg hook's record-cap refusal names both causes, the slug record's resolution says a trailing comment was counted into the slug's length, and the reserve chapter says only an abcd peers listing or a reservation settles the withdrawals an announcement's holder id frees."
+impact: fix
 ---
 
 Review of landed changes left four small wording follow-ups: the ceiling row's absence condition in commands/status.md and commands/peers.md claims any refused value withholds it, though the cap reads only reservation.max_live and key names; the commit-msg hook's record-cap header names only a slug over the cap, though the record-size refusal shares it; the resolution phrase of iss-2611070737092992 says a trailing comment hid the slug field, though the old scanner counted it into the length; and the reserve brief says the next listing settles ended releases, though only abcd peers and a reservation act do
