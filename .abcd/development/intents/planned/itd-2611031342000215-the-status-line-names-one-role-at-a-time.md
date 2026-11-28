@@ -154,7 +154,10 @@ element whose source has not shipped. After the two adversarial reviews it
 rewrote criteria 2, 5, 10, 13 and 20 and added criterion 22. The person
 approved the move to planned on 2026-11-28, after it was made, and asked to
 see a live version first (dcn-2611281230532771); the criteria and the
-session's defaults stay open to amendment after that preview.
+session's defaults stay open to amendment after that preview. The rewrites
+of criteria 2, 5, 10, 13 and 20 and the addition of criterion 22 came after
+that approval: the person has not seen them, and they are owed the person's
+confirmation at the preview.
 
 - **Given** blocking answers owed to both roles, from the checkout's mode
   store and from a drive that needs a person, and pending reviews owed to
@@ -262,7 +265,10 @@ session's defaults stay open to amendment after that preview.
   one it wrote; **when** `ahoy uninstall` runs, **then** an interval still
   equal to the one abcd wrote is put back to what it found, or removed where
   there was none, while an interval the person changed since, one abcd never
-  wrote, and every other key of the setting are left as they stand.
+  wrote, and every other key of the setting are left as they stand, save
+  where no previous command was recorded and uninstall removes abcd's whole
+  line, as it does today; and a line wired before this change gains the
+  interval at the next `ahoy install`, through a gap it closes.
 - **Given** the text mode set in the person's `statusline.json`, **when**
   the row renders, **then** the gauges render as percentages, the collapsed
   counts as `PT`, `TF` and `ag` before their numbers, the warning symbol as
@@ -515,7 +521,10 @@ person's answers; a person may reverse any of them:
     there is no daemon and no file watch. A person's own interval survives a
     reinstall; the install records the interval it found and the one it
     wrote, and uninstall takes back only an interval still equal to abcd's,
-    leaving one the person changed and every other key alone (the security
+    leaving one the person changed and every other key alone where a
+    previous command was recorded (with none, it removes abcd's whole line,
+    as today); a line wired earlier gains the interval through an advisory
+    gap `ahoy install` closes (the security
     review of 2026-11-28 corrected an earlier "restores the setting as it
     was"); and the build pins the host's key name in a test. Grounds: the host does not re-run the
     command on a resize, and one interval covers both a resize and a quiet
@@ -743,13 +752,18 @@ rewrites the step it names.
    27); the build ships an untuned light ramp.
 7. resolved: decision 32 (dcn-2611281201513663). Under auto the row shows no
    mode badge, so no badge word waits on the wider automatic mode.
-8. **Deferred to the person after the live preview.** For the product thinker: under `facilitator.mode: auto`, does a product
-   question an agent asks still show `waiting` for the product thinker? The
-   default says no: under `auto` nothing blocks and no `waiting` renders
-   (criterion 2, decision 32, the press release). But itd-2611252049031692
-   says product questions are still asked under `auto`, so a product thinker
-   whose answer holds a run would see their role on the badge with no
-   `waiting`, the same as a review batch. Spec step 2's badge rule.
+8. **Deferred to the person after the live preview.** For the product thinker: under `facilitator.mode: auto`, does an answer
+   that holds work still show `waiting`, both when it is a product question
+   an agent asks and when it is a drive that needs a person? The default
+   says no: under `auto` nothing blocks and no `waiting` renders, the badge
+   naming the role alone (criterion 2, decision 32, the press release). But
+   itd-2611252049031692 says product questions are still asked under `auto`,
+   and itd-2611141507299828's criterion, from your decision 4 there, says the
+   badge "turns to waiting on the role the drive needs", a drive stalled
+   under `auto` included; under the default a product thinker whose answer
+   holds a run, or a facilitator a stalled drive needs, sees their role on
+   the badge with no `waiting`, the same as a review batch. Spec step 2's
+   badge rule, and spc-2611251806215442 step 8 under `auto`.
 9. **Deferred to the person after the live preview.** For the product thinker: decision 32 reverses your decision 3, which gave
    auto mode an `auto-merge` badge; does the reversal stand? The default
    says yes: under `auto` no mode badge renders and the `facilitator:`
