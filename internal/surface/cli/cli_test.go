@@ -943,6 +943,9 @@ func hermeticEnv(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	// As in hermeticRepo: the harness's settings resolve under HOME once this
+	// is empty, so a test never reads the developer's host configuration.
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
 	provisionHermeticCache(t, home)
 	// Scrub any real abcd off PATH (iss-249, and the same guard setupHermetic in the
@@ -960,6 +963,18 @@ func hermeticEnv(t *testing.T) {
 		kept = append(kept, dir)
 	}
 	t.Setenv("PATH", strings.Join(kept, string(os.PathListSeparator)))
+}
+
+// TestHermeticEnvEmptiesTheHarnessConfigDir: a machine that names its own
+// harness configuration directory does not hand it to a test that uses
+// hermeticEnv, the way hermeticRepo already withholds it, so such a test never
+// reads the developer's host configuration.
+func TestHermeticEnvEmptiesTheHarnessConfigDir(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	hermeticEnv(t)
+	if got := os.Getenv("CLAUDE_CONFIG_DIR"); got != "" {
+		t.Errorf("hermeticEnv left CLAUDE_CONFIG_DIR set to %q", got)
+	}
 }
 
 // TestAhoyBareUnmanagedRepoNamesAdoptPath proves itd-40 AC2: bare `abcd ahoy`
