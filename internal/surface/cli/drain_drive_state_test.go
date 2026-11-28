@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -167,6 +168,92 @@ func TestTheTerminalTheStatusAndTheBoardShowOneDriveLine(t *testing.T) {
 		}
 		if want := loop.DriveLine(s, written); terminal != want {
 			t.Fatalf("the line is %q, want %q", terminal, want)
+		}
+	}
+}
+
+// runOut runs the CLI with args and returns its stdout, failing on a nonzero exit or on
+// anything said on stderr.
+func runOut(t *testing.T, args ...string) string {
+	t.Helper()
+	var out, errb strings.Builder
+	if code := Run(args, &out, &errb); code != 0 || errb.Len() != 0 {
+		t.Fatalf("abcd %s exited %d:\n%s%s", strings.Join(args, " "), code, out.String(), errb.String())
+	}
+	return out.String()
+}
+
+// The same at the commands themselves: `abcd implement status`, with --run too, prints
+// the drive's line above the runs, and the board's facilitator view as its drive: row,
+// byte for byte the line the drive's terminal printed for the stored value, which each
+// --json carries under drive; the product thinker's view shows the word alone.
+func TestTheStatusCommandAndTheBareBoardPrintTheDrivesLine(t *testing.T) {
+	root := managedCheckout(t)
+	statusRecord(t, root)
+	writeRunState(t, root, "itd-7")
+	setBannerTTY(t, false)
+	setBoardWidth(t, 200)
+	written := stateAt(90)
+	s := loop.DriveState{Version: loop.DriveStateVersion, State: loop.DriveWaiting, Since: stateAt(41), On: "iss-1, which another driver holds",
+		Do: "end process 42 (login)", Process: thisProcess(t), Written: written, Next: written.Add(10 * time.Minute)}
+	storeDriveState(t, root, s)
+	standDriveNow(t, written)
+	var terminal string
+	driveStateLines(func(l string) { terminal = strings.TrimPrefix(l, "state: ") })(s)
+	if terminal != "waiting 49m · on iss-1, which another driver holds · you: end process 42 (login)" {
+		t.Fatalf("the terminal's line: %q", terminal)
+	}
+	for _, args := range [][]string{{"implement", "status"}, {"implement", "status", "--run", "run-2609290000000001"}} {
+		if out := runOut(t, args...); !strings.HasPrefix(out, "drive: "+terminal+"\n") {
+			t.Fatalf("abcd %s does not open on the drive's line %q:\n%s", strings.Join(args, " "), terminal, out)
+		}
+	}
+	if out := runOut(t, "--view", "facilitator"); !strings.Contains(out, "\n  drive:      "+terminal+"\n") {
+		t.Fatalf("the facilitator view's drive: row is not the drive's line %q:\n%s", terminal, out)
+	}
+	if out := runOut(t); !strings.Contains(out, "\n● building: drive waiting\n") || strings.Contains(out, "iss-1") {
+		t.Fatalf("the product view does not show the drive's word alone:\n%s", out)
+	}
+	for _, args := range [][]string{{"--json"}, {"implement", "status", "--json"}} {
+		var got struct {
+			Drive *struct {
+				Line  string          `json:"line"`
+				State loop.DriveState `json:"state"`
+			} `json:"drive"`
+		}
+		out := runOut(t, args...)
+		if err := json.Unmarshal([]byte(out), &got); err != nil || got.Drive == nil || got.Drive.Line != terminal || got.Drive.State.State != loop.DriveWaiting {
+			t.Fatalf("abcd %s --json does not carry the drive's line (%v):\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+}
+
+// With no state file the status command and the board show no drive and say nothing
+// about one on either stream (dcn-2611280725158656); with a file of a newer abcd they
+// show none and say why on stderr.
+func TestTheStatusCommandAndTheBoardOnADriveStateFileOrNone(t *testing.T) {
+	root := managedCheckout(t)
+	statusRecord(t, root)
+	setBannerTTY(t, false)
+	for _, newer := range []bool{false, true} {
+		if newer {
+			storeDriveStateBody(t, root, `{"version":99,"state":"working","written":"2026-11-25T10:10:00Z"}`)
+		}
+		for _, args := range [][]string{{}, {"--view", "facilitator"}, {"--json"}, {"implement", "status"}, {"implement", "status", "--json"}} {
+			var out, errb strings.Builder
+			if code := Run(args, &out, &errb); code != 0 {
+				t.Fatalf("abcd %s exited %d:\n%s%s", strings.Join(args, " "), code, out.String(), errb.String())
+			}
+			if strings.Contains(out.String(), `"drive"`) || strings.Contains(out.String(), "drive: ") || strings.Contains(out.String(), "building: drive") {
+				t.Fatalf("abcd %s shows a drive:\n%s", strings.Join(args, " "), out.String())
+			}
+			said := strings.Contains(errb.String(), "drive")
+			if !newer && said {
+				t.Fatalf("abcd %s says something of a drive with no state file:\n%s", strings.Join(args, " "), errb.String())
+			}
+			if newer && !strings.Contains(errb.String(), "abcd: no drive state line — "+loop.DriveStateRel+" states version 99") {
+				t.Fatalf("abcd %s does not say why a newer file shows no line:\n%s", strings.Join(args, " "), errb.String())
+			}
 		}
 	}
 }
