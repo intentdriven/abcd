@@ -400,6 +400,125 @@ Settled by the record, so no question was put:
     badge-first order, the previous-command fallback and the off switch are
     unchanged.
 
+Technical calls the session made at planning, none of which waits on the
+person's answers; a person may reverse any of them:
+
+20. **The launch writers keep a rollup the row reads.** The session's, while
+    the product thinker is away (2026-11-28): the row reads the launch ledger
+    through a per-session rollup,
+    `~/.abcd.noindex/session-work/<sha256(session)>.agents.json`, which the
+    launch writer rewrites whole at each launch's start and end; this answers
+    spc-2611050023402644's open question. The rollup is a derived cache: the
+    explanation says so, `abcd agents` stays the account, and any writer
+    rebuilds it when it disagrees with the ledger. Grounds: the status path
+    keeps its one admitted write and reads one bounded file, as
+    spc-2611251806215442's state files already do. To reverse: a product
+    ruling that admits a second write on the status path. (dcn-2611281148461313)
+21. **The pages a link opens are written off the status path.** The
+    session's, while the product thinker is away (2026-11-28): the explanation
+    page and the lanes page are written by a detached
+    `abcd hook statusline-pages`, which the prompt hook starts at most once per
+    refresh interval per session, into `~/.abcd.noindex/session-work/`. The
+    row links to a page only once it exists, and each page states when it was
+    written. This replaces decision 12's page "written under the local tier on
+    each refresh". Grounds: the status command writes nothing but the fill
+    file, and itd-2611141507299828 holds it to no new write. To reverse: a
+    product ruling that admits a write on the status path.
+    (dcn-2611281148468557)
+22. **The host's refresh interval, and nothing else.** The session's, while
+    the product thinker is away (2026-11-28): `ahoy install` writes a
+    five-second refresh interval into the harness's `statusLine` setting;
+    there is no daemon and no file watch. A person's own interval survives a
+    reinstall, uninstall restores the setting as it was, and the build pins
+    the host's key name in a test. Grounds: the host does not re-run the
+    command on a resize, and one interval covers both a resize and a quiet
+    wait. To reverse: drop the key from the install and its test.
+    (dcn-2611281148475934)
+23. **One fit engine, measured on the plain form.** The session's, while the
+    product thinker is away (2026-11-28): the front door reads `COLUMNS` as a
+    positive integer (absent, zero or not a number means no fit) and passes it
+    to core as a value; the fit measures the plain form, which carries no
+    escapes and no links; one engine, `fit.go`, works through the table's
+    detail order, then the view's element order, then the role word's short
+    form, and stops at the first fit; and `internal/textwidth` learns to count
+    a joined emoji sequence as one figure, with no new dependency, tested
+    against every emoji the table declares. Grounds: core reads no
+    environment; it is the shape spc-2611251806215442's step 3 specifies, so
+    whichever lands first builds it; a grapheme library would need sign-off.
+    To reverse: swap the measure for such a library once one is signed off.
+    (dcn-2611281148479303)
+24. **Links have bounded targets and a switch.** The session's, while the
+    product thinker is away (2026-11-28): OSC 8 links go in the coloured form
+    only; only `https://` links to the forge of the repository's `origin` and
+    `file://` links under `~/.abcd.noindex/session-work/` are admitted, each
+    passed through `termsafe`, and a link that fails keeps its text. A person
+    turns links off with `links: false` in `statusline.json`; nothing is
+    detected. Grounds: a link is bytes sent into the terminal, and a terminal
+    that does not pass OSC 8 shows the text anyway. To reverse: widen the
+    admitted set in the link code and its test. (dcn-2611281148480035)
+25. **The review count reads a kept reading.** The session's, while the
+    product thinker is away (2026-11-28): a reading per repository under
+    `~/.abcd.noindex/`, keyed as the facilitator's kept reading is, holds the
+    waiting count and the oldest drawn time for each spot-check role; the
+    spot-check writers write it, and so does the prompt hook after its fetch;
+    the row reads one file and asks git nothing. Under `auto` the
+    facilitator's count is the person's sample of abcd's own decisions.
+    Grounds: the queue lives on a git branch, and itd-2611141507299828 forbids
+    a new git question on the status path. To reverse: read the branch on the
+    status path, under a ruling that admits the git question.
+    (dcn-2611281148485635)
+26. **A block is dated by the mode file's modification time.** The session's,
+    while the product thinker is away (2026-11-28): the mode file keeps its
+    one-word format; setting the word already stored writes nothing, so its
+    age holds; a drive's block takes the drive state's stored `since`.
+    Grounds: hooks and the guard read the one-word format, and the time costs
+    one stat of a file the row already opens. It does not settle
+    iss-2609291032194222, which stays the person's. To reverse: add a time
+    line to the mode file and change every reader. (dcn-2611281148499429)
+27. **A theme setting, never detection.** The session's, while the product
+    thinker is away (2026-11-28): the row always emits 24-bit colour; the
+    person's `statusline.json` gains `theme: dark | light`, dark by default,
+    with an untuned light ramp (open question 6 sets it); text mode is the
+    fallback that always works; and every gauge ramp passes a contrast test.
+    Grounds: the payload cannot say which theme the terminal uses, and
+    `COLORFGBG` is unreliable in a process with no terminal. To reverse:
+    remove the setting and its ramp. (dcn-2611281148490880)
+28. **One `statusline` namespace, a rank per view.** The session's, while the
+    product thinker is away (2026-11-28): the table's settings sit under
+    `statusline` in the repository's `.abcd/config.json` and the machine's
+    `~/.abcd.noindex/config.json`, through `internal/core/layered`: per
+    element `visible`, `words`, `stages` and `drop` for each view, then
+    `detail_order` and `thresholds`. A drop position is a rank, so one entry
+    moves alone; each field is replaced whole. `visible: false` from any layer
+    wins, as spc-2611251806215442 rules; for every other field the repository
+    wins the machine. The bundled table is
+    `internal/core/statusline/defaults/table.json`, embedded and checked at
+    start as `internal/core/statusline/defaults/statusline.json` is. Colours,
+    text mode, theme, links and the on and off switches stay in the person's
+    `statusline.json`, and a repository file naming one is refused by name.
+    Grounds: one resolver and one replace-whole rule, as the rules layers use;
+    a rank, unlike a list, lets one entry change alone. To reverse: move a
+    field between the layers in the table's schema. (dcn-2611281148505220)
+29. **The row's code is split with itd-2611141507299828.** The session's,
+    while the product thinker is away (2026-11-28): spc-2611251806215442 owns
+    the session state files, the part frame and its three parts, the
+    pull-request watcher, the `visible` switches and the first `fit.go`; this
+    intent owns the table and its defaults, the three views, the badge rework,
+    the explanation, gauges and links, the width measure, and lifting
+    `fit.go`'s guard so every row sheds. That spec's steps 1 to 3 land first,
+    and this intent re-baselines its golden row, saying so in the pull
+    request; built first instead, this intent builds `fit.go` in that spec's
+    shape. Grounds: both edit `render.go` and `compose.go`, so one owner per
+    file keeps their steps landing one at a time. To reverse: reassign a file
+    in both specs' footprints. (dcn-2611281148506801)
+30. **The impact stays additive.** The session's, while the product thinker
+    is away (2026-11-28): the badge's plain words change (a role, and
+    `waiting` beside it, in place of `waiting on the technical facilitator`),
+    and the board relays them; the JSON state, the element keys and the off
+    switch stay as they are, and the pull request names the wording change.
+    Grounds: nothing a reader keys on changes. To reverse: mark it breaking if
+    a reader of the plain words turns up. (dcn-2611281148519955)
+
 ## Open Questions
 
 Each is shipped as a default the person tunes in use (decision 13), not a
