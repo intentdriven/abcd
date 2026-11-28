@@ -936,9 +936,11 @@ func shortOrNone(sha string) string {
 	return sha[:12]
 }
 
-// handBackAs names what stopped a handed-back lane: the verdict when the
-// fix-round cap stopped it, otherwise the kind the lane's receipt or the loop
-// recorded (a design finding, stuck, closed), and never an empty field.
+// handBackAs names what stopped a handed-back lane: its verdict when the loop
+// recorded one (unachievable at the fix-round cap, not-planned for an
+// auto-plan lane, cell-failed for a trial copy), otherwise the kind the lane's
+// receipt or the loop recorded (a design finding, stuck, closed), and never an
+// empty field.
 func handBackAs(hb *loop.HandBack) string {
 	switch {
 	case hb.Verdict != "":
@@ -949,10 +951,12 @@ func handBackAs(hb *loop.HandBack) string {
 	return "an unrecorded kind"
 }
 
-// handBackStoppedAs is handBackAs with the cap the lane ran to, which only a
-// verdict hand-back has: a kind hand-back ran no fix rounds to a cap.
+// handBackStoppedAs is handBackAs with the cap the lane ran to, which only an
+// unachievable hand-back has: a not-planned or cell-failed lane and a kind
+// hand-back never ran fix rounds to the cap. The verdict decides it, not the
+// number, since a cap of 0 is a legal cap.
 func handBackStoppedAs(hb *loop.HandBack) string {
-	if hb.Verdict == "" {
+	if hb.Verdict != loop.VerdictUnachievable {
 		return handBackAs(hb)
 	}
 	return fmt.Sprintf("%s after %d fix round(s)", handBackAs(hb), hb.FixRounds)

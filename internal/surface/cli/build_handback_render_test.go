@@ -77,3 +77,24 @@ func TestHandBackAsNamesTheKindWhenNoVerdict(t *testing.T) {
 		t.Error("a hand-back with neither a verdict nor a kind still names something")
 	}
 }
+
+// TestHandBackNamesNoCapForAVerdictTheCapDidNotSet: of the loop's three
+// verdicts only unachievable is the fix-round cap's; a lane handed back as
+// not-planned (an auto-plan lane) or cell-failed (a trial copy) never ran to
+// the cap, so neither the step line nor the record names one.
+func TestHandBackNamesNoCapForAVerdictTheCapDidNotSet(t *testing.T) {
+	for _, v := range []string{loop.HandBackNotPlanned, loop.VerdictCellFailed} {
+		hb := loop.HandBack{Verdict: v, Reason: "the plan review found the draft unready"}
+		var step, rec bytes.Buffer
+		renderStepResult(&step, "receipt", loop.StepResult{RunID: "run-1", Lane: "lane-1", HandBack: &hb, Next: "hand back"})
+		renderRunRecord(&rec, loop.RunRecord{RunID: "run-1", Lanes: []loop.RecordLane{{ID: "lane-1", HandBack: &hb}}})
+		for name, out := range map[string]string{"step": step.String(), "record": rec.String()} {
+			if !strings.Contains(out, "as "+v) {
+				t.Errorf("the %s names the verdict %q:\n%s", name, v, out)
+			}
+			if strings.Contains(out, "fix round(s)") {
+				t.Errorf("the %s names a fix-round cap a %s lane never ran to:\n%s", name, v, out)
+			}
+		}
+	}
+}

@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/build.go"
 remedy: "Name what stopped the lane (stuck, design finding, closed) whenever the verdict is empty, and never print an empty field; a test renders a hand-back with no verdict and finds a kind named."
-resolution: "The hand-back line of implement step and implement receipt, the implement record lane line and the implement status run line now name a hand-back with no verdict by its kind (design finding, stuck, closed), print the fix-round cap only for a verdict hand-back, and never leave the field empty."
+resolution: "The hand-back line of implement step and implement receipt, the implement record lane line and the implement status run line now name a hand-back with no verdict by its kind (design finding, stuck, closed), print the fix-round cap only for a lane the fix-round cap stopped (never for a not-planned or cell-failed lane), and never leave the field empty."
 impact: fix
 ---
 
