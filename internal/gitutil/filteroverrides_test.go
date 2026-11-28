@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -127,6 +128,11 @@ func TestBuiltinMergeDriverTakesOnlyOptionsThisGitAccepts(t *testing.T) {
 	} {
 		gitutil.SetGitVersionSource(t, func() (string, error) { return tc.version, tc.err })
 		got := gitutil.BuiltinMergeDriver()
+		// The deadline-bound form gives the same driver for the same git.
+		gitutil.SetGitVersionSource(t, func() (string, error) { return tc.version, tc.err })
+		if bound := gitutil.BuiltinMergeDriverContext(context.Background()); bound != got {
+			t.Errorf("%q: BuiltinMergeDriverContext %q, BuiltinMergeDriver %q", tc.version, bound, got)
+		}
 		if has := strings.Contains(got, "--diff-algorithm=histogram"); has != tc.histogram {
 			t.Errorf("%q: driver %q, want histogram=%v", tc.version, got, tc.histogram)
 		}

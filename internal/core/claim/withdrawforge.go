@@ -807,7 +807,7 @@ type ArmedMerges struct {
 	Unverified    []Withdrawal      `json:"unverified,omitempty"`
 	UnverifiedWhy string            `json:"unverified_why,omitempty"`
 	Lapsed        string            `json:"lapsed,omitempty"`
-	LapsedAt      time.Time         `json:"lapsed_at,omitempty"`
+	LapsedAt      time.Time         `json:"lapsed_at,omitzero"`
 	Lost          []LostWithdrawals `json:"lost,omitempty"`
 }
 

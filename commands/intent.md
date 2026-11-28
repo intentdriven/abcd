@@ -1489,45 +1489,79 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd intent [text] [flags]`
   - An example call is `abcd intent "let a reviewer read the board from a phone"`.
+  - What usually follows:
+    - `abcd intent plan <itd-N>`, to plan the draft.
+    - `abcd intent hold <itd-N> --reason "<text>"`, when the draft must wait on a ruling.
 - `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
   - An example call is `abcd intent audit itd-2609010000000001`.
+  - What usually follows:
+    - `abcd intent audit ingest --verdict-json <path>`, once the host has run the audit and composed its verdict.
 - `abcd intent audit ingest --verdict-json <path> [--dry-run] [flags]`
   - Reads `--verdict-json`, the intent audit verdict, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent audit ingest --input verdict-json` prints its shape.
   - An example call is `abcd intent audit ingest --verdict-json verdict.json`.
+  - What usually follows:
+    - `abcd intent condition <itd-N>`, to disposition the shipped intent's scope conditions.
 - `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
   - An example call is `abcd intent condition itd-2609010000000001`.
+  - What usually follows:
+    - `abcd intent condition <itd-N>`, to disposition the next condition.
 - `abcd intent consistency [<itd-N>] [flags]`
   - An example call is `abcd intent consistency`.
+  - What usually follows:
+    - `abcd intent consistency ingest --findings-json <path>`, once the host has returned its findings.
 - `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [--dry-run] [flags]`
   - Reads `--findings-json`, the consistency findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent consistency ingest --input findings-json` prints its shape.
   - An example call is `abcd intent consistency ingest --findings-json findings.json`.
+  - What usually follows:
+    - `abcd capture list --open`, to see the captures the findings filed.
 - `abcd intent edge <itd-N> [--blocked-by <itd-M,...>] [--unblock <itd-M,...>] [--builds-on <itd-M,...>] [--drop-builds-on <itd-M,...>] [flags]`
   - An example call is `abcd intent edge itd-2609010000000001 --blocked-by itd-2609010000000002`.
+  - What usually follows:
+    - `abcd intent ready <itd-N>`, to see whether the intent is ready with its new edges.
 - `abcd intent hold <itd-N> --reason "<text>" [flags]`
   - An example call is `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`.
+  - What usually follows:
+    - `abcd intent unhold <itd-N>`, once the ruling the hold waits on is made.
 - `abcd intent interview <itd-N> [--answers <file>] [--answered-in <place>] [flags]`
   - Reads `--answers`, the interview answers.
   - An example call is `abcd intent interview itd-2609010000000001`.
+  - What usually follows:
+    - `abcd intent ready <itd-N>`, to see whether the intent is ready once the interview is answered.
 - `abcd intent link <itd-N> <spc-N> [flags]`
   - An example call is `abcd intent link itd-2609010000000001 spc-2609010000000002`.
+  - What usually follows:
+    - `abcd intent ready <itd-N>`, to see whether the intent is ready to implement.
 - `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>] [flags]`
   - An example call is `abcd intent plan itd-2609010000000001`.
+  - What usually follows:
+    - `abcd intent interview <itd-N>`, to run the intent's planning interview.
+    - `abcd intent ready <itd-N>`, to see whether the planned intent is ready.
 - `abcd intent prepass <itd-N> [--findings-json <path> [--dry-run]] [flags]`
   - Reads `--findings-json`, the pre-pass findings, at schema_version 1; `"${CLAUDE_PLUGIN_ROOT}/abcd" explain intent prepass --input findings-json` prints its shape.
   - An example call is `abcd intent prepass itd-2609010000000001 --json`.
+  - What usually follows:
+    - `abcd intent plan <itd-N>`, once the planning brief is written.
 - `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
   - An example call is `abcd intent ready itd-2609010000000001`.
+  - What usually follows:
+    - `abcd build <itd-N>`, when it reports the intent ready.
 - `abcd intent reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason "<why>"> [flags]`
   - An example call is `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`.
+  - What usually follows:
+    - `abcd intent`, to see the intent store with the change.
 - `abcd intent target <itd-N> <vX.Y.Z|next> [flags]`
   - An example call is `abcd intent target itd-2609010000000001 v0.11.0`.
+  - What usually follows:
+    - `abcd intent ready <itd-N>`, to see whether the intent is ready for its release.
 - `abcd intent unhold <itd-N> [flags]`
   - An example call is `abcd intent unhold itd-2609010000000001`.
+  - What usually follows:
+    - `abcd intent plan <itd-N>`, to plan the intent the hold kept back.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

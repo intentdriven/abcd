@@ -159,8 +159,9 @@ Who merges is decided by `facilitator.mode`
 loop ask one merge gate before arming anything; the guard holds the same line
 on the commands themselves, so a path that never asks the gate is still
 stopped. The guard reads the mode as the gate does: the default
-branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
-`human` in either winning, never the working tree's copy. It reads the default
+branch's committed `.abcd/config.json`, which decides, and only where it
+commits none `~/.abcd.noindex/config.json` (adr-2611262044127943), never the
+working tree's copy. It reads the default
 branch as origin names it and only after fetching it, never from the refs this
 checkout holds, which an agent can move (`git remote set-head`,
 `git update-ref`), within about 15 seconds. A mode that cannot be read, an origin
@@ -248,8 +249,16 @@ REST review route whose `event` field is `APPROVE`, or whose event or body the
 line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
 is not refused, whatever its filter names. A review
-that comments or requests changes is not refused. The five merge ids,
-the seven any-program ids, `implement-stop-store-write` and `forge-review-approve` are reserved, so a
+that comments or requests changes is not refused. Setting the facilitator's
+mode is the person's act, done by hand today since no abcd verb sets it yet:
+an agent's run of the verb itd-2611252049031692 plans, `abcd facilitator
+auto|human`, is a **block** (`abcd-facilitator-auto`, `abcd-facilitator-human`,
+and under any other program name `abcd-facilitator-auto-any-program` and
+`abcd-facilitator-human-any-program`), and so is a shell line or a host file
+tool that writes, moves or removes `~/.abcd.noindex/config.json`
+(`facilitator-store-write`); each says how the person sets it by hand. The
+five merge ids, the nine any-program ids, `implement-stop-store-write`,
+`facilitator-store-write` and `forge-review-approve` are reserved, so a
 repository's `.abcd/guard.json` cannot declare an entry under them.
 
 The guard holds against an agent merging or approving by mistake, not against

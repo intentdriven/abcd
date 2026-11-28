@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -166,11 +167,19 @@ func probeIdentity(ctx context.Context, repoRoot string) Identity {
 	}
 	if remote = strings.TrimSpace(remote); remote != "" {
 		id.GitRemoteUsername = parseGitHubRemote(remote)
+		// An owner that is not valid UTF-8 fails the strict parse; it is kept
+		// as written so identityNotUTF8 refuses it rather than the owner going
+		// unmatched.
+		if m := githubOwnerRawRe.FindStringSubmatch(remote); id.GitRemoteUsername == "" && m != nil && !utf8.ValidString(m[1]) {
+			id.GitRemoteUsername = m[1]
+		}
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
-		if i := strings.LastIndex(id.HomePath, "/"); i >= 0 {
-			id.HomeUser = id.HomePath[i+1:]
+		// The user is the last segment of the home cleaned, so a HOME written
+		// "/Users/me/." still names "me" (iss-2609290055092630). abcd-lint:allow
+		if names := callerUserNames(home); len(names) > 0 && strings.Contains(home, "/") {
+			id.HomeUser = names[0]
 		}
 	}
 	return id
@@ -312,15 +321,55 @@ func containsFold(list []string, v string) bool {
 	return false
 }
 
+// identityNotUTF8 names the setting that holds an identity value that is not
+// valid UTF-8, or is "" when every value is valid. It never carries the value.
+func identityNotUTF8(id Identity) string {
+	allValid := func(vs []string) bool {
+		for _, v := range vs {
+			if !utf8.ValidString(v) {
+				return false
+			}
+		}
+		return true
+	}
+	var setting string
+	switch {
+	case !utf8.ValidString(id.GitUserName):
+		setting = "git config user.name"
+	case !allValid(id.OtherGitUserNames):
+		setting = "a git user.name, author.name or committer.name value in another config scope, " +
+			"or GIT_AUTHOR_NAME or GIT_COMMITTER_NAME"
+	case !utf8.ValidString(id.GitUserEmail):
+		setting = "git config user.email"
+	case !allValid(id.OtherGitUserEmails):
+		setting = "a git user.email, author.email or committer.email value in another config scope, " +
+			"or GIT_AUTHOR_EMAIL or GIT_COMMITTER_EMAIL"
+	case !utf8.ValidString(id.GitRemoteUsername):
+		setting = "the owner in git config remote.origin.url"
+	case !utf8.ValidString(id.HomeUser):
+		setting = "the home folder's name"
+	default:
+		return ""
+	}
+	return setting
+}
+
 // foldedAlternation compiles values into one case-insensitive literal
 // alternation. The (?i) is what every identity matcher already carried; the
-// alternation is what lets one matcher stand for every scope's value.
+// alternation is what lets one matcher stand for every scope's value. Each
+// value is matched in both Unicode normal forms. A value that is not valid
+// UTF-8 is left out (literalAlternation), and the scanner refuses every store
+// write while one is set (identityNotUTF8). It is nil when no form is left.
 func foldedAlternation(values []string) *regexp.Regexp {
-	quoted := make([]string, len(values))
-	for i, v := range values {
-		quoted[i] = regexp.QuoteMeta(v)
+	var forms []string
+	for _, v := range values {
+		for _, f := range normalForms(v) {
+			if !slices.Contains(forms, f) {
+				forms = append(forms, f)
+			}
+		}
 	}
-	return regexp.MustCompile(`(?i)(?:` + strings.Join(quoted, `|`) + `)`)
+	return literalAlternation(forms)
 }
 
 // isPublicHandle reports whether a git user.name is the caller's public GitHub
@@ -358,6 +407,9 @@ var (
 	// on the host: git stores the remote verbatim, so a hand-typed GitHub.com
 	// must still resolve the handle, or github_username redaction never arms.
 	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]*)`)
+	// githubOwnerRawRe takes the owner segment whatever its bytes, for the
+	// probe's UTF-8 check alone.
+	githubOwnerRawRe = regexp.MustCompile(`(?i)github\.com[:/]([^/]+)/`)
 	// Generic home path. Both boundaries are Go predicates: a leading RE2 \b is
 	// wrong here — it is an ASCII word boundary that requires a WORD character
 	// immediately before the '/', which never holds at line start or after a
@@ -596,7 +648,7 @@ type identityMatchers struct {
 	name         *regexp.Regexp // every scope's user.name that is not a public handle
 	github       *regexp.Regexp
 	localBare    *regexp.Regexp
-	localEncoded string // path-encoded username (dots->hyphens); boundary checked in Go
+	localEncoded []string // path-encoded username (dots->hyphens) in both normal forms; boundary checked in Go
 	// localGeneric says the account name identifies no person — a role or
 	// image default ("dev", "runner", "root") or a one- or two-rune name — so
 	// the bare word is ordinary vocabulary and only an occurrence where an
@@ -615,7 +667,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// cased spelling of the caller's own home path resolves to the SAME directory,
 		// so a case variant must still trip the hard_fail home_path_self gate — matching
 		// the (?i) already applied to the email/name/github matchers below.
-		m.homeSelf = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomePath))
+		m.homeSelf = homeSelfPattern(id.HomePath)
 	}
 	var emails []string
 	for _, e := range identityValues(id.GitUserEmail, id.OtherGitUserEmails) {
@@ -656,7 +708,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 	if id.GitRemoteUsername != "" {
 		// GitHub usernames are case-insensitive; \b dropped for the same
 		// Unicode-boundary reason as real_name (see above).
-		m.github = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.GitRemoteUsername))
+		m.github = foldedAlternation([]string{id.GitRemoteUsername})
 	}
 	if id.HomeUser != "" {
 		// Case-insensitive, for the same reason homeSelf is (above): HomeUser is
@@ -664,13 +716,19 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// a case variant of the login (the natural prose spelling in a transcript)
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
-		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
+		//
+		// Both Unicode normal forms are matched, the bare login and its
+		// path-encoded form alike: a non-ASCII login typed composed reaches a
+		// transcript decomposed as often as not. A name that is not valid UTF-8
+		// has no matcher, and the scanner refuses every store write while it is
+		// set (identityNotUTF8).
+		m.localBare = foldedAlternation([]string{id.HomeUser})
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
 			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
 		}
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
-			m.localEncoded = enc
+			m.localEncoded = normalForms(enc)
 		}
 	}
 	return m
@@ -869,7 +927,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
-			stands := homeSweepable(line, loc[0], loc[1], urls)
+			stands := homeSelfSweepable(line, loc[0], loc[1], urls)
 			if m.bytes {
 				// A raw blob has no path syntax on either side of the
 				// literal, so neither half of the anchor applies: the
@@ -1011,8 +1069,8 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			emit(loc)
 		}
-		if m.localEncoded != "" {
-			for _, loc := range encodedMatches(line, m.localEncoded) {
+		for _, enc := range m.localEncoded {
+			for _, loc := range encodedMatches(line, enc) {
 				emit(loc)
 			}
 		}
@@ -1441,11 +1499,62 @@ func isHomeSegmentByte(b byte) bool {
 func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 	scanMeter.charge(stageIdentity, len(matched))
 	for _, loc := range homeSelf.FindAllStringIndex(matched, -1) {
+		if fsutil.EndsInDotSegment(matched[loc[0]:loc[1]]) && loc[1] < len(matched) &&
+			matched[loc[1]] != '/' && isPathSegmentByte(matched[loc[1]]) {
+			continue
+		}
 		if homeStandsAsPath(matched, loc[0], loc[1]) {
 			return true
 		}
 	}
 	return false
+}
+
+// homeSelfPattern matches the caller's home in every spelling the literal
+// sweep reads (callerHomeSpellings), case-insensitively. The alternatives are
+// tried longest first, so at one byte the longer spelling wins, save that a
+// spelling ending in a dot segment comes after every other: it stands as a path
+// in fewer places (homeSelfSweepable), and where the cleaned spelling also
+// starts there, the cleaned one is the match that stands. RE2 keeps the match
+// linear in the line, whatever the number of spellings. It is nil when no
+// spelling can be held in a pattern (literalAlternation).
+func homeSelfPattern(home string) *regexp.Regexp {
+	spellings := append([]string(nil), callerHomeSpellings(home)...)
+	sort.SliceStable(spellings, func(i, j int) bool {
+		di, dj := fsutil.EndsInDotSegment(spellings[i]), fsutil.EndsInDotSegment(spellings[j])
+		if di != dj {
+			return !di
+		}
+		return len(spellings[i]) > len(spellings[j])
+	})
+	return literalAlternation(spellings)
+}
+
+// literalAlternation is a case-insensitive pattern matching any of literals,
+// tried in the order given, or nil when none is left. A literal that is not
+// valid UTF-8 — a home or a symlink target holding a Latin-1 byte — cannot be
+// held in a regular expression and is left out rather than panic; the literal
+// sweep, which compares bytes, still removes it (SweepCallerHome).
+func literalAlternation(literals []string) *regexp.Regexp {
+	var quoted []string
+	for _, l := range literals {
+		if l != "" && utf8.ValidString(l) {
+			quoted = append(quoted, regexp.QuoteMeta(l))
+		}
+	}
+	if len(quoted) == 0 {
+		return nil
+	}
+	return regexp.MustCompile(`(?i)(?:` + strings.Join(quoted, "|") + `)`)
+}
+
+// homeSelfSweepable is homeSweepable for a home_path_self match, with a
+// spelling that ends in a dot segment held to dotSegmentHomeSweepable.
+func homeSelfSweepable(line string, at, end int, urls urlSet) bool {
+	if fsutil.EndsInDotSegment(line[at:end]) {
+		return dotSegmentHomeSweepable(line, at, end, urls)
+	}
+	return homeSweepable(line, at, end, urls)
 }
 
 // localSuppressionSpans returns spans where a local-username match is not a
@@ -1461,7 +1570,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls urlSet) []span
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
-			if !homeSweepable(line, loc[0], loc[1], urls) {
+			if !homeSelfSweepable(line, loc[0], loc[1], urls) {
 				continue // not reported as the home, so it must not suppress the username either
 			}
 			spans = append(spans, span{loc[0], loc[1]})
@@ -1712,14 +1821,18 @@ func leadingBoundaryOK(line string, start int) bool {
 	return !isPathSegmentByte(line[start-1])
 }
 
-// isWordRune reports whether r is a Unicode word rune (letter, digit, or '_') —
+// isWordRune reports whether r is a Unicode word rune (letter, digit, mark or '_') —
 // the class RE2's ASCII-only \b cannot see for non-ASCII letters. It bounds
 // the bare-token matchers (local_username, github_username, real_name), where
 // '_' continues a word so "me" does not fire inside "me_2"; the home-path
 // anchor uses nameContinues instead, where '_' is a boundary, because a
 // suffix after the caller's home is still the caller's home.
+//
+// A combining mark continues the word it follows: a name in its decomposed
+// form (NFD, "cafe" then U+0301) ends on the mark, and reading the mark as a
+// boundary put none after the name, so the decomposed name was never matched.
 func isWordRune(r rune) bool {
-	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
 // wordBoundaryAt reports whether a Unicode word boundary falls at byte offset pos

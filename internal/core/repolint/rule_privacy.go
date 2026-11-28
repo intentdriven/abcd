@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -146,7 +148,10 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 	// canonical set means the degraded-config path below cannot silently drop
 	// them.
 	leakPatterns := scanner.HarnessLeakPatterns()
-	if degraded, reason := sc.Unavailable(); degraded {
+	// PatternsUnavailable, not Unavailable: this rule reads the network
+	// patterns and no identity, so an identity value no pattern can match is
+	// no degradation of its.
+	if degraded, reason := sc.PatternsUnavailable(); degraded {
 		out = append(out, Finding{
 			RuleID:   "privacy-hygiene",
 			Severity: SeverityError,
@@ -175,7 +180,7 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 			Fix:      "install it, or set enabled to false in " + augmenterConfigRel,
 		})
 	}
-	degradedBefore, _ := sc.Unavailable()
+	degradedBefore, _ := sc.PatternsUnavailable()
 
 	for _, rel := range tracked {
 		data, ok, oversizeText, openErr := readTrackedFile(root, filepath.FromSlash(rel))
@@ -249,7 +254,7 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 	// A run of the augmenter that failed during the walk degraded the scanner:
 	// the files after it were not scanned with it, so it is reported rather than
 	// read as a clean pass.
-	if bad, why := sc.Unavailable(); bad && !degradedBefore {
+	if bad, why := sc.PatternsUnavailable(); bad && !degradedBefore {
 		out = append(out, Finding{
 			RuleID:   "privacy-hygiene",
 			Severity: SeverityError,
@@ -440,11 +445,15 @@ func isPersonaHomeSegment(seg string) bool {
 		return false
 	}
 	home := scanner.CallerHome()
+	// The user is the last segment of the home cleaned, so a HOME written
+	// with a trailing dot segment or a doubled slash still names its user,
+	// compared in one Unicode normal form (iss-2609290055092630).
+	home = strings.TrimRight(filepath.ToSlash(filepath.Clean(home)), "/")
 	i := strings.LastIndexAny(home, `/\`)
 	if i < 0 {
 		return true
 	}
-	return !strings.EqualFold(home[i+1:], seg)
+	return !strings.EqualFold(norm.NFC.String(home[i+1:]), norm.NFC.String(seg))
 }
 
 // reachedNameViaTraversal reports whether a NAME-BEARING path segment follows the

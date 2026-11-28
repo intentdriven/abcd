@@ -310,19 +310,29 @@ declares last reported it, once it is ready: run that path in place of the
 plugin-root binary, and the plugin-root binary while it prints nothing.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lint` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain lint` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd lint [flags]`
   - An example call is `abcd lint`.
+  - What usually follows:
+    - `abcd lint docs`, to read the docs findings alone.
+    - `abcd land`, once nothing is left to fix.
 - `abcd lint docs [flags]`
   - An example call is `abcd lint docs`.
+  - What usually follows:
+    - `abcd docs cite refresh`, when a citation finding names a stale baseline.
 - `abcd lint identity [flags]`
   - An example call is `abcd lint identity`.
+  - What usually follows:
+    - `abcd identity render`, to see the correction for a drifted surface.
 - `abcd lint outbound [FILE] [flags]`
   - An example call is `abcd lint outbound pr-body.md`.
+  - Nothing usually follows: a clean text is posted where it was written for; no abcd command follows it.
 - `abcd lint site [flags]`
   - An example call is `abcd lint site`.
+  - What usually follows:
+    - `abcd site build`, to render the website again after a fix.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

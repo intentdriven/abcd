@@ -100,6 +100,18 @@ var personActs = []personAct{
 		successor: "Leave this one to the person: tell them what the folder is for and let them run `abcd ahoy shared-folder <folder>` themselves, in each account.",
 	},
 	{
+		id: facilitatorAutoAnyEntryID, entry: "abcd-facilitator-auto", family: "facilitator",
+		verbs: []string{"facilitator", "auto"}, adjacent: true,
+		why:       facilitatorAutoWhy,
+		successor: facilitatorSuccessor,
+	},
+	{
+		id: facilitatorHumanAnyEntryID, entry: "abcd-facilitator-human", family: "facilitator",
+		verbs: []string{"facilitator", "human"}, adjacent: true,
+		why:       facilitatorHumanWhy,
+		successor: facilitatorSuccessor,
+	},
+	{
 		id: updateTagAnyEntryID, entry: "abcd-update-tag", family: "update",
 		verbs: []string{"update"}, tag: true,
 		why:       "Choosing which release of abcd this computer runs is the person's own act: `abcd update` with a tag installs the release the tag names, so a tag an agent names is a choice no person made.",

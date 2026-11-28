@@ -60,7 +60,7 @@ func receiptPath(cwd, p string) string {
 	}
 	p = fsutil.RedactRoot(p, cwd, ".")
 	if homeErr == nil {
-		p = fsutil.RedactRoot(p, home, "~")
+		p = fsutil.RedactHomeAt(p, home)
 	}
 	return p
 }

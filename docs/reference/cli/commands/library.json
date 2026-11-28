@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd library",
@@ -24,6 +24,16 @@
         "ledger",
         "lint",
         "sync-banlist"
+      ],
+      "next": [
+        {
+          "command": "abcd library ask \"<question>\"",
+          "when": "to query the memory store"
+        },
+        {
+          "command": "abcd library add <document>",
+          "when": "to register a new source"
+        }
       ]
     },
     {
@@ -100,7 +110,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd library add article.md --public --key example-paper-2026 --title \"Example Widgets in Practice\""
+      "example": "abcd library add article.md --public --key example-paper-2026 --title \"Example Widgets in Practice\"",
+      "next": [
+        {
+          "command": "abcd library ingest <path-or-https-url>",
+          "when": "to distil the source into cited memory pages"
+        }
+      ]
     },
     {
       "path": "abcd library ask",
@@ -133,7 +149,8 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd library ask \"why do record ids carry a timestamp?\""
+      "example": "abcd library ask \"why do record ids carry a timestamp?\"",
+      "no_next": "the cited answer is the result; nothing usually follows"
     },
     {
       "path": "abcd library cite-check",
@@ -141,7 +158,13 @@
       "usage": "abcd library cite-check <file|-> [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd library cite-check draft.md"
+      "example": "abcd library cite-check draft.md",
+      "next": [
+        {
+          "command": "abcd library declassify <key>",
+          "when": "for a hit on a confidential source that is now published"
+        }
+      ]
     },
     {
       "path": "abcd library declassify",
@@ -161,7 +184,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd library declassify example-paper-2026"
+      "example": "abcd library declassify example-paper-2026",
+      "next": [
+        {
+          "command": "abcd library sync-banlist",
+          "when": "to project the remaining confidential titles into the banlist"
+        }
+      ]
     },
     {
       "path": "abcd library ingest",
@@ -190,7 +219,13 @@
           "version_in": "none"
         }
       ],
-      "example": "abcd library ingest https://example.com/article.html"
+      "example": "abcd library ingest https://example.com/article.html",
+      "next": [
+        {
+          "command": "abcd library lint",
+          "when": "to health-check the memory store with the new pages"
+        }
+      ]
     },
     {
       "path": "abcd library init",
@@ -198,7 +233,13 @@
       "usage": "abcd library init [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd library init"
+      "example": "abcd library init",
+      "next": [
+        {
+          "command": "abcd library add <document>",
+          "when": "to register the corpus's first source"
+        }
+      ]
     },
     {
       "path": "abcd library ledger",
@@ -253,7 +294,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd library ledger --list"
+      "example": "abcd library ledger --list",
+      "next": [
+        {
+          "command": "abcd library ledger --list",
+          "when": "to see the ledger's lines"
+        }
+      ]
     },
     {
       "path": "abcd library lint",
@@ -261,7 +308,13 @@
       "usage": "abcd library lint [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd library lint"
+      "example": "abcd library lint",
+      "next": [
+        {
+          "command": "abcd library ingest <path-or-https-url>",
+          "when": "to fill a gap the check names"
+        }
+      ]
     },
     {
       "path": "abcd library sync-banlist",
@@ -274,7 +327,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd library sync-banlist"
+      "example": "abcd library sync-banlist",
+      "next": [
+        {
+          "command": "abcd banlist list --private",
+          "when": "to see the projected entries by key"
+        }
+      ]
     }
   ]
 }

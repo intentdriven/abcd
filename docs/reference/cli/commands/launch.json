@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd launch",
@@ -32,6 +32,16 @@
         "reland",
         "scaffold",
         "ship"
+      ],
+      "next": [
+        {
+          "command": "abcd launch ship --dry-run",
+          "when": "to preview the release cut alone"
+        },
+        {
+          "command": "abcd launch ship",
+          "when": "once the preview and the gates are clean, to cut the release"
+        }
       ]
     },
     {
@@ -57,7 +67,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd launch archive --out dist"
+      "example": "abcd launch archive --out dist",
+      "no_next": "the archive is written for the release job; nothing usually follows"
     },
     {
       "path": "abcd launch manifests",
@@ -78,7 +89,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd launch manifests --tree public"
+      "example": "abcd launch manifests --tree public",
+      "next": [
+        {
+          "command": "abcd launch --dry-run",
+          "when": "to preview the rest of the release gates"
+        }
+      ]
     },
     {
       "path": "abcd launch receipts",
@@ -86,7 +103,13 @@
       "usage": "abcd launch receipts [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd launch receipts"
+      "example": "abcd launch receipts",
+      "next": [
+        {
+          "command": "abcd launch --dry-run",
+          "when": "to preview the rest of the release gates"
+        }
+      ]
     },
     {
       "path": "abcd launch reland",
@@ -99,7 +122,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd launch reland 1618"
+      "example": "abcd launch reland 1618",
+      "next": [
+        {
+          "command": "abcd land",
+          "when": "to push the relanded bump and queue its pull request"
+        }
+      ]
     },
     {
       "path": "abcd launch scaffold",
@@ -116,7 +145,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd launch scaffold"
+      "example": "abcd launch scaffold",
+      "next": [
+        {
+          "command": "abcd launch scaffold --confirm",
+          "when": "only when the person says yes to what a practice run listed"
+        },
+        {
+          "command": "abcd launch --dry-run",
+          "when": "to preview the release gates it scaffolded"
+        }
+      ]
     },
     {
       "path": "abcd launch ship",
@@ -164,7 +203,17 @@
           "version_in": "schema_version"
         }
       ],
-      "example": "abcd launch ship --dry-run"
+      "example": "abcd launch ship --dry-run",
+      "next": [
+        {
+          "command": "abcd launch ship",
+          "when": "after a --dry-run, to cut the release"
+        },
+        {
+          "command": "abcd reflect <release-tag>",
+          "when": "once the release is cut, to open its retrospective"
+        }
+      ]
     }
   ]
 }

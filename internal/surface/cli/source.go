@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -465,6 +466,16 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			"names it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// A --flip given is told apart from one absent by the flag's own
+			// state, not by its value: 0 is the absent default, so --flip 0
+			// read as no flip and fell through to the bare append's refusal
+			// (iss-2611271406524430). A line number is 1 or more; the value
+			// typed is not repeated.
+			flipGiven := cmd.Flags().Changed("flip")
+			if flipGiven && flip < 1 {
+				return &exitError{Code: 2, Msg: "abcd library ledger: --flip takes a ledger line number, 1 or more — nothing written; " +
+					"--list prints the ledger, numbered"}
+			}
 			dir, err := sourceCorpusDir(*corpusFlag)
 			if err != nil {
 				return err
@@ -496,7 +507,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 							termsafe.Sanitize(l.Record.DecisionRef), termsafe.Sanitize(l.Record.Claim), mark)
 					}
 				})
-			case flip != 0:
+			case flipGiven:
 				res, err := source.Flip(dir, r, flip, time.Now())
 				if err != nil {
 					return sourceError("ledger", dir, err)
@@ -508,6 +519,16 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 			res, err := source.Append(source.AppendRequest{Corpus: dir, Repo: r, DecisionRef: decision, Claim: claim,
 				SourceKey: key, Locator: locator, Influence: influence, UsedIn: usedIn, Corrects: corrects, Now: time.Now()})
 			if err != nil {
+				// The bare form had nothing to append, so the record's refusal is
+				// swapped for where the read is, rather than the first field
+				// Append found missing (iss-2611040712366155). Every other
+				// refusal, the absent corpus's exit 3 among them, stands.
+				bare := !slices.ContainsFunc([]string{"decision", "claim", "source", "locator", "influence", "used-in", "corrects"},
+					cmd.Flags().Changed)
+				if bare && errors.Is(err, source.ErrInvalidLedger) {
+					return &exitError{Code: 2, Msg: "abcd library ledger: nothing to append — nothing written; " +
+						"--list prints the ledger, and an append names --decision, --claim, --source and --influence"}
+				}
 				return sourceError("ledger", dir, err)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {

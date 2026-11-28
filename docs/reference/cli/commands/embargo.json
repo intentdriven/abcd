@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd embargo",
@@ -16,6 +16,16 @@
         "publish",
         "queue",
         "triage"
+      ],
+      "next": [
+        {
+          "command": "abcd embargo intake",
+          "when": "to take new private advisories into the embargo store"
+        },
+        {
+          "command": "abcd embargo publish",
+          "when": "to see the publication plan for those ready"
+        }
       ]
     },
     {
@@ -37,7 +47,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embargo check --range v0.11.0..HEAD"
+      "example": "abcd embargo check --range v0.11.0..HEAD",
+      "next": [
+        {
+          "command": "abcd land",
+          "when": "when nothing in the range discloses an advisory under embargo"
+        }
+      ]
     },
     {
       "path": "abcd embargo close",
@@ -50,7 +66,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embargo close GHSA-xxxx-xxxx-xxxx"
+      "example": "abcd embargo close GHSA-xxxx-xxxx-xxxx",
+      "next": [
+        {
+          "command": "abcd embargo",
+          "when": "to see the advisories still under embargo"
+        }
+      ]
     },
     {
       "path": "abcd embargo fixed",
@@ -63,7 +85,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc"
+      "example": "abcd embargo fixed GHSA-xxxx-xxxx-xxxx 0123abc",
+      "next": [
+        {
+          "command": "abcd embargo publish",
+          "when": "to see the publication plan the fix makes ready"
+        }
+      ]
     },
     {
       "path": "abcd embargo intake",
@@ -71,7 +99,13 @@
       "usage": "abcd embargo intake [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd embargo intake"
+      "example": "abcd embargo intake",
+      "next": [
+        {
+          "command": "abcd embargo triage <GHSA-id> <verdict>",
+          "when": "to record a verdict on an advisory taken in"
+        }
+      ]
     },
     {
       "path": "abcd embargo publish",
@@ -88,7 +122,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embargo publish"
+      "example": "abcd embargo publish",
+      "next": [
+        {
+          "command": "abcd embargo close <GHSA-id>",
+          "when": "to close an advisory once it is published"
+        }
+      ]
     },
     {
       "path": "abcd embargo queue",
@@ -96,7 +136,13 @@
       "usage": "abcd embargo queue [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd embargo queue"
+      "example": "abcd embargo queue",
+      "next": [
+        {
+          "command": "abcd mode back",
+          "when": "only when the person says yes, once they are back, to print what was queued"
+        }
+      ]
     },
     {
       "path": "abcd embargo triage",
@@ -121,7 +167,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by \"<who decided>\" --reason \"the behaviour is the documented one\""
+      "example": "abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by \"<who decided>\" --reason \"the behaviour is the documented one\"",
+      "next": [
+        {
+          "command": "abcd embargo fixed <GHSA-id> <commit>",
+          "when": "once the commits that fix the advisory exist"
+        }
+      ]
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd decide",
@@ -12,7 +12,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd decide \"Decisions are one flat file each\""
+      "example": "abcd decide \"Decisions are one flat file each\"",
+      "next": [
+        {
+          "command": "abcd decide \"<text>\"",
+          "when": "to record the next decision"
+        },
+        {
+          "command": "abcd decide --adr \"<title>\"",
+          "when": "when a decision shapes the architecture and should be an ADR"
+        }
+      ]
     }
   ]
 }

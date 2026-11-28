@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,16 +60,69 @@ var spawnScheduledRefresh = func(dir string) error {
 }
 
 // startDueRefresh starts the refresh the block n asked for, when the hook's deadline
-// leaves room: stamped first, so a refresh that cannot be stamped is not started on
-// every prompt.
-func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) {
-	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) || n.StampRefresh(now) != nil {
-		return
+// leaves room, and answers the block to show: stamped first, so a refresh that
+// cannot be stamped is not started on every prompt. A stamp that cannot be kept,
+// from a full disk or a changed mode, adds a line to the block itself, since the
+// hook's stderr reaches only the host's debug log and a kept green past due would
+// otherwise say nothing for up to 48 hours: no stamp newer than the answer is kept
+// for the read to call a refresh that kept nothing (iss-2611051719396028). The
+// stderr line stays, for the operator. A store that stays unwritable shows the line
+// on every due prompt, since no stamp starts the cooldown.
+func startDueRefresh(cmd *cobra.Command, n claim.Notes, root string, now, deadline time.Time) claim.Notes {
+	if time.Now().After(deadline.Add(-scheduledSpawnMargin)) {
+		return n
+	}
+	if err := n.StampRefresh(now); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run was not started: its stamp could not be kept (%s)\n", stderrReason(err))
+		n.Text = withStatusLine(n.Text, termsafe.SanitizeLine("the background refresh of the scheduled run could not be started: its stamp could not be kept ("+unstampedWords(err)+"), so no kept answer is renewed; `abcd status` asks now"))
+		return n
 	}
 	if err := spawnScheduledRefresh(root); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run could not be started (%s)\n",
-			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: the background refresh of the scheduled run could not be started (%s)\n", stderrReason(err))
 	}
+	return n
+}
+
+// stderrReason is err as the operator's stderr line says it: home-redacted and
+// masked for one line, U+2028 and U+2029 included.
+func stderrReason(err error) string {
+	return termsafe.SanitizeLine(fsutil.RedactHome(err.Error()))
+}
+
+// unstampedWords is why a stamp could not be kept, in fixed words chosen by the
+// error's class. The block an agent reads never carries the error's own text,
+// which can be a refusal written for a person (a command to run, a link to
+// replace) and may stand in a block with no line saying it is not an instruction;
+// stderr carries the full reason, home-redacted.
+func unstampedWords(err error) string {
+	var link *fsutil.HomeScopeLinkError
+	var exposed *fsutil.HomeScopeExposedError
+	switch {
+	case errors.As(err, &link):
+		return "a link in the store's path is refused"
+	case errors.As(err, &exposed):
+		return "a folder of the store is open to another account"
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return "the disk is full"
+	case errors.Is(err, fsutil.ErrNotRealDir):
+		return "something that is not a folder stands in the store's path"
+	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EROFS):
+		return "the store cannot be written by this account"
+	}
+	return "the store could not be written"
+}
+
+// withStatusLine is the STATUS block text with line added: as a block of its own
+// when there is none, among the block's lines when it ends as a rendered block
+// does, and after it otherwise.
+func withStatusLine(text, line string) string {
+	switch {
+	case text == "":
+		return claim.NotesHeading + "\n\n" + line + "\n"
+	case strings.HasSuffix(text, "\n"+claim.GrantsNothing+"\n"):
+		return strings.TrimSuffix(text, claim.GrantsNothing+"\n") + "- " + line + "\n" + claim.GrantsNothing + "\n"
+	}
+	return strings.TrimRight(text, "\n") + "\n\n" + line + "\n"
 }
 
 func newScheduledRefreshCommand() *cobra.Command {

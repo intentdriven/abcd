@@ -531,8 +531,8 @@ func TestTheDrainsCountReadsOnlyTheSavedDefault(t *testing.T) {
 	w.ceilingOnMain(`{"reservation": {"max_live": 4}}`)
 	acted := w.clone("1234+octo@users.noreply.github.com", t.TempDir())
 	reserveN(t, acted, 1)
-	if n, err := MaxLiveFor(acted.dir, acted.opts()); err != nil || n != 4 {
-		t.Fatalf("after an act: %d, %v; want the repository's 4", n, err)
+	if n, layer, err := MaxLiveFor(acted.dir, acted.opts()); err != nil || n != 4 || layer != LimitRepository {
+		t.Fatalf("after an act: %d (%s), %v; want the repository's 4", n, layer, err)
 	}
 	save := func(p *participant, body string) {
 		t.Helper()
@@ -568,7 +568,7 @@ func TestTheDrainsCountReadsOnlyTheSavedDefault(t *testing.T) {
 		if b := keptOriginDefault(p.dir); b != "" {
 			t.Errorf("%s: the saved name reads %q; want none", c.name, b)
 		}
-		if n, err := MaxLiveFor(p.dir, p.opts()); !errors.Is(err, errNoKeptDefault) {
+		if n, _, err := MaxLiveFor(p.dir, p.opts()); !errors.Is(err, errNoKeptDefault) {
 			t.Errorf("%s: %d, %v; want no figure, the count left to the act", c.name, n, err)
 		}
 	}

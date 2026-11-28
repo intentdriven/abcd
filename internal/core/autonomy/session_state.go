@@ -28,7 +28,7 @@ type SessionState struct {
 	// State is working, waiting or stopped, as the last verdict left it.
 	State string `json:"state,omitempty"`
 	// NextLook is the qualifying wake's next fire time while waiting.
-	NextLook time.Time `json:"next_look,omitempty"`
+	NextLook time.Time `json:"next_look,omitzero"`
 	// Fingerprint is the owed set's at the last check (Owed.Fingerprint).
 	Fingerprint string `json:"fingerprint,omitempty"`
 	// QuestionHash is the last prose question blocked, hashed.
@@ -54,7 +54,7 @@ type SessionState struct {
 	// keep a hung run counted. A value later than now, the clock having
 	// stepped back, is moved to now, the earlier of the two
 	// (TestLiveWorkClockSteppedBack).
-	WaitingSince time.Time `json:"waiting_since,omitempty"`
+	WaitingSince time.Time `json:"waiting_since,omitzero"`
 	// ChecklistBlocked is the behind set (Behind.Fingerprint) a stop was
 	// last blocked on while away, so a set blocks once per consecutive run of
 	// stops on it; "" once the
@@ -69,7 +69,7 @@ type SessionState struct {
 	// while the away record held (NotePrompt), zero before one; for
 	// ConversationWindow after it, under the record it was typed under, the
 	// session reads as present (iss-2611260602137306, Conversing).
-	PersonPromptAt time.Time `json:"person_prompt_at,omitempty"`
+	PersonPromptAt time.Time `json:"person_prompt_at,omitzero"`
 	// CronPrompts are the hashed prompts of the session's wakes the stop
 	// checks have seen, present or away (KeepWakes), newest last and at most
 	// maxCronPrompts, so the prompt hook can tell a wake firing from the

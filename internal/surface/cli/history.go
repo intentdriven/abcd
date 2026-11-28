@@ -427,7 +427,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				res.Failed[k].Path = fsutil.RedactHome(res.Failed[k].Path)
 			}
 			res.KeepFault = fsutil.RedactHome(res.KeepFault)
-			renderErr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			// The drain streams (internal/core/surface/next.go): its report is
+			// its closing summary only when everything staged was stored, and
+			// otherwise the refusal below follows it, so it carries the next
+			// steps only then (spc-2610301431108175 step 6).
+			emit := renderFinal
+			if len(res.Failed) > 0 {
+				emit = render
+			}
+			renderErr := emit(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if len(res.Captured) == 0 && len(res.Failed) == 0 {
 					fmt.Fprintln(w, "abcd history — nothing staged; nothing to drain")
 					// A fault keeping a part is said even then: the

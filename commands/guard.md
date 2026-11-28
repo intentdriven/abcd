@@ -842,6 +842,13 @@ other program names as `abcd-implement-stop-any-program` and `abcd-ahoy-shared-f
 removals of the stop's files are refused as `implement-stop-store-write`, since removing a stop is lifting it
 (`commands/implement.md`).
 
+**Nor setting the facilitator's mode.** It is the person's act, done by hand today, since no abcd verb sets it
+yet: a run of the verb itd-2611252049031692 plans, under abcd's name with `auto` or `human`, is refused as `abcd-facilitator-auto` and
+`abcd-facilitator-human`, and under other program names as `abcd-facilitator-auto-any-program` and
+`abcd-facilitator-human-any-program`. A shell line or a file tool that writes, moves or removes
+`~/.abcd.noindex/config.json` is refused as `facilitator-store-write`. Each says how the person sets
+`facilitator.mode` by hand (`commands/land.md`).
+
 **Nor `abcd update` with a release tag.** Choosing a release by its tag is the person's act: refused as
 `abcd-update-tag`, and under another program name that carries abcd's (`scripts/abcd.sh`, a cross-compiled
 build, a `go run` of a file or an unnamed package after the line enters a directory named for abcd, or that
@@ -1653,15 +1660,16 @@ bundled registry on its own, the entry warns.
 
 Merging is the technical facilitator's decision where `facilitator.mode` is
 `human`. The guard reads the mode the way `abcd land`'s merge gate does: from
-the default branch's committed `.abcd/config.json` and
-`~/.abcd.noindex/config.json`, a `human` in either winning. It reads the default
+the default branch's committed `.abcd/config.json`, which decides, and only
+where it commits none from `~/.abcd.noindex/config.json`. It reads the default
 branch as origin names it, just fetched within about 15 seconds, never this checkout's
 own refs, and a mode it cannot read, an unreachable or slow origin included,
 counts as `human`; so does a checkout where gh would act on another remote
 (`upstream`, `github`, or a `gh repo set-default` choice). While it
 is `human`, these commands are a **block**, each naming the setting that allows
-it (`facilitator.mode: auto` on the default branch, with no `human` in the
-machine layer): `gh pr merge --auto` (`merge-auto-human`); any other
+it (`facilitator.mode: auto` in the default branch's committed
+`.abcd/config.json`, or, where it commits none, in
+`~/.abcd.noindex/config.json`): `gh pr merge --auto` (`merge-auto-human`); any other
 `gh pr merge` that merges, into the queue where one gates the default branch
 and at once where none does (`merge-now-human`; `gh pr merge --disable-auto`
 withdraws an arming and is allowed); a `gh api graphql` whose query is the
@@ -1804,21 +1812,29 @@ Whichever rung fires, the candidate still goes in on stdin via the
 quoted-delimiter heredoc shown above.
 
 <!-- generated: command-facts -->
-**Command facts, format version 2.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
+**Command facts, format version 3.** Where this block and `"${CLAUDE_PLUGIN_ROOT}/abcd" explain guard` from the running binary disagree, follow the binary.
 <!-- Written by `make command-facts-sync` from the command tree; change the command in internal/surface/cli or internal/core/surface, never this block. -->
 
 - `abcd guard [flags]`
   - An example call is `abcd guard`.
+  - What usually follows:
+    - `abcd guard check --command '<line>'`, to judge one shell command before running it.
 - `abcd guard allow --once --command <line> [flags]`
   - An example call is `abcd guard allow --once --command 'git branch -D feat/done'`.
+  - Nothing usually follows: the allowance is used by the next matching call through the hook; nothing usually follows.
 - `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
   - An example call is `abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567`.
+  - Nothing usually follows: it answers prompts until its input ends; nothing usually follows.
 - `abcd guard check [flags]`
   - An example call is `abcd guard check --command 'git push --force origin main'`.
+  - What usually follows:
+    - `abcd guard allow --once --command '<line>'`, only when the person says yes, and run by them, to let through one unproven delete they have judged safe.
 - `abcd guard hook [flags]`
   - An example call is `abcd guard hook < payload.json`.
+  - Nothing usually follows: the host calls it on each tool call and reads its answer; nothing follows it.
 - `abcd guard question [<file>|-] [flags]`
   - An example call is `abcd guard question draft.json`.
+  - Nothing usually follows: a clean draft is handed to the host's question tool; no abcd command follows it.
 <!-- /generated -->
 
 **User input:** $ARGUMENTS

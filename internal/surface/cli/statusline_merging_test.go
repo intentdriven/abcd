@@ -91,7 +91,7 @@ func TestStatuslineNamesTheModeAndWhoseItIs(t *testing.T) {
 		{human, human, "facilitator: human (project)"},
 		{human, auto, "facilitator: human (project)"},
 		{auto, "", "facilitator: auto (project)"},
-		{auto, human, "facilitator: human (computer)"},
+		{auto, human, "facilitator: auto (project)"},
 		{auto, auto, "facilitator: auto (project)"},
 		{"", "", "facilitator: human (not set)"},
 		{"", human, "facilitator: human (computer)"},
@@ -118,8 +118,9 @@ func TestStatuslineNamesTheModeAndWhoseItIs(t *testing.T) {
 }
 
 // TestStatuslineSaysTheModeWasNotRead: with no reading kept the row says so
-// and names no mode, and with the home refused it names the resolver's mode
-// and that the computer's file could not be read.
+// and names no mode; with the home refused, where the project might enforce
+// auto and the row asks git nothing, it names no mode either and says the
+// computer's file could not be read.
 func TestStatuslineSaysTheModeWasNotRead(t *testing.T) {
 	widenBudgets(t)
 	root := mergingCheckout(t, `{"facilitator": {"mode": "auto"}}`)
@@ -139,7 +140,7 @@ func TestStatuslineSaysTheModeWasNotRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout, "facilitator: human (computer's file not read)") {
+	if !strings.Contains(stdout, " · main · facilitator: not read (computer's file not read) · ") || strings.Contains(stdout, "facilitator: human") {
 		t.Errorf("under a refused home stdout = %q", stdout)
 	}
 }

@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd embark",
@@ -12,6 +12,12 @@
         "from",
         "lessons",
         "probe"
+      ],
+      "next": [
+        {
+          "command": "abcd embark probe <lifeboat-dir> <target-dir>",
+          "when": "to see what a lifeboat would write into a target"
+        }
       ]
     },
     {
@@ -20,7 +26,17 @@
       "usage": "abcd embark from <lifeboat-dir> [target-dir] [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd embark from ../lifeboat"
+      "example": "abcd embark from ../lifeboat",
+      "next": [
+        {
+          "command": "abcd embark lessons <lifeboat-dir> <target-dir>",
+          "when": "to rank the lifeboat's lessons against the new brief"
+        },
+        {
+          "command": "abcd",
+          "when": "to read the board of the target repository"
+        }
+      ]
     },
     {
       "path": "abcd embark lessons",
@@ -37,7 +53,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd embark lessons ../lifeboat"
+      "example": "abcd embark lessons ../lifeboat",
+      "no_next": "the ranking is read and acted on in the new voyage's brief; no command usually follows"
     },
     {
       "path": "abcd embark probe",
@@ -45,7 +62,13 @@
       "usage": "abcd embark probe <lifeboat-dir> [target-dir] [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd embark probe ../lifeboat"
+      "example": "abcd embark probe ../lifeboat",
+      "next": [
+        {
+          "command": "abcd embark from <lifeboat-dir> <target-dir>",
+          "when": "to unpack the lifeboat once the probe shows no conflict"
+        }
+      ]
     }
   ]
 }

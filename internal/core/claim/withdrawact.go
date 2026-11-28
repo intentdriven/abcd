@@ -1525,7 +1525,7 @@ type ReleaseWithdrawals struct {
 	Subject  string    `json:"subject"`
 	Ended    bool      `json:"ended"`
 	Lapsed   bool      `json:"lapsed,omitempty"`
-	LapsedAt time.Time `json:"lapsed_at,omitempty"`
+	LapsedAt time.Time `json:"lapsed_at,omitzero"`
 	Holder   string    `json:"holder,omitempty"`
 	// HolderClaimed is true when Holder is a holder id that is not the
 	// reader's, which the listing only has the trailer's word for

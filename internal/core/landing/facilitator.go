@@ -20,6 +20,15 @@ package landing
 // about a branch checked out in one, the gate counts none at all, and the
 // reason says so. The table, in order:
 //
+//   - a pull request that changes the facilitator.mode line of
+//     .abcd/config.json (sets, alters or removes it, or leaves it
+//     unreadable), read at its head against each of its merge bases with
+//     the default branch's tip and in the merge of its head into that tip
+//     against the tip, or, where the queue rebases or the method is not
+//     known, that has a commit touching the file (modeLineChange), arms
+//     nothing in any mode, and one
+//     where that cannot be read arms nothing either: the person merges it on
+//     the forge's page (adr-2611262044127943);
 //   - an author whose permission cannot be read, or a custom role whose base
 //     cannot be read, is unverified: nothing is armed, whatever the approvals;
 //   - a contributor's pull request (Read or Triage, or no permission) arms
@@ -30,7 +39,12 @@ package landing
 //   - auto arms a maintainer's pull request only when a review receipt names
 //     its head, and otherwise names the commit with no recorded review pair. A
 //     delta's receipt names the head only while the delta stands (delta.go);
-//     one that does not stand says why, and that the head needs a full pair.
+//     one that does not stand says why, and that the head needs a full pair;
+//   - where auto is the person's own global setting rather than the
+//     repository's, it arms only a pull request the forge account abcd runs
+//     as opened ("only your own", ViewerQuery): anyone else's, or one where
+//     the forge cannot say which account that is, is judged as human judges
+//     it, waiting for an approval of its head or for its author to land it.
 //
 // An armed merge goes by the mirror's method: the merge queue's where one
 // gates the default branch, auto-merge (a merge commit) where none does. abcd
@@ -45,6 +59,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +105,281 @@ func permissionArgs(repo, login string) []string {
 // pullArgs reads pull request n: its author (user.login). Pinned in
 // ghcontract (pull-request).
 func pullArgs(repo, n string) []string { return []string{"api", "repos/" + repo + "/pulls/" + n} }
+
+// ViewerQuery asks the forge which account its client runs as, the one a
+// person's own global auto arms for ("only your own", adr-2611262044127943).
+const ViewerQuery = `query{viewer{login}}`
+
+// viewerArgs are the forge client's arguments for ViewerQuery.
+func viewerArgs() []string { return []string{"api", "graphql", "-f", "query=" + ViewerQuery} }
+
+// viewerAnswer is the forge's answer to ViewerQuery.
+type viewerAnswer struct {
+	Data struct {
+		Viewer *struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
+	} `json:"data"`
+}
+
+// readViewer says why pull request n, opened by author, is not known to be
+// one the account the forge client runs as opened: "" when it is, the two
+// logins compared as the forge compares them, without regard to case. unread
+// says the forge could not be asked, or its answer does not parse, which
+// counts as not the author's, so a failed read never arms.
+func readViewer(forge ForgeCall, n, author string) (notOwn string, unread bool) {
+	out, err := forge(viewerArgs()...)
+	if err != nil {
+		return "the forge could not say which account abcd runs as (" + forgeWhy(err) + "), so #" + n + " is not known to be your own", true
+	}
+	var a viewerAnswer
+	if json.Unmarshal([]byte(out), &a) != nil || a.Data.Viewer == nil || a.Data.Viewer.Login == "" {
+		return "the forge's answer naming which account abcd runs as does not parse, so #" + n + " is not known to be your own", true
+	}
+	if strings.EqualFold(a.Data.Viewer.Login, author) {
+		return "", false
+	}
+	return "#" + n + " was opened by " + loginText(author) + ", not by " + loginText(a.Data.Viewer.Login) + ", the account abcd runs as", false
+}
+
+// loginText is a forge login as a reason shows it: as it is where it is one
+// the forge could hold (ownerName, within maxLoginRunes).
+func loginText(login string) string {
+	if ownerName(login) && len(login) <= maxLoginRunes {
+		return login
+	}
+	return "an account the forge names in a form land does not show"
+}
+
+// modeLineTimeout bounds the gate's reads of a pull request's mode line: its
+// merge bases, the merge of its head into the tip, and the file at each, all
+// local reads.
+const modeLineTimeout = 15 * time.Second
+
+// maxMergeBaseBytes bounds git's answer naming the merge bases: a handful of
+// object names, each on its own line.
+const maxMergeBaseBytes = 4096
+
+// maxMergeTreeBytes bounds git's answer to the merge of the head into the
+// tip: the merged tree's object name and each conflicted path.
+const maxMergeTreeBytes = 1 << 20
+
+// maxTouchBytes bounds git's answer naming a commit that touches the mode
+// line's file: one object name.
+const maxTouchBytes = 4096
+
+// The git the gate's reads need: merge-tree --write-tree, which computes the
+// merge, is git 2.38's.
+const mergeTreeFloorMajor, mergeTreeFloorMinor = 2, 38
+
+// gitAtLeast is the version check the floor is read through; a test answers
+// as an older git.
+var gitAtLeast = gitutil.GitAtLeastContext
+
+// belowFloor says, when the git on PATH is older than major.minor, that what
+// needs it does, naming the version; "" when it is at the floor or its
+// version cannot be said, which the git run that follows answers for itself.
+func belowFloor(ctx context.Context, what string, major, minor int) string {
+	ok, version, err := gitAtLeast(ctx, major, minor)
+	if err != nil || ok || version == "" {
+		return ""
+	}
+	return what + " needs git " + strconv.Itoa(major) + "." + strconv.Itoa(minor) + " or later, and this git is " + version
+}
+
+// modeLineRel is the file that holds the committed mode line.
+const modeLineRel = ".abcd/config.json"
+
+// modeLineChange says why the pull request whose head is head changes the
+// committed facilitator.mode line, "" when it does not; unread says that
+// could not be judged, which arms nothing either. The line is the person's
+// own act to change: abcd never arms such a merge in any mode, and the person
+// merges it on the forge's page.
+//
+// What lands is the merge of head into the default branch's tip, so the line
+// is judged twice (committedModeLine reads each): at head against every merge
+// base of head and the tip, so a head that changes the line from any side it
+// was cut from is refused; and in the merge of head into the tip, as git
+// computes it from the object store as stored with every merge driver the
+// built-in one (as the loop's conflict check computes it), against the tip.
+// The second is what holds a head that reads as its base does while its
+// merge still moves the tip's line: a second merge base, a rename, or the
+// line wrapped under another key. A merge that conflicts in the file, or that
+// cannot be computed, is a diff not read. The tip can still move between the
+// arm and the merge, since the arming pins only the head.
+//
+// A rebase lands something else: the head's commits replayed one at a time
+// onto the tip, and which commits a forge's rebase replays, and in what
+// order, is not something abcd can read. Only a ruleset mirror that names a
+// merge queue merging or squashing (known, the mirror read, and method MERGE
+// or SQUASH) says the merge's tree is what lands, and there the reads above
+// are the whole of it. Anywhere else a head with a commit in tip..head that
+// touches the file (touchingCommit) is left to the person whatever the reads
+// above say: refused where the mirror names a queue that rebases, and an
+// answer not read where it names none, there is none, or it is not read (a
+// re-arm), since the forge may still gate the branch with a queue the mirror
+// does not name (dcn-2611270500324630).
+//
+// Its git questions share one deadline, modeLineTimeout, since a hook reaches
+// the gate (a re-arm); a git that does not answer in time is a diff not read.
+func modeLineChange(root, tip, tipName, head, method string, known bool) (why string, unread bool) {
+	const never = "abcd never arms a change to that line, in any facilitator mode: the person merges it on the forge's page, so nothing is armed"
+	cannot := func(what string) (string, bool) {
+		return "whether this pull request changes the facilitator.mode line in " + modeLineRel + " cannot be judged (" + what + "), and " + never, true
+	}
+	masked := func(err error) string { return termsafe.Sanitize(fsutil.RedactHome(err.Error())) }
+	unset := func(v string) string {
+		if v == "" {
+			return "unset"
+		}
+		return v
+	}
+	if !gitutil.IsFullSHA(tip) || !gitutil.IsFullSHA(head) {
+		return cannot("the head or " + tipName + " is not a full object name")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), modeLineTimeout)
+	defer cancel()
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxMergeBaseBytes, "merge-base", "--all", tip, head)
+	bases := strings.Fields(string(out))
+	switch {
+	case err != nil:
+		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read (" + clip(masked(err)) + ")")
+	case len(bases) == 0 || !allFullSHA(bases):
+		return cannot("the merge bases of " + short(head) + " and " + tipName + " cannot be read (git named none)")
+	}
+	is, _, err := committedModeLine(ctx, root, head)
+	if err != nil {
+		return cannot("at the head " + short(head) + ": " + masked(err))
+	}
+	for _, base := range bases {
+		was, _, err := committedModeLine(ctx, root, base)
+		if err != nil {
+			return cannot("at the merge base " + short(base) + ": " + masked(err))
+		}
+		if was != is {
+			return "it changes the facilitator.mode line in " + modeLineRel + " (" + unset(was) + " at the merge base " + short(base) + ", " + unset(is) + " at the head " + short(head) + "), and " + never, false
+		}
+	}
+	if old := belowFloor(ctx, "the merge of "+short(head)+" into "+tipName, mergeTreeFloorMajor, mergeTreeFloorMinor); old != "" {
+		return cannot(old)
+	}
+	overrides, err := gitutil.MergeDriverOverridesContext(ctx, root)
+	if err != nil {
+		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
+	}
+	overrides = append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriverContext(ctx))
+	merged, inFile, err := mergedTree(ctx, root, overrides, tip, head)
+	switch {
+	case err != nil:
+		return cannot("the merge of " + short(head) + " into " + tipName + " cannot be computed: " + masked(err))
+	case inFile:
+		return cannot("the merge of " + short(head) + " into " + tipName + " conflicts in " + modeLineRel)
+	}
+	held, _, err := committedModeLine(ctx, root, tip)
+	if err != nil {
+		return cannot("at " + tipName + ": " + masked(err))
+	}
+	lands, _, err := committedModeLine(ctx, root, merged)
+	if err != nil {
+		return cannot("in the merge of " + short(head) + " into " + tipName + ": " + masked(err))
+	}
+	if held != lands {
+		return "its merge into " + tipName + " changes the facilitator.mode line in " + modeLineRel + " (" + unset(held) + " at " + tipName + ", " + unset(lands) + " once merged), and " + never, false
+	}
+	if known && (method == "MERGE" || method == "SQUASH") {
+		return "", false
+	}
+	touched, err := touchingCommit(ctx, root, tip, head)
+	switch {
+	case err != nil:
+		return cannot("which of its commits touch " + modeLineRel + " cannot be read (" + clip(masked(err)) + ")")
+	case touched == "":
+		return "", false
+	case known && method == "REBASE":
+		return "it lands by rebase, and its commit " + short(touched) + " touches " + modeLineRel + ", whose replay onto " + tipName + " abcd does not judge, and " + never, false
+	case known:
+		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the ruleset mirror at " + tipName + " names no merge queue that merges or squashes, so whether the forge lands it by a rebase, whose replay abcd does not judge, is not known")
+	default:
+		return cannot("its commit " + short(touched) + " touches " + modeLineRel + ", and the merge method is not known here, so whether it lands by a rebase, whose replay abcd does not judge, is not known either")
+	}
+}
+
+// maxTouchMerges bounds the merge commits of a head that touch the mode
+// line's file against some parent that touchingCommit reads one by one; a
+// head with more is a diff not read.
+const maxTouchMerges = 64
+
+// touchingCommit names a commit of tip..head that touches the mode line's
+// file, "" when none does. A commit that is no merge touches it when it
+// changes the file against its parent. A merge commit touches it only when
+// its file is none of its parents' (a combined diff names the path), since a
+// merge that takes one side's file, as merging the default branch's own
+// change of it does, carries no change that is not in a commit of its own:
+// one the tip holds, or one of tip..head, read by the first question.
+func touchingCommit(ctx context.Context, root, tip, head string) (string, error) {
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
+		"rev-list", "--no-merges", "--full-history", "--max-count=1", tip+".."+head, "--", modeLineRel)
+	if err != nil {
+		return "", err
+	}
+	if c := strings.TrimSpace(string(out)); c != "" {
+		if !gitutil.IsFullSHA(c) {
+			return "", errors.New("git named no commit")
+		}
+		return c, nil
+	}
+	out, err = gitutil.RunCappedBytesAsStoredContext(ctx, root, "", (maxTouchMerges+1)*41,
+		"rev-list", "--merges", "--full-history", "--max-count="+strconv.Itoa(maxTouchMerges+1), tip+".."+head, "--", modeLineRel)
+	if err != nil {
+		return "", err
+	}
+	merges := strings.Fields(string(out))
+	switch {
+	case len(merges) > maxTouchMerges:
+		return "", errors.New("more than " + strconv.Itoa(maxTouchMerges) + " merge commits touch it against a parent")
+	case !allFullSHA(merges):
+		return "", errors.New("git named no commit")
+	}
+	for _, m := range merges {
+		names, err := gitutil.RunCappedBytesAsStoredContext(ctx, root, "", maxTouchBytes,
+			"diff-tree", "--cc", "--name-only", "-z", "--no-commit-id", m, "--", modeLineRel)
+		if err != nil {
+			return "", err
+		}
+		if slices.Contains(strings.Split(string(names), "\x00"), modeLineRel) {
+			return m, nil
+		}
+	}
+	return "", nil
+}
+
+// mergedTree is the tree git's merge of ours and theirs writes into the
+// object store as stored, under overrides (every merge driver the built-in
+// one); inFile says the merge conflicts in the mode line's file. A merge
+// conflicting elsewhere still names its tree, which holds the file as
+// merged.
+func mergedTree(ctx context.Context, root string, overrides []string, ours, theirs string) (tree string, inFile bool, err error) {
+	args := append(slices.Clone(overrides), "merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", ours, theirs)
+	raw, conflicted, err := gitutil.RunCappedExitOneAsStoredContext(ctx, root, maxMergeTreeBytes, args...)
+	if err != nil {
+		return "", false, err
+	}
+	entries := strings.Split(string(raw), "\x00")
+	if !gitutil.IsFullSHA(entries[0]) {
+		return "", false, errors.New("git named no merged tree")
+	}
+	return entries[0], conflicted && slices.Contains(entries[1:], modeLineRel), nil
+}
+
+// allFullSHA reports whether every name is a full object name.
+func allFullSHA(names []string) bool {
+	for _, n := range names {
+		if !gitutil.IsFullSHA(n) {
+			return false
+		}
+	}
+	return true
+}
 
 // reviewsArgs reads pull request n's reviews, oldest first, a page of
 // maxReviews: each one's reviewer (user.login), state and the commit it
@@ -428,6 +719,17 @@ type gateFacts struct {
 	// a drive lane's worktree, "" for none; the reason ends with it, whatever
 	// the answer, so a person sees one was not counted.
 	reviewPassed string
+	// modeLine is why the pull request's diff changes the committed
+	// facilitator.mode line, or why that cannot be judged, "" when it does
+	// not (modeLineChange); modeLineUnread says the read failed.
+	modeLine       string
+	modeLineUnread bool
+	// notOwn is why, where auto is the person's own global setting, the pull
+	// request is not known to be one the account abcd runs as opened, ""
+	// when it is or the repository's own value decides (readViewer);
+	// viewerUnread says the forge could not be asked.
+	notOwn       string
+	viewerUnread bool
 	// fromLane says the gate was asked from a checkout that is a drive lane's
 	// worktree or lies inside one, or about a branch checked out in one
 	// (fromDriveLane), "" when it was not: it counted no review receipt or
@@ -453,30 +755,41 @@ func modeText(m Facilitator) string {
 // this file's doc. It is the one place that decision is made.
 func mergeGate(f gateFacts) gateDecision {
 	head := short(f.head)
+	// auto is the mode the gate judges by: a person's own global auto judges
+	// a pull request it does not know to be their own as human does.
+	auto := f.mode.Mode == ModeAuto && f.notOwn == ""
 	switch {
+	case f.modeLine != "":
+		return gateDecision{why: f.modeLine}
 	case f.role != RoleMaintainer && f.role != RoleContributor:
 		return gateDecision{why: "its author's role on the repository is unverified (" + f.roleWhy + "), so nothing is armed, whatever approvals it has"}
 	case f.role == RoleContributor && f.approvedBy == "":
 		return gateDecision{why: "its author is a contributor (" + f.roleWhy + "), so an approval of " + head + " by someone with write access is needed before anything is armed, in either facilitator mode: " + f.approvalWhy}
-	case f.mode.Mode != ModeAuto && f.approvedBy == "":
+	case f.notOwn != "" && f.approvedBy == "":
+		return gateDecision{why: modeText(f.mode) + ", and a person's own global auto arms only a pull request your own account opened: " + f.notOwn +
+			", so it waits for an approval of " + head + " (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator), or for its author to land it: " + f.approvalWhy}
+	case !auto && f.approvedBy == "":
 		return gateDecision{why: modeText(f.mode) + ", so it waits for the technical facilitator's approval of " + head +
 			" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): " + f.approvalWhy}
-	case f.mode.Mode == ModeAuto && f.reviewWhy != "" && f.reviewUnread:
+	case auto && f.reviewWhy != "" && f.reviewUnread:
 		return gateDecision{why: modeText(f.mode) + ", but the review receipts cannot be read (" + f.reviewWhy + "), so whether a review pair passed " + head + " is unknown and nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
+	case auto && f.reviewWhy != "":
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt for " + head + " stands (" + f.reviewWhy + "): the head needs a recorded review pair (abcd land --record-review), so nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.deltaWhy != "" && f.reviewUnread:
+	case auto && f.deltaWhy != "" && f.reviewUnread:
 		return gateDecision{why: modeText(f.mode) + ", but whether the delta review recorded for " + head + " stands cannot be judged (" + f.deltaWhy + "), so nothing is armed"}
-	case f.mode.Mode == ModeAuto && f.deltaWhy != "":
+	case auto && f.deltaWhy != "":
 		return gateDecision{why: modeText(f.mode) + ", but the delta review recorded for " + head + " does not stand (" + f.deltaWhy + "), so it needs a full review pair (record it with abcd land --record-review), and nothing is armed"}
-	case f.mode.Mode == ModeAuto && !f.reviewed:
+	case auto && !f.reviewed:
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt names " + f.head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"}
 	}
 	why := modeText(f.mode)
+	if f.notOwn != "" {
+		why += ", judged as human since " + f.notOwn
+	}
 	if f.approvedBy != "" {
 		why += "; approved by " + f.approvedBy
 	}
-	if f.mode.Mode == ModeAuto {
+	if auto {
 		why += "; a review receipt names " + head
 		if f.reviewNote != "" {
 			why += " (" + f.reviewNote + ")"
@@ -505,8 +818,11 @@ type MergeQuery struct {
 	// Tip is the default branch's tip as just fetched, and TipName how it is
 	// named ("origin/main"); Default is the branch's name.
 	Tip, TipName, Default string
-	// Rule is the ruleset mirror's merge rule at Tip.
-	Rule MergeRule
+	// Rule is the ruleset mirror's merge rule at Tip, and RuleRead says it
+	// was read: a caller that reads no rule (a re-arm) leaves it false, and
+	// the merge method is then not known.
+	Rule     MergeRule
+	RuleRead bool
 	// Repo is the repository as the forge names it ("owner/name"), or gh's
 	// "{owner}/{repo}" for the checkout's own.
 	Repo string
@@ -527,8 +843,11 @@ type MergeDecision struct {
 	// not read: a forge read that failed, or receipts it could not judge. It is
 	// no refusal of the head, so nothing is withdrawn on it.
 	Unread bool
-	// Mode is the facilitator mode the gate ran in (ModeAuto or ModeHuman),
-	// as it read it.
+	// Mode is the facilitator mode the gate judged by (ModeAuto or
+	// ModeHuman): the mode as it read it, but human for a pull request a
+	// person's own global auto does not know to be theirs, which is judged as
+	// human judges it, so the spot-check never keeps that decision as one
+	// abcd took alone.
 	Mode string
 	// AuthorCanWrite says the forge named the pull request's author as one
 	// who can write to the repository (RoleMaintainer); false for a
@@ -559,17 +878,26 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}
 	f := gateFacts{mode: mode, rule: q.Rule, def: q.Default, head: q.Head, fromLane: fromDriveLane(q.RepoRoot, q.From)}
+	f.modeLine, f.modeLineUnread = modeLineChange(q.RepoRoot, q.Tip, q.TipName, q.Head, q.Rule.Method, q.RuleRead)
+	if f.modeLine != "" {
+		return decided(f), nil
+	}
 	f.author, f.role, f.roleWhy = readAuthor(q.Forge, q.Repo, q.PR)
-	if f.role == RoleContributor || (f.role == RoleMaintainer && mode.Mode != ModeAuto) {
+	if mode.Mode == ModeAuto && mode.Layer != layered.Repo.String() && f.role != RoleUnverified {
+		f.notOwn, f.viewerUnread = readViewer(q.Forge, q.PR, f.author)
+	}
+	auto := mode.Mode == ModeAuto && f.notOwn == ""
+	if f.role == RoleContributor || (f.role == RoleMaintainer && !auto) {
 		f.approvedBy, f.approvalWhy, f.approvalPassed, f.approvalUnread = countedApproval(q.Forge, q.RepoRoot, q.Repo, q.PR, q.Head, f.author, f.fromLane != "")
 	}
 	switch {
-	case mode.Mode == ModeAuto && f.fromLane != "":
+	case !auto:
+	case f.fromLane != "":
 		// The worktrees a lane lists are the lane's own, and a lane's
 		// worktree is the drive's, so no receipt is read: whether one stands
 		// is unknown, which is no refusal.
 		f.reviewWhy, f.reviewUnread = "none is read from a drive lane's worktree", true
-	case mode.Mode == ModeAuto:
+	default:
 		proof := readReviewProof(q.RepoRoot, q.Head, q.Tip)
 		f.reviewed, f.reviewNote, f.deltaWhy, f.reviewWhy, f.reviewUnread = proof.reviewed, proof.note, proof.deltaWhy, proof.unreadable, proof.unread
 		f.reviewPassed = proof.passed
@@ -588,8 +916,12 @@ func decided(f gateFacts) MergeDecision {
 			d.why += "; " + note
 		}
 	}
+	mode := f.mode.Mode
+	if f.notOwn != "" {
+		mode = ModeHuman
+	}
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why,
-		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread),
-		Mode:   f.mode.Mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != "",
+		Unread: !d.arm && (f.role == RoleUnverified || f.reviewUnread || f.approvalUnread || f.modeLineUnread || f.viewerUnread),
+		Mode:   mode, AuthorCanWrite: f.role == RoleMaintainer, ApprovalCounted: f.approvedBy != "",
 		ModeLayer: f.mode.Layer, ReceiptNamedHead: f.reviewed}
 }

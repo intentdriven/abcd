@@ -1,10 +1,10 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd drain",
       "sentence": "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.",
-      "usage": "abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]",
+      "usage": "abcd drain [--drive [--yes] [--until <date>] [--profile <name>] [--no-self-update]] [--dry-run] [--max <n>] [--in-work <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]",
       "flags": [
         {
           "name": "after-update",
@@ -22,6 +22,10 @@
         {
           "name": "fix-rounds",
           "type": "string"
+        },
+        {
+          "name": "in-work",
+          "type": "int"
         },
         {
           "name": "judgement",
@@ -78,7 +82,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json"
+      "example": "abcd drain --drive\n  abcd drain --drive --yes --max 3\n  abcd drain --dry-run\n  abcd drain --dry-run --json\n  abcd drain --max 3\n  abcd drain --json\n  abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json",
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the drain's lanes"
+        },
+        {
+          "command": "abcd capture list --open",
+          "when": "to see the issues handed back"
+        }
+      ]
     }
   ]
 }

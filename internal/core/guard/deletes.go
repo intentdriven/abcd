@@ -132,7 +132,19 @@ func (r Registry) deleteSignal(v verdicts) (payloadSignal, bool) {
 	}
 	line, script := matchedDelete(v)
 	if !line && !script {
-		return payloadSignal{}, false
+		// No delete entry fired, so the line is read only for a push that
+		// prunes or mirrors: refused on that push's own reading, which
+		// needs no directory, no repository and no prover, and passed when
+		// the push turns both off or is a dry run.
+		why, named := pushRemovals(v.segs)
+		if why != "" {
+			return deleteRefusal([]string{why}, []string{
+				"Write the delete with every target spelled out, one git command, no directory change before it and no variable in it, so its targets can be proven.",
+			}), true
+		}
+		if !named {
+			return payloadSignal{}, false
+		}
 	}
 	if script {
 		return deleteRefusal([]string{"a script the line runs deletes a branch or a worktree, and a delete inside a script cannot be proven"}, []string{
@@ -349,6 +361,105 @@ func deletesIn(args []string, dir string) ([]DeleteTarget, bool, string) {
 	return nil, false, ""
 }
 
+// pushRemovals reads the pushes of segs that may carry --prune or --mirror,
+// which delete each branch of the remote's this copy lacks though no delete
+// entry fires on them: a git command whose subcommand is push, read past git's
+// own options, with a word that spells either option or, unfixed, may print
+// one (mayRemove). why is the reading's refusal of the first such push
+// (pushDeletes): every one that prunes or mirrors, and every one holding a
+// word the line does not fix. named reports whether such a push also names a
+// target, which the delete entries' reading then proves.
+func pushRemovals(segs []segment) (why string, named bool) {
+	for _, s := range segs {
+		for _, site := range sitesNamed(s, "git") {
+			args := s.tokens[site.idx+1:]
+			for _, k := range gitSubcommandAt(args) {
+				if !mayBePush(args[k]) || !mayRemove(args[k+1:]) {
+					continue
+				}
+				ts, w := pushDeletes(args[k+1:], "/")
+				if w != "" && why == "" {
+					why = w
+				}
+				named = named || len(ts) > 0
+			}
+		}
+	}
+	return why, named
+}
+
+// mayBePush reports whether a word at a place git's subcommand may stand can
+// be push: the word itself, or one the line does not fix whose fixed text may
+// print it (`"$(x)"push`, `pu"$(x)"sh`). A word that is all substitution is
+// the residual every entry's reading shares, and is not read as push here.
+func mayBePush(w string) bool {
+	return w == "push" || isUnknown(w) && knownText(w) != "" && unknownCouldBe(w, "push")
+}
+
+// gitSubcommandAt is where git's subcommand may stand in args, the words after
+// git: past its own options, each of gitValueOptions with the word after it.
+// A word before the subcommand that the line does not fix may be any option
+// with any number of values, or the subcommand itself, so from it on every
+// word is a place.
+func gitSubcommandAt(args []string) []int {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case isUnknown(a):
+			at := make([]int, 0, len(args)-i)
+			for k := i; k < len(args); k++ {
+				at = append(at, k)
+			}
+			return at
+		case gitValueOptions[a] || a == "--attr-source" || a == "--shallow-file":
+			i++
+		case strings.HasPrefix(a, "-"):
+		default:
+			return []int{i}
+		}
+	}
+	return nil
+}
+
+// mayRemove reports whether a word of a push's arguments spells --prune or
+// --mirror, or is one the line does not fix that may print either: glued to a
+// substitution (`"$(x)"--prune`), cut by one (`--pru"$(x)"ne`) or ending in
+// one (`--pr$(x)`). A `--` does not end the reading here: it may be an
+// option's value (`--repo --`), and pushDeletes reads which it is.
+func mayRemove(args []string) bool {
+	for _, a := range args {
+		if o := pushRemovalOption(knownText(a)); o == "--prune" || o == "--mirror" {
+			return true
+		}
+		if isUnknown(a) && (flagCouldBe(a, "--prune") || flagCouldBe(a, "--mirror")) {
+			return true
+		}
+	}
+	return false
+}
+
+// pushRemovalOption is --prune, --mirror or the negation of either that a
+// spells, or "". An ambiguous prefix of --prune or --mirror (`--pr`) reads as
+// it, the fail-closed side, as `--d` reads as --delete. A word the line does
+// not fix is read by mayRemove.
+func pushRemovalOption(a string) string {
+	if !strings.HasPrefix(a, "--") {
+		return ""
+	}
+	name, _, _ := strings.Cut(a, "=")
+	switch o := longOption("push", a); o {
+	case "--prune", "--mirror", "--no-prune", "--no-mirror":
+		return o
+	case "":
+		for _, o := range []string{"--prune", "--mirror"} {
+			if len(name) > 2 && strings.HasPrefix(o, name) {
+				return o
+			}
+		}
+	}
+	return ""
+}
+
 // mayDelete reports whether args could still reach one of the deleting
 // subcommands, for an option or subcommand the reading cannot place.
 func mayDelete(args []string) bool {
@@ -384,9 +495,12 @@ func longOption(sub, arg string) string {
 var pushValueOptions = map[string]bool{"--repo": true, "--receive-pack": true, "--exec": true, "--push-option": true}
 
 // pushDeletes reads `git push`'s arguments: the remote, then the refspecs, each
-// deleted under --delete and each written `:<branch>` deleted without it.
+// deleted under --delete and each written `:<branch>` deleted without it. A
+// push with --prune or --mirror also deletes each branch of the remote's that
+// this copy lacks, which only the remote can list, so it is refused rather
+// than read as deleting only what it names.
 func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
-	del, dry := false, false
+	del, dry, prune, mirror := false, false, false, false
 	var ops []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -401,10 +515,19 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 			name, _, hasValue := strings.Cut(a, "=")
 			o := longOption("push", a)
 			if o == "" {
-				// An ambiguous prefix of --delete reads as it (`--d`), the
-				// fail-closed side; any other unknown spelling is refused.
+				// An ambiguous prefix of --delete reads as it (`--d`), and one
+				// of --prune or --mirror as that (`--pr`), the fail-closed
+				// side; any other unknown spelling is refused.
 				if len(name) > 2 && strings.HasPrefix("--delete", name) {
 					del = true
+					continue
+				}
+				switch pushRemovalOption(a) {
+				case "--prune":
+					prune = true
+					continue
+				case "--mirror":
+					mirror = true
 					continue
 				}
 				return nil, "git push's option " + a + " is one this reading does not know"
@@ -416,6 +539,16 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 				del = false
 			case o == "--dry-run":
 				dry = true
+			case o == "--no-dry-run":
+				dry = false
+			case o == "--prune":
+				prune = true
+			case o == "--no-prune":
+				prune = false
+			case o == "--mirror":
+				mirror = true
+			case o == "--no-mirror":
+				mirror = false
 			case pushValueOptions[o] && !hasValue:
 				i++
 			}
@@ -440,14 +573,20 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 			ops = append(ops, a)
 		}
 	}
+	if dry {
+		// A dry run deletes nothing.
+		return nil, ""
+	}
+	switch {
+	case mirror:
+		return nil, "the push mirrors (--mirror), so it deletes every branch of the remote's that this copy lacks, and the line names none of them"
+	case prune:
+		return nil, "the push prunes (--prune), so it deletes every branch of the remote's its refspecs match that this copy lacks, and the line names none of them"
+	}
 	if len(ops) == 0 {
 		if del {
 			return nil, "the push names no remote to delete on"
 		}
-		return nil, ""
-	}
-	if dry {
-		// A dry run deletes nothing.
 		return nil, ""
 	}
 	remote, refspecs := ops[0], ops[1:]

@@ -516,12 +516,10 @@ func globEscape(p string) string {
 	return b.String()
 }
 
-// fsRedact replaces home in s with ~, so no message carries the home's path.
+// fsRedact replaces home in s with ~, in each spelling a path built from it can
+// carry (fsutil.RedactHomeAt), so no message carries the home's path.
 func fsRedact(s, home string) string {
-	if home == "" {
-		return s
-	}
-	return fsutil.RedactRoot(s, filepath.Clean(home), "~")
+	return fsutil.RedactHomeAt(s, home)
 }
 
 // appendOnce appends s unless it is already there.

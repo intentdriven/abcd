@@ -276,30 +276,36 @@ func facilitatorBlock(b *statusblock.Block) string {
 // which no window width breaks.
 func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	root := managedCheckout(t)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (not set, the bundled default): merges once the technical facilitator approves the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head") {
 		t.Fatalf("with no commit the board does not ask the computer's file alone:\n%s", text)
 	}
 	commitConfig(t, root, "")
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (not set, the bundled default): merges once the technical facilitator approves the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves the head") {
 		t.Fatalf("with no layer the board does not say the bundled human's approval merges:\n%s", text)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: human (not set, the bundled default): merges once the technical facilitator approves") {
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: human (left to each contributor: not set, the bundled default): merges once the technical facilitator approves") {
 		t.Fatalf("the product view does not say the bundled human's approval merges:\n%s", text)
 	}
 	commitConfig(t, root, `{"facilitator":{"mode":"human"}}`+"\n")
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (the project's, set in .abcd/config.json at main): merges once the technical facilitator approves the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (the project prevents auto, set in .abcd/config.json at main): merges once the technical facilitator approves the head") {
 		t.Fatalf("an uncommitted auto decided the board, not main's human, as the gate reads it:\n%s", text)
 	}
 	assertBoardFacilitator(t, "human", ".abcd/config.json at main")
 	commitConfig(t, root, `{"facilitator":{"mode":"auto"}}`+"\n")
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head") {
 		t.Fatalf("main's auto is not named with its file and outcome:\n%s", text)
 	}
-	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: auto (the project's, set in .abcd/config.json at main): merges autonomously, once a review pair passes") {
+	if text := flattenSpace(string(runCLI(t, "--view", "product", "--format", "markdown"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes") {
 		t.Fatalf("the product view does not say main's auto merges autonomously:\n%s", text)
+	}
+	assertBoardFacilitator(t, "auto", ".abcd/config.json at main")
+	// The project's auto stands above the computer's human (dcn-2611252132144530).
+	writeMachineConfig(t, `{"facilitator":{"mode":"human"}}`+"\n")
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: auto (the project enforces it, set in .abcd/config.json at main): merges autonomously, once a review pair passes the head") {
+		t.Fatalf("the computer's human decided the board over main's auto:\n%s", text)
 	}
 	assertBoardFacilitator(t, "auto", ".abcd/config.json at main")
 }
@@ -362,7 +368,7 @@ func TestBoardNamesARefusedHomeThatDecidedWhoMerges(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (abcd could not read your own settings file safely): merges once the technical facilitator approves the head") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "facilitator: human (left to each contributor: abcd could not read your own settings file safely): merges once the technical facilitator approves the head") {
 		t.Fatalf("a refused home is not named as what decided who merges:\n%s", text)
 	}
 	var got struct {

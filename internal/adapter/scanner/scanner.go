@@ -374,7 +374,25 @@ func newBase(ctx context.Context, repoRoot string) *Scanner {
 // An augmenter that fails a run, or hands back a report the scanner cannot
 // place, degrades the scanner from that call on, so a caller that wired one
 // consults this after ScanText as well as before.
+//
+// An identity value that is not valid UTF-8 leaves the scanner unavailable
+// too (IdentityUnmatchable): no pattern holds its raw bytes and no store is
+// handed them, so a store refuses it rather than match a guessed form.
 func (s *Scanner) Unavailable() (bool, string) {
+	if bad, why := s.PatternsUnavailable(); bad {
+		return true, why
+	}
+	if setting := s.IdentityUnmatchable(); setting != "" {
+		return true, IdentityUnmatchableReason(setting)
+	}
+	return false, ""
+}
+
+// PatternsUnavailable is Unavailable without the identity cause: whether the
+// pattern set itself is degraded (the per-repo config, or an augmenter run),
+// and why. A check that reads no identity, such as the privacy lint's network
+// patterns, consults this one.
+func (s *Scanner) PatternsUnavailable() (bool, string) {
 	if s.unavailable {
 		return true, s.unavailReason
 	}
@@ -382,6 +400,41 @@ func (s *Scanner) Unavailable() (bool, string) {
 		return true, why
 	}
 	return false, ""
+}
+
+// IdentityUnmatchable names the setting that holds an identity value no
+// pattern can match, because it is not valid UTF-8 — "git config user.name",
+// "the home folder's name" and so on — or is "" when every value is valid. It
+// never carries the value. A writer that writes through a degraded pattern set
+// with a note refuses on this cause instead: the value would be written in
+// clear.
+func (s *Scanner) IdentityUnmatchable() string { return identityNotUTF8(s.identity) }
+
+// IdentityUnmatchableReason words the cause IdentityUnmatchable names.
+func IdentityUnmatchableReason(setting string) string {
+	return setting + " is not valid UTF-8, so the redactor cannot match it: re-save it as UTF-8 (the value is not shown)"
+}
+
+// IdentityUnmatchableRemedy words the fix for the cause IdentityUnmatchable
+// names, where a refusal would otherwise send the person to the pattern set's
+// configuration: the setting to re-save.
+func IdentityUnmatchableRemedy(setting string) string { return "re-save " + setting + " as UTF-8" }
+
+// IdentityUnmatchableError is a refusal on the cause IdentityUnmatchable
+// names, carrying the setting and never the value, so a caller that words the
+// fix apart from the error can name it (UnmatchableSetting).
+type IdentityUnmatchableError struct{ Setting string }
+
+func (e *IdentityUnmatchableError) Error() string { return IdentityUnmatchableReason(e.Setting) }
+
+// UnmatchableSetting is the setting an error's identity cause names, or ""
+// for an error with some other cause.
+func UnmatchableSetting(err error) string {
+	var ie *IdentityUnmatchableError
+	if errors.As(err, &ie) {
+		return ie.Setting
+	}
+	return ""
 }
 
 // mergeConfig layers a per-repo override onto the built-in defaults, enforcing
@@ -1033,8 +1086,11 @@ func wholeMatch(probe matcher, s string) bool {
 }
 
 // ScanText scans text for every secret pattern and identity-derived match,
-// returning findings sorted deterministically. It is pure: identity, patterns
-// and severities are all passed in.
+// returning findings sorted deterministically. Identity, patterns and
+// severities are all passed in, but it is not pure: the caller's home is
+// matched in every spelling a path carries it in, and resolving those reads
+// the filesystem (callerHomeSpellings, through fsutil.HomeSpellings), so the
+// same call can match more where the home sits behind a link.
 func ScanText(text string, id Identity, patterns []Pattern, id2sev map[string]Severity, file string) []Finding {
 	return scanText(text, id, patterns, id2sev, file, false)
 }

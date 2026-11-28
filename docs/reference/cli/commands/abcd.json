@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd",
@@ -88,6 +88,20 @@
         "statusline",
         "sweep",
         "update"
+      ],
+      "next": [
+        {
+          "command": "abcd <record-id>",
+          "when": "to see what one record on the board is and its next move"
+        },
+        {
+          "command": "abcd capture \"<text>\" --remedy \"<fix>\"",
+          "when": "when the board shows a defect not yet on the ledger"
+        },
+        {
+          "command": "abcd build next",
+          "when": "to start the readiest planned intent"
+        }
       ]
     }
   ]

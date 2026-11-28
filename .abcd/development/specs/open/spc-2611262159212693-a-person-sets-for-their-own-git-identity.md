@@ -1,0 +1,107 @@
+---
+id: spc-2611262159212693
+slug: a-person-sets-for-their-own-git-identity
+intent: itd-2611252049031692
+origin: researcher-authored
+production_mode: hand-written
+---
+# The guard holds the committed mode line and "only your own"
+
+## Summary
+
+itd-2611252049031692's two places decide the mode, and the merge gate
+(`internal/core/landing/facilitator.go`) holds both rulings the product
+thinker made beside them on 2026-11-26, as built on the branch that planned
+this spec: `abcd land` and the build loop arm no pull request that changes the
+`facilitator.mode` line of `.abcd/config.json`, read at its head against each
+of its merge bases with the default branch's tip and in the merge of its head
+into that tip, in any mode, and say the person merges it on the forge's page; and where `auto` is the person's own
+global setting rather than the repository's, the gate arms only a pull request
+the forge account abcd runs as opened, judging anyone else's as `human` judges
+it (`TestAChangeToTheCommittedModeLineIsNeverArmed`,
+`TestAPersonsGlobalAutoArmsOnlyTheirOwnPullRequest` in
+`internal/core/landing`).
+
+Of those two rulings, what is left is two things (steps 1 and 2), and the intent's command that sets the mode is not built either (step 3). First, the gate refuses such a pull request,
+and on that definite refusal at the local head `abcd land` takes this
+account's arming off and the loop's queue path disables it, as for every
+definite refusal of the gate; not yet taken off are an arming where the gate's
+answer is one it could not read, one another account made, one on a path that
+never asks the gate about a standing arming, and one whose default branch
+moved after the arm. Second, the same two rules on the commands themselves. The shell
+guard's merge rule (`internal/core/guard/merge.go`) judges `gh pr merge`, the
+GraphQL merge mutations and the REST merge route by the mode alone, so under
+`auto` an agent's own `gh pr merge --auto` of a pull request that changes the
+mode line, or of a colleague's pull request under a person's global `auto`,
+passes the guard though the gate would refuse it. Closing that needs the guard
+to know which pull request a command selects and what that pull request
+changes, which it does not read today; recorded as larger than the change that
+built the gate's half (the decision that planned this spec).
+
+## Footprint
+
+- packages: internal/core/landing/land.go, internal/core/landing/depends.go, internal/core/landing/gate_ownership_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/speculate.go, internal/core/guard/defaults/guard.json, internal/surface/cli/guard.go, internal/surface/cli/guard_merge_test.go, internal/core/landing/facilitator.go, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/02-constraints/03-invariants.md
+- tests: internal/core/guard, internal/surface/cli, internal/core/landing
+
+## Steps
+
+1. The guard refuses a merge command for a pull request the gate would never arm
+   - packages: internal/core/guard, internal/surface/cli, internal/core/landing, commands/guard.md, .abcd/development/brief
+   - tests: internal/core/guard, internal/surface/cli
+   - Hand the guard a second reading beside `guard.MergeMode`, from the front
+     door as the mode is handed in (`loadRepoGuard` in
+     `internal/surface/cli/guard.go`): for the pull request a merge command
+     selects, whether its diff changes the committed `facilitator.mode` line
+     and, under a person's global `auto`, whether the account abcd runs as
+     opened it, answered by the gate's own readers (`modeLineChange`,
+     `readViewer`) so the guard and the gate cannot disagree.
+   - Read the selected pull request from each merge form the guard knows: `gh
+     pr merge` by number, URL, branch or the current branch; the GraphQL
+     mutations by node id; the REST merge route by number. A selection the
+     line does not fix, a pull request the forge cannot be asked for, or a head
+     the checkout cannot read is refused, as an unreadable mode is today.
+   - Refuse in any mode, naming the reason the gate gives: the person merges a
+     change to the mode line on the forge's page; a colleague's pull request
+     waits for an approval or for its author to land it.
+   - Write each refusal's test first, with a `known_bad` line in the registry
+     for each form, and hold the work-per-byte bar (`work_test.go`).
+   - Then say in invariant 28 that the guard holds both rules, not the gate
+     alone.
+2. abcd's own standing arming of a pull request that changes the mode line
+   - packages: internal/core/landing, commands/land.md, .abcd/development/brief
+   - tests: internal/core/landing
+   - On the gate's definite refusal at the local head, `abcd land` already
+     takes this account's arming off (`withdraw.go`) and the loop's queue path
+     disables it, as for every definite refusal; hold that for the mode line
+     with a test. An arming another account made is left and named.
+   - An answer the gate could not read (a line it cannot read, a head this
+     checkout does not hold) is no refusal and withdraws nothing, so a release
+     hold's re-arm of a head the checkout does not hold stays withdrawn and
+     says the merge bases cannot be read. Fetch the head before the gate is
+     asked, or say so where the re-arm is described.
+   - The arming pins the head (`--match-head-commit`) but not the tip, so the
+     default branch can move between the arm and the merge and change what
+     the merge leaves on the line. Withdraw an arming whose merge, judged
+     again at the tip as last fetched, now changes the line.
+   - Write the test first: an arming of this account's at such a head is
+     withdrawn, another account's is not, and one whose tip moved under it is
+     withdrawn on the next read.
+3. The command that sets and shows a person's own mode
+   - packages: internal/surface/cli, internal/core/landing, internal/core/guard, commands, .abcd/development/brief
+   - tests: internal/surface/cli, internal/core/guard
+   - The intent's one command (`abcd facilitator auto|human`, bare to show)
+     is not built: today a person sets `facilitator.mode` in
+     `~/.abcd.noindex/config.json` by hand, and the guard's refusals say so
+     (`TestTheFacilitatorRefusalsSayHowThePersonSetsItToday`). Build it to the
+     intent's criteria on the command: it writes only the global file, takes
+     no flag that chooses where, and refuses `auto` with no terminal of the
+     person's own.
+   - Then point the guard's refusals of a setting at it, in the same change.
+4. The intent's other criteria this spec has not yet planned
+   - packages: internal/core/landing, internal/core/spotcheck, internal/surface/cli
+   - tests: internal/core/landing, internal/core/spotcheck, internal/surface/cli
+   - The past landings' `unrecorded` row, for a merge whose first parent
+     committed no mode and of which this checkout keeps no record.
+   - The reason the spot-check keeps, cut to the mode.
+   - Before the intent ships, read its criteria against this spec again: the
+     steps here are what is known to be left, not an audit of every criterion.

@@ -185,3 +185,61 @@ func TestPeersNamesTheRepositorysCeiling(t *testing.T) {
 		}
 	}
 }
+
+// TestPeersNamesTheDrainsLanesInWork (itd-2611251809580662 step 2): with a
+// drain in progress in the checkout, a row under the ceiling's names its
+// lanes in work against the limit it began with and the layer that set it,
+// in text and in --json; with none in progress, or one ended, the row is
+// absent.
+func TestPeersNamesTheDrainsLanesInWork(t *testing.T) {
+	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	if code, out, errOut := reserveRun(t, p, "reserve", "iss-1", "--footprint", "iss-1.go"); code != 0 {
+		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
+	}
+	code, text, _ := reserveRun(t, p, "peers")
+	if code != 0 || strings.Contains(text, "this drain:") {
+		t.Fatalf("with no drain in progress the row is absent: exit %d\n%s", code, text)
+	}
+	drain := func(stopped string) {
+		t.Helper()
+		ended := ""
+		if stopped != "" {
+			ended = `, "stopped": "` + stopped + `", "ended_at": "2026-11-26T10:00:00Z"`
+		}
+		writeRel(t, p, ".abcd/.work.local/run/drain.json", `{"schema_version": 5, "started_at": "2026-11-26T09:00:00Z", "updated_at": "2026-11-26T09:00:00Z",
+			"rule": "adr-1", "max": 0, "pace": null, "lanes": [{"issue": "iss-2611260000000001", "run_id": "run-2611260000000001",
+			"opened_at": "2026-11-26T09:00:00Z", "outcome": "in-progress"}], "hand_backs": [],
+			"in_work_max": {"value": 2, "layer": "repo", "origin": ".abcd/config.json at origin/main"}`+ended+`}`)
+	}
+	drain("")
+	code, text, errOut := reserveRun(t, p, "peers")
+	if code != 0 || !strings.Contains(text, "  this drain: 1 of 2 lanes in work (repository)\n") {
+		t.Fatalf("the drain's row names its lanes in work and its limit's layer: exit %d\n%s%s", code, text, errOut)
+	}
+	if strings.Index(text, "this drain:") < strings.Index(text, "your holds:") {
+		t.Errorf("the drain's row comes under the ceiling's:\n%s", text)
+	}
+	code, raw, errOut := reserveRun(t, p, "peers", "--json")
+	if code != 0 {
+		t.Fatalf("peers --json: exit %d\n%s%s", code, raw, errOut)
+	}
+	var got struct {
+		DrainInWork *struct {
+			Count  int    `json:"count"`
+			Limit  int    `json:"limit"`
+			Layer  string `json:"layer"`
+			Origin string `json:"origin"`
+		} `json:"drain_in_work"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("peers --json: %v\n%s", err, raw)
+	}
+	if d := got.DrainInWork; d == nil || d.Count != 1 || d.Limit != 2 || d.Layer != "repo" || d.Origin != ".abcd/config.json at origin/main" {
+		t.Fatalf("--json carries the drain's lanes in work: %+v", d)
+	}
+	drain("empty")
+	if code, raw, _ := reserveRun(t, p, "peers", "--json"); code != 0 || strings.Contains(raw, "drain_in_work") {
+		t.Fatalf("with the drain ended the row is absent: exit %d\n%s", code, raw)
+	}
+}

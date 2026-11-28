@@ -332,36 +332,62 @@ func TestAutoArmsOnlyAReviewedHead(t *testing.T) {
 
 // The mode is read at the default branch's tip, never the lane's checkout
 // (dcn-2610230058333177): a lane that commits auto over a default branch at
-// human, or deletes the default branch's human, arms nothing.
+// human, or deletes the default branch's human, arms nothing. Since the gate
+// refuses any change to the committed mode line (adr-2611262044127943), that
+// refusal is the one it gives, before the mode is weighed.
 func TestTheLaneDoesNotDecideItsOwnMode(t *testing.T) {
 	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": humanConfig})
 	f.repo.Write(".abcd/config.json", autoConfig)
 	f.repo.Commit("the lane says auto")
 	f.forge.reviews = "[]"
 	f.reviewed(t)
-	wantLeft(t, f, landGate(t, f), "facilitator.mode is human")
+	wantLeft(t, f, landGate(t, f), "it changes the facilitator.mode line")
 
 	g := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": humanConfig})
 	g.repo.Remove(".abcd/config.json")
 	g.repo.Commit("the lane deletes the default branch's human")
 	g.forge.reviews = "[]"
 	g.reviewed(t)
-	wantLeft(t, g, landGate(t, g), "facilitator.mode is human")
+	wantLeft(t, g, landGate(t, g), "it changes the facilitator.mode line")
 }
 
-// human in the machine layer beats auto in the repository's.
-func TestTheMachinesHumanWins(t *testing.T) {
-	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
-	dir := abcdhome.Path(f.home)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
+// The project's committed value stands above the computer's file
+// (dcn-2611252132144530): the default branch's auto arms a reviewed head over
+// the computer's human, and its human holds one back over the computer's auto.
+func TestTheProjectsValueStandsAboveTheComputers(t *testing.T) {
+	for _, c := range []struct {
+		name, project, computer string
+		armed                   bool
+	}{
+		{"auto over the computer's human", autoConfig, humanConfig, true},
+		{"human over the computer's auto", humanConfig, autoConfig, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": c.project})
+			t.Setenv("HOME", f.home)
+			dir := abcdhome.Path(f.home)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(c.computer), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f.forge.reviews = "[]"
+			f.reviewed(t)
+			s := landGate(t, f)
+			if c.armed {
+				wantArmed(t, f, s)
+				if !strings.Contains(s.Note, "facilitator.mode is auto") || !strings.Contains(s.Note, "repo layer") {
+					t.Errorf("note = %q, want the project's auto named", s.Note)
+				}
+				return
+			}
+			wantLeft(t, f, s, "facilitator.mode is human")
+			if !strings.Contains(s.Note, "repo layer") {
+				t.Errorf("note = %q, want the project's human named", s.Note)
+			}
+		})
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(humanConfig), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f.forge.reviews = "[]"
-	f.reviewed(t)
-	wantLeft(t, f, landGate(t, f), "machine layer")
 }
 
 // A facilitator.mode refusal can quote a key a configuration file wrote; it

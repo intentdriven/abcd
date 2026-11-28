@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd status",
@@ -7,7 +7,17 @@
       "usage": "abcd status [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd status"
+      "example": "abcd status",
+      "next": [
+        {
+          "command": "abcd announce <kind> <item>",
+          "when": "to post an announcement of your own"
+        },
+        {
+          "command": "abcd peers",
+          "when": "to see what peers hold that this checkout lacks"
+        }
+      ]
     }
   ]
 }

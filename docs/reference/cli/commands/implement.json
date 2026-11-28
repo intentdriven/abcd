@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd implement",
@@ -27,6 +27,16 @@
         "step",
         "stop",
         "widen"
+      ],
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the loop's runs lane by lane"
+        },
+        {
+          "command": "abcd implement join --session <id> --role <role>",
+          "when": "to join the shared run"
+        }
       ]
     },
     {
@@ -44,7 +54,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement check lane --session s-example"
+      "example": "abcd implement check lane --session s-example",
+      "next": [
+        {
+          "command": "abcd implement claim <record> --session <id> --lane <lane>",
+          "when": "when the stage is allowed, to claim its record"
+        }
+      ]
     },
     {
       "path": "abcd implement claim",
@@ -70,7 +86,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement claim iss-2609010000000001 --session s-example --lane cli"
+      "example": "abcd implement claim iss-2609010000000001 --session s-example --lane cli",
+      "next": [
+        {
+          "command": "abcd implement release <record> --session <id>",
+          "when": "once the lane's work is done"
+        }
+      ]
     },
     {
       "path": "abcd implement heartbeat",
@@ -78,7 +100,13 @@
       "usage": "abcd implement heartbeat [<branch>|<pr>...] [flags]",
       "flags": [],
       "inputs": [],
-      "example": "abcd implement heartbeat --json"
+      "example": "abcd implement heartbeat --json",
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the run lane by lane"
+        }
+      ]
     },
     {
       "path": "abcd implement join",
@@ -111,7 +139,17 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement join --session s-example --role first"
+      "example": "abcd implement join --session s-example --role first",
+      "next": [
+        {
+          "command": "abcd implement mode <mode> --session <id>",
+          "when": "to open a window by logging its division mode"
+        },
+        {
+          "command": "abcd implement check lane --session <id>",
+          "when": "before taking a lane"
+        }
+      ]
     },
     {
       "path": "abcd implement leave",
@@ -128,7 +166,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement leave --session s-example"
+      "example": "abcd implement leave --session s-example",
+      "no_next": "the session has left the run and holds no claim; nothing usually follows"
     },
     {
       "path": "abcd implement load",
@@ -162,7 +201,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement load --site preflight"
+      "example": "abcd implement load --site preflight",
+      "next": [
+        {
+          "command": "abcd implement load --wait --narrow --timeout <duration> -- <command>",
+          "when": "to run a test command once there is capacity"
+        }
+      ]
     },
     {
       "path": "abcd implement log",
@@ -179,7 +224,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement log lane_open --session s-example"
+      "example": "abcd implement log lane_open --session s-example",
+      "no_next": "the event is on today's run log; nothing usually follows"
     },
     {
       "path": "abcd implement mode",
@@ -196,7 +242,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement mode single --session s-example"
+      "example": "abcd implement mode single --session s-example",
+      "next": [
+        {
+          "command": "abcd implement check lane --session <id>",
+          "when": "before taking a lane in the window"
+        }
+      ]
     },
     {
       "path": "abcd implement outage",
@@ -210,6 +262,12 @@
         "clear",
         "probe",
         "record"
+      ],
+      "next": [
+        {
+          "command": "abcd implement outage probe --session <id>",
+          "when": "when the next probe is due"
+        }
       ]
     },
     {
@@ -223,7 +281,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement outage ack --session s-example"
+      "example": "abcd implement outage ack --session s-example",
+      "next": [
+        {
+          "command": "abcd implement outage clear --session <id> --reason \"<why>\"",
+          "when": "once the connection is back"
+        }
+      ]
     },
     {
       "path": "abcd implement outage clear",
@@ -240,7 +304,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement outage clear --session s-example --reason \"the network is back\""
+      "example": "abcd implement outage clear --session s-example --reason \"the network is back\"",
+      "next": [
+        {
+          "command": "abcd implement status",
+          "when": "to see the run carry on"
+        }
+      ]
     },
     {
       "path": "abcd implement outage probe",
@@ -261,7 +331,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement outage probe --session s-example"
+      "example": "abcd implement outage probe --session s-example",
+      "next": [
+        {
+          "command": "abcd implement outage",
+          "when": "to see whether the outage is still open"
+        }
+      ]
     },
     {
       "path": "abcd implement outage record",
@@ -299,7 +375,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement outage record --session s-example --service network --kind tool --lane cli --what \"git push\""
+      "example": "abcd implement outage record --session s-example --service network --kind tool --lane cli --what \"git push\"",
+      "next": [
+        {
+          "command": "abcd implement outage",
+          "when": "to see the shared outage and when its next probe is due"
+        }
+      ]
     },
     {
       "path": "abcd implement receipt",
@@ -312,7 +394,14 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement receipt review-receipt.json --run run-2609010000000001"
+      "example": "abcd implement receipt review-receipt.json --run run-2609010000000001",
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to perform the run's next stage"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd implement record",
@@ -329,7 +418,14 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement record"
+      "example": "abcd implement record",
+      "next": [
+        {
+          "command": "abcd implement report",
+          "when": "to compare the division modes from the run log"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd implement release",
@@ -342,7 +438,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement release iss-2609010000000001 --session s-example"
+      "example": "abcd implement release iss-2609010000000001 --session s-example",
+      "next": [
+        {
+          "command": "abcd implement leave --session <id>",
+          "when": "when the session holds nothing else in the run"
+        }
+      ]
     },
     {
       "path": "abcd implement report",
@@ -359,7 +461,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement report"
+      "example": "abcd implement report",
+      "no_next": "the comparison is the run's final reading; nothing usually follows"
     },
     {
       "path": "abcd implement resume",
@@ -376,7 +479,18 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement resume --run run-2609010000000001"
+      "example": "abcd implement resume --run run-2609010000000001",
+      "next": [
+        {
+          "command": "abcd implement resume --take <run-id>",
+          "when": "only when the person says yes, to take over a run it listed"
+        },
+        {
+          "command": "abcd implement step",
+          "when": "to perform a taken run's next stage"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd implement status",
@@ -389,7 +503,14 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement status"
+      "example": "abcd implement status",
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to perform a run's next stage"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd implement step",
@@ -426,7 +547,18 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement step"
+      "example": "abcd implement step",
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to perform the stage after it"
+        },
+        {
+          "command": "abcd implement status",
+          "when": "to see the run lane by lane"
+        }
+      ],
+      "streaming": true
     },
     {
       "path": "abcd implement stop",
@@ -439,7 +571,13 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement stop"
+      "example": "abcd implement stop",
+      "next": [
+        {
+          "command": "abcd implement stop --lift",
+          "when": "only when the person says yes, and run by them from their own account, once the runs may start again"
+        }
+      ]
     },
     {
       "path": "abcd implement widen",
@@ -456,7 +594,14 @@
         }
       ],
       "inputs": [],
-      "example": "abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001"
+      "example": "abcd implement widen internal/widget/b.go --lane lane-1 --run run-2609010000000001",
+      "next": [
+        {
+          "command": "abcd implement step",
+          "when": "to carry on the lane with the wider hold"
+        }
+      ],
+      "streaming": true
     }
   ]
 }

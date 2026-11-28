@@ -31,7 +31,9 @@ import (
 //
 // Version 2 added FlagFact.Each, which says a list flag's closed set applies
 // to each member, or to one segment of each value (iss-2611162111195582).
-const FactsFormatVersion = 2
+// Version 3 added Next, NoNext and Streaming, what usually follows the
+// command's success (spc-2610301431108175 step 6).
+const FactsFormatVersion = 3
 
 // EachMember is FlagFact.Each for a list flag whose every member is checked
 // against the closed set whole, as a comma-list's names are.
@@ -88,6 +90,17 @@ type Facts struct {
 	Example string `json:"example,omitempty"`
 	// Subcommands are the names of the command's visible sub-commands.
 	Subcommands []string `json:"subcommands,omitempty"`
+	// Next is what usually follows the command's success, from the table in
+	// next.go, in the table's order: the list a successful --json result
+	// carries as next_steps. Empty on a hidden command, and on one whose
+	// entry is the explicit empty list, which NoNext then explains.
+	Next []NextStep `json:"next,omitempty"`
+	// NoNext is the reason nothing usually follows, for a command whose
+	// entry is the explicit empty list.
+	NoNext string `json:"no_next,omitempty"`
+	// Streaming marks a command whose --json run can write a document before
+	// its last one; only its closing summary carries next_steps.
+	Streaming bool `json:"streaming,omitempty"`
 }
 
 // FlagFact is one flag a command declares.
@@ -195,6 +208,11 @@ func CanonicalFacts(in []Facts) []Facts {
 			subs := append([]string{}, out[i].Subcommands...)
 			sort.Strings(subs)
 			out[i].Subcommands = subs
+		}
+		// The steps keep the table's order: it is the order a caller weighs
+		// them in, not a collection of the walk's.
+		if out[i].Next != nil {
+			out[i].Next = append([]NextStep{}, out[i].Next...)
 		}
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Path < out[b].Path })

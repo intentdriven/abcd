@@ -117,6 +117,13 @@ type fakeForge struct {
 	// of its reviews.
 	pullErr    error
 	reviewsErr error
+	// viewer is the account the forge client runs as, as ViewerQuery
+	// answers it ("" is the pull request's author, so the pull request is
+	// the account's own); viewerErr fails that read.
+	viewer    string
+	viewerErr error
+	// viewerAnswer, when set, is the whole answer to ViewerQuery.
+	viewerAnswer string
 	// depends answers the dependency check's read of pull request N
 	// (dependsQuery) with depends[N], a whole answer; a number it lacks is
 	// answered open into main, created at dependsCreated, with an empty body;
@@ -285,6 +292,31 @@ func (f *fakeForge) armedListing(args []string) (string, error) {
 	return `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":` + nodes + `}}}}`, nil
 }
 
+// viewerAnswered answers ViewerQuery with the account the forge client runs
+// as, through the one pinned query.
+func (f *fakeForge) viewerAnswered(args []string) (string, error) {
+	if !slices.Equal(args, viewerArgs()) {
+		return "", fmt.Errorf("fake forge: unexpected viewer query %v", args)
+	}
+	if err := ghcontract.CheckGraphQL(ViewerQuery); err != nil {
+		return "", err
+	}
+	if f.viewerErr != nil {
+		return "", f.viewerErr
+	}
+	if f.viewerAnswer != "" {
+		return f.viewerAnswer, nil
+	}
+	login := f.viewer
+	if login == "" {
+		login = f.author
+	}
+	if login == "" {
+		login = "author-a"
+	}
+	return `{"data":{"viewer":{"login":"` + login + `"}}}`, nil
+}
+
 // defaultRoles are the permissions the fake forge reports when a test sets
 // none: the author can write, and the reviewer maintains.
 var defaultRoles = map[string]string{"author-a": `{"permission":"write","role_name":"write","user":{"login":"author-a"}}`,
@@ -400,6 +432,9 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return f.prs, nil
 	case "api graphql":
+		if slices.Contains(args, "query="+ViewerQuery) {
+			return f.viewerAnswered(args)
+		}
 		if slices.Contains(args, "query="+claim.ArmedPullRequestsQuery) {
 			return f.armedListing(args)
 		}

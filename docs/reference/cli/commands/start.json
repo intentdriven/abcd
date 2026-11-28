@@ -1,5 +1,5 @@
 {
-  "format_version": 2,
+  "format_version": 3,
   "commands": [
     {
       "path": "abcd start",
@@ -24,7 +24,8 @@
         }
       ],
       "inputs": [],
-      "example": "abcd start"
+      "example": "abcd start",
+      "no_next": "the session it starts is where the work goes on; nothing follows in this shell"
     }
   ]
 }
