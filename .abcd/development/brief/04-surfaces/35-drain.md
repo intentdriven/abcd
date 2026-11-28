@@ -546,9 +546,12 @@ changes and at each renewal tick while an agent is in its call, with a version o
 drive's process id and start time, when it was written and when it will have written again,
 each word masked and the home redacted; it is not run state, and the next drive overwrites
 it. The drive's terminal prints `state: <line>` when the word, what it is on or the act
-changes. The board draws the line as its first building line, in place of "nothing right
-now" where nothing else is building, and as the facilitator's `drive:` row, and its
-machine-readable form carries the value and the line under `drive`; the implement verb's
+changes. The board's facilitator view draws the whole line as its `drive:` row, and its
+machine-readable form carries the value and the line under `drive`; the product thinker's
+view draws only the state word and the wait's named end, as its first building line in
+place of "nothing right now" (`building: drive waiting until 14:00`, the clock time in the
+person's zone, with the day where it is not today), since that view carries no record id
+and no command (spc-2610031844142274; dcn-2611280725169564). The implement verb's
 status render prints it as `drive: <line>` above the runs, for one run as for all, and
 under `drive` in its machine-readable form ([`27-implement.md`](27-implement.md)). Both read the file through the loop
 (`loop.ReadDriveState`, `drivestate_read.go`), which judges the recorded process as a run's
@@ -557,9 +560,11 @@ that is gone, or whose id is held by a process that started at another time, rea
 not heard from since the value was written, and never `working`, while a value the drive
 stored as `stopped` is its own last line and is kept. A record with no start, or a table that
 cannot be read, is judged by the time the drive said it would write again instead. A file that
-is not there, is not a regular file, cannot be read, states a newer version, or carries a
-control code in any word shows no line, and the surface says why on stderr; a drive writes
-every word masked, so a file holding a control code is not one it wrote.
+is not there shows no line and says nothing on either stream, since a checkout no drive has
+run in is the ordinary case and an absent file hides nothing (dcn-2611280725158656). One that
+is not a regular file, cannot be read, states a newer version, or carries a control code in
+any word shows no line, and the surface says why on stderr; a drive writes every word masked,
+so a file holding a control code is not one it wrote.
 
 An agent that goes silent cannot be told from a hung one on what is known today. It
 is treated as a hang: its role's deadline kills its process group, its worktree is left

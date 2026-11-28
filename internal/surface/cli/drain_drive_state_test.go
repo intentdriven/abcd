@@ -121,8 +121,9 @@ func standDriveNow(t *testing.T, at time.Time) {
 
 // threeWay is the drive's line as each of the three places prints it for the one value
 // s, stored in the checkout at root and read back at the time it was written: the
-// drive's terminal, `abcd implement status` and the board's building line, each with
-// its own label taken off.
+// drive's terminal, `abcd implement status` and the board's facilitator view, each with
+// its own label taken off. The product thinker's view draws the word and the until
+// alone (dcn-2611280725169564), so it is not one of the three.
 func threeWay(t *testing.T, root string, s loop.DriveState) (terminal, status, boardLine string) {
 	t.Helper()
 	storeDriveState(t, root, s)
@@ -136,17 +137,17 @@ func threeWay(t *testing.T, root string, s loop.DriveState) (terminal, status, b
 	if errb.Len() != 0 {
 		t.Fatalf("the stored value was not read: %s", errb.String())
 	}
-	for _, l := range board.Render(board.Input{Status: &statusblock.Block{}, Drive: d.line()}, board.Frame{View: board.Product, Form: board.Text, Width: 200, Rung: board.Mono}) {
-		if strings.HasPrefix(l, "● building: ") {
+	for _, l := range board.Render(board.Input{Status: &statusblock.Block{}, Drive: d.forBoard()}, board.Frame{View: board.Facilitator, Form: board.Text, Width: 200, Rung: board.Mono}) {
+		if strings.HasPrefix(l, "  drive:") {
 			boardLine = l
 		}
 	}
-	return strings.TrimPrefix(terminal, "state: "), strings.TrimPrefix(status, "drive: "), strings.TrimPrefix(boardLine, "● building: drive ")
+	return strings.TrimPrefix(terminal, "state: "), strings.TrimPrefix(status, "drive: "), strings.TrimPrefix(boardLine, "  drive:      ")
 }
 
-// The drive's terminal, `abcd implement status` and the board print the one line,
-// composed once from one stored value, byte for byte (criterion 6), in each state a
-// drive stores.
+// The drive's terminal, `abcd implement status` and the board's facilitator view print
+// the one line, composed once from one stored value, byte for byte (criterion 6), in
+// each state a drive stores.
 func TestTheTerminalTheStatusAndTheBoardShowOneDriveLine(t *testing.T) {
 	root := managedCheckout(t)
 	self := thisProcess(t)

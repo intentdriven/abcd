@@ -100,15 +100,16 @@ func TestTheBoardReadsAGoneDriveAsStopped(t *testing.T) {
 			if d == nil || errb.Len() != 0 {
 				t.Fatalf("no drive read: %+v, stderr %q", d, errb.String())
 			}
-			if got := d.line(); got != c.want {
+			if got := d.Line; got != c.want {
 				t.Fatalf("the line: %q, want %q", got, c.want)
 			}
 		})
 	}
 }
 
-// A file no drive wrote shows no line, and stderr says why, masked: none there, a
-// newer version, a control code, and a folder in its place.
+// A file no drive wrote shows no line, and stderr says why, masked: a newer version, a
+// control code, and a folder in its place. None there is the checkout no drive ran in,
+// and says nothing on either stream (dcn-2611280725158656).
 func TestNoDriveStateLineSaysWhyOnStderr(t *testing.T) {
 	root := managedCheckout(t)
 	path := filepath.Join(root, filepath.FromSlash(loop.DriveStateRel))
@@ -118,7 +119,6 @@ func TestNoDriveStateLineSaysWhyOnStderr(t *testing.T) {
 		lay  func(t *testing.T)
 		why  string
 	}{
-		{"none there", func(t *testing.T) {}, "no drive has written its state in this checkout (" + loop.DriveStateRel + ")"},
 		{"a newer version", func(t *testing.T) {
 			storeDriveStateBody(t, root, `{"version":99,"state":"working",`+good+`}`)
 		}, "states version 99, newer than the 1 this abcd reads"},
@@ -148,6 +148,40 @@ func TestNoDriveStateLineSaysWhyOnStderr(t *testing.T) {
 				t.Fatalf("stderr carries a control code: %q", got)
 			}
 		})
+	}
+	t.Run("none there", func(t *testing.T) {
+		if err := os.RemoveAll(path); err != nil {
+			t.Fatal(err)
+		}
+		var errb strings.Builder
+		if d := boardDrive(root, &errb); d != nil || errb.Len() != 0 {
+			t.Fatalf("an absent file showed %+v and said %q", d, errb.String())
+		}
+	})
+}
+
+// The product view words a wait's named end as a clock time on the day it is read,
+// with the day before it otherwise, in the person's own zone, and a wait with none as
+// nothing; the board is handed the word, that until and the whole line.
+func TestTheBoardIsHandedTheDrivesWordAndUntil(t *testing.T) {
+	now := time.Date(2026, 11, 28, 9, 0, 0, 0, time.UTC)
+	today, tomorrow := now.Add(5*time.Hour), now.Add(29*time.Hour)
+	east := time.FixedZone("east", 10*3600)
+	for _, c := range []struct {
+		u    *time.Time
+		loc  *time.Location
+		want string
+	}{{&today, time.UTC, "14:00"}, {&tomorrow, time.UTC, "Nov 29 14:00"}, {&today, east, "Nov 29 00:00"}, {nil, time.UTC, ""}} {
+		if got := driveUntil(c.u, now, c.loc); got != c.want {
+			t.Fatalf("driveUntil(%v in %s) = %q, want %q", c.u, c.loc, got, c.want)
+		}
+	}
+	d := &driveShown{State: loop.DriveState{State: loop.DriveWaiting}, Line: "waiting 40m · on the pace window · you: nothing to do", until: "14:00"}
+	if got := d.forBoard(); got == nil || got.State != loop.DriveWaiting || got.Until != "14:00" || got.Line != d.Line {
+		t.Fatalf("the board is handed %+v", got)
+	}
+	if (*driveShown)(nil).forBoard() != nil {
+		t.Fatal("no drive is handed to the board as one")
 	}
 }
 

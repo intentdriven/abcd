@@ -428,63 +428,86 @@ func TestAnUnreadableModeIsSaidAndMasked(t *testing.T) {
 	}
 }
 
-// driveFixture is a drive's state line as the front door hands it in.
-const driveFixture = "stalled 2h44m · on outage · you: needs a look"
+// driveFixture is a drive's state as the front door hands it in: a stalled drive
+// whose line names a record and a command.
+var driveFixture = &Drive{State: "stalled", Line: "stalled 2h44m · on 3 lanes handed back in a row at iss-2611141610197753's land · you: run `abcd drain --drive` to go on"}
 
 // The building line shows the drive's state in place of "nothing right now"
-// (spc-2611141617199772 step 5), and opens the building lines above any intent
-// being built; with no drive there is no change.
+// (spc-2611141617199772 step 5), its word and its until alone, and opens the
+// building lines above any intent being built; with no drive there is no change.
 func TestTheBuildingLineShowsTheDriveState(t *testing.T) {
 	f := Frame{View: Product, Form: Text, Width: 80, Rung: Mono}
-	check(t, "a drive and nothing else building", Render(Input{Status: &statusblock.Block{}, Drive: driveFixture, Version: ver}, f), `view for the product thinker
-● building: drive stalled 2h44m · on outage · you: needs a look
+	check(t, "a stalled drive and nothing else building", Render(Input{Status: &statusblock.Block{}, Drive: driveFixture, Version: ver}, f), `view for the product thinker
+● building: drive stalled
 ○ next: nothing is ready
 • no more ready, nothing parked
 abcd v0.13.4
 `)
-	check(t, "a drive and an intent building", Render(Input{Status: fixture(0, 0), Drive: driveFixture, Version: ver}, f), `view for the product thinker
-● building: drive stalled 2h44m · on outage · you: needs a look
+	waiting := &Drive{State: "waiting", Until: "14:00", Line: "waiting 40m · on the pace window · you: nothing to do"}
+	check(t, "a waiting drive and an intent building", Render(Input{Status: fixture(0, 0), Drive: waiting, Version: ver}, f), `view for the product thinker
+● building: drive waiting until 14:00
 ● building: The board shows a product thinker what waits on them and what comes…
 ○ next: A 'what next?' menu under the board offers the next step, in a Terminal…
 • no more ready, nothing parked
 abcd v0.13.4
 `)
-	check(t, "markdown", Render(Input{Status: &statusblock.Block{}, Drive: driveFixture}, Frame{View: Product, Form: Markdown}), `view for the product thinker
+	check(t, "markdown", Render(Input{Status: &statusblock.Block{}, Drive: waiting}, Frame{View: Product, Form: Markdown}), `view for the product thinker
 
-- ● building: drive stalled 2h44m · on outage · you: needs a look
+- ● building: drive waiting until 14:00
 - ○ next: nothing is ready
 - • no more ready, nothing parked
 `)
-	f.View = Facilitator
-	lines := Render(Input{Dir: "~/code/abcd", Status: &statusblock.Block{}, Drive: driveFixture}, f)
-	if !strings.Contains(strings.Join(lines, "\n"), "\n  drive:      stalled 2h44m · on outage · you: needs a look\n  status:") {
-		t.Fatalf("the facilitator's view has no drive: row above the status:\n%s", strings.Join(lines, "\n"))
+	painted := Render(Input{Status: &statusblock.Block{}, Drive: waiting}, Frame{View: Product, Form: Text, Width: 80, Rung: Ansi16})
+	if painted[1] != "\x1b[32m● building:\x1b[39m drive waiting until 14:00" {
+		t.Fatalf("the drive's building line is not coloured as a building line: %q", painted[1])
 	}
 }
 
-// The drive's line is never cut short, since it ends with the act open to a
-// person: in a narrow window it wraps with a hanging indent, its label coloured
-// as every building line's is, and a control code in it is masked.
-func TestTheDriveLineWrapsWholeAndMasked(t *testing.T) {
-	drive := "waiting 12m · on iss-2611141610197753 at land, which another driver holds · you: end process 42 (login)\x1b[2J"
-	lines := Render(Input{Status: &statusblock.Block{}, Drive: drive}, Frame{View: Product, Form: Text, Width: 50, Rung: Ansi16})
-	var building []string
-	for _, l := range lines[1:] {
-		if strings.Contains(l, "next:") {
+// The product thinker's view carries no record id and no command from the drive's
+// line, whatever the line names (spc-2610031844142274, dcn-2611280725169564): only
+// the word and the until, masked.
+func TestTheProductViewShowsNoIdOrCommandFromTheDrive(t *testing.T) {
+	handle := regexp.MustCompile(`\b(itd|iss|spc|adr|run|lane)-[0-9]`)
+	command := regexp.MustCompile("`|\\babcd [a-z]")
+	for _, d := range []*Drive{driveFixture, {State: "waiting\x1b[2J", Until: "14:00", Line: "waiting 3m · on run-2611280000000001's lane-2 · you: `abcd implement resume --take run-2611280000000001`"}} {
+		for _, form := range []Form{Text, Markdown} {
+			for _, l := range Render(Input{Status: &statusblock.Block{}, Drive: d}, Frame{View: Product, Form: form, Width: 200, Rung: Mono}) {
+				if handle.MatchString(l) || command.MatchString(l) || strings.ContainsRune(l, '\x1b') {
+					t.Errorf("the product thinker's view carries an id, a command or a control code from the drive: %q", l)
+				}
+			}
+		}
+	}
+}
+
+// The facilitator's view carries the drive's whole line as its drive: row, above the
+// status, wrapped at the window with a hanging indent and masked, since its last part
+// is the act open to a person.
+func TestTheFacilitatorRowCarriesTheWholeDriveLine(t *testing.T) {
+	f := Frame{View: Facilitator, Form: Text, Width: 200, Rung: Mono}
+	lines := Render(Input{Dir: "~/code/abcd", Status: &statusblock.Block{}, Drive: driveFixture}, f)
+	if !strings.Contains(strings.Join(lines, "\n"), "\n  drive:      "+driveFixture.Line+"\n  status:") {
+		t.Fatalf("the facilitator's view has no drive: row with the whole line above the status:\n%s", strings.Join(lines, "\n"))
+	}
+	d := &Drive{State: "waiting", Line: "waiting 12m · on iss-2611141610197753 at land, which another driver holds · you: end process 42 (login)\x1b[2J"}
+	f.Width = 50
+	var row []string
+	for _, l := range Render(Input{Status: &statusblock.Block{}, Drive: d}, f) {
+		if strings.HasPrefix(l, "  drive:") || (len(row) > 0 && strings.HasPrefix(l, "      ")) {
+			row = append(row, l)
+		} else if len(row) > 0 {
 			break
 		}
-		building = append(building, l)
 	}
-	if len(building) < 2 || !strings.HasPrefix(building[0], "\x1b[32m● building:\x1b[39m drive waiting 12m") {
-		t.Fatalf("the drive's line is not wrapped under its coloured label: %q", building)
+	if len(row) < 2 {
+		t.Fatalf("the drive: row is not wrapped at 50 columns: %q", row)
 	}
-	plain := escape.ReplaceAllString(strings.Join(building, "\n"), "")
-	for i, l := range strings.Split(plain, "\n") {
-		if textwidth.Columns(l) > 50 || (i > 0 && !strings.HasPrefix(l, "    ")) {
-			t.Fatalf("line %q runs past the window or has no hanging indent", l)
+	for _, l := range row {
+		if textwidth.Columns(l) > 50 {
+			t.Fatalf("line %q runs past the window", l)
 		}
 	}
-	if got := strings.Join(strings.Fields(plain), " "); !strings.HasSuffix(got, "you: end process 42 (login)?[2J") {
-		t.Fatalf("the wrapped line lost its act or its mask: %q", got)
+	if got := strings.Join(strings.Fields(strings.Join(row, " ")), " "); !strings.HasSuffix(got, "you: end process 42 (login)?[2J") {
+		t.Fatalf("the wrapped row lost its act or its mask: %q", got)
 	}
 }

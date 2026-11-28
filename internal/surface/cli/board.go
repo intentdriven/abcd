@@ -75,9 +75,10 @@ type boardOutput struct {
 	// carries counts alone, never an entry's text.
 	Findings *boardFindingsLine `json:"findings,omitempty"`
 	// Drive is the drive's state in this checkout, as stored and judged
-	// (spc-2611141617199772 step 5), with the line the board draws as its first
-	// building line and `abcd implement status` prints; omitted in a checkout abcd
-	// does not manage and where there is no line to show, which is said on stderr.
+	// (spc-2611141617199772 step 5), with the whole line the facilitator view
+	// draws and `abcd implement status` prints; omitted in a checkout abcd does
+	// not manage, where no drive has written its state, and where the file there
+	// shows no line, which is said on stderr.
 	Drive *driveShown `json:"drive,omitempty"`
 }
 

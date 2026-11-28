@@ -93,14 +93,25 @@ type Input struct {
 	// beside the machine layer. It is drawn as the facilitator: line just above
 	// the version line in both views and both forms; nil draws no line.
 	Merges *Merges
-	// Drive is the drive's state line as the front door composed it from the
-	// stored value (loop.DriveLine; spc-2611141617199772 step 5), "" where there
-	// is none to show. The product thinker's view draws it as its first building
-	// line, in place of "nothing right now" where nothing else is building, and
-	// the facilitator's as its drive: row. It is the line `abcd implement status`
-	// and the drive's own terminal print, so it is wrapped at the window and
-	// never cut short: its last part is the act open to a person.
-	Drive string
+	// Drive is the drive's state as the front door read it from the stored value
+	// (spc-2611141617199772 step 5), nil where there is none to show.
+	Drive *Drive
+}
+
+// Drive is a drive's state as the board draws it. The product thinker's view
+// draws its word and its until alone, as its first building line, in place of
+// "nothing right now" where nothing else is building, since that view carries
+// no record id and no command (spc-2610031844142274; dcn-2611280725169564). The
+// facilitator's view draws the whole line as its drive: row, the line the
+// drive's own terminal and `abcd implement status` print.
+type Drive struct {
+	// State is the word: working, waiting, stalled or stopped.
+	State string
+	// Until is the wait's named end as the front door words it ("14:00"), ""
+	// where the wait names none.
+	Until string
+	// Line is the whole line (loop.DriveLine).
+	Line string
 }
 
 // Merges is facilitator.mode and the layer and origin that set it, or, when the
@@ -324,8 +335,8 @@ func product(in Input, f Frame) []string {
 	}
 
 	var out []string
-	if in.Drive != "" {
-		out = append(out, driveLine(in.Drive, f, sym)...)
+	if in.Drive != nil {
+		out = append(out, driveLine(in.Drive, f, sym))
 	} else if len(building) == 0 {
 		out = append(out, item(sgr(f, 32, sym.building+" building:")+" nothing right now"))
 	}
@@ -361,28 +372,19 @@ type entry struct {
 // line, a column longer, carries its own space).
 const labelWidth = 12
 
-// driveWord opens the drive's line on the product thinker's building line, so it
-// is told from an intent's title there.
-const driveWord = "drive "
-
 // driveLine is the product thinker's building line for the drive's state: the
-// line whole after its label, masked. In text it is wrapped at the window with a
-// hanging indent, the label coloured as every building line's is, since a line
-// cut short would lose the act it ends with.
-func driveLine(drive string, f Frame, sym symbols) []string {
-	label := sym.building + " building:"
-	text := label + " " + driveWord + termsafe.Sanitize(drive)
-	switch f.Form {
-	case Markdown:
-		return []string{"- " + text}
-	case Text:
-		lines := wrap(text, f.Width)
-		if rest, ok := strings.CutPrefix(lines[0], label); ok {
-			lines[0] = sgr(f, 32, label) + rest
-		}
-		return lines
+// word, and the until where the wait names one, masked, and nothing else of the
+// line, so no record id or command reaches this view.
+func driveLine(d *Drive, f Frame, sym symbols) string {
+	text := "drive " + termsafe.Sanitize(d.State)
+	if d.Until != "" {
+		text += " until " + termsafe.Sanitize(d.Until)
 	}
-	return []string{text}
+	label := sym.building + " building:"
+	if f.Form == Markdown {
+		return "- " + label + " " + text
+	}
+	return sgr(f, 32, label) + " " + text
 }
 
 // facilitator is the full board below its label, in its own order: the
@@ -402,8 +404,8 @@ func facilitator(in Input, f Frame) []string {
 			es = append(es, entry{2, termsafe.Sanitize(it)})
 		}
 	}
-	if in.Drive != "" {
-		es = append(es, entry{1, fmt.Sprintf("%-*s%s", labelWidth, "drive:", termsafe.Sanitize(in.Drive))})
+	if in.Drive != nil {
+		es = append(es, entry{1, fmt.Sprintf("%-*s%s", labelWidth, "drive:", termsafe.Sanitize(in.Drive.Line))})
 	}
 	if b := in.Status; b != nil {
 		es = append(es, entry{1, fmt.Sprintf("%-*sNow %d · Next %d · Later %d", labelWidth, "status:", len(b.Now), len(b.Next), len(b.Later))})
